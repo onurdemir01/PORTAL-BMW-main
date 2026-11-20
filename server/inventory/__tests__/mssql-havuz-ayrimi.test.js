@@ -32,10 +32,21 @@ test('MV1 node-mssql`in `connect`i SONRAKI configleri YOK SAYAR (kuralin sebebi)
   const gorulen = [];
   const orijinal = shared.driver.ConnectionPool;
   shared.driver.ConnectionPool = class {
-    constructor(cfg) { gorulen.push(cfg.user); this.config = cfg; }
-    connect() { return Promise.resolve(this); }
-    on() {} removeListener() {}
-    close(cb) { if (cb) { cb(); } return Promise.resolve(); }
+    constructor(cfg) {
+      gorulen.push(cfg.user);
+      this.config = cfg;
+    }
+    connect() {
+      return Promise.resolve(this);
+    }
+    on() {}
+    removeListener() {}
+    close(cb) {
+      if (cb) {
+        cb();
+      }
+      return Promise.resolve();
+    }
   };
   try {
     const gc = require('mssql/lib/global-connection');
@@ -56,14 +67,24 @@ test('MV2 HICBIR sunucu modulu global havuzu (`sql.connect`) kurmaz', () => {
   const gez = (d) => {
     for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
       const p = `${d}/${e.name}`;
-      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') { gez(p); } continue; }
-      if (!e.name.endsWith('.cjs')) { continue; }
-      if (/\bsql\.connect\s*\(/.test(kodOnly(oku(p)))) { bulunan.push(p); }
+      if (e.isDirectory()) {
+        if (e.name !== '__tests__' && e.name !== 'node_modules') {
+          gez(p);
+        }
+        continue;
+      }
+      if (!e.name.endsWith('.cjs')) {
+        continue;
+      }
+      if (/\bsql\.connect\s*\(/.test(kodOnly(oku(p)))) {
+        bulunan.push(p);
+      }
     }
   };
   kokler.forEach(gez);
   assert.deepEqual(
-    bulunan, [],
+    bulunan,
+    [],
     `global havuz kuran dosya(lar): ${bulunan.join(', ')} — config'leri SESSIZCE yok sayilir`,
   );
 });
@@ -73,18 +94,30 @@ test('MV3 iki envanter havuzu AYRI nesne ve KENDI kimligiyle kurulur', async () 
   const orijinal = sql.ConnectionPool;
   const kurulan = [];
   sql.ConnectionPool = class {
-    constructor(cfg) { kurulan.push(cfg.user); this.config = cfg; this._dinleyici = 0; }
-    connect() { return Promise.resolve(this); }
-    on() { this._dinleyici++; }
+    constructor(cfg) {
+      kurulan.push(cfg.user);
+      this.config = cfg;
+      this._dinleyici = 0;
+    }
+    connect() {
+      return Promise.resolve(this);
+    }
+    on() {
+      this._dinleyici++;
+    }
   };
   const eskiEnv = { ...process.env };
   Object.assign(process.env, {
-    MSSQL_SERVER: 'sunucu', MSSQL_DATABASE: 'db',
-    MSSQL_USER: 'YAZMA', MSSQL_PASSWORD: 'p',
-    MSSQL_RO_USER: 'SALT_OKUNUR', MSSQL_RO_PASSWORD: 'p',
+    MSSQL_SERVER: 'sunucu',
+    MSSQL_DATABASE: 'db',
+    MSSQL_USER: 'YAZMA',
+    MSSQL_PASSWORD: 'p',
+    MSSQL_RO_USER: 'SALT_OKUNUR',
+    MSSQL_RO_PASSWORD: 'p',
   });
   // Modulleri TAZE yukle — onceki testlerden kalan `_pool` olmasin.
-  for (const m of ['../mssql.cjs', '../mssql-readonly.cjs']) delete require.cache[require.resolve(m)];
+  for (const m of ['../mssql.cjs', '../mssql-readonly.cjs'])
+    delete require.cache[require.resolve(m)];
   try {
     // YAZMA havuzu ONCE kurulur — uretimdeki gercek sira bu (envanter ekranlari
     // yonetici Custom SQL ekranindan cok once acilir). Hata tam burada oluyordu.
@@ -102,7 +135,8 @@ test('MV3 iki envanter havuzu AYRI nesne ve KENDI kimligiyle kurulur', async () 
   } finally {
     sql.ConnectionPool = orijinal;
     process.env = eskiEnv;
-    for (const m of ['../mssql.cjs', '../mssql-readonly.cjs']) delete require.cache[require.resolve(m)];
+    for (const m of ['../mssql.cjs', '../mssql-readonly.cjs'])
+      delete require.cache[require.resolve(m)];
   }
 });
 
@@ -137,7 +171,8 @@ test('MV4 Custom SQL ucu salt-okunur havuzu TERCIH eder, paylasilana yalniz DUSE
 test('MV5 salt-okunur modul yazma kimligini HIC okumaz', () => {
   const kod = kodOnly(oku('server/inventory/mssql-readonly.cjs'));
   assert.doesNotMatch(
-    kod, /MSSQL_USER|MSSQL_PASSWORD(?!\s*\})/,
+    kod,
+    /MSSQL_USER|MSSQL_PASSWORD(?!\s*\})/,
     'salt-okunur modul yazma kimligine basvuruyor',
   );
   assert.match(kod, /MSSQL_RO_USER/, 'salt-okunur kullanici okunmuyor');

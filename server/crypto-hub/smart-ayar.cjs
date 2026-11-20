@@ -21,7 +21,13 @@
 'use strict';
 
 const BLOB_NAME = 'crypto-hub:smart';
-const BOS_BLOK = Object.freeze({ enabled: true, flowKey: '', metadataFields: '', integrationKey: '', ocoTest: false });
+const BOS_BLOK = Object.freeze({
+  enabled: true,
+  flowKey: '',
+  metadataFields: '',
+  integrationKey: '',
+  ocoTest: false,
+});
 
 const db = () => require('../db/index.cjs');
 const opsxCfg = () => require('../opsx/config.cjs');
@@ -29,14 +35,17 @@ const envMod = () => require('../db/env-overrides.cjs');
 
 const METIN = Object.freeze({
   okunamadi: 'Crypto Hub Smart ayarı okunamadı, lütfen tekrar deneyin.',
-  yarim: 'Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. Yalnız yorum satırı içeren şablon boş sayılır.',
+  yarim:
+    'Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. Yalnız yorum satırı içeren şablon boş sayılır.',
   gecersiz: (alanlar) => `Geçersiz alan(lar): ${alanlar.join(', ')}. Değişiklik kaydedilmedi.`,
-  tokenFlowsuz: "Flow Key olmadan entegrasyon anahtarı kaydedilemez.",
-  sifrelemeYok: 'Değer şifreleme anahtarı (ENV_OVERRIDES_ENCRYPTION_KEY) tanımlı değil — entegrasyon anahtarı kaydedilemez.',
+  tokenFlowsuz: 'Flow Key olmadan entegrasyon anahtarı kaydedilemez.',
+  sifrelemeYok:
+    'Değer şifreleme anahtarı (ENV_OVERRIDES_ENCRYPTION_KEY) tanımlı değil — entegrasyon anahtarı kaydedilemez.',
   sablonUzun: 'Metadata şablonu çok uzun.',
 });
 
-const redHatasi = (blocked, message, ek = {}) => Object.assign(new Error(message), { status: 400, blocked, ...ek });
+const redHatasi = (blocked, message, ek = {}) =>
+  Object.assign(new Error(message), { status: 400, blocked, ...ek });
 const metinOf = (x) => (typeof x === 'string' ? x : '');
 
 /** Yalniz yorum / bos satir iceren sablon Smart'a bos metadata gonderir: bos sayilir. */
@@ -51,7 +60,8 @@ async function oku() {
   if (!Array.isArray(r?.rows)) throw new Error('portal_config_blobs yaniti gecersiz');
   if (!r.rows.length) return { ...BOS_BLOK };
   const ham = JSON.parse(r.rows[0].data);
-  if (!ham || typeof ham !== 'object' || Array.isArray(ham)) throw new Error('crypto-hub:smart satiri bozuk');
+  if (!ham || typeof ham !== 'object' || Array.isArray(ham))
+    throw new Error('crypto-hub:smart satiri bozuk');
   return {
     // Yalniz gercek false kapatir: bozuk bir deger Smart'i acik birakir.
     enabled: ham.enabled !== false,
@@ -65,7 +75,7 @@ async function oku() {
 
 /** @returns {'bos'|'dolu'|'yarim'} */
 function blokDurumu(blob) {
-  const flow = !!(blob?.flowKey);
+  const flow = !!blob?.flowKey;
   const sablon = !!blob && sablonDoluMu(blob.metadataFields);
   if (flow !== sablon) return 'yarim';
   if (!flow) return 'bos';
@@ -80,7 +90,8 @@ function blokDurumu(blob) {
 function smartKapaliMi(tenant, blob) {
   if (!tenant || tenant.production !== false) return false;
   const { uretimEtiketi } = require('../opsx/prod-approval.cjs');
-  if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster)) return false;
+  if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster))
+    return false;
   return !!blob && blob.enabled === false;
 }
 
@@ -91,7 +102,8 @@ function smartKapaliMi(tenant, blob) {
 function ocoGerekliMi(tenant, blob) {
   if (!tenant || tenant.production !== false) return true;
   const { uretimEtiketi } = require('../opsx/prod-approval.cjs');
-  if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster)) return true;
+  if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster))
+    return true;
   return !!blob && blob.ocoTest === true;
 }
 
@@ -135,7 +147,10 @@ async function yaz(blob) {
     [json, BLOB_NAME],
   );
   if (!upd?.rowCount) {
-    await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, json]);
+    await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+      BLOB_NAME,
+      json,
+    ]);
   }
 }
 
@@ -164,12 +179,14 @@ async function kaydet(govde) {
   }
   const token = metinOf(g.integrationKey).trim();
   if (token && !SMART_TOKEN_RE.test(token)) reddedilen.push('integrationKey');
-  if (reddedilen.length) throw redHatasi('crypto_smart_gecersiz', METIN.gecersiz(reddedilen), { reddedilen });
+  if (reddedilen.length)
+    throw redHatasi('crypto_smart_gecersiz', METIN.gecersiz(reddedilen), { reddedilen });
   if (!sonraki.flowKey) {
     if (token) throw redHatasi('crypto_smart_token_flowsuz', METIN.tokenFlowsuz);
     sonraki.integrationKey = '';
   } else if (token) {
-    if (!envMod().getEncryptionKey()) throw redHatasi('crypto_smart_sifreleme_yok', METIN.sifrelemeYok);
+    if (!envMod().getEncryptionKey())
+      throw redHatasi('crypto_smart_sifreleme_yok', METIN.sifrelemeYok);
     sonraki.integrationKey = envMod().encryptSecretValue(token);
   } else if (sonraki.flowKey !== onceki.flowKey) {
     sonraki.integrationKey = '';
@@ -198,18 +215,27 @@ async function ekranOzeti() {
   if (blok === 'bos') {
     try {
       const sa = await require('../opsx/prod-approval.cjs').smartApprovalFor('openshift');
-      opsxFlowKey = (sa?.flowKey) || '';
+      opsxFlowKey = sa?.flowKey || '';
     } catch {
       opsxFlowKey = '';
     }
   }
-  const kaynak = (() => { if (blok === 'dolu') return 'crypto'; if (opsxFlowKey) return 'opsx'; return null; })();
+  const kaynak = (() => {
+    if (blok === 'dolu') return 'crypto';
+    if (opsxFlowKey) return 'opsx';
+    return null;
+  })();
   // Oncelik talebin gercek sonucuna gore: yarim blok ve cozulemeyen token enabled'dan bagimsiz 503 verir.
   let durum;
   if (blok === 'yarim') durum = 'eksik';
   else if (blok === 'dolu' && !tokenCozulurMu(blob)) durum = 'token_cozulemedi';
   else if (blob.enabled === false) durum = 'testte_kapali';
-  else durum = (() => { if (kaynak === 'crypto') return 'kendi'; if (kaynak === 'opsx') return 'opsx'; return 'eksik'; })();
+  else
+    durum = (() => {
+      if (kaynak === 'crypto') return 'kendi';
+      if (kaynak === 'opsx') return 'opsx';
+      return 'eksik';
+    })();
   return {
     smart: {
       enabled: blob.enabled !== false,
@@ -256,7 +282,9 @@ function initCryptoHubSmartAyar(router, { requireAdmin }) {
       res.json({ ok: true, ...(await ekranOzeti()) });
     } catch (e) {
       console.warn('[CryptoHub] Smart ayari okunamadi:', e.message);
-      res.status(503).json({ ok: false, blocked: 'crypto_smart_okunamadi', message: METIN.okunamadi });
+      res
+        .status(503)
+        .json({ ok: false, blocked: 'crypto_smart_okunamadi', message: METIN.okunamadi });
     }
   });
 
@@ -274,7 +302,9 @@ function initCryptoHubSmartAyar(router, { requireAdmin }) {
         });
       }
       console.warn('[CryptoHub] Smart ayari kaydedilemedi:', e.message);
-      return res.status(503).json({ ok: false, blocked: 'crypto_smart_okunamadi', message: METIN.okunamadi });
+      return res
+        .status(503)
+        .json({ ok: false, blocked: 'crypto_smart_okunamadi', message: METIN.okunamadi });
     }
     const { onceki, sonraki } = sonuc;
     denetimYaz(req, 'crypto_hub_smart_config_save', kayitDetayi(onceki, sonraki));
@@ -295,9 +325,11 @@ function initCryptoHubSmartAyar(router, { requireAdmin }) {
   router.post('/smart-config/onizle', requireAdmin, async (req, res) => {
     const raw = metinOf(req.body?.metadataFields);
     if (raw.length > opsxCfg().SMART_METADATA_MAX) {
-      return res.status(400).json({ ok: false, blocked: 'crypto_smart_gecersiz', message: METIN.sablonUzun });
+      return res
+        .status(400)
+        .json({ ok: false, blocked: 'crypto_smart_gecersiz', message: METIN.sablonUzun });
     }
-    const ben = (req.session?.user) || req.user || {};
+    const ben = req.session?.user || req.user || {};
     try {
       const metadata = await require('./node.cjs').taslakOnizle(raw, ben);
       res.json({ ok: true, metadata });

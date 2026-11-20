@@ -7,25 +7,33 @@
 //      düştü ve kısmi çalıştırma kapalıydı — cluster'da HİÇBİR değişiklik yok. Bu,
 //      kullanıcı için kötü değil İYİ haber ve öyle sunulur.
 //   3. `stage: validation` ayrı bir ekran: iş cluster'a hiç dokunmadı, sebebi de belli.
-import React from "react";
+import React from 'react';
 import {
-  CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon, ShieldExclamationIcon,
-  InformationCircleIcon, ArrowUturnLeftIcon,
-} from "@heroicons/react/24/outline";
-import type { ScaleXRunResult } from "@/api/scalexApi";
-import { humanizeRunLog } from "@/utils/scalexLog";
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  XCircleIcon,
+  ShieldExclamationIcon,
+  InformationCircleIcon,
+  ArrowUturnLeftIcon,
+} from '@heroicons/react/24/outline';
+import type { ScaleXRunResult } from '@/api/scalexApi';
+import { humanizeRunLog } from '@/utils/scalexLog';
 
 const OVERALL: Record<string, { title: string; cls: string; Icon: typeof CheckCircleIcon }> = {
-  OK:   { title: "Başarılı",  cls: "pf-label pf-label--green",  Icon: CheckCircleIcon },
-  WARN: { title: "Uyarı",     cls: "pf-label pf-label--gold",   Icon: ExclamationTriangleIcon },
-  FAIL: { title: "Başarısız", cls: "pf-label pf-label--red",    Icon: XCircleIcon },
+  OK: { title: 'Başarılı', cls: 'pf-label pf-label--green', Icon: CheckCircleIcon },
+  WARN: { title: 'Uyarı', cls: 'pf-label pf-label--gold', Icon: ExclamationTriangleIcon },
+  FAIL: { title: 'Başarısız', cls: 'pf-label pf-label--red', Icon: XCircleIcon },
 };
 const LOG_TONE: Record<string, string> = {
-  ok: "pf-label pf-label--green", warn: "pf-label pf-label--gold",
-  fail: "pf-label pf-label--red", info: "pf-label pf-label--grey",
+  ok: 'pf-label pf-label--green',
+  warn: 'pf-label pf-label--gold',
+  fail: 'pf-label pf-label--red',
+  info: 'pf-label pf-label--grey',
 };
 const ROW: Record<string, string> = {
-  OK: "pf-label pf-label--green", WARN: "pf-label pf-label--gold", FAIL: "pf-label pf-label--red",
+  OK: 'pf-label pf-label--green',
+  WARN: 'pf-label pf-label--gold',
+  FAIL: 'pf-label pf-label--red',
 };
 
 const ScaleXResultPanel: React.FC<{
@@ -34,23 +42,35 @@ const ScaleXResultPanel: React.FC<{
   /** Verilirse `Durdur` sonucunda "Hemen geri al" kisayolu gosterilir. */
   onUndo?: (targets: { cluster: string; app: string; kind: string }[]) => void;
 }> = ({ result, catalogWarning, onUndo }) => {
-  const meta = OVERALL[result.overallStatus] || { title: result.overallStatus || "Bilinmiyor", cls: "pf-label pf-label--grey", Icon: InformationCircleIcon };
+  const meta = OVERALL[result.overallStatus] || {
+    title: result.overallStatus || 'Bilinmiyor',
+    cls: 'pf-label pf-label--grey',
+    Icon: InformationCircleIcon,
+  };
   const { Icon } = meta;
 
-  if (result.stage === "validation") {
+  if (result.stage === 'validation') {
     return (
       <div className="w-full space-y-3">
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <ShieldExclamationIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-amber-700 mt-0.5" />
+          <ShieldExclamationIcon
+            aria-hidden="true"
+            className="w-5 h-5 flex-shrink-0 text-amber-700 mt-0.5"
+          />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-amber-900">Girdi doğrulaması başarısız — cluster'a hiç dokunulmadı.</p>
+            <p className="text-sm font-semibold text-amber-900">
+              Girdi doğrulaması başarısız — cluster'a hiç dokunulmadı.
+            </p>
             {/* `validationError` null OLABILIR (tip: string | null) ve o durumda ekranda
                 BOS BIR PARAGRAF kaliyordu — kullanici sebebi hic ogrenemiyordu. */}
             <p className="mt-1 text-xs text-amber-900 break-words">
-              {result.validationError || "Playbook bir sebep bildirmedi — ayrıntı için aşağıdaki AWX çıktısına bakın."}
+              {result.validationError ||
+                'Playbook bir sebep bildirmedi — ayrıntı için aşağıdaki AWX çıktısına bakın.'}
             </p>
             {result.failedTask && (
-              <p className="mt-1 text-xs text-amber-800">Düşen adım: <span className="font-mono">{result.failedTask}</span></p>
+              <p className="mt-1 text-xs text-amber-800">
+                Düşen adım: <span className="font-mono">{result.failedTask}</span>
+              </p>
             )}
           </div>
         </div>
@@ -61,17 +81,23 @@ const ScaleXResultPanel: React.FC<{
   return (
     <div className="w-full space-y-3">
       <div className="flex items-start gap-2.5">
-        <Icon aria-hidden="true" className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--text-secondary)]" />
+        <Icon
+          aria-hidden="true"
+          className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--text-secondary)]"
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-[var(--text-primary)]">
             {meta.title}
             <span className="ml-2 text-xs font-normal text-[var(--text-muted)] tabular-nums">
-              {result.counts.ok} başarılı · {result.counts.warn} uyarı · {result.counts.fail} başarısız
-              {result.counts.planned ? ` (${result.counts.planned} hedef)` : ""}
+              {result.counts.ok} başarılı · {result.counts.warn} uyarı · {result.counts.fail}{' '}
+              başarısız
+              {result.counts.planned ? ` (${result.counts.planned} hedef)` : ''}
             </span>
           </p>
-          {result.mode === "dry_run" && (
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">Ön kontrol çalıştırıldı — hiçbir şey değiştirilmedi.</p>
+          {result.mode === 'dry_run' && (
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              Ön kontrol çalıştırıldı — hiçbir şey değiştirilmedi.
+            </p>
           )}
           {result.counts.hpaSeen > 0 && (
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -85,8 +111,9 @@ const ScaleXResultPanel: React.FC<{
         <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
           <InformationCircleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            <strong>Hiçbir değişiklik uygulanmadı.</strong> Ön kontrol hata verdi ve “hepsi ya da hiçbiri”
-            seçili olduğu için işlem tamamen durduruldu — cluster'ların hiçbirine dokunulmadı.
+            <strong>Hiçbir değişiklik uygulanmadı.</strong> Ön kontrol hata verdi ve “hepsi ya da
+            hiçbiri” seçili olduğu için işlem tamamen durduruldu — cluster'ların hiçbirine
+            dokunulmadı.
           </span>
         </div>
       )}
@@ -103,18 +130,23 @@ const ScaleXResultPanel: React.FC<{
           <div key={`${t.cluster}/${t.app}/${i}`} className="px-3 py-2 text-sm">
             <div className="flex items-center justify-between gap-3">
               <span className="min-w-0 flex items-center gap-2">
-                <span className="font-mono truncate text-[var(--text-primary)]" title={`${t.cluster} / ${t.app}`}>
+                <span
+                  className="font-mono truncate text-[var(--text-primary)]"
+                  title={`${t.cluster} / ${t.app}`}
+                >
                   {t.app}
                 </span>
                 {/* `title` KESILEN OGENIN KENDISINDE olmali — ustteki kapsayiciya
                     koymak kesilen degeri okunamaz birakir (bkz. D7 bekcisi). */}
-                <span className="text-xs text-[var(--text-muted)] truncate" title={t.cluster}>{t.cluster}</span>
-                {t.kind !== "-" && <span className="pf-label pf-label--grey">{t.kind}</span>}
+                <span className="text-xs text-[var(--text-muted)] truncate" title={t.cluster}>
+                  {t.cluster}
+                </span>
+                {t.kind !== '-' && <span className="pf-label pf-label--grey">{t.kind}</span>}
               </span>
-              <span className={ROW[t.status] || "pf-label pf-label--grey"}>{t.status}</span>
+              <span className={ROW[t.status] || 'pf-label pf-label--grey'}>{t.status}</span>
             </div>
             {/* Ayrıntı YALNIZCA sorunlu satırlarda — başarılı satırlarda gürültü olurdu. */}
-            {t.status !== "OK" && t.detail && (
+            {t.status !== 'OK' && t.detail && (
               <p className="mt-1 text-xs text-[var(--text-muted)] break-words">{t.detail}</p>
             )}
           </div>
@@ -128,7 +160,8 @@ const ScaleXResultPanel: React.FC<{
 
       {result.targetsTruncated && (
         <p className="text-xs text-[var(--text-muted)]">
-          Liste kırpıldı: {result.targets.length}/{result.targetsTotal} hedef gösteriliyor. Tamamı AWX job log'unda.
+          Liste kırpıldı: {result.targets.length}/{result.targetsTotal} hedef gösteriliyor. Tamamı
+          AWX job log'unda.
         </p>
       )}
 
@@ -150,15 +183,21 @@ const ScaleXResultPanel: React.FC<{
                   <div className="flex items-start gap-2">
                     <span className={LOG_TONE[e.tone]}>{e.step}</span>
                     <span className="min-w-0 flex-1 text-[var(--text-secondary)] break-words">
-                      {e.app && <span className="font-mono text-[var(--text-primary)]">{e.app} · </span>}
+                      {e.app && (
+                        <span className="font-mono text-[var(--text-primary)]">{e.app} · </span>
+                      )}
                       {e.text}
                     </span>
-                    <span className="whitespace-nowrap text-[var(--text-muted)]" title={e.cluster}>{e.cluster}</span>
+                    <span className="whitespace-nowrap text-[var(--text-muted)]" title={e.cluster}>
+                      {e.cluster}
+                    </span>
                   </div>
                   {/* Ham metin KAYBOLMAZ: cevirinin eksik kaldigi yerde teknik ayrinti
                       hala elde olsun. */}
                   {e.raw && e.raw !== e.text && (
-                    <p className="mt-0.5 font-mono text-[10px] text-[var(--text-muted)] break-all">{e.raw}</p>
+                    <p className="mt-0.5 font-mono text-[10px] text-[var(--text-muted)] break-all">
+                      {e.raw}
+                    </p>
                   )}
                 </div>
               ))}
@@ -177,18 +216,24 @@ const ScaleXResultPanel: React.FC<{
           kapsar; asagidaki not bunu acikca soyler — sessizce eksik geri almak,
           kullaniciya "hepsi geri alindi" yalani soylemek olurdu. */}
       {(() => {
-        if (!onUndo || result.action !== "stop" || result.mode !== "apply") return null;
-        const okTargets = result.targets.filter((t) => t.status === "OK");
+        if (!onUndo || result.action !== 'stop' || result.mode !== 'apply') return null;
+        const okTargets = result.targets.filter((t) => t.status === 'OK');
         if (!okTargets.length) return null;
         return (
           <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-inset)] p-3">
             <p className="text-xs text-[var(--text-muted)]">
               Durdurulan <strong>{okTargets.length}</strong> uygulamayı saklanan replica sayısına
               döndürebilirsiniz. Önizleme ekranı açılır; onay adımları geçerlidir.
-              {result.targetsTruncated && " Liste kırpıldığı için yalnızca yukarıda görünen hedefler kapsanır."}
+              {result.targetsTruncated &&
+                ' Liste kırpıldığı için yalnızca yukarıda görünen hedefler kapsanır.'}
             </p>
-            <button type="button" className="btn-secondary whitespace-nowrap"
-              onClick={() => onUndo(okTargets.map((t) => ({ cluster: t.cluster, app: t.app, kind: t.kind })))}>
+            <button
+              type="button"
+              className="btn-secondary whitespace-nowrap"
+              onClick={() =>
+                onUndo(okTargets.map((t) => ({ cluster: t.cluster, app: t.app, kind: t.kind })))
+              }
+            >
               <ArrowUturnLeftIcon aria-hidden="true" className="w-4 h-4 inline mr-1.5" />
               Hemen geri al
             </button>

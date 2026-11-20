@@ -19,8 +19,8 @@
 //
 // `enabled=false` ile arka plan tiklamasi TAMAMEN devre disi kalir: formu olan
 // pencereler (is baslatma) icin dogru olan bu - kapatma yalnizca X / Iptal ile.
-import { useCallback, useRef } from "react";
-import type React from "react";
+import { useCallback, useRef } from 'react';
+import type React from 'react';
 
 export function useBackdropDismiss(onClose: () => void, enabled = true) {
   const downOnBackdrop = useRef(false);

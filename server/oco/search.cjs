@@ -266,7 +266,9 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
 
   const sonuclar = await Promise.allSettled(
     roller.map((rol) =>
-      tekSorgu(fetchPage ? (skip) => fetchPage(skip, rol) : (skip) => httpPage(cfg, skip, grup, rol)),
+      tekSorgu(
+        fetchPage ? (skip) => fetchPage(skip, rol) : (skip) => httpPage(cfg, skip, grup, rol),
+      ),
     ),
   );
   const basarili = sonuclar.filter((s) => s.status === 'fulfilled');
@@ -279,7 +281,10 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
   sonuclar.forEach((s, i) => {
     const rol = roller[i];
     if (s.status !== 'fulfilled') {
-      eksik.push({ rol, message: `${ROL_ADI[rol] || rol} OCO'lar alınamadı: ${s.reason?.message || s.reason}` });
+      eksik.push({
+        rol,
+        message: `${ROL_ADI[rol] || rol} OCO'lar alınamadı: ${s.reason?.message || s.reason}`,
+      });
       return;
     }
     const r = s.value;

@@ -376,7 +376,12 @@ async function refreshDrift({ env, tenant, scannedClusters, clusterStates, liveS
     require('../audit/index.cjs').auditPortal(null, 'scalex_drift_resolved', {
       username: 'system:scalex-discovery',
       result: 'ok',
-      detail: JSON.stringify({ env, tenant, resolved: resolved.slice(0, 20), total: resolved.length }),
+      detail: JSON.stringify({
+        env,
+        tenant,
+        resolved: resolved.slice(0, 20),
+        total: resolved.length,
+      }),
     });
   }
 

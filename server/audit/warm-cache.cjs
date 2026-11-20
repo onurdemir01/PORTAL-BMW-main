@@ -130,7 +130,10 @@ function createWarmCache({
       } catch (e) {
         // Belirtec okunamiyor: azami yas emniyeti yine gecerli (yoksa onbellek suresiz donardi).
         if (yas >= azami) {
-          log.warn(`[warm:${name}] belirtec okunamadi, azami yas asildi, hesaplaniyor:`, e && e.message);
+          log.warn(
+            `[warm:${name}] belirtec okunamadi, azami yas asildi, hesaplaniyor:`,
+            e && e.message,
+          );
           return baslat();
         }
         log.warn(`[warm:${name}] belirtec okunamadi, hesap atlandi:`, e && e.message);
@@ -146,7 +149,9 @@ function createWarmCache({
         bilgi(`[warm:${name}] belirtec degisti, stabilite bekleniyor`);
         return value;
       }
-      bilgi(`[warm:${name}] hesaplaniyor (${t !== value.token ? 'belirtec degisti' : 'azami yas'})`);
+      bilgi(
+        `[warm:${name}] hesaplaniyor (${t !== value.token ? 'belirtec degisti' : 'azami yas'})`,
+      );
       return baslat();
     })().finally(() => {
       checking = null;
@@ -188,7 +193,10 @@ function createWarmCache({
     setTimeout(() => {
       baslat().catch((e) => log.warn(`[warm:${name}] isitma hatasi:`, e && e.message));
       setInterval(
-        () => kontrol().catch((e) => log.warn(`[warm:${name}] periyodik yenileme hatasi:`, e && e.message)),
+        () =>
+          kontrol().catch((e) =>
+            log.warn(`[warm:${name}] periyodik yenileme hatasi:`, e && e.message),
+          ),
         araMs,
       ).unref?.();
     }, delayMs).unref?.();

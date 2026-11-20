@@ -56,9 +56,13 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
   };
 
   const envs = useMemo(() => Object.keys(tree).sort((a, b) => a.localeCompare(b)), [tree]);
-  const tenants = useMemo(() => (env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : []), [tree, env]);
+  const tenants = useMemo(
+    () => (env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : []),
+    [tree, env],
+  );
   const clusters = useMemo(
-    () => (env && tenant ? [...(tree[env]?.[tenant] || [])].sort((a, b) => a.localeCompare(b)) : []),
+    () =>
+      env && tenant ? [...(tree[env]?.[tenant] || [])].sort((a, b) => a.localeCompare(b)) : [],
     [tree, env, tenant],
   );
 
@@ -241,8 +245,8 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
         >
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            <strong>Prod ortamı.</strong> Onay kuralları şu an okunamadı; geçerli kural
-            önizleme adımında gösterilir.
+            <strong>Prod ortamı.</strong> Onay kuralları şu an okunamadı; geçerli kural önizleme
+            adımında gösterilir.
           </span>
         </div>
       )}

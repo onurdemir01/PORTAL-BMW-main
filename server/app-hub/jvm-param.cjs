@@ -33,36 +33,36 @@ const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 // Izin deseni: ^(-D[A-Za-z0-9_.-]{1,128}(=[A-Za-z0-9_./:@%+=-]{0,512})?|-X(ms|mx|ss)[0-9]{1,6}[kKmMgG]|-XX:[+-][A-Za-z0-9]{1,64}|-XX:[A-Za-z0-9]{1,64}=[A-Za-z0-9_./:%-]{1,256})$
 // Yasak deseni: ^-XX:[+-]?(OnError|OnOutOfMemoryError|VMOptionsFile|Flags|CompileCommandFile|CompilerDirectivesFile)|^-D(java\.security\.|java\.ext\.dirs|java\.endorsed\.dirs|java\.class\.path|java\.library\.path|java\.system\.class\.loader|sun\.boot\.|com\.sun\.management\.|jdk\.attach\.|java\.rmi\.server\.|jboss\.modules\.system\.pkgs|javax\.net\.ssl\.)
 const JVMOPT_PARCALAR = [
-  "-D[A-Za-z0-9_.-]{1,128}(=[A-Za-z0-9_./:@%+=-]{0,512})?",
-  "-X(ms|mx|ss)[0-9]{1,6}[kKmMgG]",
-  "-XX:[+-][A-Za-z0-9]{1,64}",
-  "-XX:[A-Za-z0-9]{1,64}=[A-Za-z0-9_./:%-]{1,256}",
+  '-D[A-Za-z0-9_.-]{1,128}(=[A-Za-z0-9_./:@%+=-]{0,512})?',
+  '-X(ms|mx|ss)[0-9]{1,6}[kKmMgG]',
+  '-XX:[+-][A-Za-z0-9]{1,64}',
+  '-XX:[A-Za-z0-9]{1,64}=[A-Za-z0-9_./:%-]{1,256}',
 ];
-const JVMOPT_RE = new RegExp(`^(${JVMOPT_PARCALAR.join("|")})$`);
+const JVMOPT_RE = new RegExp(`^(${JVMOPT_PARCALAR.join('|')})$`);
 const JVMOPT_YASAK_XX = [
-  "OnError",
-  "OnOutOfMemoryError",
-  "VMOptionsFile",
-  "Flags",
-  "CompileCommandFile",
-  "CompilerDirectivesFile",
+  'OnError',
+  'OnOutOfMemoryError',
+  'VMOptionsFile',
+  'Flags',
+  'CompileCommandFile',
+  'CompilerDirectivesFile',
 ];
 const JVMOPT_YASAK_D = [
-  "java\\.security\\.",
-  "java\\.ext\\.dirs",
-  "java\\.endorsed\\.dirs",
-  "java\\.class\\.path",
-  "java\\.library\\.path",
-  "java\\.system\\.class\\.loader",
-  "sun\\.boot\\.",
-  "com\\.sun\\.management\\.",
-  "jdk\\.attach\\.",
-  "java\\.rmi\\.server\\.",
-  "jboss\\.modules\\.system\\.pkgs",
-  "javax\\.net\\.ssl\\.",
+  'java\\.security\\.',
+  'java\\.ext\\.dirs',
+  'java\\.endorsed\\.dirs',
+  'java\\.class\\.path',
+  'java\\.library\\.path',
+  'java\\.system\\.class\\.loader',
+  'sun\\.boot\\.',
+  'com\\.sun\\.management\\.',
+  'jdk\\.attach\\.',
+  'java\\.rmi\\.server\\.',
+  'jboss\\.modules\\.system\\.pkgs',
+  'javax\\.net\\.ssl\\.',
 ];
 const JVMOPT_YASAK_RE = new RegExp(
-  `^-XX:[+-]?(${JVMOPT_YASAK_XX.join("|")})|^-D(${JVMOPT_YASAK_D.join("|")})`,
+  `^-XX:[+-]?(${JVMOPT_YASAK_XX.join('|')})|^-D(${JVMOPT_YASAK_D.join('|')})`,
 );
 
 /** Belirtecin "ayni parametre" anahtari (betikteki jvmopt_anahtar ile ayni). */
@@ -88,7 +88,11 @@ function goster(opt) {
 function parametreDogrula(opt) {
   const s = String(opt ?? '').trim();
   if (!s) return { ok: false, message: 'Parametre boş.' };
-  if (s.includes('***')) return { ok: false, message: 'Maskeli değer (***) yazılamaz: ekranda gizlenen değeri tekrar girmeniz gerekir.' };
+  if (s.includes('***'))
+    return {
+      ok: false,
+      message: 'Maskeli değer (***) yazılamaz: ekranda gizlenen değeri tekrar girmeniz gerekir.',
+    };
   if (!JVMOPT_RE.test(s)) {
     return {
       ok: false,
@@ -97,7 +101,11 @@ function parametreDogrula(opt) {
         'Tek parametre girin; boşluk, tırnak, virgül, $ ; ( ) gibi karakterler kullanılamaz.',
     };
   }
-  if (JVMOPT_YASAK_RE.test(s)) return { ok: false, message: `${anahtar(s)} Portal'dan değiştirilemez (komut çalıştırır ya da güvenliği kapatır).` };
+  if (JVMOPT_YASAK_RE.test(s))
+    return {
+      ok: false,
+      message: `${anahtar(s)} Portal'dan değiştirilemez (komut çalıştırır ya da güvenliği kapatır).`,
+    };
   if (s.startsWith('-D')) {
     const { KEY_ERE } = require('../server-hub/mask.cjs');
     if (new RegExp(KEY_ERE, 'i').test(anahtar(s).slice(2))) {
@@ -115,21 +123,39 @@ async function hedefDogrula({ host, gen, jvm }) {
   const sh = require('../server-hub/index.cjs');
   const H = String(host || '').toUpperCase();
   if (!sh.HOST_RE.test(H)) return { ok: false, status: 400, message: 'Geçersiz sunucu adı.' };
-  if (!JVM_RE.test(String(jvm || ''))) return { ok: false, status: 400, message: 'Geçersiz JVM adı.' };
+  if (!JVM_RE.test(String(jvm || '')))
+    return { ok: false, status: 400, message: 'Geçersiz JVM adı.' };
   if (!Number.isInteger(gen)) return { ok: false, status: 400, message: 'Geçersiz JBoss sürümü.' };
   const a = await sh.getAssessment(true);
   const h = (a.hosts || []).find((x) => x.host === H);
   if (!h) return { ok: false, status: 400, message: `${H} için Server Hub tarama verisi yok.` };
   if (a.schemaUnknown === true || h.schemaUnknown === true) {
-    return { ok: false, status: 400, message: 'Server Hub şeması okunamadı; JVM parametresi değiştirilemez. Sayfayı yenileyin.' };
+    return {
+      ok: false,
+      status: 400,
+      message: 'Server Hub şeması okunamadı; JVM parametresi değiştirilemez. Sayfayı yenileyin.',
+    };
   }
   if (h.fresh !== true) {
-    return { ok: false, status: 400, message: `${H} taraması bayat (${h.scanDate || '?'}); önce Server Hub'da sunucuyu yeniden tarayın.` };
+    return {
+      ok: false,
+      status: 400,
+      message: `${H} taraması bayat (${h.scanDate || '?'}); önce Server Hub'da sunucuyu yeniden tarayın.`,
+    };
   }
   const j = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
-  if (!j) return { ok: false, status: 400, message: `${H} üzerinde ${jvm} (JBoss ${gen}) taramada yok; sayfayı yenileyin.` };
+  if (!j)
+    return {
+      ok: false,
+      status: 400,
+      message: `${H} üzerinde ${jvm} (JBoss ${gen}) taramada yok; sayfayı yenileyin.`,
+    };
   if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE') {
-    return { ok: false, status: 400, message: `${jvm} tanım kaynağında yok (ps'te tanımsız süreç); parametresi değiştirilemez.` };
+    return {
+      ok: false,
+      status: 400,
+      message: `${jvm} tanım kaynağında yok (ps'te tanımsız süreç); parametresi değiştirilemez.`,
+    };
   }
   return { ok: true, h, j, host: H };
 }
@@ -143,7 +169,14 @@ function uretimEtiketleri(h) {
   const env = String(h.env || '').trim();
   const prodDisi = h.envGroup === 'Non-Production' && env && env !== 'PROD' && env !== 'BILINMIYOR';
   return [
-    { alan: 'ortam', deger: (() => { if (prodDisi) return env; if (env === 'PROD') return 'PROD'; return `prod (ortam ${env || 'bos'}; production sayıldı)`; })() },
+    {
+      alan: 'ortam',
+      deger: (() => {
+        if (prodDisi) return env;
+        if (env === 'PROD') return 'PROD';
+        return `prod (ortam ${env || 'bos'}; production sayıldı)`;
+      })(),
+    },
     { alan: 'sunucu', deger: h.host },
   ];
 }
@@ -156,14 +189,21 @@ function mount(router, { resolveByKey }) {
     if (!pd.ok) return res.status(400).json({ ok: false, error: pd.message });
     let hd;
     try {
-      hd = await hedefDogrula({ host: b.host, gen: Number(b.gen), jvm: String(b.jvm || '').trim() });
+      hd = await hedefDogrula({
+        host: b.host,
+        gen: Number(b.gen),
+        jvm: String(b.jvm || '').trim(),
+      });
     } catch (e) {
-      return res.status(424).json({ ok: false, error: `Server Hub okunamadı: ${(e?.message) || e}` });
+      return res.status(424).json({ ok: false, error: `Server Hub okunamadı: ${e?.message || e}` });
     }
     if (!hd.ok) return res.status(hd.status).json({ ok: false, error: hd.message });
     const { h, j, host } = hd;
     if (uygula && String(b.onayMetni || '').trim() !== j.name) {
-      return res.status(428).json({ ok: false, error: `Uygulamak için JVM adını (${j.name}) onay kutusuna aynen yazın.` });
+      return res.status(428).json({
+        ok: false,
+        error: `Uygulamak için JVM adını (${j.name}) onay kutusuna aynen yazın.`,
+      });
     }
     const { templateId, serverId, keyName } = await resolveByKey(REGISTRY_KEY);
     if (!templateId) {
@@ -172,13 +212,23 @@ function mount(router, { resolveByKey }) {
         error: `Düzeltme playbook'u tanımlı değil: Admin › Playbook Kayıtları › "${keyName}" satırına Template ID girilmeli.`,
       });
     }
-    const extraVars = { target_host: host, action: ACTION, plan_only: !uygula, reload: false, gen: Number(j.gen), jvm: j.name, jvm_option: pd.parametre };
+    const extraVars = {
+      target_host: host,
+      action: ACTION,
+      plan_only: !uygula,
+      reload: false,
+      gen: Number(j.gen),
+      jvm: j.name,
+      jvm_option: pd.parametre,
+    };
     const maskeli = { ...extraVars, jvm_option: goster(pd.parametre) };
     const islem = `Application Hub JVM parametresi ${uygula ? 'uygula' : 'plan'}: ${goster(pd.parametre)} @ ${host}/${j.name}`;
     try {
       const tp = require('../ansible/template-preflight.cjs');
       await tp.assertRegistryPlaybook(serverId, templateId, REGISTRY_KEY);
-      await tp.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: REGISTRY_KEY });
+      await tp.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, {
+        label: REGISTRY_KEY,
+      });
       if (uygula) {
         const kapi = await require('../opsx/prod-approval.cjs').opsxProductionKapisi({
           platform: 'legacy',
@@ -190,25 +240,62 @@ function mount(router, { resolveByKey }) {
           req,
           islemAdi: 'Application Hub JVM parametresi',
           // Uygulama adi istemciden ALINMAZ: onaylayana yanlis ad gosterilebilirdi; JVM adinin tabanindan.
-          ozet: { sunucular: host, jvm: j.name, parametre: goster(pd.parametre), uygulama: require('../server-hub/capraz.cjs').tabanAd(j.name) },
+          ozet: {
+            sunucular: host,
+            jvm: j.name,
+            parametre: goster(pd.parametre),
+            uygulama: require('../server-hub/capraz.cjs').tabanAd(j.name),
+          },
         });
         if (!kapi.proceed) {
-          denetle(req, 'app_hub_jvm_param_onay', { ...maskeli, sonuc: kapi.body?.pendingApproval ? 'smart_talebi' : 'reddedildi' });
-          return res.status(kapi.status || 200).json({ ...(kapi.body || {}), error: kapi.body && !kapi.body.ok ? kapi.body.message : undefined });
+          denetle(req, 'app_hub_jvm_param_onay', {
+            ...maskeli,
+            sonuc: kapi.body?.pendingApproval ? 'smart_talebi' : 'reddedildi',
+          });
+          return res.status(kapi.status || 200).json({
+            ...(kapi.body || {}),
+            error: kapi.body && !kapi.body.ok ? kapi.body.message : undefined,
+          });
         }
       }
-      const u = (req.session?.user) || {};
-      const job = await require('../ansible/runner.cjs').launchJobOnServer(serverId, templateId, extraVars, '', u);
+      const u = req.session?.user || {};
+      const job = await require('../ansible/runner.cjs').launchJobOnServer(
+        serverId,
+        templateId,
+        extraVars,
+        '',
+        u,
+      );
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [u.username || 'unknown', serverId, templateId, islem.slice(0, 250), job?.jobId, (job?.status) || 'pending', JSON.stringify(maskeli)],
+          [
+            u.username || 'unknown',
+            serverId,
+            templateId,
+            islem.slice(0, 250),
+            job?.jobId,
+            job?.status || 'pending',
+            JSON.stringify(maskeli),
+          ],
         );
       } catch (e) {
         console.warn('[AppHub] jvm-param is gecmisi yazilamadi:', e.message);
       }
-      denetle(req, uygula ? 'app_hub_jvm_param_uygula' : 'app_hub_jvm_param_plan', { ...maskeli, jobId: (job?.jobId) || null });
-      res.json({ ok: true, serverId, jobId: (job?.jobId) || null, plan: !uygula, host, jvm: j.name, gen: Number(j.gen), parametre: goster(pd.parametre) });
+      denetle(req, uygula ? 'app_hub_jvm_param_uygula' : 'app_hub_jvm_param_plan', {
+        ...maskeli,
+        jobId: job?.jobId || null,
+      });
+      res.json({
+        ok: true,
+        serverId,
+        jobId: job?.jobId || null,
+        plan: !uygula,
+        host,
+        jvm: j.name,
+        gen: Number(j.gen),
+        parametre: goster(pd.parametre),
+      });
     } catch (e) {
       res.status(e.status || 502).json({ ok: false, error: e.message });
     }
@@ -226,9 +313,12 @@ function mount(router, { resolveByKey }) {
         `SELECT TOP 1 id FROM ansible_job_history WHERE awx_server_id = $1 AND job_id = $2 AND template_name LIKE 'Application Hub JVM parametresi%'`,
         [serverId, jobId],
       );
-      if (!k.rows?.length) return res.status(404).json({ ok: false, error: 'Bu iş bir Application Hub JVM parametresi işi değil.' });
+      if (!k.rows?.length)
+        return res
+          .status(404)
+          .json({ ok: false, error: 'Bu iş bir Application Hub JVM parametresi işi değil.' });
     } catch (e) {
-      return res.status(424).json({ ok: false, error: `İş kaydı okunamadı: ${(e?.message) || e}` });
+      return res.status(424).json({ ok: false, error: `İş kaydı okunamadı: ${e?.message || e}` });
     }
     try {
       const st = await require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId);
@@ -236,10 +326,12 @@ function mount(router, { resolveByKey }) {
       if (!BITTI.has(st.status)) return res.json({ ok: true, status: st.status, finished: false });
       const { extractStatsKey } = require('../opsx/index.cjs');
       const r = extractStatsKey(st.artifacts, 'server_hub_fix_result');
-      if (r && String(r.action || '') !== ACTION) return res.status(400).json({ ok: false, error: 'Bu iş bir JVM parametresi işi değil.' });
-      const parca = String((r?.line) || '').split('\t');
+      if (r && String(r.action || '') !== ACTION)
+        return res.status(400).json({ ok: false, error: 'Bu iş bir JVM parametresi işi değil.' });
+      const parca = String(r?.line || '').split('\t');
       const sonuc = parca[2] || (st.status === 'successful' ? 'BILINMIYOR' : 'FAIL');
-      const mesaj = parca[3] || (r ? '' : 'İş bitti ama sonuç yayınlanmadı; AWX iş çıktısına bakın.');
+      const mesaj =
+        parca[3] || (r ? '' : 'İş bitti ama sonuç yayınlanmadı; AWX iş çıktısına bakın.');
       if (sonuc === 'OK') {
         try {
           require('../server-hub/index.cjs').onbellekSil();
@@ -247,9 +339,16 @@ function mount(router, { resolveByKey }) {
           /* yoksay */
         }
       }
-      res.json({ ok: true, status: st.status, finished: true, sonuc, mesaj, plan: r ? r.plan_only === true || r.plan_only === 'True' || r.plan_only === 'true' : null });
+      res.json({
+        ok: true,
+        status: st.status,
+        finished: true,
+        sonuc,
+        mesaj,
+        plan: r ? r.plan_only === true || r.plan_only === 'True' || r.plan_only === 'true' : null,
+      });
     } catch (e) {
-      res.status(502).json({ ok: false, error: `İş durumu okunamadı: ${(e?.message) || e}` });
+      res.status(502).json({ ok: false, error: `İş durumu okunamadı: ${e?.message || e}` });
     }
   });
 }
@@ -262,4 +361,15 @@ function denetle(req, eylem, detay) {
   }
 }
 
-module.exports = { mount, parametreDogrula, anahtar, goster, uretimEtiketleri, hedefDogrula, JVMOPT_RE, JVMOPT_YASAK_RE, ACTION, REGISTRY_KEY };
+module.exports = {
+  mount,
+  parametreDogrula,
+  anahtar,
+  goster,
+  uretimEtiketleri,
+  hedefDogrula,
+  JVMOPT_RE,
+  JVMOPT_YASAK_RE,
+  ACTION,
+  REGISTRY_KEY,
+};

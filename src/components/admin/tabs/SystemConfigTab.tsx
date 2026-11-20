@@ -121,7 +121,9 @@ export default function SystemConfigTab() {
       : 0;
     const kirli = metalar.filter((m) => s.kirliMi(m.key)).length;
     const uygulanmalar = new Set(
-      metalar.map((m) => uygulanma(s.degerler[m.key])).filter((u): u is 'canli' | 'restart' => u !== null),
+      metalar
+        .map((m) => uygulanma(s.degerler[m.key]))
+        .filter((u): u is 'canli' | 'restart' => u !== null),
     );
     const grupUygulanma =
       uygulanmalar.size === 0 ? null : uygulanmalar.size > 1 ? 'karisik' : [...uygulanmalar][0];
@@ -285,9 +287,9 @@ export default function SystemConfigTab() {
   return (
     <div className="@container/sistem relative space-y-6">
       <p className="max-w-3xl text-xs leading-relaxed text-[var(--text-secondary)]">
-        Değerler Portal veritabanına kaydedilir ve çalışan sunucuya hemen aktarılır. “Canlı uygulanır”
-        etiketli gruplar kaydedildiği anda, diğerleri sunucu yeniden başlatılınca geçerli olur. Gizli
-        değerler bu ekranda hiçbir zaman tam gösterilmez.
+        Değerler Portal veritabanına kaydedilir ve çalışan sunucuya hemen aktarılır. “Canlı
+        uygulanır” etiketli gruplar kaydedildiği anda, diğerleri sunucu yeniden başlatılınca geçerli
+        olur. Gizli değerler bu ekranda hiçbir zaman tam gösterilmez.
       </p>
 
       <section aria-labelledby="sistem-durum">

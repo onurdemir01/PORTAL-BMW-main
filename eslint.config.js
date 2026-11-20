@@ -86,12 +86,7 @@ export default [
     },
   },
   {
-    ignores: [
-      'dist/**',
-      'node_modules/**',
-      'gelistirme/**',
-      '.claude/worktrees/**',
-    ],
+    ignores: ['dist/**', 'node_modules/**', 'gelistirme/**', '.claude/worktrees/**'],
   },
   eslintConfigPrettier,
 ];

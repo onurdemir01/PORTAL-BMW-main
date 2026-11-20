@@ -18,11 +18,17 @@ function withEnv(vars, fn) {
   Object.assign(process.env, vars);
   const restore = () => {
     for (const k of Object.keys(vars)) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
     }
   };
   let result;
-  try { result = fn(); } catch (err) { restore(); throw err; }
+  try {
+    result = fn();
+  } catch (err) {
+    restore();
+    throw err;
+  }
   if (result && typeof result.then === 'function') return result.finally(restore);
   restore();
   return result;
@@ -67,7 +73,7 @@ test('portal_logx_fetch_log: is QUICK_CHECK_RETRIES icinde bitmezse pending done
   });
 });
 
-test('portal_logx_job_result: bekleyen bir fetch job\'i tamamlaninca formatFetchResult ile ayni bicimde doner', async (t) => {
+test("portal_logx_job_result: bekleyen bir fetch job'i tamamlaninca formatFetchResult ile ayni bicimde doner", async (t) => {
   t.mock.method(runnerMod, 'isConfigured', () => true);
   t.mock.method(runnerMod, 'launchJob', async () => ({ jobId: 3003, status: 'pending' }));
   t.mock.method(runnerMod, 'getJobStatus', async () => ({ status: 'running' }));
@@ -121,13 +127,22 @@ test('portal_logx_analyze_log: pending oldugunda mode="analyze" baglami dogru sa
 
   const aiAnalyzer = require('../../logx/ai-analyzer.cjs');
   t.mock.method(aiAnalyzer, 'analyze', async () => ({
-    provider: 'anthropic', model: 'test-model', maskedCount: 0,
-    summary: 'test-ozet', severity: 'low', possibleCauses: [], recommendations: [],
+    provider: 'anthropic',
+    model: 'test-model',
+    maskedCount: 0,
+    summary: 'test-ozet',
+    severity: 'low',
+    possibleCauses: [],
+    recommendations: [],
   }));
 
   await withEnv({ AWX_LOG_FETCH_TEMPLATE_ID: '42' }, async () => {
     const analyzeTool = await findTool('portal_logx_analyze_log');
-    const pending = await analyzeTool.exec({ hostname: 'host4', logFilePath: '/var/log/a.log', context: 'test-context' });
+    const pending = await analyzeTool.exec({
+      hostname: 'host4',
+      logFilePath: '/var/log/a.log',
+      context: 'test-context',
+    });
     assert.match(pending.text, /henüz tamamlanmadı/);
     const jobId = Number(pending.text.match(/jobId=(\d+)/)[1]);
 

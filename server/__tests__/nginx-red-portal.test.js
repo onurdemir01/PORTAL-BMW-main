@@ -19,7 +19,12 @@ const { createApp } = require('../service.cjs');
 const { nginxRedCevirici } = require('../util/nginx-red.cjs');
 
 const sunucular = [];
-after(() => sunucular.forEach((s) => { s.closeAllConnections(); return s.close(); }));
+after(() =>
+  sunucular.forEach((s) => {
+    s.closeAllConnections();
+    return s.close();
+  }),
+);
 
 async function kur() {
   const app = createApp();
@@ -121,7 +126,11 @@ test('NP5 OpsX dahil: 403 / 404 -> 409, eylemde 503 -> 424, GET 503 kalir', asyn
   r = await istek('POST', '/api/opsx/awx');
   assert.equal(r.status, 424);
   assert.equal(r.json.upstreamStatus, 503);
-  assert.equal((await istek('GET', '/api/opsx/awx')).status, 503, 'OpsX yoklamasinin gecici hatasi cevrildi');
+  assert.equal(
+    (await istek('GET', '/api/opsx/awx')).status,
+    503,
+    'OpsX yoklamasinin gecici hatasi cevrildi',
+  );
 });
 
 test('NP3 modulun kendi cevirici katmani oncelikli; cift cevrim yok', async (t) => {

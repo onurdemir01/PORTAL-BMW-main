@@ -25,7 +25,10 @@ const M = METIN.smartAyar;
 
 const ETIKET = 'block text-[11px] font-semibold mb-1';
 const KUCUK_BTN = 'text-[11px] px-2 py-1 rounded-lg border disabled:opacity-50 flex-shrink-0';
-const btnStil: React.CSSProperties = { borderColor: 'var(--border)', color: 'var(--text-secondary)' };
+const btnStil: React.CSSProperties = {
+  borderColor: 'var(--border)',
+  color: 'var(--text-secondary)',
+};
 const ikincil: React.CSSProperties = { color: 'var(--text-secondary)' };
 const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
 const tehlike: React.CSSProperties = { color: 'var(--status-danger)' };
@@ -168,7 +171,11 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
 
   const durum = meta?.durum;
   const kaynakMetni =
-    meta?.kaynak === 'crypto' ? M.kaynakKendi : meta?.kaynak === 'opsx' ? M.kaynakOpsx : M.kaynakYok;
+    meta?.kaynak === 'crypto'
+      ? M.kaynakKendi
+      : meta?.kaynak === 'opsx'
+        ? M.kaynakOpsx
+        : M.kaynakYok;
   const flowBos = !flowKey.trim();
 
   return (
@@ -181,7 +188,12 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
       dismissOnBackdrop={false}
       footer={
         <div className="flex items-center gap-2">
-          <button type="button" className="btn-primary" disabled={!kaydedilebilir} onClick={() => void kaydet()}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!kaydedilebilir}
+            onClick={() => void kaydet()}
+          >
             {kaydediyor ? M.kaydediliyor : M.kaydet}
           </button>
           <button type="button" className="pf-btn-link" disabled={kaydediyor} onClick={onClose}>
@@ -194,7 +206,11 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
         {hata && (
           <p
             className="text-xs rounded-lg border p-2"
-            style={{ ...tehlike, borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)' }}
+            style={{
+              ...tehlike,
+              borderColor: 'var(--status-danger)',
+              background: 'var(--status-danger-bg)',
+            }}
             role="alert"
           >
             {hata}
@@ -217,7 +233,9 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
               </p>
               <p>
                 {kaynakMetni}
-                {meta.kaynak === 'opsx' && meta.opsxFlowKey ? ` (Flow Key: ${meta.opsxFlowKey})` : ''}
+                {meta.kaynak === 'opsx' && meta.opsxFlowKey
+                  ? ` (Flow Key: ${meta.opsxFlowKey})`
+                  : ''}
               </p>
               <p style={soluk}>{M.blokKurali}</p>
             </div>
@@ -227,7 +245,11 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                 <span className="text-xs font-semibold" style={ikincil}>
                   {M.acKapa}
                 </span>
-                <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                />
               </label>
               <p className="text-[11px] mt-1.5" style={soluk}>
                 {M.acKapaNot}
@@ -238,7 +260,10 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                     {M.kapaliUyari}
                   </p>
                   {kapatiyor && (
-                    <label className="flex items-start gap-2 text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                    <label
+                      className="flex items-start gap-2 text-[11px]"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
                       <input
                         type="checkbox"
                         className="mt-0.5"
@@ -257,7 +282,11 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                 <span className="text-xs font-semibold" style={ikincil}>
                   {M.ocoTest}
                 </span>
-                <input type="checkbox" checked={ocoTest} onChange={(e) => setOcoTest(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={ocoTest}
+                  onChange={(e) => setOcoTest(e.target.checked)}
+                />
               </label>
               <p className="text-[11px] mt-1.5" style={soluk}>
                 {M.ocoNot}
@@ -295,7 +324,10 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                 </p>
               )}
               {alanlar && (
-                <div className="mt-2 rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+                <div
+                  className="mt-2 rounded-lg border overflow-x-auto"
+                  style={{ borderColor: 'var(--border)' }}
+                >
                   <SmartFieldsTable fields={alanlar} />
                 </div>
               )}
@@ -303,7 +335,11 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <label htmlFor="ch-smart-sablon" className="block text-[11px] font-semibold" style={ikincil}>
+                <label
+                  htmlFor="ch-smart-sablon"
+                  className="block text-[11px] font-semibold"
+                  style={ikincil}
+                >
                   {M.sablon}
                 </label>
                 <button
@@ -348,7 +384,8 @@ const CryptoHubSmartModal: React.FC<Props> = ({ open, onClose, onKaydedildi }) =
                   >
                     {Object.entries(onizleme).map(([k, v]) => (
                       <div key={k}>
-                        <span className="font-semibold">{k}</span>: <span className="whitespace-pre-wrap">{v}</span>
+                        <span className="font-semibold">{k}</span>:{' '}
+                        <span className="whitespace-pre-wrap">{v}</span>
                       </div>
                     ))}
                   </div>

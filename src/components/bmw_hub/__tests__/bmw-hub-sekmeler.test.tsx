@@ -17,7 +17,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 const oneriler: unknown[] = [];
-vi.mock('@/components/server_hub/RebootKontroluTab', () => ({ default: () => <div>REBOOT_GOVDE</div> }));
+vi.mock('@/components/server_hub/RebootKontroluTab', () => ({
+  default: () => <div>REBOOT_GOVDE</div>,
+}));
 vi.mock('@/components/server_hub/RetirementTab', () => ({
   default: ({ oneri }: { oneri: { uygulama: string; not: string; no: number } | null }) => {
     oneriler.push(oneri);
@@ -34,10 +36,16 @@ vi.mock('@/api/bmwHubApi', () => ({
     })),
   },
 }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: 'admin', displayName: 'Admin' } }) }));
-vi.mock('@/hooks/useToast', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'admin', displayName: 'Admin' } }),
+}));
+vi.mock('@/hooks/useToast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}));
 vi.mock('@/components/self_service/IpCheckSection', () => ({ default: () => <div>IP_GOVDE</div> }));
-vi.mock('@/components/self_service/OpenshiftCheckSection', () => ({ default: () => <div>OCP_GOVDE</div> }));
+vi.mock('@/components/self_service/OpenshiftCheckSection', () => ({
+  default: () => <div>OCP_GOVDE</div>,
+}));
 
 import BmwHubPage from '@/components/bmw_hub/BmwHubPage';
 import RebootKontroluPage from '@/components/bmw_hub/RebootKontroluPage';
@@ -60,7 +68,12 @@ function Konum() {
 
 // App.tsx'teki /bmw-hub yönlendirmesiyle BİREBİR aynı değerler (BS6 App.tsx'te bu metni arar).
 const ESKI_SEKMELER = ['ip', 'ocp', 'reboot', 'retirement'];
-const YENI_YOLLAR: Record<string, string> = { ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' };
+const YENI_YOLLAR: Record<string, string> = {
+  ip: '/ip-sorgu',
+  ocp: '/ocp-sorgu',
+  reboot: '/reboot-kontrolu',
+  retirement: '/retirement',
+};
 
 function kur(giris: string | { pathname: string; search?: string; state?: unknown }) {
   return render(
@@ -77,10 +90,42 @@ function kur(giris: string | { pathname: string; search?: string; state?: unknow
             </TasinanSekme>
           }
         />
-        <Route path="/reboot-kontrolu" element={<><RebootKontroluPage /><Konum /></>} />
-        <Route path="/retirement" element={<><RetirementPage /><Konum /></>} />
-        <Route path="/ip-sorgu" element={<><IpSorguPage /><Konum /></>} />
-        <Route path="/ocp-sorgu" element={<><OcpSorguPage /><Konum /></>} />
+        <Route
+          path="/reboot-kontrolu"
+          element={
+            <>
+              <RebootKontroluPage />
+              <Konum />
+            </>
+          }
+        />
+        <Route
+          path="/retirement"
+          element={
+            <>
+              <RetirementPage />
+              <Konum />
+            </>
+          }
+        />
+        <Route
+          path="/ip-sorgu"
+          element={
+            <>
+              <IpSorguPage />
+              <Konum />
+            </>
+          }
+        />
+        <Route
+          path="/ocp-sorgu"
+          element={
+            <>
+              <OcpSorguPage />
+              <Konum />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   );
@@ -135,7 +180,11 @@ describe('BMW Hub sayfaları', () => {
   });
 
   it('BS3b eski adrese state ile gelen öneri yönlendirmede kaybolmaz', async () => {
-    kur({ pathname: '/bmw-hub', search: '?sekme=retirement', state: { retireOneri: { uygulama: 'APP2', not: '' } } });
+    kur({
+      pathname: '/bmw-hub',
+      search: '?sekme=retirement',
+      state: { retireOneri: { uygulama: 'APP2', not: '' } },
+    });
     expect(await screen.findByText('RETIREMENT_GOVDE APP2#1')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('konum').textContent).toBe('/retirement|bos'));
   });
@@ -149,14 +198,21 @@ describe('BS4 Server Hub / App Hub kaynak kapıları', () => {
     expect(sh).not.toMatch(/id: 'reboot'|id: 'retirement'/);
   });
   it("retirementAc ve App Hub doğrudan /retirement'a gider; eski sekme adresine kimse gitmez", () => {
-    expect(sh).toMatch(/navigate\('\/retirement', \{ state: \{ retireOneri: \{ uygulama, not \} \} \}\)/);
+    expect(sh).toMatch(
+      /navigate\('\/retirement', \{ state: \{ retireOneri: \{ uygulama, not \} \} \}\)/,
+    );
     expect(oku('src/components/app_hub/AppHubPage.tsx')).toMatch(/navigate\('\/retirement'\)/);
-    for (const rel of ['src/components/server_hub/ServerHubPage.tsx', 'src/components/app_hub/AppHubPage.tsx']) {
+    for (const rel of [
+      'src/components/server_hub/ServerHubPage.tsx',
+      'src/components/app_hub/AppHubPage.tsx',
+    ]) {
       expect(oku(rel)).not.toMatch(/sekme=(reboot|retirement)/);
     }
   });
   it('BmwHubPage artık Reboot / Retirement gövdesi ya da sekme şeridi kurmaz', () => {
-    expect(oku('src/components/bmw_hub/BmwHubPage.tsx')).not.toMatch(/RebootKontroluTab|RetirementTab|BMW Hub sekmeleri|SekmeKabi/);
+    expect(oku('src/components/bmw_hub/BmwHubPage.tsx')).not.toMatch(
+      /RebootKontroluTab|RetirementTab|BMW Hub sekmeleri|SekmeKabi/,
+    );
   });
 });
 
@@ -195,9 +251,15 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
     ]) {
       expect(app).toContain(`<PageVisibilityRoute pageId="${id}" />`);
       expect(app).toContain(`path="${yol}"`);
-      expect(setup).toMatch(new RegExp(String.raw`element_key: '${id}',\s*element_type: 'page',\s*parent_key: 'navgroup:bmwhub'`));
+      expect(setup).toMatch(
+        new RegExp(
+          String.raw`element_key: '${id}',\s*element_type: 'page',\s*parent_key: 'navgroup:bmwhub'`,
+        ),
+      );
     }
-    expect(app).toMatch(/<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/);
+    expect(app).toMatch(
+      /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/,
+    );
     // /bmw-hub yonlendirmesi bu testteki ESKI_SEKMELER / YENI_YOLLAR ile birebir.
     expect(app).toContain(
       `<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>`,
@@ -221,10 +283,14 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
     expect(ss).toMatch(/'ip-sorgu': '\/ip-sorgu'/);
     expect(ss).toMatch(/'openshift-sorgu': '\/ocp-sorgu'/);
     // Sunucu: sorgu uclari yeni sayfa izniyle, yuk testi uclari YukTesti ya da eski sekme izniyle acilir.
-    expect(oku('server/selfservice/index.cjs')).toMatch(/\["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"\]/);
+    expect(oku('server/selfservice/index.cjs')).toMatch(
+      /\["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"\]/,
+    );
     const yt = oku('server/nginx-loadtest/index.cjs');
     expect(yt).toMatch(/if \(await canSee\(user, 'YukTesti'\)\) return next\(\);/);
-    expect(yt).toMatch(/\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/);
+    expect(yt).toMatch(
+      /\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/,
+    );
     // Reboot Kontrolu / Retirement uclari: eski ServerHub kapisi + yeni sayfa anahtari (davranis: ek-sayfa-kapisi.test.js).
     expect(oku('server/retirement/index.cjs')).toMatch(
       /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{ anahtar: 'Retirement', ana, canSee: gor\.canSee \}\)\);/,

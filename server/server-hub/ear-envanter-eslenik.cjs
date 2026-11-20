@@ -51,7 +51,11 @@ const ortamOf = (v) =>
     .toUpperCase();
 const kopyaAnahtari = (k) => `${k.host}|${k.kok}|${k.ad}`;
 const iz32 = (v) => crypto.createHash('sha256').update(v).digest('hex').slice(0, 32);
-const kucukBuyuk = (a, b) => { if (a < b) return -1; if (a > b) return 1; return 0; };
+const kucukBuyuk = (a, b) => {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
 
 function hata(status, message, code) {
   return Object.assign(new Error(message), { status, code });
@@ -80,11 +84,18 @@ function imzalar(warlar, earSet, surumHaritasi) {
 function karsilastir(kopyalar) {
   if (kopyalar.some((k) => k.durum !== 'TAM'))
     return { kutuphane: 'KARSILASTIRILAMADI', yapi: 'KARSILASTIRILAMADI', karar: 'EKSIK_TARAMA' };
-  const kutuphane =
-    (() => { if (new Set(kopyalar.map((k) => k.tamImza)).size === 1) return 'AYNI'; if (new Set(kopyalar.map((k) => k.surumImza)).size === 1) return 'AYNI_SURUM_FARKLI_DOSYA'; return 'FARKLI'; })();
+  const kutuphane = (() => {
+    if (new Set(kopyalar.map((k) => k.tamImza)).size === 1) return 'AYNI';
+    if (new Set(kopyalar.map((k) => k.surumImza)).size === 1) return 'AYNI_SURUM_FARKLI_DOSYA';
+    return 'FARKLI';
+  })();
   const yapi = new Set(kopyalar.map((k) => k.yapi_izi || '')).size === 1 ? 'AYNI' : 'FARKLI';
-  const karar =
-    (() => { if (kutuphane === 'FARKLI') return 'FARKLI_KUTUPHANE'; if (kutuphane === 'AYNI_SURUM_FARKLI_DOSYA') return 'AYNI_SURUM_FARKLI_DOSYA'; if (yapi === 'FARKLI') return 'FARKLI_YAPI'; return 'AYNI'; })();
+  const karar = (() => {
+    if (kutuphane === 'FARKLI') return 'FARKLI_KUTUPHANE';
+    if (kutuphane === 'AYNI_SURUM_FARKLI_DOSYA') return 'AYNI_SURUM_FARKLI_DOSYA';
+    if (yapi === 'FARKLI') return 'FARKLI_YAPI';
+    return 'AYNI';
+  })();
   return { kutuphane, yapi, karar };
 }
 
@@ -236,7 +247,9 @@ function analizEt(kopyalar, { tumu = false } = {}) {
     const cogunluk = d.liste[0] ? d.liste[0].harf : null;
     const ortamDetay = ortamlar.map((o) => {
       const oks = ks.filter((k) => ortamOf(k.ortam) === o);
-      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort(varsayilanSira);
+      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort(
+        varsayilanSira,
+      );
       return {
         ortam: o,
         hostlar: [...new Set(oks.map((k) => k.host))].sort(varsayilanSira),

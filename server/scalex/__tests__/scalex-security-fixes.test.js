@@ -123,13 +123,22 @@ test('S2a: SMART "gerekli" iken ayar YOKSA is baslatilmaz (fail-closed)', () => 
     assert.equal(p.schedulable, false, `${ad}: engelli istek zamanlanabilir gorunuyor`);
   }
   assert.deepEqual(
-    launch.smartEksikleri({ enabled: true, flowKey: 'A', metadataFields: 'K: v' }, { smartClientReady: true }),
+    launch.smartEksikleri(
+      { enabled: true, flowKey: 'A', metadataFields: 'K: v' },
+      { smartClientReady: true },
+    ),
     [],
   );
   // Route `blocked`i ortak kapidan ONCE tuketir (OCO sorgusu ve zamanlama kaydi ondan sonra).
-  const govde = INDEX.slice(INDEX.indexOf('async function runScaleXGates'), INDEX.indexOf('async function acquireRestoreLocks'));
+  const govde = INDEX.slice(
+    INDEX.indexOf('async function runScaleXGates'),
+    INDEX.indexOf('async function acquireRestoreLocks'),
+  );
   const engel = govde.indexOf('if (policy.blocked)');
-  assert.ok(engel > 0 && engel < govde.indexOf('runChangeGates('), 'engel ortak kapidan SONRA tuketiliyor');
+  assert.ok(
+    engel > 0 && engel < govde.indexOf('runChangeGates('),
+    'engel ortak kapidan SONRA tuketiliyor',
+  );
 });
 
 test("S2a: bos ayarin smart-gate'te GERCEKTEN onay gerektirmedigi (fail-closed sartinin sebebi)", () => {
@@ -317,8 +326,16 @@ test('S3: ldap gruplari normalize edip ustsinirla dondurmeye devam ediyor', () =
 
 test('OCO: ScaleX pencere kapaliyken SESSIZCE ertelemiyor — kullaniciya soruyor', () => {
   // Eski hal: `ocoAction: 'later'` SABITI → 200 OK doner, hicbir sey olmaz.
-  assert.doesNotMatch(INDEX, /ocoAction: 'later',/, 'hala sabit "later" — kullaniciya secim sunulmuyor');
-  assert.match(INDEX, /ocoAction === 'schedule' \? 'schedule' : 'later'/, 'kullanici secimi gecirilmiyor');
+  assert.doesNotMatch(
+    INDEX,
+    /ocoAction: 'later',/,
+    'hala sabit "later" — kullaniciya secim sunulmuyor',
+  );
+  assert.match(
+    INDEX,
+    /ocoAction === 'schedule' \? 'schedule' : 'later'/,
+    'kullanici secimi gecirilmiyor',
+  );
   assert.match(INDEX, /ocoAction: req\.body\?\.ocoAction/, 'secim istekten alinmiyor');
 });
 
@@ -389,8 +406,11 @@ test('GORUNURLUK: seed ELEMENT BAZINDA idempotent (yeni sayfa mevcut kurulumda g
   assert.ok(i > 0, 'gorunurluk seed blogu bulunamadi (SELECT DISTINCT imzasi yok)');
   const block = SETUP.slice(i, i + 2400);
   assert.match(block, /hasRules\.has\(el\.element_key\)/);
-  assert.match(block, /INSERT INTO portal_element_visibility \(element_key, principal_type/,
-    'seed, okudugu listeyi yazmiyor');
+  assert.match(
+    block,
+    /INSERT INTO portal_element_visibility \(element_key, principal_type/,
+    'seed, okudugu listeyi yazmiyor',
+  );
   // Eski "tablo TAMAMEN bossa bas" davranisi bu blokta kalmamali.
   assert.doesNotMatch(block, /if \(any\.recordset\.length\) return;/);
 });
@@ -455,7 +475,11 @@ test('UI: sinir asimi ONIZLEMEDE soylenir ve Calistir pasiflesir', () => {
   assert.match(PREVIEW, /r\.exceedsMaxTargets/);
   // `bayat`: onizleme baska bir secime aitken de kapali (2026-10-13).
   assert.match(PREVIEW, /disabled=\{busy \|\| bayat \|\| blocked/);
-  assert.match(PREVIEW, /const blocked = r\.exceedsMaxTargets \|\| !!engel;/, 'sinir asimi dugmeyi kapatmiyor');
+  assert.match(
+    PREVIEW,
+    /const blocked = r\.exceedsMaxTargets \|\| !!engel;/,
+    'sinir asimi dugmeyi kapatmiyor',
+  );
 });
 
 test('UI: buton neden pasif oldugunu SOYLER, OCO numarasi bosken calistirilamaz', () => {

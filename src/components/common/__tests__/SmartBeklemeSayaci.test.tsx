@@ -103,17 +103,25 @@ describe('SB2 bicimleyiciler', () => {
   });
 
   it('ekran okuyucu ozeti dakika cozunurlugunde', () => {
-    const geri = (kalanMs: number) => ozetMetni({ kip: 'geri', kalanMs, gecenMs: 0, oran: 0.5, evre: 'kos' });
+    const geri = (kalanMs: number) =>
+      ozetMetni({ kip: 'geri', kalanMs, gecenMs: 0, oran: 0.5, evre: 'kos' });
     expect(geri(9 * DK + 41 * SN)).toBe('Zaman aşımına 9 dakika kaldı');
     expect(geri(2 * SA + 14 * DK)).toBe('Zaman aşımına 2 saat 14 dakika kaldı');
     expect(geri(2 * SA)).toBe('Zaman aşımına 2 saat kaldı');
     expect(geri(30 * SN)).toBe('Zaman aşımına 1 dakikadan az kaldı');
-    expect(ozetMetni({ kip: 'geri', kalanMs: 0, gecenMs: 0, oran: 1, evre: 'bitti' })).toBe('Smart onayı için süre doldu');
-    const sinirsiz = (gecenMs: number) => ozetMetni({ kip: 'sinirsiz', kalanMs: null, gecenMs, oran: null, evre: 'bekle' });
+    expect(ozetMetni({ kip: 'geri', kalanMs: 0, gecenMs: 0, oran: 1, evre: 'bitti' })).toBe(
+      'Smart onayı için süre doldu',
+    );
+    const sinirsiz = (gecenMs: number) =>
+      ozetMetni({ kip: 'sinirsiz', kalanMs: null, gecenMs, oran: null, evre: 'bekle' });
     expect(sinirsiz(12 * DK)).toBe('Smart onayı 12 dakikadır bekleniyor, süre sınırı yok');
-    expect(sinirsiz(SA + 5 * DK)).toBe('Smart onayı 1 saat 5 dakikadır bekleniyor, süre sınırı yok');
+    expect(sinirsiz(SA + 5 * DK)).toBe(
+      'Smart onayı 1 saat 5 dakikadır bekleniyor, süre sınırı yok',
+    );
     expect(sinirsiz(2 * SA)).toBe('Smart onayı 2 saattir bekleniyor, süre sınırı yok');
-    expect(sinirsiz(20 * SN)).toBe('Smart onayı 1 dakikadan kısa süredir bekleniyor, süre sınırı yok');
+    expect(sinirsiz(20 * SN)).toBe(
+      'Smart onayı 1 dakikadan kısa süredir bekleniyor, süre sınırı yok',
+    );
   });
 });
 
@@ -169,7 +177,10 @@ describe('SmartBeklemeSayaci bileseni', () => {
     expect(screen.getByTestId('sbs-deger')).toHaveTextContent('Süre doldu');
     expect(screen.getByText('Talep zaman aşımına uğruyor')).toBeInTheDocument();
     expect(screen.queryByText('Zaman aşımına kalan')).toBeNull();
-    expect(screen.getByRole('timer',{ name: 'Smart onayı için süre doldu' })).toHaveAttribute('data-evre', 'bitti');
+    expect(screen.getByRole('timer', { name: 'Smart onayı için süre doldu' })).toHaveAttribute(
+      'data-evre',
+      'bitti',
+    );
     expect(screen.getByTestId('sbs-konum').style.left).toBe('100%');
   });
 
@@ -179,9 +190,13 @@ describe('SmartBeklemeSayaci bileseni', () => {
     expect(screen.getByTestId('sbs-deger')).toHaveTextContent('12 dk');
     expect(screen.getByText('Bekleme süresi')).toBeInTheDocument();
     expect(
-      screen.getByText("Süre sınırı yok — talep onaylanana ya da Smart'ta reddedilene kadar bekler."),
+      screen.getByText(
+        "Süre sınırı yok — talep onaylanana ya da Smart'ta reddedilene kadar bekler.",
+      ),
     ).toBeInTheDocument();
-    const kok = screen.getByRole('timer', { name: 'Smart onayı 12 dakikadır bekleniyor, süre sınırı yok' });
+    const kok = screen.getByRole('timer', {
+      name: 'Smart onayı 12 dakikadır bekleniyor, süre sınırı yok',
+    });
     expect(kok).toHaveAttribute('data-kip', 'sinirsiz');
     expect(kok).toHaveAttribute('data-evre', 'bekle');
     expect(kok.querySelector('.sbs-bayrak')).toBeNull();
@@ -191,7 +206,9 @@ describe('SmartBeklemeSayaci bileseni', () => {
 
   it('SB5 kompakt: tek satir metin, parkur yok', () => {
     anda(T0 + 20 * DK + 19 * SN);
-    const { rerender } = render(<SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} kompakt />);
+    const { rerender } = render(
+      <SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} kompakt />,
+    );
     const kok = screen.getByRole('timer');
     expect(screen.getByTestId('sbs-metin').textContent).toBe('Kalan 09:41');
     expect(kok).toHaveAttribute('title', 'Son tarih 18 Eki 18:30');
@@ -253,7 +270,10 @@ describe('SmartBeklemeSayaci bileseni', () => {
     expect(screen.getByTestId('sbs-canli')).toHaveTextContent('');
     expect(duyurulariTopla(DK, 60)).toEqual([]);
     // Ozet yine erisilebilir: role=timer aria-label'i guncel.
-    expect(screen.getByRole('timer')).toHaveAttribute('aria-label', 'Smart onayı 1 saattir bekleniyor, süre sınırı yok');
+    expect(screen.getByRole('timer')).toHaveAttribute(
+      'aria-label',
+      'Smart onayı 1 saattir bekleniyor, süre sınırı yok',
+    );
   });
 
   it('SB11 4 saatlik geri sayimda canli bolge yalniz esiklerde konusur (en fazla 5)', () => {
@@ -278,7 +298,12 @@ describe('SmartBeklemeSayaci bileseni', () => {
     const yanitYerel = yanitSunucu - 10 * DK;
     anda(yanitYerel + 5 * DK);
     render(
-      <SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} serverNow={iso(yanitSunucu)} alindiMs={yanitYerel} />,
+      <SmartBeklemeSayaci
+        createdAt={iso(T0)}
+        deadline={iso(D30)}
+        serverNow={iso(yanitSunucu)}
+        alindiMs={yanitYerel}
+      />,
     );
     // Kayma kurulus aninda olculseydi "14:41" gorunurdu (yanitin yasi kadar fazla).
     expect(screen.getByTestId('sbs-deger')).toHaveTextContent('09:41');
@@ -297,13 +322,25 @@ describe('SmartBeklemeSayaci bileseni', () => {
     // Gelis ani bilinmiyor: ilk olcum kurulus aninda (bayat) - bu kadari kacinilmaz.
     expect(screen.getByTestId('sbs-deger')).toHaveTextContent('14:41');
     // Taze yanit: sunucu saati simdi T0 + 20:19 -> gercek kalan 09:41.
-    rerender(<SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} serverNow={iso(T0 + 20 * DK + 19 * SN)} />);
+    rerender(
+      <SmartBeklemeSayaci
+        createdAt={iso(T0)}
+        deadline={iso(D30)}
+        serverNow={iso(T0 + 20 * DK + 19 * SN)}
+      />,
+    );
     act(() => {
       vi.advanceTimersByTime(SN);
     });
     expect(screen.getByTestId('sbs-deger')).toHaveTextContent('09:40');
     // Sonraki yoklama ag gecikmesi kadar (1.5 sn) farkli kayma verir: uygulanmaz, sayi zipliamaz.
-    rerender(<SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} serverNow={iso(T0 + 20 * DK + 21.5 * SN)} />);
+    rerender(
+      <SmartBeklemeSayaci
+        createdAt={iso(T0)}
+        deadline={iso(D30)}
+        serverNow={iso(T0 + 20 * DK + 21.5 * SN)}
+      />,
+    );
     act(() => {
       vi.advanceTimersByTime(SN);
     });
@@ -331,7 +368,9 @@ describe('SmartBeklemeSayaci bileseni', () => {
       <SmartBeklemeSayaci createdAt={null} deadline={null} serverNow={null} />,
     );
     expect(container.firstChild).toBeNull();
-    rerender(<SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} serverNow={iso(sunucu)} />);
+    rerender(
+      <SmartBeklemeSayaci createdAt={iso(T0)} deadline={iso(D30)} serverNow={iso(sunucu)} />,
+    );
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -341,7 +380,9 @@ describe('SmartBeklemeSayaci bileseni', () => {
   it('SB8 createdAt yok ya da gecersiz: hicbir sey cizilmez, sayac kurulmaz', () => {
     const kur = vi.spyOn(globalThis, 'setInterval');
     anda(T0);
-    const { container, rerender } = render(<SmartBeklemeSayaci createdAt={null} deadline={iso(D30)} />);
+    const { container, rerender } = render(
+      <SmartBeklemeSayaci createdAt={null} deadline={iso(D30)} />,
+    );
     expect(container.firstChild).toBeNull();
     rerender(<SmartBeklemeSayaci createdAt={undefined} deadline={null} kompakt />);
     expect(container.firstChild).toBeNull();
@@ -372,10 +413,14 @@ describe('SmartBeklemeSayaci bileseni', () => {
     expect(kok).toHaveAttribute('data-evre', 'kos');
     expect(kok.querySelectorAll('.sbs-hiz > span')).toHaveLength(3);
     const css = [...document.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
-    expect(css).toContain('.sbs[data-evre="kos"] .sbs-bacak{animation-name:sbs-adim-kos;animation-duration:.175s}');
+    expect(css).toContain(
+      '.sbs[data-evre="kos"] .sbs-bacak{animation-name:sbs-adim-kos;animation-duration:.175s}',
+    );
     expect(css).toContain('.sbs[data-evre="kos"] .sbs-hiz{display:block}');
     expect(css).toContain('--sbs-renk:var(--status-warning-text)');
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\{\.sbs \*[^}]*animation:none!important/);
+    expect(css).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\{\.sbs \*[^}]*animation:none!important/,
+    );
     expect(css).not.toMatch(/var\(--status-warning\)/); // TK8: metin icin -text tonu
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i); // sabit hex renk yok
   });

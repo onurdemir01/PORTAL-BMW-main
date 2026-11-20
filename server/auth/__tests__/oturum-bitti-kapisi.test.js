@@ -41,19 +41,29 @@ test('OB1 — requireAuth 401i CANLI olarak imzalar', async () => {
   const { requireAuth } = require('../index.cjs');
   const r = await istek((app) => app.get('/x', requireAuth, (_q, s) => s.json({ ok: true })), '/x');
   assert.strictEqual(r.status, 401);
-  assert.strictEqual(r.imza, 'expired', 'oturum 401i imzasiz cikti — istemci kapisi HIC ATESLENMEZ');
+  assert.strictEqual(
+    r.imza,
+    'expired',
+    'oturum 401i imzasiz cikti — istemci kapisi HIC ATESLENMEZ',
+  );
 });
 
 test('OB2 — requireAdmin: oturumsuz 401 imzali, YETKISIZ 403 imzasiz', async () => {
   const { requireAdmin } = require('../index.cjs');
-  const yok = await istek((app) => app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true })), '/x');
+  const yok = await istek(
+    (app) => app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true })),
+    '/x',
+  );
   assert.strictEqual(yok.status, 401);
   assert.strictEqual(yok.imza, 'expired');
 
   // Oturum VAR ama rol yetersiz → 403. Bu bitmis bir oturum DEGILDIR; imzalanirsa
   // admin olmayan bir kullanici bir admin ucuna dokundugunda portaldan atilirdi.
   const rolsuz = await istek((app) => {
-    app.use((req, _s, next) => { req.session = { user: { username: 'u', role: 'User' } }; next(); });
+    app.use((req, _s, next) => {
+      req.session = { user: { username: 'u', role: 'User' } };
+      next();
+    });
     app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true }));
   }, '/x');
   assert.strictEqual(rolsuz.status, 403);
@@ -90,7 +100,11 @@ test('OB4 — server/auth icindeki HER oturum 401i oturumYokdan gecer', () => {
   }
   assert.deepStrictEqual(imzasiz, [], `beklenmeyen imzasiz 401:\n${imzasiz.join('\n')}`);
   assert.match(d, /res\.status\(status\)\.json\(/, 'giris hatasi yaniti bulunamadi');
-  assert.doesNotMatch(d, /oturumYok\(/, 'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir');
+  assert.doesNotMatch(
+    d,
+    /oturumYok\(/,
+    'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir',
+  );
 });
 
 test('OB5 — imza capraz kokende OKUNABILIR olsun diye expose edilir', () => {
@@ -111,5 +125,9 @@ test('OB6 — istemci ile sunucu AYNI baslik adini kullanir', () => {
   const istemci = oku('src/api/sessionGuard.ts');
   const m = istemci.match(/export const SESSION_HEADER = '([^']+)'/);
   assert.ok(m, 'istemci tarafinda SESSION_HEADER bulunamadi');
-  assert.strictEqual(m[1], SESSION_HEADER, 'iki taraf farkli baslik adi kullaniyor — kapi hic atesleyemez');
+  assert.strictEqual(
+    m[1],
+    SESSION_HEADER,
+    'iki taraf farkli baslik adi kullaniyor — kapi hic atesleyemez',
+  );
 });

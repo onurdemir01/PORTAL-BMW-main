@@ -84,23 +84,35 @@ test('KN4 katalogdaki her IDDIA kaynakta DOGRULANABILIR', () => {
 
   // ScaleX yetenekleri gercekten `scalex_cluster_caps` tablosunu okuyor mu?
   assert.match(kat, /scalex_cluster_caps/);
-  assert.match(oku('server/scalex/cluster-caps.cjs'), /scalex_cluster_caps/,
-    'katalog olmayan bir tabloyu gosteriyor');
+  assert.match(
+    oku('server/scalex/cluster-caps.cjs'),
+    /scalex_cluster_caps/,
+    'katalog olmayan bir tabloyu gosteriyor',
+  );
 
   // `capabilities` modu GERCEKTEN var mi (PR-A'da erisilebilir yapildi)?
   assert.match(kat, /capabilities/);
-  assert.match(oku('src/api/scalexApi.ts'), /'capabilities'/,
-    'katalog erisilemeyen bir modu tarif ediyor');
+  assert.match(
+    oku('src/api/scalexApi.ts'),
+    /'capabilities'/,
+    'katalog erisilemeyen bir modu tarif ediyor',
+  );
 
   // LogX/ScaleX katalogu gercekten `Openshift_Inventory` okuyor mu?
   assert.match(kat, /Openshift_Inventory/);
-  assert.match(oku('server/logx/v2/ocp-inventory.cjs'), /dbo\.Openshift_Inventory/,
-    'katalog olmayan bir envanter tablosunu gosteriyor');
+  assert.match(
+    oku('server/logx/v2/ocp-inventory.cjs'),
+    /dbo\.Openshift_Inventory/,
+    'katalog olmayan bir envanter tablosunu gosteriyor',
+  );
 
   // Cluster hiyerarsisi gercekten bir PORTAL AYARI mi (tarama degil)?
   assert.match(kat, /portal ayarı \(tarama değil\)/);
-  assert.match(oku('server/logx/v2/admin.cjs'), /listClusterIndex/,
-    'cluster katalogu admin tablosundan gelmiyor');
+  assert.match(
+    oku('server/logx/v2/admin.cjs'),
+    /listClusterIndex/,
+    'cluster katalogu admin tablosundan gelmiyor',
+  );
 });
 
 test('KN5 LogX namespace adimina IKINCI bir not EKLENMEDI', () => {

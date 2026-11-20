@@ -80,10 +80,9 @@ function initNginxExpose(app) {
 
   async function readConfig() {
     try {
-      const { rows } = await db.query(
-        `SELECT data FROM portal_config_blobs WHERE name = $1`,
-        [CONFIG_NAME],
-      );
+      const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+        CONFIG_NAME,
+      ]);
       const raw = rows?.[0]?.data;
       const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw || {};
       return {
@@ -106,7 +105,13 @@ function initNginxExpose(app) {
       );
       const scanDate = dateRes.recordset?.[0]?.d || null;
       if (!scanDate) {
-        return res.json({ ok: true, scanDate: null, hosts: [], rows: [], config: await readConfig() });
+        return res.json({
+          ok: true,
+          scanDate: null,
+          hosts: [],
+          rows: [],
+          config: await readConfig(),
+        });
       }
 
       const r = await query(
@@ -136,9 +141,15 @@ function initNginxExpose(app) {
     try {
       const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
       if (ex.rows.length) {
-        await db.query(`UPDATE portal_config_blobs SET data = $2 WHERE name = $1`, [CONFIG_NAME, data]);
+        await db.query(`UPDATE portal_config_blobs SET data = $2 WHERE name = $1`, [
+          CONFIG_NAME,
+          data,
+        ]);
       } else {
-        await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [CONFIG_NAME, data]);
+        await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+          CONFIG_NAME,
+          data,
+        ]);
       }
       res.json({ ok: true, config: { awxServerId, templateId, targetHost } });
     } catch (err) {
@@ -160,7 +171,7 @@ function initNginxExpose(app) {
       return res.status(409).json({
         ok: false,
         message:
-          'İnternete açma job\'ı henüz yapılandırılmamış. AWX sunucusu ve job template ' +
+          "İnternete açma job'ı henüz yapılandırılmamış. AWX sunucusu ve job template " +
           'seçildikten sonra buton çalışır (api_expose.yml için açılan template).',
       });
     }

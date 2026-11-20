@@ -56,25 +56,43 @@ const ESKI_PLAYBOOK_IZI = 'yuk_islem on_kontrol|kosu|durdur';
 const ESKI_PLAYBOOK_NOTU = ' (Ansible deposu güncel değil: araclar kipi yok)';
 // PU1: arsiv sabit ozetle tutmadi (get_url "did not match" / playbook "ozetiyle (ENV) farkli", "ozeti sabit
 // degerden farkli"): "ozet" ile "farkli" arasinda ayni cumle icinde en cok 80 karakter olabilir.
-const OZET_FARKLI_IZI = /did not match|checksum mismatch|ozet[a-z]*\b[^;]{0,80}?\bfarkli|ozet[a-z]*\s+(ayni degil|uyusmuyor)/i;
-const OZET_FARKLI_NOTU = ' (arşiv sabitlenen özetle uyuşmuyor, hiçbir şey derlenmedi: arşivi kurum vekili dışında yeniden doğrulayın; gerçekten değiştiyse NGINX_LOADTEST_K6_ARSIV_SHA256 / NGINX_LOADTEST_WRK_KAYNAK_SHA256’yı güncelleyin)';
-const OZET_ENVLERI = Object.freeze({ k6Arsiv: 'NGINX_LOADTEST_K6_ARSIV_SHA256', wrkKaynak: 'NGINX_LOADTEST_WRK_KAYNAK_SHA256' });
+const OZET_FARKLI_IZI =
+  /did not match|checksum mismatch|ozet[a-z]*\b[^;]{0,80}?\bfarkli|ozet[a-z]*\s+(ayni degil|uyusmuyor)/i;
+const OZET_FARKLI_NOTU =
+  ' (arşiv sabitlenen özetle uyuşmuyor, hiçbir şey derlenmedi: arşivi kurum vekili dışında yeniden doğrulayın; gerçekten değiştiyse NGINX_LOADTEST_K6_ARSIV_SHA256 / NGINX_LOADTEST_WRK_KAYNAK_SHA256’yı güncelleyin)';
+const OZET_ENVLERI = Object.freeze({
+  k6Arsiv: 'NGINX_LOADTEST_K6_ARSIV_SHA256',
+  wrkKaynak: 'NGINX_LOADTEST_WRK_KAYNAK_SHA256',
+});
 const BELGE_BOLUMU = 'docs/NGINX-YUK-TESTI.md › “Arşiv özetlerini sabitleme”';
 
 // Sozlesme 2.3: TAM 10 anahtar, sira baglayici (playbook README tablosu / bekci ARAC_VARS).
 const ARAC_EKSTRA_ANAHTARLAR = Object.freeze([
-  'yuk_islem', 'yuk_run_id', 'yuk_derleme_host', 'yuk_k6_surum', 'yuk_wrk_surum',
-  'yuk_k6_arsiv_sha256', 'yuk_wrk_kaynak_sha256', 'yuk_proxy', 'yuk_cikti_kok', 'yuk_son_epoch',
+  'yuk_islem',
+  'yuk_run_id',
+  'yuk_derleme_host',
+  'yuk_k6_surum',
+  'yuk_wrk_surum',
+  'yuk_k6_arsiv_sha256',
+  'yuk_wrk_kaynak_sha256',
+  'yuk_proxy',
+  'yuk_cikti_kok',
+  'yuk_son_epoch',
 ]);
 
 const MESAJ = Object.freeze({
-  hazirDegil: 'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).',
-  ozetDegisti: 'Sabitlenen arşiv özetleriyle hazırlanmış bir araç seti yok (özetler değişmiş olabilir): Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeniden hazırlayın (yalnız Admin).',
-  geriCekildi: 'Sabitlenen özetlerle hazırlanmış araç setleri geri çekildi: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeni set hazırlayın (yalnız Admin).',
+  hazirDegil:
+    'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).',
+  ozetDegisti:
+    'Sabitlenen arşiv özetleriyle hazırlanmış bir araç seti yok (özetler değişmiş olabilir): Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeniden hazırlayın (yalnız Admin).',
+  geriCekildi:
+    'Sabitlenen özetlerle hazırlanmış araç setleri geri çekildi: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile yeni set hazırlayın (yalnız Admin).',
   okunamadi: 'Araç seti okunamadı; iş başlatılmadı, lütfen tekrar deneyin.',
   okunamadiEkran: 'Araç seti okunamadı; yeniden deneyin.',
-  onKontrolEski: 'Etkin yük aracı seti ön kontrolden bu yana değişti (yeniden hazırlandı ya da geri çekildi); ön kontrolü yeniden çalıştırın.',
-  onKontrolAracsiz: 'Bu ön kontrol araç setleri gelmeden (eski sürümle) yapıldı; ön kontrolü yeniden çalıştırın.',
+  onKontrolEski:
+    'Etkin yük aracı seti ön kontrolden bu yana değişti (yeniden hazırlandı ya da geri çekildi); ön kontrolü yeniden çalıştırın.',
+  onKontrolAracsiz:
+    'Bu ön kontrol araç setleri gelmeden (eski sürümle) yapıldı; ön kontrolü yeniden çalıştırın.',
 });
 
 /** Eksik / gecersiz sabit ozet listesi -> kapi metni (on kontrol / kosu / ekran). */
@@ -101,8 +119,13 @@ function hata(status, code, message, ek) {
 }
 
 const sha = (v) => (v == null ? null : String(v).trim().toLowerCase() || null);
-const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
-const sayiYaDaNull = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const iso = (v) => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+};
+const sayiYaDaNull = (v) =>
+  v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 function jsonOku(s) {
   if (s == null || s === '') return null;
   try {
@@ -128,7 +151,11 @@ function derlemeHostlari(env = process.env) {
     const h = dg.hostNormalle(girdi);
     const uygun = h && (h === VARSAYILAN_DERLEME_HOST || dg.IZINLI_ORTAM.has(envOfHost(h)));
     if (!uygun) {
-      dg.birKezUyar('NGINX_LOADTEST_DERLEME_HOSTLARI', girdi, 'GBLABT02 ya da DEV/TEST/QA nginx adi degil');
+      dg.birKezUyar(
+        'NGINX_LOADTEST_DERLEME_HOSTLARI',
+        girdi,
+        'GBLABT02 ya da DEV/TEST/QA nginx adi degil',
+      );
       continue;
     }
     if (!out.includes(h)) out.push(h);
@@ -154,7 +181,12 @@ function k6Surum(env = process.env) {
   const ham = String(env.NGINX_LOADTEST_K6_SURUM ?? '').trim();
   if (!ham) return VARSAYILAN_K6_SURUM;
   if (K6_SURUM_RE.test(ham)) return ham;
-  dg.birKezUyar('NGINX_LOADTEST_K6_SURUM', ham, 'izinli v0.45.0..v0.59.x', 'kullanilmadi, varsayilan v0.49.0');
+  dg.birKezUyar(
+    'NGINX_LOADTEST_K6_SURUM',
+    ham,
+    'izinli v0.45.0..v0.59.x',
+    'kullanilmadi, varsayilan v0.49.0',
+  );
   return VARSAYILAN_K6_SURUM;
 }
 
@@ -193,7 +225,17 @@ function sabitOzetler(env = process.env) {
 // ── EXTRA_VARS ────────────────────────────────────────────────────────────────────────────
 
 /** Sozlesme 2.3: 10 anahtar, hepsi METIN, sira ARAC_EKSTRA_ANAHTARLAR. `limit` her zaman ''. */
-function aracEkstraDegiskenler({ aracId, derlemeHost, k6Surum: k6v, wrkSurum = WRK_SURUM, k6ArsivSha256 = '', wrkKaynakSha256 = '', proxy = '', kok, simdiSn = Math.floor(Date.now() / 1000) }) {
+function aracEkstraDegiskenler({
+  aracId,
+  derlemeHost,
+  k6Surum: k6v,
+  wrkSurum = WRK_SURUM,
+  k6ArsivSha256 = '',
+  wrkKaynakSha256 = '',
+  proxy = '',
+  kok,
+  simdiSn = Math.floor(Date.now() / 1000),
+}) {
   return {
     yuk_islem: 'araclar',
     yuk_run_id: String(aracId),
@@ -221,15 +263,23 @@ function aracEkstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1
   if (o.yuk_islem !== 'araclar') ihlal.push('yuk_islem');
   if (!metin('yuk_run_id') || !dg.RUN_ID_RE.test(o.yuk_run_id)) ihlal.push('yuk_run_id');
   const h = o.yuk_derleme_host;
-  if (!metin('yuk_derleme_host') || !dg.HOST_RE.test(h) || !(h === VARSAYILAN_DERLEME_HOST || dg.IZINLI_ORTAM.has(envOfHost(h)))) ihlal.push('yuk_derleme_host');
+  if (
+    !metin('yuk_derleme_host') ||
+    !dg.HOST_RE.test(h) ||
+    !(h === VARSAYILAN_DERLEME_HOST || dg.IZINLI_ORTAM.has(envOfHost(h)))
+  )
+    ihlal.push('yuk_derleme_host');
   if (!metin('yuk_k6_surum') || !K6_SURUM_RE.test(o.yuk_k6_surum)) ihlal.push('yuk_k6_surum');
   if (o.yuk_wrk_surum !== WRK_SURUM) ihlal.push('yuk_wrk_surum');
   if (!shaZorunlu('yuk_k6_arsiv_sha256')) ihlal.push('yuk_k6_arsiv_sha256');
   if (!shaZorunlu('yuk_wrk_kaynak_sha256')) ihlal.push('yuk_wrk_kaynak_sha256');
-  if (!metin('yuk_proxy') || !(o.yuk_proxy === '' || PROXY_RE.test(o.yuk_proxy))) ihlal.push('yuk_proxy');
+  if (!metin('yuk_proxy') || !(o.yuk_proxy === '' || PROXY_RE.test(o.yuk_proxy)))
+    ihlal.push('yuk_proxy');
   if (!dg.yolGuvenli(o.yuk_cikti_kok, CIKTI_KOK_PB_RE)) ihlal.push('yuk_cikti_kok');
-  const epoch = metin('yuk_son_epoch') && dg.EPOCH_RE.test(o.yuk_son_epoch) ? Number(o.yuk_son_epoch) : null;
-  if (epoch === null || epoch < simdiSn || epoch > simdiSn + dg.SON_EPOCH_UST_PAY_SN) ihlal.push('yuk_son_epoch');
+  const epoch =
+    metin('yuk_son_epoch') && dg.EPOCH_RE.test(o.yuk_son_epoch) ? Number(o.yuk_son_epoch) : null;
+  if (epoch === null || epoch < simdiSn || epoch > simdiSn + dg.SON_EPOCH_UST_PAY_SN)
+    ihlal.push('yuk_son_epoch');
   for (const k of Object.keys(o)) if (!ARAC_EKSTRA_ANAHTARLAR.includes(k)) ihlal.push(k);
   for (const k of ARAC_EKSTRA_ANAHTARLAR) if (!(k in o) && !ihlal.includes(k)) ihlal.push(k);
   return ihlal;
@@ -247,7 +297,12 @@ function awxUrlOf(sid, jid) {
   if (sid == null || !(Number(jid) > 0)) return null;
   try {
     const runner = require('../ansible/runner.cjs');
-    return require('../retirement/is-ciktisi.cjs')._awxIsAdresi(runner.getServerById(Number(sid)), Number(jid)) || null;
+    return (
+      require('../retirement/is-ciktisi.cjs')._awxIsAdresi(
+        runner.getServerById(Number(sid)),
+        Number(jid),
+      ) || null
+    );
   } catch {
     return null;
   }
@@ -256,7 +311,10 @@ function awxUrlOf(sid, jid) {
 /** Satirin istenen ozetleri su anki sabit ozetlerle ayni mi (sabit eksikse false). */
 function ozetlerGuncelMi(r, sabit) {
   if (!r || !sabit || sabit.eksikler.length) return false;
-  return sha(r.istenen_k6_arsiv_sha256) === sabit.k6Arsiv && sha(r.istenen_wrk_kaynak_sha256) === sabit.wrkKaynak;
+  return (
+    sha(r.istenen_k6_arsiv_sha256) === sabit.k6Arsiv &&
+    sha(r.istenen_wrk_kaynak_sha256) === sabit.wrkKaynak
+  );
 }
 
 /**
@@ -264,7 +322,7 @@ function ozetlerGuncelMi(r, sabit) {
  * setin arsiv ozetleri su anki env sabitleriyle ayni (degilse set etkin olamaz). `geriCekildi`: Admin geri cekti.
  */
 function aracApi(r, sabit = sabitOzetler()) {
-  const a = ((jsonOku(r.sonuc) || {}).araclar) || {};
+  const a = (jsonOku(r.sonuc) || {}).araclar || {};
   const m = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   return {
     id: Number(r.id),
@@ -281,7 +339,7 @@ function aracApi(r, sabit = sabitOzetler()) {
     geriCeken: r.geri_ceken ?? null,
     geriCekmeAt: iso(r.geri_cekme_at),
     calismaYasSn: sayiYaDaNull(r.calisma_yas_sn),
-    swDizin: r.durum === 'DONE' ? r.sw_dizin ?? null : null,
+    swDizin: r.durum === 'DONE' ? (r.sw_dizin ?? null) : null,
     derlemeRhel: r.derleme_rhel ?? null,
     derlemeGlibc: r.derleme_glibc ?? null,
     wrkGlibcGerekli: r.wrk_glibc_gerekli ?? null,
@@ -321,20 +379,49 @@ async function etkinAracSeti(d = db(), sabit = sabitOzetler()) {
  * kod: null | 'araclar_ozet_sabit_yok' | 'araclar_hazir_degil' | 'araclar_ozet_degisti' | 'araclar_geri_cekildi', mesaj }.
  */
 async function aracDurumu(d = db(), sabit = sabitOzetler()) {
-  const yok = (kod, mesaj) => ({ hazir: false, etkin: null, aracId: null, k6Surum: null, wrkSurum: null, kod, mesaj });
-  if (sabit.eksikler.length) return yok('araclar_ozet_sabit_yok', ozetSabitYokMesaji(sabit.eksikler));
+  const yok = (kod, mesaj) => ({
+    hazir: false,
+    etkin: null,
+    aracId: null,
+    k6Surum: null,
+    wrkSurum: null,
+    kod,
+    mesaj,
+  });
+  if (sabit.eksikler.length)
+    return yok('araclar_ozet_sabit_yok', ozetSabitYokMesaji(sabit.eksikler));
   const etkin = await etkinAracSeti(d, sabit);
-  if (etkin) return { hazir: true, etkin, aracId: Number(etkin.id), k6Surum: etkin.k6_surum, wrkSurum: etkin.wrk_surum, kod: null, mesaj: null };
+  if (etkin)
+    return {
+      hazir: true,
+      etkin,
+      aracId: Number(etkin.id),
+      k6Surum: etkin.k6_surum,
+      wrkSurum: etkin.wrk_surum,
+      kod: null,
+      mesaj: null,
+    };
   // Neden: bu ozetlerle DONE set var mi (varsa en yenisi geri cekilmis mi), yoksa hic DONE var mi.
-  const es = (await d.query(
-    `SELECT TOP 1 id, geri_cekme_at FROM nginx_loadtest_araclar
+  const es = (
+    await d.query(
+      `SELECT TOP 1 id, geri_cekme_at FROM nginx_loadtest_araclar
       WHERE durum = 'DONE' AND istenen_k6_arsiv_sha256 = $1 AND istenen_wrk_kaynak_sha256 = $2 ORDER BY id DESC`,
-    [sabit.k6Arsiv, sabit.wrkKaynak],
-  )).rows;
+      [sabit.k6Arsiv, sabit.wrkKaynak],
+    )
+  ).rows;
   const eslesen = (es && es[0]) || null;
-  if (eslesen) return eslesen.geri_cekme_at != null ? yok('araclar_geri_cekildi', MESAJ.geriCekildi) : yok('araclar_hazir_degil', MESAJ.hazirDegil);
-  const so = (await d.query(`SELECT TOP 1 id FROM nginx_loadtest_araclar WHERE durum = 'DONE' ORDER BY id DESC`)).rows;
-  return so && so[0] ? yok('araclar_ozet_degisti', MESAJ.ozetDegisti) : yok('araclar_hazir_degil', MESAJ.hazirDegil);
+  if (eslesen)
+    return eslesen.geri_cekme_at != null
+      ? yok('araclar_geri_cekildi', MESAJ.geriCekildi)
+      : yok('araclar_hazir_degil', MESAJ.hazirDegil);
+  const so = (
+    await d.query(
+      `SELECT TOP 1 id FROM nginx_loadtest_araclar WHERE durum = 'DONE' ORDER BY id DESC`,
+    )
+  ).rows;
+  return so && so[0]
+    ? yok('araclar_ozet_degisti', MESAJ.ozetDegisti)
+    : yok('araclar_hazir_degil', MESAJ.hazirDegil);
 }
 
 /** /hedefler icin (uc 200 kalir): DB okunamazsa hazir:false + db_okunamadi. */
@@ -344,7 +431,14 @@ async function aracDurumuEkran(d) {
     return geri;
   } catch (e) {
     console.warn('[NginxYukTesti] arac seti okunamadi (/hedefler):', maskele(e && e.message));
-    return { hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'db_okunamadi', mesaj: MESAJ.okunamadiEkran };
+    return {
+      hazir: false,
+      aracId: null,
+      k6Surum: null,
+      wrkSurum: null,
+      kod: 'db_okunamadi',
+      mesaj: MESAJ.okunamadiEkran,
+    };
   }
 }
 
@@ -368,11 +462,18 @@ function motorSha(set, motor) {
 
 /** ekstraDegiskenler'in `arac` parametresi. */
 function aracDegiskeni(set) {
-  return { dizin: String(set.sw_dizin || ''), k6Sha256: sha(set.k6_sha256) || '', wrkSha256: sha(set.wrk_sha256) || '' };
+  return {
+    dizin: String(set.sw_dizin || ''),
+    k6Sha256: sha(set.k6_sha256) || '',
+    wrkSha256: sha(set.wrk_sha256) || '',
+  };
 }
 
 async function aracSetiOku(d, id) {
-  const { rows } = await d.query(`SELECT ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar WHERE id = $1`, [id]);
+  const { rows } = await d.query(
+    `SELECT ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar WHERE id = $1`,
+    [id],
+  );
   return (rows && rows[0]) || null;
 }
 
@@ -383,7 +484,12 @@ const HEX64 = /^[0-9a-f]{64}$/;
 /** set_stats araclar bolumu bu satira ait ve gecerli mi (sozlesme 2.7). Donus: { ok, neden }. */
 function aracGecerli(a, s) {
   if (!a || typeof a !== 'object' || !s) return { ok: false, neden: NEDEN.eksik };
-  if (Number(a.arac_id) !== Number(s.id) || a.derleme_host !== s.derleme_host || a.k6_surum !== s.k6_surum || a.wrk_surum !== s.wrk_surum) {
+  if (
+    Number(a.arac_id) !== Number(s.id) ||
+    a.derleme_host !== s.derleme_host ||
+    a.k6_surum !== s.k6_surum ||
+    a.wrk_surum !== s.wrk_surum
+  ) {
     return { ok: false, neden: NEDEN.eksik };
   }
   for (const k of ['k6_sha256', 'wrk_sha256', 'k6_arsiv_sha256', 'wrk_kaynak_sha256']) {
@@ -392,9 +498,14 @@ function aracGecerli(a, s) {
   const k6Satir = typeof a.k6_surum_satiri === 'string' ? a.k6_surum_satiri : '';
   const wrkSatir = typeof a.wrk_surum_satiri === 'string' ? a.wrk_surum_satiri : '';
   const k6Bas = `k6 ${s.k6_surum}`;
-  if (!(k6Satir.startsWith(k6Bas) && (k6Satir.length === k6Bas.length || k6Satir[k6Bas.length] === ' '))) return { ok: false, neden: NEDEN.surum };
+  if (!(
+    k6Satir.startsWith(k6Bas) &&
+    (k6Satir.length === k6Bas.length || k6Satir[k6Bas.length] === ' ')
+  ))
+    return { ok: false, neden: NEDEN.surum };
   if (!wrkSatir.startsWith(`wrk ${s.wrk_surum} `)) return { ok: false, neden: NEDEN.surum };
-  if (typeof a.sw_dizin !== 'string' || a.sw_dizin !== s.sw_dizin) return { ok: false, neden: NEDEN.dizin };
+  if (typeof a.sw_dizin !== 'string' || a.sw_dizin !== s.sw_dizin)
+    return { ok: false, neden: NEDEN.dizin };
   // D1: is sabit ozetlerle baslatilmis olmali (bos istenen = eski ilk-kullanimda-guven isi; DONE olmaz).
   const istenenK6 = sha(s.istenen_k6_arsiv_sha256);
   const istenenWrk = sha(s.istenen_wrk_kaynak_sha256);
@@ -406,19 +517,36 @@ function aracGecerli(a, s) {
 
 /** set_stats -> { stats, uyusmazlik }; baska isin sonucu (run_id / islem) kullanilmaz. */
 function aracStatsNormalle(ham, satir) {
-  if (!ham || typeof ham !== 'object' || Array.isArray(ham)) return { stats: null, uyusmazlik: null };
-  if (String(ham.run_id ?? '') !== String(satir.id)) return { stats: null, uyusmazlik: `run_id ${String(ham.run_id ?? '?').slice(0, 20)}` };
-  if (String(ham.islem ?? '') !== 'araclar') return { stats: null, uyusmazlik: `islem ${String(ham.islem ?? '?').slice(0, 20)}` };
+  if (!ham || typeof ham !== 'object' || Array.isArray(ham))
+    return { stats: null, uyusmazlik: null };
+  if (String(ham.run_id ?? '') !== String(satir.id))
+    return { stats: null, uyusmazlik: `run_id ${String(ham.run_id ?? '?').slice(0, 20)}` };
+  if (String(ham.islem ?? '') !== 'araclar')
+    return { stats: null, uyusmazlik: `islem ${String(ham.islem ?? '?').slice(0, 20)}` };
   let s = maskeleDerin(ham);
-  s.durum = String(s.durum ?? '').trim().toUpperCase();
-  if (JSON.stringify(s).length > SONUC_MAX_BAYT) s = { surum: s.surum, run_id: s.run_id, islem: s.islem, durum: s.durum, hata: s.hata, araclar: s.araclar, kirpildi: true };
-  if (JSON.stringify(s).length > SONUC_MAX_BAYT) s = { surum: s.surum, run_id: s.run_id, islem: s.islem, durum: s.durum, kirpildi: true };
+  s.durum = String(s.durum ?? '')
+    .trim()
+    .toUpperCase();
+  if (JSON.stringify(s).length > SONUC_MAX_BAYT)
+    s = {
+      surum: s.surum,
+      run_id: s.run_id,
+      islem: s.islem,
+      durum: s.durum,
+      hata: s.hata,
+      araclar: s.araclar,
+      kirpildi: true,
+    };
+  if (JSON.stringify(s).length > SONUC_MAX_BAYT)
+    s = { surum: s.surum, run_id: s.run_id, islem: s.islem, durum: s.durum, kirpildi: true };
   return { stats: s, uyusmazlik: null };
 }
 
 function hataMetni(v) {
   const m = maskele(String(v ?? '')).trim();
-  const ek = (m.includes(ESKI_PLAYBOOK_IZI) ? ESKI_PLAYBOOK_NOTU : '') + (OZET_FARKLI_IZI.test(m) ? OZET_FARKLI_NOTU : '');
+  const ek =
+    (m.includes(ESKI_PLAYBOOK_IZI) ? ESKI_PLAYBOOK_NOTU : '') +
+    (OZET_FARKLI_IZI.test(m) ? OZET_FARKLI_NOTU : '');
   return `${m.slice(0, Math.max(0, 1000 - ek.length))}${ek}`;
 }
 
@@ -430,18 +558,36 @@ const kisaAscii = (v, n, re) => {
 
 /** Terminal is -> karar (saf). Donus: { durum, hata, sonuc, a? }. */
 function aracKarari(st, stats, uyusmazlik, satir, deneme) {
-  if (st.missing) return { durum: 'OKUNAMADI', hata: hataMetni(st.jobExplanation), sonuc: { hata: st.jobExplanation } };
-  if (deneme > OKUMA_DENEME_SINIRI) return { durum: 'OKUNAMADI', hata: 'sonuç 3 denemede okunamadı', sonuc: stats };
-  if (st.status === 'canceled') return { durum: 'CANCELED', hata: hataMetni((stats && stats.hata) || st.jobExplanation || 'iş iptal edildi'), sonuc: stats };
+  if (st.missing)
+    return {
+      durum: 'OKUNAMADI',
+      hata: hataMetni(st.jobExplanation),
+      sonuc: { hata: st.jobExplanation },
+    };
+  if (deneme > OKUMA_DENEME_SINIRI)
+    return { durum: 'OKUNAMADI', hata: 'sonuç 3 denemede okunamadı', sonuc: stats };
+  if (st.status === 'canceled')
+    return {
+      durum: 'CANCELED',
+      hata: hataMetni((stats && stats.hata) || st.jobExplanation || 'iş iptal edildi'),
+      sonuc: stats,
+    };
   if (!stats) {
-    const neden = uyusmazlik ? `yayınlanan sonuç bu işe ait değil (${uyusmazlik})` : 'set_stats sonucu (nginx_loadtest_result) yok';
+    const neden = uyusmazlik
+      ? `yayınlanan sonuç bu işe ait değil (${uyusmazlik})`
+      : 'set_stats sonucu (nginx_loadtest_result) yok';
     return st.status === 'successful'
       ? { durum: 'OKUNAMADI', hata: neden, sonuc: { hata: neden } }
       : { durum: 'FAILED', hata: hataMetni(st.jobExplanation || neden), sonuc: { hata: neden } };
   }
   const g = aracGecerli(stats.araclar, satir);
-  if (st.status === 'successful' && stats.durum === 'OK' && g.ok) return { durum: 'DONE', hata: null, sonuc: stats, a: stats.araclar };
-  return { durum: 'FAILED', hata: hataMetni(stats.hata || g.neden || `AWX işi ${st.status}`), sonuc: stats };
+  if (st.status === 'successful' && stats.durum === 'OK' && g.ok)
+    return { durum: 'DONE', hata: null, sonuc: stats, a: stats.araclar };
+  return {
+    durum: 'FAILED',
+    hata: hataMetni(stats.hata || g.neden || `AWX işi ${st.status}`),
+    sonuc: stats,
+  };
 }
 
 function bitisZamani(v) {
@@ -451,10 +597,13 @@ function bitisZamani(v) {
 }
 
 async function aracSonYaz(satir, st, k) {
-  const sonucJson = k.sonuc == null ? null : (() => {
-    const s = JSON.stringify(k.sonuc);
-    return s.length <= SONUC_MAX_BAYT ? s : JSON.stringify({ kirpildi: true });
-  })();
+  const sonucJson =
+    k.sonuc == null
+      ? null
+      : (() => {
+          const s = JSON.stringify(k.sonuc);
+          return s.length <= SONUC_MAX_BAYT ? s : JSON.stringify({ kirpildi: true });
+        })();
   const bitis = bitisZamani(st && st.finished);
   if (k.durum === 'DONE') {
     const a = k.a;
@@ -464,9 +613,18 @@ async function aracSonYaz(satir, st, k) {
               derleme_rhel = $6, derleme_glibc = $7, wrk_glibc_gerekli = $8, sonuc = $9, hata = NULL,
               finished_at = COALESCE($10, finished_at, GETUTCDATE()), finalized_at = GETUTCDATE()
         WHERE id = $1 AND durum = 'FINALIZING'`,
-      [Number(satir.id), a.k6_sha256, a.wrk_sha256, a.k6_arsiv_sha256, a.wrk_kaynak_sha256,
-        kisaAscii(a.derleme_rhel, 8, /^[0-9]{1,3}$/), kisaAscii(a.derleme_glibc, 16, /^[0-9]+\.[0-9]+(\.[0-9]+)?$/),
-        kisaAscii(a.wrk_glibc_gerekli, 16, /^[0-9]+\.[0-9]+(\.[0-9]+)?$/), sonucJson, bitis],
+      [
+        Number(satir.id),
+        a.k6_sha256,
+        a.wrk_sha256,
+        a.k6_arsiv_sha256,
+        a.wrk_kaynak_sha256,
+        kisaAscii(a.derleme_rhel, 8, /^[0-9]{1,3}$/),
+        kisaAscii(a.derleme_glibc, 16, /^[0-9]+\.[0-9]+(\.[0-9]+)?$/),
+        kisaAscii(a.wrk_glibc_gerekli, 16, /^[0-9]+\.[0-9]+(\.[0-9]+)?$/),
+        sonucJson,
+        bitis,
+      ],
     );
     return;
   }
@@ -474,7 +632,13 @@ async function aracSonYaz(satir, st, k) {
     `UPDATE nginx_loadtest_araclar
         SET durum = $2, hata = $3, sonuc = $4, finished_at = COALESCE($5, finished_at, GETUTCDATE()), finalized_at = GETUTCDATE()
       WHERE id = $1 AND durum = 'FINALIZING'`,
-    [Number(satir.id), k.durum, k.hata == null ? null : String(k.hata).slice(0, 1000), sonucJson, bitis],
+    [
+      Number(satir.id),
+      k.durum,
+      k.hata == null ? null : String(k.hata).slice(0, 1000),
+      sonucJson,
+      bitis,
+    ],
   );
 }
 
@@ -497,19 +661,41 @@ async function araciSonuclandir(satir) {
   const id = Number(satir.id);
   const sid = Number(satir.awx_server_id);
   const jid = Number(satir.awx_job_id);
-  if (!Number.isInteger(sid) || sid < 0 || !Number.isInteger(jid) || jid <= 0) return { terminal: false, isYok: true };
+  if (!Number.isInteger(sid) || sid < 0 || !Number.isInteger(jid) || jid <= 0)
+    return { terminal: false, isYok: true };
   const yas = sayiYaDaNull(satir.calisma_yas_sn);
   let st;
   try {
     st = await runner.getJobStatusOnServer(sid, jid);
   } catch (e) {
-    if (e && Number(e.status) === 404 && e.code !== 'awx_server_missing' && yas !== null && yas > ARAC_IS_SURESI_SN + YOK_PAYI_SN) {
-      st = { status: 'error', missing: true, artifacts: {}, jobExplanation: `AWX iş #${jid} artık yok`, finished: null };
+    if (
+      e &&
+      Number(e.status) === 404 &&
+      e.code !== 'awx_server_missing' &&
+      yas !== null &&
+      yas > ARAC_IS_SURESI_SN + YOK_PAYI_SN
+    ) {
+      st = {
+        status: 'error',
+        missing: true,
+        artifacts: {},
+        jobExplanation: `AWX iş #${jid} artık yok`,
+        finished: null,
+      };
     } else if (yas !== null && yas > OKUNAMAZ_SURE_SN) {
       // PU2: AWX (sunucu yapilandirmadan kalkti, kalici 403 / 5xx) butce + pay + 12 sa'tir okunamiyor:
       // satir OKUNAMADI olur ("Araclari hazirla" acilir); kilit 12 saatlik devralma kuraliyla zaten duser.
-      const neden = maskele(String((e && (e.code || e.message)) || 'bilinmeyen hata')).slice(0, 160);
-      st = { status: 'error', missing: true, artifacts: {}, jobExplanation: `AWX iş #${jid} durumu 12 saatten uzun süredir okunamıyor (${neden})`, finished: null };
+      const neden = maskele(String((e && (e.code || e.message)) || 'bilinmeyen hata')).slice(
+        0,
+        160,
+      );
+      st = {
+        status: 'error',
+        missing: true,
+        artifacts: {},
+        jobExplanation: `AWX iş #${jid} durumu 12 saatten uzun süredir okunamıyor (${neden})`,
+        finished: null,
+      };
     } else {
       throw e;
     }
@@ -520,11 +706,16 @@ async function araciSonuclandir(satir) {
   if (TERMINAL.has(st.status) && st.eventProcessingFinished === false && !st.missing) {
     const bitis = bitisZamani(st.finished);
     const bekleme = require('./poller.cjs').OLAY_BEKLEME_SN;
-    olayBekle = bitis ? (Date.now() - bitis.getTime()) / 1000 < bekleme : !(yas !== null && yas > ARAC_IS_SURESI_SN + YOK_PAYI_SN);
+    olayBekle = bitis
+      ? (Date.now() - bitis.getTime()) / 1000 < bekleme
+      : !(yas !== null && yas > ARAC_IS_SURESI_SN + YOK_PAYI_SN);
   }
   if (!TERMINAL.has(st.status) || olayBekle) {
     if (satir.durum === 'QUEUED') {
-      await db().query(`UPDATE nginx_loadtest_araclar SET durum = 'RUNNING', started_at = COALESCE(started_at, GETUTCDATE()) WHERE id = $1 AND durum = 'QUEUED'`, [id]);
+      await db().query(
+        `UPDATE nginx_loadtest_araclar SET durum = 'RUNNING', started_at = COALESCE(started_at, GETUTCDATE()) WHERE id = $1 AND durum = 'QUEUED'`,
+        [id],
+      );
     }
     return { terminal: false, awxStatus: st.status };
   }
@@ -537,10 +728,14 @@ async function araciSonuclandir(satir) {
   const d0 = Number(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi);
   const deneme = Number.isInteger(d0) ? d0 : OKUMA_DENEME_SINIRI;
   try {
-    if (kilit.bagliIsKarari('araclar', st.status) === 'birak') await kilit.releaseLocksForJob(db(), sid, jid, st.finished || null);
+    if (kilit.bagliIsKarari('araclar', st.status) === 'birak')
+      await kilit.releaseLocksForJob(db(), sid, jid, st.finished || null);
     else await kilit.isinKilitleriniCoz(db(), sid, jid);
   } catch (e) {
-    console.warn(`[NginxYukTesti araclar] arac ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`, maskele(e && e.message));
+    console.warn(
+      `[NginxYukTesti araclar] arac ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`,
+      maskele(e && e.message),
+    );
   }
   const ham = require('../scalex/result.cjs').extractStatsKey(st.artifacts, ARAC_STATS_ANAHTARI);
   const { stats, uyusmazlik } = aracStatsNormalle(ham, satir);
@@ -548,7 +743,10 @@ async function araciSonuclandir(satir) {
     try {
       await require('./poller.cjs').ciktiArsivle(sid, jid);
     } catch (e) {
-      console.warn(`[NginxYukTesti araclar] is #${jid} ciktisi arsivlenemedi:`, maskele(e && e.message));
+      console.warn(
+        `[NginxYukTesti araclar] is #${jid} ciktisi arsivlenemedi:`,
+        maskele(e && e.message),
+      );
     }
   }
   const k = aracKarari(st, stats, uyusmazlik, satir, deneme);
@@ -580,7 +778,10 @@ async function araclariSonuclandir() {
       const o = await araciSonuclandir(r);
       if (o.terminal && !o.atlandi) kapanan += 1;
     } catch (e) {
-      console.warn(`[NginxYukTesti araclar] arac ${r.id} durumu okunamadi:`, maskele(e && e.message));
+      console.warn(
+        `[NginxYukTesti araclar] arac ${r.id} durumu okunamadi:`,
+        maskele(e && e.message),
+      );
     }
   }
   return { bayat, kapanan };
@@ -589,7 +790,10 @@ async function araclariSonuclandir() {
 // ── UCLAR (index.cjs yonlendiricisi cagirir; Admin denetimi isleyicide) ───────────────────
 
 function kullaniciAdi(req) {
-  return String(((req && req.session && req.session.user) || {}).username || 'unknown').slice(0, 100);
+  return String(((req && req.session && req.session.user) || {}).username || 'unknown').slice(
+    0,
+    100,
+  );
 }
 
 async function dbOku(fn) {
@@ -601,8 +805,14 @@ async function dbOku(fn) {
 }
 
 function kilitleriBirak(anahtarlar, lockId) {
-  return require('./kilit.cjs').releaseLocks(db(), anahtarlar, lockId)
-    .catch((e) => console.warn('[NginxYukTesti araclar] kilit birakilamadi (TTL ile dusecek):', maskele(e && e.message)));
+  return require('./kilit.cjs')
+    .releaseLocks(db(), anahtarlar, lockId)
+    .catch((e) =>
+      console.warn(
+        '[NginxYukTesti araclar] kilit birakilamadi (TTL ile dusecek):',
+        maskele(e && e.message),
+      ),
+    );
 }
 
 async function aracBasarisiz(aracId, metin, jobId = null, awxServerId = null) {
@@ -614,7 +824,10 @@ async function aracBasarisiz(aracId, metin, jobId = null, awxServerId = null) {
       [aracId, String(metin).slice(0, 1000), awxServerId, jobId],
     );
   } catch (e) {
-    console.warn(`[NginxYukTesti araclar] arac ${aracId} FAILED yazilamadi:`, maskele(e && e.message));
+    console.warn(
+      `[NginxYukTesti araclar] arac ${aracId} FAILED yazilamadi:`,
+      maskele(e && e.message),
+    );
   }
 }
 
@@ -626,8 +839,14 @@ async function araclarYaniti(req, { isAdmin }) {
   const sabit = sabitOzetler();
   const { durum, calisan, gecmis } = await dbOku(async (d) => {
     const du = await aracDurumu(d, sabit);
-    const c = (await d.query(`SELECT TOP 1 ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar WHERE durum IN ('QUEUED', 'RUNNING', 'FINALIZING') ORDER BY id DESC`)).rows;
-    const g = (await d.query(`SELECT TOP 10 ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar ORDER BY id DESC`)).rows;
+    const c = (
+      await d.query(
+        `SELECT TOP 1 ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar WHERE durum IN ('QUEUED', 'RUNNING', 'FINALIZING') ORDER BY id DESC`,
+      )
+    ).rows;
+    const g = (
+      await d.query(`SELECT TOP 10 ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar ORDER BY id DESC`)
+    ).rows;
     return { durum: du, calisan: (c && c[0]) || null, gecmis: g || [] };
   });
   const px = aracProxy();
@@ -670,14 +889,32 @@ async function araclariHazirla(req, govde) {
     if (!host) throw hata(400, 'gecersiz_istek', 'Geçersiz derleme makinesi adı.');
   }
   if (!derlemeHostlari().includes(host)) {
-    throw hata(409, 'derleme_host_izinsiz', `${host} derleme makinesi izin listesinde değil (NGINX_LOADTEST_DERLEME_HOSTLARI).`);
+    throw hata(
+      409,
+      'derleme_host_izinsiz',
+      `${host} derleme makinesi izin listesinde değil (NGINX_LOADTEST_DERLEME_HOSTLARI).`,
+    );
   }
   const px = aracProxy();
-  if (px.hata === PROXY_TANIMSIZ) throw hata(409, 'arac_proxy_tanimsiz', 'NGINX_LOADTEST_ARAC_PROXY tanımlı değil (kurum vekil adresi ya da "yok"); araçlar hazırlanamaz.');
-  if (px.hata) throw hata(409, 'arac_proxy_gecersiz', 'NGINX_LOADTEST_ARAC_PROXY geçersiz (yalnız http://<ad>:<port>, kimlik bilgisi yok); araçlar hazırlanamaz.');
+  if (px.hata === PROXY_TANIMSIZ)
+    throw hata(
+      409,
+      'arac_proxy_tanimsiz',
+      'NGINX_LOADTEST_ARAC_PROXY tanımlı değil (kurum vekil adresi ya da "yok"); araçlar hazırlanamaz.',
+    );
+  if (px.hata)
+    throw hata(
+      409,
+      'arac_proxy_gecersiz',
+      'NGINX_LOADTEST_ARAC_PROXY geçersiz (yalnız http://<ad>:<port>, kimlik bilgisi yok); araçlar hazırlanamaz.',
+    );
   const sabit = sabitOzetler();
   if (sabit.eksikler.length) {
-    throw hata(409, 'arac_ozet_sabit_yok', `Araçlar hazırlanamaz: ${ozetSabitYokMesaji(sabit.eksikler)}`);
+    throw hata(
+      409,
+      'arac_ozet_sabit_yok',
+      `Araçlar hazırlanamaz: ${ozetSabitYokMesaji(sabit.eksikler)}`,
+    );
   }
   const sablon = await baslat.sablonuCoz();
   const k6v = k6Surum();
@@ -698,11 +935,17 @@ async function araclariHazirla(req, govde) {
       },
     });
   } catch (e) {
-    console.warn('[NginxYukTesti araclar] kilit alinamadi (DB) - is baslatilmadi:', maskele(e && e.message));
+    console.warn(
+      '[NginxYukTesti araclar] kilit alinamadi (DB) - is baslatilmadi:',
+      maskele(e && e.message),
+    );
     await kilitleriBirak(anahtarlar, lockId);
     throw hata(424, 'db_okunamadi', 'İş kilidi alınamadı; iş başlatılmadı, lütfen tekrar deneyin.');
   }
-  if (!alinan.ok) throw hata(409, 'kilit_dolu', kilit.doluKilitMesaji(alinan.busyKey, alinan.busy), { kilit: alinan.busyKey });
+  if (!alinan.ok)
+    throw hata(409, 'kilit_dolu', kilit.doluKilitMesaji(alinan.busyKey, alinan.busy), {
+      kilit: alinan.busyKey,
+    });
 
   const kok = dg.ciktiKok();
   let aracId;
@@ -716,21 +959,41 @@ async function araclariHazirla(req, govde) {
     aracId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
     if (!(aracId > 0)) throw new Error('araç seti numarası dönmedi');
     swDizin = `${kok}/araclar/${aracId}`;
-    await db().query(`UPDATE nginx_loadtest_araclar SET sw_dizin = $2 WHERE id = $1`, [aracId, swDizin]);
+    await db().query(`UPDATE nginx_loadtest_araclar SET sw_dizin = $2 WHERE id = $1`, [
+      aracId,
+      swDizin,
+    ]);
   } catch (e) {
     await kilitleriBirak(anahtarlar, lockId);
     if (aracId > 0) await aracBasarisiz(aracId, `kayıt tamamlanamadı: ${maskele(e && e.message)}`);
-    throw hata(424, 'db_okunamadi', `Araç kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`);
+    throw hata(
+      424,
+      'db_okunamadi',
+      `Araç kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`,
+    );
   }
   const simdiSn = Math.floor(Date.now() / 1000);
   const ev = aracEkstraDegiskenler({
-    aracId, derlemeHost: host, k6Surum: k6v, wrkSurum: WRK_SURUM, k6ArsivSha256: sabit.k6Arsiv, wrkKaynakSha256: sabit.wrkKaynak, proxy: px.proxy, kok, simdiSn,
+    aracId,
+    derlemeHost: host,
+    k6Surum: k6v,
+    wrkSurum: WRK_SURUM,
+    k6ArsivSha256: sabit.k6Arsiv,
+    wrkKaynakSha256: sabit.wrkKaynak,
+    proxy: px.proxy,
+    kok,
+    simdiSn,
   });
   const ihlal = aracEkstraDegiskenleriDenetle(ev, { simdiSn });
   if (ihlal.length) {
     await kilitleriBirak(anahtarlar, lockId);
     await aracBasarisiz(aracId, `son kapı: ${ihlal.join(', ')}`);
-    throw hata(409, 'sinir_asildi', `Gönderilecek değişkenler son denetimi geçemedi: ${ihlal.join(', ')}.`, { aracId });
+    throw hata(
+      409,
+      'sinir_asildi',
+      `Gönderilecek değişkenler son denetimi geçemedi: ${ihlal.join(', ')}.`,
+      { aracId },
+    );
   }
   let is;
   try {
@@ -742,29 +1005,56 @@ async function araclariHazirla(req, govde) {
         eylem: 'nginx_loadtest_araclar_hazirla',
         targetHost: host,
         targetIp: null,
-        ayrinti: { aracId, islem: 'araclar', derlemeHost: host, k6Surum: k6v, wrkSurum: WRK_SURUM, k6ArsivSha256: sabit.k6Arsiv, wrkKaynakSha256: sabit.wrkKaynak },
+        ayrinti: {
+          aracId,
+          islem: 'araclar',
+          derlemeHost: host,
+          k6Surum: k6v,
+          wrkSurum: WRK_SURUM,
+          k6ArsivSha256: sabit.k6Arsiv,
+          wrkKaynakSha256: sabit.wrkKaynak,
+        },
       },
     });
   } catch (e) {
     if (e && e.jobId != null) {
-      await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: e.awxServerId, awxJobId: e.jobId, bagTuru: 'araclar' }).catch(() => {});
+      await kilit
+        .bindLocks(db(), anahtarlar, lockId, {
+          awxServerId: e.awxServerId,
+          awxJobId: e.jobId,
+          bagTuru: 'araclar',
+        })
+        .catch(() => {});
     } else if (!(e && e.belirsiz)) {
       await kilitleriBirak(anahtarlar, lockId);
     }
-    await aracBasarisiz(aracId, maskele(e && e.message), e && e.jobId != null ? e.jobId : null, e && e.jobId != null ? e.awxServerId : null);
+    await aracBasarisiz(
+      aracId,
+      maskele(e && e.message),
+      e && e.jobId != null ? e.jobId : null,
+      e && e.jobId != null ? e.awxServerId : null,
+    );
     throw Object.assign(e, { aracId });
   }
   try {
-    await kilit.bindLocks(db(), anahtarlar, lockId, { awxServerId: is.awxServerId, awxJobId: is.jobId, bagTuru: 'araclar' });
+    await kilit.bindLocks(db(), anahtarlar, lockId, {
+      awxServerId: is.awxServerId,
+      awxJobId: is.jobId,
+      bagTuru: 'araclar',
+    });
   } catch (e) {
-    console.warn('[NginxYukTesti araclar] kilit isle baglanamadi (TTL ile dusecek):', maskele(e && e.message));
+    console.warn(
+      '[NginxYukTesti araclar] kilit isle baglanamadi (TTL ile dusecek):',
+      maskele(e && e.message),
+    );
   }
-  const yaz = async () => db().query(
-    `UPDATE nginx_loadtest_araclar
+  const yaz = async () =>
+    db().query(
+      `UPDATE nginx_loadtest_araclar
         SET awx_server_id = $2, awx_job_id = $3, started_at = GETUTCDATE(), durum = CASE WHEN durum = 'QUEUED' THEN 'RUNNING' ELSE durum END
       WHERE id = $1 AND awx_job_id IS NULL`,
-    [aracId, is.awxServerId, is.jobId],
-  );
+      [aracId, is.awxServerId, is.jobId],
+    );
   try {
     await yaz();
   } catch (e1) {
@@ -772,7 +1062,10 @@ async function araclariHazirla(req, govde) {
     try {
       await yaz();
     } catch (e2) {
-      console.warn('[NginxYukTesti araclar] arac satiri yazilamadi (2 deneme):', maskele((e2 && e2.message) || (e1 && e1.message)));
+      console.warn(
+        '[NginxYukTesti araclar] arac satiri yazilamadi (2 deneme):',
+        maskele((e2 && e2.message) || (e1 && e1.message)),
+      );
     }
   }
   return { aracId, jobId: is.jobId, awxServerId: is.awxServerId };
@@ -788,16 +1081,24 @@ async function araclariHazirla(req, govde) {
 async function aracGeriCek(req, id) {
   const r = await dbOku((d) => aracSetiOku(d, id));
   if (!r) throw hata(409, 'arac_yok', 'Araç seti bulunamadı.');
-  if (r.durum !== 'DONE') throw hata(409, 'arac_geri_cekilemez', 'Yalnız başarıyla hazırlanmış (DONE) bir araç seti geri çekilebilir.');
-  if (r.geri_cekme_at != null) throw hata(409, 'zaten_geri_cekildi', 'Bu araç seti zaten geri çekildi.');
+  if (r.durum !== 'DONE')
+    throw hata(
+      409,
+      'arac_geri_cekilemez',
+      'Yalnız başarıyla hazırlanmış (DONE) bir araç seti geri çekilebilir.',
+    );
+  if (r.geri_cekme_at != null)
+    throw hata(409, 'zaten_geri_cekildi', 'Bu araç seti zaten geri çekildi.');
   const sabit = sabitOzetler();
   const onceki = await dbOku((d) => etkinAracSeti(d, sabit));
   const kim = kullaniciAdi(req);
-  const u = await dbOku((d) => d.query(
-    `UPDATE nginx_loadtest_araclar SET geri_ceken = $2, geri_cekme_at = GETUTCDATE()
+  const u = await dbOku((d) =>
+    d.query(
+      `UPDATE nginx_loadtest_araclar SET geri_ceken = $2, geri_cekme_at = GETUTCDATE()
       WHERE id = $1 AND durum = 'DONE' AND geri_cekme_at IS NULL`,
-    [id, kim],
-  ));
+      [id, kim],
+    ),
+  );
   if (!u.rowCount) throw hata(409, 'zaten_geri_cekildi', 'Bu araç seti zaten geri çekildi.');
   let kapi;
   try {
@@ -810,15 +1111,22 @@ async function aracGeriCek(req, id) {
     require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_araclar_geri_cek', {
       targetHost: r.derleme_host || null,
       detail: require('./baslat.cjs').denetimAyrintisi({
-        aracId: id, etkindi: !!onceki && Number(onceki.id) === id, yeniEtkinAracId: kapi.aracId, kapiKodu: kapi.kod,
-        k6Sha256: sha(r.k6_sha256), wrkSha256: sha(r.wrk_sha256),
+        aracId: id,
+        etkindi: !!onceki && Number(onceki.id) === id,
+        yeniEtkinAracId: kapi.aracId,
+        kapiKodu: kapi.kod,
+        k6Sha256: sha(r.k6_sha256),
+        wrkSha256: sha(r.wrk_sha256),
       }),
     });
   } catch {
     /* best-effort */
   }
   const guncel = await dbOku((d) => aracSetiOku(d, id));
-  return { arac: aracApi(guncel || { ...r, geri_ceken: kim, geri_cekme_at: new Date() }, sabit), kapi };
+  return {
+    arac: aracApi(guncel || { ...r, geri_ceken: kim, geri_cekme_at: new Date() }, sabit),
+    kapi,
+  };
 }
 
 module.exports = {

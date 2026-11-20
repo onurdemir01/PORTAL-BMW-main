@@ -111,7 +111,10 @@ export function KapsamSecici({
           />
           <span>
             <b id={`${turId}-${t}-ad`}>{KAPSAM_AD[t]}</b>
-            <span id={`${turId}-${t}-aciklama`} style={{ color: 'var(--text-muted)' }}> — {KAPSAM_ACIKLAMA[t]}</span>
+            <span id={`${turId}-${t}-aciklama`} style={{ color: 'var(--text-muted)' }}>
+              {' '}
+              — {KAPSAM_ACIKLAMA[t]}
+            </span>
           </span>
         </label>
       ))}

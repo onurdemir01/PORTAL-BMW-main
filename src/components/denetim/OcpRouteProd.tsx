@@ -173,7 +173,9 @@ export default function OcpRouteProd() {
                 gorunen.map(({ r, on, k, n }) => [
                   r.application,
                   r.alt ?? '',
-                  ...kumeler.map((c) => (c.veriYok ? 'veri yok' : on.has(c.cluster) ? 'var' : 'yok')),
+                  ...kumeler.map((c) =>
+                    c.veriYok ? 'veri yok' : on.has(c.cluster) ? 'var' : 'yok',
+                  ),
                   `${k}/${n}`,
                 ]),
               )
@@ -200,15 +202,24 @@ export default function OcpRouteProd() {
       <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
         <Stat n={satirlar.length} l="prod route" />
         <Stat n={ozet.tam} l={`tüm prod cluster'larında (${resmi.length})`} tone="ok" />
-        <Stat n={ozet.kismi} l="kısmi (bazı cluster'larda yok)" tone={ozet.kismi ? 'warn' : undefined} />
+        <Stat
+          n={ozet.kismi}
+          l="kısmi (bazı cluster'larda yok)"
+          tone={ozet.kismi ? 'warn' : undefined}
+        />
         <Stat n={ozet.hicbiri} l="resmi cluster'da yok" tone={ozet.hicbiri ? 'warn' : undefined} />
-        <Stat n={ozet.beklenmeyen} l="beklenmeyen cluster'da" tone={ozet.beklenmeyen ? 'warn' : undefined} />
+        <Stat
+          n={ozet.beklenmeyen}
+          l="beklenmeyen cluster'da"
+          tone={ozet.beklenmeyen ? 'warn' : undefined}
+        />
       </div>
 
       {veriYok.length > 0 && (
         <div className="text-xs rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[var(--text-secondary)]">
-          <b>Veri yok:</b> <span className="font-mono">{veriYok.join(', ')}</span> — bu cluster'lardan
-          hiç kayıt gelmedi (job giriş yapamamış olabilir). Ölçülemedi; kapsam hesabına (n) katılmadı.
+          <b>Veri yok:</b> <span className="font-mono">{veriYok.join(', ')}</span> — bu
+          cluster'lardan hiç kayıt gelmedi (job giriş yapamamış olabilir). Ölçülemedi; kapsam
+          hesabına (n) katılmadı.
         </div>
       )}
 
@@ -216,8 +227,12 @@ export default function OcpRouteProd() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[var(--bg-elevated)] text-left">
-              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">Route</th>
-              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">Namespace</th>
+              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">
+                Route
+              </th>
+              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">
+                Namespace
+              </th>
               {kumeler.map((c) => (
                 <th
                   key={c.cluster}
@@ -247,7 +262,9 @@ export default function OcpRouteProd() {
                   </div>
                 </th>
               ))}
-              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">Kapsam</th>
+              <th className="px-3 pt-2 pb-1 text-xs font-semibold text-[var(--text-muted)]">
+                Kapsam
+              </th>
             </tr>
             <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)]">
               <th className="px-3 pb-2">
@@ -273,7 +290,9 @@ export default function OcpRouteProd() {
                   <select
                     value={fKume[c.cluster] ?? ''}
                     disabled={!!c.veriYok}
-                    onChange={(e) => setFKume((m) => ({ ...m, [c.cluster]: e.target.value as VarYok }))}
+                    onChange={(e) =>
+                      setFKume((m) => ({ ...m, [c.cluster]: e.target.value as VarYok }))
+                    }
                     aria-label={`${c.cluster} sütununa göre süz`}
                     className={girdi}
                   >
@@ -304,12 +323,19 @@ export default function OcpRouteProd() {
             {gorunen.length === 0 && <TableEmptyRow colSpan={kumeler.length + 3} />}
             {gorunen.slice(0, SATIR_SINIRI).map(({ r, on, k, n, tur }) => (
               <tr key={r.key ?? r.application} className="hover:bg-[var(--bg-elevated)]/60">
-                <td className="px-3 py-1.5 font-mono text-xs text-[var(--text-primary)]">{r.application}</td>
-                <td className="px-3 py-1.5 font-mono text-xs text-[var(--text-secondary)]">{r.alt}</td>
+                <td className="px-3 py-1.5 font-mono text-xs text-[var(--text-primary)]">
+                  {r.application}
+                </td>
+                <td className="px-3 py-1.5 font-mono text-xs text-[var(--text-secondary)]">
+                  {r.alt}
+                </td>
                 {kumeler.map((c) => (
                   <td key={c.cluster} className="px-2 py-1.5">
                     {c.veriYok ? (
-                      <span className="text-[11px] text-[var(--text-muted)]" title="Veri yok — ölçülemedi">
+                      <span
+                        className="text-[11px] text-[var(--text-muted)]"
+                        title="Veri yok — ölçülemedi"
+                      >
                         —
                       </span>
                     ) : on.has(c.cluster) ? (
@@ -326,7 +352,9 @@ export default function OcpRouteProd() {
                   </td>
                 ))}
                 <td className="px-3 py-1.5">
-                  <span className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${kapsamCls(tur)}`}>
+                  <span
+                    className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${kapsamCls(tur)}`}
+                  >
                     {k}/{n}
                   </span>
                 </td>
@@ -347,7 +375,11 @@ export default function OcpRouteProd() {
 
 function Stat({ n, l, tone }: { n: number; l: string; tone?: 'ok' | 'warn' }) {
   const color =
-    tone === 'ok' ? 'text-emerald-600' : tone === 'warn' ? 'text-amber-600' : 'text-[var(--text-primary)]';
+    tone === 'ok'
+      ? 'text-emerald-600'
+      : tone === 'warn'
+        ? 'text-amber-600'
+        : 'text-[var(--text-primary)]';
   return (
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{fmtNumber(n)}</div>

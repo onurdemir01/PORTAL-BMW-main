@@ -256,17 +256,47 @@ export const arkSpaApi = {
     application: string;
     inUse: string | null;
     note: string;
-  }): Promise<{ ok: boolean; message?: string; inUseBy?: string | null; inUseAt?: string | null }> =>
+  }): Promise<{
+    ok: boolean;
+    message?: string;
+    inUseBy?: string | null;
+    inUseAt?: string | null;
+  }> =>
     fetch(`${BASE}/intranet/declare`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }).then(safeJson),
   gecis: (): Promise<GecisPlani> => fetch(`${BASE}/gecis`).then(safeJson),
-  gecisApp: (p: { namespace: string; application: string; kullanimda: 'yes' | 'no' | null; katilimci: string }): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/gecis/app`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
-  gecisKontrol: (p: { namespace: string; application: string; kontrol: boolean }): Promise<{ ok: boolean; message?: string; kontrolAt?: string | null }> =>
-    fetch(`${BASE}/gecis/app-kontrol`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
-  gecisSet: (p: { no: number; calismaAt: string | null; ocoNo: string }): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/gecis/set`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(safeJson),
+  gecisApp: (p: {
+    namespace: string;
+    application: string;
+    kullanimda: 'yes' | 'no' | null;
+    katilimci: string;
+  }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/gecis/app`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(safeJson),
+  gecisKontrol: (p: {
+    namespace: string;
+    application: string;
+    kontrol: boolean;
+  }): Promise<{ ok: boolean; message?: string; kontrolAt?: string | null }> =>
+    fetch(`${BASE}/gecis/app-kontrol`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(safeJson),
+  gecisSet: (p: {
+    no: number;
+    calismaAt: string | null;
+    ocoNo: string;
+  }): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/gecis/set`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(safeJson),
 };

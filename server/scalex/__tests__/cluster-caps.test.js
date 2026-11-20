@@ -19,10 +19,23 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const RUNNER = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', 'scalex', 'scalex_app', 'files', 'scalex_runner.sh'),
-  'utf8',
-).replace(/\r\n/g, '\n');
+const RUNNER = fs
+  .readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      'ansible',
+      'playbooks',
+      'bmw_portal',
+      'scalex',
+      'scalex_app',
+      'files',
+      'scalex_runner.sh',
+    ),
+    'utf8',
+  )
+  .replace(/\r\n/g, '\n');
 // SATIR SONU NORMALIZASYONU (2026-09-26): bu bekciler kaynakta LF arar, ama depo
 // Windows'ta CRLF ile checkout ediliyor - cok satirli capalar HIC eslesmiyordu ve
 // bekci, korudugu kodu gormeden kirmiziya donuyordu (LF checkout'ta yesil, CRLF'te
@@ -40,7 +53,9 @@ function capsWith(rows) {
   m.filename = file;
   m.paths = Module._nodeModulePaths(path.dirname(file));
   const sahteRequire = (id) =>
-    id.includes('db/index') ? { query: async () => ({ rows, rowCount: rows.length }) } : m.require(id);
+    id.includes('db/index')
+      ? { query: async () => ({ rows, rowCount: rows.length }) }
+      : m.require(id);
   const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', CAPS_SRC);
   fn(m.exports, sahteRequire, m, m.filename, path.dirname(file));
   return m.exports;
@@ -67,9 +82,11 @@ test('CC1 UC DURUM AYRI: hic taranmadi / tarandi-bos / okunamadi', () => {
   const bos = capsWith([satir({ kinds_csv: null })]);
   return bos.list({ env: 'prod', tenant: 'ark' }).then((r) => {
     assert.equal(r[0].kinds, null, '"hic taranmadi" bos dizi ile karistirilmis');
-    return capsWith([satir({ kinds_csv: '' })]).list({}).then((r2) => {
-      assert.deepEqual(r2[0].kinds, [], '"tarandi, bos" null ile karistirilmis');
-    });
+    return capsWith([satir({ kinds_csv: '' })])
+      .list({})
+      .then((r2) => {
+        assert.deepEqual(r2[0].kinds, [], '"tarandi, bos" null ile karistirilmis');
+      });
   });
 });
 
@@ -118,10 +135,22 @@ test('CC6 okunamamis tarama YINE YAZILIR ama kinds NULL kalir', async () => {
     },
   };
   const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', CAPS_SRC);
-  fn(m.exports, (id) => (id.includes('db/index') ? sahte : m.require(id)), m, m.filename, path.dirname(file));
+  fn(
+    m.exports,
+    (id) => (id.includes('db/index') ? sahte : m.require(id)),
+    m,
+    m.filename,
+    path.dirname(file),
+  );
   await m.exports.save({
-    env: 'prod', tenant: 'ark', clusterName: 'c1',
-    kinds: ['x.io'], rbac: {}, resourcesReadable: false, scannedBy: 'a', awxJobId: 1,
+    env: 'prod',
+    tenant: 'ark',
+    clusterName: 'c1',
+    kinds: ['x.io'],
+    rbac: {},
+    resourcesReadable: false,
+    scannedBy: 'a',
+    awxJobId: 1,
   });
   // 4. parametre = kinds_csv
   assert.equal(yazilan[0].p[3], null, 'okunamamis tarama kinds YAZMIS — sessiz eksik uretir');
@@ -139,7 +168,11 @@ test('CC6 okunamamis tarama YINE YAZILIR ama kinds NULL kalir', async () => {
 test('CC7 kesif enumerasyon CAGIRMIYOR; onbellek listesi suzgecten gecip taraniyor', () => {
   const i = RUNNER.indexOf('discover_workloads() {');
   const govde = RUNNER.slice(i, RUNNER.indexOf('\ndiscover_state() {', i));
-  for (const yasak of ['load_extra_scalable_resources', 'enumerate_extra_kinds', 'load_cluster_resources']) {
+  for (const yasak of [
+    'load_extra_scalable_resources',
+    'enumerate_extra_kinds',
+    'load_cluster_resources',
+  ]) {
     assert.ok(!govde.includes(yasak), `kesif ${yasak} cagiriyor — enumerasyon kritik yola donmus`);
   }
   assert.match(
@@ -192,8 +225,16 @@ test('CC9 `capabilities` modu onbellegi URETIR, TUKETMEZ', () => {
     /mode === 'capabilities'\s*\?\s*\{\}\s*:\s*clusterCaps\s*\.?\s*kindsPerCluster\(/,
     'portal `capabilities` modunda cluster basina haritayi okuyor',
   );
-  assert.equal((IX.match(/clusterCaps\s*\.\s*kindsForScope\(/g) || []).length, 1, 'kosulsuz ikinci bir okuma eklenmis');
-  assert.equal((IX.match(/clusterCaps\s*\.\s*kindsPerCluster\(/g) || []).length, 1, 'kosulsuz ikinci bir okuma eklenmis');
+  assert.equal(
+    (IX.match(/clusterCaps\s*\.\s*kindsForScope\(/g) || []).length,
+    1,
+    'kosulsuz ikinci bir okuma eklenmis',
+  );
+  assert.equal(
+    (IX.match(/clusterCaps\s*\.\s*kindsPerCluster\(/g) || []).length,
+    1,
+    'kosulsuz ikinci bir okuma eklenmis',
+  );
 });
 
 test('CC10 `capabilities` NAMESPACE istemiyor (cluster duzeyi)', () => {
@@ -218,8 +259,18 @@ test('CC11 `resources_readable` YALNIZCA "yes" iken true sayiliyor', () => {
       overall_status: 'ok',
       items: [
         { cluster: 'c1', step: 'CAP_KIND', status: 'OK', detail: 'kind=a.io' },
-        { cluster: 'c1', step: 'CAP_SUMMARY', status: 'WARN', detail: 'kinds=1 resources_readable=no' },
-        { cluster: 'c2', step: 'CAP_SUMMARY', status: 'OK', detail: 'kinds=0 resources_readable=yes' },
+        {
+          cluster: 'c1',
+          step: 'CAP_SUMMARY',
+          status: 'WARN',
+          detail: 'kinds=1 resources_readable=no',
+        },
+        {
+          cluster: 'c2',
+          step: 'CAP_SUMMARY',
+          status: 'OK',
+          detail: 'kinds=0 resources_readable=yes',
+        },
       ],
     },
   });
@@ -242,7 +293,12 @@ test('CC11 `resources_readable` YALNIZCA "yes" iken true sayiliyor', () => {
       overall_status: 'ok',
       items: [
         { cluster: 'c3', step: 'CAP_SUMMARY', status: 'OK', detail: 'kinds=5' },
-        { cluster: 'c4', step: 'CAP_SUMMARY', status: 'OK', detail: 'kinds=5 resources_readable=maybe' },
+        {
+          cluster: 'c4',
+          step: 'CAP_SUMMARY',
+          status: 'OK',
+          detail: 'kinds=5 resources_readable=maybe',
+        },
       ],
     },
   });
@@ -319,7 +375,11 @@ test('CC15 EKSIK cluster yalnizca KENDINI soguk yola dusurur', async () => {
   const h = await caps.kindsPerCluster({ env: 'prod', tenant: 'ark', clusterNames: kapsam });
   assert.deepEqual(h.c1, ['a.io']);
   assert.deepEqual(h.c2, ['b.io']);
-  assert.equal(h.c3, undefined, 'kaydi olmayan cluster haritaya girmis — baskasinin listesini alir');
+  assert.equal(
+    h.c3,
+    undefined,
+    'kaydi olmayan cluster haritaya girmis — baskasinin listesini alir',
+  );
 });
 
 test('CC16 harita BIRLESIM DEGIL — her cluster KENDI listesini alir', async () => {
@@ -343,7 +403,11 @@ test('CC17 bos kapsam bos sozluk doner (null degil)', async () => {
 test('CC18 portal IKI bicimi de gonderiyor, BOS sozlugu GONDERMIYOR', () => {
   // Eski AWX paketleri yalnizca `scalex_extra_kinds`i okuyabiliyor; yeni bicim
   // eskisinin YERINE degil YANINA konur.
-  assert.match(IX, /\.\.\.\(extraKinds \? \{ scalex_extra_kinds: extraKinds \}/, 'birlesik liste artik gonderilmiyor');
+  assert.match(
+    IX,
+    /\.\.\.\(extraKinds \? \{ scalex_extra_kinds: extraKinds \}/,
+    'birlesik liste artik gonderilmiyor',
+  );
 
   // KORLUK PANZEHIRI (mutasyon turunda bulundu): anahtarin VARLIGINA bakmak
   // yetmiyor. `...(false && Object.keys(clusterKinds).length ? {...} : {})`
@@ -391,15 +455,26 @@ function saveSql() {
     },
   };
   const fn = new Function('exports', 'require', 'module', '__filename', '__dirname', CAPS_SRC);
-  fn(m.exports, (id) => (id.includes('db/index') ? sahte : m.require(id)), m, m.filename, path.dirname(file));
+  fn(
+    m.exports,
+    (id) => (id.includes('db/index') ? sahte : m.require(id)),
+    m,
+    m.filename,
+    path.dirname(file),
+  );
   return { save: m.exports.save, yazilan };
 }
 
 test('CC19 `rbac` TANIMSIZ iken `rbac_json` SET listesine GIRMEZ', async () => {
   const { save, yazilan } = saveSql();
   await save({
-    env: 'prod', tenant: 'ark', clusterName: 'c1',
-    kinds: ['a.io'], resourcesReadable: true, scannedBy: 'kesif', awxJobId: 5,
+    env: 'prod',
+    tenant: 'ark',
+    clusterName: 'c1',
+    kinds: ['a.io'],
+    resourcesReadable: true,
+    scannedBy: 'kesif',
+    awxJobId: 5,
   });
   const upd = yazilan.find((x) => x.sql.startsWith('UPDATE'));
   assert.ok(upd, 'UPDATE hic calismadi');
@@ -415,8 +490,12 @@ test('CC19 `rbac` TANIMSIZ iken `rbac_json` SET listesine GIRMEZ', async () => {
 test('CC20 `rbac` VERILDIGINDE `rbac_json` YAZILIR (kural gevsemedi)', async () => {
   const { save, yazilan } = saveSql();
   await save({
-    env: 'prod', tenant: 'ark', clusterName: 'c1',
-    kinds: ['a.io'], rbac: { deployments: true }, resourcesReadable: true,
+    env: 'prod',
+    tenant: 'ark',
+    clusterName: 'c1',
+    kinds: ['a.io'],
+    rbac: { deployments: true },
+    resourcesReadable: true,
   });
   const upd = yazilan.find((x) => x.sql.startsWith('UPDATE'));
   assert.match(upd.sql, /rbac_json\s*=\s*\$5/, '`capabilities` taramasi yetkiyi artik yazmiyor');

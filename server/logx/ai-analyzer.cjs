@@ -6,11 +6,18 @@
 const { maskLines } = require('./masker.cjs');
 // Saglayici cekirdegi ortak katmandan gelir (bkz. server/ai/provider.cjs) —
 // rate limit de artik orada, ozellik-bazli ('logs' kotasi).
-const { getProvider, isConfigured, activeModel, getApiHeaders, httpsPost, checkRateLimit } = require('../ai/provider.cjs');
+const {
+  getProvider,
+  isConfigured,
+  activeModel,
+  getApiHeaders,
+  httpsPost,
+  checkRateLimit,
+} = require('../ai/provider.cjs');
 
 const MAX_INPUT_LINES = 500;
 const MAX_LINE_LENGTH = 500;
-const MAX_TOKENS      = 1024;
+const MAX_TOKENS = 1024;
 
 function isRateLimited(username) {
   return checkRateLimit(username, 'logs');
@@ -20,17 +27,12 @@ function isRateLimited(username) {
 
 async function callAnthropic(userMessage) {
   const model = activeModel();
-  const response = await httpsPost(
-    'api.anthropic.com',
-    '/v1/messages',
-    getApiHeaders(),
-    {
-      model,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    }
-  );
+  const response = await httpsPost('api.anthropic.com', '/v1/messages', getApiHeaders(), {
+    model,
+    max_tokens: MAX_TOKENS,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }],
+  });
   return { text: response.content?.[0]?.text || '', model };
 }
 
@@ -38,20 +40,15 @@ async function callAnthropic(userMessage) {
 
 async function callOpenAI(userMessage) {
   const model = activeModel();
-  const response = await httpsPost(
-    'api.openai.com',
-    '/v1/chat/completions',
-    getApiHeaders(),
-    {
-      model,
-      max_tokens: MAX_TOKENS,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: userMessage },
-      ],
-      response_format: { type: 'json_object' },
-    }
-  );
+  const response = await httpsPost('api.openai.com', '/v1/chat/completions', getApiHeaders(), {
+    model,
+    max_tokens: MAX_TOKENS,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userMessage },
+    ],
+    response_format: { type: 'json_object' },
+  });
   return { text: response.choices?.[0]?.message?.content || '', model };
 }
 
@@ -86,16 +83,17 @@ async function analyze(lines, context = '', username = 'anonymous') {
   if (!isConfigured()) {
     const p = getProvider();
     const keyName = p === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
-    throw Object.assign(
-      new Error(`${keyName} ortam değişkeni tanımlı değil (AI_PROVIDER=${p}).`),
-      { status: 503 }
-    );
+    throw Object.assign(new Error(`${keyName} ortam değişkeni tanımlı değil (AI_PROVIDER=${p}).`), {
+      status: 503,
+    });
   }
 
   if (isRateLimited(username)) {
     throw Object.assign(
-      new Error('Saatlik AI kullanım limitine ulaşıldı (10 istek/saat). Lütfen daha sonra tekrar deneyin.'),
-      { status: 429 }
+      new Error(
+        'Saatlik AI kullanım limitine ulaşıldı (10 istek/saat). Lütfen daha sonra tekrar deneyin.',
+      ),
+      { status: 429 },
     );
   }
 
@@ -106,22 +104,22 @@ async function analyze(lines, context = '', username = 'anonymous') {
 
   // PII masking — mandatory before sending to any external API
   const { maskedLines, totalMasked, countsByRule } = maskLines(truncatedLines);
-  const logText       = maskedLines.join('\n');
+  const logText = maskedLines.join('\n');
   const contextSection = context ? `\nEk bağlam: ${context.slice(0, 500)}\n` : '';
-  const userMessage   = `${contextSection}Aşağıdaki log satırlarını analiz et:\n\`\`\`\n${logText}\n\`\`\``;
+  const userMessage = `${contextSection}Aşağıdaki log satırlarını analiz et:\n\`\`\`\n${logText}\n\`\`\``;
 
   const provider = getProvider();
   const { text: rawContent, model } =
-    provider === 'openai'
-      ? await callOpenAI(userMessage)
-      : await callAnthropic(userMessage);
+    provider === 'openai' ? await callOpenAI(userMessage) : await callAnthropic(userMessage);
 
   // Parse JSON from response
   let analysis;
   try {
     // Dogrusal yazim (Sonar S8786), sonuc eskisiyle ayni: icerik bosluksuz baslayip biten EN KISA metin;
     // yalniz bosluk + kapanis varsa tek bosluk (eski tembel desen gibi). Ikinci desen ilk '{'e capali.
-    const jsonMatch = rawContent.match(/```json\s*(\S(?:[\s\S]*?\S)??|\s(?=```))\s*```/) || rawContent.match(/^[^{]*({[\s\S]+})/);
+    const jsonMatch =
+      rawContent.match(/```json\s*(\S(?:[\s\S]*?\S)??|\s(?=```))\s*```/) ||
+      rawContent.match(/^[^{]*({[\s\S]+})/);
     analysis = JSON.parse(jsonMatch ? jsonMatch[1] : rawContent);
   } catch {
     analysis = {

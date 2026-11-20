@@ -4,9 +4,9 @@
 // tek yolu paylaşır: sessionStorage'a seed mesajını yazıp /ai-analyst'e
 // yönlendirir. AiAnalystPage.tsx bunu `aiAnalystChatPrefill` anahtarıyla okur
 // (bkz. o dosyadaki useEffect) ve sohbeti otomatik başlatır.
-import type { NavigateFunction } from "react-router-dom";
+import type { NavigateFunction } from 'react-router-dom';
 
 export function seedAiAnalystChat(navigate: NavigateFunction, prompt: string): void {
-  sessionStorage.setItem("aiAnalystChatPrefill", prompt);
-  void navigate("/ai-analyst");
+  sessionStorage.setItem('aiAnalystChatPrefill', prompt);
+  void navigate('/ai-analyst');
 }

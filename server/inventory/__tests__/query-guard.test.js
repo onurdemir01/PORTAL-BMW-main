@@ -9,9 +9,12 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const db = require('../../db/index.cjs');
 const {
-  _isSelectOnly: isSelectOnly, _extractReferencedTables: extractReferencedTables,
-  _writeSavedQueries: writeSavedQueries, _buildAdvancedWhereClause: buildAdvancedWhereClause,
-  _setSqCache: setSqCache, _getSqCache: getSqCache,
+  _isSelectOnly: isSelectOnly,
+  _extractReferencedTables: extractReferencedTables,
+  _writeSavedQueries: writeSavedQueries,
+  _buildAdvancedWhereClause: buildAdvancedWhereClause,
+  _setSqCache: setSqCache,
+  _getSqCache: getSqCache,
 } = require('../index.cjs');
 
 test('isSelectOnly(): SELECT olmayan ifadeler reddedilir', () => {
@@ -21,7 +24,7 @@ test('isSelectOnly(): SELECT olmayan ifadeler reddedilir', () => {
 
 test('isSelectOnly(): banned-list icindeki anahtar kelimeler (SELECT icinde bile) reddedilir', () => {
   assert.equal(isSelectOnly("SELECT * FROM x WHERE 1=1; EXEC xp_cmdshell('dir')"), false);
-  assert.equal(isSelectOnly('SELECT * FROM OPENQUERY(srv, \'SELECT 1\')'), false);
+  assert.equal(isSelectOnly("SELECT * FROM OPENQUERY(srv, 'SELECT 1')"), false);
 });
 
 test('isSelectOnly(): coklu ifade (noktali virgul) reddedilir — tek-ifade zorunlulugu (review.md #4)', () => {
@@ -32,12 +35,18 @@ test('isSelectOnly(): coklu ifade (noktali virgul) reddedilir — tek-ifade zoru
 // OPENDATASOURCE eklendi + 4-parcali linked-server adlandirmasi (OPENQUERY/OPENDATASOURCE
 // disindaki tek linked-server erisim yolu) ayrica reddedilir.
 test('isSelectOnly(): OPENDATASOURCE reddedilir', () => {
-  assert.equal(isSelectOnly("SELECT * FROM OPENDATASOURCE('SQLNCLI', '...').db.schema.table"), false);
+  assert.equal(
+    isSelectOnly("SELECT * FROM OPENDATASOURCE('SQLNCLI', '...').db.schema.table"),
+    false,
+  );
 });
 
 test('isSelectOnly(): 4-parcali linked-server adlandirmasi (sunucu.db.sema.tablo) reddedilir', () => {
   assert.equal(isSelectOnly('SELECT * FROM LinkedServer.SomeDb.dbo.SomeTable'), false);
-  assert.equal(isSelectOnly('SELECT * FROM users u JOIN LinkedServer.SomeDb.dbo.SomeTable t ON 1=1'), false);
+  assert.equal(
+    isSelectOnly('SELECT * FROM users u JOIN LinkedServer.SomeDb.dbo.SomeTable t ON 1=1'),
+    false,
+  );
 });
 
 test('isSelectOnly(): tek noktali (dbo.Tablo) yerel referanslar linked-server olarak yanlislikla reddedilmez', () => {
@@ -59,7 +68,9 @@ test('extractReferencedTables(): basit FROM/JOIN tablo adlarini cikarir', () => 
 });
 
 test('extractReferencedTables(): schema-onekli (dbo.Table) ve koseli parantezli isimleri de yakalar', () => {
-  const tables = extractReferencedTables('SELECT * FROM dbo.portal_env_overrides p JOIN [dbo].[logx_audit_logs] l ON 1=1');
+  const tables = extractReferencedTables(
+    'SELECT * FROM dbo.portal_env_overrides p JOIN [dbo].[logx_audit_logs] l ON 1=1',
+  );
   assert.deepEqual(new Set(tables), new Set(['portal_env_overrides', 'logx_audit_logs']));
 });
 
@@ -73,7 +84,7 @@ test('buildAdvancedWhereClause(): WHERE oneki olmadan yalniz kosul metnini doner
   const clause = buildAdvancedWhereClause(
     { mode: 'AND', filters: [{ col: 'name', op: 'equals', value: 'x' }] },
     ['name'],
-    fakeReq
+    fakeReq,
   );
   assert.equal(clause.startsWith('WHERE'), false);
   assert.match(clause, /^CAST\(\[name\] AS NVARCHAR\(MAX\)\) = @af0$/);
@@ -88,52 +99,144 @@ test('buildAdvancedWhereClause(): filterGroup boşsa bos string doner', () => {
 // ── writeSavedQueries(): delete-all+reinsert yerine fark-bazli UPSERT (review.md #12/#13) ──
 test('writeSavedQueries(): sadece DEGISEN kayitlar UPSERT edilir, degismeyenler atlanir', async (t) => {
   setSqCache([
-    { name: 'q1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
-    { name: 'q2', sql: 'SELECT 2', isPublished: false, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    {
+      name: 'q1',
+      sql: 'SELECT 1',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
+    {
+      name: 'q2',
+      sql: 'SELECT 2',
+      isPublished: false,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
   ]);
   const writes = [];
   t.mock.method(db, 'query', async (sql, params) => {
-    if (/^UPDATE/.test(sql)) { writes.push(params[params.length - 1]); return { rowCount: 1 }; }
-    if (/^DELETE/.test(sql)) { writes.push('DELETE:' + JSON.stringify(params)); return { rowCount: 0 }; }
+    if (/^UPDATE/.test(sql)) {
+      writes.push(params[params.length - 1]);
+      return { rowCount: 1 };
+    }
+    if (/^DELETE/.test(sql)) {
+      writes.push('DELETE:' + JSON.stringify(params));
+      return { rowCount: 0 };
+    }
     return { rows: [], rowCount: 0 };
   });
   // q1 aynen kaliyor, q2'nin sql'i degisiyor
   await writeSavedQueries([
-    { name: 'q1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
-    { name: 'q2', sql: 'SELECT 2 CHANGED', isPublished: false, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    {
+      name: 'q1',
+      sql: 'SELECT 1',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
+    {
+      name: 'q2',
+      sql: 'SELECT 2 CHANGED',
+      isPublished: false,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
   ]);
-  assert.deepEqual(writes, ['q2'], 'yalniz degisen q2 UPDATE edilmeli, degismeyen q1 atlanmali, hicbir DELETE calismamali (ikisi de listede kaliyor)');
+  assert.deepEqual(
+    writes,
+    ['q2'],
+    'yalniz degisen q2 UPDATE edilmeli, degismeyen q1 atlanmali, hicbir DELETE calismamali (ikisi de listede kaliyor)',
+  );
 });
 
 test('writeSavedQueries(): listeden CIKARILAN kayit silinir, hicbir sey once toptan silinmez', async (t) => {
   setSqCache([
-    { name: 'keep', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
-    { name: 'drop', sql: 'SELECT 2', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    {
+      name: 'keep',
+      sql: 'SELECT 1',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
+    {
+      name: 'drop',
+      sql: 'SELECT 2',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
   ]);
   const calls = [];
   t.mock.method(db, 'query', async (sql, params) => {
     calls.push(sql.trim().split(/\s+/)[0]);
-    if (/^DELETE/.test(sql)) { assert.deepEqual(params, ['drop']); return { rowCount: 1 }; }
+    if (/^DELETE/.test(sql)) {
+      assert.deepEqual(params, ['drop']);
+      return { rowCount: 1 };
+    }
     return { rows: [], rowCount: 1 };
   });
   // 'keep' de bilerek DEGISTIRILIYOR (aksi halde diff hicbir UPDATE tetiklemez) — boylece
   // hem UPDATE hem DELETE calisiyor ve DELETE'in upsert dongusunden SONRA geldigi dogrulanabilir.
   await writeSavedQueries([
-    { name: 'keep', sql: 'SELECT 1 CHANGED', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    {
+      name: 'keep',
+      sql: 'SELECT 1 CHANGED',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
   ]);
-  assert.deepEqual(calls, ['UPDATE', 'DELETE'], 'once degisen kaydin UPSERT\'i, SONRA kaldirilanin DELETE\'i calismali — hicbir zaman once toptan silme yok');
+  assert.deepEqual(
+    calls,
+    ['UPDATE', 'DELETE'],
+    "once degisen kaydin UPSERT'i, SONRA kaldirilanin DELETE'i calismali — hicbir zaman once toptan silme yok",
+  );
 });
 
 test('writeSavedQueries(): bos cache ile ilk yazim tum kayitlari yeni sayar (migrasyon senaryosu)', async (t) => {
   setSqCache(null);
   let updateCount = 0;
   t.mock.method(db, 'query', async (sql) => {
-    if (/^UPDATE/.test(sql)) { updateCount++; return { rowCount: 0 }; } // hicbiri yok, INSERT'e duser
+    if (/^UPDATE/.test(sql)) {
+      updateCount++;
+      return { rowCount: 0 };
+    } // hicbiri yok, INSERT'e duser
     return { rows: [], rowCount: 1 };
   });
   await writeSavedQueries([
-    { name: 'n1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
-    { name: 'n2', sql: 'SELECT 2', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    {
+      name: 'n1',
+      sql: 'SELECT 1',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
+    {
+      name: 'n2',
+      sql: 'SELECT 2',
+      isPublished: true,
+      isDefault: false,
+      publishedBy: 'a',
+      description: '',
+      savedAt: '2026-01-01',
+    },
   ]);
   assert.equal(updateCount, 2);
   assert.equal(getSqCache().length, 2);
@@ -148,7 +251,10 @@ test('custom sorgu varsayilan limiti 200 DEGIL ust sinir (10000); truncated bayr
   assert.ok(!/parseInt\(limitParam \|\| '200'/.test(src), 'custom sorgu varsayilani 200 kalmis');
   assert.ok(/const MAX_ROWS = 10000;/.test(src));
   assert.ok(/parseInt\(limitParam \|\| String\(MAX_ROWS\), 10\)/.test(src));
-  assert.ok(/truncated: result\.recordset\.length >= limit/.test(src), 'sinira takilma yanitta bildirilmeli');
+  assert.ok(
+    /truncated: result\.recordset\.length >= limit/.test(src),
+    'sinira takilma yanitta bildirilmeli',
+  );
 });
 
 // ── GELISMIS FILTRE: OR GRUBU (GF1..GF4, 2026-10-01) ────────────────────────────────
@@ -165,14 +271,24 @@ const INV_SRC = require('node:fs').readFileSync(
 );
 
 function sahteReq() {
-  return { parameters: {}, input(n, t, v) { this.parameters[n] = { value: v }; } };
+  return {
+    parameters: {},
+    input(n, t, v) {
+      this.parameters[n] = { value: v };
+    },
+  };
 }
 
 test('GF1 OR grubu OR ile birlesir, AND grubu AND ile', () => {
   const b = buildAdvancedWhereClause;
   const f = (v) => ({ col: 'cluster_name', op: 'contains', value: v });
   const types = new Map([['cluster_name', 'nvarchar']]);
-  const orSql = b({ mode: 'OR', filters: [f('gbocpqa1'), f('gbocpqa2')] }, ['cluster_name'], sahteReq(), types);
+  const orSql = b(
+    { mode: 'OR', filters: [f('gbocpqa1'), f('gbocpqa2')] },
+    ['cluster_name'],
+    sahteReq(),
+    types,
+  );
   assert.match(orSql, / OR /, 'OR grubu AND ile birlestirilmis - kullanicinin sikayeti');
   assert.ok(!/ AND /.test(orSql), 'OR grubunda AND var');
   const andSql = b({ mode: 'AND', filters: [f('a'), f('b')] }, ['cluster_name'], sahteReq(), types);
@@ -198,10 +314,13 @@ test('GF3 bilinmeyen kolon SESSIZCE suzgeci dusurur ama TUM kosulu dusurmez', ()
   // oteki calismaya devam eder - hepsini atip TUM tabloyu dondurmek en kotusu olurdu.
   const b = buildAdvancedWhereClause;
   const sql2 = b(
-    { mode: 'OR', filters: [
-      { col: 'yok_boyle_kolon', op: 'contains', value: 'x' },
-      { col: 'cluster_name', op: 'contains', value: 'gbocpqa2' },
-    ] },
+    {
+      mode: 'OR',
+      filters: [
+        { col: 'yok_boyle_kolon', op: 'contains', value: 'x' },
+        { col: 'cluster_name', op: 'contains', value: 'gbocpqa2' },
+      ],
+    },
     ['cluster_name'],
     sahteReq(),
     new Map([['cluster_name', 'nvarchar']]),
@@ -226,16 +345,33 @@ test('linked-server tarayicisi eski desenle ayni karari verir ve uzun girdide do
   const { _linkedServerAdiVar: tara } = require('../index.cjs');
   const ESKI = /\b(?:FROM|JOIN)\s+\[?\w+\]?(?:\s*\.\s*\[?\w*\]?){3,}/;
   const ornekler = [
-    'SELECT * FROM A.B.C.D', 'SELECT * FROM [A].[B].[C].[D]', 'SELECT * FROM A . B . C . D',
-    'SELECT * FROM A..C.D', 'SELECT * FROM DBO.USERS', 'SELECT * FROM A.B.C', 'SELECT * FROM .A.B.C',
-    'SELECT * FROM [A]', 'SELECT * FROM X JOIN S.D.O.T ON 1=1', 'SELECT A.B.C.D FROM T', 'SELECT * FROM',
-    'SELECT * FROM [].A.B.C', 'SELECT * FROM A.B.C.D.E', 'SELECT * FROM A.[B C].D.E',
+    'SELECT * FROM A.B.C.D',
+    'SELECT * FROM [A].[B].[C].[D]',
+    'SELECT * FROM A . B . C . D',
+    'SELECT * FROM A..C.D',
+    'SELECT * FROM DBO.USERS',
+    'SELECT * FROM A.B.C',
+    'SELECT * FROM .A.B.C',
+    'SELECT * FROM [A]',
+    'SELECT * FROM X JOIN S.D.O.T ON 1=1',
+    'SELECT A.B.C.D FROM T',
+    'SELECT * FROM',
+    'SELECT * FROM [].A.B.C',
+    'SELECT * FROM A.B.C.D.E',
+    'SELECT * FROM A.[B C].D.E',
   ];
   // Rastgele kisa girdiler: eski desenle ayni sonuc.
   let t = 1234567;
-  const r = () => ((t = (t * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const r = () => (t = (t * 1103515245 + 12345) >>> 0) / 2 ** 32;
   const harf = ['A', 'B', '.', ' ', '[', ']', '_', '1', 'FROM ', 'JOIN '];
-  for (let n = 0; n < 3000; n++) ornekler.push('SELECT * ' + Array.from({ length: 4 + Math.floor(r() * 14) }, () => harf[Math.floor(r() * harf.length)]).join(''));
+  for (let n = 0; n < 3000; n++)
+    ornekler.push(
+      'SELECT * ' +
+        Array.from(
+          { length: 4 + Math.floor(r() * 14) },
+          () => harf[Math.floor(r() * harf.length)],
+        ).join(''),
+    );
   for (const s of ornekler) {
     const c = s.replace(/\s+/g, ' ').trim();
     assert.equal(tara(c), ESKI.test(c), c);

@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 
 interface SectionHeaderProps {
   title: string;
@@ -14,7 +14,9 @@ export default function SectionHeader({ title, subtitle, actions }: SectionHeade
       <div>
         <h1 className="page-title">{title}</h1>
         {subtitle && (
-          <p className="text-[0.875rem] mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>
+          <p className="text-[0.875rem] mt-1" style={{ color: 'var(--text-muted)' }}>
+            {subtitle}
+          </p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

@@ -130,8 +130,10 @@ async function envanterOku(query) {
 
 async function varOlanTablolar(query) {
   const adlar = [...TBMWANS_TABLOLARI.map((t) => t.tablo), 'dbo.nginx_inventory'];
-  const r = await query(`SELECT ${adlar.map((t, i) => "OBJECT_ID('" + t + "') AS t" + i).join(', ')}`);
-  const satir = (r?.recordset?.[0]) || {};
+  const r = await query(
+    `SELECT ${adlar.map((t, i) => "OBJECT_ID('" + t + "') AS t" + i).join(', ')}`,
+  );
+  const satir = r?.recordset?.[0] || {};
   const set = new Set();
   adlar.forEach((t, i) => {
     if (satir[`t${i}`] != null) set.add(t);
@@ -156,7 +158,8 @@ async function tazeTbmwans(query, sql, varOlan, esikMs) {
     for (const x of (r && r.recordset) || []) {
       const h = norm(x.hostname);
       if (!h) continue;
-      const ms = x.source_last_update == null ? Number.NaN : new Date(x.source_last_update).getTime();
+      const ms =
+        x.source_last_update == null ? Number.NaN : new Date(x.source_last_update).getTime();
       if (Number.isNaN(ms) || ms >= esikMs) tazeEkle(taze, h);
     }
   }
@@ -228,7 +231,11 @@ async function hesapla() {
   const gun = esikGun();
   const simdi = bag.simdi();
   const esikMs = simdi - gun * GUN_MS;
-  const temel = { gun, esik: new Date(esikMs).toISOString(), hesaplandi: new Date(simdi).toISOString() };
+  const temel = {
+    gun,
+    esik: new Date(esikMs).toISOString(),
+    hesaplandi: new Date(simdi).toISOString(),
+  };
   try {
     // Uzun havuz: 14 gunluk tarama tablolarinda DISTINCT 30 sn'yi asabilir.
     const t = bag.tbmwans();
@@ -241,7 +248,10 @@ async function hesapla() {
     for (const [h, ms] of yerel) if (ms >= esikMs) tazeEkle(taze, h);
     return { ok: true, ...temel, envanter, taze, yerel, varOlan };
   } catch (e) {
-    console.warn('[NginxHub] eski sunucu hesabi yapilamadi, hicbir sunucu gizlenmez:', e && e.message);
+    console.warn(
+      '[NginxHub] eski sunucu hesabi yapilamadi, hicbir sunucu gizlenmez:',
+      e && e.message,
+    );
     return { ok: false, ...temel, hata: String((e && e.message) || e) };
   }
 }
@@ -271,7 +281,8 @@ async function durum({ taze = false } = {}) {
     return v;
   }
   if (_durum) {
-    if (bag.simdi() - _durum.at >= (_durum.v.ok ? TTL_MS : HATA_TTL_MS)) ucusBaslat().catch(() => {});
+    if (bag.simdi() - _durum.at >= (_durum.v.ok ? TTL_MS : HATA_TTL_MS))
+      ucusBaslat().catch(() => {});
     return _durum.v;
   }
   return ucusBaslat();
@@ -573,7 +584,14 @@ async function temizle(govde) {
     const sonuc = [];
     for (const H of v.hosts) {
       if (butce <= 0) {
-        sonuc.push({ host: H, islenmedi: true, tamam: false, silinenSatir: {}, dosyalar: [], hatalar: [] });
+        sonuc.push({
+          host: H,
+          islenmedi: true,
+          tamam: false,
+          silinenSatir: {},
+          dosyalar: [],
+          hatalar: [],
+        });
         continue;
       }
       const aday = harita.get(H);
@@ -620,7 +638,8 @@ async function temizle(govde) {
         try {
           const f = hostDosyalariniSil(H);
           s.dosyalar = f.silinen;
-          if (f.atlanan.length) s.hatalar.push({ tablo: 'raw', mesaj: `atlanan dosya: ${f.atlanan.join(', ')}` });
+          if (f.atlanan.length)
+            s.hatalar.push({ tablo: 'raw', mesaj: `atlanan dosya: ${f.atlanan.join(', ')}` });
           s.seen = seenAnahtariniSil(H);
           bag.yerel()._unutHost?.(H);
         } catch (e) {

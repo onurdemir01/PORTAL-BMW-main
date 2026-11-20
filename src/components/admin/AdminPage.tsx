@@ -60,22 +60,102 @@ import SelfServisTasima from './tabs/SelfServisTasima';
 const DEFAULT_TABS = [
   // ORTAK SEKME: cluster / vault / bastion / kisitlama tablolari LogX'e ozel degil,
   // LogX + OpsX + Telnet + ScaleX tarafindan PAYLASILIYOR. Kimlik (`logxv2`) bilerek korunuyor.
-  { id: 'logxv2', label: 'OCP Yapılandırma', icon: ServerStackIcon, hint: 'OpenShift cluster, vault anahtarı ve bastion tanımları — LogX, OpsX, Telnet ve ScaleX ortak kullanır.' },
-  { id: 'logx', label: 'LogX Yönetimi', icon: DocumentMagnifyingGlassIcon, hint: 'LogX erişimi ve kaynak sahipleri, AWX hazırlığı, istekler, maskeleme, Legacy ortam son-eki, envanter boşlukları.' },
-  { id: 'scalex', label: 'ScaleX Yönetimi', icon: ArrowsPointingOutIcon, hint: 'Replica durdurma/ölçekleme kuralları ve RBAC bulguları.' },
-  { id: 'audit', label: 'Denetim Kaydı', icon: ClipboardDocumentListIcon, hint: 'Kim, ne zaman, ne yaptı — hash zincirli, değiştirilemez kayıt.' },
-  { id: 'smarttickets', label: 'Smart Talepleri', icon: TicketIcon, hint: 'Smart üzerinden açılan taleplerin durumu ve eşleşen işler.' },
-  { id: 'dbbackup', label: 'DB Yedekleme', icon: CircleStackIcon, hint: 'Günlük tam yedek, veritabanı doluluğu ve gece temizliği.' },
-  { id: 'ansible', label: 'Ansible Info', icon: CommandLineIcon, hint: 'AWX sunucuları ve bağlantı bilgileri.' },
-  { id: 'playbooks', label: 'Playbook Kayıtları', icon: BookOpenIcon, hint: 'Portal işlerinin hangi AWX job template ile koştuğu.' },
-  { id: 'sstasima', label: 'Self Servis Taşıma', icon: ArrowsRightLeftIcon, hint: 'Self Servis servislerini bir AWX sunucusundan diğerine taşır.' },
-  { id: 'system', label: 'Sistem', icon: CogIcon, hint: 'Ortam değişkenleri ve çalışma zamanı ayarları.' },
-  { id: 'users', label: 'Kullanıcılar', icon: UsersIcon, hint: 'Yerel kullanıcılar, roller ve LDAP eşleşmeleri.' },
-  { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon, hint: 'Hangi sayfa/sekme kime görünür — rol, kullanıcı ve grup kuralları.' },
-  { id: 'denetimaccess', label: 'Denetim Erişimi', icon: ShieldCheckIcon, hint: 'Denetim sekmelerini kişi ya da LDAP grubu bazında açma.' },
-  { id: 'nginxaccess', label: 'Nginx Hub Erişimi', icon: ShieldCheckIcon, hint: 'Nginx Hub sekmelerini kişi ya da LDAP grubu bazında sınırlama (varsayılan: hepsi açık).' },
-  { id: 'cryptoaccess', label: 'Crypto Hub Erişimi', icon: ShieldCheckIcon, hint: 'Crypto Hub uygulamalarını (Metaco / Wyden) kişi, e-posta ya da LDAP grubu bazında açma (varsayılan: hepsi kapalı).' },
-  { id: 'inventoryvis', label: 'Envanter Görünürlüğü', icon: TableCellsIcon, hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.' },
+  {
+    id: 'logxv2',
+    label: 'OCP Yapılandırma',
+    icon: ServerStackIcon,
+    hint: 'OpenShift cluster, vault anahtarı ve bastion tanımları — LogX, OpsX, Telnet ve ScaleX ortak kullanır.',
+  },
+  {
+    id: 'logx',
+    label: 'LogX Yönetimi',
+    icon: DocumentMagnifyingGlassIcon,
+    hint: 'LogX erişimi ve kaynak sahipleri, AWX hazırlığı, istekler, maskeleme, Legacy ortam son-eki, envanter boşlukları.',
+  },
+  {
+    id: 'scalex',
+    label: 'ScaleX Yönetimi',
+    icon: ArrowsPointingOutIcon,
+    hint: 'Replica durdurma/ölçekleme kuralları ve RBAC bulguları.',
+  },
+  {
+    id: 'audit',
+    label: 'Denetim Kaydı',
+    icon: ClipboardDocumentListIcon,
+    hint: 'Kim, ne zaman, ne yaptı — hash zincirli, değiştirilemez kayıt.',
+  },
+  {
+    id: 'smarttickets',
+    label: 'Smart Talepleri',
+    icon: TicketIcon,
+    hint: 'Smart üzerinden açılan taleplerin durumu ve eşleşen işler.',
+  },
+  {
+    id: 'dbbackup',
+    label: 'DB Yedekleme',
+    icon: CircleStackIcon,
+    hint: 'Günlük tam yedek, veritabanı doluluğu ve gece temizliği.',
+  },
+  {
+    id: 'ansible',
+    label: 'Ansible Info',
+    icon: CommandLineIcon,
+    hint: 'AWX sunucuları ve bağlantı bilgileri.',
+  },
+  {
+    id: 'playbooks',
+    label: 'Playbook Kayıtları',
+    icon: BookOpenIcon,
+    hint: 'Portal işlerinin hangi AWX job template ile koştuğu.',
+  },
+  {
+    id: 'sstasima',
+    label: 'Self Servis Taşıma',
+    icon: ArrowsRightLeftIcon,
+    hint: 'Self Servis servislerini bir AWX sunucusundan diğerine taşır.',
+  },
+  {
+    id: 'system',
+    label: 'Sistem',
+    icon: CogIcon,
+    hint: 'Ortam değişkenleri ve çalışma zamanı ayarları.',
+  },
+  {
+    id: 'users',
+    label: 'Kullanıcılar',
+    icon: UsersIcon,
+    hint: 'Yerel kullanıcılar, roller ve LDAP eşleşmeleri.',
+  },
+  {
+    id: 'visibility',
+    label: 'Sayfa Erişimi',
+    icon: EyeIcon,
+    hint: 'Hangi sayfa/sekme kime görünür — rol, kullanıcı ve grup kuralları.',
+  },
+  {
+    id: 'denetimaccess',
+    label: 'Denetim Erişimi',
+    icon: ShieldCheckIcon,
+    hint: 'Denetim sekmelerini kişi ya da LDAP grubu bazında açma.',
+  },
+  {
+    id: 'nginxaccess',
+    label: 'Nginx Hub Erişimi',
+    icon: ShieldCheckIcon,
+    hint: 'Nginx Hub sekmelerini kişi ya da LDAP grubu bazında sınırlama (varsayılan: hepsi açık).',
+  },
+  {
+    id: 'cryptoaccess',
+    label: 'Crypto Hub Erişimi',
+    icon: ShieldCheckIcon,
+    hint: 'Crypto Hub uygulamalarını (Metaco / Wyden) kişi, e-posta ya da LDAP grubu bazında açma (varsayılan: hepsi kapalı).',
+  },
+  {
+    id: 'inventoryvis',
+    label: 'Envanter Görünürlüğü',
+    icon: TableCellsIcon,
+    hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.',
+  },
   { id: 'branding', label: 'Logo', icon: PhotoIcon, hint: 'Portal logosu ve sekme simgesi.' },
 ] as const;
 
@@ -86,8 +166,16 @@ const TAB_BY_ID = new Map<TabId, (typeof DEFAULT_TABS)[number]>(DEFAULT_TABS.map
 // Dort bolum — sira sabit, surukleme yok. Bir sekme gorunmezse (admintab kurali) bolumden
 // duser; bolum bosalirsa basligi da gizlenir.
 const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
-  { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'nginxaccess', 'cryptoaccess', 'inventoryvis'] },
-  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'sstasima', 'ansible', 'logxv2', 'logx', 'scalex'] },
+  {
+    title: 'Erişim',
+    icon: KeyIcon,
+    ids: ['users', 'visibility', 'denetimaccess', 'nginxaccess', 'cryptoaccess', 'inventoryvis'],
+  },
+  {
+    title: 'Otomasyon',
+    icon: CommandLineIcon,
+    ids: ['playbooks', 'sstasima', 'ansible', 'logxv2', 'logx', 'scalex'],
+  },
   { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup'] },
   { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
 ];
@@ -141,13 +229,20 @@ const AdminPage: React.FC = () => {
   // Admin sekmeleri de gorunurluk motoruna tabidir (`admintab:<id>`).
   // KACIS KAPISI: "Sayfa Erisimi" ASLA gizlenmez — kurallar oradan yonetilir; o da
   // gizlenebilseydi geri almanin UI yolu kalmazdi.
-  const visibleIds = new Set(DEFAULT_TAB_IDS.filter((id) => id === 'visibility' || canSee(`admintab:${id}`)));
-  const sections = SECTIONS.map((s) => ({ ...s, tabs: s.ids.filter((id) => visibleIds.has(id)).map((id) => TAB_BY_ID.get(id)!) })).filter((s) => s.tabs.length > 0);
+  const visibleIds = new Set(
+    DEFAULT_TAB_IDS.filter((id) => id === 'visibility' || canSee(`admintab:${id}`)),
+  );
+  const sections = SECTIONS.map((s) => ({
+    ...s,
+    tabs: s.ids.filter((id) => visibleIds.has(id)).map((id) => TAB_BY_ID.get(id)!),
+  })).filter((s) => s.tabs.length > 0);
   const orderedTabs = sections.flatMap((s) => s.tabs);
 
   // Aktif sekme gizlenmisse ilk gorunur sekmeye dus.
   const effectiveTab =
-    !orderedTabs.length || orderedTabs.some((t) => t.id === activeTab) ? activeTab : orderedTabs[0].id;
+    !orderedTabs.length || orderedTabs.some((t) => t.id === activeTab)
+      ? activeTab
+      : orderedTabs[0].id;
 
   const current = TAB_BY_ID.get(effectiveTab);
   const CurrentIcon = current?.icon;
@@ -161,14 +256,20 @@ const AdminPage: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid gap-5 admin-grid" style={{ gridTemplateColumns: 'minmax(13rem, 16rem) 1fr' }}>
+      <div
+        className="grid gap-5 admin-grid"
+        style={{ gridTemplateColumns: 'minmax(13rem, 16rem) 1fr' }}
+      >
         {/* Sol: bolumlu menu */}
         <nav aria-label="Admin bölümleri" className="space-y-4 self-start lg:sticky lg:top-4">
           {sections.map((s) => {
             const SIcon = s.icon;
             return (
               <div key={s.title}>
-                <div className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                <div
+                  className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   <SIcon className="w-3.5 h-3.5" /> {s.title}
                 </div>
                 <ul className="space-y-0.5">
@@ -188,8 +289,13 @@ const AdminPage: React.FC = () => {
                             boxShadow: active ? 'inset 3px 0 0 var(--accent)' : 'none',
                           }}
                         >
-                          <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
-                          <span className="truncate" title={tab.label}>{tab.label}</span>
+                          <Icon
+                            className="w-4 h-4 flex-shrink-0"
+                            style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
+                          />
+                          <span className="truncate" title={tab.label}>
+                            {tab.label}
+                          </span>
                         </button>
                       </li>
                     );
@@ -203,15 +309,27 @@ const AdminPage: React.FC = () => {
         {/* Sag: icerik */}
         <section className="card overflow-clip min-w-0">
           {current && (
-            <header className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+            <header
+              className="flex items-center gap-3 px-5 py-4 border-b"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+            >
               {CurrentIcon && (
-                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--bg-surface)', color: 'var(--accent)', boxShadow: 'var(--shadow-sm)' }}>
+                <span
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    color: 'var(--accent)',
+                    boxShadow: 'var(--shadow-sm)',
+                  }}
+                >
                   <CurrentIcon className="w-5 h-5" />
                 </span>
               )}
               <div className="min-w-0">
                 <h2 className="text-base font-semibold leading-tight">{current.label}</h2>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{current.hint}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  {current.hint}
+                </p>
               </div>
             </header>
           )}
@@ -222,23 +340,23 @@ const AdminPage: React.FC = () => {
                   baska bir sekmeye gecemiyordu. Sinir, ustteki `key={activeTab}` sarmalayicisiyla
                   birlikte yeniden kurulur: baska sekmeye gecince hata durumu SIFIRLANIR. */}
               <PageErrorBoundary>
-              {activeTab === 'audit' && <AuditLogTab />}
-              {activeTab === 'smarttickets' && <SmartTicketsTab />}
-              {activeTab === 'dbbackup' && <DbBackupTab />}
-              {activeTab === 'ansible' && <AnsibleConfigTab />}
-              {activeTab === 'playbooks' && <PlaybookRegistryTab />}
-              {activeTab === 'sstasima' && <SelfServisTasima />}
-              {activeTab === 'system' && <SystemConfigTab />}
-              {activeTab === 'users' && <UserManagementTab />}
-              {activeTab === 'visibility' && <PageVisibilityTab />}
-              {activeTab === 'denetimaccess' && <DenetimAccessTab />}
-              {activeTab === 'nginxaccess' && <NginxAccessTab />}
-              {activeTab === 'cryptoaccess' && <CryptoAccessTab />}
-              {activeTab === 'logxv2' && <LogXv2AdminTab />}
-              {activeTab === 'scalex' && <ScaleXAdminTab />}
-              {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
-              {activeTab === 'logx' && <LogXAdminTab />}
-              {activeTab === 'branding' && <BrandingTab />}
+                {activeTab === 'audit' && <AuditLogTab />}
+                {activeTab === 'smarttickets' && <SmartTicketsTab />}
+                {activeTab === 'dbbackup' && <DbBackupTab />}
+                {activeTab === 'ansible' && <AnsibleConfigTab />}
+                {activeTab === 'playbooks' && <PlaybookRegistryTab />}
+                {activeTab === 'sstasima' && <SelfServisTasima />}
+                {activeTab === 'system' && <SystemConfigTab />}
+                {activeTab === 'users' && <UserManagementTab />}
+                {activeTab === 'visibility' && <PageVisibilityTab />}
+                {activeTab === 'denetimaccess' && <DenetimAccessTab />}
+                {activeTab === 'nginxaccess' && <NginxAccessTab />}
+                {activeTab === 'cryptoaccess' && <CryptoAccessTab />}
+                {activeTab === 'logxv2' && <LogXv2AdminTab />}
+                {activeTab === 'scalex' && <ScaleXAdminTab />}
+                {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
+                {activeTab === 'logx' && <LogXAdminTab />}
+                {activeTab === 'branding' && <BrandingTab />}
               </PageErrorBoundary>
             </div>
           </div>

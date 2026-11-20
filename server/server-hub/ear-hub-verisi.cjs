@@ -24,8 +24,12 @@ const jsonOku = (s) => {
 };
 const iso = (t) => {
   if (t == null) return null;
-  const d =
-    (() => { if (t instanceof Date) return t; return new Date(String(t).replace(' ', 'T') + (/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(String(t)) ? '' : 'Z')); })();
+  const d = (() => {
+    if (t instanceof Date) return t;
+    return new Date(
+      String(t).replace(' ', 'T') + (/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(String(t)) ? '' : 'Z'),
+    );
+  })();
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 };
 
@@ -66,7 +70,9 @@ async function earSonDurum() {
         // Faz 2: calisan JVM'lerin deployment durumu; null = olculmedi (kontrol kapali / eski kosu).
         deployment: (() => {
           const d = jsonOku(r.deployment_ozeti);
-          return d && Array.isArray(d.jvmler) ? { kesik: d.kesik === true, jvmler: d.jvmler } : null;
+          return d && Array.isArray(d.jvmler)
+            ? { kesik: d.kesik === true, jvmler: d.jvmler }
+            : null;
         })(),
         uygulamalar: [],
       });

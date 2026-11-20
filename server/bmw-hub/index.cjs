@@ -25,7 +25,10 @@ const LISTE_TAVAN = 2000;
 
 const kim = (req) => {
   const u = getRequestUser(req) || {};
-  const kullanici = String(u.username || '').trim().toLowerCase() || 'bilinmiyor';
+  const kullanici =
+    String(u.username || '')
+      .trim()
+      .toLowerCase() || 'bilinmiyor';
   return { kullanici, ad: String(u.displayName || '').trim() || kullanici };
 };
 
@@ -136,13 +139,19 @@ async function isOku(id) {
 function degisimMetinleri(eski, yeni) {
   const m = [];
   if (yeni.durum !== undefined && yeni.durum !== eski.durum)
-    m.push(['durum', `Durum: ${DURUM_AD[eski.durum] || eski.durum} → ${DURUM_AD[yeni.durum] || yeni.durum}`]);
+    m.push([
+      'durum',
+      `Durum: ${DURUM_AD[eski.durum] || eski.durum} → ${DURUM_AD[yeni.durum] || yeni.durum}`,
+    ]);
   if (yeni.sahip !== undefined && yeni.sahip !== eski.sahip)
     m.push(['sahip', `Sahip: ${eski.sahip || 'yok'} → ${yeni.sahip || 'yok'}`]);
   if (yeni.sonTarih !== undefined && yeni.sonTarih !== eski.sonTarih)
     m.push(['tarih', `Son tarih: ${eski.sonTarih || 'yok'} → ${yeni.sonTarih || 'yok'}`]);
   if (yeni.oncelik !== undefined && yeni.oncelik !== eski.oncelik)
-    m.push(['oncelik', `Öncelik: ${ONCELIK_AD[eski.oncelik] || eski.oncelik} → ${ONCELIK_AD[yeni.oncelik] || yeni.oncelik}`]);
+    m.push([
+      'oncelik',
+      `Öncelik: ${ONCELIK_AD[eski.oncelik] || eski.oncelik} → ${ONCELIK_AD[yeni.oncelik] || yeni.oncelik}`,
+    ]);
   return m;
 }
 
@@ -159,7 +168,9 @@ const KOLON = {
 
 const dbHatasi = (res, e, ne) => {
   console.warn(`[BmwHub] ${ne}: ${e && e.message}`);
-  return res.status(500).json({ ok: false, error: `${ne}. Portal veritabanına ulaşılamıyor olabilir.` });
+  return res
+    .status(500)
+    .json({ ok: false, error: `${ne}. Portal veritabanına ulaşılamıyor olabilir.` });
 };
 
 function createRouter() {
@@ -189,7 +200,13 @@ function createRouter() {
       );
       const isler = rows.map(satirdanIs);
       const bugun = K.bugunIst();
-      res.json({ ok: true, isler, ozet: ozetle(isler, bugun), bugun, tavan: rows.length >= LISTE_TAVAN ? LISTE_TAVAN : null });
+      res.json({
+        ok: true,
+        isler,
+        ozet: ozetle(isler, bugun),
+        bugun,
+        tavan: rows.length >= LISTE_TAVAN ? LISTE_TAVAN : null,
+      });
     } catch (e) {
       return dbHatasi(res, e, 'İşler okunamadı');
     }
@@ -198,7 +215,8 @@ function createRouter() {
   router.get('/isler/:id', async (req, res) => {
     try {
       const is = await isOku(req.params.id);
-      if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
+      if (!is)
+        return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       const { rows } = await db.query(
         `SELECT * FROM bmw_hub_notlar WHERE is_id = $1 ORDER BY olusturma DESC, id DESC`,
         [req.params.id],
@@ -226,7 +244,9 @@ function createRouter() {
     const sonuc = K.topluAyristir(req.body && req.body.metin);
     if (!sonuc.length) return res.status(400).json({ ok: false, error: 'Eklenecek satır yok.' });
     if (sonuc.length > K.SINIR.toplu)
-      return res.status(400).json({ ok: false, error: `Bir seferde en çok ${K.SINIR.toplu} iş eklenebilir.` });
+      return res
+        .status(400)
+        .json({ ok: false, error: `Bir seferde en çok ${K.SINIR.toplu} iş eklenebilir.` });
     const hatali = sonuc.filter((s) => s.hatalar.length);
     if (hatali.length) {
       return res.status(400).json({
@@ -249,8 +269,14 @@ function createRouter() {
           /* geri alma da dustuyse asagidaki mesaj sayiyi soyler */
         }
       }
-      console.warn(`[BmwHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e && e.message}`);
-      return res.status(500).json({ ok: false, error: 'Toplu ekleme yarıda kaldı ve geri alındı. Portal veritabanını kontrol edip tekrar deneyin.' });
+      console.warn(
+        `[BmwHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e && e.message}`,
+      );
+      return res.status(500).json({
+        ok: false,
+        error:
+          'Toplu ekleme yarıda kaldı ve geri alındı. Portal veritabanını kontrol edip tekrar deneyin.',
+      });
     }
     res.json({ ok: true, eklenen: eklenen.length });
   });
@@ -259,12 +285,14 @@ function createRouter() {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const gelen = {};
     for (const k of Object.keys(KOLON)) if (Object.hasOwn(body, k)) gelen[k] = body[k];
-    if (!Object.keys(gelen).length) return res.status(400).json({ ok: false, error: 'Değişecek alan yok.' });
+    if (!Object.keys(gelen).length)
+      return res.status(400).json({ ok: false, error: 'Değişecek alan yok.' });
     const { deger, hatalar } = K.isDogrula(gelen, { kismi: true });
     if (hatalar.length) return res.status(400).json({ ok: false, error: hatalar.join(' ') });
     try {
       const eski = await isOku(req.params.id);
-      if (!eski) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
+      if (!eski)
+        return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       // CAKISMA: iki admin ayni isi ayni anda duzenlerse sonraki kaydin oncekini sessizce
       // ezmemesi icin ekran okudugu `guncelleme` damgasini gonderir.
       if (body.beklenenGuncelleme && body.beklenenGuncelleme !== eski.guncelleme) {
@@ -279,7 +307,11 @@ function createRouter() {
       const set = [];
       const params = [];
       for (const [alan, v] of Object.entries(deger)) {
-        params.push(alan === 'sonTarih' || alan === 'sahip' || alan === 'beklenen' || alan === 'aciklama' ? v || null : v);
+        params.push(
+          alan === 'sonTarih' || alan === 'sahip' || alan === 'beklenen' || alan === 'aciklama'
+            ? v || null
+            : v,
+        );
         set.push(`${KOLON[alan]} = $${params.length}`);
       }
       if (deger.durum !== undefined && deger.durum !== eski.durum) {
@@ -289,8 +321,12 @@ function createRouter() {
       set.push(`guncelleyen_ad = $${params.length}`);
       set.push('guncelleme = GETUTCDATE()');
       params.push(req.params.id);
-      await db.query(`UPDATE bmw_hub_isler SET ${set.join(', ')} WHERE id = $${params.length}`, params);
-      for (const [tur, metin] of degisimMetinleri(eski, deger)) await notYaz(req.params.id, tur, metin, k);
+      await db.query(
+        `UPDATE bmw_hub_isler SET ${set.join(', ')} WHERE id = $${params.length}`,
+        params,
+      );
+      for (const [tur, metin] of degisimMetinleri(eski, deger))
+        await notYaz(req.params.id, tur, metin, k);
       res.json({ ok: true, is: await isOku(req.params.id) });
     } catch (e) {
       return dbHatasi(res, e, 'İş güncellenemedi');
@@ -301,16 +337,19 @@ function createRouter() {
     const metin = String((req.body && req.body.metin) || '').trim();
     if (!metin) return res.status(400).json({ ok: false, error: 'Not boş olamaz.' });
     if (metin.length > K.SINIR.not)
-      return res.status(400).json({ ok: false, error: `Not en çok ${K.SINIR.not} karakter olabilir.` });
+      return res
+        .status(400)
+        .json({ ok: false, error: `Not en çok ${K.SINIR.not} karakter olabilir.` });
     try {
       const is = await isOku(req.params.id);
-      if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
+      if (!is)
+        return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       const k = kim(req);
       await notYaz(req.params.id, 'not', metin, k);
-      await db.query(`UPDATE bmw_hub_isler SET guncelleme = GETUTCDATE(), guncelleyen_ad = $1 WHERE id = $2`, [
-        k.ad,
-        req.params.id,
-      ]);
+      await db.query(
+        `UPDATE bmw_hub_isler SET guncelleme = GETUTCDATE(), guncelleyen_ad = $1 WHERE id = $2`,
+        [k.ad, req.params.id],
+      );
       res.json({ ok: true });
     } catch (e) {
       return dbHatasi(res, e, 'Not kaydedilemedi');
@@ -320,7 +359,8 @@ function createRouter() {
   router.delete('/isler/:id', async (req, res) => {
     try {
       const is = await isOku(req.params.id);
-      if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
+      if (!is)
+        return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       await db.query(`DELETE FROM bmw_hub_notlar WHERE is_id = $1`, [req.params.id]);
       await db.query(`DELETE FROM bmw_hub_isler WHERE id = $1`, [req.params.id]);
       console.log(`[BmwHub] is silindi: ${req.params.id} (${kim(req).kullanici})`);

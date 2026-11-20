@@ -86,7 +86,9 @@ function tierOf(domain, host) {
 function buildCertIndex(certRows) {
   const certByHost = new Map();
   for (const c of certRows || []) {
-    const h = String(c.host || '').trim().toUpperCase();
+    const h = String(c.host || '')
+      .trim()
+      .toUpperCase();
     if (!h) continue;
     if (!certByHost.has(h)) certByHost.set(h, []);
     certByHost.get(h).push({
@@ -135,17 +137,30 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
     if (!hostOnly) hostOnly = { how: cand.how, host: cand.host, count: list.length };
     const denenecek = [
       ...adVaryantlari(needleFull).map((n, i) => [i ? `tam ad, ${n}` : 'tam ad', n]),
-      ...(needleBase === needleFull ? [] : adVaryantlari(needleBase).map((n, i) => [i ? `taban ad, ${n}` : 'taban ad', n])),
+      ...(needleBase === needleFull
+        ? []
+        : adVaryantlari(needleBase).map((n, i) => [i ? `taban ad, ${n}` : 'taban ad', n])),
     ];
     for (const [form, needle] of denenecek) {
       const hits = list.filter((e) => e.serverName.toLowerCase().includes(needle));
-      if (hits.length) { matched = { how: cand.how, nameForm: form, entries: hits }; break; }
+      if (hits.length) {
+        matched = { how: cand.how, nameForm: form, entries: hits };
+        break;
+      }
     }
-    if (matched) { break; }
+    if (matched) {
+      break;
+    }
   }
-  const how = (() => { if (matched) return `${matched.how} + server_name (${matched.nameForm})`; if (hostOnly) return 'web sunucusu var, server_name tutmadı'; return 'eşleşmedi'; })();
+  const how = (() => {
+    if (matched) return `${matched.how} + server_name (${matched.nameForm})`;
+    if (hostOnly) return 'web sunucusu var, server_name tutmadı';
+    return 'eşleşmedi';
+  })();
   return {
-    tier, how, matched: !!matched,
+    tier,
+    how,
+    matched: !!matched,
     web: matched ? matched.entries : [],
     webHostCandidate: hostOnly ? hostOnly.host : webHostOf(appHost) || appHost,
     webHostAdaylari: tier === '2-tier' ? [] : webHostAdaylari(appHost),
@@ -153,7 +168,10 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
   };
 }
 
-const U = (s) => String(s || '').trim().toUpperCase();
+const U = (s) =>
+  String(s || '')
+    .trim()
+    .toUpperCase();
 
 /**
  * TOPOLOJI (2026-10-16, kullanici: "3-tier sunucularin topolojisi 'bilinmiyor' olarak yazilmis").
@@ -168,7 +186,11 @@ function topolojiOf(domain, appHost, m) {
   const t = tierOf(domain, appHost);
   if (t !== 'bilinmiyor') return { tier: t, kaynak: 'domain' };
   const web = (m && m.web) || [];
-  if (web.length) return { tier: web.some((w) => U(w.host) !== U(appHost)) ? '3-tier' : '2-tier', kaynak: 'eşleşme' };
+  if (web.length)
+    return {
+      tier: web.some((w) => U(w.host) !== U(appHost)) ? '3-tier' : '2-tier',
+      kaynak: 'eşleşme',
+    };
   if (m && m.vhostCountOnHost > 0 && m.webHostCandidate && U(m.webHostCandidate) !== U(appHost)) {
     return { tier: '3-tier', kaynak: 'aday web sunucusu' };
   }
@@ -198,9 +220,16 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
   const satir = [];
   const t = topoloji || topolojiOf(domain, appHost, m);
   satir.push(
-    (() => { if (t.kaynak === 'domain') return `Topoloji ${t.tier}: envanterdeki domain ${domain}`; if (t.kaynak === 'eşleşme') return `Topoloji ${t.tier}: envanterde domain yok; ${t.tier === '3-tier' ? 'web sunucusu ayrı bir host' : 'web sunucusu uygulamanın kendi sunucusu'}`; if (t.kaynak === 'aday web sunucusu') return `Topoloji 3-tier: envanterde domain yok; ad kuralının ürettiği web sunucusu ${U(m.webHostCandidate)} envanterde var`; return 'Topoloji bilinmiyor: envanterde domain yok, web sunucusu da bulunamadı'; })(),
+    (() => {
+      if (t.kaynak === 'domain') return `Topoloji ${t.tier}: envanterdeki domain ${domain}`;
+      if (t.kaynak === 'eşleşme')
+        return `Topoloji ${t.tier}: envanterde domain yok; ${t.tier === '3-tier' ? 'web sunucusu ayrı bir host' : 'web sunucusu uygulamanın kendi sunucusu'}`;
+      if (t.kaynak === 'aday web sunucusu')
+        return `Topoloji 3-tier: envanterde domain yok; ad kuralının ürettiği web sunucusu ${U(m.webHostCandidate)} envanterde var`;
+      return 'Topoloji bilinmiyor: envanterde domain yok, web sunucusu da bulunamadı';
+    })(),
   );
-  const how = String((m?.how) || '');
+  const how = String(m?.how || '');
   const hub = /^Server Hub/.test(how);
   const form = (/server_name \(([^)]*)\)/.exec(how) || [])[1];
   const web = (m && m.web) || [];
@@ -210,23 +239,37 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
     for (const w of web.filter((x) => U(x.host) === h)) {
       const k = String(w.kaynak || 'ad');
       if (k === 'ad' || k.startsWith('ad+')) {
-        kaynaklar.add(hub
-          ? `server_name ilk etiketi = "${app}" (Server Hub taraması; sertifika envanterinde yok)`
-          : `server_name'de "${app}" geçiyor (${form || 'ad'}; sertifika envanteri)`);
+        kaynaklar.add(
+          hub
+            ? `server_name ilk etiketi = "${app}" (Server Hub taraması; sertifika envanterinde yok)`
+            : `server_name'de "${app}" geçiyor (${form || 'ad'}; sertifika envanteri)`,
+        );
       }
-      if (k.includes('ajp')) { kaynaklar.add(`AJP/proxy hedefi bu uygulamanın JVM portu${w.ajpHedef ? ' (' + w.ajpHedef + ')' : ''}`); }
-      if (k.includes('mc')) { kaynaklar.add(`mod_cluster balancer adı = uygulama adı${w.mcBalancer ? ' (balancer://' + w.mcBalancer + ')' : ''}; aynı site ve ortamdaki web sunucusu`); }
+      if (k.includes('ajp')) {
+        kaynaklar.add(
+          `AJP/proxy hedefi bu uygulamanın JVM portu${w.ajpHedef ? ' (' + w.ajpHedef + ')' : ''}`,
+        );
+      }
+      if (k.includes('mc')) {
+        kaynaklar.add(
+          `mod_cluster balancer adı = uygulama adı${w.mcBalancer ? ' (balancer://' + w.mcBalancer + ')' : ''}; aynı site ve ortamdaki web sunucusu`,
+        );
+      }
     }
     const kural = adKurali(appHost, h);
-    satir.push(`${kural || (h + ': ad kuralı dışında')} — ${[...kaynaklar].join(' · ')}`);
+    satir.push(`${kural || h + ': ad kuralı dışında'} — ${[...kaynaklar].join(' · ')}`);
   }
   if (!web.length) {
     const adaylar = webHostAdaylari(appHost);
     if (m?.vhostCountOnHost > 0) {
       const kural = adKurali(appHost, m.webHostCandidate);
-      satir.push(`${kural || U(m.webHostCandidate)} — orada ${m.vhostCountOnHost} vhost var ama hiçbirinin server_name'i "${app}" içermiyor; AJP / mod_cluster hedefi de yok`);
+      satir.push(
+        `${kural || U(m.webHostCandidate)} — orada ${m.vhostCountOnHost} vhost var ama hiçbirinin server_name'i "${app}" içermiyor; AJP / mod_cluster hedefi de yok`,
+      );
     } else {
-      satir.push(`Web sunucusu bulunamadı: ${adaylar.length ? 'aday ' + adaylar.map(U).join(', ') + ' ve ' : ''}${U(appHost)} için sertifika envanterinde de Server Hub taramasında da vhost yok`);
+      satir.push(
+        `Web sunucusu bulunamadı: ${adaylar.length ? 'aday ' + adaylar.map(U).join(', ') + ' ve ' : ''}${U(appHost)} için sertifika envanterinde de Server Hub taramasında da vhost yok`,
+      );
     }
   }
   return satir;
@@ -264,7 +307,12 @@ function dnsBolgesi(domain) {
 
 async function tekCozum(ad, sunucular) {
   const dns = require('node:dns').promises;
-  const zaman = new Promise((_, red) => setTimeout(() => red(Object.assign(new Error('zaman asimi'), { code: 'ZAMAN_ASIMI' })), DNS_SURE_MS));
+  const zaman = new Promise((_, red) =>
+    setTimeout(
+      () => red(Object.assign(new Error('zaman asimi'), { code: 'ZAMAN_ASIMI' })),
+      DNS_SURE_MS,
+    ),
+  );
   try {
     let ips;
     if (sunucular && sunucular.length) {
@@ -272,12 +320,22 @@ async function tekCozum(ad, sunucular) {
       r.setServers(sunucular);
       ips = await Promise.race([r.resolve4(ad), zaman]);
     } else {
-      ips = (await Promise.race([dns.lookup(ad, { all: true, family: 4 }), zaman])).map((x) => x.address);
+      ips = (await Promise.race([dns.lookup(ad, { all: true, family: 4 }), zaman])).map(
+        (x) => x.address,
+      );
     }
-    return { ips: [...new Set(ips)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) };
+    return {
+      ips: [...new Set(ips)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    };
   } catch (e) {
     const c = e?.code;
-    return { hata: (() => { if (c === 'ENOTFOUND' || c === 'ENODATA') return 'DNS kaydı yok'; if (c === 'ZAMAN_ASIMI' || c === 'ETIMEOUT') return 'zaman aşımı'; return String(c || (e?.message) || e); })() };
+    return {
+      hata: (() => {
+        if (c === 'ENOTFOUND' || c === 'ENODATA') return 'DNS kaydı yok';
+        if (c === 'ZAMAN_ASIMI' || c === 'ETIMEOUT') return 'zaman aşımı';
+        return String(c || e?.message || e);
+      })(),
+    };
   }
 }
 
@@ -285,35 +343,54 @@ async function tekCozum(ad, sunucular) {
  * istekler: [{ad, bolge}] -> sonuc[`${bolge || '-'}|${ad}`] = { Pendik, Ankara } (bolge biliniyorsa)
  * ya da { varsayilan } (bolge yoksa Portal cozucusu).
  */
-async function dnsCozumle(istekler, { bolgeler = dnsBolgeleri(), cozucu = tekCozum, simdi = Date.now } = {}) {
+async function dnsCozumle(
+  istekler,
+  { bolgeler = dnsBolgeleri(), cozucu = tekCozum, simdi = Date.now } = {},
+) {
   const isler = [];
   const sonuc = {};
   for (const x of istekler || []) {
-    const ad = String((x && x.ad) || '').trim().toLowerCase();
+    const ad = String((x && x.ad) || '')
+      .trim()
+      .toLowerCase();
     const bolge = x && x.bolge && bolgeler[x.bolge] ? x.bolge : null;
     const anahtar = `${bolge || '-'}|${ad}`;
     if (!ad || sonuc[anahtar]) continue;
     sonuc[anahtar] = {};
     const kollar = bolge ? Object.keys(bolgeler[bolge]) : ['varsayilan'];
     for (const k of kollar) {
-      if (ad.startsWith('*')) { sonuc[anahtar][k] = { hata: 'joker ad - çözülmez' }; continue; }
-      if (/^[0-9.]+$/.test(ad)) { sonuc[anahtar][k] = { ips: [ad] }; continue; }
+      if (ad.startsWith('*')) {
+        sonuc[anahtar][k] = { hata: 'joker ad - çözülmez' };
+        continue;
+      }
+      if (/^[0-9.]+$/.test(ad)) {
+        sonuc[anahtar][k] = { ips: [ad] };
+        continue;
+      }
       const sunucular = bolge ? bolgeler[bolge][k] : null;
       const ok = `${sunucular ? sunucular.join(',') : 'varsayilan'}|${ad}`;
       const c = _dnsOnbellek.get(ok);
-      if (c && simdi() - c.at < DNS_TTL_MS) { sonuc[anahtar][k] = c.v; continue; }
+      if (c && simdi() - c.at < DNS_TTL_MS) {
+        sonuc[anahtar][k] = c.v;
+        continue;
+      }
       isler.push({ ad, anahtar, k, ok, sunucular });
     }
   }
   let i = 0;
-  await Promise.all(Array.from({ length: Math.min(DNS_ESZAMANLI, isler.length) }, async () => {
-    while (i < isler.length) {
-      const is = isler[i++];
-      const v = await cozucu(is.ad, is.sunucular);
-      _dnsOnbellek.set(is.ok, { at: simdi(), v });
-      sonuc[is.anahtar][is.k] = { ...v, ...(is.sunucular ? { dnsSunucusu: is.sunucular.join(', ') } : {}) };
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(DNS_ESZAMANLI, isler.length) }, async () => {
+      while (i < isler.length) {
+        const is = isler[i++];
+        const v = await cozucu(is.ad, is.sunucular);
+        _dnsOnbellek.set(is.ok, { at: simdi(), v });
+        sonuc[is.anahtar][is.k] = {
+          ...v,
+          ...(is.sunucular ? { dnsSunucusu: is.sunucular.join(', ') } : {}),
+        };
+      }
+    }),
+  );
   return { sonuc };
 }
 
@@ -321,7 +398,9 @@ function registerWebApp(router) {
   // DNS -> VIP: tablo yuklendikten SONRA ayri istekle (tabloyu bekletmesin). En fazla 400 ad.
   router.post('/web-app/dns', async (req, res) => {
     const istekler = Array.isArray(req.body?.istekler)
-      ? req.body.istekler.slice(0, 400).map((x) => ({ ad: String(x?.ad || ''), bolge: x?.bolge ? String(x.bolge) : null }))
+      ? req.body.istekler
+          .slice(0, 400)
+          .map((x) => ({ ad: String(x?.ad || ''), bolge: x?.bolge ? String(x.bolge) : null }))
       : [];
     try {
       const { sonuc } = await dnsCozumle(istekler);
@@ -398,11 +477,22 @@ const _hesaplar = new Map();
 
 function webAppSonucu(key, taze) {
   const c = _hesaplar.get(key);
-  if (c && (c.bekliyor || (!taze && Date.now() - c.at < onbellekMs()))) { return c.p; }
+  if (c && (c.bekliyor || (!taze && Date.now() - c.at < onbellekMs()))) {
+    return c.p;
+  }
   const kayit = { at: Date.now(), bekliyor: true, p: null };
   kayit.p = webAppHesapla(key).then(
-    (v) => { kayit.bekliyor = false; kayit.at = Date.now(); return v; },
-    (e) => { if (_hesaplar.get(key) === kayit) { _hesaplar.delete(key); } throw e; },
+    (v) => {
+      kayit.bekliyor = false;
+      kayit.at = Date.now();
+      return v;
+    },
+    (e) => {
+      if (_hesaplar.get(key) === kayit) {
+        _hesaplar.delete(key);
+      }
+      throw e;
+    },
   );
   _hesaplar.set(key, kayit);
   return kayit.p;
@@ -426,9 +516,16 @@ async function webAppHesapla(key) {
   // SERVER HUB + AJP (2026-10-13): retirement kesfiyle AYNI zenginlestirme (discover.cjs).
   // Server Hub okunamazsa yalniz sertifika eslemesi kalir; ekran bunu hubHata ile soyler.
   const { webZenginlestir, hubBaglamiYukle, siteOf, genOf } = require('../retirement/discover.cjs');
-  const hub = await hubBaglamiYukle(query).catch((e) => ({ vhostRows: [], hubVhostsByHost: new Map(), ipMap: new Map(), jvmOf: () => null, hata: [e.message] }));
+  const hub = await hubBaglamiYukle(query).catch((e) => ({
+    vhostRows: [],
+    hubVhostsByHost: new Map(),
+    ipMap: new Map(),
+    jvmOf: () => null,
+    hata: [e.message],
+  }));
   // Ozet kovasi: AJP parantezindeki sayilar kovayi parcalamasin.
-  const howKova = (h) => String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
+  const howKova = (h) =>
+    String(h).replace(/AJP\/proxy hedefi = JVM portu \([^)]*\)/, 'AJP/proxy hedefi = JVM portu');
 
   const howCount = {};
   const tierCount = {};
@@ -444,11 +541,15 @@ async function webAppHesapla(key) {
     if (!app) continue;
 
     const domain = String(a.domain || '').trim();
-    const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost),
-      { hubVhostsByHost: hub.hubVhostsByHost, vhostRows: hub.vhostRows, ipMap: hub.ipMap,
-        jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
-        // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
-        gen: src.genKolon ? genOf(a[src.genKolon]) : null, modCluster: key === 'mw' })
+    const m = webZenginlestir(app, appHost, matchWebForApp({ app, appHost, domain }, certByHost), {
+      hubVhostsByHost: hub.hubVhostsByHost,
+      vhostRows: hub.vhostRows,
+      ipMap: hub.ipMap,
+      jvm: hub.jvmOf(appHost, app, src.genKolon ? genOf(a[src.genKolon]) : null),
+      // mod_cluster yalniz JBoss (8) icin; WAS kaynaginda balancer adi eslesmesi yapilmaz.
+      gen: src.genKolon ? genOf(a[src.genKolon]) : null,
+      modCluster: key === 'mw',
+    });
     const { how, matched } = m;
     const topoloji = topolojiOf(domain, appHost, m);
     const tier = topoloji.tier;
@@ -477,7 +578,13 @@ async function webAppHesapla(key) {
       // bolge null kaliyor, Ankara uyesi Ankara DNS'ine HIC sorulmayip Portal cozucusunun (Pendik)
       // cevabiyla "Ankara VIP'i farkli olabilir" diye gosteriliyordu.
       web: (m.web || []).map((w) => ({
-        ip: '', port: '', confFile: '', product: '', ...w, kaynak: w.kaynak || 'ad', site: siteOf(w.host),
+        ip: '',
+        port: '',
+        confFile: '',
+        product: '',
+        ...w,
+        kaynak: w.kaynak || 'ad',
+        site: siteOf(w.host),
         dnsBolge: dnsBolgesi(w.serverName) || dnsBolgesi(domain),
       })),
       webHostCandidate: m.webHostCandidate,
@@ -485,9 +592,7 @@ async function webAppHesapla(key) {
     });
   }
 
-  rows.sort(
-    (x, y) => x.app.localeCompare(y.app, 'tr') || x.appHost.localeCompare(y.appHost, 'tr'),
-  );
+  rows.sort((x, y) => x.app.localeCompare(y.app, 'tr') || x.appHost.localeCompare(y.appHost, 'tr'));
 
   return {
     certMissing,
@@ -506,6 +611,22 @@ async function webAppHesapla(key) {
 }
 
 /** Test icin: hesap onbellegini bosaltir. */
-function _webAppOnbellekTemizle() { _hesaplar.clear(); }
+function _webAppOnbellekTemizle() {
+  _hesaplar.clear();
+}
 
-module.exports = { registerWebApp, _webAppOnbellekTemizle, dnsCozumle, dnsBolgesi, dnsBolgeleri, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };
+module.exports = {
+  registerWebApp,
+  _webAppOnbellekTemizle,
+  dnsCozumle,
+  dnsBolgesi,
+  dnsBolgeleri,
+  adVaryantlari,
+  webHostOf,
+  webHostAdaylari,
+  tierOf,
+  topolojiOf,
+  nasilAciklama,
+  buildCertIndex,
+  matchWebForApp,
+};

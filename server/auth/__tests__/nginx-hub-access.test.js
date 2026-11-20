@@ -137,10 +137,7 @@ test('NH-A2 panel uçları: sayfaya + seçilen sekmelere allow yazılır (seçil
   // dusuyordu (2026-10-08). Bekci, kaynaktaki bicimlendirmeye degil YAPIYA bakmali.
   const tabKeysBlk = anahtarBloku(routes);
   for (const t of TABS)
-    assert.ok(
-      new RegExp(`'${t}'`).test(tabKeysBlk),
-      `NGINX_TAB_KEYS içinde ${t} yok`,
-    );
+    assert.ok(new RegExp(`'${t}'`).test(tabKeysBlk), `NGINX_TAB_KEYS içinde ${t} yok`);
 
   // GELEN SEKME LISTESI BEYAZ LISTEYE SUZULMELI. Suzgec olmadan govdede gonderilen
   // herhangi bir dizge element anahtari gibi islenir ve ona allow kurali yazilir -
@@ -180,8 +177,16 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
   // Yuk Testi ayri router (2026-10-27): sayfa + sekme kapisi kendi dosyasinda.
   const yt = read('server/nginx-loadtest/index.cjs');
   // 2026-11-13: Yuk Testi BMW Hub sayfasi (YukTesti) YA DA eski Nginx Hub sayfa + sekme izni (canSee ile).
-  assert.ok(yt.includes("if (await canSee(user, 'YukTesti')) return next();"), 'Yük Testi uçları YukTesti sayfa kapısında değil');
-  assert.ok(yt.includes("(await canSee(user, 'NginxConsole')) && (await canSee(user, 'tab:nginx:yuktesti'))"), 'Yük Testi eski sekme izni (sayfa + sekme birlikte) değil');
+  assert.ok(
+    yt.includes("if (await canSee(user, 'YukTesti')) return next();"),
+    'Yük Testi uçları YukTesti sayfa kapısında değil',
+  );
+  assert.ok(
+    yt.includes(
+      "(await canSee(user, 'NginxConsole')) && (await canSee(user, 'tab:nginx:yuktesti'))",
+    ),
+    'Yük Testi eski sekme izni (sayfa + sekme birlikte) değil',
+  );
 
   const den = read('server/audit/denetim.cjs');
   assert.ok(
@@ -208,7 +213,9 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     'denetim sekme grubu canSee ile süzülmüyor',
   );
   assert.ok(
-    /HUB_AUDIT_TABS\.filter\(\(x\) =>[\s\S]{0,260}canSee\('tab:nginx:spadiscovery'\)[\s\S]{0,80}canSee\('tab:nginx:spa'\)/.test(page),
+    /HUB_AUDIT_TABS\.filter\(\(x\) =>[\s\S]{0,260}canSee\('tab:nginx:spadiscovery'\)[\s\S]{0,80}canSee\('tab:nginx:spa'\)/.test(
+      page,
+    ),
     'birleşik sekme iki görünürlük anahtarından birini okumuyor',
   );
   // Icerik de kapali olmali: gorunmeyen sekmenin bileseni render EDILMEMELI.
@@ -216,14 +223,16 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     if (t === 'spadiscovery') {
       // Birlesik sayfa: iki anahtardan biri yeterli, ama HICBIRI yoksa render EDILMEZ.
       assert.ok(
-        page.includes("{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))"),
+        page.includes(
+          "{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))",
+        ),
         'birleşik sayfa içeriği koşulsuz render ediliyor',
       );
       // Alt sekmeler de AYRI AYRI yetkiye bagli olmali: yalniz bir anahtara sahip
       // kullaniciya otekinin icerigi acilmamali.
       assert.ok(
-        /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/.test(page)
-          && /kapsamGorunur=\{canSee\('tab:nginx:spa'\)\}/.test(page),
+        /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/.test(page) &&
+          /kapsamGorunur=\{canSee\('tab:nginx:spa'\)\}/.test(page),
         'alt sekmeler ayrı görünürlük anahtarına bağlı değil',
       );
       continue;
@@ -234,7 +243,10 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     );
   }
   // ESKI BAGLANTI: ?tab=spa sessizce Dashboard'a DUSMEMELI.
-  assert.ok(/raw === 'spa'\) return 'spadiscovery'/.test(page), 'eski ?tab=spa bağlantısı yönlendirilmiyor');
+  assert.ok(
+    /raw === 'spa'\) return 'spadiscovery'/.test(page),
+    'eski ?tab=spa bağlantısı yönlendirilmiyor',
+  );
   assert.ok(page.includes('Bu sayfada size açık bir bölüm yok'), 'boş durum mesajı yok');
   assert.ok(
     /if \(visibleIds\.length && !visibleIds\.includes\(tab\)\) setTab\(visibleIds\[0\]\)/.test(
@@ -298,11 +310,17 @@ test('NH-A5 seed ile ekran sekme listesi ortusur; her sekmenin yetki kapisi var'
     const tekAnahtar = page.includes(`{tab === '${t}' && canSee('tab:nginx:${t}')`);
     const birlesik =
       t === 'spadiscovery' &&
-      page.includes("{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))");
+      page.includes(
+        "{tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa'))",
+      );
     assert.ok(tekAnahtar || birlesik, `${t} icerigi yetki kapisi OLMADAN render ediliyor`);
   }
 
   // Birlesik sayfanin ALT SEKMELERI de ayri ayri yetkiye bagli olmali.
-  assert.match(page, /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/, 'Kesif alt sekmesi yetkisiz');
+  assert.match(
+    page,
+    /kesifGorunur=\{canSee\('tab:nginx:spadiscovery'\)\}/,
+    'Kesif alt sekmesi yetkisiz',
+  );
   assert.match(page, /kapsamGorunur=\{canSee\('tab:nginx:spa'\)\}/, 'Kapsam alt sekmesi yetkisiz');
 });

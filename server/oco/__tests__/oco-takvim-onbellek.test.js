@@ -43,9 +43,16 @@ test('T1 tek-ucus: 3 esanli get -> fetch 1 kez', async () => {
     },
     log: quiet,
   });
-  const r = await Promise.all([c.get({ group: '6203' }), c.get({ group: '6203' }), c.get({ group: '6203' })]);
+  const r = await Promise.all([
+    c.get({ group: '6203' }),
+    c.get({ group: '6203' }),
+    c.get({ group: '6203' }),
+  ]);
   assert.equal(n, 1, 'esanli istekler ayri cekim yapti');
-  assert.deepEqual(r.map((x) => x.value.n), [1, 1, 1]);
+  assert.deepEqual(
+    r.map((x) => x.value.n),
+    [1, 1, 1],
+  );
   assert.equal((await c.get({ group: '6203' })).cache, 'hit');
   assert.equal(n, 1);
 });
@@ -101,7 +108,10 @@ test('T3 arka plan hatasi onceki iyi degeri silmez', async () => {
   const r = await c.get({ group: 'g' });
   assert.equal(r.value.n, 1, 'hata onceki degeri sildi');
   assert.equal(r.cache, 'stale');
-  assert.ok(uyarilar.some((u) => /servis kapali/.test(u)), 'arka plan hatasi loglanmadi');
+  assert.ok(
+    uyarilar.some((u) => /servis kapali/.test(u)),
+    'arka plan hatasi loglanmadi',
+  );
   // Bekleyen istek (refresh) hatayi gorur; deger yine korunur.
   await assert.rejects(c.get({ group: 'g', refresh: true }), /servis kapali/);
   assert.equal((await c.get({ group: 'g' })).value.n, 1);
@@ -121,7 +131,10 @@ test('T4 refresh taze cekimi bekler; ucustaki cekim varsa onu paylasir', async (
   const r = await c.get({ group: 'g', refresh: true });
   assert.equal(r.value.n, 2);
   assert.equal(r.cache, 'miss');
-  const [x, y] = await Promise.all([c.get({ group: 'g', refresh: true }), c.get({ group: 'g', refresh: true })]);
+  const [x, y] = await Promise.all([
+    c.get({ group: 'g', refresh: true }),
+    c.get({ group: 'g', refresh: true }),
+  ]);
   assert.equal(n, 3);
   assert.equal(x.value.n, y.value.n);
 });
@@ -129,7 +142,13 @@ test('T4 refresh taze cekimi bekler; ucustaki cekim varsa onu paylasir', async (
 test('T5 enEskiMs asilinca bayat deger donmez, cekim beklenir', async () => {
   const now = saat();
   let n = 0;
-  const c = createTakvimOnbellek({ now, tazeMs: 1000, enEskiMs: 5000, log: quiet, fetch: async () => ({ ok: true, n: ++n, eksik: [] }) });
+  const c = createTakvimOnbellek({
+    now,
+    tazeMs: 1000,
+    enEskiMs: 5000,
+    log: quiet,
+    fetch: async () => ({ ok: true, n: ++n, eksik: [] }),
+  });
   await c.get({ group: 'g' });
   now.ileri(5001);
   const r = await c.get({ group: 'g' });
@@ -145,7 +164,11 @@ test('T5b eksik (bir rol dustu) sonuc tazeMs yerine kisa sure taze sayilir', asy
     tazeMs: 300_000,
     eksikTazeMs: 60_000,
     log: quiet,
-    fetch: async () => ({ ok: true, n: ++n, eksik: n === 1 ? [{ rol: 'acan', message: 'x' }] : [] }),
+    fetch: async () => ({
+      ok: true,
+      n: ++n,
+      eksik: n === 1 ? [{ rol: 'acan', message: 'x' }] : [],
+    }),
   });
   await c.get({ group: 'g' });
   now.ileri(30_000);
@@ -160,7 +183,11 @@ test('T5b eksik (bir rol dustu) sonuc tazeMs yerine kisa sure taze sayilir', asy
 test('T5c isitma turu: istek yoksa ya da yapilandirilmamissa cekmez', async () => {
   const now = saat();
   let n = 0;
-  const c = createTakvimOnbellek({ now, log: quiet, fetch: async () => ({ ok: true, n: ++n, eksik: [] }) });
+  const c = createTakvimOnbellek({
+    now,
+    log: quiet,
+    fetch: async () => ({ ok: true, n: ++n, eksik: [] }),
+  });
   assert.equal(await c.isitTuru({ group: 'g' }), false, 'hic istek yokken isitti');
   await c.get({ group: 'g' });
   assert.equal(await c.isitTuru({ group: 'g', isConfigured: () => false }), false);
@@ -173,7 +200,11 @@ test('T5c isitma turu: istek yoksa ya da yapilandirilmamissa cekmez', async () =
   c.durdur();
 });
 
-const ORNEK = (id) => ({ OcoWfInstanceId: id, Subject: 's' + id, PlannedStartDate: `/Date(${1791309600000 + id * 1000}+0300)/` });
+const ORNEK = (id) => ({
+  OcoWfInstanceId: id,
+  Subject: 's' + id,
+  PlannedStartDate: `/Date(${1791309600000 + id * 1000}+0300)/`,
+});
 function sayfaliServis(total, { bosIndeks = null, gecikme = 3, hataSkip = null } = {}) {
   const cagrilar = [];
   let aktif = 0;
@@ -186,7 +217,8 @@ function sayfaliServis(total, { bosIndeks = null, gecikme = 3, hataSkip = null }
     aktif -= 1;
     if (hataSkip === skip) throw new Error('sayfa hatasi');
     const i = skip / search.PAGE_SIZE;
-    if (bosIndeks != null && i >= bosIndeks) return { SearchChangeOrderWithOffsetResult: { TotalCount: total, Result: [] } };
+    if (bosIndeks != null && i >= bosIndeks)
+      return { SearchChangeOrderWithOffsetResult: { TotalCount: total, Result: [] } };
     const adet = Math.max(0, Math.min(search.PAGE_SIZE, total - skip));
     return {
       SearchChangeOrderWithOffsetResult: {
@@ -203,11 +235,17 @@ function sayfaliServis(total, { bosIndeks = null, gecikme = 3, hataSkip = null }
 test('T6 paralel sayfa: skip seti, esanlilik <= 3, sira korunur, bos sayfada durur, MAX_PAGES', async () => {
   const s1 = sayfaliServis(550);
   const r = await search.tekSorgu(s1, { eszaman: 3 });
-  assert.deepEqual([...s1.cagrilar].sort((a, b) => a - b), [0, 100, 200, 300, 400, 500]);
+  assert.deepEqual(
+    [...s1.cagrilar].sort((a, b) => a - b),
+    [0, 100, 200, 300, 400, 500],
+  );
   assert.ok(s1.enCok() <= 3, `esanlilik siniri asildi: ${s1.enCok()}`);
   assert.equal(r.fetched, 550);
   assert.equal(r.truncated, false);
-  assert.deepEqual(r.rows.map((x) => x.oco), Array.from({ length: 550 }, (_, i) => i + 1));
+  assert.deepEqual(
+    r.rows.map((x) => x.oco),
+    Array.from({ length: 550 }, (_, i) => i + 1),
+  );
 
   // Ortada bos sayfa: sonrasi alinmaz (alinmissa yok sayilir), kirpma sayilmaz.
   const s2 = sayfaliServis(1000, { bosIndeks: 3, gecikme: 1 });
@@ -224,14 +262,20 @@ test('T6 paralel sayfa: skip seti, esanlilik <= 3, sira korunur, bos sayfada dur
   assert.ok(Math.max(...s3.cagrilar) < search.MAX_PAGES * search.PAGE_SIZE);
 
   // Herhangi bir sayfa hatasi rolun hatasidir.
-  await assert.rejects(search.tekSorgu(sayfaliServis(550, { hataSkip: 300 }), { eszaman: 3 }), /sayfa hatasi/);
+  await assert.rejects(
+    search.tekSorgu(sayfaliServis(550, { hataSkip: 300 }), { eszaman: 3 }),
+    /sayfa hatasi/,
+  );
 
   // eszaman=1 eski sirali yol (ofset = ham kayit): ayni sonuc.
   const s4 = sayfaliServis(550);
   const r4 = await search.tekSorgu(s4, { eszaman: 1 });
   assert.deepEqual(s4.cagrilar, [0, 100, 200, 300, 400, 500]);
   assert.equal(s4.enCok(), 1);
-  assert.deepEqual(r4.rows.map((x) => x.oco), r.rows.map((x) => x.oco));
+  assert.deepEqual(
+    r4.rows.map((x) => x.oco),
+    r.rows.map((x) => x.oco),
+  );
 });
 
 test('T6b paralel cekimde kayan kayit rol icinde bir kez', async () => {
@@ -251,7 +295,14 @@ test('T7 kalici dispatcher: ayni anahtar ayni nesne; proxy ya da CA degisince es
   search._resetDispatcher();
   const kurulan = [];
   const fabrika = (o) => {
-    const d = { o, kapandi: false, close() { this.kapandi = true; return Promise.resolve(); } };
+    const d = {
+      o,
+      kapandi: false,
+      close() {
+        this.kapandi = true;
+        return Promise.resolve();
+      },
+    };
     kurulan.push(d);
     return d;
   };
@@ -284,7 +335,10 @@ test('T7 kalici dispatcher: ayni anahtar ayni nesne; proxy ya da CA degisince es
 });
 
 test('T7b sayfa sonunda dispatcher KAPATILMAZ (kaynak bekcisi)', () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'search.cjs'), 'utf8');
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'search.cjs'),
+    'utf8',
+  );
   const govde = src.slice(src.indexOf('async function httpPage('));
   assert.ok(govde.includes('getDispatcher(url)'), 'httpPage kalici dispatcher kullanmiyor');
   assert.ok(!/dispatcher\.close\(/.test(govde), 'httpPage her sayfada dispatcher kapatiyor');
@@ -297,7 +351,12 @@ test('T8 uc: Server-Timing + stale bayragi; ikinci istek onbellekten', async () 
   const visYol = require.resolve('../../auth/visibility.cjs');
   const idxYol = require.resolve('../index.cjs');
   const srcYol = require.resolve('../search.cjs');
-  const eski = { a: require.cache[authYol], v: require.cache[visYol], i: require.cache[idxYol], s: require.cache[srcYol] };
+  const eski = {
+    a: require.cache[authYol],
+    v: require.cache[visYol],
+    i: require.cache[idxYol],
+    s: require.cache[srcYol],
+  };
   const sahte = (yol, exports) => ({ id: yol, filename: yol, loaded: true, exports });
   let n = 0;
   require.cache[authYol] = sahte(authYol, { requireAuth: (_q, _s, next) => next() });
@@ -338,7 +397,12 @@ test('T8 uc: Server-Timing + stale bayragi; ikinci istek onbellekten', async () 
     sunucu.closeAllConnections?.();
     sunucu.close();
     require(idxYol)._onbellek.durdur();
-    for (const [k, v] of [[authYol, eski.a], [visYol, eski.v], [idxYol, eski.i], [srcYol, eski.s]]) {
+    for (const [k, v] of [
+      [authYol, eski.a],
+      [visYol, eski.v],
+      [idxYol, eski.i],
+      [srcYol, eski.s],
+    ]) {
       if (v) require.cache[k] = v;
       else delete require.cache[k];
     }

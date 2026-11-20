@@ -37,8 +37,11 @@ async function resolveTarget(platform) {
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.TELNET_AWX_SERVER_ID || '').trim());
-  const serverId =
-    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
+  const serverId = (() => {
+    if (row.awxServerId != null) return Number(row.awxServerId);
+    if (Number.isInteger(envServer) && envServer >= 0) return envServer;
+    return 0;
+  })();
   return { templateId: templateId || null, serverId, keyName };
 }
 

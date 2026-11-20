@@ -25,18 +25,24 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 // Yorumlar KALDIRILAN kodu ANLATMAK icin ondan alinti yapiyor; "hala duruyor mu"
 // taramasi gercek KODA bakmali.
-const stripComments = (src) => src
-  .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+const stripComments = (src) =>
+  src
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
 
 const LOGO = stripComments(read('components/common/PortalLogo.tsx'));
 const MASTHEAD = read('components/layout/Masthead.tsx');
 const LOGIN = read('components/LoginPage.tsx');
 
 test('BOYUT: masthead 36px (sade isaret), giris 56px (wordmark ile)', () => {
-  assert.match(MASTHEAD, /<PortalLogo className="h-9 w-9" \/>/,
-    'masthead logosu buyutulmemis (PF6 bu alana 38px kadar yer ayiriyor)');
+  assert.match(
+    MASTHEAD,
+    /<PortalLogo className="h-9 w-9" \/>/,
+    'masthead logosu buyutulmemis (PF6 bu alana 38px kadar yer ayiriyor)',
+  );
   // Giris ekraninda logo TEK BASINA ve buyuk durur; wordmark'in okunabildigi en
   // kucuk boyut 56px.
   assert.match(LOGIN, /<PortalLogo className="h-14 w-14" withWordmark \/>/);
@@ -50,8 +56,10 @@ test('WORDMARK yalnizca BUYUK ve TEK BASINA kullanimda', () => {
 });
 
 test('KIRPMA YOK: yuklenen logo tamami gorunur', () => {
-  assert.ok(!/object-cover/.test(LOGO),
-    'object-cover duruyor — kare olmayan logolar (wordmark) kenarlarindan KESILIR');
+  assert.ok(
+    !/object-cover/.test(LOGO),
+    'object-cover duruyor — kare olmayan logolar (wordmark) kenarlarindan KESILIR',
+  );
   assert.ok(!/scale-\[1\.16\]/.test(LOGO), 'buyutup kirpan olcek duruyor');
   assert.match(LOGO, /object-contain/, 'logo en-boy orani korunarak sigdirilmali');
 });
@@ -79,19 +87,23 @@ test('GRADYAN ID’leri BENZERSIZ (ayni sayfada iki logo cakismasin)', () => {
 });
 
 test('FAVICON ayni isareti kullanir ve METIN icermez', () => {
-  const fav = fs.readFileSync(
-    path.join(ROOT, '..', 'server', 'admin', 'branding.cjs'), 'utf8');
+  const fav = fs.readFileSync(path.join(ROOT, '..', 'server', 'admin', 'branding.cjs'), 'utf8');
   const block = fav.slice(fav.indexOf('const DEFAULT_FAVICON_SVG'), fav.indexOf("'utf-8'"));
-  assert.ok(!/<text/.test(block),
-    'favicon bagimsiz servis edilir ve sayfanin fontlarina ERISEMEZ — <text> sistem fontuna duser');
+  assert.ok(
+    !/<text/.test(block),
+    'favicon bagimsiz servis edilir ve sayfanin fontlarina ERISEMEZ — <text> sistem fontuna duser',
+  );
   assert.ok(!/#ee0000/.test(block), 'eski kirmizi "B" favicon’u duruyor');
   assert.match(block, /#00dba4/, 'marka gradyani favicon’a tasinmamis');
   assert.match(block, /M2\.25 15a4\.5/, 'ayni bulut yolu kullanilmali');
 });
 
 test('AYIRICI: marka blogu araclardan gorsel olarak ayrisiyor', () => {
-  assert.match(MASTHEAD, /aria-hidden="true" className="hidden sm:block h-8 w-px"/,
-    'dikey ayirici yok — logo kalabalikta kayboluyor');
+  assert.match(
+    MASTHEAD,
+    /aria-hidden="true" className="hidden sm:block h-8 w-px"/,
+    'dikey ayirici yok — logo kalabalikta kayboluyor',
+  );
   assert.match(MASTHEAD, /background: "var\(--masthead-border\)"/);
 });
 
@@ -101,6 +113,9 @@ test('marka metni token okuyor (masthead artik temayi izliyor)', () => {
 });
 
 test('giris ekrani KOYU kalir, yalnizca tonlari PF6 notrlerine tasindi', () => {
-  assert.match(LOGIN, /linear-gradient\(150deg, #151515 0%, #292929 45%, #1f1f1f 100%\)/,
-    'giris gradyani PF6 notr grilerine tasinmamis');
+  assert.match(
+    LOGIN,
+    /linear-gradient\(150deg, #151515 0%, #292929 45%, #1f1f1f 100%\)/,
+    'giris gradyani PF6 notr grilerine tasinmamis',
+  );
 });

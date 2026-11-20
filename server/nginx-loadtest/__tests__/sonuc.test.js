@@ -44,7 +44,13 @@ const sonuc = require('../sonuc.cjs');
 const { kosuDiziniOku } = sonuc;
 const { kosuAnaliz } = require('../analiz.cjs');
 const { Kurgu, standart, portalDuzeniYaz, KOLON, tl } = require('./fixtures/kurgu.cjs');
-const { WRK_ORNEK, JSON_ANAHTARLARI, WRK_OLCULMEYEN, wrkIstemci, wrkOrnekDosyalari } = require('./fixtures/wrk-serbest.cjs');
+const {
+  WRK_ORNEK,
+  JSON_ANAHTARLARI,
+  WRK_OLCULMEYEN,
+  wrkIstemci,
+  wrkOrnekDosyalari,
+} = require('./fixtures/wrk-serbest.cjs');
 
 const KOK = fs.mkdtempSync(path.join(os.tmpdir(), 'yuktesti-sonuc-'));
 after(() => fs.rmSync(KOK, { recursive: true, force: true }));
@@ -64,8 +70,17 @@ async function okunamadi(fn, desen) {
   });
 }
 
-const ISTEMCI = KOLON.join(',') + '\n' + KOLON.map((k) => { if (k === 'tur') return 'R1_K_yeni_br_250_r1'; if (k === 'adim') return 'R1'; return '1'; }).join(',') + '\n';
-const LOG_BAS = 'tur\tfaz\ttime_local\tstatus\tyol\trequest_time\tresponse_lenght\tconnection_request\tdeneme\n';
+const ISTEMCI =
+  KOLON.join(',') +
+  '\n' +
+  KOLON.map((k) => {
+    if (k === 'tur') return 'R1_K_yeni_br_250_r1';
+    if (k === 'adim') return 'R1';
+    return '1';
+  }).join(',') +
+  '\n';
+const LOG_BAS =
+  'tur\tfaz\ttime_local\tstatus\tyol\trequest_time\tresponse_lenght\tconnection_request\tdeneme\n';
 
 test('SN1 dizin yok / dosya / bos ad -> OKUNAMADI', async () => {
   await okunamadi(() => kosuDiziniOku(path.join(KOK, 'yok-boyle-dizin')), /kosu dizini okunamadi/);
@@ -78,22 +93,44 @@ test('SN1 dizin yok / dosya / bos ad -> OKUNAMADI', async () => {
 test('SN2 bayt tavani: ham boyut on kontrolu ve acilmis bayt (gzip bombasi) akista kesilir', async () => {
   const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
   // On kontrol: ham boyut toplami okumadan once reddedilir (akis kesmesinden ayri mesaj).
-  await okunamadi(() => kosuDiziniOku(d, { maxBayt: 10 }), new RegExp(`bayt tavanini asti \\(${Buffer.byteLength(ISTEMCI)} > 10\\)`));
+  await okunamadi(
+    () => kosuDiziniOku(d, { maxBayt: 10 }),
+    new RegExp(`bayt tavanini asti \\(${Buffer.byteLength(ISTEMCI)} > 10\\)`),
+  );
   // 4 MB sifir -> ~4 KB gzip: ham boyut tavanin cok altinda, acilinca ustunde.
-  const bomba = zlib.gzipSync(Buffer.concat([Buffer.from(LOG_BAS), Buffer.alloc(4 * 1024 * 1024, 0x41)]));
+  const bomba = zlib.gzipSync(
+    Buffer.concat([Buffer.from(LOG_BAS), Buffer.alloc(4 * 1024 * 1024, 0x41)]),
+  );
   const g = yeniDizin({ 'log_R1_h.tsv.gz': bomba });
   assert.ok(bomba.length < 64 * 1024);
-  await okunamadi(() => kosuDiziniOku(g, { maxBayt: 1024 * 1024 }), /bayt tavanini asti \(1048576 bayt; log_R1_h\.tsv\.gz/);
+  await okunamadi(
+    () => kosuDiziniOku(g, { maxBayt: 1024 * 1024 }),
+    /bayt tavanini asti \(1048576 bayt; log_R1_h\.tsv\.gz/,
+  );
   // Tavan yeterliyse ayni dosya okunur (uzun satir atlanir, sayilir).
   const v = await kosuDiziniOku(g, { maxBayt: 8 * 1024 * 1024 });
-  assert.ok(v.uyarilar.some((u) => u.startsWith('uzun_satir_atlandi:log_R1_h.tsv.gz(')), v.uyarilar.join(' | '));
+  assert.ok(
+    v.uyarilar.some((u) => u.startsWith('uzun_satir_atlandi:log_R1_h.tsv.gz(')),
+    v.uyarilar.join(' | '),
+  );
   assert.equal(sonuc.VARSAYILAN_MAX_BAYT, 200 * 1024 * 1024);
 });
 
 test('SN3 bozuk / yarim gzip -> OKUNAMADI', async () => {
-  const tam = zlib.gzipSync(Buffer.from(LOG_BAS + 'R1_K_yeni_br_250_r1\tolcum\t27/Oct/2026:10:00:00 +0300\t200\t/a\t0.010\t10\t1\t1\n'));
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv.gz': tam.subarray(0, tam.length - 10) })), /log_R1_h\.tsv\.gz: gzip acilamadi/);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv.gz': 'duz metin, gzip degil\n' })), /gzip acilamadi/);
+  const tam = zlib.gzipSync(
+    Buffer.from(
+      LOG_BAS +
+        'R1_K_yeni_br_250_r1\tolcum\t27/Oct/2026:10:00:00 +0300\t200\t/a\t0.010\t10\t1\t1\n',
+    ),
+  );
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv.gz': tam.subarray(0, tam.length - 10) })),
+    /log_R1_h\.tsv\.gz: gzip acilamadi/,
+  );
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv.gz': 'duz metin, gzip degil\n' })),
+    /gzip acilamadi/,
+  );
   const v = await kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv.gz': tam }));
   assert.equal(v.loglar[0].satir, 1);
 });
@@ -126,18 +163,38 @@ test('SN4 SHA256SUMS: dogrulanir; degisen / eksik dosya, bozuk satir, dizin disi
   const ek = Buffer.from('kaydedici ciktisi\n');
   // sha256sum bicimleri: "  ad", " *ad", "./ad"; dosyanin kendi satiri (bos haliyle) atlanir;
   // bilinmeyen adli ama listelenmis dosya da dogrulanir.
-  const liste = [`${sha(a)} *./istemci_R1_K_yeni_br_250_r1.csv`, `${sha(ek)}  kaydedici.out`, `${sha('')}  SHA256SUMS`, ''].join('\n');
-  const d2 = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': a, 'kaydedici.out': ek, SHA256SUMS: liste });
+  const liste = [
+    `${sha(a)} *./istemci_R1_K_yeni_br_250_r1.csv`,
+    `${sha(ek)}  kaydedici.out`,
+    `${sha('')}  SHA256SUMS`,
+    '',
+  ].join('\n');
+  const d2 = yeniDizin({
+    'istemci_R1_K_yeni_br_250_r1.csv': a,
+    'kaydedici.out': ek,
+    SHA256SUMS: liste,
+  });
   assert.equal((await kosuDiziniOku(d2)).sha256.dosya_sayisi, 2);
   fs.writeFileSync(path.join(d2, 'kaydedici.out'), 'baska\n');
   await okunamadi(() => kosuDiziniOku(d2), /SHA256SUMS tutmuyor: kaydedici\.out/);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ SHA256SUMS: 'bozuk satir\n' })), /satir bicimi taninmadi/);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ SHA256SUMS: `${sha('')}  ../disari.txt\n` })), /duz dizin disi ad/);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ SHA256SUMS: `${sha('')}  alt/dosya.txt\n` })), /duz dizin disi ad/);
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ SHA256SUMS: 'bozuk satir\n' })),
+    /satir bicimi taninmadi/,
+  );
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ SHA256SUMS: `${sha('')}  ../disari.txt\n` })),
+    /duz dizin disi ad/,
+  );
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ SHA256SUMS: `${sha('')}  alt/dosya.txt\n` })),
+    /duz dizin disi ad/,
+  );
 });
 
 test('SN5 istege bagli dosyalar eksik: hata yok, alanlar bos/null, uyari', async () => {
-  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'baska.dosya': 'yok sayilir' }));
+  const v = await kosuDiziniOku(
+    yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'baska.dosya': 'yok sayilir' }),
+  );
   assert.equal(v.istemci.length, 1);
   assert.equal(v.zaman, null);
   assert.equal(v.baslatilan, null);
@@ -146,7 +203,9 @@ test('SN5 istege bagli dosyalar eksik: hata yok, alanlar bos/null, uyari', async
   assert.equal(v.diger.size, 0);
   assert.equal(v.not, '');
   assert.equal(v.log.turlar.size, 0);
-  assert.deepEqual(v.dosyalar, [{ ad: 'istemci_R1_K_yeni_br_250_r1.csv', bayt: Buffer.byteLength(ISTEMCI) }]);
+  assert.deepEqual(v.dosyalar, [
+    { ad: 'istemci_R1_K_yeni_br_250_r1.csv', bayt: Buffer.byteLength(ISTEMCI) },
+  ]);
   assert.deepEqual(v.sha256, { durum: 'yok', dosya_sayisi: 0 });
   assert.ok(v.uyarilar.includes('SHA256SUMS_yok(butunluk_dogrulanamadi)'));
   const bos = await kosuDiziniOku(yeniDizin());
@@ -154,10 +213,17 @@ test('SN5 istege bagli dosyalar eksik: hata yok, alanlar bos/null, uyari', async
 });
 
 test('SN6 log .tsv ve .tsv.gz birlikte: duz olan okunur, satirlar cift sayilmaz', async () => {
-  const icerik = LOG_BAS + 'R1_K_yeni_br_250_r1\tolcum\t27/Oct/2026:10:00:00 +0300\t200\t/a\t0.010\t10\t1\t1\n';
-  const d = yeniDizin({ 'log_R1_h.tsv': icerik, 'log_R1_h.tsv.gz': zlib.gzipSync(Buffer.from(icerik)).subarray(0, 12) });
+  const icerik =
+    LOG_BAS + 'R1_K_yeni_br_250_r1\tolcum\t27/Oct/2026:10:00:00 +0300\t200\t/a\t0.010\t10\t1\t1\n';
+  const d = yeniDizin({
+    'log_R1_h.tsv': icerik,
+    'log_R1_h.tsv.gz': zlib.gzipSync(Buffer.from(icerik)).subarray(0, 12),
+  });
   const v = await kosuDiziniOku(d);
-  assert.deepEqual(v.loglar.map((l) => [l.dosya, l.satir]), [['log_R1_h.tsv', 1]]);
+  assert.deepEqual(
+    v.loglar.map((l) => [l.dosya, l.satir]),
+    [['log_R1_h.tsv', 1]],
+  );
   assert.equal(v.log.turlar.get('R1_K_yeni_br_250_r1').n, 1);
   assert.ok(v.uyarilar.includes('gz_ve_duz_birlikte:log_R1_h.tsv.gz(duz_dosya_okundu)'));
 });
@@ -172,12 +238,26 @@ async function bol(parcalar) {
 test('SN7 satir bolucu: parca sinirinda \\r\\n, tek \\r, BOM, bolunmus UTF-8, asiri uzun satir', async () => {
   assert.deepEqual((await bol(['a\r', '\nb\rc\n', 'd'])).out, ['a', 'b', 'c', 'd']);
   assert.deepEqual((await bol(['x\r\n', '\r\n', 'y\r'])).out, ['x', '', 'y']);
-  assert.deepEqual((await bol(['\ufeffbas,x\n\ufeffikinci\n'])).out, ['bas,x', '\ufeffikinci'], 'BOM yalniz dosya basinda atilir');
+  assert.deepEqual(
+    (await bol(['\ufeffbas,x\n\ufeffikinci\n'])).out,
+    ['bas,x', '\ufeffikinci'],
+    'BOM yalniz dosya basinda atilir',
+  );
   const s = Buffer.from('\u015f\u00fc\n', 'utf8');
   assert.deepEqual((await bol([s.subarray(0, 1), s.subarray(1)])).out, ['\u015f\u00fc']);
-  assert.deepEqual((await bol([Buffer.from([0x61, 0xff, 0x0a])])).out, ['a\ufffd'], 'gecersiz UTF-8 -> U+FFFD (Python errors=replace)');
+  assert.deepEqual(
+    (await bol([Buffer.from([0x61, 0xff, 0x0a])])).out,
+    ['a\ufffd'],
+    'gecersiz UTF-8 -> U+FFFD (Python errors=replace)',
+  );
   const uzun = 'z'.repeat(sonuc._MAX_SATIR_KAR + 10);
-  const r = await bol(['once\n', uzun.slice(0, 40000), uzun.slice(40000), uzun.slice(0, 10), '\nsonra\n']);
+  const r = await bol([
+    'once\n',
+    uzun.slice(0, 40000),
+    uzun.slice(40000),
+    uzun.slice(0, 10),
+    '\nsonra\n',
+  ]);
   assert.deepEqual(r.out, ['once', 'sonra']);
   assert.equal(r.uzun, 1);
   assert.deepEqual((await bol([])).out, []);
@@ -194,59 +274,107 @@ test('SN8 CSV: Python csv.DictReader + csv_oku ile ayni', () => {
   for (const s of [' tur , a ,a,b', 'T1, 1 ,2,3,4,5', '', 'T2', 'T3,x']) o.satir(s);
   const rows = o.bitir().map((x) => ({ ...x }));
   // ' a ' ve 'a' kirpilinca ayni anahtar: sonraki kazanir; fazla alan atilir; eksik alan ''.
-  assert.deepEqual(rows, [{ tur: 'T1', a: '2', b: '3' }, { tur: 'T2', a: '', b: '' }, { tur: 'T3', a: '', b: '' }]);
-  assert.equal(Object.getPrototypeOf(o.bitir()[0]), null, 'veriden gelen anahtar prototipe yazilamaz');
+  assert.deepEqual(rows, [
+    { tur: 'T1', a: '2', b: '3' },
+    { tur: 'T2', a: '', b: '' },
+    { tur: 'T3', a: '', b: '' },
+  ]);
+  assert.equal(
+    Object.getPrototypeOf(o.bitir()[0]),
+    null,
+    'veriden gelen anahtar prototipe yazilamaz',
+  );
 });
 
-const SUNUCU_BAS = 'epoch,isci_utime,isci_stime,isci_sayi,kapanan_sayi,pidler,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n';
+const SUNUCU_BAS =
+  'epoch,isci_utime,isci_stime,isci_sayi,kapanan_sayi,pidler,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n';
 
 test('SN9 sunucu_*.csv: kolon eksik -> OKUNAMADI; bozuk satir atlanir; kesirli epoch ve siralama', async () => {
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': 'epoch,isci_utime\n1,2\n' })), /sunucu_R1_h\.csv: eksik kolon isci_stime,isci_sayi/);
-  const icerik = SUNUCU_BAS + [
-    '1800000002.5,20,4,2,0,101+102,30,0,0,70,0,0,0,0',
-    '1800000001.25,10,2,2,0,101+102,10,1,2,80,3,4,5,6',
-    'nan,1,1,1,0,p,1,1,1,1,1,1,1,1',
-    '1800000003,x,1,1,0,p,1,1,1,1,1,1,1,1',
-    '1800000004,1,1,1,0,p,1.5,1,1,1,1,1,1,1',
-    '1800000005,1,1,1,0',
-    '1800000006,1_0,1,1,0,p,1,1,1,1,1,1,1,1',
-  ].join('\n') + '\n';
-  const v = await kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': icerik, 'bilgi_R1_h.txt': 'nproc=4\n' }));
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': 'epoch,isci_utime\n1,2\n' })),
+    /sunucu_R1_h\.csv: eksik kolon isci_stime,isci_sayi/,
+  );
+  const icerik =
+    SUNUCU_BAS +
+    [
+      '1800000002.5,20,4,2,0,101+102,30,0,0,70,0,0,0,0',
+      '1800000001.25,10,2,2,0,101+102,10,1,2,80,3,4,5,6',
+      'nan,1,1,1,0,p,1,1,1,1,1,1,1,1',
+      '1800000003,x,1,1,0,p,1,1,1,1,1,1,1,1',
+      '1800000004,1,1,1,0,p,1.5,1,1,1,1,1,1,1',
+      '1800000005,1,1,1,0',
+      '1800000006,1_0,1,1,0,p,1,1,1,1,1,1,1,1',
+    ].join('\n') +
+    '\n';
+  const v = await kosuDiziniOku(
+    yeniDizin({ 'sunucu_R1_h.csv': icerik, 'bilgi_R1_h.txt': 'nproc=4\n' }),
+  );
   const o = v.kesitler[0].ornekler;
-  assert.deepEqual(o.map((x) => x.t), [1800000001.25, 1800000002.5, 1800000006]);
+  assert.deepEqual(
+    o.map((x) => x.t),
+    [1800000001.25, 1800000002.5, 1800000006],
+  );
   // busy = user+nice+system+irq+softirq+steal; tot = busy + idle + iowait
-  assert.deepEqual(o[0], { t: 1800000001.25, u: 10, s: 2, n: 2, k: 0, p: '101+102', busy: 10 + 1 + 2 + 4 + 5 + 6, tot: 28 + 80 + 3 });
+  assert.deepEqual(o[0], {
+    t: 1800000001.25,
+    u: 10,
+    s: 2,
+    n: 2,
+    k: 0,
+    p: '101+102',
+    busy: 10 + 1 + 2 + 4 + 5 + 6,
+    tot: 28 + 80 + 3,
+  });
   assert.equal(o[2].u, 10, "Python int('1_0') = 10");
   const bos = await kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': '' }));
   assert.deepEqual(bos.kesitler[0].ornekler, []);
 });
 
 test('SN10 log_*.tsv: baslik taninmazsa OKUNAMADI; sutunlu tipli depo; eksik deger NaN; atlanan sayilir', async () => {
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv': 'a\tb\tc\n1\t2\t3\n' })), /log_R1_h\.tsv: baslik satiri taninmadi/);
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv': 'a\tb\tc\n1\t2\t3\n' })),
+    /log_R1_h\.tsv: baslik satiri taninmadi/,
+  );
   const satir = (s) => s.join('\t');
-  const icerik = '\n' + LOG_BAS + [
-    satir(['T', 'olcum', '27/Oct/2026:10:00:00 +0300', '200', '/a', '0.010', '1000', '1', '2']),
-    satir(['T', 'setup', '27/Oct/2026:10:00:01 +0300', '-', '/a', '-', '-', '-', '-']),
-    satir(['T', 'olcum', 'bozuk zaman', '200', '/a', '0.010', '1000', '1', '1']),
-    satir(['T', 'olcum', '27/Oct/2026:10:00:02 +0300', '200']),
-    satir(['U', 'isinma', '27/Oct/2026:10:00:03 +0300', '429.9', '/b', '1e-2', '7', '3', '1']),
-    '',
-  ].join('\n');
+  const icerik =
+    '\n' +
+    LOG_BAS +
+    [
+      satir(['T', 'olcum', '27/Oct/2026:10:00:00 +0300', '200', '/a', '0.010', '1000', '1', '2']),
+      satir(['T', 'setup', '27/Oct/2026:10:00:01 +0300', '-', '/a', '-', '-', '-', '-']),
+      satir(['T', 'olcum', 'bozuk zaman', '200', '/a', '0.010', '1000', '1', '1']),
+      satir(['T', 'olcum', '27/Oct/2026:10:00:02 +0300', '200']),
+      satir(['U', 'isinma', '27/Oct/2026:10:00:03 +0300', '429.9', '/b', '1e-2', '7', '3', '1']),
+      '',
+    ].join('\n');
   const v = await kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv': icerik }));
   assert.deepEqual(v.loglar, [{ dosya: 'log_R1_h.tsv', satir: 3, atlanan: 2, baslik: true }]);
   assert.deepEqual(v.log.fazlar, ['olcum', 'setup', 'isinma']);
   const t = v.log.turlar.get('T');
-  for (const k of ['t', 'rt', 'cr', 'bl', 'd']) assert.ok(t[k] instanceof Float64Array, `${k} sutunu Float64Array (bellek: nesne dizisi DEGIL)`);
+  for (const k of ['t', 'rt', 'cr', 'bl', 'd'])
+    assert.ok(
+      t[k] instanceof Float64Array,
+      `${k} sutunu Float64Array (bellek: nesne dizisi DEGIL)`,
+    );
   assert.ok(t.faz instanceof Uint8Array && t.durum instanceof Int32Array);
   assert.equal(t.n, 2);
-  assert.deepEqual([...t.t], [Date.UTC(2026, 9, 27, 7, 0, 0) / 1000, Date.UTC(2026, 9, 27, 7, 0, 1) / 1000]);
+  assert.deepEqual(
+    [...t.t],
+    [Date.UTC(2026, 9, 27, 7, 0, 0) / 1000, Date.UTC(2026, 9, 27, 7, 0, 1) / 1000],
+  );
   assert.deepEqual([...t.durum], [200, 0], "status '-' -> 0 (Python: int(durum) if durum else 0)");
   assert.deepEqual([...t.rt].map(String), ['0.01', 'NaN']);
   assert.deepEqual([...t.d].map(String), ['2', 'NaN']);
   const u = v.log.turlar.get('U');
-  assert.deepEqual([u.durum[0], u.rt[0], u.cr[0], u.bl[0], u.d[0], u.faz[0]], [429, 0.01, 3, 7, 1, 2], 'int(429.9) = 429');
+  assert.deepEqual(
+    [u.durum[0], u.rt[0], u.cr[0], u.bl[0], u.d[0], u.faz[0]],
+    [429, 0.01, 3, 7, 1, 2],
+    'int(429.9) = 429',
+  );
   // Deneme kolonu olmayan (eski kaydedici) log: d hep NaN.
-  const eski = await kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv': 'tur\tfaz\ttime_local\nT\tolcum\t27/Oct/2026:10:00:00 +0300\n' }));
+  const eski = await kosuDiziniOku(
+    yeniDizin({ 'log_R1_h.tsv': 'tur\tfaz\ttime_local\nT\tolcum\t27/Oct/2026:10:00:00 +0300\n' }),
+  );
   assert.ok(Number.isNaN(eski.log.turlar.get('T').d[0]));
 });
 
@@ -269,29 +397,41 @@ test('SN11 bilinen adli girdi normal dosya degil (dizin / symlink) -> OKUNAMADI'
 
 test('SN12 dosya sayisi tavani', async () => {
   const d = yeniDizin();
-  for (let i = 0; i < 501; i++) fs.writeFileSync(path.join(d, `istemci_R1_K_yeni_br_${i}_r1.csv`), '');
+  for (let i = 0; i < 501; i++)
+    fs.writeFileSync(path.join(d, `istemci_R1_K_yeni_br_${i}_r1.csv`), '');
   await okunamadi(() => kosuDiziniOku(d), /cok fazla dosya: 501/);
 });
 
 test('SN13 istemci / hatali ayrimi; bilgi, diger, NOT, konf ayrisdirma; bilgi yoksa yedek', async () => {
   const hatali = ISTEMCI.replace('R1_K_yeni_br_250_r1', 'R1_K_yeni_br_400_r1');
   const tursuz = KOLON.join(',') + '\n' + KOLON.map(() => '').join(',') + '\n';
-  const v = await kosuDiziniOku(yeniDizin({
-    'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI + '\n',
-    'istemci_R1_K_yeni_br_250_r1.json': '{"bozuk json analizde okunmaz"',
-    'istemci_R1_bos.csv': tursuz,
-    'hatali_istemci_R1_K_yeni_br_400_r1.csv': hatali,
-    'sunucu_R1_h.csv': SUNUCU_BAS,
-    'sunucu_R1_h_2.csv': SUNUCU_BAS,
-    'bilgi_R1_h.txt': '# yorum=atlanir\nnproc=8\nuyari=a=b\nuyari=c\ngecersiz=log_dondu:x.log\nsatir esittirsiz\nclk_tck = 100 \n',
-    'diger_R1_h.tsv': 'time_local\tadet\n27/Oct/2026:10:00:00 +0300\t2.9\nbozuk\t1\n27/Oct/2026:10:00:01 +0300\t-\n',
-    'diger_R1_h_2.tsv.gz': zlib.gzipSync('27/Oct/2026:10:00:00 +0300\t3\n'),
-    'NOT.txt': '\n  \n  portal run 17  (2026-10-27, h)\nikinci\n',
-    'konf_R1_h.txt': '# konf_R1_h: x\n# dosya_sayisi=12 ozet=0123abcd\n',
-    'zaman.csv': '\ufefftur,bas_epoch,bit_epoch,rc,deneme\r\nR1_K_yeni_br_250_r1,1,2,0,1\r\n',
-  }));
-  assert.deepEqual(v.istemci.map((x) => x.satir.tur), ['R1_K_yeni_br_250_r1'], 'tur alani bos satir atilir');
-  assert.deepEqual(v.hataliIstemci.map((x) => [x.dosya, x.satir.tur]), [['hatali_istemci_R1_K_yeni_br_400_r1.csv', 'R1_K_yeni_br_400_r1']]);
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI + '\n',
+      'istemci_R1_K_yeni_br_250_r1.json': '{"bozuk json analizde okunmaz"',
+      'istemci_R1_bos.csv': tursuz,
+      'hatali_istemci_R1_K_yeni_br_400_r1.csv': hatali,
+      'sunucu_R1_h.csv': SUNUCU_BAS,
+      'sunucu_R1_h_2.csv': SUNUCU_BAS,
+      'bilgi_R1_h.txt':
+        '# yorum=atlanir\nnproc=8\nuyari=a=b\nuyari=c\ngecersiz=log_dondu:x.log\nsatir esittirsiz\nclk_tck = 100 \n',
+      'diger_R1_h.tsv':
+        'time_local\tadet\n27/Oct/2026:10:00:00 +0300\t2.9\nbozuk\t1\n27/Oct/2026:10:00:01 +0300\t-\n',
+      'diger_R1_h_2.tsv.gz': zlib.gzipSync('27/Oct/2026:10:00:00 +0300\t3\n'),
+      'NOT.txt': '\n  \n  portal run 17  (2026-10-27, h)\nikinci\n',
+      'konf_R1_h.txt': '# konf_R1_h: x\n# dosya_sayisi=12 ozet=0123abcd\n',
+      'zaman.csv': '\ufefftur,bas_epoch,bit_epoch,rc,deneme\r\nR1_K_yeni_br_250_r1,1,2,0,1\r\n',
+    }),
+  );
+  assert.deepEqual(
+    v.istemci.map((x) => x.satir.tur),
+    ['R1_K_yeni_br_250_r1'],
+    'tur alani bos satir atilir',
+  );
+  assert.deepEqual(
+    v.hataliIstemci.map((x) => [x.dosya, x.satir.tur]),
+    [['hatali_istemci_R1_K_yeni_br_400_r1.csv', 'R1_K_yeni_br_400_r1']],
+  );
   assert.equal(v.zaman[0].tur, 'R1_K_yeni_br_250_r1', 'BOM ve CRLF');
   const [k1, k2] = v.kesitler;
   assert.equal(k1.anahtar, 'R1_h');
@@ -308,7 +448,10 @@ test('SN13 istemci / hatali ayrimi; bilgi, diger, NOT, konf ayrisdirma; bilgi yo
   assert.deepEqual([...v.diger], [[t0, 5]], 'iki dosya toplanir; int(2.9) = 2; "-" atlanir');
   assert.equal(v.not, 'portal run 17  (2026-10-27, h)');
   assert.deepEqual(v.konf, [{ dosya: 'konf_R1_h.txt', dosya_sayisi: 12, ozet: '0123abcd' }]);
-  assert.ok(v.dosyalar.some((x) => x.ad === 'istemci_R1_K_yeni_br_250_r1.json'), 'json listelenir');
+  assert.ok(
+    v.dosyalar.some((x) => x.ad === 'istemci_R1_K_yeni_br_250_r1.json'),
+    'json listelenir',
+  );
 });
 
 test('SN14 gzip saydam: ayni fikstur .gz ile ve .gz olmadan okununca log deposu ve okunan bayt ayni', async () => {
@@ -316,11 +459,18 @@ test('SN14 gzip saydam: ayni fikstur .gz ile ve .gz olmadan okununca log deposu 
   k.yarim({ hiz: 100, r: 3 });
   const dosyalar = k.dosyalar();
   // SHA256SUMS'siz: .gz adlari listeyi 3'er bayt uzatirdi.
-  const a = await kosuDiziniOku(portalDuzeniYaz(path.join(KOK, 'gz1'), dosyalar, { gz: true, sha: false }));
-  const b = await kosuDiziniOku(portalDuzeniYaz(path.join(KOK, 'gz2'), dosyalar, { gz: false, sha: false }));
+  const a = await kosuDiziniOku(
+    portalDuzeniYaz(path.join(KOK, 'gz1'), dosyalar, { gz: true, sha: false }),
+  );
+  const b = await kosuDiziniOku(
+    portalDuzeniYaz(path.join(KOK, 'gz2'), dosyalar, { gz: false, sha: false }),
+  );
   assert.deepEqual(a.log, b.log);
   assert.equal(a.okunanBayt, b.okunanBayt, 'tavan ACILMIS bayti sayar');
-  assert.deepEqual(a.loglar.map((l) => l.satir), b.loglar.map((l) => l.satir));
+  assert.deepEqual(
+    a.loglar.map((l) => l.satir),
+    b.loglar.map((l) => l.satir),
+  );
   assert.ok(a.loglar[0].dosya.endsWith('.tsv.gz') && b.loglar[0].dosya.endsWith('.tsv'));
   assert.equal(a.hataliIstemci.length, 1);
   assert.equal(a.log.turlar.size, 3);
@@ -330,10 +480,21 @@ test('SN15 Kurgu ornegi: okunan dosya kumesi ve kesit bilgisi', async () => {
   const k = new Kurgu('R3');
   k.kosu({ hiz: 250 });
   const v = await kosuDiziniOku(portalDuzeniYaz(path.join(KOK, 'k3'), k.dosyalar()));
-  assert.deepEqual(v.dosyalar.map((x) => x.ad), [
-    'NOT.txt', 'SHA256SUMS', 'baslatilan.csv', 'bilgi_R3_test.txt', 'istemci_R3_K_yeni_br_250_r1.csv',
-    'istemci_R3_K_yeni_br_250_r1.json', 'konf_R3_test.txt', 'log_R3_test.tsv.gz', 'sunucu_R3_test.csv', 'zaman.csv',
-  ]);
+  assert.deepEqual(
+    v.dosyalar.map((x) => x.ad),
+    [
+      'NOT.txt',
+      'SHA256SUMS',
+      'baslatilan.csv',
+      'bilgi_R3_test.txt',
+      'istemci_R3_K_yeni_br_250_r1.csv',
+      'istemci_R3_K_yeni_br_250_r1.json',
+      'konf_R3_test.txt',
+      'log_R3_test.tsv.gz',
+      'sunucu_R3_test.csv',
+      'zaman.csv',
+    ],
+  );
   assert.equal(v.baslatilan[0].tur, 'R3_K_yeni_br_250_r1');
   assert.equal(v.kesitler[0].bilgi.nproc, '8');
   assert.equal(v.log.turlar.get('R3_K_yeni_br_250_r1').n, 1400);
@@ -342,7 +503,9 @@ test('SN15 Kurgu ornegi: okunan dosya kumesi ve kesit bilgisi', async () => {
 
 /** Tek log satiri (LOG_BAS kolonlariyla). */
 function logSatiri(tur) {
-  return [tur, 'olcum', '27/Oct/2026:10:00:00 +0300', '200', '/a', '0.010', '10', '1', '1'].join('\t');
+  return [tur, 'olcum', '27/Oct/2026:10:00:00 +0300', '200', '/a', '0.010', '10', '1', '1'].join(
+    '\t',
+  );
 }
 const logDosyasi = (turlar) => LOG_BAS + turlar.map(logSatiri).join('\n') + '\n';
 const sirali = (n, onek) => Array.from({ length: n }, (_, i) => `${onek}${i}`);
@@ -350,28 +513,57 @@ const sirali = (n, onek) => Array.from({ length: n }, (_, i) => `${onek}${i}`);
 test('SN16 adim suzgeci: baska ADIM in log satiri depoya girmez, TEK uyariyla sayilir; adim yoksa suzgec yok', async () => {
   const d = yeniDizin({
     // 'R10_' / 'R1' / 'X' baska ADIM (alt cizgi siniri: R10, R1'in uzantisi DEGIL); kolonu eksik satir bozuktur.
-    'log_R1_h.tsv': logDosyasi(['R1_K_yeni_br_250_r1', 'R10_K_yeni_br_250_r1', 'R1', 'X', 'R1_K_yeni_br_250_r1']) + 'R1_K_yeni_br_250_r1\tolcum\n',
+    'log_R1_h.tsv':
+      logDosyasi([
+        'R1_K_yeni_br_250_r1',
+        'R10_K_yeni_br_250_r1',
+        'R1',
+        'X',
+        'R1_K_yeni_br_250_r1',
+      ]) + 'R1_K_yeni_br_250_r1\tolcum\n',
     // Ikinci dosya (gzip) ayni sayaca eklenir; buyuk-kucuk harf duyarli ('r1_' baska ADIM).
-    'log_R1_h_2.tsv.gz': zlib.gzipSync(logDosyasi(['R2_K_yeni_br_100_r1', 'R1_K_yeni_br_100_r1', 'r1_K_yeni_br_100_r1'])),
+    'log_R1_h_2.tsv.gz': zlib.gzipSync(
+      logDosyasi(['R2_K_yeni_br_100_r1', 'R1_K_yeni_br_100_r1', 'r1_K_yeni_br_100_r1']),
+    ),
   });
   const v = await kosuDiziniOku(d, { adim: 'R1' });
   assert.deepEqual([...v.log.turlar.keys()], ['R1_K_yeni_br_250_r1', 'R1_K_yeni_br_100_r1']);
   assert.equal(v.log.turlar.get('R1_K_yeni_br_250_r1').n, 2);
   // satir = depoya giren, atlanan = bozuk; baska ADIM satiri ikisine de girmez.
-  assert.deepEqual(v.loglar.map((l) => [l.dosya, l.satir, l.atlanan]), [['log_R1_h.tsv', 2, 1], ['log_R1_h_2.tsv.gz', 1, 0]]);
-  assert.deepEqual(v.uyarilar.filter((u) => u.startsWith('log_baska_adim_satiri')), ['log_baska_adim_satiri:5'], 'iki dosyanin toplami, TEK uyari');
+  assert.deepEqual(
+    v.loglar.map((l) => [l.dosya, l.satir, l.atlanan]),
+    [
+      ['log_R1_h.tsv', 2, 1],
+      ['log_R1_h_2.tsv.gz', 1, 0],
+    ],
+  );
+  assert.deepEqual(
+    v.uyarilar.filter((u) => u.startsWith('log_baska_adim_satiri')),
+    ['log_baska_adim_satiri:5'],
+    'iki dosyanin toplami, TEK uyari',
+  );
   // adim verilmezse (eski cagri / null / undefined) suzgec yok, uyari yok.
   for (const secenek of [undefined, {}, { adim: null }, { adim: undefined }]) {
     const h = await kosuDiziniOku(d, secenek);
     assert.equal(h.log.turlar.size, 7, JSON.stringify(secenek));
-    assert.ok(!h.uyarilar.some((u) => u.startsWith('log_baska_adim_satiri')), JSON.stringify(secenek));
+    assert.ok(
+      !h.uyarilar.some((u) => u.startsWith('log_baska_adim_satiri')),
+      JSON.stringify(secenek),
+    );
   }
   // Butun satirlar bu ADIM'inse uyari yok.
-  const temiz = await kosuDiziniOku(yeniDizin({ 'log_R1_h.tsv': logDosyasi(['R1_K_yeni_br_250_r1']) }), { adim: 'R1' });
+  const temiz = await kosuDiziniOku(
+    yeniDizin({ 'log_R1_h.tsv': logDosyasi(['R1_K_yeni_br_250_r1']) }),
+    { adim: 'R1' },
+  );
   assert.deepEqual(temiz.uyarilar, ['SHA256SUMS_yok(butunluk_dogrulanamadi)']);
   // Gecersiz adim programlama hatasidir (poller 'R' + id verir).
   for (const adim of ['', 'R1_x', 'R 1', 17, {}]) {
-    await assert.rejects(() => kosuDiziniOku(d, { adim }), TypeError, `adim=${JSON.stringify(adim)}`);
+    await assert.rejects(
+      () => kosuDiziniOku(d, { adim }),
+      TypeError,
+      `adim=${JSON.stringify(adim)}`,
+    );
   }
 });
 
@@ -380,13 +572,21 @@ test('SN17 log deposunda en cok 64 farkli TUR; fazlasi OKUNAMADI, suzgecle elene
   assert.equal((await kosuDiziniOku(d64, { adim: 'R1' })).log.turlar.size, 64);
   const d65 = yeniDizin({ 'log_R1_h.tsv': logDosyasi([...sirali(64, 'R1_T'), 'R1_T0', 'R1_T64']) });
   // Metin aynen (depo dosyalar arasi ortak oldugundan dosya adi yok).
-  await okunamadi(() => kosuDiziniOku(d65, { adim: 'R1' }), /^log dosyasinda 64'ten fazla farkli TUR \(Portal kosusu gibi gorunmuyor\)$/);
+  await okunamadi(
+    () => kosuDiziniOku(d65, { adim: 'R1' }),
+    /^log dosyasinda 64'ten fazla farkli TUR \(Portal kosusu gibi gorunmuyor\)$/,
+  );
   await okunamadi(() => kosuDiziniOku(d65), /^log dosyasinda 64'ten fazla farkli TUR/);
   // Tavan depo genelinde: iki dosyaya bolunmus 65 TUR.
-  const iki = yeniDizin({ 'log_R1_a.tsv': logDosyasi(sirali(40, 'R1_A')), 'log_R1_b.tsv': logDosyasi(sirali(25, 'R1_B')) });
+  const iki = yeniDizin({
+    'log_R1_a.tsv': logDosyasi(sirali(40, 'R1_A')),
+    'log_R1_b.tsv': logDosyasi(sirali(25, 'R1_B')),
+  });
   await okunamadi(() => kosuDiziniOku(iki, { adim: 'R1' }), /64'ten fazla farkli TUR/);
   // Inceleme senaryosu (kucultulmus): 10.000 farkli yabanci TUR suzgecle elenir, tavana sayilmaz.
-  const yabanci = yeniDizin({ 'log_R1_h.tsv': logDosyasi([...sirali(10000, 'X'), ...sirali(3, 'R1_T')]) });
+  const yabanci = yeniDizin({
+    'log_R1_h.tsv': logDosyasi([...sirali(10000, 'X'), ...sirali(3, 'R1_T')]),
+  });
   const v = await kosuDiziniOku(yabanci, { adim: 'R1' });
   assert.equal(v.log.turlar.size, 3);
   assert.ok(v.uyarilar.includes('log_baska_adim_satiri:10000'), v.uyarilar.join(' | '));
@@ -396,7 +596,10 @@ test('SN17 log deposunda en cok 64 farkli TUR; fazlasi OKUNAMADI, suzgecle elene
   const depo = new sonuc.LogDeposu();
   for (const t of sirali(64, 'T')) depo.ekle(t, 'olcum', 1, 200, null, null, null, null);
   depo.ekle('T0', 'olcum', 2, 200, null, null, null, null);
-  assert.throws(() => depo.ekle('T64', 'olcum', 1, 200, null, null, null, null), (e) => e.code === 'OKUNAMADI');
+  assert.throws(
+    () => depo.ekle('T64', 'olcum', 1, 200, null, null, null, null),
+    (e) => e.code === 'OKUNAMADI',
+  );
   assert.equal(depo.turlar.size, 64);
 });
 
@@ -404,7 +607,8 @@ test('SN18 Kolon baslangic kapasitesi 16, ikiye katlayarak buyur; bitir tam boy 
   const depo = new sonuc.LogDeposu();
   depo.ekle('T', 'olcum', 1, 200, 0.01, 1, 10, 1);
   const k = depo.turlar.get('T');
-  for (const ad of ['faz', 't', 'durum', 'rt', 'cr', 'bl', 'd']) assert.equal(k[ad].a.length, 16, `${ad} kapasitesi`);
+  for (const ad of ['faz', 't', 'durum', 'rt', 'cr', 'bl', 'd'])
+    assert.equal(k[ad].a.length, 16, `${ad} kapasitesi`);
   for (let i = 2; i <= 16; i++) depo.ekle('T', 'olcum', i, 200, null, null, null, null);
   assert.equal(k.t.a.length, 16, '16 satir sigar');
   depo.ekle('T', 'olcum', 17, 200, null, null, null, null);
@@ -412,63 +616,118 @@ test('SN18 Kolon baslangic kapasitesi 16, ikiye katlayarak buyur; bitir tam boy 
   const b = depo.bitir().turlar.get('T');
   assert.equal(b.n, 17);
   assert.equal(b.t.length, 17);
-  assert.deepEqual([...b.t], Array.from({ length: 17 }, (_, i) => i + 1));
+  assert.deepEqual(
+    [...b.t],
+    Array.from({ length: 17 }, (_, i) => i + 1),
+  );
 });
 
 test('SN19a satir tavani: zaman/baslatilan 2000, istemci/hatali_istemci 100 (bos satir sayilmaz); fazlasi dosya adiyla OKUNAMADI', async () => {
-  const csv = (bas, n, satir) => bas + '\n' + Array.from({ length: n }, (_, i) => satir(i)).join('\n') + '\n';
+  const csv = (bas, n, satir) =>
+    bas + '\n' + Array.from({ length: n }, (_, i) => satir(i)).join('\n') + '\n';
   const zaman = (n) => csv('tur,bas_epoch,bit_epoch,rc,deneme', n, (i) => `R1_T${i},1,2,0,1`);
   const basl = (n) => csv('tur,bas_epoch,deneme', n, (i) => `R1_T${i},1,1`);
-  const ist = (n) => csv(KOLON.join(','), n, (i) => KOLON.map((k) => (k === 'tur' ? `R1_T${i}` : '1')).join(','));
-  const v = await kosuDiziniOku(yeniDizin({
-    'zaman.csv': zaman(2000) + '\n\n\n',
-    'baslatilan.csv': basl(2000),
-    'istemci_R1_K_yeni_br_250_r1.csv': ist(100),
-    'hatali_istemci_R1_K_yeni_br_400_r1.csv': ist(100) + '\n',
-  }));
-  assert.deepEqual([v.zaman.length, v.baslatilan.length, v.istemci.length, v.hataliIstemci.length], [2000, 2000, 100, 100]);
+  const ist = (n) =>
+    csv(KOLON.join(','), n, (i) => KOLON.map((k) => (k === 'tur' ? `R1_T${i}` : '1')).join(','));
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'zaman.csv': zaman(2000) + '\n\n\n',
+      'baslatilan.csv': basl(2000),
+      'istemci_R1_K_yeni_br_250_r1.csv': ist(100),
+      'hatali_istemci_R1_K_yeni_br_400_r1.csv': ist(100) + '\n',
+    }),
+  );
+  assert.deepEqual(
+    [v.zaman.length, v.baslatilan.length, v.istemci.length, v.hataliIstemci.length],
+    [2000, 2000, 100, 100],
+  );
   for (const [ad, icerik, n] of [
     ['zaman.csv', zaman(2001), 2000],
     ['baslatilan.csv', basl(2001), 2000],
     ['istemci_R1_K_yeni_br_250_r1.csv', ist(101), 100],
     ['hatali_istemci_R1_K_yeni_br_400_r1.csv', ist(101), 100],
   ]) {
-    await okunamadi(() => kosuDiziniOku(yeniDizin({ [ad]: icerik })), new RegExp(`^${ad.replace(/\./g, '\\.')}: satir tavani asildi \\(en cok ${n} satir\\)$`));
+    await okunamadi(
+      () => kosuDiziniOku(yeniDizin({ [ad]: icerik })),
+      new RegExp(`^${ad.replace(/\./g, '\\.')}: satir tavani asildi \\(en cok ${n} satir\\)$`),
+    );
   }
   // Inceleme senaryosu (8 MiB'lik 'a\n' zaman.csv; burada 100k satir: 8 MiB'yi diske yazmak testi
   // saniyelerce yavaslatir, okuyucu zaten 2001. satirda keser).
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'zaman.csv': 'tur\n' + 'a\n'.repeat(100000) })), /^zaman\.csv: satir tavani asildi \(en cok 2000 satir\)$/);
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'zaman.csv': 'tur\n' + 'a\n'.repeat(100000) })),
+    /^zaman\.csv: satir tavani asildi \(en cok 2000 satir\)$/,
+  );
 });
 
 test('SN19b satir tavani: sunucu_*.csv en cok 20000 ornek (atlanan bozuk satir sayilmaz)', async () => {
-  const sunucu = (n, bozuk = 0) => SUNUCU_BAS + Array.from({ length: n }, (_, i) => `${1800000000 + i},1,1,1,0,p,1,1,1,1,1,1,1,1`).join('\n') + '\n' + 'x,1\n'.repeat(bozuk);
+  const sunucu = (n, bozuk = 0) =>
+    SUNUCU_BAS +
+    Array.from({ length: n }, (_, i) => `${1800000000 + i},1,1,1,0,p,1,1,1,1,1,1,1,1`).join('\n') +
+    '\n' +
+    'x,1\n'.repeat(bozuk);
   const v = await kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': sunucu(20000, 50) }));
   assert.equal(v.kesitler[0].ornekler.length, 20000);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': sunucu(20001) })), /^sunucu_R1_h\.csv: satir tavani asildi \(en cok 20000 satir\)$/);
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': sunucu(20001) })),
+    /^sunucu_R1_h\.csv: satir tavani asildi \(en cok 20000 satir\)$/,
+  );
 });
 
 test('SN19c satir tavani: diger_*.tsv en cok 20000 farkli saniye (dosyalar arasi ortak; tekrar eden saniye yeni anahtar degil)', async () => {
   const t0 = 1800000000;
-  const diger = (bas, n) => 'time_local\tadet\n' + Array.from({ length: n }, (_, i) => `${tl(bas + i, 180)}\t1`).join('\n') + '\n';
+  const diger = (bas, n) =>
+    'time_local\tadet\n' +
+    Array.from({ length: n }, (_, i) => `${tl(bas + i, 180)}\t1`).join('\n') +
+    '\n';
   // 0..14999 ve 10000..19999: 20000 farkli saniye, 5000'i iki dosyada (toplanir); harita dolduktan
   // SONRA gelen bilinen saniye (t0) yeni anahtar degildir.
-  const v = await kosuDiziniOku(yeniDizin({ 'diger_R1_h.tsv': diger(t0, 15000), 'diger_R1_h_2.tsv': diger(t0 + 10000, 10000) + `${tl(t0, 180)}\t4\n` }));
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'diger_R1_h.tsv': diger(t0, 15000),
+      'diger_R1_h_2.tsv': diger(t0 + 10000, 10000) + `${tl(t0, 180)}\t4\n`,
+    }),
+  );
   assert.equal(v.diger.size, 20000);
   assert.deepEqual([v.diger.get(t0 + 12000), v.diger.get(t0 + 19999), v.diger.get(t0)], [2, 1, 5]);
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'diger_R1_h.tsv': diger(t0, 15000), 'diger_R1_h_2.tsv': diger(t0 + 10000, 10001) })),
-    /^diger_R1_h_2\.tsv: anahtar tavani asildi \(en cok 20000 farkli saniye\)$/);
+  await okunamadi(
+    () =>
+      kosuDiziniOku(
+        yeniDizin({
+          'diger_R1_h.tsv': diger(t0, 15000),
+          'diger_R1_h_2.tsv': diger(t0 + 10000, 10001),
+        }),
+      ),
+    /^diger_R1_h_2\.tsv: anahtar tavani asildi \(en cok 20000 farkli saniye\)$/,
+  );
 });
 
 test('SN19d satir tavani: bilgi_*.txt uyari= / gecersiz= her biri en cok 2000; log= tavansiz', async () => {
-  const bilgi = (u, g, l) => ['nproc=8', ...sirali(u, 'uyari=u'), ...sirali(g, 'gecersiz=g'), ...sirali(l, 'log=l').map((x) => `${x}.log|1|0|1|tamam`)].join('\n') + '\n';
+  const bilgi = (u, g, l) =>
+    [
+      'nproc=8',
+      ...sirali(u, 'uyari=u'),
+      ...sirali(g, 'gecersiz=g'),
+      ...sirali(l, 'log=l').map((x) => `${x}.log|1|0|1|tamam`),
+    ].join('\n') + '\n';
   // Kaydedici /web_log altindaki HER *.log icin bir log= satiri yazar: cok vhost'lu hedefte yuzlerce olur
   // (5000 satir OKUNAMADI DEGIL). log= Python gibi son degeri tutar.
-  const v = await kosuDiziniOku(yeniDizin({ 'sunucu_R1_h.csv': SUNUCU_BAS, 'bilgi_R1_h.txt': bilgi(2000, 2000, 5000) }));
+  const v = await kosuDiziniOku(
+    yeniDizin({ 'sunucu_R1_h.csv': SUNUCU_BAS, 'bilgi_R1_h.txt': bilgi(2000, 2000, 5000) }),
+  );
   const b = v.kesitler[0].bilgi;
-  assert.deepEqual([b.uyari.length, b.gecersiz.length, b.log, b.nproc], [2000, 2000, 'l4999.log|1|0|1|tamam', '8']);
-  for (const [k, sayilar] of [['uyari', [2001, 0, 0]], ['gecersiz', [0, 2001, 0]]]) {
-    await okunamadi(() => kosuDiziniOku(yeniDizin({ 'bilgi_R1_h.txt': bilgi(...sayilar) })),
-      new RegExp(`^bilgi_R1_h\\.txt: ${k}= satir tavani asildi \\(en cok 2000 satir\\)$`));
+  assert.deepEqual(
+    [b.uyari.length, b.gecersiz.length, b.log, b.nproc],
+    [2000, 2000, 'l4999.log|1|0|1|tamam', '8'],
+  );
+  for (const [k, sayilar] of [
+    ['uyari', [2001, 0, 0]],
+    ['gecersiz', [0, 2001, 0]],
+  ]) {
+    await okunamadi(
+      () => kosuDiziniOku(yeniDizin({ 'bilgi_R1_h.txt': bilgi(...sayilar) })),
+      new RegExp(`^bilgi_R1_h\\.txt: ${k}= satir tavani asildi \\(en cok 2000 satir\\)$`),
+    );
   }
 });
 
@@ -490,23 +749,58 @@ test('SN21 wrk_kos.sh bicimli istemci CSV si serbest kosu dizininden okunur; bos
   const d = portalDuzeniYaz(path.join(KOK, 'wrk21'), wrkOrnekDosyalari());
   const v = await kosuDiziniOku(d, { adim: 'R70' });
   // Serbest dizini: yalniz yuk makinesinin dosyalari; eksik sunucu dosyalari hata ya da uyari DEGIL.
-  assert.deepEqual(v.dosyalar.map((x) => x.ad),
-    ['SHA256SUMS', 'baslatilan.csv', 'istemci_R70_K_ka_br_4_r1.csv', 'istemci_R70_K_ka_br_4_r1.json', 'zaman.csv']);
-  assert.deepEqual(v.sha256, { durum: 'dogrulandi', dosya_sayisi: 4 }, 'JSON eslesi de SHA256SUMS ile dogrulanir');
-  assert.deepEqual([v.kesitler, v.loglar, v.diger.size, v.log.turlar.size, v.not, v.uyarilar], [[], [], 0, 0, '', []]);
-  assert.deepEqual(v.istemci.map((x) => x.dosya), ['istemci_R70_K_ka_br_4_r1.csv'], 'JSON ayristirilmaz (yalniz listelenir)');
+  assert.deepEqual(
+    v.dosyalar.map((x) => x.ad),
+    [
+      'SHA256SUMS',
+      'baslatilan.csv',
+      'istemci_R70_K_ka_br_4_r1.csv',
+      'istemci_R70_K_ka_br_4_r1.json',
+      'zaman.csv',
+    ],
+  );
+  assert.deepEqual(
+    v.sha256,
+    { durum: 'dogrulandi', dosya_sayisi: 4 },
+    'JSON eslesi de SHA256SUMS ile dogrulanir',
+  );
+  assert.deepEqual(
+    [v.kesitler, v.loglar, v.diger.size, v.log.turlar.size, v.not, v.uyarilar],
+    [[], [], 0, 0, '', []],
+  );
+  assert.deepEqual(
+    v.istemci.map((x) => x.dosya),
+    ['istemci_R70_K_ka_br_4_r1.csv'],
+    'JSON ayristirilmaz (yalniz listelenir)',
+  );
   const s = v.istemci[0].satir;
   assert.deepEqual(Object.keys(s), KOLON);
   for (const k of WRK_OLCULMEYEN) assert.equal(s[k], '', `${k}: bos hucre`);
-  assert.deepEqual([s.hiz, s.n_olcum, s.rps_gercek, s.p50, s.p95, s.p99, s.hata_orani, s.http2, s.bayt_istek, s.sikistirma_turu],
-    ['4', '22812', '190.1', '12.346', '25.512', '40.125', '0', '0', '1534.47', 'STATIK']);
+  assert.deepEqual(
+    [
+      s.hiz,
+      s.n_olcum,
+      s.rps_gercek,
+      s.p50,
+      s.p95,
+      s.p99,
+      s.hata_orani,
+      s.http2,
+      s.bayt_istek,
+      s.sikistirma_turu,
+    ],
+    ['4', '22812', '190.1', '12.346', '25.512', '40.125', '0', '0', '1534.47', 'STATIK'],
+  );
   // Fikstur ornegi 5.4 bicimine uyar: JSON anahtar sirasi JSON_ANAHTARLARI (ayni 30 ad), olculmeyen null,
   // sayilar yuvarlanmamis; AN fiksturlerinin ureteci ayni baytlari uretir.
   const j = JSON.parse(WRK_ORNEK.json);
   assert.deepEqual(Object.keys(j), JSON_ANAHTARLARI);
   assert.deepEqual([...Object.keys(j)].sort(), [...KOLON].sort());
   for (const k of WRK_OLCULMEYEN) assert.equal(j[k], null, `json ${k}`);
-  assert.deepEqual([j.http2, j.hata_orani, j.bayt_istek], [0, 0.000350692617920393, 1534.46962125197]);
+  assert.deepEqual(
+    [j.http2, j.hata_orani, j.bayt_istek],
+    [0, 0.000350692617920393, 1534.46962125197],
+  );
   assert.deepEqual(wrkIstemci(WRK_ORNEK.satir), { csv: WRK_ORNEK.csv, json: WRK_ORNEK.json });
   // Analizde bos hucre null (asla 0): serbest + wrk ve varsayilan (sunucu + k6) okumada ayni istemci alanlari.
   for (const secenek of [{ hedefTuru: 'serbest', motor: 'wrk' }, {}]) {
@@ -514,51 +808,129 @@ test('SN21 wrk_kos.sh bicimli istemci CSV si serbest kosu dizininden okunur; bos
     const yer = JSON.stringify(secenek);
     assert.equal(a.adimlar.length, 1, yer);
     const x = a.adimlar[0];
-    for (const k of ['ttfb_p95', 'tls_p95', 'connect_p95', 'dropped']) assert.equal(x[k], null, `${yer} ${k}`);
-    for (const k of ['p95_js', 'p95_css', 'p95_html', 'p95_json', 'p95_config', 'p95_buyuk']) assert.equal(x.ham[k], null, `${yer} ham.${k}`);
-    assert.deepEqual([x.tur, x.hiz, x.kip, x.n_istek, x.gercek_rps, x.p50, x.p95, x.p99, x.hata_orani, x.bayt_istek, x.ham.http2, x.sikistirma_turu, x.deneme],
-      ['R70_K_ka_br_4_r1', 4, 'ka', 22812, 190.1, 12.346, 25.512, 40.125, 0, 1534.47, 0, 'STATIK', 1], yer);
+    for (const k of ['ttfb_p95', 'tls_p95', 'connect_p95', 'dropped'])
+      assert.equal(x[k], null, `${yer} ${k}`);
+    for (const k of ['p95_js', 'p95_css', 'p95_html', 'p95_json', 'p95_config', 'p95_buyuk'])
+      assert.equal(x.ham[k], null, `${yer} ham.${k}`);
+    assert.deepEqual(
+      [
+        x.tur,
+        x.hiz,
+        x.kip,
+        x.n_istek,
+        x.gercek_rps,
+        x.p50,
+        x.p95,
+        x.p99,
+        x.hata_orani,
+        x.bayt_istek,
+        x.ham.http2,
+        x.sikistirma_turu,
+        x.deneme,
+      ],
+      [
+        'R70_K_ka_br_4_r1',
+        4,
+        'ka',
+        22812,
+        190.1,
+        12.346,
+        25.512,
+        40.125,
+        0,
+        1534.47,
+        0,
+        'STATIK',
+        1,
+      ],
+      yer,
+    );
     assert.equal(x.gecerlilik, 'GECERLI', `${yer}: ${x.nedenler}`);
   }
 });
 
 // 2026-11-03 (K3): yuk makinesi CPU kaydedicisi dosyalari (yukcpu_*.csv / .txt).
 test('SN30 yukcpu_*.csv okunur ({t, busy, tot}, sirali), .txt bilgi; dosya yoksa []; bozuk baslik / tavan kosuyu OKUNAMADI yapmaz (sorun + bos kesit); SHA256SUMS ile; eski desenlere girmez', async () => {
-  const BAS = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n';
-  const csv = BAS + '1793620002.5,30,0,10,500,5,1,2,0\n1793620001.25,10,0,5,400,5,1,1,0\nkisa,satir\n1793620003,x,0,0,0,0,0,0,0\n';
+  const BAS =
+    'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n';
+  const csv =
+    BAS +
+    '1793620002.5,30,0,10,500,5,1,2,0\n1793620001.25,10,0,5,400,5,1,1,0\nkisa,satir\n1793620003,x,0,0,0,0,0,0,0\n';
   const txt = 'surum=1\nadim=R1\nhost=ymak01\nnproc=8\nclk_tck=100\nornek_sayisi=2\n';
-  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': csv, 'yukcpu_R1_ymak01.txt': txt }));
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'yukcpu_R1_ymak01.csv': csv,
+      'yukcpu_R1_ymak01.txt': txt,
+    }),
+  );
   assert.equal(v.yukKesitler.length, 1);
   const y = v.yukKesitler[0];
-  assert.deepEqual([y.anahtar, y.dosya, y.bilgiVar, y.bilgi.nproc], ['R1_ymak01', 'yukcpu_R1_ymak01.csv', true, '8']);
+  assert.deepEqual(
+    [y.anahtar, y.dosya, y.bilgiVar, y.bilgi.nproc],
+    ['R1_ymak01', 'yukcpu_R1_ymak01.csv', true, '8'],
+  );
   // busy = user + nice + system + irq + softirq + steal; tot = busy + idle + iowait (sunucu kesitiyle ayni formul).
-  assert.deepEqual(y.ornekler, [{ t: 1793620001.25, busy: 17, tot: 422 }, { t: 1793620002.5, busy: 43, tot: 548 }]);
+  assert.deepEqual(y.ornekler, [
+    { t: 1793620001.25, busy: 17, tot: 422 },
+    { t: 1793620002.5, busy: 43, tot: 548 },
+  ]);
   // Hedef kesitlerine (sunucu_*) karismaz; dosya listesinde gorunur.
   assert.deepEqual(v.kesitler, []);
   assert.ok(v.dosyalar.some((d) => d.ad === 'yukcpu_R1_ymak01.csv'));
   // Kayit yoksa bos liste (eski kosu).
-  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).yukKesitler, []);
+  assert.deepEqual(
+    (await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).yukKesitler,
+    [],
+  );
   // Bilgisiz csv okunur (bilgi null).
   const b = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }));
   assert.deepEqual([b.yukKesitler[0].bilgiVar, b.yukKesitler[0].bilgi], [false, null]);
   // Eksik kolon: dosya YALNIZ BILGI -> kosu okunur, kesit bos ve sorun dosya adiyla (analiz 'kayit_bozuk' der).
-  const ek = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': 'epoch,cpu_user\n1,2\n' }));
+  const ek = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'yukcpu_R1_ymak01.csv': 'epoch,cpu_user\n1,2\n',
+    }),
+  );
   assert.equal(ek.istemci.length, 1);
-  assert.deepEqual(ek.yukKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'yukcpu_R1_ymak01.csv: eksik kolon cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal']]);
+  assert.deepEqual(
+    ek.yukKesitler.map((x) => [x.ornekler.length, x.sorun]),
+    [
+      [
+        0,
+        'yukcpu_R1_ymak01.csv: eksik kolon cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal',
+      ],
+    ],
+  );
   // Basliksiz (TERM trap'ten once dusmus eski kaydedici): ilk satir baslik sanilir -> eksik kolon, yine OKUNAMADI degil.
-  const bs = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': '1793620001,10,0,5,400,5,1,1,0\n' }));
+  const bs = await kosuDiziniOku(
+    yeniDizin({ 'yukcpu_R1_ymak01.csv': '1793620001,10,0,5,400,5,1,1,0\n' }),
+  );
   assert.match(bs.yukKesitler[0].sorun, /^yukcpu_R1_ymak01\.csv: eksik kolon epoch,/);
   // Saglam dosyada sorun alani YOK (eski bicim birebir).
   assert.ok(!('sorun' in y));
   // SHA256SUMS listesinde: ozet tutmali.
-  const d = yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n` });
+  const d = yeniDizin({
+    'yukcpu_R1_ymak01.csv': csv,
+    SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n`,
+  });
   assert.deepEqual((await kosuDiziniOku(d)).sha256, { durum: 'dogrulandi', dosya_sayisi: 1 });
-  const bozuk = yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${'0'.repeat(64)}  yukcpu_R1_ymak01.csv\n` });
+  const bozuk = yeniDizin({
+    'yukcpu_R1_ymak01.csv': csv,
+    SHA256SUMS: `${'0'.repeat(64)}  yukcpu_R1_ymak01.csv\n`,
+  });
   await okunamadi(() => kosuDiziniOku(bozuk), /SHA256SUMS tutmuyor: yukcpu_R1_ymak01\.csv/);
   // Satir tavani 20000.
-  const cok = BAS + Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,0,0,1,0,0,0,0`).join('\n') + '\n';
+  const cok =
+    BAS +
+    Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,0,0,1,0,0,0,0`).join('\n') +
+    '\n';
   const tv = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': cok }));
-  assert.deepEqual(tv.yukKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'yukcpu_R1_ymak01.csv: satir tavani asildi (en cok 20000 satir)']]);
+  assert.deepEqual(
+    tv.yukKesitler.map((x) => [x.ornekler.length, x.sorun]),
+    [[0, 'yukcpu_R1_ymak01.csv: satir tavani asildi (en cok 20000 satir)']],
+  );
 });
 
 // B7: yuk dosyasi hicbir bicimde kosuyu OKUNAMADI yapmaz: normal dosya olmayan yukcpu_* (dizin), bozuk / tasan .txt
@@ -569,10 +941,30 @@ test('SN31 (B7) yukcpu_* dizin / bozuk txt / bos: kosu okunur, yalniz yuk kesiti
   fs.mkdirSync(path.join(d, 'yukcpu_R1_ymak01.txt'));
   const v = await kosuDiziniOku(d);
   assert.equal(v.istemci.length, 1);
-  assert.deepEqual(v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun, x.bilgiVar]), [['R1_ymak01', 0, 'yukcpu_R1_ymak01.csv: normal dosya degil', false]]);
-  const tasan = 'nproc=' + '9'.repeat(400) + '\n' + Array.from({ length: 5000 }, (_, i) => `uyari=u${i}`).join('\n') + '\n'
-    + Array.from({ length: 200 }, (_, i) => `k${'x'.repeat(i % 20)}_${String.fromCharCode(97 + (i % 26))}=1`).join('\n') + '\n' + String.fromCharCode(0, 255) + '=\n';
-  const t = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': '', 'yukcpu_R1_ymak01.txt': tasan }));
+  assert.deepEqual(
+    v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun, x.bilgiVar]),
+    [['R1_ymak01', 0, 'yukcpu_R1_ymak01.csv: normal dosya degil', false]],
+  );
+  const tasan =
+    'nproc=' +
+    '9'.repeat(400) +
+    '\n' +
+    Array.from({ length: 5000 }, (_, i) => `uyari=u${i}`).join('\n') +
+    '\n' +
+    Array.from(
+      { length: 200 },
+      (_, i) => `k${'x'.repeat(i % 20)}_${String.fromCharCode(97 + (i % 26))}=1`,
+    ).join('\n') +
+    '\n' +
+    String.fromCharCode(0, 255) +
+    '=\n';
+  const t = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'yukcpu_R1_ymak01.csv': '',
+      'yukcpu_R1_ymak01.txt': tasan,
+    }),
+  );
   assert.equal(t.istemci.length, 1);
   const y = t.yukKesitler[0];
   assert.deepEqual([y.ornekler.length, y.bilgiVar], [0, true]);
@@ -595,32 +987,71 @@ test('SN31b (B7) yukcpu_* / bellek_* okuma hatasi: kosu okunur, kesit sorunlu; s
   t.mock.method(fs, 'createReadStream', function (yol, ...geri) {
     if (bozukAd.test(String(yol))) {
       const r = new Readable({ read() {} });
-      process.nextTick(() => r.destroy(Object.assign(new Error(`EIO: i/o error, read '${yol}'`), { code: 'EIO' })));
+      process.nextTick(() =>
+        r.destroy(Object.assign(new Error(`EIO: i/o error, read '${yol}'`), { code: 'EIO' })),
+      );
       return r;
     }
     return asil.call(fs, yol, ...geri);
   });
-  const csv = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
-  const bel = 'epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb\n1793620001,1024,2,16000000,8000000\n';
-  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'yukcpu_R1_ymak01.csv': csv, 'yukcpu_R1_ymak01.txt': 'nproc=8\n', 'bellek_R1_h.csv': bel }));
+  const csv =
+    'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
+  const bel =
+    'epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb\n1793620001,1024,2,16000000,8000000\n';
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'yukcpu_R1_ymak01.csv': csv,
+      'yukcpu_R1_ymak01.txt': 'nproc=8\n',
+      'bellek_R1_h.csv': bel,
+    }),
+  );
   assert.equal(v.istemci.length, 1);
-  assert.deepEqual(v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.bilgiVar]), [['R1_ymak01', 0, false]]);
+  assert.deepEqual(
+    v.yukKesitler.map((x) => [x.anahtar, x.ornekler.length, x.bilgiVar]),
+    [['R1_ymak01', 0, false]],
+  );
   assert.match(v.yukKesitler[0].sorun, /^yukcpu_R1_ymak01\.csv: okunamadi \(EIO/);
-  assert.deepEqual(v.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length]), [['R1_h', 0]]);
+  assert.deepEqual(
+    v.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length]),
+    [['R1_h', 0]],
+  );
   assert.match(v.bellekKesitler[0].sorun, /^bellek_R1_h\.csv: okunamadi \(EIO/);
   // Hedef dosyasi ayni hatada OKUNAMADI (degismedi).
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'sunucu_R1_h.csv': csv })), /sunucu_R1_h\.csv: okunamadi/);
+  await okunamadi(
+    () =>
+      kosuDiziniOku(
+        yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'sunucu_R1_h.csv': csv }),
+      ),
+    /sunucu_R1_h\.csv: okunamadi/,
+  );
   // SHA256SUMS'ta listeli yuk dosyasi okunamazsa ozet dogrulanamaz: OKUNAMADI.
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n` })), /yukcpu_R1_ymak01\.csv: okunamadi/);
+  await okunamadi(
+    () =>
+      kosuDiziniOku(
+        yeniDizin({
+          'yukcpu_R1_ymak01.csv': csv,
+          SHA256SUMS: `${sha(Buffer.from(csv))}  yukcpu_R1_ymak01.csv\n`,
+        }),
+      ),
+    /yukcpu_R1_ymak01\.csv: okunamadi/,
+  );
   t.mock.restoreAll();
   // Bayt tavani yuk dosyasinda AKISTA asilir (dosya on boyut olcumunden sonra buyudu): kosunun butununu baglar,
   // OKUNAMADI (yuk dosyasi istisnasina girmez).
-  const buyuk = Buffer.from(csv + Array.from({ length: 200 }, (_, i) => `${1793620002 + i},1,0,0,1,0,0,0,0`).join('\n') + '\n');
+  const buyuk = Buffer.from(
+    csv +
+      Array.from({ length: 200 }, (_, i) => `${1793620002 + i},1,0,0,1,0,0,0,0`).join('\n') +
+      '\n',
+  );
   t.mock.method(fs, 'createReadStream', function (yol, ...geri) {
     if (/(^|[\\/])yukcpu_R1_ymak01\.csv$/.test(String(yol))) return Readable.from([buyuk]);
     return asil.call(fs, yol, ...geri);
   });
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }), { maxBayt: 1024 }), /bayt tavanini asti \(1024 bayt; yukcpu_R1_ymak01\.csv okunurken\)/);
+  await okunamadi(
+    () => kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }), { maxBayt: 1024 }),
+    /bayt tavanini asti \(1024 bayt; yukcpu_R1_ymak01\.csv okunurken\)/,
+  );
   t.mock.restoreAll();
 });
 
@@ -632,58 +1063,127 @@ test('SN31b (B7) yukcpu_* / bellek_* okuma hatasi: kosu okunur, kesit sorunlu; s
 //        atlanir; hatali_istemci_*.json okunmaz (yalniz ozet); istemci_*.json dizinse OKUNAMADI aynen (eski kural)
 test('SN32 bellek_*.csv okunur; bozuk / tasan / dizin kosuyu OKUNAMADI yapmaz; SHA256SUMS baglar', async () => {
   const BAS = 'epoch,nginx_rss_kb,isci_sayi,mem_total_kb,mem_available_kb\n';
-  const csv = BAS + '1793620002.5,2048,2,16000000,\n1793620001.25,1024,2,16000000,8000000\nkisa\nx,1,2,3,4\n';
-  const v = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'bellek_R1_h.csv': csv }));
-  assert.deepEqual(v.bellekKesitler, [{ anahtar: 'R1_h', dosya: 'bellek_R1_h.csv', ornekler: [
-    { t: 1793620001.25, rss: 1024, n: 2, mt: 16000000, ma: 8000000 }, { t: 1793620002.5, rss: 2048, n: 2, mt: 16000000, ma: null },
-  ] }]);
+  const csv =
+    BAS + '1793620002.5,2048,2,16000000,\n1793620001.25,1024,2,16000000,8000000\nkisa\nx,1,2,3,4\n';
+  const v = await kosuDiziniOku(
+    yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'bellek_R1_h.csv': csv }),
+  );
+  assert.deepEqual(v.bellekKesitler, [
+    {
+      anahtar: 'R1_h',
+      dosya: 'bellek_R1_h.csv',
+      ornekler: [
+        { t: 1793620001.25, rss: 1024, n: 2, mt: 16000000, ma: 8000000 },
+        { t: 1793620002.5, rss: 2048, n: 2, mt: 16000000, ma: null },
+      ],
+    },
+  ]);
   assert.deepEqual(v.kesitler, [], 'hedef CPU kesitlerine karismaz');
-  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).bellekKesitler, []);
-  const ek = await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI, 'bellek_R1_h.csv': 'epoch,nginx_rss_kb\n1,2\n' }));
+  assert.deepEqual(
+    (await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).bellekKesitler,
+    [],
+  );
+  const ek = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'bellek_R1_h.csv': 'epoch,nginx_rss_kb\n1,2\n',
+    }),
+  );
   assert.equal(ek.istemci.length, 1);
-  assert.deepEqual(ek.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'bellek_R1_h.csv: eksik kolon isci_sayi,mem_total_kb,mem_available_kb']]);
-  const cok = BAS + Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,1,1,1`).join('\n') + '\n';
+  assert.deepEqual(
+    ek.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]),
+    [[0, 'bellek_R1_h.csv: eksik kolon isci_sayi,mem_total_kb,mem_available_kb']],
+  );
+  const cok =
+    BAS + Array.from({ length: 20001 }, (_, i) => `${1793620000 + i},1,1,1,1`).join('\n') + '\n';
   const tv = await kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': cok }));
-  assert.deepEqual(tv.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]), [[0, 'bellek_R1_h.csv: satir tavani asildi (en cok 20000 satir)']]);
+  assert.deepEqual(
+    tv.bellekKesitler.map((x) => [x.ornekler.length, x.sorun]),
+    [[0, 'bellek_R1_h.csv: satir tavani asildi (en cok 20000 satir)']],
+  );
   const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
   fs.mkdirSync(path.join(d, 'bellek_R1_h.csv'));
   const dz = await kosuDiziniOku(d);
-  assert.deepEqual(dz.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun]), [['R1_h', 0, 'bellek_R1_h.csv: normal dosya degil']]);
-  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': csv, SHA256SUMS: `${sha(Buffer.from(csv))}  bellek_R1_h.csv\n` }))).sha256, { durum: 'dogrulandi', dosya_sayisi: 1 });
-  await okunamadi(() => kosuDiziniOku(yeniDizin({ 'bellek_R1_h.csv': csv, SHA256SUMS: `${'0'.repeat(64)}  bellek_R1_h.csv\n` })), /SHA256SUMS tutmuyor: bellek_R1_h\.csv/);
+  assert.deepEqual(
+    dz.bellekKesitler.map((x) => [x.anahtar, x.ornekler.length, x.sorun]),
+    [['R1_h', 0, 'bellek_R1_h.csv: normal dosya degil']],
+  );
+  assert.deepEqual(
+    (
+      await kosuDiziniOku(
+        yeniDizin({
+          'bellek_R1_h.csv': csv,
+          SHA256SUMS: `${sha(Buffer.from(csv))}  bellek_R1_h.csv\n`,
+        }),
+      )
+    ).sha256,
+    { durum: 'dogrulandi', dosya_sayisi: 1 },
+  );
+  await okunamadi(
+    () =>
+      kosuDiziniOku(
+        yeniDizin({ 'bellek_R1_h.csv': csv, SHA256SUMS: `${'0'.repeat(64)}  bellek_R1_h.csv\n` }),
+      ),
+    /SHA256SUMS tutmuyor: bellek_R1_h\.csv/,
+  );
 });
 
 test('SN33 yukcpu_*.csv bellek kolonlari istege bagli (mt / ma / ar; bos null); kolonsuz dosyada ornek aynen', async () => {
-  const BAS = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal,mem_total_kb,mem_available_kb,arac_rss_kb\n';
-  const csv = BAS + '1793620001,10,0,5,400,5,1,1,0,32000000,20000000,300000\n1793620002,30,0,10,500,5,1,2,0,,,\n';
+  const BAS =
+    'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal,mem_total_kb,mem_available_kb,arac_rss_kb\n';
+  const csv =
+    BAS +
+    '1793620001,10,0,5,400,5,1,1,0,32000000,20000000,300000\n1793620002,30,0,10,500,5,1,2,0,,,\n';
   const v = await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': csv }));
   assert.deepEqual(v.yukKesitler[0].ornekler, [
     { t: 1793620001, busy: 17, tot: 422, mt: 32000000, ma: 20000000, ar: 300000 },
     { t: 1793620002, busy: 43, tot: 548, mt: null, ma: null, ar: null },
   ]);
-  const eski = 'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
-  assert.deepEqual((await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': eski }))).yukKesitler[0].ornekler, [{ t: 1793620001, busy: 17, tot: 422 }]);
+  const eski =
+    'epoch,cpu_user,cpu_nice,cpu_system,cpu_idle,cpu_iowait,cpu_irq,cpu_softirq,cpu_steal\n1793620001,10,0,5,400,5,1,1,0\n';
+  assert.deepEqual(
+    (await kosuDiziniOku(yeniDizin({ 'yukcpu_R1_ymak01.csv': eski }))).yukKesitler[0].ornekler,
+    [{ t: 1793620001, busy: 17, tot: 422 }],
+  );
 });
 
 test('SN34 istemci JSON kodlama okunur (bilgi); bozuk / tasan / kodlamasiz atlanir; hatali_ JSON okunmaz; dizin OKUNAMADI aynen', async () => {
   const kd = { br: 9, gzip: 0, deflate: 0, zstd: 0, yok: 1, diger: 0, yok_1kb_alti: 1 };
-  const json = (tur, k) => JSON.stringify({ tur, hiz: 250, ...(k === undefined ? {} : { kodlama: k }) }, null, 2) + '\n';
-  const v = await kosuDiziniOku(yeniDizin({
-    'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
-    'istemci_R1_K_yeni_br_250_r1.json': json('R1_K_yeni_br_250_r1', kd),
-    'istemci_R1_K_yeni_br_250_r2.json': json('R1_K_yeni_br_250_r2', { ...kd, br: 1.5, gzip: -1, yok: '3' }),
-    'istemci_R1_K_yeni_br_400_r1.json': json('R1_K_yeni_br_400_r1'),
-    'istemci_R1_K_yeni_br_400_r2.json': '{"tur": "R1_K_yeni_br_400_r2", "kodlama": {',
-    'istemci_R1_K_yeni_br_100_r1.json': json('R1_K_yeni_br_100_r1', kd).replace('"hiz"', `"x": "${'a'.repeat(70000)}", "hiz"`),
-    'hatali_istemci_R1_K_yeni_br_100_r2.json': json('R1_K_yeni_br_100_r2', kd),
-  }));
+  const json = (tur, k) =>
+    JSON.stringify({ tur, hiz: 250, ...(k === undefined ? {} : { kodlama: k }) }, null, 2) + '\n';
+  const v = await kosuDiziniOku(
+    yeniDizin({
+      'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI,
+      'istemci_R1_K_yeni_br_250_r1.json': json('R1_K_yeni_br_250_r1', kd),
+      'istemci_R1_K_yeni_br_250_r2.json': json('R1_K_yeni_br_250_r2', {
+        ...kd,
+        br: 1.5,
+        gzip: -1,
+        yok: '3',
+      }),
+      'istemci_R1_K_yeni_br_400_r1.json': json('R1_K_yeni_br_400_r1'),
+      'istemci_R1_K_yeni_br_400_r2.json': '{"tur": "R1_K_yeni_br_400_r2", "kodlama": {',
+      'istemci_R1_K_yeni_br_100_r1.json': json('R1_K_yeni_br_100_r1', kd).replace(
+        '"hiz"',
+        `"x": "${'a'.repeat(70000)}", "hiz"`,
+      ),
+      'hatali_istemci_R1_K_yeni_br_100_r2.json': json('R1_K_yeni_br_100_r2', kd),
+    }),
+  );
   assert.equal(v.istemci.length, 1);
-  assert.deepEqual([...v.istemciKodlama.entries()], [
-    ['R1_K_yeni_br_250_r1', kd],
-    ['R1_K_yeni_br_250_r2', { ...kd, br: null, gzip: null, yok: null }],
-  ]);
+  assert.deepEqual(
+    [...v.istemciKodlama.entries()],
+    [
+      ['R1_K_yeni_br_250_r1', kd],
+      ['R1_K_yeni_br_250_r2', { ...kd, br: null, gzip: null, yok: null }],
+    ],
+  );
   // Hic JSON yok: bos harita (eski yuk_k6.js da JSON yazar ama kodlamasiz: yine bos).
-  assert.equal((await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).istemciKodlama.size, 0);
+  assert.equal(
+    (await kosuDiziniOku(yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI }))).istemciKodlama
+      .size,
+    0,
+  );
   const d = yeniDizin({ 'istemci_R1_K_yeni_br_250_r1.csv': ISTEMCI });
   fs.mkdirSync(path.join(d, 'istemci_R1_K_yeni_br_250_r1.json'));
   await okunamadi(() => kosuDiziniOku(d), /istemci_R1_K_yeni_br_250_r1\.json: normal dosya degil/);

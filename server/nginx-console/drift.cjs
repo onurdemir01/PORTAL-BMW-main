@@ -16,7 +16,10 @@
 const { BACKUP_RE } = require('./dump-parse.cjs');
 const { varsayilanSira } = require('../util/siralama.cjs');
 
-const norm = (s) => String(s || '').trim().toUpperCase();
+const norm = (s) =>
+  String(s || '')
+    .trim()
+    .toUpperCase();
 
 /** Sunucuya ozel oldugu bilinen dosya: yolunda kendi host adi geciyor ya da yedek kalibi. */
 function expectedLocal(path, host) {
@@ -35,11 +38,23 @@ function computeDrift(hosts, dumps, opts = {}) {
   const minHosts = opts.minHosts || 2;
   const byGroup = new Map();
   for (const h of hosts) {
-    const svcs = (h.services && h.services.length ? h.services : [h.service]).map(norm).filter(Boolean);
+    const svcs = (h.services && h.services.length ? h.services : [h.service])
+      .map(norm)
+      .filter(Boolean);
     const env = String(h.env || '—').toLowerCase();
-    for (const s of (svcs.length ? svcs : ['—'])) {
+    for (const s of svcs.length ? svcs : ['—']) {
       const key = `${s}|${env}`;
-      if (!byGroup.has(key)) byGroup.set(key, { key, service: s, env, hosts: [], dumped: [], dumpMissing: [], files: [], counts: { same: 0, differ: 0, missing: 0, local: 0 } });
+      if (!byGroup.has(key))
+        byGroup.set(key, {
+          key,
+          service: s,
+          env,
+          hosts: [],
+          dumped: [],
+          dumpMissing: [],
+          files: [],
+          counts: { same: 0, differ: 0, missing: 0, local: 0 },
+        });
       const g = byGroup.get(key);
       const H = norm(h.host);
       if (!g.hosts.includes(H)) g.hosts.push(H);
@@ -49,7 +64,10 @@ function computeDrift(hosts, dumps, opts = {}) {
   for (const g of byGroup.values()) {
     g.hosts.sort();
     for (const H of g.hosts) (dumps.get(H) ? g.dumped : g.dumpMissing).push(H);
-    if (g.dumped.length < minHosts) { groups.push(g); continue; }
+    if (g.dumped.length < minHosts) {
+      groups.push(g);
+      continue;
+    }
     // yol -> host -> sha
     const byPath = new Map();
     for (const H of g.dumped) {
@@ -64,21 +82,56 @@ function computeDrift(hosts, dumps, opts = {}) {
       const present = [...m.keys()].sort(varsayilanSira);
       const missing = g.dumped.filter((H) => !m.has(H));
       const variants = new Map();
-      for (const [H, v] of m) { if (!variants.has(v.sha)) { variants.set(v.sha, []); } variants.get(v.sha).push(H); }
-      const vlist = [...variants.entries()].map(([sha, hs]) => ({ sha, hosts: hs.sort(), size: m.get(hs[0]).size, mtime: hs.map((x) => m.get(x).mtime).sort().pop() || null })).sort((a, b) => b.hosts.length - a.hosts.length || a.sha.localeCompare(b.sha));
-      const local = present.every((H) => expectedLocal(path, H)) || (missing.length > 0 && present.length === 1 && expectedLocal(path, present[0]));
+      for (const [H, v] of m) {
+        if (!variants.has(v.sha)) {
+          variants.set(v.sha, []);
+        }
+        variants.get(v.sha).push(H);
+      }
+      const vlist = [...variants.entries()]
+        .map(([sha, hs]) => ({
+          sha,
+          hosts: hs.sort(),
+          size: m.get(hs[0]).size,
+          mtime:
+            hs
+              .map((x) => m.get(x).mtime)
+              .sort()
+              .pop() || null,
+        }))
+        .sort((a, b) => b.hosts.length - a.hosts.length || a.sha.localeCompare(b.sha));
+      const local =
+        present.every((H) => expectedLocal(path, H)) ||
+        (missing.length > 0 && present.length === 1 && expectedLocal(path, present[0]));
       let status;
-      if (local) { status = 'local'; }
-      else if (vlist.length > 1) status = 'differ';
+      if (local) {
+        status = 'local';
+      } else if (vlist.length > 1) status = 'differ';
       else if (missing.length > 0) status = 'missing';
       else status = 'same';
       g.counts[status] += 1;
-      if (status !== 'same') g.files.push({ path, status, variants: vlist, missing, majority: vlist[0] ? vlist[0].sha : null });
+      if (status !== 'same')
+        g.files.push({
+          path,
+          status,
+          variants: vlist,
+          missing,
+          majority: vlist[0] ? vlist[0].sha : null,
+        });
     }
-    g.files.sort((a, b) => ({ differ: 0, missing: 1, local: 2 }[a.status] - { differ: 0, missing: 1, local: 2 }[b.status]) || a.path.localeCompare(b.path));
+    g.files.sort(
+      (a, b) =>
+        ({ differ: 0, missing: 1, local: 2 })[a.status] -
+          { differ: 0, missing: 1, local: 2 }[b.status] || a.path.localeCompare(b.path),
+    );
     groups.push(g);
   }
-  groups.sort((a, b) => (b.counts.differ + b.counts.missing) - (a.counts.differ + a.counts.missing) || a.service.localeCompare(b.service) || a.env.localeCompare(b.env));
+  groups.sort(
+    (a, b) =>
+      b.counts.differ + b.counts.missing - (a.counts.differ + a.counts.missing) ||
+      a.service.localeCompare(b.service) ||
+      a.env.localeCompare(b.env),
+  );
   return { groups };
 }
 

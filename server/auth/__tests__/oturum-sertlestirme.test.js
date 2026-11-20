@@ -65,11 +65,21 @@ async function ortamA(env, fn) {
 }
 
 test('OS1 cerez adi ortama gore; __Host- production disinda secilemez', () => {
-  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: undefined }, () => assert.equal(cerez.cerezAdi(), '__Host-portal.sid'));
-  ortam({ NODE_ENV: 'development', SESSION_COOKIE_NAME: undefined }, () => assert.equal(cerez.cerezAdi(), 'connect.sid'));
-  ortam({ NODE_ENV: 'development', SESSION_COOKIE_NAME: '__Host-x' }, () => assert.equal(cerez.cerezAdi(), 'connect.sid'));
-  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: '__Host-x' }, () => assert.equal(cerez.cerezAdi(), '__Host-x'));
-  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: 'kotu;ad' }, () => assert.equal(cerez.cerezAdi(), '__Host-portal.sid'));
+  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: undefined }, () =>
+    assert.equal(cerez.cerezAdi(), '__Host-portal.sid'),
+  );
+  ortam({ NODE_ENV: 'development', SESSION_COOKIE_NAME: undefined }, () =>
+    assert.equal(cerez.cerezAdi(), 'connect.sid'),
+  );
+  ortam({ NODE_ENV: 'development', SESSION_COOKIE_NAME: '__Host-x' }, () =>
+    assert.equal(cerez.cerezAdi(), 'connect.sid'),
+  );
+  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: '__Host-x' }, () =>
+    assert.equal(cerez.cerezAdi(), '__Host-x'),
+  );
+  ortam({ NODE_ENV: 'production', SESSION_COOKIE_NAME: 'kotu;ad' }, () =>
+    assert.equal(cerez.cerezAdi(), '__Host-portal.sid'),
+  );
 });
 
 // Gercek express-session: eski adla imzalanmis cerez yeni adla okunabiliyor mu.
@@ -77,7 +87,16 @@ function uygulama(ad) {
   const store = new session.MemoryStore();
   const app = express();
   app.use(cerez.eskiCereziTasi(ad));
-  app.use(session({ name: ad, store, secret: 's3cret', resave: false, saveUninitialized: false, rolling: true }));
+  app.use(
+    session({
+      name: ad,
+      store,
+      secret: 's3cret',
+      resave: false,
+      saveUninitialized: false,
+      rolling: true,
+    }),
+  );
   app.post('/giris', (req, res) => {
     req.session.user = { username: 'ayse' };
     res.json({ ok: true });
@@ -100,7 +119,16 @@ test('OS2 gecis kimseyi atmaz: eski cerezle oturum bulunur, yeni ad yazilir, esk
   const kur = (ad) => {
     const app = express();
     app.use(cerez.eskiCereziTasi(ad));
-    app.use(session({ name: ad, store, secret: 's3cret', resave: false, saveUninitialized: false, rolling: true }));
+    app.use(
+      session({
+        name: ad,
+        store,
+        secret: 's3cret',
+        resave: false,
+        saveUninitialized: false,
+        rolling: true,
+      }),
+    );
     app.post('/giris', (req, res) => {
       req.session.user = { username: 'ayse' };
       res.json({ ok: true });
@@ -117,18 +145,31 @@ test('OS2 gecis kimseyi atmaz: eski cerezle oturum bulunur, yeni ad yazilir, esk
   const r = await fetch(`${yeni}/ben`, { headers: { cookie: eskiCerez } });
   assert.deepEqual((await r.json()).user, { username: 'ayse' }, 'gecis kullaniciyi atti');
   const yazilan = r.headers.getSetCookie();
-  assert.ok(yazilan.some((c) => c.startsWith('__Host-portal.sid=')), 'yeni ad yazilmadi');
-  assert.ok(yazilan.some((c) => /^connect\.sid=;/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c)), 'eski cerez silinmedi');
+  assert.ok(
+    yazilan.some((c) => c.startsWith('__Host-portal.sid=')),
+    'yeni ad yazilmadi',
+  );
+  assert.ok(
+    yazilan.some((c) => /^connect\.sid=;/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c)),
+    'eski cerez silinmedi',
+  );
   // Yeni adla devam.
   const yeniCerez = yazilan.find((c) => c.startsWith('__Host-portal.sid=')).split(';')[0];
   const r2 = await fetch(`${yeni}/ben`, { headers: { cookie: yeniCerez } });
   assert.deepEqual((await r2.json()).user, { username: 'ayse' });
-  assert.ok(!r2.headers.getSetCookie().some((c) => c.startsWith('connect.sid')), 'gecis bittikten sonra hala eski cerezle ugrasiyor');
+  assert.ok(
+    !r2.headers.getSetCookie().some((c) => c.startsWith('connect.sid')),
+    'gecis bittikten sonra hala eski cerezle ugrasiyor',
+  );
   // Iki ad birden gelirse YENI ad kazanir (eski cerez yeniyi ezemez).
-  const r3 = await fetch(`${yeni}/ben`, { headers: { cookie: `connect.sid=s%3Asahte.x; ${yeniCerez}` } });
+  const r3 = await fetch(`${yeni}/ben`, {
+    headers: { cookie: `connect.sid=s%3Asahte.x; ${yeniCerez}` },
+  });
   assert.deepEqual((await r3.json()).user, { username: 'ayse' });
   assert.ok(
-    r3.headers.getSetCookie().some((c) => /^connect\.sid=;/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c)),
+    r3.headers
+      .getSetCookie()
+      .some((c) => /^connect\.sid=;/.test(c) && /Expires=Thu, 01 Jan 1970/.test(c)),
     'artakalan eski cerez silinmedi',
   );
   // Gelistirme (ayni ad): dokunulmaz.
@@ -145,12 +186,27 @@ test('OS3 koken kontrolu', () => {
   ortam({ PORTAL_ALLOWED_ORIGINS: undefined, CORS_ORIGIN: undefined }, () => {
     assert.equal(kokenUygunMu(istek('POST', { origin: 'https://portal.kurum' })).ok, true);
     assert.equal(kokenUygunMu(istek('POST', { origin: 'https://kotu.example' })).ok, false);
-    assert.equal(kokenUygunMu(istek('DELETE', { origin: 'https://portal.kurum.kotu.example' })).ok, false, 'onek eslesmesi');
-    assert.equal(kokenUygunMu(istek('GET', { origin: 'https://kotu.example' })).ok, true, 'GET etkilenmemeli');
+    assert.equal(
+      kokenUygunMu(istek('DELETE', { origin: 'https://portal.kurum.kotu.example' })).ok,
+      false,
+      'onek eslesmesi',
+    );
+    assert.equal(
+      kokenUygunMu(istek('GET', { origin: 'https://kotu.example' })).ok,
+      true,
+      'GET etkilenmemeli',
+    );
     assert.equal(kokenUygunMu(istek('POST', {})).ok, true, 'basliksiz betik engellendi');
     assert.equal(kokenUygunMu(istek('POST', { origin: 'null' })).ok, false);
-    assert.equal(kokenUygunMu(istek('PUT', { referer: 'https://kotu.example/x' })).ok, false, 'Referer yedegi yok');
-    assert.equal(kokenUygunMu(istek('PUT', { referer: 'https://portal.kurum/admin?x=1' })).ok, true);
+    assert.equal(
+      kokenUygunMu(istek('PUT', { referer: 'https://kotu.example/x' })).ok,
+      false,
+      'Referer yedegi yok',
+    );
+    assert.equal(
+      kokenUygunMu(istek('PUT', { referer: 'https://portal.kurum/admin?x=1' })).ok,
+      true,
+    );
     assert.equal(kokenUygunMu(istek('POST', { origin: 'bozuk' })).ok, false);
   });
   ortam({ PORTAL_ALLOWED_ORIGINS: 'https://portal.kurum.com.tr/, https://ikinci' }, () => {
@@ -167,13 +223,29 @@ test('OS3b mod: enforce 403 (oturum 401 DEGIL), log gecirir, off gecirir', () =>
   const calistir = () => {
     let durum = 0;
     let gecti = false;
-    const res = { status: (s) => { durum = s; return res; }, json: () => res };
-    mw({ ...istek('POST', { origin: 'https://kotu.example' }), originalUrl: '/api/x', path: '/x' }, res, () => (gecti = true));
+    const res = {
+      status: (s) => {
+        durum = s;
+        return res;
+      },
+      json: () => res,
+    };
+    mw(
+      { ...istek('POST', { origin: 'https://kotu.example' }), originalUrl: '/api/x', path: '/x' },
+      res,
+      () => (gecti = true),
+    );
     return { durum, gecti };
   };
-  ortam({ CSRF_ORIGIN_CHECK: undefined }, () => assert.deepEqual(calistir(), { durum: 403, gecti: false }));
-  ortam({ CSRF_ORIGIN_CHECK: 'log' }, () => assert.deepEqual(calistir(), { durum: 0, gecti: true }));
-  ortam({ CSRF_ORIGIN_CHECK: 'off' }, () => assert.deepEqual(calistir(), { durum: 0, gecti: true }));
+  ortam({ CSRF_ORIGIN_CHECK: undefined }, () =>
+    assert.deepEqual(calistir(), { durum: 403, gecti: false }),
+  );
+  ortam({ CSRF_ORIGIN_CHECK: 'log' }, () =>
+    assert.deepEqual(calistir(), { durum: 0, gecti: true }),
+  );
+  ortam({ CSRF_ORIGIN_CHECK: 'off' }, () =>
+    assert.deepEqual(calistir(), { durum: 0, gecti: true }),
+  );
 });
 
 test('OS4 koken kontrolu tum /api route`larindan once baglanir', () => {
@@ -188,7 +260,10 @@ test('OS4 koken kontrolu tum /api route`larindan once baglanir', () => {
     }
   }
   const idx = fs.readFileSync(path.join(ROOT, 'server/index.cjs'), 'utf8');
-  assert.ok(idx.indexOf('createApp(') < idx.indexOf('initAuth(app)'), 'moduller service.cjs`ten once baglaniyor');
+  assert.ok(
+    idx.indexOf('createApp(') < idx.indexOf('initAuth(app)'),
+    'moduller service.cjs`ten once baglaniyor',
+  );
 });
 
 test('OS5b sistem ayari PUT: gecersiz oturum degeri 400 ve YAZILMAZ; gecerli deger yazilir', async () => {
@@ -253,7 +328,11 @@ test('OS6 initAuth cerez adini express-session`a verir', async () => {
           body: JSON.stringify({ username: 'yereluser', password: 'Guclu-Sifre-123!' }),
         });
         assert.equal(r.status, 200);
-        assert.match(r.headers.get('set-cookie') || '', /^portal-test\.sid=/, 'cerez adi kullanilmadi');
+        assert.match(
+          r.headers.get('set-cookie') || '',
+          /^portal-test\.sid=/,
+          'cerez adi kullanilmadi',
+        );
       },
     );
   } finally {
@@ -277,15 +356,25 @@ test('OS5 oturum ayarlari dogrulanir; beyaz listede, sicak ve ekranda', () => {
   assert.equal(oturumAyariHatasi('BASKA_ANAHTAR', 'x'), null);
 
   const { SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS } = require('../../db/env-overrides.cjs');
-  const ekran = fs.readFileSync(path.join(ROOT, 'src/components/admin/tabs/sistem/ortamDegiskenleri.ts'), 'utf8');
+  const ekran = fs.readFileSync(
+    path.join(ROOT, 'src/components/admin/tabs/sistem/ortamDegiskenleri.ts'),
+    'utf8',
+  );
   for (const k of OTURUM_AYAR_ANAHTARLARI) {
     assert.ok(SYSTEM_CONFIG_KEYS.includes(k), `${k} beyaz listede yok`);
     assert.ok(HOT_RELOADABLE_KEYS.includes(k), `${k} sicak degil — ekran bosuna restart der`);
-    assert.match(ekran, new RegExp(`key: '${k}',\\s*label:[^\\n]+\\n\\s*group: 'Oturum ve Giriş'`), `${k} ekranda yok`);
+    assert.match(
+      ekran,
+      new RegExp(`key: '${k}',\\s*label:[^\\n]+\\n\\s*group: 'Oturum ve Giriş'`),
+      `${k} ekranda yok`,
+    );
   }
   const sc = fs.readFileSync(path.join(ROOT, 'server/admin/system-config.cjs'), 'utf8');
   const put = sc.slice(sc.indexOf('app.put("/api/admin/system-config"'));
-  assert.ok(put.indexOf('oturumAyariHatasi(key, strValue)') < put.indexOf('await setEnvOverride('), 'dogrulama kayittan once degil');
+  assert.ok(
+    put.indexOf('oturumAyariHatasi(key, strValue)') < put.indexOf('await setEnvOverride('),
+    'dogrulama kayittan once degil',
+  );
 });
 
 test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () => {
@@ -326,7 +415,11 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
   });
   // initAuth cikisi bu yardimciyi kullanir.
   const idx = fs.readFileSync(path.join(ROOT, 'server/auth/index.cjs'), 'utf8');
-  assert.match(idx, /oturumCerezi\.cerezleriSil\(res, COOKIE_NAME\)/, 'logout cerezi ortak yardimciyla silmiyor');
+  assert.match(
+    idx,
+    /oturumCerezi\.cerezleriSil\(res, COOKIE_NAME\)/,
+    'logout cerezi ortak yardimciyla silmiyor',
+  );
   assert.doesNotMatch(idx, /res\.clearCookie\(/, 'initAuth`ta niteliksiz clearCookie kaldi');
 });
 
@@ -378,17 +471,28 @@ test('OS8 guvenlik basliklari', async () => {
   assert.equal(v['x-content-type-options'], 'nosniff');
   assert.equal(v['referrer-policy'], 'strict-origin-when-cross-origin');
   assert.equal(v['permissions-policy'], PERMISSIONS_POLICY);
-  assert.equal(v['strict-transport-security'], null, 'test ortaminda HSTS varsayilan kapali olmali');
+  assert.equal(
+    v['strict-transport-security'],
+    null,
+    'test ortaminda HSTS varsayilan kapali olmali',
+  );
 
   // Koken listesi: CSP yeter; X-Frame-Options EKLENMEZ (mesru cerceveyi engellerdi).
-  const l = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr" });
+  const l = await al({
+    NODE_ENV: 'test',
+    PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr",
+  });
   assert.equal(l['content-security-policy'], buildCsp("'self' https://pano.kurum.com.tr"));
   assert.equal(l['x-frame-options'], null);
   const k = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: '*' });
   assert.equal(k['content-security-policy'], buildCsp(null));
   assert.doesNotMatch(k['content-security-policy'], /frame-ancestors/);
   assert.equal(k['x-frame-options'], null);
-  assert.equal(k['x-content-type-options'], 'nosniff', 'cerceve korumasi kapaninca digerleri de gitti');
+  assert.equal(
+    k['x-content-type-options'],
+    'nosniff',
+    'cerceve korumasi kapaninca digerleri de gitti',
+  );
   const n = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: "'none'" });
   assert.equal(n['x-frame-options'], 'DENY');
   assert.equal(n['content-security-policy'], buildCsp("'none'"));
@@ -398,7 +502,10 @@ test('OS8 guvenlik basliklari', async () => {
   assert.equal(h1['strict-transport-security'], null);
   const h2 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' }, { 'x-forwarded-proto': 'https' });
   assert.equal(h2['strict-transport-security'], 'max-age=31536000');
-  const h3 = await al({ PORTAL_HSTS_MAX_AGE: 'abc', NODE_ENV: 'test' }, { 'x-forwarded-proto': 'https' });
+  const h3 = await al(
+    { PORTAL_HSTS_MAX_AGE: 'abc', NODE_ENV: 'test' },
+    { 'x-forwarded-proto': 'https' },
+  );
   assert.equal(h3['strict-transport-security'], null);
   const hProd = await al(
     { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: undefined },
@@ -436,7 +543,10 @@ test('OS8 guvenlik basliklari', async () => {
   });
 
   // Dogrulama (Admin kaydi).
-  assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.com.tr"), null);
+  assert.equal(
+    oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.com.tr"),
+    null,
+  );
   assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', '*'), null);
   assert.match(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', 'javascript:alert(1)'), /geçersiz öğe/);
   assert.match(oturumAyariHatasi('PORTAL_HSTS_MAX_AGE', 'abc'), /tam sayı/);
@@ -451,9 +561,17 @@ test('OS8 guvenlik basliklari', async () => {
   const gUrl = dinle(gercek);
   const r = await fetch(`${gUrl}/api/test/yol`);
   assert.equal(r.status, 200);
-  assert.equal(r.headers.get('content-security-policy'), buildCsp("'self'"), 'createApp guvenlik basliklarini baglamiyor');
+  assert.equal(
+    r.headers.get('content-security-policy'),
+    buildCsp("'self'"),
+    'createApp guvenlik basliklarini baglamiyor',
+  );
   assert.equal(r.headers.get('permissions-policy'), PERMISSIONS_POLICY);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   const html = await fetch(`${gUrl}/sayfa`);
-  assert.equal(html.headers.get('x-frame-options'), 'SAMEORIGIN', 'belge yanitinda cerceve korumasi yok');
+  assert.equal(
+    html.headers.get('x-frame-options'),
+    'SAMEORIGIN',
+    'belge yanitinda cerceve korumasi yok',
+  );
 });

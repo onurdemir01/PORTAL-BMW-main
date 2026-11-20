@@ -94,7 +94,9 @@ function envFromInventory(v) {
 
 /** Ortamlari sabit sirada dondurur; taninmayanlar EN SONA eklenir (gizlenmez). */
 function orderEnvs(seen) {
-  const extra = [...seen].filter((e) => !ENV_ORDER.includes(e)).sort((a, b) => Number(a > b) - Number(a < b));
+  const extra = [...seen]
+    .filter((e) => !ENV_ORDER.includes(e))
+    .sort((a, b) => Number(a > b) - Number(a < b));
   return [...ENV_ORDER.filter((e) => seen.has(e)), ...extra];
 }
 

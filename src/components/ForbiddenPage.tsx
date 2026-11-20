@@ -1,5 +1,5 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React from 'react';
+import { Link } from 'react-router-dom';
 
 // 403 — yetkisiz erisim.
 //
@@ -14,7 +14,8 @@ export default function ForbiddenPage() {
     <div className="card p-8 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-[var(--text-primary)]">403 - Yetkisiz Erişim</h1>
       <p className="mt-2 text-[var(--text-secondary)]">
-        Bu sayfaya erişim yetkiniz yok. Eğer erişim talebiniz varsa lütfen admin ile iletişime geçin.
+        Bu sayfaya erişim yetkiniz yok. Eğer erişim talebiniz varsa lütfen admin ile iletişime
+        geçin.
       </p>
 
       <div className="mt-6 flex gap-3">

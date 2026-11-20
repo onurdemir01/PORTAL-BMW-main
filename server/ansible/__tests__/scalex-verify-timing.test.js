@@ -24,7 +24,8 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const RUNNER = path.join(
-  ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
+  ROOT,
+  'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
 );
 
 /**
@@ -54,7 +55,7 @@ function verify({ state, target, warn, fail }) {
       [
         '#!/bin/bash',
         'NS=test-ns; CLUSTER=c1; JUMP_SERVER=j1',
-        "log() { printf '%s;%s;%s;%s;%s;%s;%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$7\"; }",
+        'log() { printf \'%s;%s;%s;%s;%s;%s;%s\\n\' "$1" "$2" "$3" "$4" "$5" "$6" "$7"; }',
         'oc_get_jsonpath() { oc get "$1" "$2" -n "$NS" -o "jsonpath=$3" 2>/dev/null || true; }',
         `eval "$(awk '/^RV_DESIRED=0; RV_CURRENT=0; RV_READY=0/,/^}$/' "$1" | head -20)"`,
         `eval "$(awk '/^human_seconds\\(\\)/,/^}$/' "$1")"`,
@@ -151,10 +152,14 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
     'server/scalex/launch.cjs': { izin: new Set(['300']), enAz: 0 },
     'src/components/scalex/ScaleXPage.tsx': { izin: new Set(['300']), enAz: 0 },
     'server/scalex/config.cjs': { izin: new Set(['300', '30', '3600', '86400', '20']), enAz: 6 },
-    'src/components/scalex/steps/OperationStep.tsx': { izin: new Set(['300', '30', '3600']), enAz: 3 },
+    'src/components/scalex/steps/OperationStep.tsx': {
+      izin: new Set(['300', '30', '3600']),
+      enAz: 3,
+    },
     'src/hooks/useScaleXLimits.ts': { izin: new Set(['300', '30', '3600']), enAz: 0 },
     'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml': {
-      izin: new Set(['300', '86400']), enAz: 4,
+      izin: new Set(['300', '86400']),
+      enAz: 4,
     },
   };
 
@@ -168,7 +173,8 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
       `${rel}: toplayici ${hits.length} sabit gordu, en az ${kural.enAz} bekleniyor — desen bozulmus`,
     );
     for (const hit of hits) {
-      if (!kural.izin.has(hit.value)) bad.push(`${hit.rel}:${hit.line} -> "${hit.value}"  ${hit.text}`);
+      if (!kural.izin.has(hit.value))
+        bad.push(`${hit.rel}:${hit.line} -> "${hit.value}"  ${hit.text}`);
     }
   }
   assert.deepEqual(bad, [], `sure satirinda beklenmeyen sabit:\n  ${bad.join('\n  ')}`);
@@ -176,7 +182,11 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
   const runner = fs.readFileSync(RUNNER, 'utf8');
   assert.match(runner, /VERIFY_WARN_SECONDS:-300/, 'betik varsayilani 300 degil');
   const cfg = fs.readFileSync(path.join(ROOT, 'server/scalex/config.cjs'), 'utf8');
-  assert.match(cfg, /SCALEX_VERIFY_TIMEOUT_DEFAULT: \{ fallback: 300/, 'fabrika varsayilani 300 degil');
+  assert.match(
+    cfg,
+    /SCALEX_VERIFY_TIMEOUT_DEFAULT: \{ fallback: 300/,
+    'fabrika varsayilani 300 degil',
+  );
   const launch = fs.readFileSync(path.join(ROOT, 'server/scalex/launch.cjs'), 'utf8');
   assert.doesNotMatch(launch, /VERIFICATION_TIMEOUTS/, 'eski onayarli liste geri gelmis');
 
@@ -187,7 +197,8 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
   // S10 tarafindan kilitleniyor — burada yalnizca VARSAYILANLAR.)
   const survey = JSON.parse(
     fs.readFileSync(
-      path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/awx/scalex_run.survey.json'), 'utf8',
+      path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/awx/scalex_run.survey.json'),
+      'utf8',
     ),
   );
   const soru = (v) => survey.spec.find((q) => q.variable === v);
@@ -217,7 +228,11 @@ test('VT1b `/preview` yedegi GERCEKTEN var olan bir disa acilimi kullaniyor', ()
     .map((m) => m[1])
     .filter((n) => n !== 'cjs');
   const missing = [...new Set(used)].filter((n) => launch[n] === undefined);
-  assert.deepEqual(missing, [], `index.cjs olmayan disa acilim(lar)i cagiriyor: ${missing.join(', ')}`);
+  assert.deepEqual(
+    missing,
+    [],
+    `index.cjs olmayan disa acilim(lar)i cagiriyor: ${missing.join(', ')}`,
+  );
   assert.equal(typeof launch.verifyTimeoutDefault, 'function', 'varsayilan getter degil');
   assert.equal(launch.verifyTimeoutDefault(), 300);
 
@@ -276,7 +291,8 @@ test('VT5 ACMA olcutu READY (pod ayakta ama hazir degilse OK DEME)', () => {
   // uyarisi HIC ATESLENEMEZ — bu tam olarak ilk yazimda olan seydi.
   const hazirDegil = verify({ state: '1|1|0', target: 1, warn: 2, fail: 4 });
   assert.doesNotMatch(
-    hazirDegil.out, /VERIFY;OK/,
+    hazirDegil.out,
+    /VERIFY;OK/,
     'pod HAZIR DEGILKEN "OK" dendi — acma olcutu ready yerine status.replicas kullaniyor',
   );
   const hazir = verify({ state: '1|1|1', target: 1, warn: 2, fail: 4 });
@@ -302,7 +318,11 @@ test('VT7 ACMA fail esigine ULASSA BILE fail ETMEZ (fail < warn senaryosu)', () 
 
   // Ayni yapilandirmada KAPATMA fail ETMELI — kontrolun kendisi calisiyor olmali.
   const kapat = verify({ state: '0|2|2', target: 0, warn: 10, fail: 2 });
-  assert.match(kapat.out, /VERIFY;FAIL/, 'kapatma fail esigine ulasmadi — test kendi olctugunu kaybetti');
+  assert.match(
+    kapat.out,
+    /VERIFY;FAIL/,
+    'kapatma fail esigine ulasmadi — test kendi olctugunu kaybetti',
+  );
   assert.match(kapat.out, /RC=1/);
 });
 
@@ -428,7 +448,8 @@ test('VT8b gecersiz sure REDDEDILIYOR ve sebep DOGRU yazi', { skip: !HAS_ANSIBLE
 // gorevini TAMAMEN SILMEK onu kirmiyordu: gorev yoksa 300 zaten gecer.
 test('VT8d dogrulama gorevi VAR ve uc butce degiskenini de kontrol ediyor', () => {
   const src = fs.readFileSync(
-    path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'), 'utf8',
+    path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'),
+    'utf8',
   );
   assert.match(src, /- name: "Validate verification budget"/, 'dogrulama gorevi YOK');
   const blok = src.slice(src.indexOf('- name: "Validate verification budget"'));
@@ -471,7 +492,7 @@ function butceDogrula(warn, fail) {
         '#!/bin/bash',
         'set -u',
         'CLUSTER=c1; JUMP_SERVER=j1',
-        "log() { printf '%s;%s;%s;%s;%s;%s;%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$7\"; }",
+        'log() { printf \'%s;%s;%s;%s;%s;%s;%s\\n\' "$1" "$2" "$3" "$4" "$5" "$6" "$7"; }',
         `VERIFY_WARN_SECONDS="${warn}"`,
         `VERIFY_FAIL_SECONDS="${fail}"`,
         // Yalnizca VERIFY_* dogrulama blogunu cikar (yorumlar dahil degil).

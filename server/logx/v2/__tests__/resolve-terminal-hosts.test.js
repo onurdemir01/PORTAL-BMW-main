@@ -18,61 +18,93 @@ function withMock(fn, { clusterRows = [], mapHost = null } = {}) {
     }
     throw new Error(`beklenmeyen sorgu: ${sql}`);
   };
-  return Promise.resolve(fn()).finally(() => { db.query = orig; });
+  return Promise.resolve(fn()).finally(() => {
+    db.query = orig;
+  });
 }
 
 test('resolveTerminalHosts(): cluster kolonu dolu ise map fallback yerine kolon kazanir', async () => {
-  await withMock(async () => {
-    const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
-    assert.deepEqual(r, { hosts: { c1: 'jump01' }, missing: [] });
-  }, { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: 'gbaocp01' });
+  await withMock(
+    async () => {
+      const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
+      assert.deepEqual(r, { hosts: { c1: 'jump01' }, missing: [] });
+    },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: 'gbaocp01' },
+  );
 });
 
 test('resolveTerminalHosts(): kolon NULL ise tenant/env map fallback kullanilir', async () => {
-  await withMock(async () => {
-    const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
-    assert.deepEqual(r, { hosts: { c1: 'gbaocp01' }, missing: [] });
-  }, { clusterRows: [{ cluster_name: 'c1', terminal_host: null }], mapHost: 'gbaocp01' });
+  await withMock(
+    async () => {
+      const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
+      assert.deepEqual(r, { hosts: { c1: 'gbaocp01' }, missing: [] });
+    },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: null }], mapHost: 'gbaocp01' },
+  );
 });
 
 test('resolveTerminalHosts(): karisik — bir cluster kolonlu, digeri fallback, ucuncusu missing', async () => {
-  await withMock(async () => {
-    const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1', 'c2', 'c3']);
-    assert.deepEqual(r.hosts, { c1: 'jump01', c2: 'gbaocp01', c3: 'gbaocp01' });
-    assert.deepEqual(r.missing, []);
-  }, {
-    clusterRows: [
-      { cluster_name: 'c1', terminal_host: 'jump01' },
-      { cluster_name: 'c2', terminal_host: '' },
-      // c3 satiri hic yok (agacta olmayan cluster) — yine fallback'e duser
-    ],
-    mapHost: 'gbaocp01',
-  });
+  await withMock(
+    async () => {
+      const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1', 'c2', 'c3']);
+      assert.deepEqual(r.hosts, { c1: 'jump01', c2: 'gbaocp01', c3: 'gbaocp01' });
+      assert.deepEqual(r.missing, []);
+    },
+    {
+      clusterRows: [
+        { cluster_name: 'c1', terminal_host: 'jump01' },
+        { cluster_name: 'c2', terminal_host: '' },
+        // c3 satiri hic yok (agacta olmayan cluster) — yine fallback'e duser
+      ],
+      mapHost: 'gbaocp01',
+    },
+  );
 });
 
 test('resolveTerminalHosts(): ne kolon ne map varsa cluster missing listesine girer (throw yok)', async () => {
-  await withMock(async () => {
-    const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1', 'c2']);
-    assert.deepEqual(r.hosts, { c1: 'jump01' });
-    assert.deepEqual(r.missing, ['c2']);
-  }, { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: null });
+  await withMock(
+    async () => {
+      const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1', 'c2']);
+      assert.deepEqual(r.hosts, { c1: 'jump01' });
+      assert.deepEqual(r.missing, ['c2']);
+    },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: null },
+  );
 });
 
 test('resolveTerminalHosts(): bos/tekrarli cluster listesi normalize edilir', async () => {
-  await withMock(async () => {
-    const r = await admin.resolveTerminalHosts('dev', 'ark', [' c1 ', 'c1', '', null]);
-    assert.deepEqual(r, { hosts: { c1: 'jump01' }, missing: [] });
-  }, { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }] });
+  await withMock(
+    async () => {
+      const r = await admin.resolveTerminalHosts('dev', 'ark', [' c1 ', 'c1', '', null]);
+      assert.deepEqual(r, { hosts: { c1: 'jump01' }, missing: [] });
+    },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }] },
+  );
 });
 
 test('createClusterIndexRow(): terminal_host trimlenir, bos deger NULL olarak yazilir', async () => {
   const captured = [];
   const orig = db.query;
-  db.query = async (sql, params) => { captured.push(params); return { rows: [{ id: 1, is_active: 1 }] }; };
+  db.query = async (sql, params) => {
+    captured.push(params);
+    return { rows: [{ id: 1, is_active: 1 }] };
+  };
   try {
-    await admin.createClusterIndexRow({ env: 'dev', tenant: 'ark', cluster_name: 'c1', terminal_host: '  jump01  ' });
+    await admin.createClusterIndexRow({
+      env: 'dev',
+      tenant: 'ark',
+      cluster_name: 'c1',
+      terminal_host: '  jump01  ',
+    });
     assert.equal(captured[0][3], 'jump01');
-    await admin.createClusterIndexRow({ env: 'dev', tenant: 'ark', cluster_name: 'c2', terminal_host: '   ' });
+    await admin.createClusterIndexRow({
+      env: 'dev',
+      tenant: 'ark',
+      cluster_name: 'c2',
+      terminal_host: '   ',
+    });
     assert.equal(captured[1][3], null);
-  } finally { db.query = orig; }
+  } finally {
+    db.query = orig;
+  }
 });

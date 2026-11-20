@@ -38,7 +38,9 @@ let _cache = { at: 0, value: null };
 const declKey = (ns, app, loc) =>
   crypto
     .createHash('sha256')
-    .update(`${String(ns || '').trim()}\u0000${String(app || '').trim()}\u0000${String(loc || '').trim()}`)
+    .update(
+      `${String(ns || '').trim()}\u0000${String(app || '').trim()}\u0000${String(loc || '').trim()}`,
+    )
     .digest('hex');
 
 /**
@@ -368,4 +370,12 @@ function intranetOzeti(fresh) {
   return require('./intranet.cjs').loadIntranet(!!fresh, { loadBeyanlar, uygulamaBeyaniYaz });
 }
 
-module.exports = { initSpaReport, loadReport, declKey, loadBeyanlar, uygulamaBeyaniYaz, BEYAN, intranetOzeti };
+module.exports = {
+  initSpaReport,
+  loadReport,
+  declKey,
+  loadBeyanlar,
+  uygulamaBeyaniYaz,
+  BEYAN,
+  intranetOzeti,
+};

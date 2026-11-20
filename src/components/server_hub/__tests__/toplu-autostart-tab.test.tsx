@@ -146,13 +146,19 @@ describe('Toplu Auto-Start sekmesi', () => {
   });
 
   it('TT1c oluşturma 5xx ile dönerse iş yeniden okunur ve izlenir (kör yeniden deneme yok)', async () => {
-    m.topluAutoStartOlustur.mockRejectedValue(Object.assign(new Error('Sunucu isteği işlerken hata verdi (HTTP 500).'), { status: 500 }));
-    m.topluAutoStartListe.mockResolvedValueOnce({ ok: true, aktif: null, son: [] }).mockResolvedValueOnce({ ok: true, aktif: isSatiri('PLANLANIYOR'), son: [] });
+    m.topluAutoStartOlustur.mockRejectedValue(
+      Object.assign(new Error('Sunucu isteği işlerken hata verdi (HTTP 500).'), { status: 500 }),
+    );
+    m.topluAutoStartListe
+      .mockResolvedValueOnce({ ok: true, aktif: null, son: [] })
+      .mockResolvedValueOnce({ ok: true, aktif: isSatiri('PLANLANIYOR'), son: [] });
     m.topluAutoStartDurum.mockResolvedValue({ ok: true, is: isSatiri('PLANLANIYOR'), ogeler: [] });
     render(<TopluAutoStartTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Planla (3 JVM)' }));
     await waitFor(() => expect(m.topluAutoStartDurum).toHaveBeenCalledWith(7));
-    expect(String(toastM.error.mock.calls.at(-1)?.[0])).toMatch(/Toplu auto-start işi #7 kayıtlı \(PLANLANIYOR\) — aşağıda izleniyor; yeniden göndermeyin/);
+    expect(String(toastM.error.mock.calls.at(-1)?.[0])).toMatch(
+      /Toplu auto-start işi #7 kayıtlı \(PLANLANIYOR\) — aşağıda izleniyor; yeniden göndermeyin/,
+    );
     await screen.findByText('Plan okunuyor (salt okunur)');
   });
 
@@ -203,10 +209,18 @@ describe('Toplu Auto-Start sekmesi', () => {
     expect(pencere.textContent).toMatch(
       /2 JVM, 1 sunucu: 1 JVM'de auto-start AÇILACAK, 1 JVM'de KAPATILACAK/,
     );
-    expect(pencere.textContent).toMatch(/Her sunucu için ayrı AWX işi açılır, işler sırayla çalışır/);
-    expect(pencere.textContent).toMatch(/sonucu belirsiz iş \(AWX’te sürüyor olabilir\) toplu işi durdurur/);
+    expect(pencere.textContent).toMatch(
+      /Her sunucu için ayrı AWX işi açılır, işler sırayla çalışır/,
+    );
+    expect(pencere.textContent).toMatch(
+      /sonucu belirsiz iş \(AWX’te sürüyor olabilir\) toplu işi durdurur/,
+    );
     // 15 dk onay suresi planlama BITTIGINDE baslar (kullanicilar planlama suresini de sayiyordu)
-    expect(screen.getByText(/15 dakikalık onay süresi planlama BİTTİĞİNDE başladı \(planlamanın kendi süresi buna dahil değil\)/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /15 dakikalık onay süresi planlama BİTTİĞİNDE başladı \(planlamanın kendi süresi buna dahil değil\)/,
+      ),
+    ).toBeTruthy();
     expect(m.topluAutoStartOnayla).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Onayla ve uygula' }));
     await waitFor(() => expect(m.topluAutoStartOnayla).toHaveBeenCalledWith(7));
@@ -228,8 +242,12 @@ describe('Toplu Auto-Start sekmesi', () => {
     expect(awxIsSayisi(cok, 50)).toBe(1);
     expect(awxIsSayisi([], 10)).toBe(0);
     expect(isOzeti(cok, 10)).toBe('4 AWX işi, iş başına en çok 10 JVM');
-    const ogeler = Array.from({ length: 12 }, (_, i) => oge(i + 1, 'BUYUK01', `j${i}`, 'PLAN_GECTI'));
-    expect(onayMetni(ogeler as never, 5)).toMatch(/iş başına en çok 5 JVM'lik AWX işlerine bölünür \(3 AWX işi, iş başına en çok 5 JVM\); işler tek tek, sırayla/);
+    const ogeler = Array.from({ length: 12 }, (_, i) =>
+      oge(i + 1, 'BUYUK01', `j${i}`, 'PLAN_GECTI'),
+    );
+    expect(onayMetni(ogeler as never, 5)).toMatch(
+      /iş başına en çok 5 JVM'lik AWX işlerine bölünür \(3 AWX işi, iş başına en çok 5 JVM\); işler tek tek, sırayla/,
+    );
     m.topluAutoStartAdaylar.mockResolvedValue({
       ok: true,
       adaylar: [...cok, aday('APP02', 'a2', 'ac')],
@@ -249,8 +267,12 @@ describe('Toplu Auto-Start sekmesi', () => {
       ],
     });
     render(<TopluAutoStartTab />);
-    expect((await screen.findByTestId('toplu-is-ozeti')).textContent).toBe('· 5 AWX işi, iş başına en çok 10 JVM');
-    expect((await screen.findByTestId('toplu-awx-isleri')).textContent).toBe('AWX işi: plan 2 · uygulama 2 (iş başına en çok 10 JVM)');
+    expect((await screen.findByTestId('toplu-is-ozeti')).textContent).toBe(
+      '· 5 AWX işi, iş başına en çok 10 JVM',
+    );
+    expect((await screen.findByTestId('toplu-awx-isleri')).textContent).toBe(
+      'AWX işi: plan 2 · uygulama 2 (iş başına en çok 10 JVM)',
+    );
     // satir basina is baglantisi kalir
     expect(screen.getByText('#22')).toBeTruthy();
     expect(screen.getByText('plan #12')).toBeTruthy();
@@ -454,15 +476,24 @@ describe('Toplu Auto-Start sekmesi', () => {
   it('TT8 başarısız öğeler kümelenir: sayım çipleri, satır etiketi, süzme ve "ne yapılır"', async () => {
     const HC =
       "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller gbbfaa01:9990, :read-attribute(name=local-host-name)): Connection refused - HICBIR SEY DEGISMEDI";
-    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluAutoStartListe.mockResolvedValue({
+      ok: true,
+      aktif: null,
+      son: [isSatiri('BITTI_HATALI')],
+    });
     m.topluAutoStartDurum.mockResolvedValue({
       ok: true,
       is: isSatiri('BITTI_HATALI'),
       ogeler: [
-        oge(1, 'APP01', 'a1', 'OK', { dogrulandi: true, neden: 'a1 auto-start=true (host=m, CLI ile dogrulandi)' }),
+        oge(1, 'APP01', 'a1', 'OK', {
+          dogrulandi: true,
+          neden: 'a1 auto-start=true (host=m, CLI ile dogrulandi)',
+        }),
         oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
         oge(3, 'GBBFAA01', 'h2', 'DUSTU', { neden: HC }),
-        oge(4, 'APP02', 'z1', 'DUSTU', { neden: 'canlı değer zaten true — tarama eski (z1 auto-start zaten true)' }),
+        oge(4, 'APP02', 'z1', 'DUSTU', {
+          neden: 'canlı değer zaten true — tarama eski (z1 auto-start zaten true)',
+        }),
       ],
     });
     render(<TopluAutoStartTab />);
@@ -490,34 +521,56 @@ describe('Toplu Auto-Start sekmesi', () => {
   });
 
   it('TT9 kategori seçimi işe bağlı: başka iş gelince seçim düşer, yeni işte kendiliğinden açılmaz', async () => {
-    const HC = "canlı okumada: host controller'a baglanilamadi (controller gbbfaa01:9990) - HICBIR SEY DEGISMEDI";
+    const HC =
+      "canlı okumada: host controller'a baglanilamadi (controller gbbfaa01:9990) - HICBIR SEY DEGISMEDI";
     const ogeleri = () => [
       oge(1, 'APP01', 'a1', 'OK', { neden: 'a1 auto-start=true' }),
       oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
     ];
-    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
-    m.topluAutoStartDurum.mockImplementation(async (id: number) => ({ ok: true, is: isSatiri('BITTI_HATALI', { id }), ogeler: ogeleri() }));
+    m.topluAutoStartListe.mockResolvedValue({
+      ok: true,
+      aktif: null,
+      son: [isSatiri('BITTI_HATALI')],
+    });
+    m.topluAutoStartDurum.mockImplementation(async (id: number) => ({
+      ok: true,
+      is: isSatiri('BITTI_HATALI', { id }),
+      ogeler: ogeleri(),
+    }));
     render(<TopluAutoStartTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'JBoss domain kapalı 1' }));
     expect(screen.getByLabelText('Toplu iş #7').querySelectorAll('tbody tr').length).toBe(1);
     // listeyi yenile: en son is artik #8 (ayni kume var) -> secim dusmeli, tum satirlar
-    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI', { id: 8 })] });
+    m.topluAutoStartListe.mockResolvedValue({
+      ok: true,
+      aktif: null,
+      son: [isSatiri('BITTI_HATALI', { id: 8 })],
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Listeyi yenile' }));
-    await waitFor(() => expect(screen.getByLabelText('Toplu iş #8').querySelectorAll('tbody tr').length).toBe(2));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Toplu iş #8').querySelectorAll('tbody tr').length).toBe(2),
+    );
     expect(screen.getByRole('button', { name: 'Tümü' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByTestId('kategori-ne-yapilir')).toBeNull();
   });
 
   it('TT10 sonucu belirsiz öğe ayrı sayılır (çalıştırılmayan değil); iş sayısı (sunucu, iş) çiftiyle', async () => {
     // inceleme 2026-11-15 B5: "yarım kaldı" iki ayrı şey
-    const BEL = "iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, sonucu belirsiz): socket hang up";
+    const BEL =
+      "iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, sonucu belirsiz): socket hang up";
     const CAL =
       "çalıştırılmadı: toplu iş durduruldu — BUYUK01 parçasının iş isteği belirsiz hatayla döndü. Sonucu bilinmeyen iş AWX'te sürüyor olabilir; AWX'ten kontrol edin";
     expect(belirsizMi({ durum: 'YARIM_KALDI', neden: BEL })).toBe(true);
-    expect(belirsizMi({ durum: 'FAIL', neden: 'iş #9 3 saatte bitmedi (sonucu belirsiz) — x' })).toBe(true);
-    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: "AWX'e gitmiş olabilir — AWX'ten kontrol edin" })).toBe(true);
+    expect(
+      belirsizMi({ durum: 'FAIL', neden: 'iş #9 3 saatte bitmedi (sonucu belirsiz) — x' }),
+    ).toBe(true);
+    expect(
+      belirsizMi({ durum: 'YARIM_KALDI', neden: "AWX'e gitmiş olabilir — AWX'ten kontrol edin" }),
+    ).toBe(true);
     expect(belirsizMi({ durum: 'YARIM_KALDI', neden: CAL })).toBe(false);
-    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: 'Portal yeniden başladı — çalıştırılmadı' })).toBe(false);
+    expect(
+      belirsizMi({ durum: 'YARIM_KALDI', neden: 'Portal yeniden başladı — çalıştırılmadı' }),
+    ).toBe(false);
     expect(belirsizMi({ durum: 'OK', neden: BEL })).toBe(false);
     const iki = [
       oge(1, 'A', 'a', 'OK', { awxServerId: 1, awxJobId: 5, planJobId: 9 }),
@@ -525,7 +578,11 @@ describe('Toplu Auto-Start sekmesi', () => {
     ];
     expect(acilanIsSayisi(iki as never, 'uygulama')).toBe(2);
     expect(acilanIsSayisi(iki as never, 'plan')).toBe(1);
-    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluAutoStartListe.mockResolvedValue({
+      ok: true,
+      aktif: null,
+      son: [isSatiri('BITTI_HATALI')],
+    });
     m.topluAutoStartDurum.mockResolvedValue({
       ok: true,
       is: isSatiri('BITTI_HATALI'),
@@ -538,6 +595,8 @@ describe('Toplu Auto-Start sekmesi', () => {
     });
     render(<TopluAutoStartTab />);
     expect((await screen.findByTestId('toplu-belirsiz')).textContent).toBe('sonucu belirsiz 2');
-    expect(screen.getByTestId('toplu-calistirilmadi').textContent).toBe('yarım kaldı (çalıştırılmadı) 1');
+    expect(screen.getByTestId('toplu-calistirilmadi').textContent).toBe(
+      'yarım kaldı (çalıştırılmadı) 1',
+    );
   });
 });

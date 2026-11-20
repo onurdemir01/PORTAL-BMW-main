@@ -28,7 +28,8 @@ export const SCALEX_CAPS: DataSource = {
 export const LOGX_OCP_CATALOG: DataSource = {
   job: 'openshift_inventory (AWX zamanlı) + logx_ocp_namespace_discovery (canlı)',
   what: 'dbo.Openshift_Inventory ∪ paylaşılan keşif önbelleği (cluster/namespace/uygulama)',
-  refresh: 'Aradığınız namespace listede yoksa “Canlı tara” ile AWX keşfi başlatın; tam liste gece koşan envanter job’ından gelir.',
+  refresh:
+    'Aradığınız namespace listede yoksa “Canlı tara” ile AWX keşfi başlatın; tam liste gece koşan envanter job’ından gelir.',
 };
 
 /**
@@ -39,7 +40,8 @@ export const LOGX_OCP_CATALOG: DataSource = {
 export const OCP_CLUSTER_INDEX: DataSource = {
   job: 'portal ayarı (tarama değil)',
   what: 'Admin > Otomasyon > OCP Yapılandırma > Cluster Hiyerarşisi tablosu',
-  refresh: 'Bir cluster eksikse Admin > OCP Yapılandırma ekranından ekleyin; AWX job’ı beklemeye gerek yok.',
+  refresh:
+    'Bir cluster eksikse Admin > OCP Yapılandırma ekranından ekleyin; AWX job’ı beklemeye gerek yok.',
 };
 
 /**

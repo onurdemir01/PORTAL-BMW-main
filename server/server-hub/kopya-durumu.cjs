@@ -27,12 +27,14 @@ const ortamNo = (o) => (ORTAM_SIRA.indexOf(o) < 0 ? ORTAM_SIRA.length : ORTAM_SI
 
 /** Ekrana ve yanita yazilan esleme aciklamasi (UI ayni metni gosterir). */
 const ESLESME = {
-  kural: 'Aynı ortam + aynı JBoss nesli (7 / 8) + aynı JVM adı (büyük / küçük harf duyarsız), farklı sunucular.',
+  kural:
+    'Aynı ortam + aynı JBoss nesli (7 / 8) + aynı JVM adı (büyük / küçük harf duyarsız), farklı sunucular.',
   kacirabilir:
     'Farklı JVM adıyla kurulmuş kopyalar (ör. PAY1 / PAY2 ya da PAY_A / PAY_B) aynı grup sayılmaz; bu ekran onları ayrı uygulama olarak görür ya da hiç göstermez.',
   aktifPasif:
     'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; karar vermeden önce uygulama sahibine sorun.',
-  bayat: 'Bayat sunucudaki ya da çalışması ölçülemeyen kopya “bilinmiyor” sayılır, kapalı sayılmaz ve tutarsızlık kararına girmez.',
+  bayat:
+    'Bayat sunucudaki ya da çalışması ölçülemeyen kopya “bilinmiyor” sayılır, kapalı sayılmaz ve tutarsızlık kararına girmez.',
   dusen:
     'Son tam taramada hiç görülmeyen (taramadan düşen) sunucudaki kopya toplama girmez; satırda ayrıca “taramadan düştü” diye yazılır (sunucu silinmiş de olabilir).',
   digerSinirlar:
@@ -55,7 +57,11 @@ function kopyaOf(c, karar) {
     fresh,
     scanDate: h.scanDate || null,
     sapma: fresh && karar ? karar.nedenler(c) : [],
-    retirement: (j.retirement || []).map((r) => ({ kayit: r.kayit, hedef: r.hedef, durum: r.durum })),
+    retirement: (j.retirement || []).map((r) => ({
+      kayit: r.kayit,
+      hedef: r.hedef,
+      durum: r.durum,
+    })),
     ocp: ocp.slice(0, 5).map((x) => ({ namespace: x.namespace, cluster: x.cluster })),
   };
 }
@@ -72,17 +78,17 @@ function kopyaDurumu(hosts) {
     const dusenler = hepsi.filter((c) => c.h.taramadanDustu);
     const canliHost = new Set(grup.map((c) => c.h.host));
     // En az bir canli kopya ve (canli + dusen) iki ya da daha cok sunucu: "1/1 + 1 taramadan dustu" da gorunur.
-    if (!canliHost.size || new Set([...canliHost, ...dusenler.map((c) => c.h.host)]).size < 2) continue;
+    if (!canliHost.size || new Set([...canliHost, ...dusenler.map((c) => c.h.host)]).size < 2)
+      continue;
     // Karar yalniz taze kopyalardan (KOPYA_TUTARSIZ ile ayni kume).
     const karar = kopyaKarari(grup.filter((c) => taze(c.h)));
-    const copies = grup
-      .map((c) => kopyaOf(c, karar))
-      .sort((a, b) => a.host.localeCompare(b.host));
+    const copies = grup.map((c) => kopyaOf(c, karar)).sort((a, b) => a.host.localeCompare(b.host));
     const running = copies.filter((k) => k.durum === 'calisiyor').length;
     const stopped = copies.filter((k) => k.durum === 'kapali').length;
     const unknown = copies.length - running - stopped;
     const ret = new Map();
-    for (const k of copies) for (const r of k.retirement) if (!ret.has(r.kayit)) ret.set(r.kayit, r);
+    for (const k of copies)
+      for (const r of k.retirement) if (!ret.has(r.kayit)) ret.set(r.kayit, r);
     const ocp = new Map();
     for (const k of copies) for (const o of k.ocp) ocp.set(`${o.namespace}@${o.cluster}`, o);
     const ilk = grup[0];
@@ -155,7 +161,16 @@ function mount(router, { getAssessment }) {
     try {
       const a = await getAssessment(req.query.fresh === '1');
       const r = a.tableMissing
-        ? { gruplar: [], ozet: { grup: 0, tutarsiz: 0, prodTutarsiz: 0, calismaTutarsiz: 0, autoStartTutarsiz: 0 } }
+        ? {
+            gruplar: [],
+            ozet: {
+              grup: 0,
+              tutarsiz: 0,
+              prodTutarsiz: 0,
+              calismaTutarsiz: 0,
+              autoStartTutarsiz: 0,
+            },
+          }
         : kopyaDurumuOnbellekli(a);
       res.json({
         ok: true,
@@ -168,7 +183,9 @@ function mount(router, { getAssessment }) {
         ...r,
       });
     } catch (err) {
-      res.status(424).json({ ok: false, message: (err && err.message) || 'Kopya durumu hesaplanamadı.' });
+      res
+        .status(424)
+        .json({ ok: false, message: (err && err.message) || 'Kopya durumu hesaplanamadı.' });
     }
   });
 }

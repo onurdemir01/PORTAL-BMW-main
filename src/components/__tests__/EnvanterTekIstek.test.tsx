@@ -12,7 +12,14 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 type Res = {
   ok: boolean;
   rows: Record<string, unknown>[];
-  pagination: { page: number; pages: number; total: number; limit: number; exact: boolean; hasMore: boolean };
+  pagination: {
+    page: number;
+    pages: number;
+    total: number;
+    limit: number;
+    exact: boolean;
+    hasMore: boolean;
+  };
   appliedWhere?: string | null;
 };
 

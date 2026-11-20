@@ -101,7 +101,11 @@ function cozumleIfade(ifade, vars, clusters) {
     );
     const r = spawnSync('ansible-playbook', [play], {
       encoding: 'utf8',
-      env: { ...process.env, ANSIBLE_LOCALHOST_WARNING: 'False', ANSIBLE_DEPRECATION_WARNINGS: 'False' },
+      env: {
+        ...process.env,
+        ANSIBLE_LOCALHOST_WARNING: 'False',
+        ANSIBLE_DEPRECATION_WARNINGS: 'False',
+      },
     });
     const out = `${r.stdout || ''}${r.stderr || ''}`;
     assert.ok(!/PREPARE_FAILED/.test(out), `01_prepare dustu:\n${out.slice(-2000)}`);
@@ -134,10 +138,10 @@ test('CK1 sozlukteki cluster KENDI listesini alir', { skip: !HAS_ANSIBLE }, () =
 // cluster'a gitmesinden geliyordu. Sozlukte olmayan cluster BOS almali ki
 // yalnizca kendisi soguk yolu kossun ve kendi CRD'leri kaybolmasin.
 test('CK2 sozlukte OLMAYAN cluster BOS alir (birlesime DUSMEZ)', { skip: !HAS_ANSIBLE }, () => {
-  const c = cozumle(
-    { scalex_cluster_kinds: { c1: 'a.io' }, scalex_extra_kinds: 'a.io,b.io' },
-    ['c1', 'c3'],
-  );
+  const c = cozumle({ scalex_cluster_kinds: { c1: 'a.io' }, scalex_extra_kinds: 'a.io,b.io' }, [
+    'c1',
+    'c3',
+  ]);
   assert.equal(c.c1, 'a.io');
   assert.equal(c.c3, '', 'kaydi olmayan cluster BASKASININ listesiyle sinirlandi');
 });
@@ -294,16 +298,20 @@ function prepareKosar(vars) {
   }
 }
 
-test('CK9 LISTEDEKI gecersiz namespace REDDEDILIR (ilk degil, HEPSI)', { skip: !HAS_ANSIBLE }, () => {
-  // Gecerli liste GECER.
-  assert.ok(
-    prepareKosar({ scalex_target_namespaces: ['ns2', 'ns3'] }).ok,
-    'gecerli namespace listesi reddedildi',
-  );
-  // ILK gecerli ama SONRAKI gecersiz: yalnizca ilkine bakan bir dogrulama bunu
-  // KACIRIR.
-  for (const kotu of ['Gecersiz_NS', 'ns with space', 'UPPER', '-basta-tire', 'a'.repeat(64)]) {
-    const r = prepareKosar({ scalex_target_namespaces: ['ns2', kotu] });
-    assert.equal(r.ok, false, `gecersiz namespace KABUL EDILDI: ${JSON.stringify(kotu)}`);
-  }
-});
+test(
+  'CK9 LISTEDEKI gecersiz namespace REDDEDILIR (ilk degil, HEPSI)',
+  { skip: !HAS_ANSIBLE },
+  () => {
+    // Gecerli liste GECER.
+    assert.ok(
+      prepareKosar({ scalex_target_namespaces: ['ns2', 'ns3'] }).ok,
+      'gecerli namespace listesi reddedildi',
+    );
+    // ILK gecerli ama SONRAKI gecersiz: yalnizca ilkine bakan bir dogrulama bunu
+    // KACIRIR.
+    for (const kotu of ['Gecersiz_NS', 'ns with space', 'UPPER', '-basta-tire', 'a'.repeat(64)]) {
+      const r = prepareKosar({ scalex_target_namespaces: ['ns2', kotu] });
+      assert.equal(r.ok, false, `gecersiz namespace KABUL EDILDI: ${JSON.stringify(kotu)}`);
+    }
+  },
+);

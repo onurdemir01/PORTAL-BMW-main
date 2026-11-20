@@ -347,7 +347,10 @@ function initDenetim(app) {
       for (const r of raw) {
         seenEnvs.add(normEnv(r.env));
       }
-      const envList = [...CANON, ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort(varsayilanSira)];
+      const envList = [
+        ...CANON,
+        ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort(varsayilanSira),
+      ];
 
       // Teshis: her env jetonu icin kac satir, hangi host'lar, hangi vhost dosyalari.
       // "PROD nicin bos" gibi sorular bu tabloya bakilarak cevaplanir.
@@ -2347,7 +2350,12 @@ function initDenetim(app) {
           scanDate,
           host,
           serversOlculdu,
-          ...ue.upstreamDetayi(u.recordset || [], l.recordset || [], s.recordset || [], serversOlculdu),
+          ...ue.upstreamDetayi(
+            u.recordset || [],
+            l.recordset || [],
+            s.recordset || [],
+            serversOlculdu,
+          ),
         });
       }
 
@@ -2383,7 +2391,8 @@ function initDenetim(app) {
       }
 
       if (ara) {
-        if (ara.length < 2) return res.status(400).json({ ok: false, message: 'Arama en az 2 karakter.' });
+        if (ara.length < 2)
+          return res.status(400).json({ ok: false, message: 'Arama en az 2 karakter.' });
         const like = '%' + ara.replace(/[[%_]/g, (c) => '[' + c + ']') + '%';
         params.push({ name: 'ara', type: sql.NVarChar(120), value: like });
         const r = await query(
@@ -2393,7 +2402,11 @@ function initDenetim(app) {
               AND (name LIKE @ara OR server LIKE @ara${serversOlculdu ? ' OR servers LIKE @ara' : ''})`,
           params,
         );
-        const satirlar = ue.aramaSonucu(es.ayir(r.recordset || [], (x) => x.host), ara, serversOlculdu);
+        const satirlar = ue.aramaSonucu(
+          es.ayir(r.recordset || [], (x) => x.host),
+          ara,
+          serversOlculdu,
+        );
         return res.json({
           ok: true,
           hazir: true,

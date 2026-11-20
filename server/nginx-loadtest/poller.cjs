@@ -41,11 +41,42 @@ const AKTIF = Object.freeze(['QUEUED', 'RUNNING', 'FINALIZING']);
 const KOSU_GECERLILIK = new Set(['GECERLI', 'KISMI', 'GECERSIZ']);
 const ADIM_GECERLILIK = new Set(['GECERLI', 'DOYMA', 'GECERSIZ', 'HATALI']);
 const METRIKLER = Object.freeze([
-  'p50', 'p95', 'p99', 'ttfb_p95', 'tls_p95', 'connect_p95', 'hata_orani', 'gercek_rps', 'bayt_istek', 'n_istek',
-  'n_429', 'n_5xx', 'dropped', 'istek_sunucu', 'rps_sunucu', 'cpu_ms_istek', 'host_cpu_ort', 'kapasite_rps',
-  'srt_p50', 'srt_p95', 'srt_p99',
+  'p50',
+  'p95',
+  'p99',
+  'ttfb_p95',
+  'tls_p95',
+  'connect_p95',
+  'hata_orani',
+  'gercek_rps',
+  'bayt_istek',
+  'n_istek',
+  'n_429',
+  'n_5xx',
+  'dropped',
+  'istek_sunucu',
+  'rps_sunucu',
+  'cpu_ms_istek',
+  'host_cpu_ort',
+  'kapasite_rps',
+  'srt_p50',
+  'srt_p95',
+  'srt_p99',
 ]);
-const ADIM_KOLONLARI = Object.freeze(['kosu_id', 'tur', 'senaryo', 'kip', 'ae', 'hiz', 'deneme', 'gecerlilik', 'nedenler', ...METRIKLER, 'sikistirma_turu', 'ham']);
+const ADIM_KOLONLARI = Object.freeze([
+  'kosu_id',
+  'tur',
+  'senaryo',
+  'kip',
+  'ae',
+  'hiz',
+  'deneme',
+  'gecerlilik',
+  'nedenler',
+  ...METRIKLER,
+  'sikistirma_turu',
+  'ham',
+]);
 const MAX_ADIM = 100;
 // analiz.cjs'in katlanan adim uyarilari (en cok 40 + ozet satiri) genel uyarilarin ARDINDAN gelir;
 // 50'lik tavan cok uyarili kosuda onlari sessizce kesiyordu.
@@ -60,9 +91,11 @@ const OLAY_BEKLEME_SN = 10 * 60;
 const YOK_PAYI_SN = 600;
 const KILIT_EK_SN = 180;
 const VARSAYILAN_BUTCE_SN = 2700;
-const DENEME_NEDENI = 'sonuç 3 denemede okunamadı (Portal süreci okuma sırasında yeniden başlamış olabilir)';
+const DENEME_NEDENI =
+  'sonuç 3 denemede okunamadı (Portal süreci okuma sırasında yeniden başlamış olabilir)';
 const OLAY_EKSIK_NEDENI = 'AWX olay işlemesi tamamlanmadı; arşivlenen çıktı eksik olabilir';
-const SW_YOK_NEDENI = "yük başlamadı ya da sonuçlar /sw'ye kopyalanmadı (playbook sw_dizin bildirmedi)";
+const SW_YOK_NEDENI =
+  "yük başlamadı ya da sonuçlar /sw'ye kopyalanmadı (playbook sw_dizin bildirmedi)";
 // tick ve tetikle AYNI kolonlari okur (sonuclandirma butceyi, satir yasini, deneme sayisini, hedef
 // turunu, motoru ve 2026-11-13'ten beri on kontrolun nginx tespitini (hedef_nginx) ister).
 const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor, durdur_awx_job_id, hedef_nginx,
@@ -169,29 +202,47 @@ function calismaYasiSn(kosu) {
  * (eski playbook protokol yankisi basmaz; h2 istenip h1 kosulmasini analiz protokol kolonu yakalar).
  */
 function statsNormalle(ham, kosu) {
-  if (!ham || typeof ham !== 'object' || Array.isArray(ham)) return { stats: null, uyusmazlik: null };
-  if (String(ham.run_id ?? '') !== String(kosu.id)) return { stats: null, uyusmazlik: `run_id ${String(ham.run_id ?? '?').slice(0, 20)}` };
-  if (String(ham.islem ?? '') !== String(kosu.islem)) return { stats: null, uyusmazlik: `islem ${String(ham.islem ?? '?').slice(0, 20)}` };
+  if (!ham || typeof ham !== 'object' || Array.isArray(ham))
+    return { stats: null, uyusmazlik: null };
+  if (String(ham.run_id ?? '') !== String(kosu.id))
+    return { stats: null, uyusmazlik: `run_id ${String(ham.run_id ?? '?').slice(0, 20)}` };
+  if (String(ham.islem ?? '') !== String(kosu.islem))
+    return { stats: null, uyusmazlik: `islem ${String(ham.islem ?? '?').slice(0, 20)}` };
   if (typeof ham.hedef_turu === 'string' && ham.hedef_turu !== (kosu.hedef_turu || 'sunucu')) {
     return { stats: null, uyusmazlik: `hedef_turu ${ham.hedef_turu.slice(0, 20)}` };
   }
-  if (typeof ham.motor === 'string' && ham.motor !== (kosu.motor || 'k6')) return { stats: null, uyusmazlik: `motor ${ham.motor.slice(0, 20)}` };
-  if (typeof ham.protokol === 'string' && ham.protokol !== protokolOf(kosu)) return { stats: null, uyusmazlik: `protokol ${ham.protokol.slice(0, 20)}` };
+  if (typeof ham.motor === 'string' && ham.motor !== (kosu.motor || 'k6'))
+    return { stats: null, uyusmazlik: `motor ${ham.motor.slice(0, 20)}` };
+  if (typeof ham.protokol === 'string' && ham.protokol !== protokolOf(kosu))
+    return { stats: null, uyusmazlik: `protokol ${ham.protokol.slice(0, 20)}` };
   let s = maskeleDerin(ham);
-  s.durum = String(s.durum ?? '').trim().toUpperCase();
+  s.durum = String(s.durum ?? '')
+    .trim()
+    .toUpperCase();
   if (JSON.stringify(s).length > SONUC_MAX_BAYT && s.kosu && typeof s.kosu === 'object') {
     s = { ...s, kosu: { ...s.kosu, istemci_ozet: null, dosyalar: null }, kirpildi: true };
   }
-  if (JSON.stringify(s).length > SONUC_MAX_BAYT) s = { surum: s.surum, run_id: s.run_id, islem: s.islem, durum: s.durum, hata: s.hata, kirpildi: true };
+  if (JSON.stringify(s).length > SONUC_MAX_BAYT)
+    s = {
+      surum: s.surum,
+      run_id: s.run_id,
+      islem: s.islem,
+      durum: s.durum,
+      hata: s.hata,
+      kirpildi: true,
+    };
   return { stats: s, uyusmazlik: null };
 }
 
 /** On kontrol isinin sonucu (yuk uretmez; /sw okunmaz). */
 function onKontrolKarari(st, stats, uyusmazlik) {
-  const ok = stats && stats.on_kontrol && typeof stats.on_kontrol === 'object' ? stats.on_kontrol : null;
+  const ok =
+    stats && stats.on_kontrol && typeof stats.on_kontrol === 'object' ? stats.on_kontrol : null;
   if (st.status === 'canceled') return { durum: 'CANCELED', sonuc: stats, onKontrolOzet: ok };
   if (!stats) {
-    const neden = uyusmazlik ? `yayınlanan sonuç bu ön kontrole ait değil (${uyusmazlik})` : 'set_stats sonucu (nginx_loadtest_result) yok';
+    const neden = uyusmazlik
+      ? `yayınlanan sonuç bu ön kontrole ait değil (${uyusmazlik})`
+      : 'set_stats sonucu (nginx_loadtest_result) yok';
     return st.status === 'successful'
       ? { durum: 'OKUNAMADI', sonuc: { hata: neden } }
       : { durum: 'FAILED', sonuc: { hata: maskele(st.jobExplanation || '') || neden } };
@@ -206,11 +257,17 @@ function onKontrolKarari(st, stats, uyusmazlik) {
 /** C'nin kosuAnaliz ciktisini sozlesmeye gore suzer; sozlesme disi ciktida HATA atar. */
 function analizNormalle(a) {
   if (!a || typeof a !== 'object') throw new Error('analiz sonucu yok');
-  if (!KOSU_GECERLILIK.has(a.gecerlilik)) throw new Error(`analiz gecerliligi tanınmadı: ${String(a.gecerlilik).slice(0, 20)}`);
+  if (!KOSU_GECERLILIK.has(a.gecerlilik))
+    throw new Error(`analiz gecerliligi tanınmadı: ${String(a.gecerlilik).slice(0, 20)}`);
   const adimlar = [];
   const uyarilar = metinListesi(a.uyarilar, KOSU_UYARI_TAVANI, 500);
   for (const x of (Array.isArray(a.adimlar) ? a.adimlar : []).slice(0, MAX_ADIM)) {
-    if (!x || typeof x !== 'object' || typeof x.tur !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(x.tur)) {
+    if (
+      !x ||
+      typeof x !== 'object' ||
+      typeof x.tur !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,120}$/.test(x.tur)
+    ) {
       uyarilar.push('tanınmayan bir adım satırı atlandı');
       continue;
     }
@@ -223,8 +280,12 @@ function analizNormalle(a) {
       deneme: TAM(x.deneme),
       gecerlilik: ADIM_GECERLILIK.has(x.gecerlilik) ? x.gecerlilik : 'GECERSIZ',
       nedenler: metinListesi(x.nedenler, 20, 300),
-      sikistirma_turu: typeof x.sikistirma_turu === 'string' ? x.sikistirma_turu.slice(0, 16) : null,
-      ham: x.ham === undefined || x.ham === null ? null : jsonKisa(maskeleDerin(x.ham), HAM_MAX_BAYT) ?? JSON.stringify({ kirpildi: true }),
+      sikistirma_turu:
+        typeof x.sikistirma_turu === 'string' ? x.sikistirma_turu.slice(0, 16) : null,
+      ham:
+        x.ham === undefined || x.ham === null
+          ? null
+          : (jsonKisa(maskeleDerin(x.ham), HAM_MAX_BAYT) ?? JSON.stringify({ kirpildi: true })),
     };
     for (const m of METRIKLER) y[m] = SAYI(x[m]);
     adimlar.push(y);
@@ -234,13 +295,17 @@ function analizNormalle(a) {
     nedenler: metinListesi(a.nedenler, 50, 500),
     uyarilar,
     adimlar,
-    ozet: a.ozet && typeof a.ozet === 'object' ? JSON.parse(jsonKisa(a.ozet, 64 * 1024) ?? '{"kirpildi":true}') : null,
+    ozet:
+      a.ozet && typeof a.ozet === 'object'
+        ? JSON.parse(jsonKisa(a.ozet, 64 * 1024) ?? '{"kirpildi":true}')
+        : null,
   };
 }
 
 // INT parametre tavani: adaptor tam sayiyi mssql.Int ile gonderir; 2^31 ustu FLOAT kolona metin
 // olarak gider (MSSQL ortuk cevirir) - tasma hatasi yerine dogru deger.
-const parametre = (v) => (typeof v === 'number' && Number.isInteger(v) && Math.abs(v) > 2147483647 ? String(v) : v);
+const parametre = (v) =>
+  typeof v === 'number' && Number.isInteger(v) && Math.abs(v) > 2147483647 ? String(v) : v;
 
 /** Adim satirlari: kosu basina en cok MAX_ADIM satir; yeniden sonuclandirmada once o kosununkiler silinir. */
 async function adimlariYaz(kosuId, adimlar) {
@@ -249,21 +314,39 @@ async function adimlariYaz(kosuId, adimlar) {
     const parca = adimlar.slice(i, i + 10);
     const params = [];
     const degerler = parca.map((a) => {
-      const satir = [kosuId, a.tur, a.senaryo, a.kip, a.ae, a.hiz, a.deneme, a.gecerlilik, JSON.stringify(a.nedenler),
-        ...METRIKLER.map((m) => a[m]), a.sikistirma_turu, a.ham];
+      const satir = [
+        kosuId,
+        a.tur,
+        a.senaryo,
+        a.kip,
+        a.ae,
+        a.hiz,
+        a.deneme,
+        a.gecerlilik,
+        JSON.stringify(a.nedenler),
+        ...METRIKLER.map((m) => a[m]),
+        a.sikistirma_turu,
+        a.ham,
+      ];
       const yer = satir.map((v) => {
         params.push(parametre(v));
         return `$${params.length}`;
       });
       return `(${yer.join(', ')})`;
     });
-    await db().query(`INSERT INTO nginx_loadtest_adimlar (${ADIM_KOLONLARI.join(', ')}) VALUES ${degerler.join(', ')}`, params);
+    await db().query(
+      `INSERT INTO nginx_loadtest_adimlar (${ADIM_KOLONLARI.join(', ')}) VALUES ${degerler.join(', ')}`,
+      params,
+    );
   }
 }
 
 /** Maskeli stdout'u bir kez arsivler (ansible_job_output UNIQUE(awx_server_id, job_id)). */
 async function ciktiArsivle(sid, jid) {
-  const ex = await db().query(`SELECT 1 AS x FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`, [sid, jid]);
+  const ex = await db().query(
+    `SELECT 1 AS x FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`,
+    [sid, jid],
+  );
   if (ex.rows && ex.rows.length) return false;
   // Biten iste son metin artimlardan turemez: onbellek birakilir, AWX'ten tam cekilir.
   require('../ansible/job-stdout-cache.cjs').sil(sid, jid);
@@ -271,9 +354,13 @@ async function ciktiArsivle(sid, jid) {
   const m = maskele(String(output ?? ''));
   if (!m) return false;
   try {
-    await db().query(`INSERT INTO ansible_job_output (awx_server_id, job_id, stdout) VALUES ($1, $2, $3)`, [sid, jid, m]);
+    await db().query(
+      `INSERT INTO ansible_job_output (awx_server_id, job_id, stdout) VALUES ($1, $2, $3)`,
+      [sid, jid, m],
+    );
   } catch (e) {
-    if (!/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message))) throw e;
+    if (!/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message)))
+      throw e;
   }
   return true;
 }
@@ -283,7 +370,10 @@ async function ciktiArsivle(sid, jid) {
  * karar set_stats'a gore verilir. 'canceled' bu karardan ONCE ayri ele alinir.
  */
 function kosuBasarili(awxStatus, statsDurum) {
-  return statsDurum !== 'FAIL' && (awxStatus === 'successful' || (awxStatus === 'failed' && statsDurum === 'DUR'));
+  return (
+    statsDurum !== 'FAIL' &&
+    (awxStatus === 'successful' || (awxStatus === 'failed' && statsDurum === 'DUR'))
+  );
 }
 
 /**
@@ -296,19 +386,45 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   const id = Number(kosu.id);
   const dizin = dg.kosuDizini(dg.ciktiKok(), id);
   if (st.status === 'canceled') {
-    return { durum: 'CANCELED', gecerlilik: 'GECERSIZ', nedenler: ['koşu iptal edildi'], sonuc: stats, swDizin: dizin };
+    return {
+      durum: 'CANCELED',
+      gecerlilik: 'GECERSIZ',
+      nedenler: ['koşu iptal edildi'],
+      sonuc: stats,
+      swDizin: dizin,
+    };
   }
   if (!stats) {
-    const neden = uyusmazlik ? `yayınlanan sonuç bu koşuya ait değil (${uyusmazlik})` : 'set_stats sonucu (nginx_loadtest_result) yok';
+    const neden = uyusmazlik
+      ? `yayınlanan sonuç bu koşuya ait değil (${uyusmazlik})`
+      : 'set_stats sonucu (nginx_loadtest_result) yok';
     // Eksik artifact BASARI DEGILDIR: AWX "successful" dese de sonuc kanitlanamaz.
     return st.status === 'successful'
-      ? { durum: 'OKUNAMADI', gecerlilik: 'OKUNAMADI', nedenler: [neden], sonuc: { hata: neden }, swDizin: dizin }
-      : { durum: 'FAILED', gecerlilik: 'OKUNAMADI', nedenler: [neden], sonuc: { hata: maskele(st.jobExplanation || '') || neden }, swDizin: dizin };
+      ? {
+          durum: 'OKUNAMADI',
+          gecerlilik: 'OKUNAMADI',
+          nedenler: [neden],
+          sonuc: { hata: neden },
+          swDizin: dizin,
+        }
+      : {
+          durum: 'FAILED',
+          gecerlilik: 'OKUNAMADI',
+          nedenler: [neden],
+          sonuc: { hata: maskele(st.jobExplanation || '') || neden },
+          swDizin: dizin,
+        };
   }
   const ekNedenler = [];
   const kosuBolumu = stats.kosu && typeof stats.kosu === 'object' ? stats.kosu : null;
-  if (kosuBolumu && kosuBolumu.sw_dizin && String(kosuBolumu.sw_dizin).replace(/(?<!\/)\/+$/, '') !== dizin) {
-    ekNedenler.push(`playbook başka bir dizin bildirdi (${String(kosuBolumu.sw_dizin).slice(0, 200)}); Portal ${dizin} dizinini okudu`);
+  if (
+    kosuBolumu &&
+    kosuBolumu.sw_dizin &&
+    String(kosuBolumu.sw_dizin).replace(/(?<!\/)\/+$/, '') !== dizin
+  ) {
+    ekNedenler.push(
+      `playbook başka bir dizin bildirdi (${String(kosuBolumu.sw_dizin).slice(0, 200)}); Portal ${dizin} dizinini okudu`,
+    );
   }
   if (stats.durum === 'DUR') ekNedenler.push('koşu erken durdu (DUR)');
   // Tur ve motor satirdan (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
@@ -316,22 +432,35 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   const motor = kosu.motor || 'k6';
   const protokol = protokolOf(kosu);
   const kosRc = kosuBolumu ? SAYI(kosuBolumu.kos_rc) : null;
-  if (kosRc !== null && kosRc !== 0) ekNedenler.push(`${motor === 'wrk' ? 'wrk_kos.sh' : 'kos.sh'} rc=${kosRc}`);
+  if (kosRc !== null && kosRc !== 0)
+    ekNedenler.push(`${motor === 'wrk' ? 'wrk_kos.sh' : 'kos.sh'} rc=${kosRc}`);
   // TEK HEDEF MODELI (2026-11-13): kosu basinda playbook'un nginx tespiti (kosu.hedef_nginx; eski playbook: yok -> null,
   // nginx sayilir). Satirin kolonu on kontrolun tespitidir: ikisi de olculmus ve farkliysa hedef degismis -> KISMI.
-  const hn = hedefTuru === 'sunucu' && kosuBolumu && typeof kosuBolumu.hedef_nginx === 'boolean' ? kosuBolumu.hedef_nginx : null;
-  const okNginx = kosu.hedef_nginx == null ? null : kosu.hedef_nginx === true || Number(kosu.hedef_nginx) === 1;
+  const hn =
+    hedefTuru === 'sunucu' && kosuBolumu && typeof kosuBolumu.hedef_nginx === 'boolean'
+      ? kosuBolumu.hedef_nginx
+      : null;
+  const okNginx =
+    kosu.hedef_nginx == null ? null : kosu.hedef_nginx === true || Number(kosu.hedef_nginx) === 1;
   if (hn !== null && okNginx !== null && hn !== okNginx) {
     const m = (v) => (v ? 'nginx var' : 'nginx yok');
-    ekNedenler.push(`hedef nginx durumu ön kontrolden bu yana değişti (ön kontrol: ${m(okNginx)}, koşu: ${m(hn)})`);
+    ekNedenler.push(
+      `hedef nginx durumu ön kontrolden bu yana değişti (ön kontrol: ${m(okNginx)}, koşu: ${m(hn)})`,
+    );
   }
   const basarili = kosuBasarili(st.status, stats.durum);
-  const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? (": " + String(stats.hata).slice(0, 300)) : ''})`;
+  const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? ': ' + String(stats.hata).slice(0, 300) : ''})`;
 
   // Playbook kosu bolumunu yayinladi ama sw_dizin bildirmedi: /sw'ye HIC veri kopyalanmadi (yuk
   // baslamadi ya da kopya dustu). Dizin okunmaz; "okunamadi" degil, gecersiz bir basarisizliktir.
   if (kosuBolumu && !String(kosuBolumu.sw_dizin ?? '').trim()) {
-    return { durum: 'FAILED', gecerlilik: 'GECERSIZ', nedenler: [hataMetni, SW_YOK_NEDENI], sonuc: { ...stats, portal_analiz: { hata: SW_YOK_NEDENI } }, swDizin: dizin };
+    return {
+      durum: 'FAILED',
+      gecerlilik: 'GECERSIZ',
+      nedenler: [hataMetni, SW_YOK_NEDENI],
+      sonuc: { ...stats, portal_analiz: { hata: SW_YOK_NEDENI } },
+      swDizin: dizin,
+    };
   }
 
   let analiz = null;
@@ -341,28 +470,67 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     // 2026-11-03 (B1): yeni playbook kosu.yukm_cpu_basladi (bool) ve kosu.yukm_cpu_son_satir (kaydedici ciktisinin son
     // satiri) yayinlar; eski playbook: yok -> secenek YOK (analiz BIREBIR eskisi).
     const yb = kosuBolumu ? kosuBolumu.yukm_cpu_basladi : undefined;
-    const yukKaydedici = (() => { if (yb === true) return 'basladi'; if (yb === false) return 'baslamadi'; return null; })();
-    const yukSonSatir = yukKaydedici && typeof kosuBolumu.yukm_cpu_son_satir === 'string' ? kosuBolumu.yukm_cpu_son_satir : null;
+    const yukKaydedici = (() => {
+      if (yb === true) return 'basladi';
+      if (yb === false) return 'baslamadi';
+      return null;
+    })();
+    const yukSonSatir =
+      yukKaydedici && typeof kosuBolumu.yukm_cpu_son_satir === 'string'
+        ? kosuBolumu.yukm_cpu_son_satir
+        : null;
     // 2026-11-04: sunucu ayarli kosuda hazirlik kaniti denetlenir; ayarsiz satirda secenek YOK (analiz BIREBIR eskisi).
     const param = parametrelerOf(kosu);
     const srv = param && param.sunucuAyar ? { sunucuAyar: param.sunucuAyar, ae: param.ae } : {};
-    analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, {
-      adim: `R${id}`, hedefTuru, motor, protokol, ...(yukKaydedici ? { yukKaydedici } : {}), ...(yukSonSatir ? { yukSonSatir } : {}), ...srv,
-      // Nginx'siz hedef: genel CPU (hedefcpu_*), log ve CPU-ms yok. Secenek yalniz false iken (eski satir BIREBIR).
-      ...(hn === false ? { hedefNginx: false } : {}),
-    }));
+    analiz = analizNormalle(
+      await cModulu('analiz.cjs').kosuAnaliz(veri, {
+        adim: `R${id}`,
+        hedefTuru,
+        motor,
+        protokol,
+        ...(yukKaydedici ? { yukKaydedici } : {}),
+        ...(yukSonSatir ? { yukSonSatir } : {}),
+        ...srv,
+        // Nginx'siz hedef: genel CPU (hedefcpu_*), log ve CPU-ms yok. Secenek yalniz false iken (eski satir BIREBIR).
+        ...(hn === false ? { hedefNginx: false } : {}),
+      }),
+    );
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
   }
   // Gecici okuma hatasi (NFS, yarim kopya): satir FINALIZING kalir, sonraki tur yeniden dener.
   if (!analiz && deneme < OKUMA_DENEME_SINIRI) return { yenidenDenenecek: true, okumaHatasi };
-  const sonuc = (a) => ({ ...stats, portal_analiz: a ? { ozet: a.ozet, uyarilar: a.uyarilar } : { hata: okumaHatasi } });
+  const sonuc = (a) => ({
+    ...stats,
+    portal_analiz: a ? { ozet: a.ozet, uyarilar: a.uyarilar } : { hata: okumaHatasi },
+  });
   if (basarili) {
-    if (!analiz) return { durum: 'OKUNAMADI', gecerlilik: 'OKUNAMADI', nedenler: [okumaHatasi, ...ekNedenler], sonuc: sonuc(null), swDizin: dizin };
+    if (!analiz)
+      return {
+        durum: 'OKUNAMADI',
+        gecerlilik: 'OKUNAMADI',
+        nedenler: [okumaHatasi, ...ekNedenler],
+        sonuc: sonuc(null),
+        swDizin: dizin,
+      };
     const gec = analiz.gecerlilik === 'GECERLI' && ekNedenler.length ? 'KISMI' : analiz.gecerlilik;
-    return { durum: 'DONE', gecerlilik: gec, nedenler: [...analiz.nedenler, ...ekNedenler], sonuc: sonuc(analiz), adimlar: analiz.adimlar, swDizin: dizin };
+    return {
+      durum: 'DONE',
+      gecerlilik: gec,
+      nedenler: [...analiz.nedenler, ...ekNedenler],
+      sonuc: sonuc(analiz),
+      adimlar: analiz.adimlar,
+      swDizin: dizin,
+    };
   }
-  if (!analiz) return { durum: 'FAILED', gecerlilik: 'OKUNAMADI', nedenler: [hataMetni, okumaHatasi, ...ekNedenler], sonuc: sonuc(null), swDizin: dizin };
+  if (!analiz)
+    return {
+      durum: 'FAILED',
+      gecerlilik: 'OKUNAMADI',
+      nedenler: [hataMetni, okumaHatasi, ...ekNedenler],
+      sonuc: sonuc(null),
+      swDizin: dizin,
+    };
   return {
     durum: 'FAILED',
     gecerlilik: analiz.gecerlilik === 'GECERLI' ? 'KISMI' : analiz.gecerlilik,
@@ -386,22 +554,41 @@ function bitisZamani(v) {
  */
 function hedefNginxOf(kosu, stats) {
   if ((kosu.hedef_turu || 'sunucu') !== 'sunucu' || !stats) return null;
-  const bolum = (() => { if (kosu.islem === 'on_kontrol') return stats.on_kontrol; if (kosu.islem === 'kosu') return stats.kosu; return null; })();
+  const bolum = (() => {
+    if (kosu.islem === 'on_kontrol') return stats.on_kontrol;
+    if (kosu.islem === 'kosu') return stats.kosu;
+    return null;
+  })();
   const v = bolum && typeof bolum === 'object' ? bolum.hedef_nginx : undefined;
-  if (typeof v === 'boolean') { if (v) return 1; return 0; } return null;
+  if (typeof v === 'boolean') {
+    if (v) return 1;
+    return 0;
+  }
+  return null;
 }
 
 async function sonYaz(kosu, st, k) {
   if (Array.isArray(k.adimlar)) await adimlariYaz(Number(kosu.id), k.adimlar);
-  const sonucJson = k.sonuc == null ? null : jsonKisa(k.sonuc, SONUC_MAX_BAYT) ?? JSON.stringify({ kirpildi: true });
+  const sonucJson =
+    k.sonuc == null
+      ? null
+      : (jsonKisa(k.sonuc, SONUC_MAX_BAYT) ?? JSON.stringify({ kirpildi: true }));
   await db().query(
     `UPDATE nginx_loadtest_kosular
         SET durum = $2, gecerlilik = $3, gecersiz_nedenleri = $4, sonuc = $5, on_kontrol_ozet = $6, hedef_nginx = COALESCE($9, hedef_nginx),
             sw_dizin = COALESCE($7, sw_dizin), finished_at = COALESCE($8, finished_at, GETUTCDATE()), finalized_at = GETUTCDATE()
       WHERE id = $1 AND durum = 'FINALIZING'`,
-    [Number(kosu.id), k.durum, k.gecerlilik ?? null, k.nedenler ? JSON.stringify(k.nedenler.filter(Boolean)) : null, sonucJson,
-      k.onKontrolOzet ? jsonKisa(k.onKontrolOzet, 64 * 1024) : null, k.swDizin ?? null, bitisZamani(st && st.finished),
-      k.hedefNginx === 1 || k.hedefNginx === 0 ? k.hedefNginx : null],
+    [
+      Number(kosu.id),
+      k.durum,
+      k.gecerlilik ?? null,
+      k.nedenler ? JSON.stringify(k.nedenler.filter(Boolean)) : null,
+      sonucJson,
+      k.onKontrolOzet ? jsonKisa(k.onKontrolOzet, 64 * 1024) : null,
+      k.swDizin ?? null,
+      bitisZamani(st && st.finished),
+      k.hedefNginx === 1 || k.hedefNginx === 0 ? k.hedefNginx : null,
+    ],
   );
 }
 
@@ -412,7 +599,12 @@ async function sonYaz(kosu, st, k) {
 async function isinKilitleri(kosu, st, sid, jid) {
   const karar = kilit().bagliIsKarari(bagTuruOf(kosu), st.status);
   if (karar === 'birak') return kilit().releaseLocksForJob(db(), sid, jid, st.finished || null);
-  return kilit().isinKilitleriniCoz(db(), sid, jid, kosu.islem === 'kosu' ? butceSnOf(kosu) + KILIT_EK_SN : null);
+  return kilit().isinKilitleriniCoz(
+    db(),
+    sid,
+    jid,
+    kosu.islem === 'kosu' ? butceSnOf(kosu) + KILIT_EK_SN : null,
+  );
 }
 
 /**
@@ -424,9 +616,17 @@ async function geriAlmaTemizligi(kosu, sid, jid) {
   try {
     if (_otoDurdur) is = await _otoDurdur(kosu);
   } catch (e) {
-    console.warn(`[NginxYukTesti poller] kosu ${kosu.id} icin otomatik durdurma baslatilamadi:`, maskele(e && e.message));
+    console.warn(
+      `[NginxYukTesti poller] kosu ${kosu.id} icin otomatik durdurma baslatilamadi:`,
+      maskele(e && e.message),
+    );
   }
-  if (is && kosu.kilit_id) return kilit().durdurIsineBagla(db(), kosu.kilit_id, { awxServerId: is.awxServerId, awxJobId: is.jobId, uzatSn: butceSnOf(kosu) + KILIT_EK_SN });
+  if (is && kosu.kilit_id)
+    return kilit().durdurIsineBagla(db(), kosu.kilit_id, {
+      awxServerId: is.awxServerId,
+      awxJobId: is.jobId,
+      uzatSn: butceSnOf(kosu) + KILIT_EK_SN,
+    });
   return kilit().isinKilitleriniCoz(db(), sid, jid, butceSnOf(kosu) + KILIT_EK_SN);
 }
 
@@ -438,7 +638,8 @@ async function kosuyuSonuclandir(kosu) {
   const id = Number(kosu.id);
   const sid = Number(kosu.awx_server_id);
   const jid = Number(kosu.awx_job_id);
-  if (!Number.isInteger(sid) || sid < 0 || !Number.isInteger(jid) || jid <= 0) return { terminal: false, isYok: true };
+  if (!Number.isInteger(sid) || sid < 0 || !Number.isInteger(jid) || jid <= 0)
+    return { terminal: false, isYok: true };
   if (_suren.has(id)) return { terminal: false, suruyor: true };
   _suren.add(id);
   try {
@@ -452,8 +653,20 @@ async function kosuyuSonuclandir(kosu) {
       // sayilir; daha gencse tek 404 (gecit, yeni URL) kanit DEGIL: hata yukari, satir ve kilit
       // degismez (kilitSupur / acquireLocks ile ayni fail-closed). Sunucu yok (devre disi) ise
       // durum BILINMEZ: satir oldugu gibi kalir, kilit TTL ile duser.
-      if (e && Number(e.status) === 404 && e.code !== 'awx_server_missing' && yas !== null && yas > butce + YOK_PAYI_SN) {
-        st = { status: 'error', missing: true, artifacts: {}, jobExplanation: `AWX iş #${jid} artık yok`, finished: null };
+      if (
+        e &&
+        Number(e.status) === 404 &&
+        e.code !== 'awx_server_missing' &&
+        yas !== null &&
+        yas > butce + YOK_PAYI_SN
+      ) {
+        st = {
+          status: 'error',
+          missing: true,
+          artifacts: {},
+          jobExplanation: `AWX iş #${jid} artık yok`,
+          finished: null,
+        };
       } else {
         throw e;
       }
@@ -463,12 +676,17 @@ async function kosuyuSonuclandir(kosu) {
     let olayEksik = false;
     if (TERMINAL.has(st.status) && st.eventProcessingFinished === false) {
       const bitis = bitisZamani(st.finished);
-      const eski = bitis ? (Date.now() - bitis.getTime()) / 1000 >= OLAY_BEKLEME_SN : yas !== null && yas > butce + YOK_PAYI_SN;
+      const eski = bitis
+        ? (Date.now() - bitis.getTime()) / 1000 >= OLAY_BEKLEME_SN
+        : yas !== null && yas > butce + YOK_PAYI_SN;
       if (eski) olayEksik = true;
     }
     if (!TERMINAL.has(st.status) || (st.eventProcessingFinished === false && !olayEksik)) {
       if (kosu.durum === 'QUEUED') {
-        await db().query(`UPDATE nginx_loadtest_kosular SET durum = 'RUNNING', started_at = COALESCE(started_at, GETUTCDATE()) WHERE id = $1 AND durum = 'QUEUED'`, [id]);
+        await db().query(
+          `UPDATE nginx_loadtest_kosular SET durum = 'RUNNING', started_at = COALESCE(started_at, GETUTCDATE()) WHERE id = $1 AND durum = 'QUEUED'`,
+          [id],
+        );
       }
       return { terminal: false, awxStatus: st.status };
     }
@@ -479,38 +697,62 @@ async function kosuyuSonuclandir(kosu) {
     );
     if (!al.rowCount) return { terminal: true, atlandi: true };
     // Sayac okunamazsa (adaptor OUTPUT dondurmediyse) tek deneme + son karar: eski davranis.
-    const deneme = TAM(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi) ?? OKUMA_DENEME_SINIRI;
-    const { stats, uyusmazlik } = statsNormalle(require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI), kosu);
+    const deneme =
+      TAM(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi) ?? OKUMA_DENEME_SINIRI;
+    const { stats, uyusmazlik } = statsNormalle(
+      require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI),
+      kosu,
+    );
     try {
       if (!geriAlmaBilinmiyor(kosu, stats)) await isinKilitleri(kosu, st, sid, jid);
       else if (kosu.durdur_awx_job_id == null) await geriAlmaTemizligi(kosu, sid, jid);
       // Durdurma isi zaten var (Durdur ya da onceki deneme): kilit ona bagli, burada dokunulmaz.
     } catch (e) {
-      console.warn(`[NginxYukTesti poller] kosu ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`, maskele(e && e.message));
+      console.warn(
+        `[NginxYukTesti poller] kosu ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`,
+        maskele(e && e.message),
+      );
     }
     if (!st.missing) {
       try {
         await ciktiArsivle(sid, jid);
       } catch (e) {
-        console.warn(`[NginxYukTesti poller] is #${jid} ciktisi arsivlenemedi:`, maskele(e && e.message));
+        console.warn(
+          `[NginxYukTesti poller] is #${jid} ciktisi arsivlenemedi:`,
+          maskele(e && e.message),
+        );
       }
     }
     let k;
     if (st.missing) {
-      k = { durum: 'OKUNAMADI', gecerlilik: kosu.islem === 'kosu' ? 'OKUNAMADI' : null, nedenler: [st.jobExplanation], sonuc: { hata: st.jobExplanation } };
+      k = {
+        durum: 'OKUNAMADI',
+        gecerlilik: kosu.islem === 'kosu' ? 'OKUNAMADI' : null,
+        nedenler: [st.jobExplanation],
+        sonuc: { hata: st.jobExplanation },
+      };
     } else if (deneme > OKUMA_DENEME_SINIRI) {
       // Onceki denemeler son yazima ulasmadi (surec okuma sirasinda olmus olabilir): /sw OKUNMAZ.
-      console.warn(`[NginxYukTesti poller] kosu ${id}: ${deneme}. sonuclandirma denemesi; /sw okunmadan OKUNAMADI yaziliyor`);
+      console.warn(
+        `[NginxYukTesti poller] kosu ${id}: ${deneme}. sonuclandirma denemesi; /sw okunmadan OKUNAMADI yaziliyor`,
+      );
       k = {
-        durum: 'OKUNAMADI', gecerlilik: kosu.islem === 'kosu' ? 'OKUNAMADI' : null, nedenler: [DENEME_NEDENI],
-        sonuc: stats ? { ...stats, portal_analiz: { hata: DENEME_NEDENI } } : { hata: DENEME_NEDENI },
+        durum: 'OKUNAMADI',
+        gecerlilik: kosu.islem === 'kosu' ? 'OKUNAMADI' : null,
+        nedenler: [DENEME_NEDENI],
+        sonuc: stats
+          ? { ...stats, portal_analiz: { hata: DENEME_NEDENI } }
+          : { hata: DENEME_NEDENI },
       };
     } else if (kosu.islem === 'on_kontrol') {
       k = onKontrolKarari(st, stats, uyusmazlik);
     } else {
       k = await kosuKarari(kosu, st, stats, uyusmazlik, { deneme });
       if (k.yenidenDenenecek) {
-        console.warn(`[NginxYukTesti poller] kosu ${id} sonucu okunamadi (deneme ${deneme}/${OKUMA_DENEME_SINIRI}); sonraki tur yeniden denenecek:`, k.okumaHatasi);
+        console.warn(
+          `[NginxYukTesti poller] kosu ${id} sonucu okunamadi (deneme ${deneme}/${OKUMA_DENEME_SINIRI}); sonraki tur yeniden denenecek:`,
+          k.okumaHatasi,
+        );
         return { terminal: false, yenidenDenenecek: true };
       }
     }
@@ -547,15 +789,33 @@ async function durdurSonuclari() {
       st = { status: 'error', missing: true, artifacts: {} };
     }
     if (!TERMINAL.has(st.status) || st.eventProcessingFinished === false) continue;
-    const { stats } = statsNormalle(require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI), { ...k, islem: 'durdur' });
-    const sa = stats && stats.sunucu_ayar && typeof stats.sunucu_ayar === 'object' ? stats.sunucu_ayar : null;
+    const { stats } = statsNormalle(
+      require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI),
+      { ...k, islem: 'durdur' },
+    );
+    const sa =
+      stats && stats.sunucu_ayar && typeof stats.sunucu_ayar === 'object'
+        ? stats.sunucu_ayar
+        : null;
     let durdurGeriAlma;
     if (sa && typeof sa.geri_alma === 'string' && sa.geri_alma.trim()) {
-      durdurGeriAlma = { is: jid, durum: sa.geri_alma.trim().toLowerCase(), metin: typeof sa.geri_alma_metin === 'string' ? sa.geri_alma_metin.slice(0, 500) : null };
+      durdurGeriAlma = {
+        is: jid,
+        durum: sa.geri_alma.trim().toLowerCase(),
+        metin: typeof sa.geri_alma_metin === 'string' ? sa.geri_alma_metin.slice(0, 500) : null,
+      };
     } else if (stats && st.status === 'successful') {
-      durdurGeriAlma = { is: jid, durum: 'ok', metin: 'Durdurma işi hedefte geri alınacak yedek bulmadı.' };
+      durdurGeriAlma = {
+        is: jid,
+        durum: 'ok',
+        metin: 'Durdurma işi hedefte geri alınacak yedek bulmadı.',
+      };
     } else {
-      durdurGeriAlma = { is: jid, durum: 'hata', metin: `Durdurma işi AWX #${jid} geri alma sonucu üretmedi (${st.status}); hedefi elle kontrol edin ya da Durdur'u yeniden deneyin.` };
+      durdurGeriAlma = {
+        is: jid,
+        durum: 'hata',
+        metin: `Durdurma işi AWX #${jid} geri alma sonucu üretmedi (${st.status}); hedefi elle kontrol edin ya da Durdur'u yeniden deneyin.`,
+      };
     }
     let eski = null;
     try {
@@ -563,8 +823,14 @@ async function durdurSonuclari() {
     } catch {
       eski = null;
     }
-    const yeni = JSON.stringify({ ...(eski && typeof eski === 'object' && !Array.isArray(eski) ? eski : {}), durdur_geri_alma: durdurGeriAlma });
-    const u = await db().query(`UPDATE nginx_loadtest_kosular SET sonuc = $2 WHERE id = $1 AND durdur_awx_job_id = $3`, [Number(k.id), yeni, jid]);
+    const yeni = JSON.stringify({
+      ...(eski && typeof eski === 'object' && !Array.isArray(eski) ? eski : {}),
+      durdur_geri_alma: durdurGeriAlma,
+    });
+    const u = await db().query(
+      `UPDATE nginx_loadtest_kosular SET sonuc = $2 WHERE id = $1 AND durdur_awx_job_id = $3`,
+      [Number(k.id), yeni, jid],
+    );
     yazilan += u.rowCount || 0;
   }
   return yazilan;
@@ -595,7 +861,8 @@ async function kilitSupur() {
       continue; // okunamadi: kilit DOLU kalir (fail-closed), TTL birakir
     }
     if (!TERMINAL.has(st.status)) continue;
-    if (kilit().bagliIsKarari(bagTuru, st.status) === 'birak') birakilan += await kilit().releaseLocksForJob(db(), serverId, jobId, st.finished || null);
+    if (kilit().bagliIsKarari(bagTuru, st.status) === 'birak')
+      birakilan += await kilit().releaseLocksForJob(db(), serverId, jobId, st.finished || null);
     else await kilit().isinKilitleriniCoz(db(), serverId, jobId);
   }
   return birakilan;
@@ -617,23 +884,31 @@ async function tick() {
       if (o.terminal && !o.atlandi) kapanan += 1;
     } catch (e) {
       // OKUNAMADI != BASARISIZ: satir oldugu gibi kalir, sonraki tur yeniden bakar.
-      console.warn(`[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`, maskele(e && e.message));
+      console.warn(
+        `[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`,
+        maskele(e && e.message),
+      );
     }
   }
   await durdurSonuclari().catch((e) => {
     console.warn('[NginxYukTesti poller] durdurma sonuclari okunamadi:', maskele(e && e.message));
   });
   // Arac hazirlama isleri (tur 4): ayri tablo, ayri karar; hata yalniz uyari.
-  const arac = await require('./araclar.cjs').araclariSonuclandir().catch((e) => {
-    console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e && e.message));
-    return { bayat: 0, kapanan: 0 };
-  });
+  const arac = await require('./araclar.cjs')
+    .araclariSonuclandir()
+    .catch((e) => {
+      console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e && e.message));
+      return { bayat: 0, kapanan: 0 };
+    });
   const s = await kilitSupur().catch((e) => {
     console.warn('[NginxYukTesti poller] kilit supurmesi:', maskele(e && e.message));
     return 0;
   });
   const aracKapanan = (arac && arac.kapanan) || 0;
-  if (b || kapanan || s || aracKapanan) console.log(`[NginxYukTesti poller] bayat=${b} sonuclanan=${kapanan} arac=${aracKapanan} birakilan-kilit=${s}`);
+  if (b || kapanan || s || aracKapanan)
+    console.log(
+      `[NginxYukTesti poller] bayat=${b} sonuclanan=${kapanan} arac=${aracKapanan} birakilan-kilit=${s}`,
+    );
   return { bayat: b, kapanan, kilit: s, arac: aracKapanan };
 }
 
@@ -658,10 +933,15 @@ function tetikle(kosuId) {
   const id = Number(kosuId);
   if (!Number.isInteger(id) || _suren.has(id)) return;
   (async () => {
-    const { rows } = await db().query(`SELECT ${SONUCLANDIRMA_KOLONLARI} FROM nginx_loadtest_kosular WHERE id = $1`, [id]);
+    const { rows } = await db().query(
+      `SELECT ${SONUCLANDIRMA_KOLONLARI} FROM nginx_loadtest_kosular WHERE id = $1`,
+      [id],
+    );
     const k = rows && rows[0];
     if (k && AKTIF.includes(k.durum)) await kosuyuSonuclandir(k);
-  })().catch((e) => console.warn(`[NginxYukTesti poller] kosu ${id} tetiklenemedi:`, maskele(e && e.message)));
+  })().catch((e) =>
+    console.warn(`[NginxYukTesti poller] kosu ${id} tetiklenemedi:`, maskele(e && e.message)),
+  );
 }
 
 module.exports = {

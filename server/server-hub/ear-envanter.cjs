@@ -89,14 +89,19 @@ function hostParam(v) {
 /** Istek kapsami -> FILO | SECILI | SORUNLU | WEB | FILO_WEB | ORTAM:A,B (ortamlar dizi ya da virgullu metin). */
 function kapsamParam(kapsam, ortamlarHam) {
   const k = String(kapsam || '').toUpperCase();
-  if (k === 'FILO' || k === 'SECILI' || k === 'SORUNLU' || k === 'WEB' || k === 'FILO_WEB') return k;
+  if (k === 'FILO' || k === 'SECILI' || k === 'SORUNLU' || k === 'WEB' || k === 'FILO_WEB')
+    return k;
   if (k === 'ORTAM') {
     const l = Array.isArray(ortamlarHam) ? ortamlarHam : String(ortamlarHam || '').split(',');
     const d = ayar.kapsamDogrula(`ORTAM:${l.map((x) => String(x || '')).join(',')}`);
     if (!d) throw hata(400, 'Ortam listesi geçersiz (1-20 ortam).', 'gecersiz_kapsam');
     return d;
   }
-  throw hata(400, 'Kapsam FILO, SECILI, ORTAM, SORUNLU, WEB ya da FILO_WEB olmalı.', 'gecersiz_kapsam');
+  throw hata(
+    400,
+    'Kapsam FILO, SECILI, ORTAM, SORUNLU, WEB ya da FILO_WEB olmalı.',
+    'gecersiz_kapsam',
+  );
 }
 
 /** Elle liste: metin (satir / bosluk / virgul ayracli) ya da dizi. */
@@ -197,7 +202,12 @@ function eslenikSuzgeci(q) {
   };
 }
 
-const eskiParametreler = (q) => ({ ortam: q.ortam, jboss: q.jboss, durum: q.durum, servlet: q.servlet });
+const eskiParametreler = (q) => ({
+  ortam: q.ortam,
+  jboss: q.jboss,
+  durum: q.durum,
+  servlet: q.servlet,
+});
 
 /** WAR satiri istemciye kutuphane set izi olmadan gider (ic anahtar). */
 function setsiz(r) {
@@ -265,7 +275,11 @@ function mount(router, { launch, audit } = {}) {
         // Eski ozet alani: planlardan biri aciksa acik; en yakin calisma.
         zamanlayici: {
           acik: planlar.some((p) => p.acik),
-          metin: planlar.filter((p) => p.acik).map((p) => `${p.ad}: ${p.metin}`).join(' | ') || 'planlar kapalı',
+          metin:
+            planlar
+              .filter((p) => p.acik)
+              .map((p) => `${p.ad}: ${p.metin}`)
+              .join(' | ') || 'planlar kapalı',
           sonraki: sonraki || null,
         },
         planlar,
@@ -343,7 +357,8 @@ function mount(router, { launch, audit } = {}) {
   router.get('/ear/kapsam-onizleme', async (req, res) => {
     try {
       const kapsam = kapsamParam(req.query.kapsam, req.query.ortamlar);
-      if (kapsam === 'SECILI') throw hata(400, 'Seçili liste için önizleme gerekmez.', 'gecersiz_kapsam');
+      if (kapsam === 'SECILI')
+        throw hata(400, 'Seçili liste için önizleme gerekmez.', 'gecersiz_kapsam');
       const kip = String(req.query.kip || 'OZET').toUpperCase() === 'TAM' ? 'TAM' : 'OZET';
       res.json({ ok: true, kapsam, ...(await poller.kapsamOnizleme(kapsam, kip)) });
     } catch (e) {
@@ -532,8 +547,15 @@ function mount(router, { launch, audit } = {}) {
         };
         return [await oku(a), await oku(b)];
       });
-      const neden = (x) =>
-        { if (x.kip !== 'TAM') return `${x.host}: ÖZET taramada dosya ağacı tutulmaz; TAM tarama gerekir.`; if (x.u.durum !== 'TAM') return `${x.host}: tarama eksik (${x.u.durum}); dosya farkı güvenilir olmaz.`; if (eslenikMotoru.yapiIzi(x.u.satirlar) !== String(x.u.yapi_izi || '')) return `${x.host}: ağaç satırları tarayıcının yapı iziyle tutmuyor; fark hesaplanamadı.`; return null; };
+      const neden = (x) => {
+        if (x.kip !== 'TAM')
+          return `${x.host}: ÖZET taramada dosya ağacı tutulmaz; TAM tarama gerekir.`;
+        if (x.u.durum !== 'TAM')
+          return `${x.host}: tarama eksik (${x.u.durum}); dosya farkı güvenilir olmaz.`;
+        if (eslenikMotoru.yapiIzi(x.u.satirlar) !== String(x.u.yapi_izi || ''))
+          return `${x.host}: ağaç satırları tarayıcının yapı iziyle tutmuyor; fark hesaplanamadı.`;
+        return null;
+      };
       const engel = neden(sonuc[0]) || neden(sonuc[1]);
       if (engel) return res.json({ ok: true, hesaplanamadi: engel });
       res.json({
@@ -594,11 +616,23 @@ function mount(router, { launch, audit } = {}) {
   async function akit(req, res, gorunum) {
     const q = req.query;
     const ortak = { kosu: q.kosu, q: q.q, f: q.f, s: q.s };
-    const fn = { uygulamalar: sorgu.uygulamalar, warlar: sorgu.warlar, kutuphaneler: sorgu.kutuphaneler }[gorunum];
+    const fn = {
+      uygulamalar: sorgu.uygulamalar,
+      warlar: sorgu.warlar,
+      kutuphaneler: sorgu.kutuphaneler,
+    }[gorunum];
     // Ilk parca yazilmadan once dogrulanir: gecersiz suzgec 400 ile doner (baslik henuz gitmedi).
-    const ilk = await fn({ ...ortak, ...(gorunum === 'uygulamalar' ? eskiParametreler(q) : {}), limit: 1, offset: 0 });
+    const ilk = await fn({
+      ...ortak,
+      ...(gorunum === 'uygulamalar' ? eskiParametreler(q) : {}),
+      limit: 1,
+      offset: 0,
+    });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="ear-envanter_${gorunum}_${damga()}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="ear-envanter_${gorunum}_${damga()}.csv"`,
+    );
     res.setHeader('Cache-Control', 'no-store');
     // Istemci baglantiyi kapatirsa 'drain' hic gelmez: 'close' bekleyen yazmayi reddeder (sizinti yok).
     const yaz = (metin) =>
@@ -641,7 +675,11 @@ function mount(router, { launch, audit } = {}) {
 
   async function gorunumSatirlari(gorunum, q) {
     if (gorunum === 'sunucular') return sorgu.hostlar({ kosu: q.kosu });
-    const r = await sorgu.eslenikler({ ...eslenikSuzgeci(q), tur: eslenikTuru(q.tur) || 'ORTAM_ICI', limit: null });
+    const r = await sorgu.eslenikler({
+      ...eslenikSuzgeci(q),
+      tur: eslenikTuru(q.tur) || 'ORTAM_ICI',
+      limit: null,
+    });
     return r.satirlar;
   }
 
@@ -655,8 +693,18 @@ function mount(router, { launch, audit } = {}) {
       const kolonAdi =
         m[1] !== 'eslenikler'
           ? m[1]
-          : { ORTAM_ICI: 'eslenikler', ORTAMLAR_ARASI: 'eslenikler_ortamlar_arasi', NESIL: 'eslenikler_nesil', ORTAM_YOK: 'eslenikler_ortam_yok' }[tur];
-      denetim(req, { islem: 'csv', gorunum: m[1], tur: m[1] === 'eslenikler' ? tur : undefined, satir: satirlar.length });
+          : {
+              ORTAM_ICI: 'eslenikler',
+              ORTAMLAR_ARASI: 'eslenikler_ortamlar_arasi',
+              NESIL: 'eslenikler_nesil',
+              ORTAM_YOK: 'eslenikler_ortam_yok',
+            }[tur];
+      denetim(req, {
+        islem: 'csv',
+        gorunum: m[1],
+        tur: m[1] === 'eslenikler' ? tur : undefined,
+        satir: satirlar.length,
+      });
       indir(
         res,
         `ear-envanter_${m[1] === 'eslenikler' ? kolonAdi : m[1]}_${damga()}.csv`,

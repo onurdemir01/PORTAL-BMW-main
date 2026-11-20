@@ -418,7 +418,11 @@ function paketTutarlilikYaniti(opts = {}) {
     }
   }
   const r = computePaketTutarlilik(gruplar, veriler, { nowMs: opts.nowMs });
-  return { ok: true, ...r, generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString() };
+  return {
+    ok: true,
+    ...r,
+    generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString(),
+  };
 }
 
 // ── Envanter: nginx sunuculari (dbo.nginx_inventory, nginx_metadata job'i) ──────────────
@@ -833,7 +837,9 @@ async function spaKesfiHesapla() {
   // uygulamanin Dynatrace olcumu gorunmuyordu. Eslesme zaten ARK kesif satirinin (namespace,
   // uygulama) anahtariyla yapilir; yalniz ACIKCA ARK disi bir cluster'in satiri atilir.
   const usage =
-    usageHam == null ? usageHam : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
+    usageHam == null
+      ? usageHam
+      : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
   const runs = arkSuz(runsHam, 'cluster');
   const katalog = arkSuz(katalogHam, 'cluster_name');
   // ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): RP tanim/trafik satirlari nginx sunucusundan
@@ -1498,7 +1504,9 @@ function initNginxConsole(app) {
     try {
       res.json(paketTutarlilikYaniti());
     } catch (err) {
-      res.status(500).json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
+      res
+        .status(500)
+        .json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
     }
   });
 

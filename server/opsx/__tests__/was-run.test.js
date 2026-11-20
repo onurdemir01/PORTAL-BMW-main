@@ -38,11 +38,46 @@ const VELI = { username: 'veli', role: 'User', groups: [] };
 const ADMIN = { username: 'admin1', role: 'Admin', groups: [] };
 
 const INV = [
-  { app: 'APPX', host: 'gbwasp01', env: 'PROD', os: 'LINUX', was_version: '9.0.5.24', status: 'running' },
-  { app: 'APPX', host: 'GBWASP02', env: 'PROD', os: 'LINUX', was_version: '9.0.5.24', status: 'running' },
-  { app: 'APPX', host: 'GBWASA01', env: 'PROD', os: 'AIX', was_version: '8.5.5', status: 'running' },
-  { app: 'KISITLI', host: 'GBWASP01', env: 'TEST', os: 'LINUX', was_version: '9.0.5', status: 'running' },
-  { app: 'NOAPP', host: 'GBWASP03', env: 'PROD', os: 'LINUX', was_version: '9.0.5', status: 'stopped' },
+  {
+    app: 'APPX',
+    host: 'gbwasp01',
+    env: 'PROD',
+    os: 'LINUX',
+    was_version: '9.0.5.24',
+    status: 'running',
+  },
+  {
+    app: 'APPX',
+    host: 'GBWASP02',
+    env: 'PROD',
+    os: 'LINUX',
+    was_version: '9.0.5.24',
+    status: 'running',
+  },
+  {
+    app: 'APPX',
+    host: 'GBWASA01',
+    env: 'PROD',
+    os: 'AIX',
+    was_version: '8.5.5',
+    status: 'running',
+  },
+  {
+    app: 'KISITLI',
+    host: 'GBWASP01',
+    env: 'TEST',
+    os: 'LINUX',
+    was_version: '9.0.5',
+    status: 'running',
+  },
+  {
+    app: 'NOAPP',
+    host: 'GBWASP03',
+    env: 'PROD',
+    os: 'LINUX',
+    was_version: '9.0.5',
+    status: 'stopped',
+  },
   ...Array.from({ length: 11 }, (_, i) => ({
     app: 'BUYUK',
     host: `GBBUY${String(i + 1).padStart(2, '0')}`,
@@ -66,8 +101,18 @@ function reset() {
   S.restricted = new Set(['KISITLI']);
   S.nextJobId = 5000;
   S.templates = [
-    { id: 101, name: 'was-discover', playbook: 'bmw_portal/opsx_was/opsx_was_discover.yml', ask_variables: true },
-    { id: 102, name: 'was-operation', playbook: 'bmw_portal/opsx_was/opsx_was_operation.yml', ask_variables: true },
+    {
+      id: 101,
+      name: 'was-discover',
+      playbook: 'bmw_portal/opsx_was/opsx_was_discover.yml',
+      ask_variables: true,
+    },
+    {
+      id: 102,
+      name: 'was-operation',
+      playbook: 'bmw_portal/opsx_was/opsx_was_operation.yml',
+      ask_variables: true,
+    },
   ];
   S.registry = {
     opsx_was_discover: {
@@ -94,10 +139,12 @@ const jobKey = (sid, jid) => `${sid}:${jid}`;
 
 // Kilit tablosunun BEKLENEN anlami. CAS kosulu SQL metninden okunur: kosul silinirse
 // (mutasyon) bu sahte DB de kosulsuz yazar ve W6 kirmiziya doner.
-const CAS_GUARD = /AND \(held IS NULL OR held = 0 OR locked_until IS NULL OR locked_until < GETUTCDATE\(\)\)/;
+const CAS_GUARD =
+  /AND \(held IS NULL OR held = 0 OR locked_until IS NULL OR locked_until < GETUTCDATE\(\)\)/;
 // last_op_finished_at yalniz SQL metninde ileri-gitme CASE'i varsa yazilir (mutasyon: CASE
 // silinirse zaman hic kaydedilmez ve bayat kesif bekcisi kirmiziya doner).
-const LAST_OP_CASE = /last_op_finished_at = CASE WHEN \$3 IS NOT NULL AND \(last_op_finished_at IS NULL OR last_op_finished_at < \$3\) THEN \$3 ELSE last_op_finished_at END/;
+const LAST_OP_CASE =
+  /last_op_finished_at = CASE WHEN \$3 IS NOT NULL AND \(last_op_finished_at IS NULL OR last_op_finished_at < \$3\) THEN \$3 ELSE last_op_finished_at END/;
 function sonIslemYaz(row, s, fin) {
   if (LAST_OP_CASE.test(s) && fin && (!row.last_op_finished_at || row.last_op_finished_at < fin)) {
     row.last_op_finished_at = fin;
@@ -120,27 +167,56 @@ db.query = async (sql, params = []) => {
       };
     }
     return {
-      rows: [...S.restricted].map((k) => ({ resource_key: k, username: 'yetkili', group_dn: null })),
+      rows: [...S.restricted].map((k) => ({
+        resource_key: k,
+        username: 'yetkili',
+        group_dn: null,
+      })),
     };
   }
   if (/logx_v2_restriction_owners/.test(s)) return { rows: [] };
-  if (/^SELECT TOP 1 username FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(s)) {
+  if (
+    /^SELECT TOP 1 username FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(
+      s,
+    )
+  ) {
     const h = S.history.find((x) => x.job_id === params[0] && x.awx_server_id === params[1]);
     return { rows: h ? [{ username: h.username }] : [] };
   }
-  if (/^SELECT TOP 1 params FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(s)) {
+  if (
+    /^SELECT TOP 1 params FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(
+      s,
+    )
+  ) {
     const h = S.history.find((x) => x.job_id === params[0] && x.awx_server_id === params[1]);
     return { rows: h ? [{ params: h.params }] : [] };
   }
   if (/^INSERT INTO ansible_job_history/.test(s)) {
     const [username, awx_server_id, template_id, template_name, job_id, status, p] = params;
-    S.history.push({ username, awx_server_id, template_id, template_name, job_id, status, params: p, finished_at: null });
+    S.history.push({
+      username,
+      awx_server_id,
+      template_id,
+      template_name,
+      job_id,
+      status,
+      params: p,
+      finished_at: null,
+    });
     return { rows: [], rowCount: 1 };
   }
-  if (/^UPDATE ansible_job_history SET status = \$3, finished_at = COALESCE\(finished_at, GETUTCDATE\(\)\)/.test(s)) {
+  if (
+    /^UPDATE ansible_job_history SET status = \$3, finished_at = COALESCE\(finished_at, GETUTCDATE\(\)\)/.test(
+      s,
+    )
+  ) {
     let n = 0;
     for (const h of S.history) {
-      if (h.job_id === params[0] && h.awx_server_id === params[1] && (h.finished_at == null || h.status !== params[2])) {
+      if (
+        h.job_id === params[0] &&
+        h.awx_server_id === params[1] &&
+        (h.finished_at == null || h.status !== params[2])
+      ) {
         h.finished_at = h.finished_at ?? Date.now();
         h.status = params[2];
         n++;
@@ -149,33 +225,62 @@ db.query = async (sql, params = []) => {
     return { rows: [], rowCount: n };
   }
   // opsx_was_ops (islem kaydi + sonuc denetimi isareti)
-  if (/^INSERT INTO opsx_was_ops \(awx_server_id, awx_job_id, request_id, username, params\) SELECT/.test(s)) {
+  if (
+    /^INSERT INTO opsx_was_ops \(awx_server_id, awx_job_id, request_id, username, params\) SELECT/.test(
+      s,
+    )
+  ) {
     const k = opsKey(params[0], params[1]);
     if (S.ops.has(k)) return { rows: [], rowCount: 0 };
-    S.ops.set(k, { awx_server_id: params[0], awx_job_id: params[1], request_id: params[2], username: params[3], params: params[4], audited_at: null });
+    S.ops.set(k, {
+      awx_server_id: params[0],
+      awx_job_id: params[1],
+      request_id: params[2],
+      username: params[3],
+      params: params[4],
+      audited_at: null,
+    });
     return { rows: [], rowCount: 1 };
   }
   if (/^INSERT INTO opsx_was_ops \(awx_server_id, awx_job_id, result,/.test(s)) {
     const k = opsKey(params[0], params[1]);
     if (S.ops.has(k)) return { rows: [], rowCount: 0 };
     S.ops.set(k, {
-      awx_server_id: params[0], awx_job_id: params[1], result: params[2], before_state: params[3], after_state: params[4],
-      awx_status: params[5], awx_finished: params[6], request_id: params[7], username: params[8], params: params[9],
+      awx_server_id: params[0],
+      awx_job_id: params[1],
+      result: params[2],
+      before_state: params[3],
+      after_state: params[4],
+      awx_status: params[5],
+      awx_finished: params[6],
+      request_id: params[7],
+      username: params[8],
+      params: params[9],
       audited_at: Date.now(),
     });
     return { rows: [], rowCount: 1 };
   }
   if (/^UPDATE opsx_was_ops SET result = \$3/.test(s)) {
     const row = S.ops.get(opsKey(params[0], params[1]));
-    if (!row || (/AND audited_at IS NULL/.test(s) && row.audited_at != null)) return { rows: [], rowCount: 0 };
-    Object.assign(row, { result: params[2], before_state: params[3], after_state: params[4], awx_status: params[5], awx_finished: params[6], audited_at: Date.now() });
+    if (!row || (/AND audited_at IS NULL/.test(s) && row.audited_at != null))
+      return { rows: [], rowCount: 0 };
+    Object.assign(row, {
+      result: params[2],
+      before_state: params[3],
+      after_state: params[4],
+      awx_status: params[5],
+      awx_finished: params[6],
+      audited_at: Date.now(),
+    });
     return { rows: [], rowCount: 1 };
   }
   if (/^SELECT TOP 1 username, params, audited_at FROM opsx_was_ops/.test(s)) {
     const row = S.ops.get(opsKey(params[0], params[1]));
     return { rows: row ? [{ ...row }] : [] };
   }
-  if (/^SELECT TOP 50 awx_server_id, awx_job_id FROM opsx_was_ops WHERE audited_at IS NULL/.test(s)) {
+  if (
+    /^SELECT TOP 50 awx_server_id, awx_job_id FROM opsx_was_ops WHERE audited_at IS NULL/.test(s)
+  ) {
     return { rows: [...S.ops.values()].filter((r) => r.audited_at == null) };
   }
   if (/^SELECT TOP 50 awx_server_id, awx_job_id FROM opsx_was_locks WHERE held = 1/.test(s)) {
@@ -205,7 +310,11 @@ db.query = async (sql, params = []) => {
     const row = S.locks.get(params[0]);
     return { rows: row ? [{ lock_key: params[0], ...row }] : [] };
   }
-  if (/^UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE\(\).* WHERE lock_key = \$1 AND lock_id = \$2 AND held = 1/.test(s)) {
+  if (
+    /^UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE\(\).* WHERE lock_key = \$1 AND lock_id = \$2 AND held = 1/.test(
+      s,
+    )
+  ) {
     const row = S.locks.get(params[0]);
     if (row && row.lock_id === params[1] && row.held) {
       row.held = 0;
@@ -255,7 +364,9 @@ inventoryDb.getPool = async () => {
         },
         query: async (sql) => {
           if (/SELECT DISTINCT TOP/.test(sql)) {
-            const q = String(inputs.q || '').replace(/%/g, '').toUpperCase();
+            const q = String(inputs.q || '')
+              .replace(/%/g, '')
+              .toUpperCase();
             const apps = [...new Set(INV.map((r) => r.app))].filter((a) => a.includes(q)).sort();
             return { recordset: apps.map((app) => ({ app })) };
           }
@@ -286,9 +397,18 @@ runner.launchJobOnServer = async (serverId, templateId, extraVars, limit, reques
 runner.getJobStatusOnServer = async (sid, jid) => {
   const j = S.jobs.get(jobKey(sid, jid));
   if (!j) throw Object.assign(new Error('AWX job yok'), { status: 404 });
-  return { jobId: jid, status: j.status, started: j.started, finished: j.finished, playbook: j.playbook, artifacts: j.artifacts || {} };
+  return {
+    jobId: jid,
+    status: j.status,
+    started: j.started,
+    finished: j.finished,
+    playbook: j.playbook,
+    artifacts: j.artifacts || {},
+  };
 };
-runner.getJobOutputOnServer = async () => ({ output: 'TASK [x] cmd: wsadmin -password Gizli123 bitti' });
+runner.getJobOutputOnServer = async () => ({
+  output: 'TASK [x] cmd: wsadmin -password Gizli123 bitti',
+});
 runner.getServers = () => [{ id: 1, url: 'https://awx.test' }];
 runner.listTemplatesForServer = async () => S.templates;
 auditMod.auditPortal = (req, action, opts = {}) => {
@@ -336,7 +456,9 @@ function istek(method, url, user, body) {
         method,
         headers: {
           ...(user ? { 'x-test-user': JSON.stringify(user) } : {}),
-          ...(data ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } : {}),
+          ...(data
+            ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) }
+            : {}),
         },
       },
       (res) => {
@@ -375,7 +497,14 @@ function kesifSonucu(mut) {
             node: 'NODE01',
             kimlik: 'var',
             servers: [
-              { server: 'APPX', cluster: 'CL_APPX', state: 'RUNNING', pids: 1, ss: 'UP', reason: '' },
+              {
+                server: 'APPX',
+                cluster: 'CL_APPX',
+                state: 'RUNNING',
+                pids: 1,
+                ss: 'UP',
+                reason: '',
+              },
               { server: 'GIZLIAPP', cluster: '', state: 'RUNNING', pids: 1, ss: 'UP', reason: '' },
             ],
           },
@@ -391,7 +520,16 @@ function kesifSonucu(mut) {
             cell: 'CELL02',
             node: 'NODE02',
             kimlik: 'var',
-            servers: [{ server: 'APPX', cluster: 'CL_APPX', state: 'RUNNING', pids: 1, ss: 'UP', reason: '' }],
+            servers: [
+              {
+                server: 'APPX',
+                cluster: 'CL_APPX',
+                state: 'RUNNING',
+                pids: 1,
+                ss: 'UP',
+                reason: '',
+              },
+            ],
           },
         ],
       },
@@ -402,8 +540,21 @@ function kesifSonucu(mut) {
 }
 
 // Kesfi GERCEK uctan baslatir, sonra AWX isini bitmis gosterir.
-async function kesifYap(user, { app = 'APPX', hosts, sonuc = kesifSonucu(), onceMs = 60_000, status = 'successful', playbook } = {}) {
-  const r = await istek('POST', '/api/opsx/was/discover', user, { app, ...(hosts ? { hosts } : {}) });
+async function kesifYap(
+  user,
+  {
+    app = 'APPX',
+    hosts,
+    sonuc = kesifSonucu(),
+    onceMs = 60_000,
+    status = 'successful',
+    playbook,
+  } = {},
+) {
+  const r = await istek('POST', '/api/opsx/was/discover', user, {
+    app,
+    ...(hosts ? { hosts } : {}),
+  });
   assert.equal(r.status, 200, `kesif baslatilamadi: ${r.raw}`);
   const j = S.jobs.get(jobKey(r.body.awxServerId, r.body.jobId));
   j.status = status;
@@ -494,22 +645,33 @@ test('W5 olculemeyen / coklu surec / kimliksiz / tutarsiz hedefte 409, is acilma
   ];
   for (const [ad, mut] of durumlar) {
     reset();
-    const k = await kesifYap(ALI, { sonuc: kesifSonucu((x) => mut(x.hosts[0].profiles[0].servers[0])) });
+    const k = await kesifYap(ALI, {
+      sonuc: kesifSonucu((x) => mut(x.hosts[0].profiles[0].servers[0])),
+    });
     for (const operation of ['restart', 'stop', 'start']) {
-      const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation, ackWarnings: true }));
+      const r = await istek(
+        'POST',
+        '/api/opsx/was/run',
+        ALI,
+        govde(k, { operation, ackWarnings: true }),
+      );
       assert.equal(r.status, 409, `${ad}/${operation}: ${r.status} ${r.raw}`);
     }
     assert.equal(islemLaunchlari().length, 0, `${ad}: is acildi`);
   }
   // Kimlik yok: olcum RUNNING olsa bile islem YAPILMAZ (K2-a).
   reset();
-  const k = await kesifYap(ALI, { sonuc: kesifSonucu((x) => (x.hosts[0].profiles[0].kimlik = 'yok')) });
+  const k = await kesifYap(ALI, {
+    sonuc: kesifSonucu((x) => (x.hosts[0].profiles[0].kimlik = 'yok')),
+  });
   const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { ackWarnings: true }));
   assert.equal(r.status, 409, r.raw);
   assert.match(r.body.message, /kimli/i);
   // Host olculemedi: altindaki JVM RUNNING bildirilse de 409.
   reset();
-  const k2 = await kesifYap(ALI, { sonuc: kesifSonucu((x) => (x.hosts[0].overall = 'olculemedi')) });
+  const k2 = await kesifYap(ALI, {
+    sonuc: kesifSonucu((x) => (x.hosts[0].overall = 'olculemedi')),
+  });
   const r2 = await istek('POST', '/api/opsx/was/run', ALI, govde(k2, { ackWarnings: true }));
   assert.equal(r2.status, 409, r2.raw);
   assert.equal(islemLaunchlari().length, 0);
@@ -526,7 +688,12 @@ test('W6 kilit: ayni uygulamanin baska hostunda is surerken 409; is bitince kili
 
   // Baska kullanici, AYNI uygulama, BASKA host
   const kVeli = await kesifYap(VELI);
-  r = await istek('POST', '/api/opsx/was/run', VELI, govde(kVeli, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(kVeli, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }),
+  );
   assert.equal(r.status, 409, r.raw);
   assert.equal(r.body.lock?.scope, 'app', 'uygulama kilidi raporlanmadi');
   assert.equal(islemLaunchlari().length, 1);
@@ -537,14 +704,28 @@ test('W6 kilit: ayni uygulamanin baska hostunda is surerken 409; is bitince kili
   const ilkIs = S.jobs.get(jobKey(ilk.body.awxServerId, ilk.body.jobId));
   ilkIs.status = 'successful';
   ilkIs.finished = new Date(Date.now() - 30_000).toISOString();
-  r = await istek('POST', '/api/opsx/was/run', VELI, govde(kVeli, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(kVeli, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }),
+  );
   assert.equal(r.status, 409, r.raw);
   assert.equal(r.body.code, 'kesif_eski', r.raw);
-  assert.equal(S.locks.get('A|APPX').last_op_finished_at, ilkIs.finished, 'son islem zamani kaydedilmedi');
+  assert.equal(
+    S.locks.get('A|APPX').last_op_finished_at,
+    ilkIs.finished,
+    'son islem zamani kaydedilmedi',
+  );
   assert.equal(S.locks.get('A|APPX').held, 0, 'reddedilen istek uygulama kilidini tutuyor');
   // ALI'nin isinden SONRA baslayan taze kesifle gecer.
   const kTaze = await kesifYap(VELI, { onceMs: 1000 });
-  r = await istek('POST', '/api/opsx/was/run', VELI, govde(kTaze, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(kTaze, { host: 'GBWASP02', cell: 'CELL02', node: 'NODE02' }),
+  );
   assert.equal(r.status, 200, r.raw);
   // Hicbir kilit satiri SILINMEDI.
   assert.ok(S.locks.has('A|APPX'));
@@ -575,7 +756,15 @@ test('W8 kisitli uygulama: User 403 (hosts/discover/run), Admin gecer', async ()
   assert.equal(r.status, 403, r.raw);
   r = await istek('POST', '/api/opsx/was/discover', ALI, { app: 'KISITLI' });
   assert.equal(r.status, 403, r.raw);
-  r = await istek('POST', '/api/opsx/was/run', ALI, govde({ discoverJobId: 1, discoverServerId: 1 }, { app: 'KISITLI', server: 'KISITLI', confirmText: 'KISITLI' }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(
+      { discoverJobId: 1, discoverServerId: 1 },
+      { app: 'KISITLI', server: 'KISITLI', confirmText: 'KISITLI' },
+    ),
+  );
   assert.equal(r.status, 403, r.raw);
   assert.equal(S.launches.length, 0);
 
@@ -593,14 +782,28 @@ test('W8 kisitli uygulama: User 403 (hosts/discover/run), Admin gecer', async ()
             cell: 'CELL01',
             node: 'NODE01',
             kimlik: 'var',
-            servers: [{ server: 'KISITLI', cluster: '', state: 'STOPPED', pids: 0, ss: 'ULASILAMIYOR', reason: '' }],
+            servers: [
+              {
+                server: 'KISITLI',
+                cluster: '',
+                state: 'STOPPED',
+                pids: 0,
+                ss: 'ULASILAMIYOR',
+                reason: '',
+              },
+            ],
           },
         ],
       },
     ],
   };
   const k = await kesifYap(ADMIN, { app: 'KISITLI', sonuc });
-  r = await istek('POST', '/api/opsx/was/run', ADMIN, govde(k, { app: 'KISITLI', server: 'KISITLI', confirmText: 'KISITLI', operation: 'start' }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ADMIN,
+    govde(k, { app: 'KISITLI', server: 'KISITLI', confirmText: 'KISITLI', operation: 'start' }),
+  );
   assert.equal(r.status, 200, r.raw);
 });
 
@@ -614,7 +817,12 @@ test('W8b kisit karari HATA alirsa REDDEDILIR (503)', async () => {
 
 test('W9 JVM adi uygulamayla birebir ayni olmali', async () => {
   const k = await kesifYap(ALI);
-  const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { server: 'GIZLIAPP', confirmText: 'GIZLIAPP' }));
+  const r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(k, { server: 'GIZLIAPP', confirmText: 'GIZLIAPP' }),
+  );
   assert.equal(r.status, 400, r.raw);
   assert.equal(islemLaunchlari().length, 0);
 });
@@ -636,10 +844,21 @@ test('W10 15 dakikadan eski ya da bitmemis kesif kabul edilmez', async () => {
 });
 
 test('W11 islem-durum kapisi: STOPPED -> yalniz start, RUNNING -> stop/restart', async () => {
-  const stopped = kesifSonucu((x) => Object.assign(x.hosts[0].profiles[0].servers[0], { state: 'STOPPED', pids: 0, ss: 'ULASILAMIYOR' }));
+  const stopped = kesifSonucu((x) =>
+    Object.assign(x.hosts[0].profiles[0].servers[0], {
+      state: 'STOPPED',
+      pids: 0,
+      ss: 'ULASILAMIYOR',
+    }),
+  );
   let k = await kesifYap(ALI, { sonuc: stopped });
   for (const operation of ['stop', 'restart']) {
-    const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation, ackWarnings: true }));
+    const r = await istek(
+      'POST',
+      '/api/opsx/was/run',
+      ALI,
+      govde(k, { operation, ackWarnings: true }),
+    );
     assert.equal(r.status, 409, `${operation}: ${r.raw}`);
   }
   let r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'start' }));
@@ -651,23 +870,51 @@ test('W11 islem-durum kapisi: STOPPED -> yalniz start, RUNNING -> stop/restart',
 });
 
 test('W12 ASKIDA ve SON_CALISAN uyarilari onaysiz gecmez', async () => {
-  const askida = kesifSonucu((x) => Object.assign(x.hosts[0].profiles[0].servers[0], { state: 'ASKIDA', pids: 1, ss: 'ULASILAMIYOR' }));
+  const askida = kesifSonucu((x) =>
+    Object.assign(x.hosts[0].profiles[0].servers[0], {
+      state: 'ASKIDA',
+      pids: 1,
+      ss: 'ULASILAMIYOR',
+    }),
+  );
   let k = await kesifYap(ALI, { sonuc: askida });
   let r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop' }));
   assert.equal(r.status, 409, r.raw);
-  assert.ok(r.body.warnings.some((w) => w.code === 'ASKIDA'), r.raw);
-  r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'start', ackWarnings: true }));
+  assert.ok(
+    r.body.warnings.some((w) => w.code === 'ASKIDA'),
+    r.raw,
+  );
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(k, { operation: 'start', ackWarnings: true }),
+  );
   assert.equal(r.status, 409, 'ASKIDA iken start izinli degil');
-  r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop', ackWarnings: true }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(k, { operation: 'stop', ackWarnings: true }),
+  );
   assert.equal(r.status, 200, r.raw);
 
   // Diger hosttaki ornek DURMUS: bu JVM son calisan -> onay sart.
   reset();
-  const son = kesifSonucu((x) => Object.assign(x.hosts[1].profiles[0].servers[0], { state: 'STOPPED', pids: 0, ss: 'ULASILAMIYOR' }));
+  const son = kesifSonucu((x) =>
+    Object.assign(x.hosts[1].profiles[0].servers[0], {
+      state: 'STOPPED',
+      pids: 0,
+      ss: 'ULASILAMIYOR',
+    }),
+  );
   k = await kesifYap(ALI, { sonuc: son });
   r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop' }));
   assert.equal(r.status, 409, r.raw);
-  assert.ok(r.body.warnings.some((w) => w.code === 'SON_CALISAN'), r.raw);
+  assert.ok(
+    r.body.warnings.some((w) => w.code === 'SON_CALISAN'),
+    r.raw,
+  );
   // Ikisi de calisirken uyari YOK, onaysiz gecer.
   reset();
   k = await kesifYap(ALI);
@@ -677,7 +924,12 @@ test('W12 ASKIDA ve SON_CALISAN uyarilari onaysiz gecmez', async () => {
 
 test('W13 basarili akis: extra_vars sozlesmesi, gecmis, baslatma denetimi, kilit', async () => {
   const k = await kesifYap(ALI);
-  const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop', host: 'gbwasp01' }));
+  const r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(k, { operation: 'stop', host: 'gbwasp01' }),
+  );
   assert.equal(r.status, 200, r.raw);
   const l = islemLaunchlari()[0];
   assert.equal(l.templateId, 102);
@@ -711,7 +963,10 @@ test('W13 basarili akis: extra_vars sozlesmesi, gecmis, baslatma denetimi, kilit
   assert.equal(S.locks.get('A|APPX').awx_job_id, r.body.jobId, 'kilit ise baglanmadi');
   assert.equal(r.body.historyWritten, true);
   const op = S.ops.get(opsKey(r.body.awxServerId, r.body.jobId));
-  assert.ok(op && op.username === 'ali' && op.audited_at == null, 'islem kaydi (opsx_was_ops) yazilmadi');
+  assert.ok(
+    op && op.username === 'ali' && op.audited_at == null,
+    'islem kaydi (opsx_was_ops) yazilmadi',
+  );
   assert.equal(JSON.parse(op.params).request_id, r.body.requestId);
 });
 
@@ -739,9 +994,19 @@ test('W14 islem durum ucu: sahiplik fail-closed, Admin gorur, terminalde kilit b
   job.status = 'successful';
   job.artifacts = {
     opsx_was_op_result: {
-      host: 'GBWASP01', profile: 'AppSrv01', cell: 'CELL01', node: 'NODE01', server: 'APPX', op: 'restart',
-      before: 'RUNNING', after: 'RUNNING', result: 'OK',
-      steps: [{ step: 'stop', status: 'OK', msg: 'durdu' }, { step: 'start', status: 'OK', msg: 'basladi' }],
+      host: 'GBWASP01',
+      profile: 'AppSrv01',
+      cell: 'CELL01',
+      node: 'NODE01',
+      server: 'APPX',
+      op: 'restart',
+      before: 'RUNNING',
+      after: 'RUNNING',
+      result: 'OK',
+      steps: [
+        { step: 'stop', status: 'OK', msg: 'durdu' },
+        { step: 'start', status: 'OK', msg: 'basladi' },
+      ],
       line: 'RESULT\trestart\tOK\tRUNNING\tRUNNING\ttamam',
     },
   };
@@ -779,7 +1044,11 @@ test('W15 sonuc yoksa ya da tanimsizsa OLCULEMEDI (gercek durum bilinmiyor)', as
   const job2 = S.jobs.get(jobKey(run2.body.awxServerId, run2.body.jobId));
   job2.status = 'failed';
   job2.artifacts = { opsx_was_op_result: { result: 'BELKI', before: 'RUNNING', after: 'DURDU' } };
-  r = await istek('GET', `/api/opsx/was/run/${run2.body.awxServerId}/${run2.body.jobId}/status`, ALI);
+  r = await istek(
+    'GET',
+    `/api/opsx/was/run/${run2.body.awxServerId}/${run2.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(r.body.result.result, 'OLCULEMEDI');
   assert.equal(r.body.result.after, 'OLCULEMEDI', 'bilinmeyen son durum STOPPED/bos sayildi');
 });
@@ -787,7 +1056,12 @@ test('W15 sonuc yoksa ya da tanimsizsa OLCULEMEDI (gercek durum bilinmiyor)', as
 test('W16 kesif kurallari: en cok 10 host, AIX/NOAPP yok, envanter yoksa 503, limit yok', async () => {
   let r = await istek('POST', '/api/opsx/was/discover', ALI, { app: 'BUYUK' });
   assert.equal(r.status, 400, r.raw);
-  r = await istek('POST', '/api/opsx/was/discover', ALI, { app: 'BUYUK', hosts: INV.filter((x) => x.app === 'BUYUK').slice(0, 10).map((x) => x.host) });
+  r = await istek('POST', '/api/opsx/was/discover', ALI, {
+    app: 'BUYUK',
+    hosts: INV.filter((x) => x.app === 'BUYUK')
+      .slice(0, 10)
+      .map((x) => x.host),
+  });
   assert.equal(r.status, 200, r.raw);
   r = await istek('POST', '/api/opsx/was/discover', ALI, { app: 'APPX', hosts: ['GBWASA01'] });
   assert.equal(r.status, 400, r.raw);
@@ -796,7 +1070,11 @@ test('W16 kesif kurallari: en cok 10 host, AIX/NOAPP yok, envanter yoksa 503, li
   r = await istek('POST', '/api/opsx/was/discover', ALI, { app: 'APPX' });
   assert.equal(r.status, 200, r.raw);
   const l = S.launches.at(-1);
-  assert.equal(l.extraVars.target_hosts, 'GBWASP01,GBWASP02', 'AIX host kesfe girdi ya da bicim bozuk');
+  assert.equal(
+    l.extraVars.target_hosts,
+    'GBWASP01,GBWASP02',
+    'AIX host kesfe girdi ya da bicim bozuk',
+  );
   // Suzgec = uygulama (JVM) adi: cok JVM'li hostta hedef JVM butce dolmadan olculur.
   assert.equal(l.extraVars.was_server_filter, 'APPX', 'kesif was_server_filter gondermiyor');
   assert.deepEqual(Object.keys(l.extraVars).sort(), ['target_hosts', 'was_server_filter']);
@@ -830,7 +1108,11 @@ test('W18 sunucu listesi: env normalize, AIX gorunur ama secilemez', async () =>
 test('W19 kesif durumu: erisilemeyen host dusmez, baska uygulamanin JVM adi sizmaz', async () => {
   const sonuc = kesifSonucu((x) => x.hosts.splice(1, 1));
   const k = await kesifYap(ALI, { sonuc });
-  const r = await istek('GET', `/api/opsx/was/discover/${k.discoverServerId}/${k.discoverJobId}/status`, ALI);
+  const r = await istek(
+    'GET',
+    `/api/opsx/was/discover/${k.discoverServerId}/${k.discoverJobId}/status`,
+    ALI,
+  );
   assert.equal(r.status, 200, r.raw);
   const h2 = r.body.hosts.find((h) => h.host === 'GBWASP02');
   assert.ok(h2, 'sonucta olmayan host listeden dustu');
@@ -838,7 +1120,11 @@ test('W19 kesif durumu: erisilemeyen host dusmez, baska uygulamanin JVM adi sizm
   assert.ok(r.body.targets.every((t) => t.server === 'APPX'));
   assert.doesNotMatch(r.raw, /GIZLIAPP/, 'baska uygulamanin JVM adi istemciye gitti');
   // baska kullanici bu kesfi okuyamaz
-  const r2 = await istek('GET', `/api/opsx/was/discover/${k.discoverServerId}/${k.discoverJobId}/status`, VELI);
+  const r2 = await istek(
+    'GET',
+    `/api/opsx/was/discover/${k.discoverServerId}/${k.discoverJobId}/status`,
+    VELI,
+  );
   assert.equal(r2.status, 403, r2.raw);
 });
 
@@ -877,16 +1163,35 @@ test('W21 launch hatasinda kilit geri birakilir', async () => {
 // ve sahte bir opsx_was_result denetimi yazardi; baska modulun (JBoss) isi de okunurdu.
 test('W22 durum uclari is TIPINI ayirir (kesif / islem / baska modul), Admin dahil', async () => {
   const k = await kesifYap(ALI);
-  let r = await istek('GET', `/api/opsx/was/run/${k.discoverServerId}/${k.discoverJobId}/status`, ALI);
+  let r = await istek(
+    'GET',
+    `/api/opsx/was/run/${k.discoverServerId}/${k.discoverJobId}/status`,
+    ALI,
+  );
   assert.equal(r.status, 404, `kesif isi islem ucundan okundu: ${r.raw}`);
-  assert.equal(S.audits.filter((a) => a.action === 'opsx_was_result').length, 0, 'kesif isine sonuc denetimi yazildi');
-  assert.ok(S.history.every((h) => h.finished_at == null), 'kesif kaydi islem sonucu gibi kapatildi');
-  r = await istek('GET', `/api/opsx/was/run/${k.discoverServerId}/${k.discoverJobId}/status`, ADMIN);
+  assert.equal(
+    S.audits.filter((a) => a.action === 'opsx_was_result').length,
+    0,
+    'kesif isine sonuc denetimi yazildi',
+  );
+  assert.ok(
+    S.history.every((h) => h.finished_at == null),
+    'kesif kaydi islem sonucu gibi kapatildi',
+  );
+  r = await istek(
+    'GET',
+    `/api/opsx/was/run/${k.discoverServerId}/${k.discoverJobId}/status`,
+    ADMIN,
+  );
   assert.equal(r.status, 404, `Admin tip kontrolunden muaf olmamali: ${r.raw}`);
 
   const ilk = await istek('POST', '/api/opsx/was/run', ALI, govde(k));
   assert.equal(ilk.status, 200, ilk.raw);
-  r = await istek('GET', `/api/opsx/was/discover/${ilk.body.awxServerId}/${ilk.body.jobId}/status`, ALI);
+  r = await istek(
+    'GET',
+    `/api/opsx/was/discover/${ilk.body.awxServerId}/${ilk.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(r.status, 404, `islem isi kesif ucundan okundu: ${r.raw}`);
 
   S.history.push({
@@ -919,8 +1224,18 @@ function bitir(run, artifacts, { status = 'successful', once = 30_000 } = {}) {
 }
 const stopOk = (run, host, cell, node, extra = {}) => ({
   opsx_was_op_result: {
-    host, profile: 'AppSrv01', cell, node, server: 'APPX', op: 'stop', request_id: run.body.requestId,
-    before: 'RUNNING', after: 'STOPPED', result: 'OK', steps: [], line: 'RESULT\tstop\tOK\tRUNNING\tSTOPPED\tok',
+    host,
+    profile: 'AppSrv01',
+    cell,
+    node,
+    server: 'APPX',
+    op: 'stop',
+    request_id: run.body.requestId,
+    before: 'RUNNING',
+    after: 'STOPPED',
+    result: 'OK',
+    steps: [],
+    line: 'RESULT\tstop\tOK\tRUNNING\tSTOPPED\tok',
     ...extra,
   },
 });
@@ -938,10 +1253,19 @@ test('W23 durum yoklamasi is BITMEDEN kilidi birakmaz (LB cifti korumasi)', asyn
     const r = await istek('GET', url, ALI);
     assert.equal(r.body.status, st, r.raw);
     assert.equal(S.locks.get('A|APPX').held, 1, `${st} yoklamasinda uygulama kilidi birakildi`);
-    assert.equal(S.locks.get('T|GBWASP01|CELL01|NODE01|APPX').held, 1, `${st} yoklamasinda hedef kilidi birakildi`);
+    assert.equal(
+      S.locks.get('T|GBWASP01|CELL01|NODE01|APPX').held,
+      1,
+      `${st} yoklamasinda hedef kilidi birakildi`,
+    );
   }
   assert.equal(sonucDenetimleri().length, 0, 'bitmemis ise sonuc denetimi yazildi');
-  const iki = await istek('POST', '/api/opsx/was/run', VELI, govde(kV, { operation: 'stop', ...DIGER }));
+  const iki = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(kV, { operation: 'stop', ...DIGER }),
+  );
   assert.equal(iki.status, 409, iki.raw);
   assert.equal(iki.body.lock?.scope, 'app', iki.raw);
 });
@@ -952,10 +1276,18 @@ test('W24 durum uclari: uygulama sonradan kisitlanirsa sahibi de okuyamaz, Admin
   assert.equal(run.status, 200, run.raw);
   S.restricted.add('APPX');
   const url = `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`;
-  assert.equal((await istek('GET', url, ALI)).status, 403, 'kisitli uygulamanin islem sonucu sahibine gorundu');
+  assert.equal(
+    (await istek('GET', url, ALI)).status,
+    403,
+    'kisitli uygulamanin islem sonucu sahibine gorundu',
+  );
   assert.equal((await istek('GET', url, ADMIN)).status, 200, 'Admin kisittan muaf olmali');
   const dUrl = `/api/opsx/was/discover/${k.discoverServerId}/${k.discoverJobId}/status`;
-  assert.equal((await istek('GET', dUrl, ALI)).status, 403, 'kisitli uygulamanin kesfi sahibine gorundu');
+  assert.equal(
+    (await istek('GET', dUrl, ALI)).status,
+    403,
+    'kisitli uygulamanin kesfi sahibine gorundu',
+  );
 });
 
 test('W25 kesif baglama: baska uygulamanin kesfi 400, taranmamis host 409, islem isi kesif diye 400', async () => {
@@ -964,10 +1296,26 @@ test('W25 kesif baglama: baska uygulamanin kesfi 400, taranmamis host 409, islem
   S.jobs
     .get(jobKey(kAppx.discoverServerId, kAppx.discoverJobId))
     .artifacts.opsx_was_discover_result.hosts[0].profiles[0].servers.push({
-      server: 'KISITLI', cluster: '', state: 'RUNNING', pids: 1, ss: 'UP', reason: '',
+      server: 'KISITLI',
+      cluster: '',
+      state: 'RUNNING',
+      pids: 1,
+      ss: 'UP',
+      reason: '',
     });
   S.restricted.delete('KISITLI');
-  let r = await istek('POST', '/api/opsx/was/run', ALI, govde(kAppx, { app: 'KISITLI', server: 'KISITLI', confirmText: 'KISITLI', operation: 'stop', ackWarnings: true }));
+  let r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(kAppx, {
+      app: 'KISITLI',
+      server: 'KISITLI',
+      confirmText: 'KISITLI',
+      operation: 'stop',
+      ackWarnings: true,
+    }),
+  );
   assert.equal(r.status, 400, `baska uygulamanin kesfi kabul edildi: ${r.raw}`);
   assert.match(r.body.message, /başka bir uygulama/);
   // (b) kesif yalniz GBWASP02'yi taradi; artifact 01'i de icerse bile 01 icin kullanilamaz.
@@ -989,7 +1337,15 @@ test('W25 kesif baglama: baska uygulamanin kesfi 400, taranmamis host 409, islem
     playbook: undefined,
     artifacts: { opsx_was_discover_result: kesifSonucu() },
   });
-  r = await istek('POST', '/api/opsx/was/run', ALI, govde({ discoverJobId: op.body.jobId, discoverServerId: op.body.awxServerId }, { operation: 'stop', ...DIGER }));
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    ALI,
+    govde(
+      { discoverJobId: op.body.jobId, discoverServerId: op.body.awxServerId },
+      { operation: 'stop', ...DIGER },
+    ),
+  );
   assert.equal(r.status, 400, `islem isi kesif diye kabul edildi: ${r.raw}`);
   assert.match(r.body.message, /keşfi değil/);
 });
@@ -1000,12 +1356,25 @@ test('W26 LB cifti: ilk islem bittikten sonra ESKI kesifle ikinci host 409 kesif
   const ilk = await istek('POST', '/api/opsx/was/run', ALI, govde(kAli, { operation: 'stop' }));
   assert.equal(ilk.status, 200, ilk.raw);
   const job = bitir(ilk, stopOk(ilk, 'GBWASP01', 'CELL01', 'NODE01'));
-  const st = await istek('GET', `/api/opsx/was/run/${ilk.body.awxServerId}/${ilk.body.jobId}/status`, ALI);
+  const st = await istek(
+    'GET',
+    `/api/opsx/was/run/${ilk.body.awxServerId}/${ilk.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(st.body.result.after, 'STOPPED', st.raw);
   assert.equal(S.locks.get('A|APPX').held, 0);
-  assert.equal(S.locks.get('A|APPX').last_op_finished_at, job.finished, 'son islem zamani kilitle birlikte yazilmadi');
+  assert.equal(
+    S.locks.get('A|APPX').last_op_finished_at,
+    job.finished,
+    'son islem zamani kilitle birlikte yazilmadi',
+  );
   // VELI'nin kesfi ALI'nin isinden ONCE: 01'i "calisiyor" gosterir -> SON_CALISAN sorulmazdi.
-  let r = await istek('POST', '/api/opsx/was/run', VELI, govde(kVeli, { operation: 'stop', ...DIGER }));
+  let r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(kVeli, { operation: 'stop', ...DIGER }),
+  );
   assert.equal(r.status, 409, `bayat kesifle ikinci host durduruldu: ${r.raw}`);
   assert.equal(r.body.code, 'kesif_eski');
   // Ayni kullanici, ayni eski kesif (ikinci sekme).
@@ -1016,17 +1385,31 @@ test('W26 LB cifti: ilk islem bittikten sonra ESKI kesifle ikinci host 409 kesif
   // Taze kesif 01'i DURMUS olcer -> 02 son calisan: onaysiz 409 uyari_onayi, onayla 200.
   const taze = await kesifYap(VELI, {
     onceMs: 1000,
-    sonuc: kesifSonucu((x) => Object.assign(x.hosts[0].profiles[0].servers[0], { state: 'STOPPED', pids: 0, ss: 'ULASILAMIYOR' })),
+    sonuc: kesifSonucu((x) =>
+      Object.assign(x.hosts[0].profiles[0].servers[0], {
+        state: 'STOPPED',
+        pids: 0,
+        ss: 'ULASILAMIYOR',
+      }),
+    ),
   });
   r = await istek('POST', '/api/opsx/was/run', VELI, govde(taze, { operation: 'stop', ...DIGER }));
   assert.equal(r.status, 409, r.raw);
   assert.equal(r.body.code, 'uyari_onayi');
-  assert.ok(r.body.warnings.some((w) => w.code === 'SON_CALISAN'), r.raw);
-  r = await istek('POST', '/api/opsx/was/run', VELI, govde(taze, { operation: 'stop', ackWarnings: true, ...DIGER }));
+  assert.ok(
+    r.body.warnings.some((w) => w.code === 'SON_CALISAN'),
+    r.raw,
+  );
+  r = await istek(
+    'POST',
+    '/api/opsx/was/run',
+    VELI,
+    govde(taze, { operation: 'stop', ackWarnings: true, ...DIGER }),
+  );
   assert.equal(r.status, 200, r.raw);
 });
 
-test("W27 sonuc denetimi genel ucun gecmisi sonlandirmasindan BAGIMSIZ ve TEK sefer", async () => {
+test('W27 sonuc denetimi genel ucun gecmisi sonlandirmasindan BAGIMSIZ ve TEK sefer', async () => {
   const k = await kesifYap(ALI);
   const run = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop' }));
   bitir(run, stopOk(run, 'GBWASP01', 'CELL01', 'NODE01'));
@@ -1036,12 +1419,19 @@ test("W27 sonuc denetimi genel ucun gecmisi sonlandirmasindan BAGIMSIZ ve TEK se
   const url = `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`;
   let r = await istek('GET', url, ALI);
   assert.equal(r.status, 200, r.raw);
-  assert.equal(sonucDenetimleri().length, 1, 'genel uc gecmisi sonlandirinca sonuc denetimi HIC yazilmadi');
+  assert.equal(
+    sonucDenetimleri().length,
+    1,
+    'genel uc gecmisi sonlandirinca sonuc denetimi HIC yazilmadi',
+  );
   assert.equal(sonucDenetimleri()[0].username, 'ali');
   r = await istek('GET', url, ADMIN);
   assert.equal(r.status, 200);
   assert.equal(sonucDenetimleri().length, 1, 'sonuc denetimi tekrarlandi');
-  assert.ok(S.ops.get(opsKey(run.body.awxServerId, run.body.jobId)).audited_at, 'islem kaydi isaretlenmedi');
+  assert.ok(
+    S.ops.get(opsKey(run.body.awxServerId, run.body.jobId)).audited_at,
+    'islem kaydi isaretlenmedi',
+  );
 });
 
 test('W28 uzlastirici: sekme kapaliyken sonuc denetimi yazilir, kilit bitis zamaniyla birakilir', async () => {
@@ -1063,7 +1453,11 @@ test('W28 uzlastirici: sekme kapaliyken sonuc denetimi yazilir, kilit bitis zama
   assert.equal(S.locks.get('A|APPX').held, 0, 'uzlastirici kilidi birakmadi');
   assert.equal(S.locks.get('A|APPX').last_op_finished_at, job.finished);
   // Kullanici sonra bakarsa sonucu gorur; denetim tekrarlanmaz.
-  const r = await istek('GET', `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`, ALI);
+  const r = await istek(
+    'GET',
+    `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(r.body.result.result, 'OK', r.raw);
   await reconcileTick();
   assert.equal(sonucDenetimleri().length, 1, 'sonuc denetimi tekrarlandi');
@@ -1076,7 +1470,10 @@ test('W29 gecmis yazimi basarisiz: sahip islem kaydindan bulunur; ikisi de yazil
   S.failDb = null;
   assert.equal(run.status, 200, run.raw);
   assert.equal(run.body.historyWritten, true, 'islem kaydi yazildigi halde historyWritten false');
-  assert.ok(JSON.parse(S.audits.find((x) => x.action === 'opsx_was_operation').detail).historyMissing, 'denetimde historyMissing yok');
+  assert.ok(
+    JSON.parse(S.audits.find((x) => x.action === 'opsx_was_operation').detail).historyMissing,
+    'denetimde historyMissing yok',
+  );
   bitir(run, stopOk(run, 'GBWASP01', 'CELL01', 'NODE01'));
   const url = `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`;
   let r = await istek('GET', url, ALI);
@@ -1102,7 +1499,11 @@ test('W30 yayinlanan sonuc baska istege aitse OLCULEMEDI (basarili sayilmaz)', a
   const k = await kesifYap(ALI);
   const run = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop' }));
   bitir(run, stopOk(run, 'GBWASP01', 'CELL01', 'NODE01', { request_id: 'baska-istek' }));
-  const r = await istek('GET', `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`, ALI);
+  const r = await istek(
+    'GET',
+    `/api/opsx/was/run/${run.body.awxServerId}/${run.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(r.body.result.result, 'OLCULEMEDI', r.raw);
   assert.equal(r.body.result.after, '', 'baska istegin sonrasi gosterildi');
   assert.match(r.body.message, /bu isteğe ait değil/);
@@ -1112,16 +1513,35 @@ test('W30 yayinlanan sonuc baska istege aitse OLCULEMEDI (basarili sayilmaz)', a
   const k2 = await kesifYap(ALI);
   const run2 = await istek('POST', '/api/opsx/was/run', ALI, govde(k2, { operation: 'stop' }));
   bitir(run2, stopOk(run2, 'GBWASP02', 'CELL01', 'NODE01'));
-  const r2 = await istek('GET', `/api/opsx/was/run/${run2.body.awxServerId}/${run2.body.jobId}/status`, ALI);
+  const r2 = await istek(
+    'GET',
+    `/api/opsx/was/run/${run2.body.awxServerId}/${run2.body.jobId}/status`,
+    ALI,
+  );
   assert.equal(r2.body.result.result, 'OLCULEMEDI', r2.raw);
 });
 
 test('W31 uyari onayi YALNIZ boolean true', async () => {
-  const askida = kesifSonucu((x) => Object.assign(x.hosts[0].profiles[0].servers[0], { state: 'ASKIDA', pids: 1, ss: 'ULASILAMIYOR' }));
+  const askida = kesifSonucu((x) =>
+    Object.assign(x.hosts[0].profiles[0].servers[0], {
+      state: 'ASKIDA',
+      pids: 1,
+      ss: 'ULASILAMIYOR',
+    }),
+  );
   const k = await kesifYap(ALI, { sonuc: askida });
   for (const ackWarnings of ['true', 1, 'evet']) {
-    const r = await istek('POST', '/api/opsx/was/run', ALI, govde(k, { operation: 'stop', ackWarnings }));
-    assert.equal(r.status, 409, `ackWarnings=${JSON.stringify(ackWarnings)} onay sayildi: ${r.raw}`);
+    const r = await istek(
+      'POST',
+      '/api/opsx/was/run',
+      ALI,
+      govde(k, { operation: 'stop', ackWarnings }),
+    );
+    assert.equal(
+      r.status,
+      409,
+      `ackWarnings=${JSON.stringify(ackWarnings)} onay sayildi: ${r.raw}`,
+    );
   }
   assert.equal(islemLaunchlari().length, 0);
 });
@@ -1154,16 +1574,30 @@ test('WS2 registry anahtarlari, seed satirlari ve paths ayni sozlesmeyi soyluyor
     const i = setup.indexOf(`key_name: '${key}'`);
     assert.ok(i > 0, `${key} seed satiri yok`);
     const blok = setup.slice(i, setup.indexOf('}', i));
-    assert.match(blok, new RegExp(`playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/${file.replace('.', '\\.')}'`));
+    assert.match(
+      blok,
+      new RegExp(
+        `playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/${file.replace('.', '\\.')}'`,
+      ),
+    );
     assert.match(blok, new RegExp(`env_var_name: '${env}'`));
   }
   assert.match(setup, /name: 'opsx_was_locks'/);
-  assert.match(setup, /CREATE TABLE opsx_was_locks \( .*lock_key NVARCHAR\(450\) NOT NULL.*UNIQUE\(lock_key\) \)/);
+  assert.match(
+    setup,
+    /CREATE TABLE opsx_was_locks \( .*lock_key NVARCHAR\(450\) NOT NULL.*UNIQUE\(lock_key\) \)/,
+  );
   // Bayat kesif kurali (W26) ve sonuc denetimi isareti / uzlastirici (W27-W29) semasi.
   assert.match(setup, /CREATE TABLE opsx_was_locks \( .*last_op_finished_at NVARCHAR\(40\) NULL/);
-  assert.match(setup, /table: 'opsx_was_locks', col: 'last_op_finished_at', sql: `ALTER TABLE opsx_was_locks ADD last_op_finished_at NVARCHAR\(40\) NULL`/);
+  assert.match(
+    setup,
+    /table: 'opsx_was_locks', col: 'last_op_finished_at', sql: `ALTER TABLE opsx_was_locks ADD last_op_finished_at NVARCHAR\(40\) NULL`/,
+  );
   assert.match(setup, /name: 'opsx_was_ops'/);
-  assert.match(setup, /CREATE TABLE opsx_was_ops \( .*audited_at DATETIME2 NULL.*UNIQUE\(awx_server_id, awx_job_id\) \)/);
+  assert.match(
+    setup,
+    /CREATE TABLE opsx_was_ops \( .*audited_at DATETIME2 NULL.*UNIQUE\(awx_server_id, awx_job_id\) \)/,
+  );
   // opsx_legacy_operation artik WAS demiyor
   const j = setup.indexOf("key_name: 'opsx_legacy_operation'");
   assert.doesNotMatch(setup.slice(j, setup.indexOf('}', j)), /JBoss\/WAS/);

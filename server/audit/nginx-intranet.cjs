@@ -133,9 +133,7 @@ function coverageForEnv(expected, found, cap = 300) {
     // Kapsam YALNIZCA TAM kurulumlar uzerinden. Yarim kurulumu "kapsandi" saymak,
     // 404 donen bir uygulamayi yesil gostermek olurdu.
     coverage:
-      measured && expected.length
-        ? Math.round((full.length / expected.length) * 1000) / 10
-        : null,
+      measured && expected.length ? Math.round((full.length / expected.length) * 1000) / 10 : null,
   };
 }
 

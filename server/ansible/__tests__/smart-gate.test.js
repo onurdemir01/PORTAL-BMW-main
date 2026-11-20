@@ -9,7 +9,10 @@ const { isSmartRequired, matchSkip, parseSkipRules } = require('../smart-gate.cj
 const SA = (skipWhen) => ({ enabled: true, flowKey: 'F', skipWhen });
 
 test('kapali servis hicbir durumda onay istemez', () => {
-  assert.strictEqual(isSmartRequired({ enabled: false, skipWhen: '' }, { op_selection: 'create' }), false);
+  assert.strictEqual(
+    isSmartRequired({ enabled: false, skipWhen: '' }, { op_selection: 'create' }),
+    false,
+  );
   assert.strictEqual(isSmartRequired(undefined, {}), false);
 });
 

@@ -55,13 +55,7 @@ function getApiHeaders() {
 const { buildCombinedCa } = require('./ca.cjs');
 
 function buildHttpsAgent() {
-  const {
-    ca,
-    rootCount,
-    corporateCount,
-    corporateFileCount,
-    caPath,
-  } = buildCombinedCa();
+  const { ca, rootCount, corporateCount, corporateFileCount, caPath } = buildCombinedCa();
 
   console.log('[AI] TLS guven deposu:', {
     caPath,
@@ -110,27 +104,32 @@ function httpsPost(hostname, path, headers, body) {
           label: 'AI API',
           onAbort: () => req.destroy(),
         })
-        .then((data) => {
-          try {
-            const parsed = JSON.parse(data);
-            if (res.statusCode >= 400) {
-              const msg = parsed.error?.message || parsed.error?.code || data.slice(0, 200);
-              reject(Object.assign(new Error(`AI API ${res.statusCode}: ${msg}`), { status: res.statusCode }));
-            } else {
-              resolve(parsed);
+          .then((data) => {
+            try {
+              const parsed = JSON.parse(data);
+              if (res.statusCode >= 400) {
+                const msg = parsed.error?.message || parsed.error?.code || data.slice(0, 200);
+                reject(
+                  Object.assign(new Error(`AI API ${res.statusCode}: ${msg}`), {
+                    status: res.statusCode,
+                  }),
+                );
+              } else {
+                resolve(parsed);
+              }
+            } catch {
+              reject(new Error(`AI API yanıtı JSON değil: ${data.slice(0, 200)}`));
             }
-          } catch {
-            reject(new Error(`AI API yanıtı JSON değil: ${data.slice(0, 200)}`));
-          }
-        })
-        .catch(reject);
-      }
+          })
+          .catch(reject);
+      },
     );
     // Teshis: TLS/ag hatalarinda gercek sebep (code + cause zinciri) gorunur olsun —
     // "unable to get local issuer certificate" gibi hatalar hedef host ile loglanir
     req.on('error', (error) => {
       console.error('[AI] HTTPS baglanti hatasi:', {
-        hostname, path,
+        hostname,
+        path,
         message: error.message,
         code: error.code || null,
         cause: error.cause?.message || null,
@@ -186,14 +185,20 @@ setInterval(sweepRateMap, RATE_SWEEP_INTERVAL_MS).unref();
 
 function getFeatureLimits() {
   return Object.fromEntries(
-    Object.entries(FEATURE_LIMITS).map(([k, v]) => [k, { maxPerHour: v.max }])
+    Object.entries(FEATURE_LIMITS).map(([k, v]) => [k, { maxPerHour: v.max }]),
   );
 }
 
 module.exports = {
-  getProvider, isConfigured, activeModel, getApiHeaders,
-  buildHttpsAgent, httpsPost,
-  checkRateLimit, getFeatureLimits,
+  getProvider,
+  isConfigured,
+  activeModel,
+  getApiHeaders,
+  buildHttpsAgent,
+  httpsPost,
+  checkRateLimit,
+  getFeatureLimits,
   // test-only: gercek 60s'i beklemeden supurmeyi tetikler + Map'e dogrudan erisim
-  _sweepRateMap: sweepRateMap, _rateMap,
+  _sweepRateMap: sweepRateMap,
+  _rateMap,
 };

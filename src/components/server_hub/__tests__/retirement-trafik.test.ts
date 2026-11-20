@@ -4,12 +4,37 @@ import { describe, expect, test } from 'vitest';
 import { stopTrafikOzeti, stopOnayAcikMi } from '../retirementTrafik';
 import type { RtDiscovery, RtWeb } from '@/api/retirementApi';
 
-const W = (host: string, serverName: string, port = '443'): RtWeb => ({ host, serverName, product: 'IHS', port, confFile: '/c' });
-const hedef = { host: 'GBJBOT07', appName: 'GBSVCVOICEORDER-D', web: [W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '443'), W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '80')] };
+const W = (host: string, serverName: string, port = '443'): RtWeb => ({
+  host,
+  serverName,
+  product: 'IHS',
+  port,
+  confFile: '/c',
+});
+const hedef = {
+  host: 'GBJBOT07',
+  appName: 'GBSVCVOICEORDER-D',
+  web: [W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '443'), W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '80')],
+};
 const kesif = (trafik: RtWeb['trafik']): RtDiscovery => ({
-  ok: true, base: 'GBSVCVOICEORDER',
-  targets: [{ host: 'gbjbot07', appName: 'GBSVCVOICEORDER-D', site: 'Pendik', env: 'DEV', gen: 7, appPath: '', inventoryStatus: '', domain: '', tier: '', webHow: '', hub: null,
-    web: [{ ...W('GBJBOT07', 'GBSVCVOICEORDER-D.fw'), trafik }] }],
+  ok: true,
+  base: 'GBSVCVOICEORDER',
+  targets: [
+    {
+      host: 'gbjbot07',
+      appName: 'GBSVCVOICEORDER-D',
+      site: 'Pendik',
+      env: 'DEV',
+      gen: 7,
+      appPath: '',
+      inventoryStatus: '',
+      domain: '',
+      tier: '',
+      webHow: '',
+      hub: null,
+      web: [{ ...W('GBJBOT07', 'GBSVCVOICEORDER-D.fw'), trafik }],
+    },
+  ],
   summary: { total: 1, bySite: { Pendik: 1, Ankara: 0 }, byEnv: {}, webMatched: 1, prod: false },
 });
 
@@ -42,7 +67,7 @@ describe('STOP onayinda vhost trafigi', () => {
     expect(stopOnayAcikMi(v, 'suruyor', false, true)).toBe(false);
   });
 
-  test('RT5 olculemedi ya da tarama hatasi STOP\'u KILITLEMEZ (uyari ekranda); web yoksa kapi yok', () => {
+  test("RT5 olculemedi ya da tarama hatasi STOP'u KILITLEMEZ (uyari ekranda); web yoksa kapi yok", () => {
     expect(stopOnayAcikMi(stopTrafikOzeti(hedef, null), 'hata', false, false)).toBe(true);
     const websiz = stopTrafikOzeti({ ...hedef, web: [] }, null);
     expect(websiz.satirlar).toHaveLength(0);

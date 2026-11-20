@@ -20,8 +20,19 @@ test('OCP_OPERATIONS: poddelete acik ve etiketi kullanicinin istedigi metin', ()
 });
 
 test('playbook bmw_portal/opsx_openshift_pod_delete altinda ve PLAYBOOKS ile kayitli', () => {
-  assert.equal(PLAYBOOKS.opsxOpenshiftPodDelete, 'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml');
-  const abs = path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', PLAYBOOKS.opsxOpenshiftPodDelete);
+  assert.equal(
+    PLAYBOOKS.opsxOpenshiftPodDelete,
+    'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml',
+  );
+  const abs = path.join(
+    __dirname,
+    '..',
+    '..',
+    'ansible',
+    'playbooks',
+    'bmw_portal',
+    PLAYBOOKS.opsxOpenshiftPodDelete,
+  );
   assert.ok(fs.existsSync(abs), `playbook dosyasi yok: ${abs}`);
   const text = fs.readFileSync(abs, 'utf8');
   // Sozlesme: onay olmadan calismaz, sonuc opsx_pod_delete_result ile doner, --force ile siler
@@ -43,12 +54,25 @@ test('extractOpsxPodDeleteResult: top-level / data / ansible_stats.data sekiller
     overall_status: 'partial',
     results: [
       { cluster: 'ocp-a', namespace: 'ns1', pod: 'app-1', existence: 'Exist', ok: true },
-      { cluster: 'ocp-a', namespace: 'ns1', pod: 'app-2', existence: 'Not Exist', ok: false, error: 'bulunamadi' },
+      {
+        cluster: 'ocp-a',
+        namespace: 'ns1',
+        pod: 'app-2',
+        existence: 'Not Exist',
+        ok: false,
+        error: 'bulunamadi',
+      },
     ],
   };
   assert.deepEqual(extractOpsxPodDeleteResult({ opsx_pod_delete_result: SAMPLE }), SAMPLE);
-  assert.deepEqual(extractOpsxPodDeleteResult({ data: { opsx_pod_delete_result: SAMPLE } }), SAMPLE);
-  assert.deepEqual(extractOpsxPodDeleteResult({ ansible_stats: { data: { opsx_pod_delete_result: SAMPLE } } }), SAMPLE);
+  assert.deepEqual(
+    extractOpsxPodDeleteResult({ data: { opsx_pod_delete_result: SAMPLE } }),
+    SAMPLE,
+  );
+  assert.deepEqual(
+    extractOpsxPodDeleteResult({ ansible_stats: { data: { opsx_pod_delete_result: SAMPLE } } }),
+    SAMPLE,
+  );
   assert.equal(extractOpsxPodDeleteResult({}), null);
   assert.equal(extractOpsxPodDeleteResult({ opsx_dump_result: SAMPLE }), null);
 });
@@ -59,7 +83,7 @@ test('registry seed: opsx_openshift_pod_delete kaydi env_var ile tanimli', () =>
   assert.match(setup, /OPSX_OPENSHIFT_POD_DELETE_TEMPLATE_ID/);
 });
 
-test('/api/opsx/run kaynak kodu poddelete\'i restart-disi olarak reddeder (defence in depth)', () => {
+test("/api/opsx/run kaynak kodu poddelete'i restart-disi olarak reddeder (defence in depth)", () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
   assert.match(src, /ocOp\.key !== 'restart'/);
   // poddelete kendi ucundan gider ve consent zorunlu

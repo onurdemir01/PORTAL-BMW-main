@@ -64,13 +64,24 @@ function gercekSonTarihli(sayac = null) {
   const j = RUNNER_SRC.indexOf('\nfunction getServers()');
   assert.ok(i > 0 && j > i, 'kaynak cikarimi bozuldu — desen degismis');
   const st = sayac
-    ? (fn, ms) => { sayac.kurulan++; return setTimeout(fn, ms); }
+    ? (fn, ms) => {
+        sayac.kurulan++;
+        return setTimeout(fn, ms);
+      }
     : setTimeout;
   const ct = sayac
-    ? (t) => { if (t) { sayac.temizlenen++; } return clearTimeout(t); }
+    ? (t) => {
+        if (t) {
+          sayac.temizlenen++;
+        }
+        return clearTimeout(t);
+      }
     : clearTimeout;
-  return new Function('setTimeout', 'clearTimeout',
-    `${RUNNER_SRC.slice(i, j)}\nreturn sonTarihli;`)(st, ct);
+  return new Function(
+    'setTimeout',
+    'clearTimeout',
+    `${RUNNER_SRC.slice(i, j)}\nreturn sonTarihli;`,
+  )(st, ct);
 }
 
 test('SN1 son tarih gecince YEDEK doner ve BEKLEMEZ', async () => {
@@ -90,7 +101,11 @@ test('SN1 son tarih gecince YEDEK doner ve BEKLEMEZ', async () => {
 test('SN2 is ZAMANINDA biterse GERCEK sonuc doner (yedek kazanmaz)', async () => {
   const sonTarihli = gercekSonTarihli();
   const hizli = Promise.resolve({ ok: true, jobs: [1, 2, 3] });
-  const r = await sureSinirli(sonTarihli(hizli, 5000, () => ({ ok: false, error: 'olmamali' })), 5000, 'SN2');
+  const r = await sureSinirli(
+    sonTarihli(hizli, 5000, () => ({ ok: false, error: 'olmamali' })),
+    5000,
+    'SN2',
+  );
   assert.equal(r.ok, true);
   assert.deepEqual(r.jobs, [1, 2, 3]);
 });
@@ -98,7 +113,14 @@ test('SN2 is ZAMANINDA biterse GERCEK sonuc doner (yedek kazanmaz)', async () =>
 test('SN3 yedek TEMBEL: is zamaninda biterse yedek HIC uretilmez', async () => {
   const sonTarihli = gercekSonTarihli();
   let uretildi = 0;
-  await sureSinirli(sonTarihli(Promise.resolve('ok'), 5000, () => { uretildi++; return 'yedek'; }), 5000, 'SN3');
+  await sureSinirli(
+    sonTarihli(Promise.resolve('ok'), 5000, () => {
+      uretildi++;
+      return 'yedek';
+    }),
+    5000,
+    'SN3',
+  );
   assert.equal(uretildi, 0, 'yedek her cagride uretiliyor — yan etkili bir yedek zarar verirdi');
 });
 
@@ -112,7 +134,8 @@ test('SN4 KURULAN her zamanlayici TEMIZLENIR (sizinti yok)', async () => {
   );
   assert.equal(sayac.kurulan, 30, 'zamanlayici kurulmamis — son tarih yok');
   assert.equal(
-    sayac.temizlenen, 30,
+    sayac.temizlenen,
+    30,
     `${sayac.kurulan - sayac.temizlenen} zamanlayici asili kaldi; her biri 60 sn boyunca ` +
       'kapanisini (ve icindeki `server`/`yedek` nesnelerini) tutar',
   );
@@ -121,7 +144,12 @@ test('SN4 KURULAN her zamanlayici TEMIZLENIR (sizinti yok)', async () => {
 test('SN5 is REDDEDERSE red gecer (hata yutulmaz)', async () => {
   const sonTarihli = gercekSonTarihli();
   await assert.rejects(
-    () => sureSinirli(sonTarihli(Promise.reject(new Error('patladi')), 5000, () => 'yedek'), 5000, 'SN5'),
+    () =>
+      sureSinirli(
+        sonTarihli(Promise.reject(new Error('patladi')), 5000, () => 'yedek'),
+        5000,
+        'SN5',
+      ),
     /patladi/,
     'red sessizce yedege cevrildi — gercek hata kaybolurdu',
   );
@@ -129,8 +157,16 @@ test('SN5 is REDDEDERSE red gecer (hata yutulmaz)', async () => {
 
 test('SN6 recent-jobs HER sunucuyu son tarihe bagliyor', () => {
   const kod = kodOnly(RUNNER_SRC);
-  const d = dilim(kod, "app.get('/api/ansible/awx/recent-jobs'", 'res.json({ ok: true, servers: results });');
-  assert.match(d, /servers\.map\(\(server\) =>\s*\n?\s*sonTarihli\(/, 'sunucular son tarihe baglanmamis');
+  const d = dilim(
+    kod,
+    "app.get('/api/ansible/awx/recent-jobs'",
+    'res.json({ ok: true, servers: results });',
+  );
+  assert.match(
+    d,
+    /servers\.map\(\(server\) =>\s*\n?\s*sonTarihli\(/,
+    'sunucular son tarihe baglanmamis',
+  );
   assert.doesNotMatch(d, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'olu dal');
 });
 
@@ -158,7 +194,11 @@ test('SN8 son tarih MEVCUT idle timeoutlardan kucuk (yoksa hic ateslenmez)', () 
   const m = RUNNER_SRC.match(/const AWX_SUNUCU_SON_TARIH_MS = (\d+);/);
   const sonTarih = Number(m[1]);
   // `awxRequestToServer`in kendi (hareketsizlik) zaman asimi.
-  const istek = dilim(kodOnly(RUNNER_SRC), 'function awxRequestToServer(', 'const req = lib.request(');
+  const istek = dilim(
+    kodOnly(RUNNER_SRC),
+    'function awxRequestToServer(',
+    'const req = lib.request(',
+  );
   const t = istek.match(/timeout:\s*(\d+)/);
   assert.ok(t, 'awxRequestToServer timeout bulunamadi');
   assert.ok(
@@ -169,7 +209,11 @@ test('SN8 son tarih MEVCUT idle timeoutlardan kucuk (yoksa hic ateslenmez)', () 
 
 test('SN9 yedek sonuc ucun SOZLESMESINE uyar (ekran onu cizebilmeli)', () => {
   const kod = kodOnly(RUNNER_SRC);
-  const d = dilim(kod, 'sonTarihli(sunucununIsleri(server)', 'res.json({ ok: true, servers: results });');
+  const d = dilim(
+    kod,
+    'sonTarihli(sunucununIsleri(server)',
+    'res.json({ ok: true, servers: results });',
+  );
   for (const alan of ['serverId', 'serverName', 'ok', 'jobs', 'error']) {
     assert.match(d, new RegExp(`${alan}\\s*:`), `yedek sonucta ${alan} yok — ekran cizemez`);
   }

@@ -23,8 +23,11 @@ vi.mock('@/api/denetimApi', async (orijinal) => {
 const PROD = ['gbocpprod1', 'gbocpprod2', 'gbocpprod4', 'gbocpankprod2', 'gbocpdrcprod1'];
 const satir = (application: string, prod: string[], digerleri = true): OcpCoverageRow => {
   const envs: OcpCoverageRow['envs'] = {};
-  if (digerleri) for (const e of ['dev', 'test', 'qa']) envs[e] = [{ cluster: 'gbocptest1', namespace: `${application}-${e}` }];
-  if (prod.length) envs.prod = prod.map((cluster) => ({ cluster, namespace: `${application}-prod` }));
+  if (digerleri)
+    for (const e of ['dev', 'test', 'qa'])
+      envs[e] = [{ cluster: 'gbocptest1', namespace: `${application}-${e}` }];
+  if (prod.length)
+    envs.prod = prod.map((cluster) => ({ cluster, namespace: `${application}-prod` }));
   const present = Object.keys(envs);
   const missing = ['dev', 'test', 'qa', 'edu', 'prod'].filter((e) => !present.includes(e));
   return { application, envs, present, missing, missingCount: missing.length };
@@ -78,18 +81,22 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
     await screen.findByText('Ortama göre uygulama sayısı');
     const eksik = screen.getByLabelText('Sadece eksiği olanlar') as HTMLInputElement;
     expect(eksik.checked).toBe(true);
-    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'kismi' } });
+    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), {
+      target: { value: 'kismi' },
+    });
     expect(eksik.checked).toBe(false);
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
     fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'tam' } });
     expect(tabloUygulamalari()).toEqual(['tam-app']);
     fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'yok' } });
     expect(tabloUygulamalari()).toEqual(['yalniz-dev']);
-    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'yok:gbocpdrcprod1' } });
+    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), {
+      target: { value: 'yok:gbocpdrcprod1' },
+    });
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
   });
 
-  it('cluster çipi farkı (−N) gösterir; tıklayınca o cluster\'da olmayanlar süzülür', async () => {
+  it("cluster çipi farkı (−N) gösterir; tıklayınca o cluster'da olmayanlar süzülür", async () => {
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
     await screen.findByText('Ortama göre uygulama sayısı');
     // prod'da 3 uygulama var; drcprod1'de 1 -> −2; prod1'de 3 -> fark yok, tiklanamaz.
@@ -99,7 +106,9 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
     expect(p1.disabled).toBe(true);
     fireEvent.click(drc);
     expect(drc.getAttribute('aria-pressed')).toBe('true');
-    expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe('yok:gbocpdrcprod1');
+    expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe(
+      'yok:gbocpdrcprod1',
+    );
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
     fireEvent.click(screen.getByText('Sütun süzgeçlerini temizle'));
     expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe('');
@@ -107,7 +116,9 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
 
   it('yüzdenin paydası yazıyor: uygulamaların yüzde kaçı bu ortamda da var', async () => {
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
-    const panel = (await screen.findByText('Ortama göre uygulama sayısı')).closest('div.rounded-xl') as HTMLElement;
+    const panel = (await screen.findByText('Ortama göre uygulama sayısı')).closest(
+      'div.rounded-xl',
+    ) as HTMLElement;
     expect(panel.textContent).toContain('herhangi bir ortamda görülen');
     // prod: 3 / 4 = %75, ipucunda pay/payda
     const yuzde = within(panel).getByText('%75');
@@ -122,6 +133,8 @@ describe('Denetim > OpenShift — yarım yanıt', () => {
     mockOcp.mockReset();
     mockOcp.mockResolvedValue({ ok: true, rows: [] });
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
-    expect(await screen.findByText('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.')).toBeTruthy();
+    expect(
+      await screen.findByText('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.'),
+    ).toBeTruthy();
   });
 });

@@ -208,7 +208,12 @@ function parseResourceLines(lines) {
         });
         break;
       case 'RESREPL':
-        out.repl.push({ kind: f[2] || '', ad: f[3] || '', canli: f[4] || '', manifest: f[5] || '' });
+        out.repl.push({
+          kind: f[2] || '',
+          ad: f[3] || '',
+          canli: f[4] || '',
+          manifest: f[5] || '',
+        });
         break;
       case 'RESPLAN':
         out.plan = {
@@ -256,7 +261,8 @@ function planTemizMi(res) {
   return !!(
     p?.durum === 'ok' &&
     HEX64.test(p.dosyaSha) &&
-    HEX64.test(p.jeton) && res.end?.islem === 'resources_plan' &&
+    HEX64.test(p.jeton) &&
+    res.end?.islem === 'resources_plan' &&
     res.end.sonuc === 'ok'
   );
 }
@@ -319,7 +325,12 @@ function temizle(simdi = Date.now()) {
 /** resources_plan isi baslatilinca istegin sunucu kopyasi (istemciye tekrar sorulmaz). */
 function planIsiKaydet(serverId, jobId, istek, simdi = Date.now()) {
   temizle(simdi);
-  PLAN_ISLERI.set(isAnahtari(serverId, jobId), { ...istek, at: simdi, token: null, kullanildi: false });
+  PLAN_ISLERI.set(isAnahtari(serverId, jobId), {
+    ...istek,
+    at: simdi,
+    token: null,
+    kullanildi: false,
+  });
 }
 
 /**
@@ -348,8 +359,13 @@ function planSonucu(serverId, jobId, res, username, simdi = Date.now(), bittiAni
   // Jeton verilmisti ama artik yok: uygulamada TUKETILDI ya da suresi doldu. Ayni plan isi
   // yeniden yoklanarak IKINCI jeton alinamaz (tek kullanimlik).
   if (istek.token) return { durum: istek.kullanildi ? 'kullanildi' : 'suresi_doldu' };
-  const bitti = Number.isFinite(bittiAni) && bittiAni > 0 ? bittiAni + R.PLAN_GECERLILIK_MS : Infinity;
-  const bitis = Math.min(simdi + R.PLAN_GECERLILIK_MS, istek.at + PLAN_ASYNC_MS + R.PLAN_GECERLILIK_MS, bitti);
+  const bitti =
+    Number.isFinite(bittiAni) && bittiAni > 0 ? bittiAni + R.PLAN_GECERLILIK_MS : Infinity;
+  const bitis = Math.min(
+    simdi + R.PLAN_GECERLILIK_MS,
+    istek.at + PLAN_ASYNC_MS + R.PLAN_GECERLILIK_MS,
+    bitti,
+  );
   if (!(bitis > simdi)) return { durum: 'suresi_doldu' };
   const token = crypto.randomBytes(32).toString('hex');
   const plan = {
@@ -369,9 +385,7 @@ function planSonucu(serverId, jobId, res, username, simdi = Date.now(), bittiAni
     // Riskli: bastion'un RESPLAN'i, yeniden baslayacak HER is yuku (bekleyen dahil) ya da
     // kayitli riskli yol - biri yeter (ayri onay kutusu sunucuda zorunlu, karar 1).
     riskli:
-      !!res.plan.riskli ||
-      (res.affect || []).some((a) => a?.riskli) ||
-      R.riskliYol(istek.bilesen),
+      !!res.plan.riskli || (res.affect || []).some((a) => a?.riskli) || R.riskliYol(istek.bilesen),
     bekleyen: res.plan.bekleyen || '',
     planIsi: anahtar,
     olusturma: simdi,
@@ -390,12 +404,16 @@ function planAl(token, username, tenantKey, simdi = Date.now()) {
   if (!p) {
     return {
       hata: 'JETON_YOK',
-      mesaj: 'Plan bulunamadı (kullanılmış, süresi dolmuş ya da sunucu yeniden başlamış). Önizlemeyi yeniden çalıştırın.',
+      mesaj:
+        'Plan bulunamadı (kullanılmış, süresi dolmuş ya da sunucu yeniden başlamış). Önizlemeyi yeniden çalıştırın.',
     };
   }
   if (p.bitis < simdi) {
     PLANLAR.delete(t);
-    return { hata: 'JETON_SURESI', mesaj: 'Planın 15 dakikalık süresi doldu. Önizlemeyi yeniden çalıştırın.' };
+    return {
+      hata: 'JETON_SURESI',
+      mesaj: 'Planın 15 dakikalık süresi doldu. Önizlemeyi yeniden çalıştırın.',
+    };
   }
   if (!ayniKisi(p.username, username)) {
     return { hata: 'JETON_BASKASI', mesaj: 'Bu plan başka bir kullanıcıya ait.' };
@@ -457,15 +475,28 @@ async function isKaydiBul(db, serverId, jobId) {
 // yetkisi", isOpen YERINE nodeAcik. YALNIZ bu iki islemde; diger isler eski kurala tabi.
 const NODE_ISLERI = ['node_env_get', 'node_change'];
 
-function isErisimKarari({ kayit, user, gorunen, tenantOf, isOpen, nodeGorunen = false, nodeAcik = null }) {
+function isErisimKarari({
+  kayit,
+  user,
+  gorunen,
+  tenantOf,
+  isOpen,
+  nodeGorunen = false,
+  nodeAcik = null,
+}) {
   if (!kayit) {
-    return { izin: false, status: 403, mesaj: 'Bu iş Crypto Hub kaydında bulunamadı — erişim verilmedi.' };
+    return {
+      izin: false,
+      status: 403,
+      mesaj: 'Bu iş Crypto Hub kaydında bulunamadı — erişim verilmedi.',
+    };
   }
   if (kayit.yabanci) return { izin: false, status: 403, mesaj: 'Bu iş bir Crypto Hub işi değil.' };
   const tenant = tenantOf(kayit.tenantKey);
-  if (!tenant) return { izin: false, status: 403, mesaj: 'İşin ortamı tanınmadı — erişim verilmedi.' };
+  if (!tenant)
+    return { izin: false, status: 403, mesaj: 'İşin ortamı tanınmadı — erişim verilmedi.' };
   if (NODE_ISLERI.includes(kayit.action)) {
-    const goruyor = tenant.app === 'metaco' && ((gorunen?.has('metaco')) || nodeGorunen === true);
+    const goruyor = tenant.app === 'metaco' && (gorunen?.has('metaco') || nodeGorunen === true);
     if (!goruyor) return { izin: false, status: 403, mesaj: 'Bu alana erişiminiz yok (Metaco).' };
     if (typeof nodeAcik !== 'function' || !nodeAcik(tenant)) {
       return { izin: false, status: 403, closed: true, mesaj: 'kapali' };
@@ -614,7 +645,7 @@ async function tutulanKilitler(db) {
     `SELECT TOP 50 lock_key, awx_server_id, awx_job_id FROM crypto_hub_locks WHERE held = 1 AND awx_job_id IS NOT NULL`,
     [],
   );
-  return (r?.rows) || [];
+  return r?.rows || [];
 }
 
 async function kilitIseBagla(db, key, lockId, serverId, jobId) {
@@ -740,7 +771,10 @@ function maskeleManifest(lines, sirRe) {
     }
     // Deger: bosluksuz baslayip biten metin; yalniz bosluk varsa son satir-ici bosluk karakteri (eski
     // tembel `(.+?)\s*$` ile ayni gruplar, dogrusal; Sonar S8786 - esdegerlik: __tests__/regex-dogrusal).
-    const k = /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/.exec(l);
+    const k =
+      /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/.exec(
+        l,
+      );
     if (sirRe?.test(k?.[2])) {
       const d = k[3];
       if (d === '|' || d === '>' || d === '|-' || d === '>-') {

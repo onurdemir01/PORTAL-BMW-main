@@ -30,7 +30,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { normalize } = require('../../util/guard-text.cjs');
 
-const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
+const DIR =
+  process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
 const KESIF = path.join(DIR, 'opsx_was_discover.yml');
 const ISLEM = path.join(DIR, 'opsx_was_operation.yml');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');
@@ -104,7 +105,10 @@ for (const [ad, yol] of [
     const src = oku(yol);
     assert.deepEqual(yorumSatirlari(src), [], "'#' satiri var (aciklama README.md'ye)");
     assert.ok(!src.includes('\t'), 'SEKME karakteri var (YAML sekmeyi kabul etmez)');
-    assert.ok(!/ansible\.builtin\.script\b/.test(src), 'script modulu kullanilmis (copy + bash olmali)');
+    assert.ok(
+      !/ansible\.builtin\.script\b/.test(src),
+      'script modulu kullanilmis (copy + bash olmali)',
+    );
     assert.ok(!/^\s+script:/m.test(src), 'kisa adli script modulu kullanilmis');
   });
 
@@ -127,7 +131,10 @@ for (const [ad, yol] of [
     assert.ok(n.includes('become_method: dzdo'), 'uzak play become_method: dzdo degil');
     assert.ok(n.includes('become_user: was'), 'uzak play become_user: was degil');
     assert.ok(n.includes('ansible_pipelining: true'), 'uzak play ansible_pipelining: true degil');
-    assert.ok(/^\s*ignore_unreachable:\s*true/m.test(p[1].text), 'uzak play ignore_unreachable yok');
+    assert.ok(
+      /^\s*ignore_unreachable:\s*true/m.test(p[1].text),
+      'uzak play ignore_unreachable yok',
+    );
     assert.ok(/^\s+rescue:/m.test(p[0].text), 'girdi play rescue yok');
     assert.ok(/^\s+rescue:/m.test(p[1].text), 'uzak play rescue yok');
     assert.ok(!/become_user/.test(p[0].text + p[2].text), 'localhost play become ediyor');
@@ -151,7 +158,10 @@ for (const [ad, yol] of [
     assert.ok(fail > ss, "fail set_stats'ten once ya da yok (sonuc sozlesmesi yayinlanmaz)");
     const ssGorev = gorevler(son).find((t) => t.includes('ansible.builtin.set_stats:'));
     assert.ok(!/^\s+when:/m.test(ssGorev), 'set_stats kosullu');
-    assert.ok(!/ansible\.builtin\.(set_stats|fail):/.test(p[0].text + p[1].text), 'set_stats/fail son play disinda');
+    assert.ok(
+      !/ansible\.builtin\.(set_stats|fail):/.test(p[0].text + p[1].text),
+      'set_stats/fail son play disinda',
+    );
   });
 }
 
@@ -161,7 +171,10 @@ test('OW5 islem: TEK host, onay ve islem kumesi assert ediliyor', () => {
     ["',' not in target_host", 'tek host (virgul yok)'],
     ['target_host is string', 'target_host string (dizi = toplu islem)'],
     ["(consent | default(false) | string | lower) == 'true'", 'consent'],
-    ["(confirm_text | default('') | string) == (was_server | string)", 'confirm_text == was_server'],
+    [
+      "(confirm_text | default('') | string) == (was_server | string)",
+      'confirm_text == was_server',
+    ],
     ["in ['restart', 'stop', 'start']", 'operation kumesi'],
     ["is match('^[A-Za-z0-9_.-]+$')", 'ad bicimi'],
   ]) {
@@ -185,21 +198,27 @@ test('OW6 kesif: en cok 10 host, olculemeyen host listeden DUSMEZ', () => {
     'toplayici sonucsuz host icin olculemedi yedegi uretmiyor (host listeden duser)',
   );
   assert.ok(
-    n.includes("loop: '{{ [] if (opsx_was_input_err is defined) else (opsx_was_hosts | default([])) }}'"),
+    n.includes(
+      "loop: '{{ [] if (opsx_was_input_err is defined) else (opsx_was_hosts | default([])) }}'",
+    ),
     'toplayici ISTENEN host listesi uzerinde donmuyor',
   );
   // Kosul FAIL gorevinin when'inde aranir: ayni ifade ozet (debug) gorevinde de geciyor.
-  const failGorevi = gorevler(playler(oku(KESIF))[2].text).find((t) => t.includes('ansible.builtin.fail:'));
+  const failGorevi = gorevler(playler(oku(KESIF))[2].text).find((t) =>
+    t.includes('ansible.builtin.fail:'),
+  );
   assert.ok(failGorevi, 'kesif toplayicisinda fail gorevi yok');
   const fw = normalize(failGorevi);
   assert.ok(fw.includes('(opsx_was_input_err is defined)'), 'girdi reddinde job dusmuyor');
   assert.ok(
-    fw.includes("or ((opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | list | length) > 0)"),
+    fw.includes(
+      "or ((opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | list | length) > 0)",
+    ),
     "olculemeyen host'ta job'i dusuren kosul fail gorevinde yok",
   );
 });
 
-test('OW7 envanter: parola yalniz no_log gorevin stdin\'inden; SQL yalniz tek satir UPDATE', () => {
+test("OW7 envanter: parola yalniz no_log gorevin stdin'inden; SQL yalniz tek satir UPDATE", () => {
   const src = oku(ISLEM);
   const db = gorevler(src).filter((t) => t.includes('--pwd-stdin'));
   assert.equal(db.length, 1, 'parolayi stdin ile alan TEK envanter gorevi beklenir');
@@ -207,9 +226,13 @@ test('OW7 envanter: parola yalniz no_log gorevin stdin\'inden; SQL yalniz tek sa
   assert.ok(t.includes('no_log: true'), 'envanter gorevi no_log degil');
   assert.ok(t.includes('delegate_to: GBLABT02'), "envanter gorevi GBLABT02'ye delegate degil");
   assert.ok(t.includes("stdin: '{{ tbmwans_pwd }}'"), 'parola stdin ile gitmiyor');
-  assert.ok(!/environment:/.test(db[0]), 'envanter gorevinde environment (parola dzdo komut satirina sizar)');
+  assert.ok(
+    !/environment:/.test(db[0]),
+    'envanter gorevinde environment (parola dzdo komut satirina sizar)',
+  );
   for (const g of gorevler(src)) {
-    if (/environment:/.test(g)) assert.ok(!g.includes('tbmwans_pwd'), 'tbmwans_pwd environment ile veriliyor');
+    if (/environment:/.test(g))
+      assert.ok(!g.includes('tbmwans_pwd'), 'tbmwans_pwd environment ile veriliyor');
   }
   const py = oku(ENVANTER);
   assert.ok(
@@ -221,13 +244,17 @@ test('OW7 envanter: parola yalniz no_log gorevin stdin\'inden; SQL yalniz tek sa
   for (const y of ['DELETE', 'INSERT', 'MERGE', 'TRUNCATE']) {
     assert.ok(!new RegExp(`["'][^"'\\n]*\\b${y}\\b`).test(py), `envanter betiginde ${y}`);
   }
-  assert.ok(normalize(py).includes('DURUMLAR = (\'running\', \'stopped\')'), 'yalniz olculmus durumlar yazilmali');
+  assert.ok(
+    normalize(py).includes("DURUMLAR = ('running', 'stopped')"),
+    'yalniz olculmus durumlar yazilmali',
+  );
 });
 
 test('OW8 opsx_was/** icinde yasak belirtec yok (README dahil)', () => {
   const bulgu = [];
   for (const f of tumDosyalar(DIR)) {
-    for (const y of yasakBul(fs.readFileSync(f, 'utf8'))) bulgu.push(`${path.relative(DIR, f)}: ${y}`);
+    for (const y of yasakBul(fs.readFileSync(f, 'utf8')))
+      bulgu.push(`${path.relative(DIR, f)}: ${y}`);
   }
   assert.deepEqual(bulgu, [], 'yasak belirtec');
 });
@@ -271,12 +298,16 @@ test('OW11 bekci KOR DEGIL: sentetik ihlaller yakalanir', () => {
   assert.deepEqual(yorumSatirlari('---\n- name: x\n  # yorum\n'), [3]);
   assert.deepEqual(yasakBul('wsadmin.sh -user a -password b'), ['-password', '-user']);
   assert.deepEqual(yasakBul('become_user: www'), ['www']);
-  const p = playler('- name: a\n  hosts: localhost\n- name: b\n  hosts: hedef\n  become_user: was\n');
+  const p = playler(
+    '- name: a\n  hosts: localhost\n- name: b\n  hosts: hedef\n  become_user: was\n',
+  );
   assert.deepEqual(
     p.map((x) => x.hosts),
     ['localhost', 'hedef'],
   );
-  const t = gorevler('    - name: a\n      x: 1\n    - name: b\n      ansible.builtin.set_stats:\n      when: x\n');
+  const t = gorevler(
+    '    - name: a\n      x: 1\n    - name: b\n      ansible.builtin.set_stats:\n      when: x\n',
+  );
   assert.equal(t.length, 2);
   assert.ok(/^\s+when:/m.test(t[1]));
 });

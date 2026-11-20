@@ -4,16 +4,50 @@ import { describe, it, expect } from 'vitest';
 import { BOS_FILTRE, kayitFiltrele } from '../retirementFiltre';
 import type { RtRecordRow } from '@/api/retirementApi';
 
-const kayit = (o: Partial<RtRecordRow>): RtRecordRow => ({
-  id: 1, app: 'X', smartNo: '1', ocoNo: null, ownerEmail: null, requestedBy: 'onur.demir', status: 'open', envs: [], targets: 1, stopped: 0,
-  ...o,
-} as unknown as RtRecordRow);
+const kayit = (o: Partial<RtRecordRow>): RtRecordRow =>
+  ({
+    id: 1,
+    app: 'X',
+    smartNo: '1',
+    ocoNo: null,
+    ownerEmail: null,
+    requestedBy: 'onur.demir',
+    status: 'open',
+    envs: [],
+    targets: 1,
+    stopped: 0,
+    ...o,
+  }) as unknown as RtRecordRow;
 const ROWS = [
-  kayit({ id: 1, app: 'GFY_INTERNET_SERVICES', smartNo: '23392995', ocoNo: '23359160', requestedBy: 'onur.demir', status: 'stopping',
-    envs: [{ env: 'PROD', toplam: 2, durdurulan: 0, silinen: 0, uygulamalar: ['GFY_INTERNET_SERVICES'] }, { env: 'DEV', toplam: 2, durdurulan: 2, silinen: 1, uygulamalar: ['GFY_INTERNET_SERVICES-D'] }] }),
-  kayit({ id: 2, app: 'CRM', smartNo: '111', requestedBy: 'Cansu Özgöz', status: 'deleted', envs: [{ env: 'QA', toplam: 1, durdurulan: 1, silinen: 1, uygulamalar: ['CRM-Q'] }] }),
+  kayit({
+    id: 1,
+    app: 'GFY_INTERNET_SERVICES',
+    smartNo: '23392995',
+    ocoNo: '23359160',
+    requestedBy: 'onur.demir',
+    status: 'stopping',
+    envs: [
+      { env: 'PROD', toplam: 2, durdurulan: 0, silinen: 0, uygulamalar: ['GFY_INTERNET_SERVICES'] },
+      {
+        env: 'DEV',
+        toplam: 2,
+        durdurulan: 2,
+        silinen: 1,
+        uygulamalar: ['GFY_INTERNET_SERVICES-D'],
+      },
+    ],
+  }),
+  kayit({
+    id: 2,
+    app: 'CRM',
+    smartNo: '111',
+    requestedBy: 'Cansu Özgöz',
+    status: 'deleted',
+    envs: [{ env: 'QA', toplam: 1, durdurulan: 1, silinen: 1, uygulamalar: ['CRM-Q'] }],
+  }),
 ];
-const ids = (f: Partial<typeof BOS_FILTRE>) => kayitFiltrele(ROWS, { ...BOS_FILTRE, ...f }).map((r) => r.id);
+const ids = (f: Partial<typeof BOS_FILTRE>) =>
+  kayitFiltrele(ROWS, { ...BOS_FILTRE, ...f }).map((r) => r.id);
 
 describe('retirement kayit filtreleri', () => {
   it('bos filtre hepsini gosterir', () => expect(ids({})).toEqual([1, 2]));

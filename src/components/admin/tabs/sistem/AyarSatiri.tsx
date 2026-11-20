@@ -48,7 +48,15 @@ interface Props {
   onSil: () => void;
 }
 
-function AyarDegeri({ meta, cv, durum }: { meta: EnvVarMeta; cv?: ConfigValue; durum: YuklemeDurumu }) {
+function AyarDegeri({
+  meta,
+  cv,
+  durum,
+}: {
+  meta: EnvVarMeta;
+  cv?: ConfigValue;
+  durum: YuklemeDurumu;
+}) {
   const soluk = 'text-xs text-[var(--text-muted)]';
   if (meta.saltOkunur === 'ortam') return <span className={soluk}>Bu ekranda gösterilmez</span>;
   if (!cv) {
@@ -58,9 +66,7 @@ function AyarDegeri({ meta, cv, durum }: { meta: EnvVarMeta; cv?: ConfigValue; d
   }
   if (!cv.defined) {
     return (
-      <span className={soluk}>
-        {cv.source === 'db' ? "Portal'da boş bırakıldı" : 'Tanımsız'}
-      </span>
+      <span className={soluk}>{cv.source === 'db' ? "Portal'da boş bırakıldı" : 'Tanımsız'}</span>
     );
   }
   if (cv.masked) {
@@ -74,7 +80,17 @@ function AyarDegeri({ meta, cv, durum }: { meta: EnvVarMeta; cv?: ConfigValue; d
   return <CodeChip value={cv.value} wrap="break" copyable className="!text-[11px]" />;
 }
 
-function Ayrintilar({ meta, grup, cv, durum }: { meta: EnvVarMeta; grup: Grup; cv?: ConfigValue; durum: YuklemeDurumu }) {
+function Ayrintilar({
+  meta,
+  grup,
+  cv,
+  durum,
+}: {
+  meta: EnvVarMeta;
+  grup: Grup;
+  cv?: ConfigValue;
+  durum: YuklemeDurumu;
+}) {
   const [acik, setAcik] = useState(false);
   const panelId = useId();
   const u = uygulanma(cv);
@@ -103,7 +119,9 @@ function Ayrintilar({ meta, grup, cv, durum }: { meta: EnvVarMeta; grup: Grup; c
         >
           <div>
             <dt className="sr-only">Açıklama</dt>
-            <dd className="whitespace-pre-line leading-relaxed text-[var(--text-secondary)]">{meta.description}</dd>
+            <dd className="whitespace-pre-line leading-relaxed text-[var(--text-secondary)]">
+              {meta.description}
+            </dd>
           </div>
           {meta.example && (
             <div className={satir}>
@@ -141,7 +159,9 @@ function Ayrintilar({ meta, grup, cv, durum }: { meta: EnvVarMeta; grup: Grup; c
             <div className={satir}>
               <dt className="text-[var(--text-muted)]">Kaynak</dt>
               <dd className="text-[var(--text-secondary)]">
-                {cv.source === 'db' ? 'Portal veritabanı (bu ekrandan kaydedilmiş)' : 'Sunucu ortam dosyası'}
+                {cv.source === 'db'
+                  ? 'Portal veritabanı (bu ekrandan kaydedilmiş)'
+                  : 'Sunucu ortam dosyası'}
               </dd>
             </div>
           )}
@@ -215,8 +235,12 @@ export default function AyarSatiri({
           {restartBekliyor && <Rozet ton="gold">Restart bekliyor</Rozet>}
           {yeniKaydedildi && <Rozet ton="green">Kaydedildi</Rozet>}
         </div>
-        <p className="mt-0.5 font-mono text-[11px] text-[var(--text-muted)] break-all">{meta.key}</p>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)] line-clamp-2">{meta.description}</p>
+        <p className="mt-0.5 font-mono text-[11px] text-[var(--text-muted)] break-all">
+          {meta.key}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)] line-clamp-2">
+          {meta.description}
+        </p>
       </div>
 
       <div className="min-w-0 mt-2 @xl/sistem:mt-0 @xl/sistem:pt-0.5">

@@ -262,7 +262,9 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
   const dizgi = sites.filter(
     (s) =>
       s.count >= 5 &&
-      (/^['"`]/.test(s.requester) || /\.username\b/.test(s.requester) || /^(null|undefined)$/.test(s.requester)),
+      (/^['"`]/.test(s.requester) ||
+        /\.username\b/.test(s.requester) ||
+        /^(null|undefined)$/.test(s.requester)),
   );
   assert.deepEqual(
     dizgi.map((s) => `${s.file}: 5. arguman '${s.requester}'`),
@@ -292,10 +294,14 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   const sig = 'async function performSsLaunch(';
   const i = src.indexOf(sig);
   assert.ok(i >= 0, 'performSsLaunch bulunamadi');
-  let depth = 0, close = -1;
+  let depth = 0,
+    close = -1;
   for (let k = i + sig.length - 1; k < src.length; k++) {
     if (src[k] === '(') depth++;
-    else if (src[k] === ')' && --depth === 0) { close = k; break; }
+    else if (src[k] === ')' && --depth === 0) {
+      close = k;
+      break;
+    }
   }
   assert.ok(close > 0, 'parametre listesi kapanmadi');
   const fn = bodyOf(src.slice(close), '{');
@@ -311,7 +317,15 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   // Cozum SONUCU withRequesterVars'a geciriliyor mu.
   const arg = (fn.match(/withRequesterVars\(\s*extraVars\s*,\s*([A-Za-z_$][\w$]*)\s*\)/) || [])[1];
   assert.ok(arg && arg !== 'req', 'withRequesterVars cozulen kullaniciyi almiyor');
-  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{[^}]*mail:\\s*ident\\.mail'), 'cozulen e-posta gecirilmiyor');
+  assert.match(
+    fn,
+    new RegExp(arg + '\\s*=\\s*\\{[^}]*mail:\\s*ident\\.mail'),
+    'cozulen e-posta gecirilmiyor',
+  );
   // Cozulemezse en azindan username gitmeli (requester_username = bilinmiyor OLMAMALI).
-  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{\\s*username\\s*\\}'), 'cozulemeyen durumda username bile gecirilmiyor');
+  assert.match(
+    fn,
+    new RegExp(arg + '\\s*=\\s*\\{\\s*username\\s*\\}'),
+    'cozulemeyen durumda username bile gecirilmiyor',
+  );
 });

@@ -130,7 +130,11 @@ test('T4 kesif durum ucu AWX stdout`unu HIC indirmiyor (sonuc artifact`tan)', ()
 // turemez. DAVRANIS olcumu: scalex-kapi-matrisi KM13 (sahte AWX'te tam cekim sayilir).
 test('T5 islem yoklamasi ARTIMLI ceker; TAM cekim yalniz ?cikti=tam ile', () => {
   const g = rota('/run/:serverId/:jobId/status');
-  assert.match(g, /const tamCikti = String\(req\.query\?\.cikti \|\| ''\) === 'tam'/, 'tam cekim istegi okunmuyor');
+  assert.match(
+    g,
+    /const tamCikti = String\(req\.query\?\.cikti \|\| ''\) === 'tam'/,
+    'tam cekim istegi okunmuyor',
+  );
   assert.match(
     g,
     /tamCikti\s*\?\s*null\s*:\s*runner\.getJobOutputOnServer\([\s\S]{0,80}artimli:\s*true/,
@@ -150,7 +154,11 @@ test('T5 islem yoklamasi ARTIMLI ceker; TAM cekim yalniz ?cikti=tam ile', () => 
   assert.match(g, /outputFinal: tamCikti/, 'ekran metnin son hal olup olmadigini bilemiyor');
   // Ekran is bitince tam metni BIR KEZ ister.
   const sayfa = oku('src/components/scalex/ScaleXPage.tsx');
-  assert.match(sayfa, /runStatus\([^)]*\{\s*tamCikti:\s*true\s*\}/, 'ekran bitmis isin tam metnini istemiyor');
+  assert.match(
+    sayfa,
+    /runStatus\([^)]*\{\s*tamCikti:\s*true\s*\}/,
+    'ekran bitmis isin tam metnini istemiyor',
+  );
 });
 
 // ══ T6: OLCUM KAYDEDILIYOR ve HER MODDA ═════════════════════════════════════

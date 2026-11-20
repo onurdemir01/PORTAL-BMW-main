@@ -18,23 +18,31 @@ import { Modal } from '@/components/common/Modal';
 /** Sunucu öğe eylemi (autostart-dogrulama.cjs XML_KAPAT_EYLEMI). */
 export const XML_EYLEMI = 'jboss_autostart_xml_off';
 /** Prod onay işaretinin metni (kullanıcı onaylı ifade). */
-export const PROD_ONAY_METNI = 'Prod sunucuların domainleri kalıcı olarak kapalı; auto-start kapatılsın';
+export const PROD_ONAY_METNI =
+  'Prod sunucuların domainleri kalıcı olarak kapalı; auto-start kapatılsın';
 
 export const domainAnahtari = (g: { host: string; gen: number }) => `${g.host}|${g.gen}`;
-export const xmlOgesiMi = (o: Pick<ShTopluOge, 'eylem'> & { hostXml?: boolean }) => o.hostXml === true || o.eylem === XML_EYLEMI;
+export const xmlOgesiMi = (o: Pick<ShTopluOge, 'eylem'> & { hostXml?: boolean }) =>
+  o.hostXml === true || o.eylem === XML_EYLEMI;
 
 /** Seçili domain'lerin tüm JVM'leri → toplu iş seçimi (eylem xml_kapat). */
 export function xmlSecimi(gruplar: ShTopluXmlGrup[], secili: Set<string>): ShTopluSecim[] {
   return gruplar
     .filter((g) => secili.has(domainAnahtari(g)))
-    .flatMap((g) => g.jvms.map((j) => ({ host: g.host, gen: g.gen, jvm: j.jvm, eylem: 'xml_kapat' as const })));
+    .flatMap((g) =>
+      g.jvms.map((j) => ({ host: g.host, gen: g.gen, jvm: j.jvm, eylem: 'xml_kapat' as const })),
+    );
 }
 
 /** "Prod dışı tümünü seç": Production / ortamı bilinmeyen sunucular hariç tüm domain'ler. */
-export const prodDisiAnahtarlar = (gruplar: ShTopluXmlGrup[]) => gruplar.filter((g) => !g.prod).map(domainAnahtari);
+export const prodDisiAnahtarlar = (gruplar: ShTopluXmlGrup[]) =>
+  gruplar.filter((g) => !g.prod).map(domainAnahtari);
 
 /** Öğenin sunucusu prod mu: aday grubundaki bayrak; yoksa ortam adına göre (bilinmeyen = prod, güvenli taraf). */
-export function prodOgesiMi(o: { host: string; env: string | null }, gruplar: ShTopluXmlGrup[] | undefined): boolean {
+export function prodOgesiMi(
+  o: { host: string; env: string | null },
+  gruplar: ShTopluXmlGrup[] | undefined,
+): boolean {
   const g = (gruplar || []).find((x) => x.host === o.host);
   if (g) return g.prod;
   return !['DEV', 'TEST', 'QA', 'ODM'].includes(String(o.env || '').toUpperCase());
@@ -42,10 +50,13 @@ export function prodOgesiMi(o: { host: string; env: string | null }, gruplar: Sh
 
 /** Rozet etiketi: sunucu prodMu (toplu-autostart.cjs) ile aynı — Production ya da ortamı PROD ise PROD; aksi halde bilinmiyor. */
 export const prodRozetEtiketi = (g: { env: string | null; envGroup: string | null }) =>
-  g.envGroup === 'Production' || String(g.env || '').toUpperCase() === 'PROD' ? 'PROD' : 'ORTAM BİLİNMİYOR';
+  g.envGroup === 'Production' || String(g.env || '').toUpperCase() === 'PROD'
+    ? 'PROD'
+    : 'ORTAM BİLİNMİYOR';
 
 /** Sunucunun prod onayı reddi (400 code prod_onay): yanıt gövdesi ya da fırlatılan hata. */
-export const prodOnayRedMi = (x: unknown) => !!x && typeof x === 'object' && (x as { code?: unknown }).code === 'prod_onay';
+export const prodOnayRedMi = (x: unknown) =>
+  !!x && typeof x === 'object' && (x as { code?: unknown }).code === 'prod_onay';
 
 function ProdRozeti({ env, envGroup }: { env: string | null; envGroup: string | null }) {
   return (
@@ -94,11 +105,13 @@ export function TopluXmlKapatBolumu({
           Domain kapalı — auto-start host XML üzerinden kapat
         </h2>
         <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-          Taramada host controller’ı çalışmayan JBoss domain’lerinin durmuş ama auto-start’ı açık JVM’leri ({fmtNumber(toplamJvm)} JVM,{' '}
-          {fmtNumber(hostSayisi)} sunucu). Domain kapalı olduğu için canlı CLI yok: auto-start host XML dosyasında <b>false</b> yapılır —
-          yalnız kapatma. Dosya önce yedeklenir; betik yazmadan önce ve sonra host controller’ın o an hâlâ kapalı olduğunu kontrol eder,
-          açıldıysa değişikliği geri alır. Bir domain’in JVM’leri birlikte seçilir; önce salt okunur plan, sonra onay, sunucular sırayla.
-          Normal (CLI) adaylarla aynı toplu işe girmez.
+          Taramada host controller’ı çalışmayan JBoss domain’lerinin durmuş ama auto-start’ı açık
+          JVM’leri ({fmtNumber(toplamJvm)} JVM, {fmtNumber(hostSayisi)} sunucu). Domain kapalı
+          olduğu için canlı CLI yok: auto-start host XML dosyasında <b>false</b> yapılır — yalnız
+          kapatma. Dosya önce yedeklenir; betik yazmadan önce ve sonra host controller’ın o an hâlâ
+          kapalı olduğunu kontrol eder, açıldıysa değişikliği geri alır. Bir domain’in JVM’leri
+          birlikte seçilir; önce salt okunur plan, sonra onay, sunucular sırayla. Normal (CLI)
+          adaylarla aynı toplu işe girmez.
         </p>
       </div>
       <div className="flex items-center gap-2 flex-wrap text-xs">
@@ -110,11 +123,19 @@ export function TopluXmlKapatBolumu({
         >
           Prod dışı tümünü seç
         </button>
-        <button type="button" className="btn-secondary text-xs" disabled={kilitli || !secili.size} onClick={() => setSecili(() => new Set())}>
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          disabled={kilitli || !secili.size}
+          onClick={() => setSecili(() => new Set())}
+        >
           Seçimi temizle
         </button>
       </div>
-      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div
+        className="rounded-lg border overflow-hidden"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <ul className="divide-y text-[12px]" style={{ borderColor: 'var(--border-subtle)' }}>
           {gruplar.map((g) => {
             const k = domainAnahtari(g);
@@ -145,9 +166,14 @@ export function TopluXmlKapatBolumu({
                       <span className="tabular-nums" style={{ color: 'var(--text-secondary)' }}>
                         {fmtNumber(g.jvms.length)} JVM
                       </span>
-                      {g.scanDate && <span style={{ color: 'var(--text-muted)' }}>tarama {g.scanDate}</span>}
+                      {g.scanDate && (
+                        <span style={{ color: 'var(--text-muted)' }}>tarama {g.scanDate}</span>
+                      )}
                     </summary>
-                    <div className="mt-1 font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    <div
+                      className="mt-1 font-mono text-[11px]"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {g.jvms.map((j) => j.jvm).join(', ')}
                     </div>
                   </details>
@@ -167,13 +193,18 @@ export function TopluXmlKapatBolumu({
           Planla — host XML ({fmtNumber(secim.length)} JVM, {fmtNumber(domainSayisi)} domain)
         </button>
         {prodSecili && (
-          <span className="text-[11px] inline-flex items-center gap-1" style={{ color: 'var(--status-danger)' }}>
-            <ExclamationTriangleIcon className="w-4 h-4" /> Seçimde Production / ortamı bilinmeyen sunucu var — ayrıca onay istenecek.
+          <span
+            className="text-[11px] inline-flex items-center gap-1"
+            style={{ color: 'var(--status-danger)' }}
+          >
+            <ExclamationTriangleIcon className="w-4 h-4" /> Seçimde Production / ortamı bilinmeyen
+            sunucu var — ayrıca onay istenecek.
           </span>
         )}
         {limitAsti && (
           <span className="text-[11px]" style={{ color: 'var(--status-danger)' }}>
-            {fmtNumber(secim.length)} / {fmtNumber(limit)} JVM — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın
+            {fmtNumber(secim.length)} / {fmtNumber(limit)} JVM — sınır aşıldı; seçimi azaltın ya da
+            Admin › Kurallar & Limitler’den artırın
           </span>
         )}
         {kilitli && (
@@ -194,7 +225,9 @@ export interface XmlOnayKapsami {
 }
 
 /** Öğe ya da seçim listesinden sunucu + JBoss sürümü başına kapsam (onay penceresi). */
-export function xmlKapsami(liste: { host: string; gen: number; jvm: string; prod: boolean }[]): XmlOnayKapsami[] {
+export function xmlKapsami(
+  liste: { host: string; gen: number; jvm: string; prod: boolean }[],
+): XmlOnayKapsami[] {
   const m = new Map<string, XmlOnayKapsami>();
   for (const x of liste) {
     const k = `${x.host}|${x.gen}`;
@@ -275,15 +308,27 @@ export function XmlOnayPenceresi({
           {aciklama}
         </p>
         {uyari && (
-          <p className="rounded-lg border px-3 py-2 text-[12px]" role="alert" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+          <p
+            className="rounded-lg border px-3 py-2 text-[12px]"
+            role="alert"
+            style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
+          >
             {uyari}
           </p>
         )}
-        <div className="rounded-lg border max-h-64 overflow-auto" style={{ borderColor: 'var(--border-subtle)' }} data-testid="xml-onay-kapsam">
+        <div
+          className="rounded-lg border max-h-64 overflow-auto"
+          style={{ borderColor: 'var(--border-subtle)' }}
+          data-testid="xml-onay-kapsam"
+        >
           <table className="w-full text-[12px]">
             <tbody>
               {kapsam.map((g) => (
-                <tr key={`${g.host}|${g.gen}`} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+                <tr
+                  key={`${g.host}|${g.gen}`}
+                  className="border-t align-top"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
                   <td className="px-2 py-1 font-mono font-semibold whitespace-nowrap">
                     {g.host} <span style={{ color: 'var(--text-muted)' }}>JBoss {g.gen}</span>
                     {g.prod && (
@@ -292,7 +337,10 @@ export function XmlOnayPenceresi({
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-1 font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                  <td
+                    className="px-2 py-1 font-mono text-[11px]"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     {g.jvms.join(', ')}
                   </td>
                 </tr>
@@ -301,8 +349,16 @@ export function XmlOnayPenceresi({
           </table>
         </div>
         {prodVar && (
-          <label className="flex items-start gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-danger)' }}>
-            <input type="checkbox" className="mt-0.5" checked={prodIsaret} onChange={(e) => setProdIsaret(e.target.checked)} />
+          <label
+            className="flex items-start gap-2 rounded-lg border px-3 py-2"
+            style={{ borderColor: 'var(--status-danger)' }}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={prodIsaret}
+              onChange={(e) => setProdIsaret(e.target.checked)}
+            />
             <span>{PROD_ONAY_METNI}</span>
           </label>
         )}

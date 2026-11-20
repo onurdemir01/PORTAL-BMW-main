@@ -13,8 +13,8 @@
 // Hata sınırları YALNIZCA render/lifecycle hatalarını yakalar — event handler'daki ya da
 // async koddaki hatalar buraya düşmez (onlar zaten ekranı beyaz bırakmıyor; adım
 // bileşenleri kendi hata mesajlarını gösteriyor).
-import React from "react";
-import { isChunkLoadError, reloadForNewVersion } from "@/utils/lazyWithRetry";
+import React from 'react';
+import { isChunkLoadError, reloadForNewVersion } from '@/utils/lazyWithRetry';
 
 interface Props {
   children: React.ReactNode;
@@ -40,7 +40,7 @@ class PageErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // Tam yığın izi konsola: kullanıcıdan ekran görüntüsü isterken tek satırlık mesaj
     // yetmiyor, hangi bileşende patladığı gerekiyor.
-    console.error("[PageErrorBoundary] sayfa render edilemedi:", error, info.componentStack);
+    console.error('[PageErrorBoundary] sayfa render edilemedi:', error, info.componentStack);
   }
 
   render() {
@@ -49,7 +49,10 @@ class PageErrorBoundary extends React.Component<Props, State> {
 
     if (reloading) {
       return (
-        <div className="max-w-2xl mx-auto py-12 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+        <div
+          className="max-w-2xl mx-auto py-12 text-center text-sm"
+          style={{ color: 'var(--text-muted)' }}
+        >
           Portal yeni sürüme güncellendi; sayfa yenileniyor…
         </div>
       );
@@ -59,7 +62,9 @@ class PageErrorBoundary extends React.Component<Props, State> {
     return (
       <div className="max-w-2xl mx-auto py-12">
         <div className="bg-red-50 border border-red-100 rounded-xl p-5 space-y-3">
-          <h2 className="text-base font-semibold text-red-800">{chunk ? 'Sayfa dosyası indirilemedi' : 'Bu sayfa yüklenemedi'}</h2>
+          <h2 className="text-base font-semibold text-red-800">
+            {chunk ? 'Sayfa dosyası indirilemedi' : 'Bu sayfa yüklenemedi'}
+          </h2>
           <p className="text-sm text-red-700">
             {chunk
               ? 'Portal bu sırada güncellenmiş olabilir ya da ağ bağlantısı kesildi. "Sayfayı yenile" genelde çözer; sürerse ağ/VPN bağlantınızı kontrol edin.'

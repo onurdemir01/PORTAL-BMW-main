@@ -22,7 +22,10 @@ const oku = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
  * gercek cagri sanip kirmizi dondu. Kural dogruydu, olcum yanlisti.
  */
 const kodOnly = (s) =>
-  s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  s
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
 /**
  * FAIL-CLOSED dilimleyici. `indexOf` -1 dondugunde `slice` HATA VERMEZ —
  * sessizce yanlis bir dilim uretir ve olumsuz assert'ler bos metinde HER ZAMAN
@@ -57,11 +60,18 @@ test('DB2 SURESI DOLAN giris SILINIYOR (TTL bellegi de koruyor)', () => {
   // OKUMA DALI ile SINIRLI (2026-10-22): eskiden `slice(i, i + 700)` yaziminda onceki FIFO
   // silmesine de uzaniyordu; TTL silmesi kaldirilinca bekci YESIL kaliyordu (mutasyonla olculdu).
   const govde = dilim(CS, 'const hit = cache.get(key);', 'const choices = await src.load(p);');
-  assert.match(govde, /cache\.delete\(key\)/, 'suresi dolan giris silinmiyor — TTL yalnizca tazeligi koruyor');
+  assert.match(
+    govde,
+    /cache\.delete\(key\)/,
+    'suresi dolan giris silinmiyor — TTL yalnizca tazeligi koruyor',
+  );
   // Silme, "taze mi" kontrolunden SONRA olmali; once olsaydi taze giris de silinirdi.
   const tazeIdx = govde.indexOf('< CACHE_TTL_MS');
   const silIdx = govde.indexOf('cache.delete(key)');
-  assert.ok(tazeIdx > 0 && silIdx > tazeIdx, 'silme tazelik kontrolunden ONCE — taze giris de silinir');
+  assert.ok(
+    tazeIdx > 0 && silIdx > tazeIdx,
+    'silme tazelik kontrolunden ONCE — taze giris de silinir',
+  );
   // OLU DAL YASAK. Mutasyon turunda silmenin onune `if (false)` koymak hicbir
   // seyi ates almadi: kod metinde duruyordu ama HIC KOSMUYORDU. Bu depoda
   // tekrar eden kor bekci bicimi #4 — "varligi arar, ULASILABILIRLIGI degil".
@@ -93,10 +103,17 @@ test('DB1b ayrinti onbellegi GIRIS SAYISINI sinirliyor, suresi dolan siliniyor, 
   );
   // OKUMA DALI ile SINIRLI dilim: yazimdan onceki FIFO silmesi de `detailCache.delete(key)` -
   // dilim oraya uzanirsa TTL silmesi kaldirilsa bile bekci yesil kalir (mutasyon turu P10).
-  const oku2 = dilim(govde, 'const varolan = detailCache.get(key);', 'const detay = await src.details(p, secilen);');
+  const oku2 = dilim(
+    govde,
+    'const varolan = detailCache.get(key);',
+    'const detay = await src.details(p, secilen);',
+  );
   const tazeIdx = oku2.indexOf('< DETAIL_TTL_MS');
   const silIdx = oku2.indexOf('detailCache.delete(key)');
-  assert.ok(tazeIdx > 0 && silIdx > tazeIdx, 'suresi dolan giris silinmiyor (ya da taze giris de siliniyor)');
+  assert.ok(
+    tazeIdx > 0 && silIdx > tazeIdx,
+    'suresi dolan giris silinmiyor (ya da taze giris de siliniyor)',
+  );
   assert.ok(!/if \((?:false|0|null|undefined)\)/.test(govde), 'silme OLU DALA alinmis');
   const yaz = govde.slice(govde.indexOf('const detay = await src.details(p, secilen);'));
   const s = yaz.indexOf('detailCache.delete(key)');
@@ -121,7 +138,10 @@ test('DB4 yedek dosyasi HEM YAZMADA HEM OKUMADA sinirli', () => {
   // duruyordu. (kor bekci bicimi #4)
   assert.match(yaz, /if \(bayt > SNAPSHOT_MAX_BYTES\)/, 'YAZMADA sinir KOSULU yok');
   assert.match(okuF, /if \(st\.size > SNAPSHOT_MAX_BYTES\)/, 'OKUMADA sinir KOSULU yok');
-  for (const [ad, g] of [['yazma', yaz], ['okuma', okuF]]) {
+  for (const [ad, g] of [
+    ['yazma', yaz],
+    ['okuma', okuF],
+  ]) {
     assert.ok(
       !/if \((?:false|0|null|undefined)\)/.test(g),
       `${ad} kapisi OLU DALA alinmis — metinde duruyor ama hic kosmuyor`,
@@ -152,7 +172,11 @@ test('DB7 uygulama listesi sinirli ve kirpma SESSIZ DEGIL', () => {
   assert.match(LG, /TOP \(\$\{APP_LIST_MAX \+ 1\}\)/, 'satir tavani yok');
   // `+1` KASITLI: tavana ulasildigini anlamak icin.
   assert.match(LG, /const truncated = hepsi\.length > APP_LIST_MAX/, 'kirpma tespit edilmiyor');
-  assert.match(LG, /return \{ apps, fallbackMode: false, truncated/, 'kirpma cagiranla PAYLASILMIYOR');
+  assert.match(
+    LG,
+    /return \{ apps, fallbackMode: false, truncated/,
+    'kirpma cagiranla PAYLASILMIYOR',
+  );
 });
 
 // ── DB8: KAPSAM DISI OLANLAR ACIKCA BELGELI ────────────────────────────────
@@ -161,7 +185,11 @@ test('DB8 denetim envanter sorgulari BU TURDA kapsam disi ve bu YAZILI', () => {
   // Bir bekci, KAPSAMADIGI seyi de soylemeli; aksi halde "sinirsiz okumalar
   // kapandi" baslikli bir dosya, kapanmamis kalemleri kapanmis sandirir.
   const bu = fs.readFileSync(__filename, 'utf8');
-  assert.match(bu, /denetim\.cjs.*kapsam disi|BILEREK DOKUNULMAYANLAR/s, 'kapsam disi kalemler belgelenmemis');
+  assert.match(
+    bu,
+    /denetim\.cjs.*kapsam disi|BILEREK DOKUNULMAYANLAR/s,
+    'kapsam disi kalemler belgelenmemis',
+  );
   const denetim = oku('audit/denetim.cjs');
   // Hala sinirsiz olduklarini KAYIT ALTINA al — ileride biri "kapatilmis"
   // sanmasin.

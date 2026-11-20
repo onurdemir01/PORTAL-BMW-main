@@ -31,7 +31,12 @@ function stub(rel, exports) {
   require.cache[p] = m;
 }
 
-const { xmlKapatKapisi, kur, ogeSonuclari, XML_KAPAT_EYLEMI } = require('../autostart-dogrulama.cjs');
+const {
+  xmlKapatKapisi,
+  kur,
+  ogeSonuclari,
+  XML_KAPAT_EYLEMI,
+} = require('../autostart-dogrulama.cjs');
 const { assess: assessHam } = require('../assess.cjs');
 
 const HC_NOT = 'host controller calismiyor, CLI acilmadi';
@@ -41,7 +46,16 @@ const NOW = Date.now();
 // ── XK1 ───────────────────────────────────────────────────────────────────────────────────────────
 test('XK1 xmlKapatKapisi yalniz domain kapali + durmus + auto-start true', () => {
   const ctx = { host: 'GBCJAP01', jvm: 'app1', gen: 8 };
-  const iyi = { name: 'app1', gen: 8, source: 'cli', cfgSrc: 'XML', domainKapali: true, running: false, runningKnown: true, autoStart: 'true' };
+  const iyi = {
+    name: 'app1',
+    gen: 8,
+    source: 'cli',
+    cfgSrc: 'XML',
+    domainKapali: true,
+    running: false,
+    runningKnown: true,
+    autoStart: 'true',
+  };
   assert.equal(xmlKapatKapisi(iyi, ctx), null);
   const red = (ek, re) => {
     const k = xmlKapatKapisi(ek === null ? null : { ...iyi, ...ek }, ctx);
@@ -94,13 +108,23 @@ const jvmSatiri = (host, ad, running, autoStart) => ({
 const veri = (host, asDegerleri) => ({
   hosts: [hostSatiri(host)],
   init: [],
-  jboss: [{ host, gen: 8, host_name: 'master', host_state: '', cli: 'SKIP', note: `${HC_NOT}; host XML tahmini: host.xml` }],
+  jboss: [
+    {
+      host,
+      gen: 8,
+      host_name: 'master',
+      host_state: '',
+      cli: 'SKIP',
+      note: `${HC_NOT}; host XML tahmini: host.xml`,
+    },
+  ],
   jvms: asDegerleri.map((v, i) => jvmSatiri(host, `app${i + 1}`, 0, v)),
   web: [],
   vhosts: [],
   ips: [],
 });
-const dd = (A, host) => A.hosts.find((h) => h.host === host).findings.find((f) => f.code === 'JBOSS_DOMAIN_DOWN');
+const dd = (A, host) =>
+  A.hosts.find((h) => h.host === host).findings.find((f) => f.code === 'JBOSS_DOMAIN_DOWN');
 
 test('XK2 JBOSS_DOMAIN_DOWN: hepsi false -> her ortamda bilgi; acik/bilinmeyen varsa uyari; Admin kazanir', () => {
   const HEPSI =
@@ -117,12 +141,27 @@ test('XK2 JBOSS_DOMAIN_DOWN: hepsi false -> her ortamda bilgi; acik/bilinmeyen v
   const acik = dd(assessHam(veri('GBBFAP01', ['false', 'true']), { now: NOW }), 'GBBFAP01');
   assert.equal(acik.severity, 'warning');
   assert.equal(acik.autoStartAcik, 1);
-  const bilinmeyen = dd(assessHam(veri('GBBFAP01', ['false', 'unknown']), { now: NOW }), 'GBBFAP01');
+  const bilinmeyen = dd(
+    assessHam(veri('GBBFAP01', ['false', 'unknown']), { now: NOW }),
+    'GBBFAP01',
+  );
   assert.equal(bilinmeyen.severity, 'warning', 'bilinmeyen auto-start: reboot guvenli denemez');
   // Admin seviyesi kazanir (uyari dediyse hepsi false olsa da uyari)
-  const adm = dd(assessHam(veri('GBBFAP01', ['false', 'false']), { now: NOW, seviyeler: { JBOSS_DOMAIN_DOWN: 'warning' } }), 'GBBFAP01');
+  const adm = dd(
+    assessHam(veri('GBBFAP01', ['false', 'false']), {
+      now: NOW,
+      seviyeler: { JBOSS_DOMAIN_DOWN: 'warning' },
+    }),
+    'GBBFAP01',
+  );
   assert.deepEqual([adm.severity, adm.adminSeviye], ['warning', true]);
-  const kr = dd(assessHam(veri('GBBFAP01', ['false', 'false']), { now: NOW, seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } }), 'GBBFAP01');
+  const kr = dd(
+    assessHam(veri('GBBFAP01', ['false', 'false']), {
+      now: NOW,
+      seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' },
+    }),
+    'GBBFAP01',
+  );
   assert.equal(kr.severity, 'danger');
 });
 
@@ -137,23 +176,55 @@ test('XK3 dogrulama katmani: XML isi items; OK/SKIP dogrulanir; bulgu metni / se
   const items = ['app1', 'app2'].map((jvm) => ({ gen: 8, jvm, action: XML_KAPAT_EYLEMI }));
   // plan_only sonucu ve FAIL oge dogrulanmaz
   k.isKaydetToplu(1, 50, { host, h, items });
-  const satir = (jvm, d) => ({ gen: '8', jvm, action: XML_KAPAT_EYLEMI, line: `RESULT\t${XML_KAPAT_EYLEMI}\t${d}\t${jvm} m` });
-  const b0 = k.isBitti(1, 50, 'successful', { action: XML_KAPAT_EYLEMI, plan_only: true, items: [satir('app1', 'PLAN')] });
+  const satir = (jvm, d) => ({
+    gen: '8',
+    jvm,
+    action: XML_KAPAT_EYLEMI,
+    line: `RESULT\t${XML_KAPAT_EYLEMI}\t${d}\t${jvm} m`,
+  });
+  const b0 = k.isBitti(1, 50, 'successful', {
+    action: XML_KAPAT_EYLEMI,
+    plan_only: true,
+    items: [satir('app1', 'PLAN')],
+  });
   assert.equal(b0.toplu, true);
   assert.equal(b0.ogeler[0].dogrulandi, false);
   assert.equal(k._boyut().dogrulanan, 0);
   // ogeSonuclari XML eylemini liste kipi sayar; baska eylemin satiri eslesmez
-  const os = ogeSonuclari(items, { action: XML_KAPAT_EYLEMI, plan_only: false, items: [satir('app1', 'OK'), satir('app2', 'FAIL')] });
-  assert.deepEqual(os.map((o) => [o.jvm, o.durum, o.dogrulandi]), [['app1', 'OK', true], ['app2', 'FAIL', false]]);
+  const os = ogeSonuclari(items, {
+    action: XML_KAPAT_EYLEMI,
+    plan_only: false,
+    items: [satir('app1', 'OK'), satir('app2', 'FAIL')],
+  });
+  assert.deepEqual(
+    os.map((o) => [o.jvm, o.durum, o.dogrulandi]),
+    [
+      ['app1', 'OK', true],
+      ['app2', 'FAIL', false],
+    ],
+  );
   // uygulama: app1 OK, app2 SKIP -> ikisi de false dogrulandi
   k.isKaydetToplu(1, 51, { host, h, items });
   assert.ok(k.surenIs(host, 8, 'app1'), 'XML isi suren is kilidine girmeli');
   simdi += 10;
-  const b = k.isBitti(1, 51, 'failed', { action: XML_KAPAT_EYLEMI, plan_only: false, items: [satir('app1', 'OK'), satir('app2', 'SKIP')] });
-  assert.deepEqual(b.ogeler.map((o) => o.dogrulandi), [true, true]);
+  const b = k.isBitti(1, 51, 'failed', {
+    action: XML_KAPAT_EYLEMI,
+    plan_only: false,
+    items: [satir('app1', 'OK'), satir('app2', 'SKIP')],
+  });
+  assert.deepEqual(
+    b.ogeler.map((o) => o.dogrulandi),
+    [true, true],
+  );
   assert.equal(k.surenIs(host, 8, 'app1'), null);
-  const j1 = k.uygulaJvm(h, h.jvms.find((j) => j.name === 'app1'));
-  assert.deepEqual([j1.autoStart, j1.autoStartTarama, j1.autoStartDogrulama.jobId], ['false', 'true', 51]);
+  const j1 = k.uygulaJvm(
+    h,
+    h.jvms.find((j) => j.name === 'app1'),
+  );
+  assert.deepEqual(
+    [j1.autoStart, j1.autoStartTarama, j1.autoStartDogrulama.jobId],
+    ['false', 'true', 51],
+  );
   const f = k.uygulaBulgu(h, f0);
   assert.equal(f.severity, 'info');
   assert.equal(f.autoStartAcik, 0);
@@ -172,23 +243,115 @@ test('XK3 dogrulama katmani: XML isi items; OK/SKIP dogrulanir; bulgu metni / se
 // ── XK4 / XK5: uclar (gercek initServerHub, sahte DB + AWX) ────────────────────────────────────────
 const APP = 'GBCJAP01';
 const SEMA = {
-  Server_Hub_Hosts: ['id', 'scan_date', 'host', 'products', 'wall_s', 'cpu_s', 'note', 'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at'],
+  Server_Hub_Hosts: [
+    'id',
+    'scan_date',
+    'host',
+    'products',
+    'wall_s',
+    'cpu_s',
+    'note',
+    'scan_ver',
+    'rec_counts',
+    'scan_errors',
+    'proc_visibility',
+    'sock_visibility',
+    'loaded_at',
+  ],
   Server_Hub_Init: ['id', 'scan_date', 'host', 'root', 'file', 'status', 'sha512'],
   Server_Hub_Jboss: ['id', 'scan_date', 'host', 'gen', 'host_name', 'host_state', 'cli', 'note'],
-  Server_Hub_Jvms: ['id', 'scan_date', 'host', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports', 'running_src', 'cfg_src', 'jvm_args'],
+  Server_Hub_Jvms: [
+    'id',
+    'scan_date',
+    'host',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+    'running_src',
+    'cfg_src',
+    'jvm_args',
+  ],
   Server_Hub_Web: ['id', 'scan_date', 'host', 'product', 'running', 'syntax', 'detail'],
-  Server_Hub_Vhosts: ['id', 'scan_date', 'host', 'product', 'listen', 'server_name', 'aliases', 'access_log', 'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file'],
+  Server_Hub_Vhosts: [
+    'id',
+    'scan_date',
+    'host',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
+  ],
   Server_Hub_Ips: ['id', 'scan_date', 'host', 'ip', 'iface', 'used_by', 'is_primary'],
   Server_Hub_Sshd: ['id', 'scan_date', 'host', 'max_sessions', 'max_startups', 'active_sessions'],
 };
 const loadedAt = new Date(Date.now() - 3600 * 1000).toISOString();
-const dbJvm = (gen, ad, ek) => ({ id: `${gen}${ad}`, scan_date: GUN, host: APP, gen, jvm: ad, grp: 'g', running: 0, auto_start: 'true', server_state: 'stopped', ports: '', running_src: 'PS_ABSENT', cfg_src: 'XML', ...ek });
+const dbJvm = (gen, ad, ek) => ({
+  id: `${gen}${ad}`,
+  scan_date: GUN,
+  host: APP,
+  gen,
+  jvm: ad,
+  grp: 'g',
+  running: 0,
+  auto_start: 'true',
+  server_state: 'stopped',
+  ports: '',
+  running_src: 'PS_ABSENT',
+  cfg_src: 'XML',
+  ...ek,
+});
 const dbVeri = { kosanYok: false };
 const satirlar = () => ({
-  Server_Hub_Hosts: [{ id: 1, scan_date: GUN, host: APP, products: 'JBOSS7 JBOSS8', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.4', rec_counts: '', scan_errors: '', proc_visibility: 'FULL', sock_visibility: 'PID', loaded_at: loadedAt }],
+  Server_Hub_Hosts: [
+    {
+      id: 1,
+      scan_date: GUN,
+      host: APP,
+      products: 'JBOSS7 JBOSS8',
+      wall_s: 1,
+      cpu_s: 0.1,
+      note: '',
+      scan_ver: '2.4',
+      rec_counts: '',
+      scan_errors: '',
+      proc_visibility: 'FULL',
+      sock_visibility: 'PID',
+      loaded_at: loadedAt,
+    },
+  ],
   Server_Hub_Jboss: [
-    { id: 1, scan_date: GUN, host: APP, gen: 7, host_name: 'm', host_state: 'running', cli: 'OK', note: '' },
-    { id: 2, scan_date: GUN, host: APP, gen: 8, host_name: 'master', host_state: '', cli: 'SKIP', note: `${HC_NOT}; host XML tahmini: host.xml` },
+    {
+      id: 1,
+      scan_date: GUN,
+      host: APP,
+      gen: 7,
+      host_name: 'm',
+      host_state: 'running',
+      cli: 'OK',
+      note: '',
+    },
+    {
+      id: 2,
+      scan_date: GUN,
+      host: APP,
+      gen: 8,
+      host_name: 'master',
+      host_state: '',
+      cli: 'SKIP',
+      note: `${HC_NOT}; host XML tahmini: host.xml`,
+    },
   ],
   Server_Hub_Jvms: [
     dbJvm(8, 'yanlis1'),
@@ -205,7 +368,8 @@ stub('../../inventory/mssql.cjs', {
     if (/OBJECT_ID\('dbo\.Server_Hub_Hosts'\) AS oid/.test(s)) return { recordset: [{ oid: 1 }] };
     if (/FROM sys\.columns c WHERE c\.object_id IN/.test(s)) {
       const out = [];
-      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g)) for (const c of SEMA[m[1]] || []) out.push({ tbl: m[1], name: c });
+      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g))
+        for (const c of SEMA[m[1]] || []) out.push({ tbl: m[1], name: c });
       return { recordset: out };
     }
     if (/sys\.columns WHERE object_id/.test(s)) return { recordset: [] };
@@ -218,12 +382,22 @@ stub('../../db/index.cjs', { query: async () => ({ rows: [] }) });
 stub('../../auth/index.cjs', { requireAuth: (_q, _s, n) => n() });
 stub('../../auth/visibility.cjs', { requireVisiblePrefix: () => (_q, _s, n) => n() });
 stub('../../audit/index.cjs', { auditPortal: () => {} });
-stub('../../ansible/playbook-registry.cjs', { getByKey: async () => ({ enabled: true, awxServerId: 1 }), getEffectiveTemplateId: () => 77 });
-stub('../../opsx/index.cjs', { extractStatsKey: (a, k) => (a && a[k] && typeof a[k] === 'object' ? a[k] : null) });
+stub('../../ansible/playbook-registry.cjs', {
+  getByKey: async () => ({ enabled: true, awxServerId: 1 }),
+  getEffectiveTemplateId: () => 77,
+});
+stub('../../opsx/index.cjs', {
+  extractStatsKey: (a, k) => (a && a[k] && typeof a[k] === 'object' ? a[k] : null),
+});
 const awx = { launch: [], durum: new Map(), bekle: null, bekleyen: 0 };
 stub('../../ansible/runner.cjs', {
   getServers: () => [{ id: 1 }],
-  getTemplateSummaryOnServer: async (_s, id) => ({ id, name: 'fix', playbook: 'bmw_automation_folder/server_hub/server_hub_fix.yml', askVariablesOnLaunch: true }),
+  getTemplateSummaryOnServer: async (_s, id) => ({
+    id,
+    name: 'fix',
+    playbook: 'bmw_automation_folder/server_hub/server_hub_fix.yml',
+    askVariablesOnLaunch: true,
+  }),
   listTemplatesForServer: async () => [],
   launchJobOnServer: async (serverId, templateId, extraVars) => {
     if (awx.bekle) {
@@ -234,7 +408,8 @@ stub('../../ansible/runner.cjs', {
     awx.launch.push({ serverId, templateId, extraVars, jobId });
     return { jobId, status: 'pending' };
   },
-  getJobStatusOnServer: async (_s, jobId) => awx.durum.get(jobId) || { status: 'running', artifacts: {} },
+  getJobStatusOnServer: async (_s, jobId) =>
+    awx.durum.get(jobId) || { status: 'running', artifacts: {} },
   getJobOutputOnServer: async () => ({ output: '' }),
 });
 const SH = require('../index.cjs');
@@ -280,7 +455,12 @@ const postXml = (kok, body) =>
     signal: AbortSignal.timeout(5000),
   });
 const al = (url) => fetch(url, { signal: AbortSignal.timeout(5000) });
-const satirX = (jvm, d) => ({ gen: '8', jvm, action: XML_KAPAT_EYLEMI, line: `RESULT\t${XML_KAPAT_EYLEMI}\t${d}\t${jvm} auto-start=false (host XML host.xml, geri okundu)` });
+const satirX = (jvm, d) => ({
+  gen: '8',
+  jvm,
+  action: XML_KAPAT_EYLEMI,
+  line: `RESULT\t${XML_KAPAT_EYLEMI}\t${d}\t${jvm} auto-start=false (host XML host.xml, geri okundu)`,
+});
 
 test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ikinci uygulama zaten; suren is 409', async () => {
   await httpIle(async (kok) => {
@@ -292,7 +472,10 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
     const p = await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], plan: true });
     assert.equal(p.status, 200, JSON.stringify(await p.clone().json()));
     const pj = await p.json();
-    assert.deepEqual([pj.planOnly, pj.action, pj.prod, pj.jvms], [true, XML_KAPAT_EYLEMI, true, ['yanlis1', 'yanlis2']]);
+    assert.deepEqual(
+      [pj.planOnly, pj.action, pj.prod, pj.jvms],
+      [true, XML_KAPAT_EYLEMI, true, ['yanlis1', 'yanlis2']],
+    );
     assert.deepEqual(awx.launch[0].extraVars, {
       target_host: APP,
       action: 'jboss_autostart_xml_off',
@@ -301,7 +484,11 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
       gen: 8,
       jvms: 'yanlis1 yanlis2',
     });
-    assert.equal(SH._autoStart._boyut().topluIsler, 0, 'plan isi dogrulama katmanina kaydedilmemeli');
+    assert.equal(
+      SH._autoStart._boyut().topluIsler,
+      0,
+      'plan isi dogrulama katmanina kaydedilmemeli',
+    );
     // uygulama
     const u = await (await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true })).json();
     assert.equal(u.ok, true);
@@ -315,15 +502,33 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
     // is biter: oge OK -> dogrulandi
     awx.durum.set(u.jobId, {
       status: 'successful',
-      artifacts: { server_hub_fix_result: { host: APP, action: XML_KAPAT_EYLEMI, plan_only: false, line: `RESULT\t${XML_KAPAT_EYLEMI}\tOK\t2 JVM`, items: [satirX('yanlis1', 'OK'), satirX('yanlis2', 'OK')] } },
+      artifacts: {
+        server_hub_fix_result: {
+          host: APP,
+          action: XML_KAPAT_EYLEMI,
+          plan_only: false,
+          line: `RESULT\t${XML_KAPAT_EYLEMI}\tOK\t2 JVM`,
+          items: [satirX('yanlis1', 'OK'), satirX('yanlis2', 'OK')],
+        },
+      },
     });
     const js = await (await al(`${kok}/job-status/1/${u.jobId}`)).json();
     assert.equal(js.autoStart.toplu, true);
-    assert.deepEqual(js.autoStart.ogeler.map((o) => [o.jvm, o.durum, o.dogrulandi]), [['yanlis1', 'OK', true], ['yanlis2', 'OK', true]]);
+    assert.deepEqual(
+      js.autoStart.ogeler.map((o) => [o.jvm, o.durum, o.dogrulandi]),
+      [
+        ['yanlis1', 'OK', true],
+        ['yanlis2', 'OK', true],
+      ],
+    );
     const sonra = await (await al(`${kok}/host/${APP}`)).json();
     for (const ad of ['yanlis1', 'yanlis2']) {
       const j = sonra.host.jvms.find((x) => x.name === ad);
-      assert.deepEqual([j.autoStart, j.autoStartTarama, j.autoStartDogrulama.jobId], ['false', 'true', u.jobId], ad);
+      assert.deepEqual(
+        [j.autoStart, j.autoStartTarama, j.autoStartDogrulama.jobId],
+        ['false', 'true', u.jobId],
+        ad,
+      );
     }
     const f = sonra.host.findings.find((x) => x.code === 'JBOSS_DOMAIN_DOWN');
     assert.equal(f.autoStartAcik, 0);
@@ -331,12 +536,17 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
     assert.equal(f.severity, 'warning');
     assert.doesNotMatch(f.text, /auto-start açık: reboot/);
     // Bulgular sekmesi (/findings) da ayni katman
-    const fl = (await (await al(`${kok}/findings`)).json()).findings.find((x) => x.host === APP && x.code === 'JBOSS_DOMAIN_DOWN');
+    const fl = (await (await al(`${kok}/findings`)).json()).findings.find(
+      (x) => x.host === APP && x.code === 'JBOSS_DOMAIN_DOWN',
+    );
     assert.equal(fl.autoStartAcik, 0);
     // ikinci uygulama: zaten kapali (dogrulanmis deger) -> 400, is yok
     const ik = await postXml(kok, { jvms: ['yanlis1'], confirmed: true });
     assert.equal(ik.status, 400);
-    assert.match((await ik.json()).message, new RegExp(`zaten auto-start KAPALI.*iş #${u.jobId} ile doğrulandı`));
+    assert.match(
+      (await ik.json()).message,
+      new RegExp(`zaten auto-start KAPALI.*iş #${u.jobId} ile doğrulandı`),
+    );
     assert.equal(awx.launch.length, 2);
   });
 });
@@ -351,7 +561,10 @@ test('XK5 red: calisan domain / JVM, plan+confirmed, cift ad, gecersiz girdi; /j
     await bekle({ gen: 7, jvms: ['acikdomain'], plan: true }, /domain'i kapalı görünmüyor/);
     await bekle({ jvms: ['kosan8'], plan: true }, /ÇALIŞIYOR/);
     await bekle({ jvms: ['zatenkapali'], confirmed: true }, /zaten auto-start KAPALI/);
-    await bekle({ jvms: ['yanlis1', 'kosan8', 'yok9'], plan: true }, /^2 JVM reddedildi \(iş açılmadı\):.*ÇALIŞIYOR.*taramada yok/);
+    await bekle(
+      { jvms: ['yanlis1', 'kosan8', 'yok9'], plan: true },
+      /^2 JVM reddedildi \(iş açılmadı\):.*ÇALIŞIYOR.*taramada yok/,
+    );
     await bekle({ jvms: ['yanlis1'], plan: true, confirmed: true }, /ikisi birden olmaz/);
     await bekle({ jvms: ['yanlis1'] }, /Önce plan/);
     await bekle({ jvms: ['yanlis1', 'yanlis1'], plan: true }, /iki kez/);
@@ -382,10 +595,18 @@ test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bit
   assert.equal(typeof k.xmlRezervasyon('GBCJAP01', 7), 'function', 'baska nesil serbest');
   b1();
   assert.equal(typeof k.xmlRezervasyon('GBCJAP01', 8), 'function', 'birak sonrasi serbest');
-  k.isKaydetToplu(1, 900, { host: APP, h: null, items: [{ gen: 8, jvm: 'yanlis1', action: XML_KAPAT_EYLEMI }] });
+  k.isKaydetToplu(1, 900, {
+    host: APP,
+    h: null,
+    items: [{ gen: 8, jvm: 'yanlis1', action: XML_KAPAT_EYLEMI }],
+  });
   assert.deepEqual(k.xmlSurenIs(APP, 8), { serverId: 1, jobId: 900, jvm: 'yanlis1' });
   assert.equal(k.xmlSurenIs(APP, 7), null);
-  k.isKaydetToplu(1, 901, { host: APP, h: null, items: [{ gen: 8, jvm: 'yanlis2', action: 'jboss_autostart_off' }] });
+  k.isKaydetToplu(1, 901, {
+    host: APP,
+    h: null,
+    items: [{ gen: 8, jvm: 'yanlis2', action: 'jboss_autostart_off' }],
+  });
   k.isBitti(1, 900, 'failed', null);
   assert.equal(k.xmlSurenIs(APP, 8), null, 'XML disi toplu is XML kilidi sayilmaz');
 
@@ -397,12 +618,25 @@ test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bit
     assert.equal(r.status, 409);
     const rj = await r.json();
     assert.equal(rj.code, 'xml_is_suruyor');
-    assert.match(rj.message, new RegExp(`host XML işi #${u.jobId} hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz`));
+    assert.match(
+      rj.message,
+      new RegExp(`host XML işi #${u.jobId} hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz`),
+    );
     // plan salt okunur: kilide takilmaz
     assert.equal((await postXml(kok, { jvms: ['yanlis2'], plan: true })).status, 200);
     assert.equal(awx.launch.length, 2);
     // is biter (FAIL): kilit kalkar, yanlis2 acilir
-    awx.durum.set(u.jobId, { status: 'failed', artifacts: { server_hub_fix_result: { action: XML_KAPAT_EYLEMI, plan_only: false, line: `RESULT	${XML_KAPAT_EYLEMI}	FAIL	kilit`, items: [] } } });
+    awx.durum.set(u.jobId, {
+      status: 'failed',
+      artifacts: {
+        server_hub_fix_result: {
+          action: XML_KAPAT_EYLEMI,
+          plan_only: false,
+          line: `RESULT	${XML_KAPAT_EYLEMI}	FAIL	kilit`,
+          items: [],
+        },
+      },
+    });
     const r2 = await postXml(kok, { jvms: ['yanlis2'], confirmed: true });
     assert.equal(r2.status, 200, JSON.stringify(await r2.clone().json()));
     assert.equal(awx.launch.length, 3);
@@ -434,7 +668,15 @@ test('XK7 /host: katman JBOSS_DOMAIN_DOWN bilgiye inince sunucu durumu / sayacla
     const u = await (await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true })).json();
     awx.durum.set(u.jobId, {
       status: 'successful',
-      artifacts: { server_hub_fix_result: { host: APP, action: XML_KAPAT_EYLEMI, plan_only: false, line: `RESULT	${XML_KAPAT_EYLEMI}	OK	2 JVM`, items: [satirX('yanlis1', 'OK'), satirX('yanlis2', 'OK')] } },
+      artifacts: {
+        server_hub_fix_result: {
+          host: APP,
+          action: XML_KAPAT_EYLEMI,
+          plan_only: false,
+          line: `RESULT	${XML_KAPAT_EYLEMI}	OK	2 JVM`,
+          items: [satirX('yanlis1', 'OK'), satirX('yanlis2', 'OK')],
+        },
+      },
     });
     await al(`${kok}/job-status/1/${u.jobId}`);
     const son = (await (await al(`${kok}/host/${APP}`)).json()).host;
@@ -442,7 +684,11 @@ test('XK7 /host: katman JBOSS_DOMAIN_DOWN bilgiye inince sunucu durumu / sayacla
     assert.equal(f.severity, 'info');
     assert.match(f.text, /reboot'ta açılacak JVM yok/);
     const say = (F, sv) => F.filter((x) => x.severity === sv).length;
-    assert.deepEqual(son.counts, { danger: say(son.findings, 'danger'), warning: say(son.findings, 'warning'), info: say(son.findings, 'info') });
+    assert.deepEqual(son.counts, {
+      danger: say(son.findings, 'danger'),
+      warning: say(son.findings, 'warning'),
+      info: say(son.findings, 'info'),
+    });
     assert.equal(son.counts.warning, ilk.counts.warning - 1);
     assert.equal(son.counts.info, ilk.counts.info + 1);
     const SV = ['ok', 'info', 'warning', 'danger'];

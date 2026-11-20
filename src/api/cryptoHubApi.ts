@@ -292,11 +292,25 @@ export interface CryptoResources {
   };
   peers: { kiraci: string; yol: string; durum: string; sha256: string; mesaj: string }[];
   checks: CryptoResCheck[];
-  edits: { rol: string; bilesen: string; alan: string; eski: string; yeni: string; islem: string }[];
+  edits: {
+    rol: string;
+    bilesen: string;
+    alan: string;
+    eski: string;
+    yeni: string;
+    islem: string;
+  }[];
   diffs: { kind: string; ad: string; kap: string; alan: string; eski: string; yeni: string }[];
   /** `bekleyen`: iş yükü istenen değişiklik yüzünden değil, dosyadaki canlıya uygulanmamış
    *  kaynak farkı yüzünden yeniden başlıyor (riskli onay ve kontroller onu da kapsar). */
-  affect: { kind: string; ad: string; strateji: string; replika: string; riskli: boolean; bekleyen?: boolean }[];
+  affect: {
+    kind: string;
+    ad: string;
+    strateji: string;
+    replika: string;
+    riskli: boolean;
+    bekleyen?: boolean;
+  }[];
   /** bekleyen farklar: `kaynak_disi` satırlarda DEĞER YOK (gösterilmez) */
   pending: { tur: string; kind: string; ad: string; yer: string; canli: string; dosya: string }[];
   drift: { kind: string; ad: string; kap: string; alan: string; canli: string; manifest: string }[];
@@ -731,7 +745,12 @@ export interface NodeSonuc {
   yedek: string[];
   hatalar: { stage: string; message: string }[];
   /** Bilet durumuyla kapanan talep (iş koşmadı) */
-  smart?: { status: string; stateName?: string | null; hata?: string | null; onayGeldi?: boolean } | null;
+  smart?: {
+    status: string;
+    stateName?: string | null;
+    hata?: string | null;
+    onayGeldi?: boolean;
+  } | null;
 }
 
 export interface NodeChangeDetail {
@@ -822,7 +841,13 @@ export interface NodeSmartOnizleme {
 /** GET/PUT /smart-config. Token değeri hiçbir zaman dönmez. */
 export interface CryptoSmartAyarYaniti {
   ok: boolean;
-  smart?: { enabled: boolean; ocoTest?: boolean; flowKey: string; metadataFields: string; integrationKeySet: boolean };
+  smart?: {
+    enabled: boolean;
+    ocoTest?: boolean;
+    flowKey: string;
+    metadataFields: string;
+    integrationKeySet: boolean;
+  };
   kaynak?: NodeSmartKaynak | null;
   durum?: 'kendi' | 'opsx' | 'testte_kapali' | 'eksik' | 'token_cozulemedi';
   opsxFlowKey?: string;
@@ -868,8 +893,11 @@ export const cryptoNodeApi = {
     fetch(`${BASE}/node-change/${talepId}`).then(safeJson),
 
   /** Yalnız Admin: geçerli Smart şablonunun bu talep için render'ı. Smart'a GİTMEZ. */
-  smartOnizle: (body: { tenant: string; grup: string; bilesenler?: string[] }): Promise<NodeSmartOnizleme> =>
-    postJson(`${BASE}/node-smart-onizle`, body),
+  smartOnizle: (body: {
+    tenant: string;
+    grup: string;
+    bilesenler?: string[];
+  }): Promise<NodeSmartOnizleme> => postJson(`${BASE}/node-smart-onizle`, body),
 
   /** Yalnız Admin: takılı açık talebi gerekçeyle kapatır (denetime yazılır). */
   kapat: (talepId: number, gerekce: string): Promise<NodeKapatResult> =>

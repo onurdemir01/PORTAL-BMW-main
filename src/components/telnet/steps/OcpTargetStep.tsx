@@ -9,11 +9,11 @@
 // GÖRÜLMÜŞ namespace'ler dropdown'da listelenir, bilinmiyorsa serbest yazılabilir.
 // "Ekle" ile listeye BİRİKTİRİLİR (birden fazla namespace seçilebilir) — OpsX'in
 // namespace/uygulama çifti biriktirme deseninin aynısı, sadece uygulama alanı yok.
-import React, { useId, useState } from "react";
-import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { telnetApi } from "@/api/telnetApi";
-import FilterableList from "@/components/common/FilterableList";
+import React, { useId, useState } from 'react';
+import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { telnetApi } from '@/api/telnetApi';
+import FilterableList from '@/components/common/FilterableList';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const OcpTargetStep: React.FC<{
@@ -23,12 +23,12 @@ const OcpTargetStep: React.FC<{
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [env, setEnv] = useState("");
-  const [tenant, setTenant] = useState("");
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
-  const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
-  const [namespace, setNamespace] = useState("");
+  const [namespaceMode, setNamespaceMode] = useState<'list' | 'free'>('list');
+  const [namespace, setNamespace] = useState('');
   const nsBaslikId = useId();
 
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -48,22 +48,27 @@ const OcpTargetStep: React.FC<{
   const tenants = env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : [];
 
   // Ortam/tenant değişince namespace listesi yeniden çekilir; önceki seçimler sıfırlanır.
-  useAsyncEffect(async (alive) => {
-    setNamespace(""); setNamespaceOptions([]); setNamespaces([]);
-    if (!env || !tenant) return;
-    try {
-      const r = await telnetApi.getOcpNamespaces(env, tenant);
-      if (alive()) setNamespaceOptions(r.namespaces || []);
-    } catch {
-      if (alive()) setNamespaceOptions([]);
-    }
-  }, [env, tenant]);
+  useAsyncEffect(
+    async (alive) => {
+      setNamespace('');
+      setNamespaceOptions([]);
+      setNamespaces([]);
+      if (!env || !tenant) return;
+      try {
+        const r = await telnetApi.getOcpNamespaces(env, tenant);
+        if (alive()) setNamespaceOptions(r.namespaces || []);
+      } catch {
+        if (alive()) setNamespaceOptions([]);
+      }
+    },
+    [env, tenant],
+  );
 
   function addNamespace() {
     const ns = namespace.trim();
     if (!ns || namespaces.includes(ns)) return;
     setNamespaces((prev) => [...prev, ns]);
-    setNamespace("");
+    setNamespace('');
   }
 
   function removeNamespace(i: number) {
@@ -73,11 +78,17 @@ const OcpTargetStep: React.FC<{
   const ready = env && tenant && namespaces.length > 0;
 
   if (loading) return <LoadingLogo compact />;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
   if (envs.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-        Henüz hiç cluster tanımlanmamış — Admin &gt; OCP Yapılandırma &gt; OCP Cluster Hiyerarşisi&apos;nden eklenmeli.
+        Henüz hiç cluster tanımlanmamış — Admin &gt; OCP Yapılandırma &gt; OCP Cluster
+        Hiyerarşisi&apos;nden eklenmeli.
       </div>
     );
   }
@@ -87,13 +98,18 @@ const OcpTargetStep: React.FC<{
       <div>
         {/* Grup basliklari (dugme listesi / degisen alan): etiket ogesi degil. cursor-default
             etiketin tarayici varsayilani, gorunum ayni kalir. */}
-        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Ortam</span>
+        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">
+          Ortam
+        </span>
         <div className="flex flex-wrap gap-1.5">
           {envs.map((e) => (
             <button
               key={e}
-              onClick={() => { setEnv(e); setTenant(""); }}
-              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${env === e ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
+              onClick={() => {
+                setEnv(e);
+                setTenant('');
+              }}
+              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${env === e ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'}`}
             >
               {e}
             </button>
@@ -103,13 +119,15 @@ const OcpTargetStep: React.FC<{
 
       {env && (
         <div>
-          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Tenant / İş Birimi</span>
+          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">
+            Tenant / İş Birimi
+          </span>
           <div className="flex flex-wrap gap-1.5">
             {tenants.map((t) => (
               <button
                 key={t}
                 onClick={() => setTenant(t)}
-                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${tenant === t ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${tenant === t ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'}`}
               >
                 {t}
               </button>
@@ -122,18 +140,23 @@ const OcpTargetStep: React.FC<{
         <div className="space-y-3 border border-[var(--border)] rounded-xl p-3">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span id={nsBaslikId} className="block text-xs font-medium text-[var(--text-secondary)] cursor-default">Namespace</span>
+              <span
+                id={nsBaslikId}
+                className="block text-xs font-medium text-[var(--text-secondary)] cursor-default"
+              >
+                Namespace
+              </span>
               {namespaceOptions.length > 0 && (
                 <div className="flex gap-1 text-[10px]">
                   <button
-                    onClick={() => setNamespaceMode("list")}
-                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "list" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                    onClick={() => setNamespaceMode('list')}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === 'list' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}
                   >
                     Listeden seç
                   </button>
                   <button
-                    onClick={() => setNamespaceMode("free")}
-                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "free" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                    onClick={() => setNamespaceMode('free')}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === 'free' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}
                   >
                     Yaz
                   </button>
@@ -141,7 +164,7 @@ const OcpTargetStep: React.FC<{
               )}
             </div>
 
-            {namespaceMode === "list" && namespaceOptions.length > 0 ? (
+            {namespaceMode === 'list' && namespaceOptions.length > 0 ? (
               /* Arama + vurgulama + daha uzun liste (OpsX ile aynı bileşen). "Yaz" kipi
                  ve serbest yazım kaçış yolu OLDUĞU GİBİ duruyor. */
               <FilterableList
@@ -161,7 +184,8 @@ const OcpTargetStep: React.FC<{
             )}
             {namespaceOptions.length === 0 && (
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                Bu tenant için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i yazabilirsiniz.
+                Bu tenant için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i
+                yazabilirsiniz.
               </p>
             )}
           </div>
@@ -186,9 +210,21 @@ const OcpTargetStep: React.FC<{
             {namespaces.map((n, i) => (
               /* `min-w-0`: namespace adlari uzun olabiliyor ve flex cocugunun
                  varsayilan `min-width:auto` degeri satiri disari tasiriyordu. */
-              <div key={n} className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg min-w-0">
-                <span className="text-sm font-mono text-[var(--text-primary)] min-w-0 truncate" title={n}>{n}</span>
-                <button onClick={() => removeNamespace(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
+              <div
+                key={n}
+                className="flex items-center justify-between gap-2 px-3 py-1.5 border border-[var(--border)] rounded-lg min-w-0"
+              >
+                <span
+                  className="text-sm font-mono text-[var(--text-primary)] min-w-0 truncate"
+                  title={n}
+                >
+                  {n}
+                </span>
+                <button
+                  onClick={() => removeNamespace(i)}
+                  disabled={busy}
+                  className="text-[var(--text-muted)] hover:text-red-600"
+                >
                   <XMarkIcon className="w-4 h-4" />
                 </button>
               </div>

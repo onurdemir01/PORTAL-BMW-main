@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import { useBackdropDismiss } from "./backdropDismiss";
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useBackdropDismiss } from './backdropDismiss';
 
 interface Props {
   open: boolean;
@@ -10,7 +10,7 @@ interface Props {
   subtitle?: string;
   icon?: React.ComponentType<{ className?: string }>;
   footer?: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl" | "wide";
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'wide';
   /** Arka plana tiklayinca kapansin mi. Kullanici girdisi tasiyan pencerelerde
    *  false verin: tek yanlis tiklama formu silmesin. Varsayilan true. */
   dismissOnBackdrop?: boolean;
@@ -18,13 +18,13 @@ interface Props {
 }
 
 const SIZE_MAP = {
-  sm: "max-w-sm",
-  md: "max-w-md",
-  lg: "max-w-lg",
-  xl: "max-w-2xl",
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-lg',
+  xl: 'max-w-2xl',
   // Liste/tablo pencereleri (kullanici, 2026-09-17: "cok kucuk aciliyor, iyice buyuk acilsin"):
   // ekranin ~%95'i, ust siniri 90rem.
-  wide: "max-w-[min(90rem,95vw)]",
+  wide: 'max-w-[min(90rem,95vw)]',
 };
 
 // UST USTE PENCERE YIGINI (2026-11-08). Her acik Modal `window`a kendi keydown dinleyicisini
@@ -37,7 +37,17 @@ let kaydirmaKilidi = 0;
 
 // PatternFly Modal: duz beyaz kutu (3px kose), 20px Red Hat Display baslik,
 // sag ustte kapat butonu, altta SOLA hizali aksiyon barı (PF konvansiyonu).
-export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size = "md", dismissOnBackdrop = true, children }: Props) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  subtitle,
+  icon: Icon,
+  footer,
+  size = 'md',
+  dismissOnBackdrop = true,
+  children,
+}: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const backdrop = useBackdropDismiss(onClose, dismissOnBackdrop);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -58,7 +68,9 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
   // ILK odaklanabilir ogeye (kapatma X'i) tasiyordu; textarea'ya yazilamiyordu
   // (Nginx Audit > istisna notu). Efekt artik yalniz `open` degisince kosar.
   const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -66,11 +78,12 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
 
     // Acilista odagi panele tasi. Odaklanabilir bir oge varsa ONA, yoksa panelin
     // kendisine (panel `tabIndex={-1}` tasir).
-    const focusables = () => Array.from(
-      panelRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    const focusables = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
 
     const first = focusables()[0];
     (first ?? panelRef.current)?.focus();
@@ -80,26 +93,37 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
 
     function onKey(e: KeyboardEvent) {
       if (acikPencereler[acikPencereler.length - 1] !== kimlik) return;
-      if (e.key === "Escape") { onCloseRef.current(); return; }
-      if (e.key !== "Tab") return;
+      if (e.key === 'Escape') {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
       const list = focusables();
-      if (list.length === 0) { e.preventDefault(); panelRef.current?.focus(); return; }
+      if (list.length === 0) {
+        e.preventDefault();
+        panelRef.current?.focus();
+        return;
+      }
       const firstEl = list[0];
       const lastEl = list[list.length - 1];
       const active = document.activeElement;
       // Uc noktalarda dongu: son ogeden Tab basa, ilk ogeden Shift+Tab sona.
-      if (!e.shiftKey && active === lastEl) { e.preventDefault(); firstEl.focus(); }
-      else if (e.shiftKey && active === firstEl) { e.preventDefault(); lastEl.focus(); }
-      else if (panelRef.current && active && !panelRef.current.contains(active)) {
+      if (!e.shiftKey && active === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      } else if (e.shiftKey && active === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (panelRef.current && active && !panelRef.current.contains(active)) {
         // Odak bir sekilde disari kactiysa (or. tarayici adres cubugundan donus) geri al.
         e.preventDefault();
         (e.shiftKey ? lastEl : firstEl).focus();
       }
     }
 
-    window.addEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener('keydown', onKey);
       const i = acikPencereler.indexOf(kimlik);
       if (i >= 0) acikPencereler.splice(i, 1);
       // Odagi TETIKLEYEN ogeye geri ver. Oge bu arada DOM'dan kalktiysa (or. silme
@@ -112,10 +136,10 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
   useEffect(() => {
     if (!open) return;
     kaydirmaKilidi += 1;
-    document.body.style.overflow = "hidden";
+    document.body.style.overflow = 'hidden';
     return () => {
       kaydirmaKilidi -= 1;
-      if (kaydirmaKilidi === 0) document.body.style.overflow = "";
+      if (kaydirmaKilidi === 0) document.body.style.overflow = '';
     };
   }, [open]);
 
@@ -127,24 +151,24 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
          0.18 / 0.22 sn). Pencere eskiden aniden beliriyordu. Hareket azaltma tercihinde index.css'teki
          genel kural sureyi sifirlar. Kapanis animasyonsuz (kapanan pencere beklemez). */
       className="fixed inset-0 z-[1000] overflow-y-auto p-4 animate-fade-in"
-      style={{ background: "rgba(3,3,3,0.62)" }}
+      style={{ background: 'rgba(3,3,3,0.62)' }}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        ref={overlayRef}
-        className="min-h-full flex items-center justify-center"
-        {...backdrop}
-      >
+      <div ref={overlayRef} className="min-h-full flex items-center justify-center" {...backdrop}>
         <div
           ref={panelRef}
           tabIndex={-1}
           className={`relative w-full ${SIZE_MAP[size]} flex flex-col max-h-[calc(100dvh-2rem)] my-4 outline-none animate-scale-in`}
-          style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", borderRadius: "var(--radius-md)" }}
+          style={{
+            background: 'var(--bg-surface)',
+            boxShadow: 'var(--shadow-lg)',
+            borderRadius: 'var(--radius-md)',
+          }}
         >
           <div className="flex items-start gap-3 px-6 pt-6 pb-4 flex-shrink-0">
             {Icon && (
-              <span className="flex-shrink-0 mt-0.5" style={{ color: "var(--accent)" }}>
+              <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }}>
                 <Icon className="w-5 h-5" />
               </span>
             )}
@@ -152,12 +176,21 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
               {title && (
                 <h2
                   className="truncate"
-                  style={{ fontFamily: "var(--font-display)", fontSize: "1.25rem", fontWeight: 500, color: "var(--text-primary)" }}
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '1.25rem',
+                    fontWeight: 500,
+                    color: 'var(--text-primary)',
+                  }}
                 >
                   {title}
                 </h2>
               )}
-              {subtitle && <p className="text-[0.875rem] mt-1" style={{ color: "var(--text-muted)" }}>{subtitle}</p>}
+              {subtitle && (
+                <p className="text-[0.875rem] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {subtitle}
+                </p>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -169,17 +202,18 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
               <XMarkIcon className="w-5 h-5" />
             </button>
           </div>
-          <div className="px-6 pb-2 overflow-y-auto flex-1 text-[0.875rem]" style={{ color: "var(--text-primary)" }}>
+          <div
+            className="px-6 pb-2 overflow-y-auto flex-1 text-[0.875rem]"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {children}
           </div>
           {footer && (
-            <div className="flex items-center gap-2 px-6 py-5 flex-shrink-0">
-              {footer}
-            </div>
+            <div className="flex items-center gap-2 px-6 py-5 flex-shrink-0">{footer}</div>
           )}
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

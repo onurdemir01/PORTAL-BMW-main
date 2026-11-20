@@ -33,15 +33,71 @@ let idVar = true;
 let temiz = false; // CS8: DB temizlendi (cift yok)
 const sorgular = [];
 const JVMS = () => [
-  { host: 'GBSTPQ01', scan_date: gun, gen: 8, jvm: 'GBSTPMAINWEB', grp: 'g', running: 1, auto_start: 'true', __sh_id: 408954 },
-  { host: 'GBSTPQ01', scan_date: gun, gen: 8, jvm: 'GBSTPTELLER', grp: 'g', running: 1, auto_start: 'true', __sh_id: 408957 },
-  { host: 'GBSTPQ01', scan_date: gun, gen: 8, jvm: 'GBSTPMAINWEB', grp: 'g', running: 0, auto_start: 'false', __sh_id: 408983 },
-  { host: 'GBSTPQ01', scan_date: gun, gen: 8, jvm: 'GBSTPTELLER', grp: 'g', running: 1, auto_start: 'true', __sh_id: 408986 },
-  { host: 'GBSTPQ01', scan_date: gun, gen: 7, jvm: 'GBSTPMAINWEB', grp: 'g', running: 1, auto_start: 'true', __sh_id: 408990 },
+  {
+    host: 'GBSTPQ01',
+    scan_date: gun,
+    gen: 8,
+    jvm: 'GBSTPMAINWEB',
+    grp: 'g',
+    running: 1,
+    auto_start: 'true',
+    __sh_id: 408954,
+  },
+  {
+    host: 'GBSTPQ01',
+    scan_date: gun,
+    gen: 8,
+    jvm: 'GBSTPTELLER',
+    grp: 'g',
+    running: 1,
+    auto_start: 'true',
+    __sh_id: 408957,
+  },
+  {
+    host: 'GBSTPQ01',
+    scan_date: gun,
+    gen: 8,
+    jvm: 'GBSTPMAINWEB',
+    grp: 'g',
+    running: 0,
+    auto_start: 'false',
+    __sh_id: 408983,
+  },
+  {
+    host: 'GBSTPQ01',
+    scan_date: gun,
+    gen: 8,
+    jvm: 'GBSTPTELLER',
+    grp: 'g',
+    running: 1,
+    auto_start: 'true',
+    __sh_id: 408986,
+  },
+  {
+    host: 'GBSTPQ01',
+    scan_date: gun,
+    gen: 7,
+    jvm: 'GBSTPMAINWEB',
+    grp: 'g',
+    running: 1,
+    auto_start: 'true',
+    __sh_id: 408990,
+  },
 ];
 const KOLONLAR = {
   Server_Hub_Hosts: ['id', 'host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note'],
-  Server_Hub_Jvms: ['id', 'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports'],
+  Server_Hub_Jvms: [
+    'id',
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+  ],
 };
 stub('../../inventory/mssql.cjs', {
   sql: { NVarChar: () => 'nvarchar' },
@@ -56,7 +112,9 @@ stub('../../inventory/mssql.cjs', {
       return { recordset: out };
     }
     if (/FROM dbo\.Server_Hub_Jvms t/.test(q)) {
-      const rows = temiz ? JVMS().filter((r) => r.__sh_id !== 408954 && r.__sh_id !== 408957) : JVMS();
+      const rows = temiz
+        ? JVMS().filter((r) => r.__sh_id !== 408954 && r.__sh_id !== 408957)
+        : JVMS();
       if (!idVar) for (const r of rows) delete r.__sh_id;
       return { recordset: rows };
     }
@@ -81,7 +139,13 @@ stub('../assess.cjs', {
   ...gercek,
   assess: (data) => {
     sonData = data;
-    return { hosts: [], summary: { scanVersion: {} }, latestScan: null, staleFleet: null, schemaUnknown: false };
+    return {
+      hosts: [],
+      summary: { scanVersion: {} },
+      latestScan: null,
+      staleFleet: null,
+      schemaUnknown: false,
+    };
   },
 });
 const SH = require('../index.cjs');
@@ -109,7 +173,10 @@ test('CS1 dogal anahtar ayni -> tek satir, en buyuk id kalir, sayilir', () => {
     assert.equal(r.satirlar.length, 3);
     const mw8 = r.satirlar.find((x) => x.gen === 8 && x.jvm === 'GBSTPMAINWEB');
     assert.equal(mw8.auto_start, 'false', 'en son yukleme (408983) kalmali');
-    assert.ok(r.satirlar.every((x) => !('__sh_id' in x)), '__sh_id sizdi');
+    assert.ok(
+      r.satirlar.every((x) => !('__sh_id' in x)),
+      '__sh_id sizdi',
+    );
   }
 });
 
@@ -122,9 +189,15 @@ test('CS2 id yoksa son gorulen kalir; farkli gen/jvm dokunulmaz; buyuk/kucuk har
   ];
   const r = C.tekillestir('dbo.Server_Hub_Jvms', rows);
   assert.equal(r.atilan, 1);
-  assert.deepEqual(r.satirlar.map((x) => x.v), [2, 3, 4]);
+  assert.deepEqual(
+    r.satirlar.map((x) => x.v),
+    [2, 3, 4],
+  );
   // bilinmeyen tabloya dokunulmaz
-  const b = C.tekillestir('dbo.Server_Hub_Bilinmeyen', [{ host: 'A', __sh_id: 1 }, { host: 'A', __sh_id: 2 }]);
+  const b = C.tekillestir('dbo.Server_Hub_Bilinmeyen', [
+    { host: 'A', __sh_id: 1 },
+    { host: 'A', __sh_id: 2 },
+  ]);
   assert.equal(b.atilan, 0);
   assert.equal(b.satirlar.length, 2);
   assert.ok(b.satirlar.every((x) => !('__sh_id' in x)));
@@ -133,22 +206,79 @@ test('CS2 id yoksa son gorulen kalir; farkli gen/jvm dokunulmaz; buyuk/kucuk har
 test('CS3 her tablonun dogal anahtari', () => {
   const say = (t, rows) => C.tekillestir(t, rows).atilan;
   assert.equal(say('dbo.Server_Hub_Hosts', [{ host: 'A' }, { host: 'A' }]), 1);
-  assert.equal(say('dbo.Server_Hub_Init', [{ host: 'A', root: '/v', file: 'a' }, { host: 'A', root: '/v', file: 'b' }, { host: 'A', root: '/v', file: 'a' }]), 1);
-  assert.equal(say('dbo.Server_Hub_Jboss', [{ host: 'A', gen: 7 }, { host: 'A', gen: 8 }, { host: 'A', gen: 8 }]), 1);
-  assert.equal(say('dbo.Server_Hub_Web', [{ host: 'A', product: 'NGINX' }, { host: 'A', product: 'IHS' }, { host: 'A', product: 'NGINX' }]), 1);
-  const v = (listen, sn, cf, al = '') => ({ host: 'A', product: 'NGINX', listen, server_name: sn, aliases: al, conf_file: cf });
-  assert.equal(say('dbo.Server_Hub_Vhosts', [v('443', 'a', 'x.conf'), v('443', 'a', 'y.conf'), v('80', 'a', 'x.conf'), v('443', 'b', 'x.conf'), v('443', 'a', 'x.conf')]), 1);
+  assert.equal(
+    say('dbo.Server_Hub_Init', [
+      { host: 'A', root: '/v', file: 'a' },
+      { host: 'A', root: '/v', file: 'b' },
+      { host: 'A', root: '/v', file: 'a' },
+    ]),
+    1,
+  );
+  assert.equal(
+    say('dbo.Server_Hub_Jboss', [
+      { host: 'A', gen: 7 },
+      { host: 'A', gen: 8 },
+      { host: 'A', gen: 8 },
+    ]),
+    1,
+  );
+  assert.equal(
+    say('dbo.Server_Hub_Web', [
+      { host: 'A', product: 'NGINX' },
+      { host: 'A', product: 'IHS' },
+      { host: 'A', product: 'NGINX' },
+    ]),
+    1,
+  );
+  const v = (listen, sn, cf, al = '') => ({
+    host: 'A',
+    product: 'NGINX',
+    listen,
+    server_name: sn,
+    aliases: al,
+    conf_file: cf,
+  });
+  assert.equal(
+    say('dbo.Server_Hub_Vhosts', [
+      v('443', 'a', 'x.conf'),
+      v('443', 'a', 'y.conf'),
+      v('80', 'a', 'x.conf'),
+      v('443', 'b', 'x.conf'),
+      v('443', 'a', 'x.conf'),
+    ]),
+    1,
+  );
   // nginx: conf_file bos, server_name yalniz ILK ad - farkli aliases iki AYRI blok (ikisi de trafik alir)
-  const nx = C.tekillestir('dbo.Server_Hub_Vhosts', [v('443', 'api.x.com', '', 'b.x.com'), v('443', 'api.x.com', '', 'c.x.com')]);
+  const nx = C.tekillestir('dbo.Server_Hub_Vhosts', [
+    v('443', 'api.x.com', '', 'b.x.com'),
+    v('443', 'api.x.com', '', 'c.x.com'),
+  ]);
   assert.equal(nx.atilan, 0, 'farkli alias li vhost kopya sayildi');
-  assert.deepEqual(nx.satirlar.map((x) => x.aliases), ['b.x.com', 'c.x.com']);
-  assert.equal(say('dbo.Server_Hub_Vhosts', [v('443', 'api.x.com', '', 'b.x.com'), v('443', 'api.x.com', '', 'b.x.com')]), 1);
-  assert.equal(say('dbo.Server_Hub_Ips', [{ host: 'A', ip: '1', iface: 'e0' }, { host: 'A', ip: '1', iface: 'e1' }, { host: 'A', ip: '1', iface: 'e0' }]), 1);
+  assert.deepEqual(
+    nx.satirlar.map((x) => x.aliases),
+    ['b.x.com', 'c.x.com'],
+  );
+  assert.equal(
+    say('dbo.Server_Hub_Vhosts', [
+      v('443', 'api.x.com', '', 'b.x.com'),
+      v('443', 'api.x.com', '', 'b.x.com'),
+    ]),
+    1,
+  );
+  assert.equal(
+    say('dbo.Server_Hub_Ips', [
+      { host: 'A', ip: '1', iface: 'e0' },
+      { host: 'A', ip: '1', iface: 'e1' },
+      { host: 'A', ip: '1', iface: 'e0' },
+    ]),
+    1,
+  );
   assert.equal(say('dbo.Server_Hub_Sshd', [{ host: 'A' }, { host: 'A' }]), 1);
   // loadLatest'in okudugu her tablonun anahtari tanimli (yeni tablo eklenirse burasi kirmizi olur)
   for (const t of Object.keys(SH.SH_KOLONLAR)) {
     assert.ok(C.DOGAL_ANAHTAR[t], `${t} icin dogal anahtar yok`);
-    for (const k of C.DOGAL_ANAHTAR[t]) assert.ok(SH.SH_KOLONLAR[t].includes(k), `${t}.${k} filo sorgusunda secilmiyor`);
+    for (const k of C.DOGAL_ANAHTAR[t])
+      assert.ok(SH.SH_KOLONLAR[t].includes(k), `${t}.${k} filo sorgusunda secilmiyor`);
   }
 });
 
@@ -158,11 +288,17 @@ test('CS4 loadLatest: id secilir, cift JVM tek doner, ciftSatir sayilir', async 
   assert.match(jq, /t\.\[id\] AS \[__sh_id\]/);
   assert.equal(data.jvms.length, 3);
   assert.equal(data.jvms.filter((j) => j.jvm === 'GBSTPMAINWEB' && Number(j.gen) === 8).length, 1);
-  assert.equal(data.jvms.find((j) => j.jvm === 'GBSTPMAINWEB' && Number(j.gen) === 8).auto_start, 'false');
+  assert.equal(
+    data.jvms.find((j) => j.jvm === 'GBSTPMAINWEB' && Number(j.gen) === 8).auto_start,
+    'false',
+  );
   assert.equal(data.hosts.length, 1);
   assert.equal(data.hosts[0].note, 'yeni');
   assert.ok([...data.jvms, ...data.hosts].every((x) => !('__sh_id' in x)));
-  assert.deepEqual(data.ciftSatir, { toplam: 3, tablolar: { Server_Hub_Jvms: 2, Server_Hub_Hosts: 1 } });
+  assert.deepEqual(data.ciftSatir, {
+    toplam: 3,
+    tablolar: { Server_Hub_Jvms: 2, Server_Hub_Hosts: 1 },
+  });
 });
 
 test('CS5 getAssessment: summary.ciftSatir; ayni sayi ikinci kez loglanmaz', async () => {
@@ -189,7 +325,11 @@ test('CS8 sayi 0a inince bir kez "0a indi" loglanir (temizlik etkisi gorunur)', 
     assert.equal(loglar.filter((l) => /cift satir 0a indi/.test(l)).length, 1);
     SH._onbellekSifirlaForTest();
     await SH.getAssessment(true);
-    assert.equal(loglar.filter((l) => /cift satir 0a indi/.test(l)).length, 1, '0a indi tekrarlandi');
+    assert.equal(
+      loglar.filter((l) => /cift satir 0a indi/.test(l)).length,
+      1,
+      '0a indi tekrarlandi',
+    );
   } finally {
     console.log = asilLog;
   }
@@ -215,7 +355,10 @@ test('CS10 ekran: ozet seridinde cift satir bandi (sessiz degil)', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const kok = path.join(__dirname, '..', '..', '..');
-  const sayfa = fs.readFileSync(path.join(kok, 'src', 'components', 'server_hub', 'ServerHubPage.tsx'), 'utf8');
+  const sayfa = fs.readFileSync(
+    path.join(kok, 'src', 'components', 'server_hub', 'ServerHubPage.tsx'),
+    'utf8',
+  );
   const api = fs.readFileSync(path.join(kok, 'src', 'api', 'serverHubApi.ts'), 'utf8');
   assert.match(sayfa, /<CiftSatirBandi c=\{data\.summary\?\.ciftSatir\} \/>/);
   assert.match(sayfa, /if \(!c \|\| !\(c\.toplam > 0\)\) return null;/);
@@ -235,15 +378,45 @@ test('CS7 loader bilgi satiri DUPLICATE_ROWS_DROPPED sunucuyu LOAD_EXCLUDED yapm
   const t0 = new Date(`${gun}T10:00:00Z`);
   const t1 = new Date(`${gun}T10:05:00Z`);
   const girdi = {
-    hosts: [{ host: 'GBSTPQ01', scan_date: gun, products: 'JBOSS8', wall_s: 1, cpu_s: 0.1, note: '', loaded_at: t0 }],
-    init: [], jboss: [], jvms: [], web: [], vhosts: [], ips: [], sshd: [], mwApps: [], invEnv: [],
-    invProductUnknown: {}, schemaUnknown: false,
-    loadIssues: [{ host: 'GBSTPQ01', scan_date: gun, issue: 'DUPLICATE_ROWS_DROPPED', detail: 'JVM=2', run_at: t1 }],
+    hosts: [
+      {
+        host: 'GBSTPQ01',
+        scan_date: gun,
+        products: 'JBOSS8',
+        wall_s: 1,
+        cpu_s: 0.1,
+        note: '',
+        loaded_at: t0,
+      },
+    ],
+    init: [],
+    jboss: [],
+    jvms: [],
+    web: [],
+    vhosts: [],
+    ips: [],
+    sshd: [],
+    mwApps: [],
+    invEnv: [],
+    invProductUnknown: {},
+    schemaUnknown: false,
+    loadIssues: [
+      {
+        host: 'GBSTPQ01',
+        scan_date: gun,
+        issue: 'DUPLICATE_ROWS_DROPPED',
+        detail: 'JVM=2',
+        run_at: t1,
+      },
+    ],
   };
   const a = gercek.assess(girdi, {});
   const h = a.hosts.find((x) => x.host === 'GBSTPQ01');
   assert.equal(h.loadExcluded, false);
   // ayni zamanlamada gercek bir dislama satiri LOAD_EXCLUDED olur (bekci kor degil)
   girdi.loadIssues[0].issue = 'FORMAT';
-  assert.equal(gercek.assess(girdi, {}).hosts.find((x) => x.host === 'GBSTPQ01').loadExcluded, true);
+  assert.equal(
+    gercek.assess(girdi, {}).hosts.find((x) => x.host === 'GBSTPQ01').loadExcluded,
+    true,
+  );
 });

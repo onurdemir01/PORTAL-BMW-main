@@ -812,7 +812,10 @@ sahte('oco/store.cjs', {
   markExpired: async (id) => {
     const r = ocoKaydi(id);
     if (r && r.status === 'SCHEDULED') {
-      Object.assign(r, { status: 'EXPIRED', errorMessage: 'OCO kesinti penceresi tetikleme yapilmadan kapandi.' });
+      Object.assign(r, {
+        status: 'EXPIRED',
+        errorMessage: 'OCO kesinti penceresi tetikleme yapilmadan kapandi.',
+      });
     }
   },
 });
@@ -914,7 +917,13 @@ function awxIstegi(req, res, govde) {
       res.writeHead(kod, {
         'Content-Type': typeof nesne === 'string' ? 'text/plain' : 'application/json',
       });
-      res.end((() => { if (nesne === undefined) return ''; if (typeof nesne === 'string') return nesne; return JSON.stringify(nesne); })());
+      res.end(
+        (() => {
+          if (nesne === undefined) return '';
+          if (typeof nesne === 'string') return nesne;
+          return JSON.stringify(nesne);
+        })(),
+      );
     }, a.gecikmeMs + ekGecikme);
 
   if (req.method === 'GET' && p === '/api/v2/job_templates/') {

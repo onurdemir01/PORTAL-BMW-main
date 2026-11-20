@@ -227,9 +227,11 @@ async function retirementOku() {
  */
 function retirementKaynagi(capRet, taze) {
   if (!capRet)
-    return { bagliOkunamadi: true, hata: 'Server Hub değerlendirmesi retirement durumunu taşımıyor' };
-  if (capRet.okunamadi)
-    return { bagliOkunamadi: true, hata: String(capRet.hata || 'okunamadı') };
+    return {
+      bagliOkunamadi: true,
+      hata: 'Server Hub değerlendirmesi retirement durumunu taşımıyor',
+    };
+  if (capRet.okunamadi) return { bagliOkunamadi: true, hata: String(capRet.hata || 'okunamadı') };
   if (!taze || taze.okunamadi)
     return {
       bagliOkunamadi: false,
@@ -239,7 +241,8 @@ function retirementKaynagi(capRet, taze) {
 }
 
 const CELISKI_NEDENLERI = ['calisiyor', 'autostart', 'paket'];
-const anISO = (ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+const anISO = (ms) =>
+  typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 
 /**
  * JVM'e bagli hedeflerden ekranda gosterilecek TEK hedef: once STOP / silme yapilmis olan, sonra en
@@ -328,7 +331,9 @@ async function jbossDetay(adHam) {
         : null;
     const agirlar = await sinirliParalel(hedefHostlar, JVM_AGIR_ESZAMAN, (h) =>
       Promise.resolve()
-        .then(() => (kolP !== null ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
+        .then(() =>
+          kolP !== null ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host),
+        )
         .catch(() => new Map()),
     );
     for (let i = 0; i < hedefHostlar.length; i++) {
@@ -476,7 +481,9 @@ async function jbossDetay(adHam) {
     }))
     .sort((a, b) => a.host.localeCompare(b.host));
 
-  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort(varsayilanSira);
+  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort(
+    varsayilanSira,
+  );
   const ortamlar = [...new Set(sunucular.map((s) => s.ortam).filter(Boolean))];
   return {
     tip: 'jboss',

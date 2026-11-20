@@ -20,13 +20,24 @@ function withCapture(fn, { existing = false } = {}) {
     }
     return { rows: [], rowCount: 1 };
   };
-  return Promise.resolve(fn(calls)).finally(() => { db.query = orig; });
+  return Promise.resolve(fn(calls)).finally(() => {
+    db.query = orig;
+  });
 }
 
 const BASE = {
-  id: 'abc-123', name: 'gbocpqa1', display: 'QA 1', env: 'qa',
-  apiUrl: 'https://api', consoleUrl: '', token: 't', description: '', namespace: 'ns',
-  jumpHost: 'jump01', isActive: true, createdBy: 'admin',
+  id: 'abc-123',
+  name: 'gbocpqa1',
+  display: 'QA 1',
+  env: 'qa',
+  apiUrl: 'https://api',
+  consoleUrl: '',
+  token: 't',
+  description: '',
+  namespace: 'ns',
+  jumpHost: 'jump01',
+  isActive: true,
+  createdBy: 'admin',
 };
 
 test('tenant YOKSA ayna satiri PASIF (is_active=0) ve _atanmadi tenant ile yazilir', async () => {
@@ -35,7 +46,11 @@ test('tenant YOKSA ayna satiri PASIF (is_active=0) ve _atanmadi tenant ile yazil
     const ins = calls.find((c) => /INSERT INTO ocp_cluster_index/i.test(c.sql));
     assert.ok(ins, 'INSERT calismali');
     assert.equal(ins.params[1], store.UNASSIGNED_TENANT);
-    assert.equal(ins.params[ins.params.length - 1], 0, 'is_active 0 olmali (sihirbaz agacina sizmasin)');
+    assert.equal(
+      ins.params[ins.params.length - 1],
+      0,
+      'is_active 0 olmali (sihirbaz agacina sizmasin)',
+    );
   });
 });
 
@@ -51,11 +66,20 @@ test('tenant VARSA ayna satiri aktif yazilir ve jump_host terminal_host olur', a
 });
 
 test('ayni legacy_id ikinci kez aynalanirsa INSERT degil UPDATE yapilir (idempotent)', async () => {
-  await withCapture(async (calls) => {
-    await store._mirrorToIndex({ ...BASE, tenant: 'ark' });
-    assert.ok(calls.some((c) => /UPDATE ocp_cluster_index/i.test(c.sql)), 'UPDATE bekleniyor');
-    assert.ok(!calls.some((c) => /INSERT INTO ocp_cluster_index/i.test(c.sql)), 'INSERT olmamali');
-  }, { existing: true });
+  await withCapture(
+    async (calls) => {
+      await store._mirrorToIndex({ ...BASE, tenant: 'ark' });
+      assert.ok(
+        calls.some((c) => /UPDATE ocp_cluster_index/i.test(c.sql)),
+        'UPDATE bekleniyor',
+      );
+      assert.ok(
+        !calls.some((c) => /INSERT INTO ocp_cluster_index/i.test(c.sql)),
+        'INSERT olmamali',
+      );
+    },
+    { existing: true },
+  );
 });
 
 test('jumpHost bossa terminal_host NULL yazilir (tenant/env yedegi devrede kalsin)', async () => {

@@ -91,12 +91,41 @@ function engeller(ids, rows) {
       continue;
     }
     const ad = `${islemAdi(r.islem)} #${id}`;
-    if (!ISLEMLER.includes(r.islem)) out.push({ id, kod: 'islem_desteklenmiyor', metin: `${ad}: bu kayıt türü silinemez.` });
-    else if (AKTIF.includes(r.durum)) out.push({ id, kod: 'kosu_suruyor', metin: `${ad} sürüyor (${r.durum}); bitmeden silinemez. Gerekirse önce Durdur’u kullanın.` });
-    else if (Number(r.kilitli) === 1 || r.kilitli === true) out.push({ id, kod: 'kosu_kilitli', metin: `${ad}: kilitleri henüz bırakılmadı (uzaktaki yük sürüyor olabilir); kilit bırakılınca silinebilir.` });
-    else if (r.kuyruk_oge != null) out.push({ id, kod: 'kuyruga_bagli', kuyrukId: sayiOf(r.kuyruk_oge), metin: `${ad} gece kuyruğu K${r.kuyruk_oge} içinde bekleyen / çalışan bir öğeye bağlı; önce kuyruktan çıkarın (ya da kuyruğu İptal edin).` });
-    else if (r.kuyruk_dinlenme != null) out.push({ id, kod: 'kuyruga_bagli', kuyrukId: sayiOf(r.kuyruk_dinlenme), metin: `${ad}: gece kuyruğu K${r.kuyruk_dinlenme} bu koşudan sonra dinleniyor; dinlenme bitince (ya da kuyruk İptal edilince) silinebilir.` });
-    else if (r.bagli_kosu != null) out.push({ id, kod: 'on_kontrol_bagli', bagliKosuId: sayiOf(r.bagli_kosu), metin: `${ad}: bu ön kontrole dayanan koşu #${r.bagli_kosu} var; önce koşuyu silin ya da ikisini birlikte seçin.` });
+    if (!ISLEMLER.includes(r.islem))
+      out.push({ id, kod: 'islem_desteklenmiyor', metin: `${ad}: bu kayıt türü silinemez.` });
+    else if (AKTIF.includes(r.durum))
+      out.push({
+        id,
+        kod: 'kosu_suruyor',
+        metin: `${ad} sürüyor (${r.durum}); bitmeden silinemez. Gerekirse önce Durdur’u kullanın.`,
+      });
+    else if (Number(r.kilitli) === 1 || r.kilitli === true)
+      out.push({
+        id,
+        kod: 'kosu_kilitli',
+        metin: `${ad}: kilitleri henüz bırakılmadı (uzaktaki yük sürüyor olabilir); kilit bırakılınca silinebilir.`,
+      });
+    else if (r.kuyruk_oge != null)
+      out.push({
+        id,
+        kod: 'kuyruga_bagli',
+        kuyrukId: sayiOf(r.kuyruk_oge),
+        metin: `${ad} gece kuyruğu K${r.kuyruk_oge} içinde bekleyen / çalışan bir öğeye bağlı; önce kuyruktan çıkarın (ya da kuyruğu İptal edin).`,
+      });
+    else if (r.kuyruk_dinlenme != null)
+      out.push({
+        id,
+        kod: 'kuyruga_bagli',
+        kuyrukId: sayiOf(r.kuyruk_dinlenme),
+        metin: `${ad}: gece kuyruğu K${r.kuyruk_dinlenme} bu koşudan sonra dinleniyor; dinlenme bitince (ya da kuyruk İptal edilince) silinebilir.`,
+      });
+    else if (r.bagli_kosu != null)
+      out.push({
+        id,
+        kod: 'on_kontrol_bagli',
+        bagliKosuId: sayiOf(r.bagli_kosu),
+        metin: `${ad}: bu ön kontrole dayanan koşu #${r.bagli_kosu} var; önce koşuyu silin ya da ikisini birlikte seçin.`,
+      });
   }
   return out;
 }
@@ -111,13 +140,27 @@ function onayDogru(confirmText, beklenen) {
 /** Denetim satiri: kosuyu tanitan kisa metin (sir yok; etiket kullanicinin yazdigi). */
 function denetimMetni(r) {
   const hedef = r.hedef_host || r.hedef_ip || '?';
-  return `#${r.id} ${r.islem} ${hedef}${r.etiket ? (" " + r.etiket) : ''}`;
+  return `#${r.id} ${r.islem} ${hedef}${r.etiket ? ' ' + r.etiket : ''}`;
 }
 
 function silinenApi(r) {
   return {
-    id: Number(r.id), islem: r.islem, etiket: r.etiket ?? null, hedefHost: r.hedef_host || null, hedefIp: r.hedef_ip ?? null, hedefTuru: r.hedef_turu || 'sunucu',
+    id: Number(r.id),
+    islem: r.islem,
+    etiket: r.etiket ?? null,
+    hedefHost: r.hedef_host || null,
+    hedefIp: r.hedef_ip ?? null,
+    hedefTuru: r.hedef_turu || 'sunucu',
   };
 }
 
-module.exports = { MAX_TOPLU, okumaSql, silmeSql, engeller, onayDogru, denetimMetni, silinenApi, _yerlerForTest: yerler };
+module.exports = {
+  MAX_TOPLU,
+  okumaSql,
+  silmeSql,
+  engeller,
+  onayDogru,
+  denetimMetni,
+  silinenApi,
+  _yerlerForTest: yerler,
+};

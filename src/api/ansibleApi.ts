@@ -284,7 +284,9 @@ export const ansibleApi = {
   // AWX sunucu yönetimi (Admin > Ansible): etkin / devre dışı + kapatma öncesi bağımlılıklar.
   awxSunucuYonetim: (): Promise<{ ok: boolean; servers?: AwxSunucuKaydi[]; message?: string }> =>
     fetch(`${BASE}/awx-servers/yonetim`).then(safeJson),
-  awxSunucuBagimlilik: (no: number): Promise<{ ok: boolean; ozet?: AwxBagimlilikOzeti; message?: string }> =>
+  awxSunucuBagimlilik: (
+    no: number,
+  ): Promise<{ ok: boolean; ozet?: AwxBagimlilikOzeti; message?: string }> =>
     fetch(`${BASE}/awx-servers/${no}/bagimlilik`).then(safeJson),
   awxSunucuDurum: (
     no: number,
@@ -501,7 +503,9 @@ export const ansibleApi = {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v && k !== 'value') q.set(k, v);
     q.set('value', value);
-    return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}/details?${q.toString()}`).then(safeJson);
+    return fetch(`${BASE}/ss/choices/${encodeURIComponent(source)}/details?${q.toString()}`).then(
+      safeJson,
+    );
   },
 
   getCustomization: (
@@ -521,7 +525,9 @@ export const ansibleApi = {
     templateId: number,
     historyId: number,
   ): Promise<{ ok: boolean; customization?: FieldCustomization; message?: string }> =>
-    fetch(`${BASE}/ss/custom/${serverId}/${templateId}/restore/${historyId}`, { method: 'POST' }).then(safeJson),
+    fetch(`${BASE}/ss/custom/${serverId}/${templateId}/restore/${historyId}`, {
+      method: 'POST',
+    }).then(safeJson),
 
   saveCustomization: (
     serverId: number,
@@ -542,8 +548,18 @@ export const ansibleApi = {
   ): Promise<{ ok: boolean; fields?: Array<Record<string, unknown>>; message?: string }> =>
     fetch(`${BASE}/ss/smart-flow-metadata/${encodeURIComponent(flowKey)}`).then(safeJson),
   /** Metadata eslemesini ornek survey degerleriyle render eder (Smart'a ne gidecek) - admin. */
-  smartMetadataPreview: (body: { metadataFields: string; extraVars: Record<string, unknown>; templateName?: string; opsx?: Record<string, unknown>; scalex?: Record<string, unknown> }): Promise<{ ok: boolean; metadata?: Record<string, string>; message?: string }> =>
-    fetch(`${BASE}/ss/smart-metadata-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(safeJson),
+  smartMetadataPreview: (body: {
+    metadataFields: string;
+    extraVars: Record<string, unknown>;
+    templateName?: string;
+    opsx?: Record<string, unknown>;
+    scalex?: Record<string, unknown>;
+  }): Promise<{ ok: boolean; metadata?: Record<string, string>; message?: string }> =>
+    fetch(`${BASE}/ss/smart-metadata-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(safeJson),
 
   // "Taleplerim" ekrani — kullanicinin ACTIGI TUM Smart taleplerinin (durum farketmeksizin)
   // kalici gecmisi. smartTicketStatus()'tan farkli olarak tek bir ticketId degil, TUMU doner.

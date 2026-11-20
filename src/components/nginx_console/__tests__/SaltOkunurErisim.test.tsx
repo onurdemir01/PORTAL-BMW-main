@@ -43,13 +43,23 @@ describe('Nginx Hub salt okunur erisim', () => {
   });
 
   it('Instances: Admin icin (onRefreshHosts verilince) dugmeler durur', () => {
-    render(<InstancesTab hosts={[HOST]} loading={false} onRefreshHosts={vi.fn()} onOpen={vi.fn()} onReload={vi.fn()} />);
+    render(
+      <InstancesTab
+        hosts={[HOST]}
+        loading={false}
+        onRefreshHosts={vi.fn()}
+        onOpen={vi.fn()}
+        onReload={vi.fn()}
+      />,
+    );
     expect(screen.getByText(/Seçilileri yenile/)).toBeTruthy();
   });
 
   it('sayfa: Instances yenilemesi ve Config dokum araclari yalniz Admin', () => {
     const s = readFileSync(join(__dirname, '..', 'NginxConsolePage.tsx'), 'utf8');
     expect(s).toContain('onRefreshHosts={isAdmin ? refreshHosts : undefined}');
-    expect(s).toMatch(/\{isAdmin && <div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/);
+    expect(s).toMatch(
+      /\{isAdmin && <div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/,
+    );
   });
 });

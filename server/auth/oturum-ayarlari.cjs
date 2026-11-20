@@ -20,15 +20,23 @@ const KURALLAR = [
   SAYI('LOGIN_IP_MAX_PER_MIN', 5, 1000),
   { anahtar: 'AUTH_ALLOWED_DOMAINS', tur: 'liste', desen: /^[A-Za-z0-9][A-Za-z0-9._-]{0,14}$/ },
   { anahtar: 'AUTH_ALLOWED_UPN_SUFFIXES', tur: 'liste', desen: /^[A-Za-z0-9.-]{1,253}$/ },
-  { anahtar: 'PORTAL_ALLOWED_ORIGINS', tur: 'liste', desen: /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/ },
+  {
+    anahtar: 'PORTAL_ALLOWED_ORIGINS',
+    tur: 'liste',
+    desen: /^https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/,
+  },
   { anahtar: 'CSRF_ORIGIN_CHECK', tur: 'secim', secenekler: ['enforce', 'log', 'off'] },
   // Okuyan taraf (guvenlik-basliklari.cjs) bozuk degerde 'self'e duser; burada reddedilir.
   {
     anahtar: 'PORTAL_FRAME_ANCESTORS',
     tur: 'ozel',
     kontrol: (v) => {
-      const kotu = v.split(/[\s,]+/).filter((o) => o && !/^('self'|'none'|\*|https?:\/\/[A-Za-z0-9.*-]+(:\d{1,5})?)$/.test(o));
-      return kotu.length ? `PORTAL_FRAME_ANCESTORS geçersiz öğe: ${kotu.join(', ')} ('self', 'none', * ya da https://alan)` : null;
+      const kotu = v
+        .split(/[\s,]+/)
+        .filter((o) => o && !/^('self'|'none'|\*|https?:\/\/[A-Za-z0-9.*-]+(:\d{1,5})?)$/.test(o));
+      return kotu.length
+        ? `PORTAL_FRAME_ANCESTORS geçersiz öğe: ${kotu.join(', ')} ('self', 'none', * ya da https://alan)`
+        : null;
     },
   },
   SAYI('PORTAL_HSTS_MAX_AGE', 0, 63072000),
@@ -50,9 +58,14 @@ function oturumAyariHatasi(anahtar, deger) {
   }
   if (k.tur === 'ozel') return k.kontrol(v);
   if (k.tur === 'secim') {
-    return k.secenekler.includes(v.toLowerCase()) ? null : `${anahtar}: ${k.secenekler.join(' | ')}`;
+    return k.secenekler.includes(v.toLowerCase())
+      ? null
+      : `${anahtar}: ${k.secenekler.join(' | ')}`;
   }
-  const kotu = v.split(',').map((s) => s.trim()).filter((s) => s && !k.desen.test(s));
+  const kotu = v
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s && !k.desen.test(s));
   return kotu.length ? `${anahtar} geçersiz öğe: ${kotu.join(', ')}` : null;
 }
 

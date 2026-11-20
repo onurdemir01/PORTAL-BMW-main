@@ -62,7 +62,14 @@ export interface ShFinding {
   /** Auto-start duzeltmesi Portal isiyle CLI'dan dogrulandi (tarama bekleniyor): fix null gelir. */
   autoStartDogrulama?: { jobId: number; at: string } | null;
   /** EAR alani bulgularinin konusu (Uygulama Envanteri). */
-  ear?: { kok?: string; ad?: string; jboss?: string; neden?: string; girdiler?: ShKokGirdisi[]; uygulamalar?: string[] };
+  ear?: {
+    kok?: string;
+    ad?: string;
+    jboss?: string;
+    neden?: string;
+    girdiler?: ShKokGirdisi[];
+    uygulamalar?: string[];
+  };
   logs?: ShFindingLog[];
   scanDate?: string | null;
   matchKind?: string | null;
@@ -219,7 +226,11 @@ export interface ShEarDurumu {
     jboss: string;
     durum: string;
     warSayisi: number | null;
-    xml: { durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI'; neden?: string | null; jvmler?: { ad: string; grup?: string; auto_start?: boolean }[] } | null;
+    xml: {
+      durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI';
+      neden?: string | null;
+      jvmler?: { ad: string; grup?: string; auto_start?: boolean }[];
+    } | null;
     /** Tarayıcı sürüm 4: JVM_YOK EAR'ın dizin kullanımı (süreç / son yazma); null = ölçülmedi. */
     kullanim?: EarKullanim | null;
   }[];
@@ -233,14 +244,23 @@ export interface ShEarDurumu {
       durum: string;
       rc: number | null;
       hata: string | null;
-      deploymentlar: { ad: string; calisma_adi: string | null; etkin: boolean | null; durum: string | null }[] | null;
+      deploymentlar:
+        | { ad: string; calisma_adi: string | null; etkin: boolean | null; durum: string | null }[]
+        | null;
     }[];
   } | null;
 }
 export interface ShHostDetail extends Omit<ShHostRow, 'jvms' | 'vhosts'> {
   /** Uygulama Envanteri durumu ve retirement adaylari (2026-11-06). */
   ear?: ShEarDurumu | null;
-  retireAdaylari?: { kural: string; tur: ShEtiketTur; ad: string; host: string; gen?: number; kok?: string }[];
+  retireAdaylari?: {
+    kural: string;
+    tur: ShEtiketTur;
+    ad: string;
+    host: string;
+    gen?: number;
+    kok?: string;
+  }[];
   /** C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, bu sunucuda eylem yok. */
   schemaUnknown?: boolean;
   findings: ShFinding[];
@@ -416,7 +436,10 @@ export interface ShFindingsResult {
   staleFleet?: ShStaleFleet;
   schemaUnknown?: boolean;
   /** Son tam taramada gorulmeyen sunucular - bulgulara girmez, ayri gosterilir (2026-10-08). */
-  taramadanDusen?: { sayi: number; sunucular: { host: string; scanDate: string | null; env: string | null; products: string[] }[] } | null;
+  taramadanDusen?: {
+    sayi: number;
+    sunucular: { host: string; scanDate: string | null; env: string | null; products: string[] }[];
+  } | null;
 }
 export interface ShLaunch {
   ok: boolean;
@@ -447,7 +470,13 @@ export interface ShReadinessRow {
   host: string;
   verdict: 'ok' | 'risk' | 'blocked' | 'unknown' | 'notScanned';
   scanDate: string | null;
-  reasons: { code: string; tip: 'blocker' | 'risk' | 'unknown'; aciklama: string; text: string; area: string | null }[];
+  reasons: {
+    code: string;
+    tip: 'blocker' | 'risk' | 'unknown';
+    aciklama: string;
+    text: string;
+    area: string | null;
+  }[];
   note: string;
 }
 export interface ShReadiness {
@@ -464,7 +493,13 @@ export interface ShReadiness {
     unknown: number;
   };
   rows?: ShReadinessRow[];
-  topReasons?: { code: string; tip: string; aciklama: string; hostCount: number; hosts: string[] }[];
+  topReasons?: {
+    code: string;
+    tip: string;
+    aciklama: string;
+    hostCount: number;
+    hosts: string[];
+  }[];
 }
 
 export interface ShJobStatus {
@@ -703,7 +738,8 @@ export interface ShKuralMadde {
   neTaranir: string;
   ciktilar: ShKuralCikti[];
 }
-export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik' | 'toplu_autostart' | 'toplu_restart' | 'toplu_is_basina_jvm';
+export type ShLimitAd =
+  'tara' | 'reboot' | 'hazirlik' | 'toplu_autostart' | 'toplu_restart' | 'toplu_is_basina_jvm';
 export interface ShLimit {
   ad: ShLimitAd;
   etiket: string;
@@ -737,7 +773,13 @@ export interface ShKurallar {
   limitler: ShLimit[];
   /** Retirement etiket kurallari ve kokte yok sayilan girdiler (2026-11-06). */
   etiketKurallari?: ShEtiketKurali[];
-  kokYoksay?: { gecerli: string[]; varsayilan: string[]; degistiren: string | null; zaman: string | null; not: string };
+  kokYoksay?: {
+    gecerli: string[];
+    varsayilan: string[];
+    degistiren: string | null;
+    zaman: string | null;
+    not: string;
+  };
   /** null = gecmis okunamadi */
   gecmis: ShAyarGecmis[] | null;
 }
@@ -746,7 +788,8 @@ export interface ShKurallar {
 // kayitli manuel kontrol. Yalniz KESIN + DOGRULANDI retirement'a hazir.
 export type ShEtiketSeviye = 'KESIN' | 'SUPHELI' | 'KAPALI';
 export type ShEtiketTur = 'JVM' | 'EAR' | 'GIRDI';
-export type ShKontrolDurum = 'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
+export type ShKontrolDurum =
+  'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
 export interface ShEtiketKurali {
   kural: string;
   tur: ShEtiketTur;
@@ -853,9 +896,18 @@ export interface Sh360Kopya {
   hostClass: string;
   retirement: ShRetirementBaglam[];
   capraz: {
-    kopya: { nedenler: string[]; digerleri: { host: string; calisiyor: boolean | null; autoStart: string }[]; kopyaSayisi: number } | null;
+    kopya: {
+      nedenler: string[];
+      digerleri: { host: string; calisiyor: boolean | null; autoStart: string }[];
+      kopyaSayisi: number;
+    } | null;
     kalinti: { neden: 'PROD_YOK' | 'PROD_KAPALI' | 'PROD_RETIRE'; taban: string } | null;
-    ocp: (Sh360Ocp & { eslesme: { namespace: string; cluster: string; uygulama: string }[]; ad: { jboss: string; taban: string; ocp: string } }) | null;
+    ocp:
+      | (Sh360Ocp & {
+          eslesme: { namespace: string; cluster: string; uygulama: string }[];
+          ad: { jboss: string; taban: string; ocp: string };
+        })
+      | null;
     celiski: { kayit: number; hedef: number; durum: string; nedenler: string[] }[];
     /** Tarama STOP'tan önce / STOP günü alınmış ya da kök eşlenemedi: çelişki kurulmadı, doğrulama bekliyor (capraz.cjs). */
     dogrulanamadi?: {
@@ -932,7 +984,13 @@ export interface ShKopyaDurumuSonuc {
     digerSinirlar?: string;
   };
   gruplar: ShKopyaGrubu[];
-  ozet?: { grup: number; tutarsiz: number; prodTutarsiz: number; calismaTutarsiz: number; autoStartTutarsiz: number };
+  ozet?: {
+    grup: number;
+    tutarsiz: number;
+    prodTutarsiz: number;
+    calismaTutarsiz: number;
+    autoStartTutarsiz: number;
+  };
 }
 export interface Sh360Sonuc {
   ok: boolean;
@@ -956,7 +1014,14 @@ export interface ShEtiketKopyasi {
   tier?: string | null;
   taze?: boolean;
   taramaTarihi?: string | null;
-  web?: { host: string; vhost: string; trafik: string | null; istek7g: number | null; log: string; tur: string | null }[];
+  web?: {
+    host: string;
+    vhost: string;
+    trafik: string | null;
+    istek7g: number | null;
+    log: string;
+    tur: string | null;
+  }[];
   engel?: string | null;
   // EAR / GIRDI
   kok?: string;
@@ -986,14 +1051,22 @@ export interface ShRetireEtiket {
   hostlar: string[];
   kopyalar: ShEtiketKopyasi[];
   imza: string;
-  kontrol: { sonuc: 'DOGRULANDI' | 'YANLIS_ALARM'; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
+  kontrol: {
+    sonuc: 'DOGRULANDI' | 'YANLIS_ALARM';
+    aciklama: string;
+    isaretleyen: string | null;
+    zaman: string | null;
+  } | null;
   durum: ShKontrolDurum;
   retirementHazir: boolean;
   /** Kopyalarin Retirement hedefleri (hedef basina bir kez); eski sunucuda yok. */
   retirement?: ShRetirementBaglam[];
 }
 /** Liste ogesi: kopyalar (zincir) TASINMAZ, sayisi tasinir; ayrinti retireEtiketAyrinti ile tam gelir. */
-export type ShRetireEtiketOzet = Omit<ShRetireEtiket, 'kopyalar'> & { kopyaSayisi: number; kopyalar?: undefined };
+export type ShRetireEtiketOzet = Omit<ShRetireEtiket, 'kopyalar'> & {
+  kopyaSayisi: number;
+  kopyalar?: undefined;
+};
 /** Ozet ya da tam etiket (yardimcilar ikisiyle de calisir). */
 export type ShRetireEtiketHer = ShRetireEtiketOzet | ShRetireEtiket;
 export interface ShRetireSonuc {
@@ -1159,7 +1232,6 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-
 // ── RETIREMENT ANALIZI (2026-11-07): iliski grafigi, karar motoru, kalici notlar ──────────────────
 export type ShKarar = 'KULLANIMDA' | 'RETIRE_ADAYI' | 'SUPHELI' | 'KARAR_VERILEMEZ' | 'SORUN_YOK';
 export type ShMaddeEtki = 'ENGELLER' | 'DESTEKLER' | 'NOTR' | 'EKSIK';
@@ -1312,7 +1384,8 @@ export interface ShKarsilastirma {
   sayilar: Record<ShKarsilastirmaSinif, number>;
   satirlar: ShKarsilastirmaSatiri[];
 }
-export type ShGrupKontrolDurum = 'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
+export type ShGrupKontrolDurum =
+  'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
 export interface ShGrupKarar {
   anahtar: string;
   ad: string;
@@ -1324,7 +1397,12 @@ export interface ShGrupKarar {
   kopyalar: string[];
   imza: string;
   durum: ShGrupKontrolDurum;
-  kontrol: { sonuc: string; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
+  kontrol: {
+    sonuc: string;
+    aciklama: string;
+    isaretleyen: string | null;
+    zaman: string | null;
+  } | null;
   /** Yalniz RETIRE_ADAYI + DOGRULANDI + guncel imza. */
   kayitHazir: boolean;
 }
@@ -1342,7 +1420,13 @@ export interface ShKenarYontem {
 }
 export interface ShVarlik {
   ok: boolean;
-  dugum: { anahtar: string; tur: string; ad: string; veri: Record<string, unknown>; kaynaklar: string[] };
+  dugum: {
+    anahtar: string;
+    tur: string;
+    ad: string;
+    veri: Record<string, unknown>;
+    kaynaklar: string[];
+  };
   kenarlar: {
     yon: 'giris' | 'cikis';
     tur: string;
@@ -1353,7 +1437,10 @@ export interface ShVarlik {
     karsi: { anahtar: string; tur: string; ad: string } | null;
   }[];
   bilesen: { boyut: number; kesildi: boolean };
-  dogrulamalar: Record<string, { kod: string; durum: 'UYUM' | 'CELISKI' | 'OLCULMEDI'; kaynaklar: string[]; metin: string }[]>;
+  dogrulamalar: Record<
+    string,
+    { kod: string; durum: 'UYUM' | 'CELISKI' | 'OLCULMEDI'; kaynaklar: string[]; metin: string }[]
+  >;
 }
 /** GET /notlar?arsiv=1: bütün notlar (arşiv dahil); grafik okunamazsa yetim null. */
 export interface ShNotlarSonuc {
@@ -1439,7 +1526,12 @@ export const serverHubApi = {
   }): Promise<ShXmlKapatLaunch> =>
     fetch(
       `${BASE}/jvm-autostart-xml`,
-      json({ host: p.host, gen: p.gen, jvms: p.jvms, ...(p.asama === 'plan' ? { plan: true } : { confirmed: true }) }),
+      json({
+        host: p.host,
+        gen: p.gen,
+        jvms: p.jvms,
+        ...(p.asama === 'plan' ? { plan: true } : { confirmed: true }),
+      }),
     ).then(safeJson),
   // ACILIS HAZIRLIGI (2026-10-01): "bu sunucular sorunsuz acilir mi" - SALT OKUNUR,
   // hicbir is baslatmaz. Mevcut taramanin bulgularini yeniden baslatma sorusuna gore
@@ -1450,8 +1542,12 @@ export const serverHubApi = {
   // isi acar), onay, iptal, durum. Uygulama sunucu tarafinda: host basina tek is, sirayla.
   topluAutoStartAdaylar: (fresh = false): Promise<ShTopluAdaylar> =>
     fetch(`${BASE}/toplu-autostart/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
-  topluAutoStartListe: (): Promise<{ ok: boolean; aktif: ShTopluIs | null; son: ShTopluIs[]; message?: string }> =>
-    fetch(`${BASE}/toplu-autostart`).then(safeJson),
+  topluAutoStartListe: (): Promise<{
+    ok: boolean;
+    aktif: ShTopluIs | null;
+    son: ShTopluIs[];
+    message?: string;
+  }> => fetch(`${BASE}/toplu-autostart`).then(safeJson),
   topluAutoStartDurum: (
     id: number,
   ): Promise<{ ok: boolean; is?: ShTopluIs; ogeler?: ShTopluOge[]; message?: string }> =>
@@ -1460,38 +1556,75 @@ export const serverHubApi = {
   topluAutoStartOlustur: (
     secim: ShTopluSecim[],
     secenek?: { prodOnay?: boolean },
-  ): Promise<{ ok: boolean; id?: number; adet?: number; hostSayisi?: number; message?: string; code?: string }> =>
-    fetch(`${BASE}/toplu-autostart`, json({ secim, ...(secenek?.prodOnay ? { prodOnay: true } : {}) })).then(safeJson),
+  ): Promise<{
+    ok: boolean;
+    id?: number;
+    adet?: number;
+    hostSayisi?: number;
+    message?: string;
+    code?: string;
+  }> =>
+    fetch(
+      `${BASE}/toplu-autostart`,
+      json({ secim, ...(secenek?.prodOnay ? { prodOnay: true } : {}) }),
+    ).then(safeJson),
   topluAutoStartOnayla: (
     id: number,
     secenek?: { prodOnay?: boolean },
   ): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
-    fetch(`${BASE}/toplu-autostart/${id}/onayla`, json({ confirmed: true, ...(secenek?.prodOnay ? { prodOnay: true } : {}) })).then(safeJson),
-  topluAutoStartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
+    fetch(
+      `${BASE}/toplu-autostart/${id}/onayla`,
+      json({ confirmed: true, ...(secenek?.prodOnay ? { prodOnay: true } : {}) }),
+    ).then(safeJson),
+  topluAutoStartIptal: (
+    id: number,
+  ): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
     fetch(`${BASE}/toplu-autostart/${id}/iptal`, json({})).then(safeJson),
   // TOPLU RESTART (2026-11-14): fark bulunan calisan JVM'ler; olustur -> salt okunur onizleme taramasi -> onay ->
   // JVM'ler tek tek (OpsX legacy restart) + her biri sonrasi sunucu taramasi. Yurutme sunucu tarafinda.
   topluRestartAdaylar: (fresh = false): Promise<ShRestartAdaylar> =>
     fetch(`${BASE}/toplu-restart/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
-  topluRestartListe: (): Promise<{ ok: boolean; aktif: ShRestartIs | null; son: ShRestartIs[]; message?: string }> =>
-    fetch(`${BASE}/toplu-restart`).then(safeJson),
-  topluRestartDurum: (id: number): Promise<{ ok: boolean; is?: ShRestartIs; ogeler?: ShRestartOge[]; message?: string }> =>
+  topluRestartListe: (): Promise<{
+    ok: boolean;
+    aktif: ShRestartIs | null;
+    son: ShRestartIs[];
+    message?: string;
+  }> => fetch(`${BASE}/toplu-restart`).then(safeJson),
+  topluRestartDurum: (
+    id: number,
+  ): Promise<{ ok: boolean; is?: ShRestartIs; ogeler?: ShRestartOge[]; message?: string }> =>
     fetch(`${BASE}/toplu-restart/${id}`).then(safeJson),
   topluRestartOlustur: (
     secim: { host: string; gen: number; jvm: string }[],
-  ): Promise<{ ok: boolean; id?: number; adet?: number; hostSayisi?: number; message?: string; code?: string }> =>
-    fetch(`${BASE}/toplu-restart`, json({ secim })).then(safeJson),
-  topluRestartOnayla: (id: number): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
+  ): Promise<{
+    ok: boolean;
+    id?: number;
+    adet?: number;
+    hostSayisi?: number;
+    message?: string;
+    code?: string;
+  }> => fetch(`${BASE}/toplu-restart`, json({ secim })).then(safeJson),
+  topluRestartOnayla: (
+    id: number,
+  ): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
     fetch(`${BASE}/toplu-restart/${id}/onayla`, json({ confirmed: true })).then(safeJson),
-  topluRestartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
+  topluRestartIptal: (
+    id: number,
+  ): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
     fetch(`${BASE}/toplu-restart/${id}/iptal`, json({})).then(safeJson),
   // EAR TEMIZLIGI (2026-11-16, Admin): aday listesi + son 50 kayit; on kontrol; teyitli yedekle-sil; plan iptali.
   earTemizlikListe: (): Promise<EtListe> => fetch(`${BASE}/ear-temizlik`).then(safeJson),
-  earTemizlikKayit: (id: number): Promise<EtKayitYanit> => fetch(`${BASE}/ear-temizlik/${id}`).then(safeJson),
+  earTemizlikKayit: (id: number): Promise<EtKayitYanit> =>
+    fetch(`${BASE}/ear-temizlik/${id}`).then(safeJson),
   earTemizlikOnKontrol: (p: { host: string; kok: string; ad: string }): Promise<EtKayitYanit> =>
-    fetch(`${BASE}/ear-temizlik/on-kontrol`, json({ host: p.host, kok: p.kok, ad: p.ad })).then(safeJson),
+    fetch(`${BASE}/ear-temizlik/on-kontrol`, json({ host: p.host, kok: p.kok, ad: p.ad })).then(
+      safeJson,
+    ),
   /** onayMetni EAR adiyla birebir, planJobId ekranda gorulen ciktinin isi olmali (sunucu ikisini de denetler). */
-  earTemizlikSil: (id: number, p: { onayMetni: string; planJobId: number }): Promise<EtKayitYanit> =>
+  earTemizlikSil: (
+    id: number,
+    p: { onayMetni: string; planJobId: number },
+  ): Promise<EtKayitYanit> =>
     fetch(
       `${BASE}/ear-temizlik/${id}/sil`,
       json({ confirmed: true, onayMetni: p.onayMetni, planJobId: p.planJobId }),
@@ -1500,12 +1633,17 @@ export const serverHubApi = {
     fetch(`${BASE}/ear-temizlik/${id}/iptal`, json({})).then(safeJson),
   // TOPLU (2026-11-16): secili adaylara ayri ayri on kontrol (kismi basari); teyit edilen planlar tek
   // onayla kuyruga (onayMetni tam "<n> EAR SIL"; sunucu hepsi-ya-hic dogrular); siradakileri iptal.
-  earTemizlikTopluOnKontrol: (adaylar: { host: string; kok: string; ad: string }[]): Promise<EtTopluOnKontrolYanit> =>
+  earTemizlikTopluOnKontrol: (
+    adaylar: { host: string; kok: string; ad: string }[],
+  ): Promise<EtTopluOnKontrolYanit> =>
     fetch(
       `${BASE}/ear-temizlik/toplu/on-kontrol`,
       json({ adaylar: adaylar.map((a) => ({ host: a.host, kok: a.kok, ad: a.ad })) }),
     ).then(safeJson),
-  earTemizlikTopluSil: (p: { onayMetni: string; kayitlar: { id: number; planJobId: number }[] }): Promise<EtTopluSilYanit> =>
+  earTemizlikTopluSil: (p: {
+    onayMetni: string;
+    kayitlar: { id: number; planJobId: number }[];
+  }): Promise<EtTopluSilYanit> =>
     fetch(
       `${BASE}/ear-temizlik/toplu/sil`,
       json({
@@ -1515,18 +1653,28 @@ export const serverHubApi = {
       }),
     ).then(safeJson),
   earTemizlikTopluIptal: (topluId: string): Promise<EtTopluIptalYanit> =>
-    fetch(`${BASE}/ear-temizlik/toplu/${encodeURIComponent(topluId)}/iptal`, json({})).then(safeJson),
+    fetch(`${BASE}/ear-temizlik/toplu/${encodeURIComponent(topluId)}/iptal`, json({})).then(
+      safeJson,
+    ),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
   // KURALLAR & LIMITLER (2026-10-20): tarama maddeleri + seviyeler (Admin degistirir), limitler.
   kurallar: (fresh = false): Promise<ShKurallar> =>
     fetch(`${BASE}/kurallar${fresh ? '?fresh=1' : ''}`).then(safeJson),
-  limitler: (): Promise<{ ok: boolean; okunamadi?: boolean; limitler: ShLimit[]; message?: string }> =>
-    fetch(`${BASE}/limitler`).then(safeJson),
+  limitler: (): Promise<{
+    ok: boolean;
+    okunamadi?: boolean;
+    limitler: ShLimit[];
+    message?: string;
+  }> => fetch(`${BASE}/limitler`).then(safeJson),
   seviyeDegistir: (kod: string, seviye: ShSeverity, aciklama: string): Promise<ShAyarYazim> =>
-    fetch(`${BASE}/kurallar/seviye/${encodeURIComponent(kod)}`, put({ seviye, aciklama })).then(safeJson),
+    fetch(`${BASE}/kurallar/seviye/${encodeURIComponent(kod)}`, put({ seviye, aciklama })).then(
+      safeJson,
+    ),
   limitDegistir: (ad: ShLimitAd, deger: number, aciklama: string): Promise<ShAyarYazim> =>
-    fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(safeJson),
+    fetch(`${BASE}/kurallar/limit/${encodeURIComponent(ad)}`, put({ deger, aciklama })).then(
+      safeJson,
+    ),
   // RETIREMENT ETIKETLERI (2026-11-06)
   // ORTAK GORUNUMLER (2026-11-07): tablolarin Admin'in kaydettigi suzgec / siralama / kolonlari
   gorunumler: (ekran: string): Promise<ShOrtakGorunumYanit> =>
@@ -1535,25 +1683,39 @@ export const serverHubApi = {
     ekran: string,
     ad: string,
     gorunum: { f: unknown[]; s?: string; kolonlar?: string[] },
-  ): Promise<ShOrtakGorunumYanit> => fetch(`${BASE}/gorunumler`, put({ ekran, ad, gorunum })).then(safeJson),
+  ): Promise<ShOrtakGorunumYanit> =>
+    fetch(`${BASE}/gorunumler`, put({ ekran, ad, gorunum })).then(safeJson),
   gorunumSil: (ekran: string, ad: string): Promise<ShOrtakGorunumYanit> =>
     fetch(`${BASE}/gorunumler?ekran=${encodeURIComponent(ekran)}&ad=${encodeURIComponent(ad)}`, {
       method: 'DELETE',
     }).then(safeJson),
   // RETIREMENT ANALIZI (2026-11-07). Okuma uclari okJson: hata "okunamadi" olarak yakalanir (bos sanilmaz).
   iliskiKararlar: (fresh = false): Promise<ShKararlarSonuc> =>
-    fetch(`${BASE}/iliski/kararlar${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKararlarSonuc>(r)),
+    fetch(`${BASE}/iliski/kararlar${fresh ? '?fresh=1' : ''}`).then((r) =>
+      okJson<ShKararlarSonuc>(r),
+    ),
   iliskiKarar: (anahtar: string): Promise<ShKararAyrinti> =>
-    fetch(`${BASE}/iliski/karar?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShKararAyrinti>(r)),
+    fetch(`${BASE}/iliski/karar?anahtar=${encodeURIComponent(anahtar)}`).then((r) =>
+      okJson<ShKararAyrinti>(r),
+    ),
   iliskiKarsilastirma: (fresh = false): Promise<ShKarsilastirma> =>
-    fetch(`${BASE}/iliski/karsilastirma${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKarsilastirma>(r)),
+    fetch(`${BASE}/iliski/karsilastirma${fresh ? '?fresh=1' : ''}`).then((r) =>
+      okJson<ShKarsilastirma>(r),
+    ),
   /** Faz 2b: grup elle kontrolu (DOGRULANDI yalniz RETIRE_ADAYI grupta, guncel imzayla). */
-  iliskiGrupKontrol: (b: { anahtar: string; sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL'; aciklama: string; imza: string }): Promise<{ ok: boolean; grup: ShGrupKarar }> =>
+  iliskiGrupKontrol: (b: {
+    anahtar: string;
+    sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL';
+    aciklama: string;
+    imza: string;
+  }): Promise<{ ok: boolean; grup: ShGrupKarar }> =>
     fetch(`${BASE}/iliski/kontrol`, put(b)).then((r) => okJson(r)),
   iliskiAra: (q: string): Promise<{ ok: boolean; sonuclar: ShAraSonuc[] }> =>
     fetch(`${BASE}/iliski/ara?q=${encodeURIComponent(q)}`).then((r) => okJson(r)),
   iliskiVarlik: (anahtar: string): Promise<ShVarlik> =>
-    fetch(`${BASE}/iliski/varlik?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShVarlik>(r)),
+    fetch(`${BASE}/iliski/varlik?anahtar=${encodeURIComponent(anahtar)}`).then((r) =>
+      okJson<ShVarlik>(r),
+    ),
   notEkle: (g: ShNotGovde): Promise<{ ok: boolean; id: number; yetim: boolean | null }> =>
     fetch(`${BASE}/notlar`, json(g)).then((r) => okJson(r)),
   notGuncelle: (id: number, g: ShNotGovde): Promise<{ ok: boolean; id: number }> =>
@@ -1569,10 +1731,14 @@ export const serverHubApi = {
     fetch(`${BASE}/notlar/${id}/gecmis`).then((r) => okJson(r)),
   notKaliciSil: (id: number): Promise<{ ok: boolean }> =>
     fetch(`${BASE}/notlar/${id}?kalici=1&onay=1`, { method: 'DELETE' }).then((r) => okJson(r)),
-  sinifKaydet: (s: ShSinifGovde): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
+  sinifKaydet: (
+    s: ShSinifGovde,
+  ): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
     fetch(`${BASE}/siniflar`, put(s)).then((r) => okJson(r)),
   sinifSil: (ad: string): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
-    fetch(`${BASE}/siniflar/${encodeURIComponent(ad)}`, { method: 'DELETE' }).then((r) => okJson(r)),
+    fetch(`${BASE}/siniflar/${encodeURIComponent(ad)}`, { method: 'DELETE' }).then((r) =>
+      okJson(r),
+    ),
   // KOPYA DURUMU (2026-11-14)
   kopyaDurumu: (fresh = false): Promise<ShKopyaDurumuSonuc> =>
     fetch(`${BASE}/kopya-durumu${fresh ? '?fresh=1' : ''}`).then(safeJson),
@@ -1594,7 +1760,9 @@ export const serverHubApi = {
   retireEtiketAyrinti: (
     anahtar: string,
   ): Promise<{ ok: boolean; etiket?: ShRetireEtiket; message?: string; _httpStatus?: number }> =>
-    fetch(`${BASE}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(anahtar)}`).then(safeJson),
+    fetch(`${BASE}/retire-etiketleri/ayrinti?anahtar=${encodeURIComponent(anahtar)}`).then(
+      safeJson,
+    ),
   retireKontrol: (p: {
     anahtar: string;
     sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL';
@@ -1602,7 +1770,9 @@ export const serverHubApi = {
     imza: string;
   }): Promise<ShKontrolYanit> => fetch(`${BASE}/retire-kontrol`, put(p)).then(safeJson),
   etiketSeviyesi: (kural: string, seviye: ShEtiketSeviye, aciklama: string): Promise<ShAyarYazim> =>
-    fetch(`${BASE}/kurallar/etiket/${encodeURIComponent(kural)}`, put({ seviye, aciklama })).then(safeJson),
+    fetch(`${BASE}/kurallar/etiket/${encodeURIComponent(kural)}`, put({ seviye, aciklama })).then(
+      safeJson,
+    ),
   kokYoksay: (liste: string[], aciklama: string): Promise<ShAyarYazim> =>
     fetch(`${BASE}/kurallar/kok-yoksay`, put({ liste, aciklama })).then(safeJson),
 };

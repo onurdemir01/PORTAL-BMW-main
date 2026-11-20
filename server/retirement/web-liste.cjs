@@ -23,7 +23,9 @@ const IHS_KOK = '/usr/IBMIHS';
 
 /** Urun ailesi: IHS|IBMIHS -> IHS, RHA|APACHE -> RHA, digerleri ''. (server_hub_fix.sh:28 ile ayni.) */
 function urunAilesi(p) {
-  const u = String(p || '').trim().toUpperCase();
+  const u = String(p || '')
+    .trim()
+    .toUpperCase();
   if (u === 'IHS' || u === 'IBMIHS') return 'IHS';
   if (u === 'RHA' || u === 'APACHE') return 'RHA';
   return '';
@@ -57,7 +59,8 @@ function oncelik(w) {
   return Object.hasOwn(ONCELIK, s) ? ONCELIK[s] : null;
 }
 /** Is acilmis (jobId), dosyayi kapatan/kapatmis (running/ok) ya da durumu bilinmeyen girdi: HIC atilmaz. */
-const kalici = (w) => !w || w.jobId != null || w.status === 'running' || w.status === 'ok' || oncelik(w) == null;
+const kalici = (w) =>
+  !w || w.jobId != null || w.status === 'running' || w.status === 'ok' || oncelik(w) == null;
 
 /**
  * Ayni fiziksel dosya + ServerName (kanonik anahtar) icin web listesi:
@@ -71,7 +74,9 @@ const kalici = (w) => !w || w.jobId != null || w.status === 'running' || w.statu
  */
 function webTekille(liste) {
   if (!Array.isArray(liste)) return { liste, atilan: 0 };
-  const kapali = new Set(liste.filter((w) => w && (w.status === 'running' || w.status === 'ok')).map(webKanonikAnahtar));
+  const kapali = new Set(
+    liste.filter((w) => w && (w.status === 'running' || w.status === 'ok')).map(webKanonikAnahtar),
+  );
   const temsilci = new Map();
   for (const w of liste) {
     if (kalici(w)) continue;
@@ -83,7 +88,10 @@ function webTekille(liste) {
   }
   const out = [];
   for (const w of liste) {
-    if (kalici(w)) { out.push(w); continue; }
+    if (kalici(w)) {
+      out.push(w);
+      continue;
+    }
     if (temsilci.get(webKanonikAnahtar(w)) !== w) continue;
     const c = webConfKanonik(w);
     out.push(kosmadi(w) && c !== String(w.confFile || '') ? { ...w, confFile: c } : w);
@@ -109,17 +117,40 @@ function webYenidenDeneHazirla(liste) {
   const secilen = [];
   let surenYuzunden = 0;
   for (const w of kaynak) {
-    if (!w || !YENIDEN.has(w.status)) { out.push(w); continue; }
+    if (!w || !YENIDEN.has(w.status)) {
+      out.push(w);
+      continue;
+    }
     const k = webKanonikAnahtar(w);
-    if (suren.has(k)) { surenYuzunden += 1; out.push(w); continue; }
+    if (suren.has(k)) {
+      surenYuzunden += 1;
+      out.push(w);
+      continue;
+    }
     if (gorulen.has(k)) continue;
     gorulen.add(k);
-    const y = { ...w, oncekiJobId: w.jobId ?? null, oncekiMesaj: w.message ?? null, status: 'pending', jobId: null,
-      message: 'yeniden denenecek', yenidenDene: true, confFile: webConfKanonik(w) };
+    const y = {
+      ...w,
+      oncekiJobId: w.jobId ?? null,
+      oncekiMesaj: w.message ?? null,
+      status: 'pending',
+      jobId: null,
+      message: 'yeniden denenecek',
+      yenidenDene: true,
+      confFile: webConfKanonik(w),
+    };
     out.push(y);
     secilen.push(y);
   }
   return { liste: out, secilen, surenYuzunden };
 }
 
-module.exports = { webAnahtar, webKanonikAnahtar, webConfKanonik, urunAilesi, webTekille, webYenidenDeneHazirla, IHS_KOK };
+module.exports = {
+  webAnahtar,
+  webKanonikAnahtar,
+  webConfKanonik,
+  urunAilesi,
+  webTekille,
+  webYenidenDeneHazirla,
+  IHS_KOK,
+};

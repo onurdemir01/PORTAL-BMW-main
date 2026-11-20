@@ -102,11 +102,9 @@ describe('Self Service erişimi', () => {
   it('SEU2 LDAP tan seçilen grup DN olarak eklenir, çip CN gösterir, çıkarılabilir', async () => {
     vi.useFakeTimers();
     try {
-      const search = vi
-        .fn()
-        .mockResolvedValue({
-          groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }],
-        });
+      const search = vi.fn().mockResolvedValue({
+        groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }],
+      });
       render(<Kontrollu search={search} />);
       fireEvent.change(screen.getByLabelText('LDAP grubu ara'), { target: { value: 'GT-Mid' } });
       await act(async () => {

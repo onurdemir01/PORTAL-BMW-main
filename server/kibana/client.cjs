@@ -15,10 +15,17 @@ function checkReachable(timeoutMs = 3000) {
   return new Promise((resolve) => {
     const baseUrl = (process.env.KIBANA_BASE_URL || '').trim();
     let parsed;
-    try { parsed = new URL(baseUrl); } catch { return resolve(false); }
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      return resolve(false);
+    }
     const port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
     const socket = net.createConnection({ host: parsed.hostname, port, timeout: timeoutMs });
-    const done = (ok) => { socket.destroy(); resolve(ok); };
+    const done = (ok) => {
+      socket.destroy();
+      resolve(ok);
+    };
     socket.once('connect', () => done(true));
     socket.once('timeout', () => done(false));
     socket.once('error', () => done(false));

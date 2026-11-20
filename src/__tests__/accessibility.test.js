@@ -28,8 +28,10 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 // ── D2: canli bolgeler ──────────────────────────────────────────────────────
 test('D2: Toast kabi mesaj OLMADAN da DOM’da (canli bolge onceden var)', () => {
   const src = read('components/common/Toast.tsx');
-  assert.ok(!/if \(toasts\.length === 0\) return null;/.test(src),
-    'kap bos iken null donuyor — bolge mesajla AYNI ANDA olusur ve duyurulmaz');
+  assert.ok(
+    !/if \(toasts\.length === 0\) return null;/.test(src),
+    'kap bos iken null donuyor — bolge mesajla AYNI ANDA olusur ve duyurulmaz',
+  );
   assert.match(src, /aria-live="polite"/);
   assert.match(src, /aria-atomic="false"/, 'bildirimler tek tek okunmali, kap topluca degil');
 });
@@ -52,10 +54,16 @@ test('D2: bos kap tiklamayi ENGELLEMIYOR', () => {
 test('D2: is SONUCU duyuruluyor, her yoklama degil', () => {
   const src = read('components/common/JobTrackerBar.tsx');
   assert.match(src, /aria-live="polite"/);
-  assert.match(src, /const announcedRef = useRef<Set<string>>\(new Set\(\)\)/,
-    'ayni is birden fazla kez okunmamali');
-  assert.match(src, /jobs\.filter\(\(j\) => j\.done && !announcedRef\.current\.has\(j\.id\)\)/,
-    'yalnizca SONUCLANAN isler duyurulmali — her yoklamada "calisiyor" demek gurultu');
+  assert.match(
+    src,
+    /const announcedRef = useRef<Set<string>>\(new Set\(\)\)/,
+    'ayni is birden fazla kez okunmamali',
+  );
+  assert.match(
+    src,
+    /jobs\.filter\(\(j\) => j\.done && !announcedRef\.current\.has\(j\.id\)\)/,
+    'yalnizca SONUCLANAN isler duyurulmali — her yoklamada "calisiyor" demek gurultu',
+  );
   assert.match(src, /STATUS_LABEL/, 'durum renkli nokta yerine ADIYLA soylenmeli');
 });
 
@@ -83,8 +91,10 @@ test('D6: hedef GERCEKTEN odaklanabilir', () => {
 
 test('D6: skip-link masthead’den ONCE geliyor', () => {
   const src = read('layouts/AppLayout.tsx');
-  assert.ok(src.indexOf('href="#main-content"') < src.indexOf('<Masthead'),
-    'skip-link masthead’den sonra ise ilk Tab onu bulmaz — amaci kalmaz');
+  assert.ok(
+    src.indexOf('href="#main-content"') < src.indexOf('<Masthead'),
+    'skip-link masthead’den sonra ise ilk Tab onu bulmaz — amaci kalmaz',
+  );
 });
 
 // ── D7: kesilen metin ipucu ─────────────────────────────────────────────────
@@ -97,7 +107,8 @@ test('D7: tek-ifadeli truncate ogelerinde title var', () => {
     }
     return out;
   }
-  const pat = /<(span|div|p|td|h1|h2|h3|h4)\b([^>]*className="[^"]*\btruncate\b[^"]*")([^>]*)>\{([^{}]+)\}<\/\1>/g;
+  const pat =
+    /<(span|div|p|td|h1|h2|h3|h4)\b([^>]*className="[^"]*\btruncate\b[^"]*")([^>]*)>\{([^{}]+)\}<\/\1>/g;
   const offenders = [];
   for (const f of walk(ROOT)) {
     const src = fs.readFileSync(f, 'utf8');
@@ -110,5 +121,9 @@ test('D7: tek-ifadeli truncate ogelerinde title var', () => {
       offenders.push(`${path.relative(ROOT, f)}: ${expr.slice(0, 40)}`);
     }
   }
-  assert.deepEqual(offenders, [], `kesilen deger okunamiyor/kopyalanamiyor:\n${offenders.join('\n')}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `kesilen deger okunamiyor/kopyalanamiyor:\n${offenders.join('\n')}`,
+  );
 });

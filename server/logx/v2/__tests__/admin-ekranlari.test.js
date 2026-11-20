@@ -73,7 +73,11 @@ test('AE3 maskeleme kurallari CRUD`u ekrana bagli', () => {
     assert.ok(api.includes(m), `${m} istemcide yok`);
   }
   assert.match(BOLUM(), /export const MaskRulesSection/, 'maskeleme bolumu yok');
-  assert.match(LOGX(), /<MaskRulesSection \/>/, 'maskeleme bolumu LogX Yonetimi`nde render edilmiyor');
+  assert.match(
+    LOGX(),
+    /<MaskRulesSection \/>/,
+    'maskeleme bolumu LogX Yonetimi`nde render edilmiyor',
+  );
 });
 
 test('AE4 maskelemenin GERCEK KAPSAMI ekranda soyleniyor (yanlis guvence yok)', () => {
@@ -86,7 +90,11 @@ test('AE4 maskelemenin GERCEK KAPSAMI ekranda soyleniyor (yanlis guvence yok)', 
 
   // Ve iddia DOGRU olmali: teslim yolu gercekten maskelemiyor.
   const dl = kodOnly(oku('server/logx/v2/downloads.cjs'));
-  assert.doesNotMatch(dl, /maskLines/, 'teslim yolu artik maskeliyor — ekrandaki uyari YANLIS oldu');
+  assert.doesNotMatch(
+    dl,
+    /maskLines/,
+    'teslim yolu artik maskeliyor — ekrandaki uyari YANLIS oldu',
+  );
 });
 
 test('AE5 istek izleme ekrani uca bagli', () => {
@@ -115,7 +123,11 @@ test('AE6 OCO zamanlama paneli NE zamanlandigini gosterir', () => {
   // Bicimsiz kapsam panelin tamamini dusurmemeli.
   const d = dilim(k, 'function kapsamCoz', 'const ISLEM_ADI');
   assert.match(d, /typeof k !== 'object'/, 'bicimsiz kapsam panelin tamamini dusurur');
-  assert.match(d, /Array\.isArray/, 'dizi olmayan cluster/uygulama listesi panelin tamamini dusurur');
+  assert.match(
+    d,
+    /Array\.isArray/,
+    'dizi olmayan cluster/uygulama listesi panelin tamamini dusurur',
+  );
 });
 
 test('AE7 SUNUCUYA DOKUNULMADI', () => {

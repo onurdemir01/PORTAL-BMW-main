@@ -77,7 +77,9 @@ function intranetHucresi(rapor, env, ownerOf, cap = 300) {
   // Dizin okunamadiysa raporun taranmayanSunucu'su listenin TAMAMIDIR (buildIntranetRapor).
   // Ortam listesi ayrica genisletilmez: rapor ortami envOfNamespace'ten gelir, Kapsam'in ENVS'i.
   const taranmayan = new Set(rapor.taranmayanSunucu || []);
-  const taranan = (rapor.intranetSunuculari || []).filter((h) => envOfHost(h) === env && !taranmayan.has(h));
+  const taranan = (rapor.intranetSunuculari || []).filter(
+    (h) => envOfHost(h) === env && !taranmayan.has(h),
+  );
   const eksikler = (r) =>
     r.kurulum.sunucular
       .filter((s) => s.status !== 'OK')
@@ -94,7 +96,10 @@ function intranetHucresi(rapor, env, ownerOf, cap = 300) {
   return {
     alanlar: {
       intranetKaynak: 'intranet-spa',
-      intranetKaynakHata: rapor.dizinDurum === 'var' ? '' : 'Intranet dizin taraması (Nginx_Intranet_Audit) okunamadı.',
+      intranetKaynakHata:
+        rapor.dizinDurum === 'var'
+          ? ''
+          : 'Intranet dizin taraması (Nginx_Intranet_Audit) okunamadı.',
       // PAYDA: ortamin intranet SPA satirlari (Intranet SPA sayfasindaki "uygulama").
       intranetKurulumToplam: rows.length,
       measuredIntranet: taranan.length > 0,
@@ -106,15 +111,20 @@ function intranetHucresi(rapor, env, ownerOf, cap = 300) {
       intranetMissingCount: yok.length,
       intranetMissing: yok.slice(0, cap).map((r) => r.application),
       // Ayri kovalar: "kurulmamis" SAYILMAZ.
-      intranetOlculemediCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'olculemedi').length,
-      intranetSunucuYokCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'sunucu-yok').length,
+      intranetOlculemediCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'olculemedi')
+        .length,
+      intranetSunucuYokCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'sunucu-yok')
+        .length,
       intranetOnlyOnServerCount: fazla.length,
       intranetOnlyOnServer: fazla.slice(0, cap).map((f) => `${f.namespace}/${f.application}`),
       intranetHosts: taranan,
       intranetCoverage: olculen ? Math.round((tamam.length / olculen) * 1000) / 10 : null,
     },
     // Tikla-listesi: hic kurulmamis + yarim (OwnerCell sekli, Kapsam'in eski listesiyle ayni).
-    detay: [...yok.slice(0, cap).map((r) => detay(r, 'missing')), ...kismi.slice(0, cap).map((r) => detay(r, 'partial'))],
+    detay: [
+      ...yok.slice(0, cap).map((r) => detay(r, 'missing')),
+      ...kismi.slice(0, cap).map((r) => detay(r, 'partial')),
+    ],
   };
 }
 

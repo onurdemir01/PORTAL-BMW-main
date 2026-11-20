@@ -27,10 +27,14 @@ function brotliKodlamasi(baslik) {
 function brotliGovdeReddi() {
   return (req, res, next) => {
     if (!brotliKodlamasi(req.headers['content-encoding'])) return next();
-    console.warn(`[guvenlik] Brotli sikistirilmis istek govdesi reddedildi: ${req.method} ${String(req.originalUrl || req.url).split('?')[0]} (${req.ip})`);
+    console.warn(
+      `[guvenlik] Brotli sikistirilmis istek govdesi reddedildi: ${req.method} ${String(req.originalUrl || req.url).split('?')[0]} (${req.ip})`,
+    );
     // Govde okunmadigi icin baglanti yeniden kullanilmaz.
     res.set('Connection', 'close');
-    res.status(415).json({ ok: false, message: 'Brotli ile sıkıştırılmış istek gövdesi kabul edilmiyor.' });
+    res
+      .status(415)
+      .json({ ok: false, message: 'Brotli ile sıkıştırılmış istek gövdesi kabul edilmiyor.' });
   };
 }
 

@@ -57,12 +57,10 @@ function initAiAnalyst(app) {
   // bagli kalir (bkz. server/logx/index.cjs).
   router.post('/analyze-logs', requireAuth, async (req, res) => {
     if (!isConfigured()) {
-      return res
-        .status(503)
-        .json({
-          ok: false,
-          message: 'AI sağlayıcı anahtarı tanımlı değil (ANTHROPIC_API_KEY / OPENAI_API_KEY).',
-        });
+      return res.status(503).json({
+        ok: false,
+        message: 'AI sağlayıcı anahtarı tanımlı değil (ANTHROPIC_API_KEY / OPENAI_API_KEY).',
+      });
     }
     const { lines, context } = req.body || {};
     if (!Array.isArray(lines) || lines.length === 0) {

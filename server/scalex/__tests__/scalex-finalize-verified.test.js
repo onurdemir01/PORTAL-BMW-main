@@ -104,7 +104,8 @@ test('FZ1 WARN ama `verified` olan geri alma BASARILI sayilir', async () => {
     target({
       status: 'WARN',
       verified: true,
-      detail: 'Replica değişikliği uygulandı, pod hazır olmayı sürdürüyor. applied=yes aciliyor, 0/1',
+      detail:
+        'Replica değişikliği uygulandı, pod hazır olmayı sürdürüyor. applied=yes aciliyor, 0/1',
     }),
   ]);
   assert.equal(calls.failed.length, 0, 'ayakta olan uygulama "geri alinamadi" yazildi');

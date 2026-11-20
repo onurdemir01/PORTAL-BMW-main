@@ -87,7 +87,10 @@ function gib(v: string | null): number | null {
   if (!m) return null;
   const n = Number.parseFloat(m[1]);
   if (!Number.isFinite(n)) return null;
-  return n * ({ k: 1 / 1048576, m: 1 / 1024, g: 1, t: 1024 } as Record<string, number>)[m[2].toLowerCase()];
+  return (
+    n *
+    ({ k: 1 / 1048576, m: 1 / 1024, g: 1, t: 1024 } as Record<string, number>)[m[2].toLowerCase()]
+  );
 }
 
 const servisler = (h: NginxInvHost) =>
@@ -98,7 +101,9 @@ const servisler = (h: NginxInvHost) =>
 
 /** Etiketle gelen (otomatik listede olmayan) adlar. */
 const elleAdlar = (h: NginxInvHost) =>
-  h.etiket ? new Set(h.etiket.etiketler.filter((x) => !h.etiket!.oto.includes(x))) : new Set<string>();
+  h.etiket
+    ? new Set(h.etiket.etiketler.filter((x) => !h.etiket!.oto.includes(x)))
+    : new Set<string>();
 
 const UST_ETIKET = 'text-[11px] font-semibold uppercase tracking-[0.06em]';
 
@@ -108,7 +113,13 @@ const UST_ETIKET = 'text-[11px] font-semibold uppercase tracking-[0.06em]';
 // nginx -v çıktısından gelen serbest metin: "1.24.0", "nginx/1.26.3", "1.25.1 (nginx-plus-r30)",
 // "unknown". major.minor = aile; geri kalanı yama + ek.
 const BILINMEYEN_SURUM = /^(unknown|\(bilinmiyor\)|n\/a|-)?$/i;
-export type SurumParca = { ham: string; aile: string; yama: string; ek: string; bilinmiyor: boolean };
+export type SurumParca = {
+  ham: string;
+  aile: string;
+  yama: string;
+  ek: string;
+  bilinmiyor: boolean;
+};
 export function surumAyristir(v: string | null | undefined): SurumParca {
   const ham = String(v ?? '').trim();
   if (BILINMEYEN_SURUM.test(ham)) return { ham, aile: '', yama: '', ek: '', bilinmiyor: true };
@@ -153,11 +164,14 @@ export type SurumCozum = {
 };
 export function surumCoz(v: string | null | undefined): SurumCozum {
   const p = surumAyristir(v);
-  if (p.bilinmiyor || /^bilinmiyor$/i.test(p.ham)) return { ham: p.ham, sayi: '', plus: null, diger: '', bilinmiyor: true };
+  if (p.bilinmiyor || /^bilinmiyor$/i.test(p.ham))
+    return { ham: p.ham, sayi: '', plus: null, diger: '', bilinmiyor: true };
   const sayisal = !!p.yama || /^\d+\.\d+$/.test(p.aile);
   const kalan = sayisal ? p.ek : p.ham;
   const m = PLUS_SURUM.exec(kalan);
-  const plus = m ? { r: Number.parseInt(m[1], 10), p: m[2] == null ? null : Number.parseInt(m[2], 10) } : null;
+  const plus = m
+    ? { r: Number.parseInt(m[1], 10), p: m[2] == null ? null : Number.parseInt(m[2], 10) }
+    : null;
   const diger = (m ? `${kalan.slice(0, m.index)} ${kalan.slice(m.index + m[0].length)}` : kalan)
     .replace(/\(\s*\)/g, ' ')
     .replace(/\s+/g, ' ')
@@ -165,7 +179,8 @@ export function surumCoz(v: string | null | undefined): SurumCozum {
   return { ham: p.ham, sayi: sayisal ? p.aile + p.yama : '', plus, diger, bilinmiyor: false };
 }
 /** "Plus R31 p1" / "Plus R30". */
-export const plusEtiketi = (plus: { r: number; p: number | null }) => `Plus R${plus.r}${plus.p == null ? '' : ` p${plus.p}`}`;
+export const plusEtiketi = (plus: { r: number; p: number | null }) =>
+  `Plus R${plus.r}${plus.p == null ? '' : ` p${plus.p}`}`;
 /** Tam sürüm metni: "1.25.3 Plus R31 p1", "Plus R36 p4", "1.24.0", "bilinmiyor". */
 export function surumEtiketi(v: string | null | undefined): string {
   const c = surumCoz(v);
@@ -176,14 +191,19 @@ export function surumEtiketi(v: string | null | undefined): string {
  * Sayım/süzgeç anahtarı = tam sürüm metni: "nginx/1.26.3" ile "1.26.3" aynı sürümdür, iki satır
  * olmaz. Anahtar yeniden çözülünce kendisini verir (surumEtiketi(anahtar) === anahtar).
  */
-const surumAnahtari = (v: string | null | undefined) => (surumCoz(v).bilinmiyor ? '(bilinmiyor)' : surumEtiketi(v));
+const surumAnahtari = (v: string | null | undefined) =>
+  surumCoz(v).bilinmiyor ? '(bilinmiyor)' : surumEtiketi(v);
 
 /** NGINX Plus sürümü: görünür, nötr (iyi/kötü rengi yok) küçük etiket. */
 function PlusRozeti({ plus }: { plus: { r: number; p: number | null } }) {
   return (
     <span
       className="inline-flex items-center px-1 rounded-[4px] border text-[10.5px] font-semibold leading-[1.05rem] whitespace-nowrap"
-      style={{ fontFamily: 'var(--font-sans)', borderColor: 'var(--border-strong)', color: 'var(--text-primary)' }}
+      style={{
+        fontFamily: 'var(--font-sans)',
+        borderColor: 'var(--border-strong)',
+        color: 'var(--text-primary)',
+      }}
       data-testid="plus-etiketi"
     >
       {plusEtiketi(plus)}
@@ -196,12 +216,18 @@ function SurumMetni({ v, sarilir }: { v: string; sarilir?: boolean }) {
   const c = surumCoz(v);
   if (c.bilinmiyor)
     return (
-      <span className="italic" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+      <span
+        className="italic"
+        style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}
+      >
         bilinmiyor
       </span>
     );
   return (
-    <span className={`inline-flex items-center gap-1 ${sarilir ? 'flex-wrap' : ''}`} style={{ fontFamily: 'var(--font-mono)' }}>
+    <span
+      className={`inline-flex items-center gap-1 ${sarilir ? 'flex-wrap' : ''}`}
+      style={{ fontFamily: 'var(--font-mono)' }}
+    >
       {c.sayi && (
         <span className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
           {c.sayi}
@@ -211,7 +237,9 @@ function SurumMetni({ v, sarilir }: { v: string; sarilir?: boolean }) {
       {c.plus && <PlusRozeti plus={c.plus} />}
       {(c.sayi || c.plus) && c.diger && ' '}
       {c.diger && (
-        <span style={{ color: c.sayi || c.plus ? 'var(--text-secondary)' : 'var(--text-primary)' }}>{c.diger}</span>
+        <span style={{ color: c.sayi || c.plus ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
+          {c.diger}
+        </span>
       )}
     </span>
   );
@@ -348,7 +376,12 @@ const sayac = (degerler: (string | null | undefined)[]) => {
  * (| %)]. Üst grid'in subgrid'i olarak çizilir; aynı karttaki bütün bölümlerin çubukları aynı hizada
  * başlar. `onSec` verilirse satır klavyeyle erişilebilir düğmedir; `sinir`dan fazlası "+N daha".
  */
-export type DagilimSatir = { anahtar: string; sayi: number; etiket: React.ReactNode; ipucu: string };
+export type DagilimSatir = {
+  anahtar: string;
+  sayi: number;
+  etiket: React.ReactNode;
+  ipucu: string;
+};
 function DagilimSatirlari({
   satirlar,
   max,
@@ -371,20 +404,32 @@ function DagilimSatirlari({
 }) {
   const [hepsi, setHepsi] = useState(false);
   const gorunen = hepsi ? satirlar : satirlar.slice(0, sinir);
-  const satirCls = 'col-span-full grid grid-cols-subgrid items-center px-1.5 py-[3px] rounded-md text-[12px]';
+  const satirCls =
+    'col-span-full grid grid-cols-subgrid items-center px-1.5 py-[3px] rounded-md text-[12px]';
   return (
     <ul className="col-span-full grid grid-cols-subgrid gap-y-px">
       {gorunen.map((s) => {
         const secili = !!aktif && aktif === s.anahtar;
         const ic = (
           <>
-            <span className={`min-w-[6.5rem] ${girinti ? 'pl-3' : ''}`} style={{ color: 'var(--text-secondary)' }}>
+            <span
+              className={`min-w-[6.5rem] ${girinti ? 'pl-3' : ''}`}
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {s.etiket}
             </span>
-            <span className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }} aria-hidden="true">
+            <span
+              className="h-1.5 rounded-full overflow-hidden"
+              style={{ background: 'var(--bg-elevated)' }}
+              aria-hidden="true"
+            >
               <span
                 className="block h-full rounded-full"
-                style={{ width: `${Math.max(2, (s.sayi / Math.max(1, max)) * 100)}%`, background: renk, opacity: 0.75 }}
+                style={{
+                  width: `${Math.max(2, (s.sayi / Math.max(1, max)) * 100)}%`,
+                  background: renk,
+                  opacity: 0.75,
+                }}
               />
             </span>
             <span className="text-right tabular-nums" style={{ color: 'var(--text-primary)' }}>
@@ -400,7 +445,12 @@ function DagilimSatirlari({
           </>
         );
         return (
-          <li key={s.anahtar} className="col-span-full grid grid-cols-subgrid" data-testid="dagilim-satiri" data-anahtar={s.anahtar}>
+          <li
+            key={s.anahtar}
+            className="col-span-full grid grid-cols-subgrid"
+            data-testid="dagilim-satiri"
+            data-anahtar={s.anahtar}
+          >
             {onSec ? (
               <button
                 type="button"
@@ -408,7 +458,11 @@ function DagilimSatirlari({
                 aria-pressed={secili}
                 title={s.ipucu}
                 className={`${satirCls} text-left transition-shadow hover:[box-shadow:inset_0_0_0_1px_var(--border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]`}
-                style={secili ? { background: 'var(--accent-bg)', boxShadow: 'inset 0 0 0 1px var(--accent)' } : undefined}
+                style={
+                  secili
+                    ? { background: 'var(--accent-bg)', boxShadow: 'inset 0 0 0 1px var(--accent)' }
+                    : undefined
+                }
               >
                 {ic}
               </button>
@@ -444,7 +498,8 @@ const surumIpucu = (anahtar: string, sayi: number, hamlar?: Iterable<string>, on
 };
 
 /** Sürüm anahtarı → sayı: önce çok olan, eşitse yeniden eskiye. */
-const sayiSonraSurum = (a: [string, number], b: [string, number]) => b[1] - a[1] || surumKarsilastir(a[0], b[0]);
+const sayiSonraSurum = (a: [string, number], b: [string, number]) =>
+  b[1] - a[1] || surumKarsilastir(a[0], b[0]);
 
 /** Aile anahtarı: numaralı = major.minor; numarasız Plus = 'Plus'; tanınmayan = 'diğer'; bilinmeyen = ''. */
 function surumAilesi(v: string): string {
@@ -489,7 +544,10 @@ function SurumAileKarti({
     x.surumler.push([v, g.sayi]);
   }
   const sirali = [...aileler.values()].sort(
-    (x, y) => AILE_SIRA(x.aile) - AILE_SIRA(y.aile) || surumKarsilastir(`${x.aile}.0`, `${y.aile}.0`) || x.aile.localeCompare(y.aile),
+    (x, y) =>
+      AILE_SIRA(x.aile) - AILE_SIRA(y.aile) ||
+      surumKarsilastir(`${x.aile}.0`, `${y.aile}.0`) ||
+      x.aile.localeCompare(y.aile),
   );
   const max = Math.max(1, ...[...birlesik.values()].map((g) => g.sayi));
   const yuzde = (c: number) => (total ? Math.round((c / total) * 100) : 0);
@@ -500,7 +558,10 @@ function SurumAileKarti({
       data-testid="surum-aile-karti"
     >
       <header className="flex items-baseline justify-between gap-2 mb-3">
-        <h4 className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h4
+          className="text-[13px] font-semibold"
+          style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+        >
           nginx sürümü
         </h4>
         <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
@@ -508,7 +569,9 @@ function SurumAileKarti({
         </span>
       </header>
       {!sirali.length ? (
-        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Veri yok.</p>
+        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          Veri yok.
+        </p>
       ) : (
         <div className="grid grid-cols-[fit-content(62%)_minmax(2.5rem,1fr)_auto_2.5rem] gap-x-2.5 -mx-1.5">
           {sirali.map((a, i) => (
@@ -520,12 +583,21 @@ function SurumAileKarti({
             >
               {a.aile && (
                 <div className="col-span-full grid grid-cols-subgrid items-baseline px-1.5 pb-0.5">
-                  <span className="text-[12.5px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: /^\d/.test(a.aile) ? 'var(--font-mono)' : 'var(--font-sans)' }}>
+                  <span
+                    className="text-[12.5px] font-semibold"
+                    style={{
+                      color: 'var(--text-primary)',
+                      fontFamily: /^\d/.test(a.aile) ? 'var(--font-mono)' : 'var(--font-sans)',
+                    }}
+                  >
                     {a.aile === 'Plus' ? 'NGINX Plus' : a.aile}
                     {/^\d/.test(a.aile) && (
                       <>
                         {' '}
-                        <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+                        <span
+                          className="ml-1 text-[11px] font-normal"
+                          style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}
+                        >
                           ailesi
                         </span>
                       </>
@@ -533,10 +605,16 @@ function SurumAileKarti({
                   </span>
                   <span aria-hidden="true" />
                   {/* Tek sürümlü ailede toplam, alttaki sürüm satırıyla aynıdır: iki kez yazılmaz. */}
-                  <span className="text-right text-[12px] font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                  <span
+                    className="text-right text-[12px] font-semibold tabular-nums"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     {a.surumler.length > 1 ? nf(a.sayi) : ''}
                   </span>
-                  <span className="text-right text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  <span
+                    className="text-right text-[12px] tabular-nums"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
                     {a.surumler.length > 1 ? `%${yuzde(a.sayi)}` : ''}
                   </span>
                 </div>
@@ -569,13 +647,23 @@ function SurumAileKarti({
 // ── Disk ───────────────────────────────────────────────────────────────────────
 /** GiB -> "512 MiB" / "50 GiB" / "7,5 GiB" / "1,5 TiB" (1 GiB altı MiB, "0 GiB" görünmesin). */
 function boyutYaz(g: number): string {
-  if (g > 0 && g < 1) return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(g * 1024)} MiB`;
-  if (g >= 1024) return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(g / 1024)} TiB`;
+  if (g > 0 && g < 1)
+    return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(g * 1024)} MiB`;
+  if (g >= 1024)
+    return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(g / 1024)} TiB`;
   return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: g < 10 ? 1 : 0 }).format(g)} GiB`;
 }
 
 /** Boyut hücresi (disk: df -hP toplam boyutu, bellek); çözülemezse "—" ve title'da neden. */
-function DiskHucresi({ v, yol, tur = 'disk boyutu' }: { v: string | null; yol: string; tur?: string }) {
+function DiskHucresi({
+  v,
+  yol,
+  tur = 'disk boyutu',
+}: {
+  v: string | null;
+  yol: string;
+  tur?: string;
+}) {
   const g = gib(v);
   if (g == null) {
     const ham = String(v ?? '').trim();
@@ -624,7 +712,9 @@ function ServisCipleri({ h, sinir = 4 }: { h: NginxInvHost; sinir?: number }) {
             }}
             title={elle.has(s) ? 'Elle etiket' : 'conf.d dosya adından'}
           >
-            {elle.has(s) && <TagIcon className="w-3 h-3" style={{ color: 'var(--accent)' }} aria-hidden="true" />}
+            {elle.has(s) && (
+              <TagIcon className="w-3 h-3" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+            )}
             {s}
           </span>
         ),
@@ -665,9 +755,15 @@ function DagilimKarti({
   const max = Math.max(1, ...items.map((i) => i.count));
   const gorunen = hepsi ? items : items.slice(0, 6);
   return (
-    <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+    <section
+      className="rounded-xl border p-4"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
       <header className="flex items-baseline justify-between gap-2 mb-3">
-        <h4 className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h4
+          className="text-[13px] font-semibold"
+          style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+        >
           {title}
         </h4>
         <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
@@ -675,14 +771,20 @@ function DagilimKarti({
         </span>
       </header>
       {!items.length ? (
-        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Veri yok.</p>
+        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          Veri yok.
+        </p>
       ) : satirli ? (
         <div className="grid grid-cols-[fit-content(62%)_minmax(2.5rem,1fr)_auto_2.5rem] gap-x-2.5 -mx-1.5">
           <DagilimSatirlari
             satirlar={items.map((i) => ({
               anahtar: i.value,
               sayi: i.count,
-              etiket: <span className="block truncate" title={i.value}>{i.value}</span>,
+              etiket: (
+                <span className="block truncate" title={i.value}>
+                  {i.value}
+                </span>
+              ),
               ipucu: `${i.value}: ${nf(i.count)} sunucu${onSec ? ' — listele' : ''}`,
             }))}
             max={max}
@@ -705,14 +807,23 @@ function DagilimKarti({
                   >
                     {i.value}
                   </span>
-                  <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+                  <span
+                    className="shrink-0 tabular-nums"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
                     {nf(i.count)}
-                    <span className="ml-1.5 inline-block w-9 text-right" style={{ color: 'var(--text-muted)' }}>
+                    <span
+                      className="ml-1.5 inline-block w-9 text-right"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       %{yuzde}
                     </span>
                   </span>
                 </span>
-                <span className="mt-1 block h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                <span
+                  className="mt-1 block h-1.5 rounded-full overflow-hidden"
+                  style={{ background: 'var(--bg-elevated)' }}
+                >
                   <span
                     className="block h-full rounded-full"
                     style={{
@@ -785,7 +896,10 @@ function ServiceSunuculari({
           </span>
         )}
       </div>
-      <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div
+        className="overflow-x-auto rounded-lg border"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <table className="w-full text-[12px] border-collapse">
           <thead>
             <tr style={{ color: 'var(--text-muted)' }}>
@@ -801,7 +915,11 @@ function ServiceSunuculari({
           <tbody>
             {hosts.map((h) => (
               <tr key={h.hostname} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <td className="px-3 py-1.5 whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }} title={h.fqdn || h.hostname}>
+                <td
+                  className="px-3 py-1.5 whitespace-nowrap"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                  title={h.fqdn || h.hostname}
+                >
                   {h.hostname}
                 </td>
                 <td className="px-3 py-1.5 whitespace-nowrap">
@@ -814,7 +932,10 @@ function ServiceSunuculari({
                 <td className="px-3 py-1.5 whitespace-nowrap" title={h.kernel || ''}>
                   {h.os || '—'}
                 </td>
-                <td className="px-3 py-1.5 whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }}>
+                <td
+                  className="px-3 py-1.5 whitespace-nowrap"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
                   {h.ip || '—'}
                 </td>
                 <td className="px-3 py-1.5">{h.services || '—'}</td>
@@ -827,7 +948,8 @@ function ServiceSunuculari({
         <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           Not: {nf(digerUnlisted.length)} sunucunun service listesi toplanmadı (5&apos;ten fazla
           service — &quot;too_many&quot;); bu service o sunucularda da olabilir, bu listede
-          görünmez: <span style={{ fontFamily: 'var(--font-mono)' }}>{digerUnlisted.join(', ')}</span>
+          görünmez:{' '}
+          <span style={{ fontFamily: 'var(--font-mono)' }}>{digerUnlisted.join(', ')}</span>
         </p>
       )}
     </div>
@@ -835,7 +957,17 @@ function ServiceSunuculari({
 }
 
 type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular' | 'upstream';
-type SiraAnahtar = 'hostname' | 'ortam' | 'location' | 'nginx' | 'os' | 'cpu' | 'bellek' | 'diskNginx' | 'diskWebLog' | 'konf';
+type SiraAnahtar =
+  | 'hostname'
+  | 'ortam'
+  | 'location'
+  | 'nginx'
+  | 'os'
+  | 'cpu'
+  | 'bellek'
+  | 'diskNginx'
+  | 'diskWebLog'
+  | 'konf';
 
 function SiraTh({
   k,
@@ -952,16 +1084,40 @@ export function NginxEnvanteri() {
     };
   }, []);
 
-  const hostByName = useMemo(() => new Map((data?.hosts ?? []).map((h) => [h.hostname, h])), [data]);
+  const hostByName = useMemo(
+    () => new Map((data?.hosts ?? []).map((h) => [h.hostname, h])),
+    [data],
+  );
 
   const ortamlar = useMemo(() => {
     const m = new Map<
       string,
-      { ortam: string; hosts: NginxInvHost[]; lok: Map<string, number>; surum: Map<string, number>; surumHam: Map<string, Set<string>>; os: Map<string, number>; cpu: number; bellek: number; etiketli: number }
+      {
+        ortam: string;
+        hosts: NginxInvHost[];
+        lok: Map<string, number>;
+        surum: Map<string, number>;
+        surumHam: Map<string, Set<string>>;
+        os: Map<string, number>;
+        cpu: number;
+        bellek: number;
+        etiketli: number;
+      }
     >();
     for (const h of data?.hosts ?? []) {
       const o = ortamOf(h);
-      if (!m.has(o)) m.set(o, { ortam: o, hosts: [], lok: new Map(), surum: new Map(), surumHam: new Map(), os: new Map(), cpu: 0, bellek: 0, etiketli: 0 });
+      if (!m.has(o))
+        m.set(o, {
+          ortam: o,
+          hosts: [],
+          lok: new Map(),
+          surum: new Map(),
+          surumHam: new Map(),
+          os: new Map(),
+          cpu: 0,
+          bellek: 0,
+          etiketli: 0,
+        });
       const g = m.get(o)!;
       g.hosts.push(h);
       const lok = h.location && h.location !== '(bilinmiyor)' ? h.location : 'lokasyonsuz';
@@ -986,7 +1142,12 @@ export function NginxEnvanteri() {
     const needle = q.trim().toLowerCase();
     const rows = data.hosts.filter((h) => {
       if (ortamSuz && ortamOf(h) !== ortamSuz) return false;
-      if (surumSuz && (surumTuru === 'os' ? (h.os || '(bilinmiyor)') !== surumSuz : surumAnahtari(h.nginx_version) !== surumSuz))
+      if (
+        surumSuz &&
+        (surumTuru === 'os'
+          ? (h.os || '(bilinmiyor)') !== surumSuz
+          : surumAnahtari(h.nginx_version) !== surumSuz)
+      )
         return false;
       if (etiketliSuz && !h.etiket) return false;
       if (!needle) return true;
@@ -1022,7 +1183,8 @@ export function NginxEnvanteri() {
       const x = deger(a);
       const y = deger(b);
       // Değeri olmayan (disk "—") her iki yönde de en altta kalır.
-      if (x == null || y == null) return x == null && y == null ? a.hostname.localeCompare(b.hostname) : x == null ? 1 : -1;
+      if (x == null || y == null)
+        return x == null && y == null ? a.hostname.localeCompare(b.hostname) : x == null ? 1 : -1;
       const c =
         sira.k === 'nginx'
           ? -surumKarsilastir(String(x), String(y))
@@ -1039,7 +1201,9 @@ export function NginxEnvanteri() {
     return data.byService
       .filter((s) => !needle || s.service.toLowerCase().includes(needle))
       .map((s) => {
-        const hs = (s.hostnames ?? []).map((h) => hostByName.get(h)).filter((h): h is NginxInvHost => !!h);
+        const hs = (s.hostnames ?? [])
+          .map((h) => hostByName.get(h))
+          .filter((h): h is NginxInvHost => !!h);
         const ortamSet = hs.length ? [...new Set(hs.map(ortamOf))].sort(ortamSirala) : s.envs;
         const elle = hs.some((h) => elleAdlar(h).has(s.service));
         return { ...s, hs, ortamSet, elle };
@@ -1098,7 +1262,10 @@ export function NginxEnvanteri() {
       </dt>
       <dd
         className="mt-1 text-xl font-semibold tabular-nums leading-none"
-        style={{ color: uyari ? 'var(--status-warning-text)' : 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+        style={{
+          color: uyari ? 'var(--status-warning-text)' : 'var(--text-primary)',
+          fontFamily: 'var(--font-display)',
+        }}
       >
         {deger}
       </dd>
@@ -1115,12 +1282,19 @@ export function NginxEnvanteri() {
       {/* ── FİLO ÖZETİ ─────────────────────────────────────────────────────────── */}
       <section
         className="rounded-xl border overflow-hidden"
-        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)', boxShadow: 'var(--shadow-xs)' }}
+        style={{
+          borderColor: 'var(--border-subtle)',
+          background: 'var(--bg-surface)',
+          boxShadow: 'var(--shadow-xs)',
+        }}
         data-testid="filo-ozeti"
       >
         <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
           <div className="p-5">
-            <div className={`flex items-center gap-1.5 ${UST_ETIKET}`} style={{ color: 'var(--nh-hub)' }}>
+            <div
+              className={`flex items-center gap-1.5 ${UST_ETIKET}`}
+              style={{ color: 'var(--nh-hub)' }}
+            >
               <ServerStackIcon className="w-4 h-4" aria-hidden="true" />
               nginx filosu
             </div>
@@ -1141,11 +1315,18 @@ export function NginxEnvanteri() {
             </p>
 
             {/* Ortam çubuğu: bölüm genişliği sunucu payı; efsane düğmesi Sunucular'ı o ortama süzer. */}
-            <div className="mt-4 flex h-2.5 rounded-full overflow-hidden gap-[2px]" role="img" aria-label="Ortamlara göre sunucu dağılımı">
+            <div
+              className="mt-4 flex h-2.5 rounded-full overflow-hidden gap-[2px]"
+              role="img"
+              aria-label="Ortamlara göre sunucu dağılımı"
+            >
               {ortamlar.map((o) => (
                 <span
                   key={o.ortam}
-                  style={{ width: `${(o.hosts.length / n) * 100}%`, background: ortamRengi(o.ortam) }}
+                  style={{
+                    width: `${(o.hosts.length / n) * 100}%`,
+                    background: ortamRengi(o.ortam),
+                  }}
                   title={`${ortamAdi(o.ortam)}: ${o.hosts.length} sunucu`}
                 />
               ))}
@@ -1160,7 +1341,11 @@ export function NginxEnvanteri() {
                   style={{ color: 'var(--text-secondary)' }}
                   title={`${ortamAdi(o.ortam)} sunucularını listele`}
                 >
-                  <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ background: ortamRengi(o.ortam) }} />
+                  <span
+                    aria-hidden="true"
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: ortamRengi(o.ortam) }}
+                  />
                   <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
                     {ortamAdi(o.ortam)}
                   </span>
@@ -1179,21 +1364,37 @@ export function NginxEnvanteri() {
               'bellek',
               <>
                 {nf(t.memory.totalGiB)}
-                <span className="text-[13px] font-normal ml-1" style={{ color: 'var(--text-muted)' }}>GiB</span>
+                <span
+                  className="text-[13px] font-normal ml-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  GiB
+                </span>
               </>,
-              t.memory.unparsed ? `${t.memory.unparsed} sunucunun bellek değeri çözümlenemedi, toplama dahil değil` : undefined,
+              t.memory.unparsed
+                ? `${t.memory.unparsed} sunucunun bellek değeri çözümlenemedi, toplama dahil değil`
+                : undefined,
               !!t.memory.unparsed,
             )}
             {kpi(
               'nginx sürümü',
-              nf(data.hosts.length ? new Set(data.hosts.map((h) => surumAnahtari(h.nginx_version))).size : t.nginxVersions),
+              nf(
+                data.hosts.length
+                  ? new Set(data.hosts.map((h) => surumAnahtari(h.nginx_version))).size
+                  : t.nginxVersions,
+              ),
               'farklı sürüm sayısı (unknown/boş tek "bilinmiyor" sayılır)',
             )}
             {kpi(
               '/usr/nginx',
               <>
                 {nf(t.diskNginx.totalGiB)}
-                <span className="text-[13px] font-normal ml-1" style={{ color: 'var(--text-muted)' }}>GiB</span>
+                <span
+                  className="text-[13px] font-normal ml-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  GiB
+                </span>
               </>,
               t.diskNginx.unparsed ? `${t.diskNginx.unparsed} sunucu çözümlenemedi` : undefined,
               !!t.diskNginx.unparsed,
@@ -1202,7 +1403,12 @@ export function NginxEnvanteri() {
               '/web_log',
               <>
                 {nf(t.diskWebLog.totalGiB)}
-                <span className="text-[13px] font-normal ml-1" style={{ color: 'var(--text-muted)' }}>GiB</span>
+                <span
+                  className="text-[13px] font-normal ml-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  GiB
+                </span>
               </>,
               t.diskWebLog.unparsed ? `${t.diskWebLog.unparsed} sunucu çözümlenemedi` : undefined,
               !!t.diskWebLog.unparsed,
@@ -1220,7 +1426,12 @@ export function NginxEnvanteri() {
 
       {/* ── ARAÇ ÇUBUĞU ────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Envanter görünümü" className="inline-flex gap-0.5 rounded-lg p-0.5 bg-[var(--bg-elevated)] border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div
+          role="tablist"
+          aria-label="Envanter görünümü"
+          className="inline-flex gap-0.5 rounded-lg p-0.5 bg-[var(--bg-elevated)] border"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           {SEKMELER.map((v) => {
             const aktif = view === v.id;
             return (
@@ -1239,7 +1450,10 @@ export function NginxEnvanteri() {
                 {v.sayi != null && (
                   <span
                     className="px-1.5 rounded-full text-[10.5px] tabular-nums"
-                    style={{ background: aktif ? 'var(--bg-elevated)' : 'transparent', color: 'var(--text-muted)' }}
+                    style={{
+                      background: aktif ? 'var(--bg-elevated)' : 'transparent',
+                      color: 'var(--text-muted)',
+                    }}
                   >
                     {nf(v.sayi)}
                   </span>
@@ -1249,7 +1463,9 @@ export function NginxEnvanteri() {
           })}
         </div>
         <span className="ml-auto inline-flex items-center gap-2">
-          {data.lastUpdate && <GuncellemeRozeti tarih={data.lastUpdate.slice(0, 19).replace('T', ' ')} />}
+          {data.lastUpdate && (
+            <GuncellemeRozeti tarih={data.lastUpdate.slice(0, 19).replace('T', ' ')} />
+          )}
           <button
             onClick={() => {
               setYenileSayac((x) => x + 1);
@@ -1269,7 +1485,9 @@ export function NginxEnvanteri() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {ortamlar.map((o) => {
               const lokMax = Math.max(1, ...o.lok.values());
-              const osler = [...o.os.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+              const osler = [...o.os.entries()].sort(
+                (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+              );
               const surumMax = Math.max(1, ...o.surum.values());
               const osMax = Math.max(1, ...o.os.values());
               return (
@@ -1282,8 +1500,18 @@ export function NginxEnvanteri() {
                   <header className="flex items-start justify-between gap-3 px-4 pt-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full" style={{ background: ortamRengi(o.ortam) }} />
-                        <h3 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+                        <span
+                          aria-hidden="true"
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ background: ortamRengi(o.ortam) }}
+                        />
+                        <h3
+                          className="text-[15px] font-semibold"
+                          style={{
+                            color: 'var(--text-primary)',
+                            fontFamily: 'var(--font-display)',
+                          }}
+                        >
                           {ortamAdi(o.ortam)}
                         </h3>
                       </div>
@@ -1292,28 +1520,44 @@ export function NginxEnvanteri() {
                         {o.etiketli > 0 && ` · ${o.etiketli} elle etiketli`}
                       </p>
                     </div>
-                    <span className="text-[1.75rem] font-semibold leading-none tabular-nums" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+                    <span
+                      className="text-[1.75rem] font-semibold leading-none tabular-nums"
+                      style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+                    >
                       {nf(o.hosts.length)}
                     </span>
                   </header>
                   {/* Üç bölüm tek grid'de (subgrid): lokasyon, nginx ve OS çubukları aynı hizada başlar. */}
                   <div className="px-4 py-3 flex-1">
                     <div className="grid grid-cols-[fit-content(58%)_minmax(2.5rem,1fr)_2rem] gap-x-2 -mx-1.5">
-                      <div className={`col-span-full px-1.5 pb-1 ${UST_ETIKET}`} style={{ color: 'var(--text-muted)' }}>lokasyon</div>
+                      <div
+                        className={`col-span-full px-1.5 pb-1 ${UST_ETIKET}`}
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        lokasyon
+                      </div>
                       <DagilimSatirlari
                         satirlar={[...o.lok.entries()]
                           .sort((a, b) => b[1] - a[1])
                           .map(([l, c]) => ({
                             anahtar: l,
                             sayi: c,
-                            etiket: <span className="block truncate capitalize" title={l}>{l}</span>,
+                            etiket: (
+                              <span className="block truncate capitalize" title={l}>
+                                {l}
+                              </span>
+                            ),
                             ipucu: `${l}: ${nf(c)} sunucu`,
                           }))}
                         max={lokMax}
                         renk={ortamRengi(o.ortam)}
                         sinir={50}
                       />
-                      <div className={`col-span-full px-1.5 pt-3 pb-1 ${UST_ETIKET}`} style={{ color: 'var(--text-muted)' }} data-testid="ortam-nginx">
+                      <div
+                        className={`col-span-full px-1.5 pt-3 pb-1 ${UST_ETIKET}`}
+                        style={{ color: 'var(--text-muted)' }}
+                        data-testid="ortam-nginx"
+                      >
                         nginx
                       </div>
                       <DagilimSatirlari
@@ -1328,14 +1572,21 @@ export function NginxEnvanteri() {
                         onSec={(v) => sunuculariAc({ ortam: o.ortam, surum: v })}
                         aktif={surumTuru === 'nginx' && ortamSuz === o.ortam ? surumSuz : undefined}
                       />
-                      <div className={`col-span-full px-1.5 pt-3 pb-1 ${UST_ETIKET}`} style={{ color: 'var(--text-muted)' }}>
+                      <div
+                        className={`col-span-full px-1.5 pt-3 pb-1 ${UST_ETIKET}`}
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         işletim sistemi
                       </div>
                       <DagilimSatirlari
                         satirlar={osler.map(([v, c]) => ({
                           anahtar: v,
                           sayi: c,
-                          etiket: <span className="block truncate" title={v}>{v}</span>,
+                          etiket: (
+                            <span className="block truncate" title={v}>
+                              {v}
+                            </span>
+                          ),
                           ipucu: `${ortamAdi(o.ortam)} · ${v}: ${nf(c)} sunucu — listele`,
                         }))}
                         max={osMax}
@@ -1366,7 +1617,8 @@ export function NginxEnvanteri() {
             })}
           </div>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            Ortam sunucu adı kalıbından gelir (GBNGXP/GBRVPP = PROD, …Q = QA, …T = TEST, …D = DEV, GBNGXT51 = EDU).
+            Ortam sunucu adı kalıbından gelir (GBNGXP/GBRVPP = PROD, …Q = QA, …T = TEST, …D = DEV,
+            GBNGXT51 = EDU).
             {t.envCorrected
               ? ` ${nf(t.envCorrected)} sunucuda tablodaki ortam kalıpla çelişiyordu; kalıp esas alındı.`
               : ''}
@@ -1383,7 +1635,13 @@ export function NginxEnvanteri() {
             onSec={(v) => sunuculariAc({ surum: surumAnahtari(v) })}
             aktifSurum={surumTuru === 'nginx' && !ortamSuz ? surumSuz : undefined}
           />
-          <DagilimKarti title="İşletim sistemi" items={data.versions.os} total={n} onSec={(v) => sunuculariAc({ os: v })} satirli />
+          <DagilimKarti
+            title="İşletim sistemi"
+            items={data.versions.os}
+            total={n}
+            onSec={(v) => sunuculariAc({ os: v })}
+            satirli
+          />
           <DagilimKarti title="Çekirdek (kernel)" items={data.versions.kernel} total={n} />
           <DagilimKarti title="Mimari" items={data.versions.architecture} total={n} />
           <DagilimKarti title="nginx kullanıcısı" items={data.other.nginxUser} total={n} />
@@ -1393,14 +1651,24 @@ export function NginxEnvanteri() {
 
       {/* ── SERVICE'LER ────────────────────────────────────────────────────────── */}
       {view === 'service' && (
-        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <header className="flex flex-wrap items-center gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <section
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <header
+            className="flex flex-wrap items-center gap-3 px-4 py-3 border-b"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
             <div className="min-w-0 flex-1">
-              <h3 className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+              <h3
+                className="text-[14px] font-semibold"
+                style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+              >
                 Service&apos;ler
               </h3>
               <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                conf.d dosya adlarından ve elle etiketlerden. Satıra tıklayınca hangi sunucularda, hangi nginx sürümüyle durduğu açılır.
+                conf.d dosya adlarından ve elle etiketlerden. Satıra tıklayınca hangi sunucularda,
+                hangi nginx sürümüyle durduğu açılır.
               </p>
             </div>
             <div className="relative">
@@ -1423,7 +1691,9 @@ export function NginxEnvanteri() {
                     s.hosts,
                     s.ortamSet.join(' '),
                     (s.hostnames ?? []).join(' '),
-                    [...new Set(s.hs.map((h) => surumAnahtari(h.nginx_version)))].sort(surumKarsilastir).join('; '),
+                    [...new Set(s.hs.map((h) => surumAnahtari(h.nginx_version)))]
+                      .sort(surumKarsilastir)
+                      .join('; '),
                   ]),
                 )
               }
@@ -1457,7 +1727,10 @@ export function NginxEnvanteri() {
                       <tr
                         onClick={() => serviceAc(s.service)}
                         className="cursor-pointer hover:bg-[var(--bg-elevated)]"
-                        style={{ borderTop: '1px solid var(--border-subtle)', background: acik ? 'var(--bg-elevated)' : undefined }}
+                        style={{
+                          borderTop: '1px solid var(--border-subtle)',
+                          background: acik ? 'var(--bg-elevated)' : undefined,
+                        }}
                       >
                         <td className="px-4 py-2">
                           <button
@@ -1471,16 +1744,26 @@ export function NginxEnvanteri() {
                             className="inline-flex items-center gap-1.5"
                             style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}
                           >
-                            <ChevronRightIcon className={`w-3.5 h-3.5 transition-transform ${acik ? 'rotate-90' : ''}`} style={{ color: 'var(--text-muted)' }} />
+                            <ChevronRightIcon
+                              className={`w-3.5 h-3.5 transition-transform ${acik ? 'rotate-90' : ''}`}
+                              style={{ color: 'var(--text-muted)' }}
+                            />
                             {s.service === 'too_many' ? '5+ service (liste toplanmadı)' : s.service}
                           </button>
                           {s.elle && (
-                            <span className="ml-2 inline-flex items-center gap-0.5 text-[10.5px] font-semibold" style={{ color: 'var(--accent)' }} title="En az bir sunucuda elle etiketle geliyor">
+                            <span
+                              className="ml-2 inline-flex items-center gap-0.5 text-[10.5px] font-semibold"
+                              style={{ color: 'var(--accent)' }}
+                              title="En az bir sunucuda elle etiketle geliyor"
+                            >
                               <TagIcon className="w-3 h-3" aria-hidden="true" /> elle
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        <td
+                          className="px-4 py-2 text-right tabular-nums font-semibold"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
                           {nf(s.hosts)}
                         </td>
                         <td className="px-4 py-2">
@@ -1491,13 +1774,25 @@ export function NginxEnvanteri() {
                           </span>
                         </td>
                         <td className="px-4 py-2">
-                          <SurumListesi items={surumler} sinir={3} baslik={(v, c) => `${v}: ${nf(c)} sunucu`} />
+                          <SurumListesi
+                            items={surumler}
+                            sinir={3}
+                            baslik={(v, c) => `${v}: ${nf(c)} sunucu`}
+                          />
                         </td>
                       </tr>
                       {acik && (
                         <tr>
-                          <td colSpan={4} className="px-4 pb-3" style={{ background: 'var(--bg-elevated)' }}>
-                            <ServiceSunuculari service={s.service} hosts={s.hs} unlisted={t.servicesUnlisted ?? []} />
+                          <td
+                            colSpan={4}
+                            className="px-4 pb-3"
+                            style={{ background: 'var(--bg-elevated)' }}
+                          >
+                            <ServiceSunuculari
+                              service={s.service}
+                              hosts={s.hs}
+                              unlisted={t.servicesUnlisted ?? []}
+                            />
                           </td>
                         </tr>
                       )}
@@ -1506,7 +1801,11 @@ export function NginxEnvanteri() {
                 })}
                 {!serviceRows.length && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center" style={{ color: 'var(--text-muted)' }}>
+                    <td
+                      colSpan={4}
+                      className="px-4 py-6 text-center"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       Eşleşen service yok.
                     </td>
                   </tr>
@@ -1536,8 +1835,14 @@ export function NginxEnvanteri() {
       {view === 'upstream' && <NginxUpstreamEnvanteri yenile={yenileSayac} />}
 
       {view === 'sunucular' && (
-        <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <header className="px-4 py-3 border-b space-y-2.5" style={{ borderColor: 'var(--border-subtle)' }}>
+        <section
+          className="rounded-xl border overflow-hidden"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <header
+            className="px-4 py-3 border-b space-y-2.5"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -1549,7 +1854,11 @@ export function NginxEnvanteri() {
                   className="pf-input pl-8 text-xs w-64"
                 />
               </div>
-              <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }} data-testid="sunucu-sayaci">
+              <span
+                className="text-[12px] tabular-nums"
+                style={{ color: 'var(--text-muted)' }}
+                data-testid="sunucu-sayaci"
+              >
                 {nf(hostRows.length)} / {nf(n)} sunucu
               </span>
               <span className="ml-auto inline-flex items-center gap-2">
@@ -1558,9 +1867,26 @@ export function NginxEnvanteri() {
                     csvDownload(
                       'nginx_envanteri',
                       [
-                        'hostname', 'fqdn', 'ortam', 'lokasyon', 'ip', 'subnet', 'os', 'kernel', 'mimari', 'cpu', 'bellek',
-                        'nginx_surum', 'nginx_kullanici', 'konf_sayisi', 'service_sayisi', 'services', 'services_otomatik',
-                        'etiket_kipi', 'disk_usr_nginx', 'disk_web_log',
+                        'hostname',
+                        'fqdn',
+                        'ortam',
+                        'lokasyon',
+                        'ip',
+                        'subnet',
+                        'os',
+                        'kernel',
+                        'mimari',
+                        'cpu',
+                        'bellek',
+                        'nginx_surum',
+                        'nginx_kullanici',
+                        'konf_sayisi',
+                        'service_sayisi',
+                        'services',
+                        'services_otomatik',
+                        'etiket_kipi',
+                        'disk_usr_nginx',
+                        'disk_web_log',
                       ],
                       hostRows.map((h) => [
                         h.hostname,
@@ -1593,8 +1919,19 @@ export function NginxEnvanteri() {
                 </button>
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ortam süzgeci">
-              {[{ ortam: '', ad: 'Tümü', sayi: n }, ...ortamlar.map((o) => ({ ortam: o.ortam, ad: ortamAdi(o.ortam), sayi: o.hosts.length }))].map((o) => {
+            <div
+              className="flex flex-wrap items-center gap-1.5"
+              role="group"
+              aria-label="Ortam süzgeci"
+            >
+              {[
+                { ortam: '', ad: 'Tümü', sayi: n },
+                ...ortamlar.map((o) => ({
+                  ortam: o.ortam,
+                  ad: ortamAdi(o.ortam),
+                  sayi: o.hosts.length,
+                })),
+              ].map((o) => {
                 const aktif = ortamSuz === o.ortam;
                 return (
                   <button
@@ -1609,9 +1946,17 @@ export function NginxEnvanteri() {
                       color: aktif ? 'var(--text-primary)' : 'var(--text-secondary)',
                     }}
                   >
-                    {o.ortam && <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ background: ortamRengi(o.ortam) }} />}
+                    {o.ortam && (
+                      <span
+                        aria-hidden="true"
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: ortamRengi(o.ortam) }}
+                      />
+                    )}
                     {o.ad}
-                    <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(o.sayi)}</span>
+                    <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                      {nf(o.sayi)}
+                    </span>
                   </button>
                 );
               })}
@@ -1628,13 +1973,19 @@ export function NginxEnvanteri() {
                   }}
                 >
                   <TagIcon className="w-3.5 h-3.5" aria-hidden="true" /> Elle etiketli
-                  <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(etiketliSayi)}</span>
+                  <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                    {nf(etiketliSayi)}
+                  </span>
                 </button>
               )}
               {surumSuz && (
                 <span
                   className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full border text-[12px]"
-                  style={{ borderColor: 'var(--accent)', background: 'var(--accent-bg)', color: 'var(--text-primary)' }}
+                  style={{
+                    borderColor: 'var(--accent)',
+                    background: 'var(--accent-bg)',
+                    color: 'var(--text-primary)',
+                  }}
                   data-testid="surum-suzgeci"
                 >
                   {surumTuru === 'os' ? (
@@ -1646,7 +1997,12 @@ export function NginxEnvanteri() {
                       nginx: <SurumRozeti v={surumSuz} />
                     </>
                   )}
-                  <button type="button" onClick={() => setSurumSuz('')} aria-label="Sürüm süzgecini kaldır" className="p-0.5 rounded-full hover:bg-[var(--bg-elevated)]">
+                  <button
+                    type="button"
+                    onClick={() => setSurumSuz('')}
+                    aria-label="Sürüm süzgecini kaldır"
+                    className="p-0.5 rounded-full hover:bg-[var(--bg-elevated)]"
+                  >
                     <XMarkIcon className="w-3.5 h-3.5" />
                   </button>
                 </span>
@@ -1657,21 +2013,59 @@ export function NginxEnvanteri() {
             <table className="w-full text-[12.5px] border-collapse">
               <thead>
                 <tr>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="hostname">Sunucu</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="ortam">Ortam</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="location">Lokasyon</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="nginx">nginx</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="os">OS</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="cpu" sag>CPU</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="bellek" sag>Bellek</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="diskNginx" sag title="/usr/nginx disk boyutu (df -hP toplam)">/usr/nginx</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="diskWebLog" sag title="/web_log disk boyutu (df -hP toplam)">/web_log</SiraTh>
-                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="konf" sag>Konf.</SiraTh>
-                  <th className="sticky top-0 z-10 px-3 py-2 font-semibold text-left whitespace-nowrap" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="hostname">
+                    Sunucu
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="ortam">
+                    Ortam
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="location">
+                    Lokasyon
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="nginx">
+                    nginx
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="os">
+                    OS
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="cpu" sag>
+                    CPU
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="bellek" sag>
+                    Bellek
+                  </SiraTh>
+                  <SiraTh
+                    sira={sira}
+                    onSirala={siralaTiklandi}
+                    k="diskNginx"
+                    sag
+                    title="/usr/nginx disk boyutu (df -hP toplam)"
+                  >
+                    /usr/nginx
+                  </SiraTh>
+                  <SiraTh
+                    sira={sira}
+                    onSirala={siralaTiklandi}
+                    k="diskWebLog"
+                    sag
+                    title="/web_log disk boyutu (df -hP toplam)"
+                  >
+                    /web_log
+                  </SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="konf" sag>
+                    Konf.
+                  </SiraTh>
+                  <th
+                    className="sticky top-0 z-10 px-3 py-2 font-semibold text-left whitespace-nowrap"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                  >
                     Service / etiket
                   </th>
                   {isAdmin && (
-                    <th className="sticky top-0 z-10 px-2 py-2" style={{ background: 'var(--bg-elevated)' }}>
+                    <th
+                      className="sticky top-0 z-10 px-2 py-2"
+                      style={{ background: 'var(--bg-elevated)' }}
+                    >
                       <span className="sr-only">İşlem</span>
                     </th>
                   )}
@@ -1679,13 +2073,25 @@ export function NginxEnvanteri() {
               </thead>
               <tbody>
                 {hostRows.map((h) => (
-                  <tr key={h.hostname} className="group hover:bg-[var(--bg-elevated)]" style={{ borderTop: '1px solid var(--border-subtle)' }} data-testid="sunucu-satiri">
+                  <tr
+                    key={h.hostname}
+                    className="group hover:bg-[var(--bg-elevated)]"
+                    style={{ borderTop: '1px solid var(--border-subtle)' }}
+                    data-testid="sunucu-satiri"
+                  >
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }} className="font-medium">
+                      <div
+                        style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}
+                        className="font-medium"
+                      >
                         {h.hostname}
                       </div>
                       {h.ip && (
-                        <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }} title={h.fqdn || ''}>
+                        <div
+                          className="text-[11px] tabular-nums"
+                          style={{ color: 'var(--text-muted)' }}
+                          title={h.fqdn || ''}
+                        >
                           {h.ip}
                         </div>
                       )}
@@ -1693,7 +2099,10 @@ export function NginxEnvanteri() {
                     <td className="px-3 py-2 whitespace-nowrap">
                       <OrtamRozeti ortam={ortamOf(h)} />
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap capitalize" style={{ color: 'var(--text-secondary)' }}>
+                    <td
+                      className="px-3 py-2 whitespace-nowrap capitalize"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {h.location || '—'}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
@@ -1707,25 +2116,44 @@ export function NginxEnvanteri() {
                         aktif={surumTuru === 'nginx' && surumSuz === surumAnahtari(h.nginx_version)}
                       />
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap" title={h.kernel || ''} style={{ color: 'var(--text-secondary)' }}>
+                    <td
+                      className="px-3 py-2 whitespace-nowrap"
+                      title={h.kernel || ''}
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {h.os || '—'}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{h.cpu ?? '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="bellek">
+                    <td
+                      className="px-3 py-2 text-right tabular-nums whitespace-nowrap"
+                      data-testid="bellek"
+                    >
                       <DiskHucresi v={h.memory} yol="bellek" tur="toplam" />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="disk-usr-nginx">
+                    <td
+                      className="px-3 py-2 text-right tabular-nums whitespace-nowrap"
+                      data-testid="disk-usr-nginx"
+                    >
                       <DiskHucresi v={h.disk_usr_nginx} yol="/usr/nginx" />
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="disk-web-log">
+                    <td
+                      className="px-3 py-2 text-right tabular-nums whitespace-nowrap"
+                      data-testid="disk-web-log"
+                    >
                       <DiskHucresi v={h.disk_web_log} yol="/web_log" />
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{h.config_count ?? '—'}</td>
                     <td className="px-3 py-2 min-w-[14rem]">
                       <ServisCipleri h={h} />
                       {h.etiket && (
-                        <div className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }} title={h.etiket.not || undefined}>
-                          {h.etiket.mod === 'degistir' ? 'elle (otomatiğin yerine)' : 'otomatik + elle'}
+                        <div
+                          className="mt-1 text-[11px]"
+                          style={{ color: 'var(--text-muted)' }}
+                          title={h.etiket.not || undefined}
+                        >
+                          {h.etiket.mod === 'degistir'
+                            ? 'elle (otomatiğin yerine)'
+                            : 'otomatik + elle'}
                           {h.etiket.by ? ` · ${h.etiket.by}` : ''}
                           {h.etiket.not ? ` · ${h.etiket.not}` : ''}
                         </div>
@@ -1749,7 +2177,11 @@ export function NginxEnvanteri() {
                 ))}
                 {!hostRows.length && (
                   <tr>
-                    <td colSpan={isAdmin ? 12 : 11} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
+                    <td
+                      colSpan={isAdmin ? 12 : 11}
+                      className="px-4 py-8 text-center"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       Süzgece uyan sunucu yok.
                     </td>
                   </tr>

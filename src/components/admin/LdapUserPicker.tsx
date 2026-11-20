@@ -132,13 +132,16 @@ export function LdapUserPicker({
   };
 
   const sec = (u: LdapUser) => {
-    const deger = field === 'mail' ? String(u.mail || '').trim().toLowerCase() : u.username;
+    const deger =
+      field === 'mail'
+        ? String(u.mail || '')
+            .trim()
+            .toLowerCase()
+        : u.username;
     // E-POSTASI OLMAYAN KAYIT SESSIZCE GECILMEZ: kullanici adini e-posta kuralina yazmak,
     // asla eslesmeyecek bir kural uretirdi - sikayetin ta kendisi.
     if (!deger) {
-      setHata(
-        `${u.displayName || u.username} için dizinde e-posta yok; e-posta kuralı yazılamaz.`,
-      );
+      setHata(`${u.displayName || u.username} için dizinde e-posta yok; e-posta kuralı yazılamaz.`);
       return;
     }
     onChange(deger);
@@ -151,7 +154,9 @@ export function LdapUserPicker({
   // sonrasi temizleme, mevcut kurali duzenleme - eski secim gosterilmez).
   const seciliDeger = secili
     ? field === 'mail'
-      ? String(secili.mail || '').trim().toLowerCase()
+      ? String(secili.mail || '')
+          .trim()
+          .toLowerCase()
       : secili.username
     : '';
   const seciliGecerli = secili && value && value === seciliDeger ? secili : null;
@@ -240,7 +245,10 @@ export function LdapUserPicker({
           }}
           data-testid="ldap-secili"
         >
-          <CheckCircleIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: 'var(--status-success)' }} />
+          <CheckCircleIcon
+            className="h-3.5 w-3.5 shrink-0 mt-0.5"
+            style={{ color: 'var(--status-success)' }}
+          />
           <span>
             Seçildi:{' '}
             <b style={{ color: 'var(--text-primary)' }}>
@@ -255,12 +263,15 @@ export function LdapUserPicker({
         elle &&
         value &&
         !ariyor && (
-          <div className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="ldap-elle">
+          <div
+            className="mt-1 text-[11px]"
+            style={{ color: 'var(--text-muted)' }}
+            data-testid="ldap-elle"
+          >
             Listeden seçilmedi — yazılan değer olduğu gibi kaydedilir (dizinde doğrulanmadı).
           </div>
         )
       )}
-
     </div>
   );
 }

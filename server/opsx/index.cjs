@@ -482,7 +482,9 @@ async function appsForNamespace(env, tenant, namespace, user) {
   const out = await ocpInventory
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
-  return [...new Set((out.items || []).map((i) => i.name))].sort((a, b) => Number(a > b) - Number(a < b));
+  return [...new Set((out.items || []).map((i) => i.name))].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  );
 }
 
 // Legacy restart / stop / start isteginin dogrulamasi ve AWX girdisi (2026-11-14, POST /api/opsx/run'dan
@@ -2315,12 +2317,10 @@ function initOpsX(app) {
             .json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
         }
         if (!allowedNamespaces.has(namespace)) {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
-            });
+          return res.status(400).json({
+            ok: false,
+            message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
+          });
         }
         if (!podNameRe.test(pod) || pod.length > 253) {
           return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });

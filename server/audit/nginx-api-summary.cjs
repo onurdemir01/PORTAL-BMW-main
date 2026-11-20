@@ -24,7 +24,11 @@ function servicesOfHosts(serverRows) {
   const m = new Map();
   for (const r of serverRows || []) {
     const host = String(r.host || '').trim();
-    const file = String(r.conf_file || '').trim().split('/').pop() || '';
+    const file =
+      String(r.conf_file || '')
+        .trim()
+        .split('/')
+        .pop() || '';
     if (!host || !file) continue;
     const svc = file
       .replace(/\.conf$/i, '')
@@ -36,7 +40,12 @@ function servicesOfHosts(serverRows) {
     e.services.add(svc);
     for (const n of String(r.server_name || '').split(/\s+/)) if (n) e.names.add(n);
   }
-  return new Map([...m.entries()].map(([h, e]) => [h, { services: [...e.services].sort(varsayilanSira), names: [...e.names].sort(varsayilanSira) }]));
+  return new Map(
+    [...m.entries()].map(([h, e]) => [
+      h,
+      { services: [...e.services].sort(varsayilanSira), names: [...e.names].sort(varsayilanSira) },
+    ]),
+  );
 }
 
 /**
@@ -48,7 +57,8 @@ function servicesOfHosts(serverRows) {
 function summarize(recordset, serverRows, etiketler) {
   const svcOf = servicesOfHosts(serverRows);
   const { etkinListe } = require('./nginx-host-labels.cjs');
-  const etiketOf = (host) => (etiketler && etiketler.get ? etiketler.get(String(host).toUpperCase()) || null : null);
+  const etiketOf = (host) =>
+    etiketler && etiketler.get ? etiketler.get(String(host).toUpperCase()) || null : null;
   const raw = (recordset || []).map((r) => {
     const host = String(r.host || '').trim();
     return {
@@ -74,8 +84,11 @@ function summarize(recordset, serverRows, etiketler) {
   for (const r of raw) {
     if (!envAgg.has(r.env)) {
       envAgg.set(r.env, {
-        hostSet: new Set(), configSet: new Set(),
-        locations: 0, noLimitLocations: 0, cfg: new Map(),
+        hostSet: new Set(),
+        configSet: new Set(),
+        locations: 0,
+        noLimitLocations: 0,
+        cfg: new Map(),
       });
     }
     const e = envAgg.get(r.env);
@@ -111,11 +124,15 @@ function summarize(recordset, serverRows, etiketler) {
       const oto = svcOf.get(r.host)?.services || [];
       const e = etiketOf(r.host);
       hostAgg.set(r.host, {
-        host: r.host, env: r.env, site: r.site,
+        host: r.host,
+        env: r.env,
+        site: r.site,
         services: etkinListe(oto, e),
         ...(e ? { etiket: { mod: e.mod, etiketler: e.etiketler, oto } } : {}),
         serverNames: svcOf.get(r.host)?.names || [],
-        configs: 0, locations: 0, noLimitLocations: 0,
+        configs: 0,
+        locations: 0,
+        noLimitLocations: 0,
       });
     }
     const h = hostAgg.get(r.host);
@@ -124,19 +141,32 @@ function summarize(recordset, serverRows, etiketler) {
     h.noLimitLocations += r.noLimit;
   }
   const byHost = [...hostAgg.values()].sort(
-    (a, b) => (envRank.get(a.env) - envRank.get(b.env))
-      || a.services.join(',').localeCompare(b.services.join(','))
-      || a.host.localeCompare(b.host),
+    (a, b) =>
+      envRank.get(a.env) - envRank.get(b.env) ||
+      a.services.join(',').localeCompare(b.services.join(',')) ||
+      a.host.localeCompare(b.host),
   );
 
   // -- konfigurasyon kirilimi + FARKLAR ---------------------------------------
   const cfgAgg = new Map();
   for (const r of raw) {
     if (!cfgAgg.has(r.config)) {
-      cfgAgg.set(r.config, { config: r.config, hosts: [], envs: {}, totalLocations: 0, noLimitLocations: 0 });
+      cfgAgg.set(r.config, {
+        config: r.config,
+        hosts: [],
+        envs: {},
+        totalLocations: 0,
+        noLimitLocations: 0,
+      });
     }
     const c = cfgAgg.get(r.config);
-    c.hosts.push({ host: r.host, env: r.env, site: r.site, locations: r.locations, noLimit: r.noLimit });
+    c.hosts.push({
+      host: r.host,
+      env: r.env,
+      site: r.site,
+      locations: r.locations,
+      noLimit: r.noLimit,
+    });
     c.totalLocations += r.locations;
     c.noLimitLocations += r.noLimit;
     if (!c.envs[r.env]) c.envs[r.env] = { hosts: 0, minLoc: Infinity, maxLoc: 0, locations: 0 };
@@ -179,7 +209,7 @@ function summarize(recordset, serverRows, etiketler) {
         // Hicbir location'da ne IP ne de sunucu bazli limit tanimli degil.
         noLimitEverywhere: c.totalLocations > 0 && c.noLimitLocations === c.totalLocations,
         hosts: c.hosts.sort(
-          (a, b) => (envRank.get(a.env) - envRank.get(b.env)) || a.host.localeCompare(b.host),
+          (a, b) => envRank.get(a.env) - envRank.get(b.env) || a.host.localeCompare(b.host),
         ),
       };
     })

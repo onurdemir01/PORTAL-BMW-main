@@ -27,7 +27,11 @@ async function sunucu() {
   });
   const s = app.listen(0);
   await new Promise((r) => s.once('listening', r));
-  return { url: `http://127.0.0.1:${s.address().port}`, cagri, kapat: () => new Promise((r) => s.close(r)) };
+  return {
+    url: `http://127.0.0.1:${s.address().port}`,
+    cagri,
+    kapat: () => new Promise((r) => s.close(r)),
+  };
 }
 
 test('BR1 + BR2 gercek createApp: br govde reddedilir, gzip / duz govde eskisi gibi', async () => {
@@ -52,7 +56,11 @@ test('BR1 + BR2 gercek createApp: br govde reddedilir, gzip / duz govde eskisi g
     });
     assert.equal(gz.status, 200);
     assert.deepEqual((await gz.json()).body, { a: 1 });
-    const duz = await fetch(`${url}/api/deneme`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: json });
+    const duz = await fetch(`${url}/api/deneme`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: json,
+    });
     assert.equal(duz.status, 200);
     assert.deepEqual((await duz.json()).body, { a: 1 });
     assert.equal(cagri.length, 2);
@@ -65,13 +73,19 @@ test('BR3 service.cjs: ara katman express.json ve tum route lardan ONCE', () => 
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'service.cjs'), 'utf8');
   const i = src.indexOf('app.use(brotliGovdeReddi());');
   assert.ok(i > 0, 'brotliGovdeReddi baglanmamis');
-  for (const sonra of ['app.use(express.json(', 'app.use(compression());', 'app.use("/api", (req, res, next) => {']) {
+  for (const sonra of [
+    'app.use(express.json(',
+    'app.use(compression());',
+    'app.use("/api", (req, res, next) => {',
+  ]) {
     const j = src.indexOf(sonra);
     assert.ok(j > i, `${sonra} brotliGovdeReddi'den once geliyor`);
   }
 });
 
 test('BR4 kodlama ayristirma', () => {
-  for (const v of ['br', 'BR', ' br ', 'gzip, br', 'br,gzip', 'identity, br']) assert.equal(brotliKodlamasi(v), true, v);
-  for (const v of [undefined, '', 'gzip', 'deflate', 'identity', 'brx', 'xbr', 'gzip, deflate']) assert.equal(brotliKodlamasi(v), false, String(v));
+  for (const v of ['br', 'BR', ' br ', 'gzip, br', 'br,gzip', 'identity, br'])
+    assert.equal(brotliKodlamasi(v), true, v);
+  for (const v of [undefined, '', 'gzip', 'deflate', 'identity', 'brx', 'xbr', 'gzip, deflate'])
+    assert.equal(brotliKodlamasi(v), false, String(v));
 });

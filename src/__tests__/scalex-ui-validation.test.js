@@ -1172,7 +1172,10 @@ test('HS10 hafiza `WorkloadStep`e GERCEKTEN geciriliyor', () => {
   const kod = codeOnly(PAGE).replace(/\s+/g, ' ');
   const i = kod.indexOf('<WorkloadStep');
   assert.ok(i > 0, 'WorkloadStep render edilmiyor');
-  const blok = kod.slice(i, kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600);
+  const blok = kod.slice(
+    i,
+    kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600,
+  );
   assert.match(blok, /autoScanMemo=\{autoScanMemo\}/, 'hafiza bilesene GECIRILMIYOR');
 });
 
@@ -1230,7 +1233,10 @@ test('OSU4 iptal BASARISIZ olabilir ve ekran bunu SOYLER', () => {
   // Sunucu 409 doner: kayit bu arada tetiklenmis olabilir. Bunu basari gibi
   // gostermek kullaniciya YALAN soylemek olurdu.
   const govde = codeOnly(PANEL);
-  const iptal = govde.slice(govde.indexOf('async function iptal'), govde.indexOf('async function guncelle'));
+  const iptal = govde.slice(
+    govde.indexOf('async function iptal'),
+    govde.indexOf('async function guncelle'),
+  );
   assert.match(iptal, /if \(!r\.ok\) setError/, 'iptal basarisizligi YUTULUYOR');
   assert.match(iptal, /await load\(\)/, 'liste tazelenmiyor — ekran bayat kalir');
 });

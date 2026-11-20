@@ -28,12 +28,21 @@ class SahteClient {
 }
 
 function yukle() {
-  require.cache[ldaptsYol] = { id: ldaptsYol, filename: ldaptsYol, loaded: true, exports: { Client: SahteClient } };
+  require.cache[ldaptsYol] = {
+    id: ldaptsYol,
+    filename: ldaptsYol,
+    loaded: true,
+    exports: { Client: SahteClient },
+  };
   delete require.cache[LDAP_YOL];
   return require(LDAP_YOL);
 }
 
-const KISI = { sAMAccountName: 'OnurDemir', displayName: 'Onur Demir', mail: 'onurdemir@garantibbva.com.tr' };
+const KISI = {
+  sAMAccountName: 'OnurDemir',
+  displayName: 'Onur Demir',
+  mail: 'onurdemir@garantibbva.com.tr',
+};
 
 beforeEach(() => {
   process.env.LDAP_URL = 'ldaps://sahte';
@@ -98,5 +107,8 @@ test('LH4 ayni sorgu onbellekten; hata onbelleklenmez', async () => {
 test('LH5 sorgu kacisa sokulur', async () => {
   const { searchLdapUsers } = yukle();
   await searchLdapUsers('a*)(x');
-  assert.ok(filtreler.every((f) => !f.includes('a*)(x')), filtreler.join(' | '));
+  assert.ok(
+    filtreler.every((f) => !f.includes('a*)(x')),
+    filtreler.join(' | '),
+  );
 });

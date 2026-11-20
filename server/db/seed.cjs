@@ -86,7 +86,7 @@ async function run() {
     // MSSQL'de ON CONFLICT yok — once varlik kontrolu (hostname+ip)
     const { rows } = await db.query(
       `SELECT 1 AS x FROM inventory_hosts WHERE hostname = $1 AND ip = $2`,
-      [h.hostname, h.ip]
+      [h.hostname, h.ip],
     );
     if (rows.length > 0) {
       skipped++;
@@ -97,8 +97,18 @@ async function run() {
       `INSERT INTO inventory_hosts
          (hostname, fqdn, ip, environment, product_type, middleware_type, middleware_version, port, is_active, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [h.hostname, h.fqdn, h.ip, h.environment, h.product_type,
-       h.middleware_type, h.middleware_version, h.port, h.is_active ? 1 : 0, h.notes]
+      [
+        h.hostname,
+        h.fqdn,
+        h.ip,
+        h.environment,
+        h.product_type,
+        h.middleware_type,
+        h.middleware_version,
+        h.port,
+        h.is_active ? 1 : 0,
+        h.notes,
+      ],
     );
     inserted++;
     console.log(`  + ${h.hostname}`);

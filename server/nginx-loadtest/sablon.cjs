@@ -41,8 +41,10 @@ const SQL = Object.freeze({
 function sablonAdi(v) {
   const ad = typeof v === 'string' ? v.trim() : '';
   if (!ad) throw hata(400, 'gecersiz_istek', 'Kayıtlı test adı gerekli.');
-  if (ad.length > AD_MAX) throw hata(400, 'gecersiz_istek', `Kayıtlı test adı en çok ${AD_MAX} karakter olabilir.`);
-  if (KONTROL_KARAKTERI.test(ad)) throw hata(400, 'gecersiz_istek', 'Kayıtlı test adı satır sonu / kontrol karakteri içeremez.');
+  if (ad.length > AD_MAX)
+    throw hata(400, 'gecersiz_istek', `Kayıtlı test adı en çok ${AD_MAX} karakter olabilir.`);
+  if (KONTROL_KARAKTERI.test(ad))
+    throw hata(400, 'gecersiz_istek', 'Kayıtlı test adı satır sonu / kontrol karakteri içeremez.');
   return ad;
 }
 
@@ -53,28 +55,48 @@ function sablonAdi(v) {
 function sablonGovdesi(b, bicimDenetle) {
   const g = b && typeof b === 'object' && !Array.isArray(b) ? b : {};
   const ad = sablonAdi(g.ad);
-  if (!g.govde || typeof g.govde !== 'object' || Array.isArray(g.govde)) throw hata(400, 'gecersiz_istek', 'Ayarlar (govde) eksik.');
+  if (!g.govde || typeof g.govde !== 'object' || Array.isArray(g.govde))
+    throw hata(400, 'gecersiz_istek', 'Ayarlar (govde) eksik.');
   const og = bicimDenetle({ ...g.govde, etiket: undefined });
   const p = og.parametrelerHam;
-  if (!p || typeof p !== 'object' || Array.isArray(p)) throw hata(400, 'gecersiz_istek', 'parametreler nesne olmalı.');
-  const govde = { senaryoId: og.senaryoId, hedefHost: og.hedefHost, hedefIp: og.hedefIp, vhost: og.vhost, yukHost: og.yukHost, sni: og.sni, parametreler: p };
+  if (!p || typeof p !== 'object' || Array.isArray(p))
+    throw hata(400, 'gecersiz_istek', 'parametreler nesne olmalı.');
+  const govde = {
+    senaryoId: og.senaryoId,
+    hedefHost: og.hedefHost,
+    hedefIp: og.hedefIp,
+    vhost: og.vhost,
+    yukHost: og.yukHost,
+    sni: og.sni,
+    parametreler: p,
+  };
   const govdeJson = JSON.stringify(govde);
-  if (Buffer.byteLength(govdeJson, 'utf8') > GOVDE_MAX_BAYT) throw hata(400, 'gecersiz_istek', `Ayarlar çok büyük (en çok ${GOVDE_MAX_BAYT / 1024} KB).`);
+  if (Buffer.byteLength(govdeJson, 'utf8') > GOVDE_MAX_BAYT)
+    throw hata(400, 'gecersiz_istek', `Ayarlar çok büyük (en çok ${GOVDE_MAX_BAYT / 1024} KB).`);
   return { ad, govde, govdeJson };
 }
 
-const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
+const iso = (v) => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+};
 
 function sablonApi(r) {
   let govde = null;
   try {
-    govde = typeof r.govde === 'string' ? JSON.parse(r.govde) : r.govde ?? null;
+    govde = typeof r.govde === 'string' ? JSON.parse(r.govde) : (r.govde ?? null);
   } catch {
     govde = null;
   }
   return {
-    id: Number(r.id), ad: r.ad, govde,
-    createdBy: r.created_by ?? null, createdAt: iso(r.created_at), updatedBy: r.updated_by ?? null, updatedAt: iso(r.updated_at),
+    id: Number(r.id),
+    ad: r.ad,
+    govde,
+    createdBy: r.created_by ?? null,
+    createdAt: iso(r.created_at),
+    updatedBy: r.updated_by ?? null,
+    updatedAt: iso(r.updated_at),
   };
 }
 

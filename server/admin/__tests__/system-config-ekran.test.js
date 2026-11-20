@@ -89,10 +89,13 @@ test('S11b beyaz liste disi anahtar `saltOkunur: ortam`; opsx yalniz OPSX_SMART_
   for (const [key, g] of girdiler) {
     const s = salt(g);
     const listede = SYSTEM_CONFIG_KEYS.includes(key);
-    if (!listede && s !== 'ortam') hatalar.push(`${key}: beyaz listede yok ama 'ortam' degil (${s})`);
+    if (!listede && s !== 'ortam')
+      hatalar.push(`${key}: beyaz listede yok ama 'ortam' degil (${s})`);
     if (listede && s === 'ortam') hatalar.push(`${key}: beyaz listede ama 'ortam' isaretli`);
-    if (s === 'opsx' && !/^OPSX_SMART_/.test(key)) hatalar.push(`${key}: 'opsx' yalniz OPSX_SMART_*`);
-    if (/^OPSX_SMART_/.test(key) && s !== 'opsx') hatalar.push(`${key}: OPSX_SMART_* 'opsx' olmali`);
+    if (s === 'opsx' && !/^OPSX_SMART_/.test(key))
+      hatalar.push(`${key}: 'opsx' yalniz OPSX_SMART_*`);
+    if (/^OPSX_SMART_/.test(key) && s !== 'opsx')
+      hatalar.push(`${key}: OPSX_SMART_* 'opsx' olmali`);
     if (s && !['ortam', 'opsx'].includes(s)) hatalar.push(`${key}: bilinmeyen saltOkunur '${s}'`);
   }
   assert.deepEqual(hatalar, []);
@@ -154,10 +157,21 @@ test('S13 kaydetme sonrasi restart bandi PUT yanitina bagli', () => {
   assert.equal(cagrilar, 1, `restartBekleyeneEkle ${cagrilar} kez cagriliyor (tam 1 olmali)`);
   // Ekranin baska bir dosyasi da listeye dogrudan yazmamali.
   const digerleri = [path.join(ROOT, 'src/components/admin/tabs/SystemConfigTab.tsx')]
-    .concat(fs.readdirSync(SISTEM).filter((f) => /\.tsx?$/.test(f)).map((f) => path.join(SISTEM, f)))
+    .concat(
+      fs
+        .readdirSync(SISTEM)
+        .filter((f) => /\.tsx?$/.test(f))
+        .map((f) => path.join(SISTEM, f)),
+    )
     .filter((f) => f !== HOOK && !f.endsWith('sistemOturumu.ts'))
-    .filter((f) => /(?<!function )\brestartBekleyeneEkle\(/.test(kodOnly(fs.readFileSync(f, 'utf8'))));
-  assert.deepEqual(digerleri.map((f) => path.relative(ROOT, f)), [], 'restart listesine kancanin disindan yaziliyor');
+    .filter((f) =>
+      /(?<!function )\brestartBekleyeneEkle\(/.test(kodOnly(fs.readFileSync(f, 'utf8'))),
+    );
+  assert.deepEqual(
+    digerleri.map((f) => path.relative(ROOT, f)),
+    [],
+    'restart listesine kancanin disindan yaziliyor',
+  );
 });
 
 // S16 — SECIM TURU ANAHTARLARIN SECENEKLERI SUNUCUDAN GECER.
@@ -180,9 +194,18 @@ test('S16 secenekli anahtarlarin her secenegi sunucu dogrulayicisindan geciyor',
   for (const [key, dogrula, sunucuKumesi] of durumlar) {
     const liste = secenekler(key);
     assert.ok(liste.length >= 2, `${key}: secenek listesi bos`);
-    for (const v of liste) assert.equal(dogrula(key, v), null, `${key}='${v}' sunucuda REDDEDILIYOR`);
-    assert.notEqual(dogrula(key, '__gecersiz__'), null, `${key}: dogrulayici her seyi kabul ediyor (bekci kor)`);
-    assert.deepEqual([...liste].sort(), [...sunucuKumesi].sort(), `${key}: ekran ve sunucu secenekleri farkli`);
+    for (const v of liste)
+      assert.equal(dogrula(key, v), null, `${key}='${v}' sunucuda REDDEDILIYOR`);
+    assert.notEqual(
+      dogrula(key, '__gecersiz__'),
+      null,
+      `${key}: dogrulayici her seyi kabul ediyor (bekci kor)`,
+    );
+    assert.deepEqual(
+      [...liste].sort(),
+      [...sunucuKumesi].sort(),
+      `${key}: ekran ve sunucu secenekleri farkli`,
+    );
   }
 });
 
@@ -204,8 +227,16 @@ test('S17 OpsX flow key satirlari yalniz gercekten var olan kapiyi vaat eder', (
     assert.ok(girdi, `${anahtar} ekranda yok`);
     if (!/başlatılmaz/.test(girdi)) continue;
     const kaynak = fs.readFileSync(path.join(ROOT, dosya), 'utf8');
-    assert.match(kaynak, /opsxProductionKapisi/, `${anahtar} "başlatılmaz" diyor ama ${dosya} Smart kapisini cagirmiyor`);
-    assert.match(girdi, /Smart onayı açık/, `${anahtar} "başlatılmaz" diyor ama kapinin kosulunu (Smart onayi acik) soylemiyor`);
+    assert.match(
+      kaynak,
+      /opsxProductionKapisi/,
+      `${anahtar} "başlatılmaz" diyor ama ${dosya} Smart kapisini cagirmiyor`,
+    );
+    assert.match(
+      girdi,
+      /Smart onayı açık/,
+      `${anahtar} "başlatılmaz" diyor ama kapinin kosulunu (Smart onayi acik) soylemiyor`,
+    );
   }
 });
 
@@ -215,7 +246,8 @@ test('S17 OpsX flow key satirlari yalniz gercekten var olan kapiyi vaat eder', (
 // DB'ye duz gidiyordu. Kural: "sirlar DB'ye, loglara ve Portal'a duz metin gitmez". Istemci
 // gizliligi yalniz sunucunun `masked` alanindan okur (SistemAyarlari.test SA27).
 const WEBHOOK = 'TEAMS_LONGJOB_WEBHOOK_URL';
-const IMZALI = 'https://prod-01.westeurope.logic.azure.com/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=GIZLI-IMZA-7f3Zq';
+const IMZALI =
+  'https://prod-01.westeurope.logic.azure.com/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=GIZLI-IMZA-7f3Zq';
 
 /** process.env anahtarlarini test sonunda eski haline getirir. */
 function ortamiSakla(anahtarlar) {
@@ -233,9 +265,19 @@ test('S18a SECRET_PATTERN WEBHOOK_URL ile biten her beyaz liste anahtarini kapsa
   const { SYSTEM_CONFIG_KEYS } = require('../../db/env-overrides.cjs');
   const webhooklar = SYSTEM_CONFIG_KEYS.filter((k) => /WEBHOOK_URL$/i.test(k));
   assert.ok(webhooklar.includes(WEBHOOK), `${WEBHOOK} beyaz listede yok (bekci kor)`);
-  assert.deepEqual(webhooklar.filter((k) => !SECRET_PATTERN.test(k)), [], 'sir sayilmayan webhook anahtari');
+  assert.deepEqual(
+    webhooklar.filter((k) => !SECRET_PATTERN.test(k)),
+    [],
+    'sir sayilmayan webhook anahtari',
+  );
   // Desen gereginden genis degil: ayni gruptaki ve `_URL` ile biten gizli olmayan anahtarlar acik.
-  for (const k of ['TEAMS_LONGJOB_THRESHOLD_MINUTES', 'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS', 'AWX_URL', 'SMART_API_URL', 'OCO_API_URL']) {
+  for (const k of [
+    'TEAMS_LONGJOB_THRESHOLD_MINUTES',
+    'TEAMS_LONGJOB_POLL_INTERVAL_SECONDS',
+    'AWX_URL',
+    'SMART_API_URL',
+    'OCO_API_URL',
+  ]) {
     assert.ok(!SECRET_PATTERN.test(k), `${k} sir sayiliyor`);
   }
 });
@@ -294,7 +336,10 @@ test('S18b webhook PUT: DB`ye sifreli, denetim kaydinda deger yok; GET maskeler'
     assert.equal(v.masked, true, 'webhook maskeli bildirilmiyor');
     assert.equal(v.defined, true);
     assert.equal(v.source, 'db');
-    assert.ok(!v.value.includes('GIZLI-IMZA') && !v.value.includes('logic.azure'), `GET duz deger dondu: ${v.value}`);
+    assert.ok(
+      !v.value.includes('GIZLI-IMZA') && !v.value.includes('logic.azure'),
+      `GET duz deger dondu: ${v.value}`,
+    );
     assert.equal(v.value, '•••'); // 2026-11-14: uc karakterler de gitmez (SC-MASKE)
   } finally {
     db.query = asilSorgu;
@@ -326,7 +371,10 @@ test('S18c setEnvOverride webhook`u sifreler; production`da anahtar yoksa duz ya
     yazilan = null;
     process.env.NODE_ENV = 'production';
     delete process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
-    await assert.rejects(() => setEnvOverride(WEBHOOK, IMZALI, 'adm'), /ENV_OVERRIDES_ENCRYPTION_KEY tanimli degil/);
+    await assert.rejects(
+      () => setEnvOverride(WEBHOOK, IMZALI, 'adm'),
+      /ENV_OVERRIDES_ENCRYPTION_KEY tanimli degil/,
+    );
     assert.equal(yazilan, null, 'production`da anahtarsiz webhook DB`ye yazildi');
   } finally {
     db.query = asil;
@@ -339,7 +387,11 @@ test('S18d desen degismeden once DB`ye duz yazilmis webhook yuklemede aynen kull
   const asil = db.query;
   const geriYukle = ortamiSakla([WEBHOOK, 'ENV_OVERRIDES_ENCRYPTION_KEY']);
   try {
-    const { loadEnvOverrides, isFromDb, encryptSecretValue } = require('../../db/env-overrides.cjs');
+    const {
+      loadEnvOverrides,
+      isFromDb,
+      encryptSecretValue,
+    } = require('../../db/env-overrides.cjs');
     process.env.ENV_OVERRIDES_ENCRYPTION_KEY = 'e'.repeat(64);
     // Eski satir: ENC_PREFIX yok -> cozme denenmez, deger oldugu gibi uygulanir.
     delete process.env[WEBHOOK];
@@ -365,14 +417,21 @@ test('SC-MASKE gizli degerin hicbir parcasi ve uzunlugu tarayiciya gitmez', () =
   const { _maskValue: maskValue } = require('../system-config.cjs');
   const { SECRET_PATTERN } = require('../../config/secret-pattern.cjs');
   const ORNEKLER = ['ab', 'abcdef', 'Qx7-ornek-deger-Zz', 'x'.repeat(200)];
-  for (const anahtar of ['SMART_API_PASSWORD', 'SESSION_SECRET', 'AWX_1_TOKEN', 'CRYPTO_KEY', 'TEAMS_LONGJOB_WEBHOOK_URL']) {
+  for (const anahtar of [
+    'SMART_API_PASSWORD',
+    'SESSION_SECRET',
+    'AWX_1_TOKEN',
+    'CRYPTO_KEY',
+    'TEAMS_LONGJOB_WEBHOOK_URL',
+  ]) {
     assert.ok(SECRET_PATTERN.test(anahtar), `${anahtar} gizli sayilmiyor`);
     const maskeler = ORNEKLER.map((d) => maskValue(anahtar, d));
     // Her deger AYNI maskeye gider: uzunluk ve uc karakterler ele verilmez.
     assert.deepEqual([...new Set(maskeler)], ['•••'], anahtar);
     for (const d of ORNEKLER) {
       const m = maskValue(anahtar, d);
-      for (const parca of [d.slice(0, 2), d.slice(-2)]) assert.ok(!m.includes(parca), `${anahtar}: "${parca}" maskede`);
+      for (const parca of [d.slice(0, 2), d.slice(-2)])
+        assert.ok(!m.includes(parca), `${anahtar}: "${parca}" maskede`);
     }
     assert.equal(maskValue(anahtar, ''), '', 'bos deger bos kalir (tanimsiz ile karismasin)');
   }

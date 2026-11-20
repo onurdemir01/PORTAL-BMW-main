@@ -29,12 +29,26 @@ function rowToTicket(r) {
   };
 }
 
-async function createTicket({ externalTicketId, username, awxServerId, awxTemplateId, flowKey, pendingLaunch }) {
+async function createTicket({
+  externalTicketId,
+  username,
+  awxServerId,
+  awxTemplateId,
+  flowKey,
+  pendingLaunch,
+}) {
   const { rows } = await db.query(
     `INSERT INTO smart_tickets (external_ticket_id, username, awx_server_id, awx_template_id, flow_key, status, pending_launch_json)
      OUTPUT INSERTED.*
      VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)`,
-    [externalTicketId, username, awxServerId, awxTemplateId, flowKey || null, JSON.stringify(pendingLaunch)]
+    [
+      externalTicketId,
+      username,
+      awxServerId,
+      awxTemplateId,
+      flowKey || null,
+      JSON.stringify(pendingLaunch),
+    ],
   );
   return rowToTicket(rows[0]);
 }
@@ -56,12 +70,20 @@ async function listPending() {
 async function listAll({ limit = 100, offset = 0, status = '', username = '', q = '' } = {}) {
   const where = [];
   const params = [];
-  if (status) { params.push(status); where.push(`status = $${params.length}`); }
-  if (username) { params.push(`%${username}%`); where.push(`username LIKE $${params.length}`); }
+  if (status) {
+    params.push(status);
+    where.push(`status = $${params.length}`);
+  }
+  if (username) {
+    params.push(`%${username}%`);
+    where.push(`username LIKE $${params.length}`);
+  }
   if (q) {
     params.push(`%${q}%`);
     // Talep numarasi ya da pendingLaunch icindeki servis adi/degiskenler icinde arama.
-    where.push(`(external_ticket_id LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`);
+    where.push(
+      `(external_ticket_id LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`,
+    );
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -77,7 +99,7 @@ async function listAll({ limit = 100, offset = 0, status = '', username = '', q 
     `SELECT * FROM smart_tickets ${whereSql}
       ORDER BY created_at DESC
       OFFSET ${off} ROWS FETCH NEXT ${lim} ROWS ONLY`,
-    params
+    params,
   );
   return { total, tickets: rows.map(rowToTicket) };
 }
@@ -85,7 +107,9 @@ async function listAll({ limit = 100, offset = 0, status = '', username = '', q 
 // Durum bazli ozet (Admin ekranindaki rozetler) — sayfalamadan BAGIMSIZ, TUM tabloyu
 // kapsar; aksi halde "3 bekliyor" rozeti yalnizca gorunen sayfayi sayardi.
 async function statusSummary() {
-  const { rows } = await db.query(`SELECT status, COUNT(*) AS n FROM smart_tickets GROUP BY status`);
+  const { rows } = await db.query(
+    `SELECT status, COUNT(*) AS n FROM smart_tickets GROUP BY status`,
+  );
   const out = {};
   for (const r of rows) out[r.status] = Number(r.n);
   return out;
@@ -95,7 +119,7 @@ async function statusSummary() {
 async function listByUsername(username) {
   const { rows } = await db.query(
     `SELECT * FROM smart_tickets WHERE LOWER(username) = LOWER($1) ORDER BY created_at DESC`,
-    [username]
+    [username],
   );
   return rows.map(rowToTicket);
 }
@@ -114,15 +138,17 @@ async function cancelTicket(id, username, isAdmin, note = '', actor = '') {
   const params = [id];
   if (!isAdmin) params.push(username);
   const ownerCond = isAdmin ? '' : `AND LOWER(username) = LOWER($${params.length})`;
-  params.push(note ? String(note).slice(0, 1000) : null); const noteP = `$${params.length}`;
-  params.push(actor || username || null);                 const actorP = `$${params.length}`;
+  params.push(note ? String(note).slice(0, 1000) : null);
+  const noteP = `$${params.length}`;
+  params.push(actor || username || null);
+  const actorP = `$${params.length}`;
   const { rows } = await db.query(
     `UPDATE smart_tickets
        SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE(),
            cancel_note = ${noteP}, cancelled_by = ${actorP}
      OUTPUT INSERTED.*
      WHERE id = $1 AND status = 'PENDING' ${ownerCond}`,
-    params
+    params,
   );
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
@@ -139,7 +165,7 @@ async function claimForLaunch(id) {
        SET status = 'LAUNCHING', updated_at = GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id = $1 AND status = 'PENDING'`,
-    [id]
+    [id],
   );
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
@@ -152,7 +178,7 @@ async function claimTimeoutForRetrigger(id) {
        SET status = 'LAUNCHING', updated_at = GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id = $1 AND status = 'TIMEOUT'`,
-    [id]
+    [id],
   );
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
@@ -165,7 +191,7 @@ async function markApproved(id, smartStateName) {
        SET approved_at = GETUTCDATE(), smart_state_name = $2, updated_at = GETUTCDATE()
      OUTPUT INSERTED.id
      WHERE id = $1 AND status = 'PENDING' AND approved_at IS NULL`,
-    [id, smartStateName || null]
+    [id, smartStateName || null],
   );
   return rows.length > 0;
 }
@@ -173,12 +199,23 @@ async function markApproved(id, smartStateName) {
 // KOSULLU durum yazimi. `expected` verilirse yalnizca bilet O DURUMDAYKEN yazar ve
 // yazip yazmadigini DONDURUR. Kosulsuz `UPDATE ... WHERE id=$1` iptal/zaman asimi gibi
 // arada olusan sonuclari sessizce eziyordu.
-async function markState(id, { status, smartStateName, awxJobId, errorMessage, resolved, expected }) {
+async function markState(
+  id,
+  { status, smartStateName, awxJobId, errorMessage, resolved, expected },
+) {
   const params = [status, smartStateName || null, awxJobId || null, errorMessage || null, id];
   let cond = '';
   if (expected) {
     const list = Array.isArray(expected) ? expected : [expected];
-    cond = ' AND status IN (' + list.map((st) => { params.push(st); return `$${params.length}`; }).join(', ') + ')';
+    cond =
+      ' AND status IN (' +
+      list
+        .map((st) => {
+          params.push(st);
+          return `$${params.length}`;
+        })
+        .join(', ') +
+      ')';
   }
   const { rows } = await db.query(
     `UPDATE smart_tickets
@@ -186,11 +223,10 @@ async function markState(id, { status, smartStateName, awxJobId, errorMessage, r
            updated_at = GETUTCDATE(), resolved_at = ${resolved ? 'GETUTCDATE()' : 'resolved_at'}
      OUTPUT INSERTED.id
      WHERE id = $5${cond}`,
-    params
+    params,
   );
   return rows.length > 0;
 }
-
 
 // OCO KAYDINA BAGLI BILETLER (2026-10-08 olayi). Talep aninda acilan bilet ("smart-first")
 // OCO zamanlama kaydinin ID'sini `pendingLaunch.ocoRecordId`de tasir. OCO zamanlayicisi bir
@@ -210,7 +246,11 @@ async function findByOcoRecordIds(ids) {
   );
   for (const r of rows) {
     let pl;
-    try { pl = JSON.parse(r.pending_launch_json); } catch { continue; }
+    try {
+      pl = JSON.parse(r.pending_launch_json);
+    } catch {
+      continue;
+    }
     const o = Number(pl?.ocoRecordId);
     if (!want.has(o) || out.has(o)) continue;
     out.set(o, rowToTicket(r));
@@ -218,4 +258,17 @@ async function findByOcoRecordIds(ids) {
   return out;
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, claimTimeoutForRetrigger, markApproved, markState, findByOcoRecordIds };
+module.exports = {
+  createTicket,
+  getTicket,
+  listPending,
+  listByUsername,
+  listAll,
+  statusSummary,
+  cancelTicket,
+  claimForLaunch,
+  claimTimeoutForRetrigger,
+  markApproved,
+  markState,
+  findByOcoRecordIds,
+};

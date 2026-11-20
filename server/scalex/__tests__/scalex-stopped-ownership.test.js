@@ -134,7 +134,8 @@ test('OW-ISTEMCI stoppedByGroups tarayiciya gitmez; suzgec onu kullanmaya devam 
   assert.match(govde, /items: rows\.map\(state\.istemciSatiri\),/);
   assert.doesNotMatch(govde, /items: rows,/);
   assert.ok(
-    govde.indexOf('filterStoppedByOwnership(allowed') < govde.indexOf('rows.map(state.istemciSatiri)'),
+    govde.indexOf('filterStoppedByOwnership(allowed') <
+      govde.indexOf('rows.map(state.istemciSatiri)'),
     'alan suzgecten ONCE cikarilirsa sahiplik suzgeci kor kalir',
   );
   // Ekibin kaydini gorme kurali alan cikarildiktan sonra da gecerli (suzgec ham satirla calisir).

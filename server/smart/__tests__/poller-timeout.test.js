@@ -18,11 +18,17 @@ function withEnv(vars, fn) {
   Object.assign(process.env, vars);
   const restore = () => {
     for (const k of Object.keys(vars)) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
     }
   };
   let result;
-  try { result = fn(); } catch (err) { restore(); throw err; }
+  try {
+    result = fn();
+  } catch (err) {
+    restore();
+    throw err;
+  }
   if (result && typeof result.then === 'function') return result.finally(restore);
   restore();
   return result;
@@ -51,7 +57,10 @@ function loadPollerWith({ tickets, statusFor, claimResult }) {
       const r = typeof claimResult === 'function' ? claimResult(id) : claimResult;
       return r === undefined ? { id } : r;
     },
-    markState: async (id, patch) => { marks.push({ id, ...patch }); return true; },
+    markState: async (id, patch) => {
+      marks.push({ id, ...patch });
+      return true;
+    },
   };
   const fakeClient = { checkTicketStatus: async (extId) => statusFor(extId) };
 
@@ -66,9 +75,12 @@ function loadPollerWith({ tickets, statusFor, claimResult }) {
 
   const poller = require('../poller.cjs');
   const restore = () => {
-    if (savedStore) require.cache[storePath] = savedStore; else delete require.cache[storePath];
-    if (savedClient) require.cache[clientPath] = savedClient; else delete require.cache[clientPath];
-    if (savedPoller) require.cache[pollerPath] = savedPoller; else delete require.cache[pollerPath];
+    if (savedStore) require.cache[storePath] = savedStore;
+    else delete require.cache[storePath];
+    if (savedClient) require.cache[clientPath] = savedClient;
+    else delete require.cache[clientPath];
+    if (savedPoller) require.cache[pollerPath] = savedPoller;
+    else delete require.cache[pollerPath];
     delete require.cache[configPath];
   };
   return { poller, marks, claims, restore };
@@ -102,17 +114,25 @@ test('varsayilan SINIRSIZ (null) - sure siniri yok', () => {
 });
 
 test('bayat DB degeri kod varsayilanini EZEMEZ: anahtar env-overrides allowlistinde DEGIL', () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'db', 'env-overrides.cjs'), 'utf8');
-  assert.ok(!src.includes('SMART_TICKET_TIMEOUT_MINUTES'),
-    'anahtar allowlistte kalirsa Admin > Sistem uzerinden yazilmis eski bir 15 degeri sinirsizligi sessizce geri alir');
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'db', 'env-overrides.cjs'),
+    'utf8',
+  );
+  assert.ok(
+    !src.includes('SMART_TICKET_TIMEOUT_MINUTES'),
+    'anahtar allowlistte kalirsa Admin > Sistem uzerinden yazilmis eski bir 15 degeri sinirsizligi sessizce geri alir',
+  );
 });
 
 test('bayat SMART_TICKET_TIMEOUT_HOURS degeri ARTIK OKUNMUYOR (sinirsiz korunur)', () => {
-  withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_HOURS: '24', SMART_TICKET_TIMEOUT_MINUTES: undefined }, () => {
-    delete require.cache[require.resolve('../config.cjs')];
-    const { getConfig } = require('../config.cjs');
-    assert.strictEqual(getConfig().ticketTimeoutMinutes, null);
-  });
+  withEnv(
+    { ...SMART_ENV, SMART_TICKET_TIMEOUT_HOURS: '24', SMART_TICKET_TIMEOUT_MINUTES: undefined },
+    () => {
+      delete require.cache[require.resolve('../config.cjs')];
+      const { getConfig } = require('../config.cjs');
+      assert.strictEqual(getConfig().ticketTimeoutMinutes, null);
+    },
+  );
 });
 
 test('16 dakikalik talep TIMEOUT olur ve otomasyon TETIKLENMEZ (Smart "Tamamlandi" dese bile)', async () => {
@@ -121,10 +141,18 @@ test('16 dakikalik talep TIMEOUT olur ve otomasyon TETIKLENMEZ (Smart "Tamamland
     const { poller, marks, restore } = loadPollerWith({
       tickets: [ticketAgedMinutes(16)],
       // Smart onaylamis olsa BILE launch olmamali - kritik senaryo.
-      statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }),
+      statusFor: () => ({
+        completed: true,
+        rejected: false,
+        stateName: 'Tamamlandı',
+        statusCode: '1000',
+      }),
     });
     try {
-      poller.startPoller(async () => { launched++; return { jobId: 123 }; });
+      poller.startPoller(async () => {
+        launched++;
+        return { jobId: 123 };
+      });
       await poller.tick();
       assert.strictEqual(launched, 0, 'suresi dolmus talep otomasyonu TETIKLEMEMELI');
       assert.strictEqual(marks.length, 1);
@@ -143,10 +171,18 @@ test('14 dakikalik ONAYLI talep normal sekilde tetiklenir (timeout erken calisma
     let launched = 0;
     const { poller, marks, restore } = loadPollerWith({
       tickets: [ticketAgedMinutes(14)],
-      statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }),
+      statusFor: () => ({
+        completed: true,
+        rejected: false,
+        stateName: 'Tamamlandı',
+        statusCode: '1000',
+      }),
     });
     try {
-      poller.startPoller(async () => { launched++; return { jobId: 77 }; });
+      poller.startPoller(async () => {
+        launched++;
+        return { jobId: 77 };
+      });
       await poller.tick();
       assert.strictEqual(launched, 1, 'suresi DOLMAMIS onayli talep tetiklenmeli');
       assert.strictEqual(marks[0].status, 'LAUNCHED');
@@ -163,7 +199,11 @@ test('gecersiz/sifir SMART_TICKET_TIMEOUT_MINUTES sinirsiza duser (yarim yamalak
     withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: bad }, () => {
       delete require.cache[require.resolve('../config.cjs')];
       const { getConfig } = require('../config.cjs');
-      assert.strictEqual(getConfig().ticketTimeoutMinutes, null, `deger "${bad}" icin sinirsiz beklendi`);
+      assert.strictEqual(
+        getConfig().ticketTimeoutMinutes,
+        null,
+        `deger "${bad}" icin sinirsiz beklendi`,
+      );
     });
   }
 });
@@ -175,25 +215,56 @@ test('OCO talebi: pencere KAPANMADAN timeout olmaz, KAPANINCA tetiklenmez', asyn
     const acik = ticketAgedMinutes(600); // 10 saattir bekliyor
     acik.pendingLaunch = { ocoWindowEndIso: new Date(Date.now() + 3600 * 1000).toISOString() };
     let launched = 0;
-    let r = loadPollerWith({ tickets: [acik], statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }) });
+    let r = loadPollerWith({
+      tickets: [acik],
+      statusFor: () => ({
+        completed: true,
+        rejected: false,
+        stateName: 'Tamamlandı',
+        statusCode: '1000',
+      }),
+    });
     try {
-      r.poller.startPoller(async () => { launched++; return { jobId: 1 }; });
+      r.poller.startPoller(async () => {
+        launched++;
+        return { jobId: 1 };
+      });
       await r.poller.tick();
       assert.strictEqual(launched, 1, 'pencere acikken 10 saatlik talep hala tetiklenebilmeli');
-      assert.ok(!r.marks.some((m) => m.status === 'TIMEOUT'), 'pencere acikken TIMEOUT yazilmamali');
-    } finally { r.poller.stopPoller(); r.restore(); }
+      assert.ok(
+        !r.marks.some((m) => m.status === 'TIMEOUT'),
+        'pencere acikken TIMEOUT yazilmamali',
+      );
+    } finally {
+      r.poller.stopPoller();
+      r.restore();
+    }
 
     const kapali = ticketAgedMinutes(600);
     kapali.pendingLaunch = { ocoWindowEndIso: new Date(Date.now() - 60 * 1000).toISOString() };
     launched = 0;
-    r = loadPollerWith({ tickets: [kapali], statusFor: () => ({ completed: true, rejected: false, stateName: 'Tamamlandı', statusCode: '1000' }) });
+    r = loadPollerWith({
+      tickets: [kapali],
+      statusFor: () => ({
+        completed: true,
+        rejected: false,
+        stateName: 'Tamamlandı',
+        statusCode: '1000',
+      }),
+    });
     try {
-      r.poller.startPoller(async () => { launched++; return { jobId: 2 }; });
+      r.poller.startPoller(async () => {
+        launched++;
+        return { jobId: 2 };
+      });
       await r.poller.tick();
       assert.strictEqual(launched, 0, 'pencere kapandiktan sonra is TETIKLENMEMELI');
       assert.strictEqual(r.marks[0].status, 'TIMEOUT');
       assert.match(r.marks[0].errorMessage, /pencere/i);
-    } finally { r.poller.stopPoller(); r.restore(); }
+    } finally {
+      r.poller.stopPoller();
+      r.restore();
+    }
   });
 });
 
@@ -202,13 +273,24 @@ test('sinirsizda bekleyen talep (30 gun) TIMEOUT OLMAZ', async () => {
     let launched = 0;
     const { poller, marks, restore } = loadPollerWith({
       tickets: [ticketAgedMinutes(60 * 24 * 30)],
-      statusFor: () => ({ completed: false, rejected: false, stateName: 'Onay Bekliyor', statusCode: null }),
+      statusFor: () => ({
+        completed: false,
+        rejected: false,
+        stateName: 'Onay Bekliyor',
+        statusCode: null,
+      }),
     });
     try {
-      poller.startPoller(async () => { launched++; return { jobId: 3 }; });
+      poller.startPoller(async () => {
+        launched++;
+        return { jobId: 3 };
+      });
       await poller.tick();
       assert.strictEqual(launched, 0, 'onaylanmadan tetiklenmemeli');
       assert.ok(!marks.some((m) => m.status === 'TIMEOUT'), 'sure sinirsizken TIMEOUT yazilmamali');
-    } finally { poller.stopPoller(); restore(); }
+    } finally {
+      poller.stopPoller();
+      restore();
+    }
   });
 });

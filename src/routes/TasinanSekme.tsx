@@ -8,7 +8,12 @@
 import React from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
 
-export default function TasinanSekme({ param, deger, hedef, children }: {
+export default function TasinanSekme({
+  param,
+  deger,
+  hedef,
+  children,
+}: {
   param: string;
   deger: string | string[];
   hedef: string | Record<string, string>;

@@ -71,11 +71,7 @@ const SIRLAR = [KISISEL, YENI, YANLIS];
 const ACTIVE = ['new', 'pending', 'waiting', 'running'];
 const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
 const fold = (s) =>
-  String(s)
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ı/g, 'i')
-    .replace(/’/g, "'");
+  String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/’/g, "'");
 
 // ── SAHTE AWX (token -> kullanici) ─────────────────────────────────────────────
 const awx = {
@@ -143,7 +139,13 @@ function awxSifirla() {
 }
 
 function isEkle(j) {
-  awx.jobs.set(j.id, { status: 'running', created: j.started || ago(1), createdBy: 'ayse', tplName: `tpl-${j.tpl}`, ...j });
+  awx.jobs.set(j.id, {
+    status: 'running',
+    created: j.started || ago(1),
+    createdBy: 'ayse',
+    tplName: `tpl-${j.tpl}`,
+    ...j,
+  });
 }
 
 function awxJson(j) {
@@ -154,7 +156,10 @@ function awxJson(j) {
     started: j.started || null,
     created: j.created || null,
     job_template: j.tpl,
-    summary_fields: { job_template: { id: j.tpl, name: j.tplName }, created_by: { username: j.createdBy } },
+    summary_fields: {
+      job_template: { id: j.tpl, name: j.tplName },
+      created_by: { username: j.createdBy },
+    },
   };
 }
 
@@ -177,10 +182,15 @@ function awxIstegi(req, res, a = awx) {
     if (a.meHtml) {
       // Vekil/gateway HTML hata sayfasi (JSON DEGIL) ve istegin token'ini HAM yansitir.
       res.writeHead(502, { 'content-type': 'text/html' });
-      return res.end(`<html><body>Bad Gateway: upstream rejected Authorization ${auth} (raw ${tok})</body></html>`);
+      return res.end(
+        `<html><body>Bad Gateway: upstream rejected Authorization ${auth} (raw ${tok})</body></html>`,
+      );
     }
     if (a.meStatus) return send(a.meStatus, { detail: 'gecici AWX hatasi' + echo });
-    return send(200, { count: 1, results: [{ id: user === 'onurdemir3' ? 31 : 9, username: user, is_superuser: false }] });
+    return send(200, {
+      count: 1,
+      results: [{ id: user === 'onurdemir3' ? 31 : 9, username: user, is_superuser: false }],
+    });
   }
   if (req.method === 'GET' && (m = u.pathname.match(/^\/api\/v2\/(jobs|workflow_jobs)\/$/))) {
     if (m[1] === 'workflow_jobs') return send(200, { count: 0, next: null, results: [] });
@@ -198,7 +208,8 @@ function awxIstegi(req, res, a = awx) {
     const t = a.templates.get(j.tpl) || { admins: [] };
     const allowed = j.createdBy === user || t.admins.includes(user);
     // 'read' kapsamli token: isi kendisi baslatmis olsa bile yazma (iptal) 403.
-    if (a.readScope && a.readScope.has(tok)) return send(403, { detail: 'You do not have permission to perform this action.' + echo });
+    if (a.readScope && a.readScope.has(tok))
+      return send(403, { detail: 'You do not have permission to perform this action.' + echo });
     // GERCEK AWX (superuser degil): bitmis ise de 403; aktif ama yetkisiz 403.
     if (!ACTIVE.includes(j.status) || !allowed) {
       return send(403, { detail: 'You do not have permission to perform this action.' + echo });
@@ -209,7 +220,11 @@ function awxIstegi(req, res, a = awx) {
   if (req.method === 'GET' && (m = u.pathname.match(/^\/api\/v2\/job_templates\/(\d+)\/$/))) {
     const t = a.templates.get(Number(m[1]));
     if (!t) return send(404, { detail: 'Not found.' });
-    return send(200, { id: Number(m[1]), name: t.name, summary_fields: { user_capabilities: { edit: t.admins.includes(user), start: true } } });
+    return send(200, {
+      id: Number(m[1]),
+      name: t.name,
+      summary_fields: { user_capabilities: { edit: t.admins.includes(user), start: true } },
+    });
   }
   return send(404, { detail: 'Not found.' });
 }
@@ -272,7 +287,12 @@ const CFG = (over = {}) => ({
 
 /** Bellek-ici portal_config_blobs. `yazilan`: DB'ye giden her deger (sizinti bekcisi). */
 function dbOf(cfg) {
-  const d = { blobs: new Map([['longjob-cancel', JSON.stringify(cfg)]]), yazilan: [], sorgular: 0, fail: false };
+  const d = {
+    blobs: new Map([['longjob-cancel', JSON.stringify(cfg)]]),
+    yazilan: [],
+    sorgular: 0,
+    fail: false,
+  };
   d.query = async (sql, params = []) => {
     d.sorgular++;
     if (d.fail) throw new Error('ConnectionError: Failed to connect to MSSQL TBMWPRT:1433');
@@ -281,7 +301,8 @@ function dbOf(cfg) {
       const v = d.blobs.get(params[0]);
       return { rows: v == null ? [] : [{ data: v }] };
     }
-    if (/^SELECT 1 FROM portal_config_blobs/.test(s)) return { rows: d.blobs.has(params[0]) ? [{ x: 1 }] : [] };
+    if (/^SELECT 1 FROM portal_config_blobs/.test(s))
+      return { rows: d.blobs.has(params[0]) ? [{ x: 1 }] : [] };
     if (/^(UPDATE|INSERT INTO) portal_config_blobs/.test(s)) {
       d.blobs.set(params[0], params[1]);
       d.yazilan.push(String(params[1]));
@@ -323,7 +344,10 @@ async function uygulama({ db, requireAdmin } = {}) {
   const kayit = [];
   const sarmal = {};
   for (const m of ['get', 'put', 'post', 'delete']) {
-    sarmal[m] = (p, ...h) => { kayit.push({ m, p, h }); return app[m](p, ...h); };
+    sarmal[m] = (p, ...h) => {
+      kayit.push({ m, p, h });
+      return app[m](p, ...h);
+    };
   }
   const requireAuth = (req, _s, n) => {
     req.session = { user: { username: 'admin_ayse' } };
@@ -357,14 +381,31 @@ async function uygulama({ db, requireAdmin } = {}) {
     }
     return { status: r.status, text, json };
   };
-  return { base, kayit, requireAuth, requireAdmin: adm, call, kapat: () => new Promise((r) => srv.close(r)) };
+  return {
+    base,
+    kayit,
+    requireAuth,
+    requireAdmin: adm,
+    call,
+    kapat: () => new Promise((r) => srv.close(r)),
+  };
 }
 
 /** console.* ciktisini yakalar (sizinti bekcisi icin). */
 function konsolYakala(t) {
   const satirlar = [];
   for (const m of ['error', 'warn', 'log', 'info', 'debug']) {
-    t.mock.method(console, m, (...a) => satirlar.push(a.map((x) => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'string') return x; return JSON.stringify(x); }).join(' ')));
+    t.mock.method(console, m, (...a) =>
+      satirlar.push(
+        a
+          .map((x) => {
+            if (x instanceof Error) return x.stack || x.message;
+            if (typeof x === 'string') return x;
+            return JSON.stringify(x);
+          })
+          .join(' '),
+      ),
+    );
   }
   return satirlar;
 }
@@ -398,7 +439,11 @@ test('TK1 kayit /me ile dogrulanir; DB de yalniz enc:v1: sifreli deger; yanit/GE
     assert.equal(r.json.ok, true);
     assert.equal(r.json.owner, 'onurdemir3', 'token sahibi /me ten okunmadi');
     const me = awx.istekler.filter((x) => x.path === '/api/v2/me/');
-    assert.deepEqual(me.map((x) => x.user), ['onurdemir3'], 'dogrulama verilen token ile yapilmadi');
+    assert.deepEqual(
+      me.map((x) => x.user),
+      ['onurdemir3'],
+      'dogrulama verilen token ile yapilmadi',
+    );
 
     const blob = db.blobs.get(tokenStore.BLOB_NAME);
     assert.ok(blob, 'DB ye yazilmadi');
@@ -416,7 +461,10 @@ test('TK1 kayit /me ile dogrulanir; DB de yalniz enc:v1: sifreli deger; yanit/GE
     assert.equal(g.json.encryptionKeyConfigured, true);
     for (const x of [r.text, g.text]) {
       sizintiYok(x, 'HTTP yaniti');
-      assert.ok(!x.includes('enc:v1:'), 'sifreli deger bile yanita girmemeli (yalniz yazilir alan)');
+      assert.ok(
+        !x.includes('enc:v1:'),
+        'sifreli deger bile yanita girmemeli (yalniz yazilir alan)',
+      );
     }
     const den = audits.filter((a) => a.action === 'awx_long_job_cancel_token');
     assert.equal(den.length, 1, 'kayit denetime yazilmadi');
@@ -480,19 +528,28 @@ test('TK3 gecersiz token (AWX 401) kaydedilmez ve "gecersiz" denir; AWX 500 -> "
     assert.equal(r2.status, 502);
     assert.equal(r2.json.reason, 'unverified');
     assert.match(fold(r2.json.message), /olculemedi/);
-    assert.doesNotMatch(fold(r2.json.message), /^Token gecersiz/, 'AWX 500 "gecersiz" diye raporlandi');
+    assert.doesNotMatch(
+      fold(r2.json.message),
+      /^Token gecersiz/,
+      'AWX 500 "gecersiz" diye raporlandi',
+    );
     assert.equal(db.blobs.has(tokenStore.BLOB_NAME), false);
 
     // bicim: bos / bosluklu deger AWX e gitmeden reddedilir
     const once = awx.istekler.length;
-    const r3 = await app.call('PUT', '/api/ansible/longjob-cancel/tokens/1', { token: 'abc def ghi jkl' });
+    const r3 = await app.call('PUT', '/api/ansible/longjob-cancel/tokens/1', {
+      token: 'abc def ghi jkl',
+    });
     assert.equal(r3.status, 400);
     assert.equal(awx.istekler.length, once, 'bicimi bozuk token AWX e gonderildi');
 
     sizintiYok(r.text + r2.text + r3.text, 'HTTP yaniti');
     sizintiYok(JSON.stringify(audits), 'denetim');
     sizintiYok(kons.join('\n'), 'log');
-    assert.ok(kons.some((l) => l.includes('/api/v2/me/')), 'test kurgusu: AWX hata logu yazilmadi');
+    assert.ok(
+      kons.some((l) => l.includes('/api/v2/me/')),
+      'test kurgusu: AWX hata logu yazilmadi',
+    );
   } finally {
     await app.kapat();
   }
@@ -520,14 +577,23 @@ test('TK4 otomatik iptal token la gider (tarama + durum okuma servis kullanicisi
   );
   assert.equal(awx.jobs.get(700).status, 'canceled');
   const listeler = awx.istekler.filter((x) => x.method === 'GET' && x.path === '/api/v2/jobs/');
-  assert.ok(listeler.length > 0 && listeler.every((x) => x.user === 'portal_svc'), 'tarama servis kullanicisiyla yapilmadi');
+  assert.ok(
+    listeler.length > 0 && listeler.every((x) => x.user === 'portal_svc'),
+    'tarama servis kullanicisiyla yapilmadi',
+  );
   const row = s.jobs.find((j) => j.jobId === 700);
   assert.equal(row.decision, 'cancel_requested');
   assert.match(fold(row.reason), /iptal onurdemir3 token'iyla yapildi/);
 
-  const kart = teams.kartlar.find((k) => fold(kartBaslik(k)).includes('Portal tarafindan iptal edildi'));
+  const kart = teams.kartlar.find((k) =>
+    fold(kartBaslik(k)).includes('Portal tarafindan iptal edildi'),
+  );
   assert.ok(kart, 'iptal karti gitmedi');
-  assert.match(fold(JSON.stringify(kart)), /Iptal onurdemir3 token'iyla yapildi/, 'Teams kartinda iz yok');
+  assert.match(
+    fold(JSON.stringify(kart)),
+    /Iptal onurdemir3 token'iyla yapildi/,
+    'Teams kartinda iz yok',
+  );
   const ok = audits.filter((a) => a.action === 'awx_long_job_cancel' && a.result === 'ok');
   assert.equal(ok.length, 1);
   const d = JSON.parse(ok[0].detail);
@@ -557,7 +623,8 @@ test('TK5 ScaleX/LogX/Telnet bicimli cagrilar (authToken siz) token tanimliyken 
   assert.equal(r.canceled, true);
   assert.equal(r.via, undefined, 'eski cagri bicimine yeni alan eklendi');
   assert.ok(awx.istekler.length >= 4);
-  for (const x of awx.istekler) assert.equal(x.user, 'portal_svc', `${x.method} ${x.path} iptal token i ile gitti`);
+  for (const x of awx.istekler)
+    assert.equal(x.user, 'portal_svc', `${x.method} ${x.path} iptal token i ile gitti`);
 });
 
 // ── TK6 ──────────────────────────────────────────────────────────────────────
@@ -567,7 +634,10 @@ test('TK6 token tanimli degilse eski davranis: servis kullanicisi; 403 karti tok
   awx.templates.set(42, { name: 'nginx_config_audit', admins: ['onurdemir3'] });
   const db = dbOf(CFG());
   const s = await cycle(db);
-  assert.deepEqual(posts().map((p) => p.user), ['portal_svc']);
+  assert.deepEqual(
+    posts().map((p) => p.user),
+    ['portal_svc'],
+  );
   assert.equal(s.jobs.find((j) => j.jobId === 900).decision, 'cancel_failed');
   const kart = teams.kartlar.find((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
   assert.ok(kart);
@@ -590,8 +660,13 @@ test('TK7 401: Teams "IPTAL TOKEN I GECERSIZ" + denetim + durum; is IPTAL EDILEM
     awx.istekler.length = 0;
     let s = await cycle(db);
 
-    assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1000/cancel/']);
-    const kart = teams.kartlar.filter((k) => fold(kartBaslik(k)).includes("IPTAL TOKEN'I GECERSIZ"));
+    assert.deepEqual(
+      posts().map((p) => p.path),
+      ['/api/v2/jobs/1000/cancel/'],
+    );
+    const kart = teams.kartlar.filter((k) =>
+      fold(kartBaslik(k)).includes("IPTAL TOKEN'I GECERSIZ"),
+    );
     assert.equal(kart.length, 1, 'IPTAL TOKEN I GECERSIZ karti gitmedi');
     assert.match(fold(kartBaslik(kart[0])), /IPTAL EDILEMEDI/);
     assert.match(fold(JSON.stringify(kart[0])), /yeni token girin/);
@@ -621,11 +696,22 @@ test('TK7 401: Teams "IPTAL TOKEN I GECERSIZ" + denetim + durum; is IPTAL EDILEM
 
     // yeni token kaydedilir -> yeniden denenir ve iptal edilir
     await tokenKaydet(app, YENI);
-    assert.equal(ljc.getStatus().open.tokenInvalid, 0, 'yeni token sonrasi hala GECERSIZ gorunuyor');
+    assert.equal(
+      ljc.getStatus().open.tokenInvalid,
+      0,
+      'yeni token sonrasi hala GECERSIZ gorunuyor',
+    );
     // writeConfig emsali: Kaydet aninda bu sunucunun "iptal edilemedi" kayitlari yeniden denemeye acilir.
-    assert.equal(ljc.getStatus().open.failed, 0, 'token kaydi iptal edilemeyen isi yeniden denemeye acmadi');
+    assert.equal(
+      ljc.getStatus().open.failed,
+      0,
+      'token kaydi iptal edilemeyen isi yeniden denemeye acmadi',
+    );
     s = await cycle(db);
-    assert.deepEqual(posts().map((p) => p.user), [null, 'onurdemir3']);
+    assert.deepEqual(
+      posts().map((p) => p.user),
+      [null, 'onurdemir3'],
+    );
     assert.equal(awx.jobs.get(1000).status, 'canceled');
     assert.equal(s.jobs.find((j) => j.jobId === 1000).decision, 'cancel_requested');
   } finally {
@@ -647,9 +733,15 @@ test('TK8 403 (token la): kalici red; mesaj "token sahibi onurdemir3 bu template
   }
   awx.istekler.length = 0;
   const s = await cycle(db);
-  assert.deepEqual(posts().map((p) => p.user), ['onurdemir3']);
+  assert.deepEqual(
+    posts().map((p) => p.user),
+    ['onurdemir3'],
+  );
   const detay = awx.istekler.filter((x) => x.method === 'GET' && x.path === '/api/v2/jobs/1100/');
-  assert.ok(detay.length && detay.every((x) => x.user === 'portal_svc'), 'is durumu servis kullanicisiyla okunmadi');
+  assert.ok(
+    detay.length && detay.every((x) => x.user === 'portal_svc'),
+    'is durumu servis kullanicisiyla okunmadi',
+  );
   const row = s.jobs.find((j) => j.jobId === 1100);
   assert.equal(row.decision, 'cancel_failed');
   assert.match(fold(row.reason), /token sahibi onurdemir3 bu template'te Admin degil/);
@@ -672,14 +764,24 @@ test('TK9 yetki on kontrolu token SAHIBINE gore (user_capabilities); token yoksa
   konsolYakala(t);
   awx.templates.set(42, { name: 'nginx_config_audit', admins: ['onurdemir3'] });
   awx.templates.set(43, { name: 'baska', admins: [] });
-  const db = dbOf(CFG({ templates: [
-    { serverId: 1, templateId: 42, kind: 'job', name: 'nginx_config_audit' },
-    { serverId: 1, templateId: 43, kind: 'job', name: 'baska' },
-  ] }));
+  const db = dbOf(
+    CFG({
+      templates: [
+        { serverId: 1, templateId: 42, kind: 'job', name: 'nginx_config_audit' },
+        { serverId: 1, templateId: 43, kind: 'job', name: 'baska' },
+      ],
+    }),
+  );
   const app = await uygulama({ db });
   try {
     let p = await app.call('GET', '/api/ansible/longjob-cancel/permissions');
-    assert.deepEqual(p.json.permissions.map((x) => [x.state, x.via]), [['no_admin', 'service'], ['no_admin', 'service']]);
+    assert.deepEqual(
+      p.json.permissions.map((x) => [x.state, x.via]),
+      [
+        ['no_admin', 'service'],
+        ['no_admin', 'service'],
+      ],
+    );
     await tokenKaydet(app);
     awx.istekler.length = 0;
     p = await app.call('GET', '/api/ansible/longjob-cancel/permissions');
@@ -691,9 +793,17 @@ test('TK9 yetki on kontrolu token SAHIBINE gore (user_capabilities); token yoksa
     assert.equal(b.state, 'no_admin');
     assert.match(fold(b.message), /Iptal token'inin sahibi onurdemir3 bu template'te Admin degil/);
     const tpl = awx.istekler.filter((x) => /^\/api\/v2\/job_templates\//.test(x.path));
-    assert.deepEqual([...new Set(tpl.map((x) => x.user))], ['onurdemir3'], 'yetki token ile okunmadi');
+    assert.deepEqual(
+      [...new Set(tpl.map((x) => x.user))],
+      ['onurdemir3'],
+      'yetki token ile okunmadi',
+    );
     // Kaydet (PUT) yaniti da ayni olcumu yapar
-    const put = await app.call('PUT', '/api/ansible/longjob-cancel', db.blobs.get('longjob-cancel') ? JSON.parse(db.blobs.get('longjob-cancel')) : CFG());
+    const put = await app.call(
+      'PUT',
+      '/api/ansible/longjob-cancel',
+      db.blobs.get('longjob-cancel') ? JSON.parse(db.blobs.get('longjob-cancel')) : CFG(),
+    );
     assert.equal(put.json.permissions[0].via, 'cancel_token');
     assert.match(fold(put.json.warnings.join(' ')), /iptal token'i sahibi onurdemir3/);
     sizintiYok(p.text + put.text, 'yetki yaniti');
@@ -710,10 +820,14 @@ test('TK10 SIZINTI YOK: AWX Authorization i (Bearer + ham) yansitsa bile token l
   isEkle({ id: 1201, tpl: 43, started: ago(120) });
   awx.templates.set(42, { name: 'a', admins: [] }); // 403 (yansitmali)
   awx.templates.set(43, { name: 'b', admins: [] });
-  const db = dbOf(CFG({ templates: [
-    { serverId: 1, templateId: 42, kind: 'job', name: 'a' },
-    { serverId: 1, templateId: 43, kind: 'job', name: 'b' },
-  ] }));
+  const db = dbOf(
+    CFG({
+      templates: [
+        { serverId: 1, templateId: 42, kind: 'job', name: 'a' },
+        { serverId: 1, templateId: 43, kind: 'job', name: 'b' },
+      ],
+    }),
+  );
   const app = await uygulama({ db });
   try {
     await app.call('PUT', '/api/ansible/longjob-cancel/tokens/1', { token: YANLIS }); // 401 yansitmali
@@ -732,13 +846,19 @@ test('TK10 SIZINTI YOK: AWX Authorization i (Bearer + ham) yansitsa bile token l
     const hepsi = JSON.stringify({ st: ljc.getStatus(), audits, kartlar: teams.kartlar });
     assert.ok(/You do not have permission/.test(hepsi), 'test kurgusu: 403 kayda gecmedi');
     assert.ok(fold(hepsi).includes("IPTAL TOKEN'I GECERSIZ"), 'test kurgusu: 401 kayda gecmedi');
-    assert.ok(kons.some((l) => l.includes('raw ***')), 'test kurgusu: yansitilan govde loga hic dusmedi');
+    assert.ok(
+      kons.some((l) => l.includes('raw ***')),
+      'test kurgusu: yansitilan govde loga hic dusmedi',
+    );
     sizintiYok(hepsi, 'durum/denetim/Teams');
     for (const y of yanitlar) sizintiYok(y.text, 'HTTP yaniti');
     sizintiYok(kons.join('\n'), 'log');
     for (const y of db.yazilan) sizintiYok(y, 'DB');
     // katman: runner.redactSecrets token i (silinmis olsa bile) tanir
-    assert.ok(!runner.redactSecrets(`x ${KISISEL} y`).includes(KISISEL), 'runner.redactSecrets iptal token ini maskelemiyor');
+    assert.ok(
+      !runner.redactSecrets(`x ${KISISEL} y`).includes(KISISEL),
+      'runner.redactSecrets iptal token ini maskelemiyor',
+    );
   } finally {
     await app.kapat();
   }
@@ -751,19 +871,20 @@ test('TK11 token uclari yalniz Admin: reddedilirse DB ye de AWX e de gidilmez', 
   const app = await uygulama({ db, requireAdmin: red });
   try {
     const tokenUclari = app.kayit.filter((k) => /\/tokens/.test(k.p));
-    assert.deepEqual(
-      tokenUclari.map((k) => `${k.m} ${k.p}`).sort(),
-      [
-        'delete /api/ansible/longjob-cancel/tokens/:serverId',
-        'get /api/ansible/longjob-cancel/tokens',
-        'post /api/ansible/longjob-cancel/tokens/:serverId/verify',
-        'put /api/ansible/longjob-cancel/tokens/:serverId',
-      ],
-    );
+    assert.deepEqual(tokenUclari.map((k) => `${k.m} ${k.p}`).sort(), [
+      'delete /api/ansible/longjob-cancel/tokens/:serverId',
+      'get /api/ansible/longjob-cancel/tokens',
+      'post /api/ansible/longjob-cancel/tokens/:serverId/verify',
+      'put /api/ansible/longjob-cancel/tokens/:serverId',
+    ]);
     for (const k of tokenUclari) {
       assert.equal(k.h[0], app.requireAuth, `${k.m} ${k.p}: ilk bekci requireAuth degil`);
       assert.equal(k.h[1], app.requireAdmin, `${k.m} ${k.p}: ikinci bekci requireAdmin degil`);
-      const r = await app.call(k.m.toUpperCase(), k.p.replace(':serverId', '1'), k.m === 'get' ? undefined : { token: KISISEL });
+      const r = await app.call(
+        k.m.toUpperCase(),
+        k.p.replace(':serverId', '1'),
+        k.m === 'get' ? undefined : { token: KISISEL },
+      );
       assert.equal(r.status, 403, `${k.m} ${k.p} Admin olmadan acik`);
     }
     assert.equal(db.sorgular, 0, 'yetkisiz istek DB ye ulasti');
@@ -786,14 +907,26 @@ test('TK12 Sil: tanimli degil olur, denetime DEGERSIZ yazilir, sonraki iptal ser
     assert.equal(del.json.deleted, true);
     const g = await app.call('GET', '/api/ansible/longjob-cancel/tokens');
     assert.equal(g.json.servers.find((x) => x.serverId === 1).defined, false);
-    const den = audits.filter((a) => a.action === 'awx_long_job_cancel_token').map((a) => JSON.parse(a.detail));
-    assert.deepEqual(den.map((d) => d.op), ['set', 'delete']);
+    const den = audits
+      .filter((a) => a.action === 'awx_long_job_cancel_token')
+      .map((a) => JSON.parse(a.detail));
+    assert.deepEqual(
+      den.map((d) => d.op),
+      ['set', 'delete'],
+    );
     assert.equal(den[1].owner, 'onurdemir3');
     sizintiYok(JSON.stringify(audits) + del.text + g.text, 'silme');
     awx.istekler.length = 0;
     await cycle(db);
-    assert.deepEqual(posts().map((p) => p.user), ['portal_svc'], 'silinen token la iptal denendi');
-    assert.ok(!runner.redactSecrets(`x ${KISISEL}`).includes(KISISEL), 'silinen token artik maskelenmiyor');
+    assert.deepEqual(
+      posts().map((p) => p.user),
+      ['portal_svc'],
+      'silinen token la iptal denendi',
+    );
+    assert.ok(
+      !runner.redactSecrets(`x ${KISISEL}`).includes(KISISEL),
+      'silinen token artik maskelenmiyor',
+    );
   } finally {
     await app.kapat();
   }
@@ -828,7 +961,10 @@ test('TK13 cozulemeyen token (anahtar degisti): IPTAL EDILEMEDI + Teams; servis 
     awx.istekler.length = 0;
     const p = await app.call('GET', '/api/ansible/longjob-cancel/permissions');
     const put = await app.call('PUT', '/api/ansible/longjob-cancel', CFG());
-    for (const [etiket, perms] of [['GET /permissions', p.json.permissions], ['PUT yaniti', put.json.permissions]]) {
+    for (const [etiket, perms] of [
+      ['GET /permissions', p.json.permissions],
+      ['PUT yaniti', put.json.permissions],
+    ]) {
       assert.deepEqual(
         perms.map((x) => [x.state, x.via, x.tokenOwner]),
         [['unknown', 'cancel_token', 'onurdemir3']],
@@ -851,14 +987,21 @@ test('TK14 DB de onekisiz (duz metin) kayit YOK sayilir: kullanilmaz, ekranda ta
   konsolYakala(t);
   isEkle({ id: 1500, tpl: 42, started: ago(120), createdBy: 'portal_svc' });
   const db = dbOf(CFG());
-  db.blobs.set(tokenStore.BLOB_NAME, JSON.stringify({ servers: { 1: { tokenEnc: KISISEL, owner: 'onurdemir3' } } }));
+  db.blobs.set(
+    tokenStore.BLOB_NAME,
+    JSON.stringify({ servers: { 1: { tokenEnc: KISISEL, owner: 'onurdemir3' } } }),
+  );
   const app = await uygulama({ db });
   try {
     const g = await app.call('GET', '/api/ansible/longjob-cancel/tokens');
     assert.equal(g.json.servers.find((x) => x.serverId === 1).defined, false);
     awx.istekler.length = 0;
     await cycle(db);
-    assert.deepEqual(posts().map((p) => p.user), ['portal_svc'], 'duz metin kayit iptal icin kullanildi');
+    assert.deepEqual(
+      posts().map((p) => p.user),
+      ['portal_svc'],
+      'duz metin kayit iptal icin kullanildi',
+    );
   } finally {
     await app.kapat();
   }
@@ -889,8 +1032,15 @@ test('TK15 Dogrula: gecerli -> ok; AWX 500 -> olculemedi (kayit degismez); 401 -
     assert.equal(v.json.result.httpStatus, 401);
     assert.equal(v.json.token.invalid, true);
     assert.equal(v.json.token.lastVerify.result, 'gecersiz');
-    const den = audits.filter((a) => a.action === 'awx_long_job_cancel_token').map((a) => [JSON.parse(a.detail).op, a.result]);
-    assert.deepEqual(den, [['set', 'ok'], ['verify', 'ok'], ['verify', 'fail'], ['verify', 'fail']]);
+    const den = audits
+      .filter((a) => a.action === 'awx_long_job_cancel_token')
+      .map((a) => [JSON.parse(a.detail).op, a.result]);
+    assert.deepEqual(den, [
+      ['set', 'ok'],
+      ['verify', 'ok'],
+      ['verify', 'fail'],
+      ['verify', 'fail'],
+    ]);
   } finally {
     await app.kapat();
   }
@@ -916,7 +1066,11 @@ test('TK16 coklu Portal ornegi: token BASKA ornekte kaydedilirse bu ornekte ipta
   });
   tokenStore._expireCache();
   s = await cycle(db);
-  assert.deepEqual(posts().map((p) => p.user), ['portal_svc', 'onurdemir3'], 'yeni token la yeniden denenmedi');
+  assert.deepEqual(
+    posts().map((p) => p.user),
+    ['portal_svc', 'onurdemir3'],
+    'yeni token la yeniden denenmedi',
+  );
   assert.equal(awx.jobs.get(1600).status, 'canceled');
   assert.equal(s.jobs.find((j) => j.jobId === 1600).decision, 'cancel_requested');
 });
@@ -927,7 +1081,12 @@ test('TK17 runner sozlesmesi: authToken 401 -> cancelTokenInvalid + kalici + "IP
   awx.echoAuth = true;
   isEkle({ id: 1700, tpl: 42, started: ago(120) });
   await assert.rejects(
-    () => runner.cancelJobOnServer(1, 1700, { kind: 'job', authToken: 'IPTAL-EDILMIS-TOKEN-77', authOwner: 'onurdemir3' }),
+    () =>
+      runner.cancelJobOnServer(1, 1700, {
+        kind: 'job',
+        authToken: 'IPTAL-EDILMIS-TOKEN-77',
+        authOwner: 'onurdemir3',
+      }),
     /** @param {any} e */ (e) => {
       assert.equal(e.status, 401);
       assert.equal(e.cancelTokenInvalid, true);
@@ -968,13 +1127,26 @@ test('TK18 token KAYDI okunamazsa (olculemedi) servis kullanicisina DUSULMEZ: ip
     let s;
     for (let i = 1; i <= ljc.MAX_ATTEMPTS; i++) {
       s = await cycle(db);
-      assert.equal(posts().length, 0, `tur ${i}: kayit okunamazken iptal denendi (servis kullanicisina dusuldu)`);
+      assert.equal(
+        posts().length,
+        0,
+        `tur ${i}: kayit okunamazken iptal denendi (servis kullanicisina dusuldu)`,
+      );
       const row = s.jobs.find((j) => j.jobId === 1800);
       assert.equal(row.decision, 'cancel_failed', `tur ${i}`);
-      assert.match(fold(row.reason), /IPTAL TOKEN KAYDI OKUNAMADI/, `tur ${i}: durum satiri okunamadi demiyor`);
+      assert.match(
+        fold(row.reason),
+        /IPTAL TOKEN KAYDI OKUNAMADI/,
+        `tur ${i}: durum satiri okunamadi demiyor`,
+      );
       // Kisa neden (ipucu) da ayni seyi soyler: "iptal token kaydi OKUNAMADI — iptal denenmedi".
-      assert.match(fold(row.reason), /iptal token kaydi OKUNAMADI — iptal denenmedi/, `tur ${i}: durum satiri ipucu yok`);
-      if (i < ljc.MAX_ATTEMPTS) assert.match(fold(row.reason), /tekrar denenecek/, `tur ${i}: gecici sayilmadi`);
+      assert.match(
+        fold(row.reason),
+        /iptal token kaydi OKUNAMADI — iptal denenmedi/,
+        `tur ${i}: durum satiri ipucu yok`,
+      );
+      if (i < ljc.MAX_ATTEMPTS)
+        assert.match(fold(row.reason), /tekrar denenecek/, `tur ${i}: gecici sayilmadi`);
     }
     // Son denemede (SESSIZ degil) TEK kart: "OKUNAMADI"; servis kullanicisina Admin rolu ONERMEZ.
     const kart = teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
@@ -982,7 +1154,11 @@ test('TK18 token KAYDI okunamazsa (olculemedi) servis kullanicisina DUSULMEZ: ip
     assert.match(fold(kartBaslik(kart[0])), /IPTAL TOKEN KAYDI OKUNAMADI/);
     const km = fold(JSON.stringify(kart[0]));
     assert.match(km, /DB erisimini kontrol edin/);
-    assert.doesNotMatch(km, /Admin rolu/, 'kart yanlis duzeltme (servis kullanicisina Admin rolu) oneriyor');
+    assert.doesNotMatch(
+      km,
+      /Admin rolu/,
+      'kart yanlis duzeltme (servis kullanicisina Admin rolu) oneriyor',
+    );
     const f = audits
       .filter((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail')
       .map((a) => JSON.parse(a.detail));
@@ -997,17 +1173,31 @@ test('TK18 token KAYDI okunamazsa (olculemedi) servis kullanicisina DUSULMEZ: ip
     // Yetki on kontrolu: OLCULEMEDI; servis kullanicisina gore olculmez, AWX'e gidilmez.
     awx.istekler.length = 0;
     const p = await app.call('GET', '/api/ansible/longjob-cancel/permissions');
-    assert.deepEqual(p.json.permissions.map((x) => [x.state, x.via]), [['unknown', 'unknown']]);
+    assert.deepEqual(
+      p.json.permissions.map((x) => [x.state, x.via]),
+      [['unknown', 'unknown']],
+    );
     assert.match(fold(p.json.permissions[0].message), /iptal token kaydi OKUNAMADI/);
-    assert.equal(awx.istekler.length, 0, 'kayit okunamazken yetki AWX te (servis kullanicisiyla) olculdu');
+    assert.equal(
+      awx.istekler.length,
+      0,
+      'kayit okunamazken yetki AWX te (servis kullanicisiyla) olculdu',
+    );
 
     // Kayit okunur hale gelince is token'la YENIDEN denenir ve iptal edilir.
     db.tokFail = false;
     s = await cycle(db);
-    assert.deepEqual(posts().map((x) => x.user), ['onurdemir3'], 'kayit okununca token la yeniden denenmedi');
+    assert.deepEqual(
+      posts().map((x) => x.user),
+      ['onurdemir3'],
+      'kayit okununca token la yeniden denenmedi',
+    );
     assert.equal(awx.jobs.get(1800).status, 'canceled');
     assert.equal(s.jobs.find((j) => j.jobId === 1800).decision, 'cancel_requested');
-    sizintiYok(JSON.stringify({ audits, kartlar: teams.kartlar, st: ljc.getStatus() }), 'durum/denetim/Teams');
+    sizintiYok(
+      JSON.stringify({ audits, kartlar: teams.kartlar, st: ljc.getStatus() }),
+      'durum/denetim/Teams',
+    );
   } finally {
     await app.kapat();
   }
@@ -1030,7 +1220,11 @@ test('TK19 bozuk (JSON) token kaydi da OLCULEMEDI: token tanimsiz sunucuda bile 
   db.blobs.set(tokenStore.BLOB_NAME, JSON.stringify({ servers: {} }));
   tokenStore._expireCache();
   const s = await cycle(db);
-  assert.deepEqual(posts().map((x) => x.user), ['portal_svc'], 'kayit duzelince is yeniden denenmedi');
+  assert.deepEqual(
+    posts().map((x) => x.user),
+    ['portal_svc'],
+    'kayit duzelince is yeniden denenmedi',
+  );
   assert.equal(awx.jobs.get(1900).status, 'canceled');
   assert.equal(s.jobs.find((j) => j.jobId === 1900).decision, 'cancel_requested');
 });
@@ -1042,7 +1236,15 @@ test('TK20 coklu AWX sunucusu: token YALNIZ kaydedildigi sunucuya gider; diger s
   try {
     isEkle({ id: 2000, tpl: 42, started: ago(120) });
     awx.templates.set(42, { name: 'nginx_config_audit', admins: ['onurdemir3'] });
-    awx2.jobs.set(77, { id: 77, tpl: 42, tplName: 'nginx_config_audit', status: 'running', started: ago(120), created: ago(120), createdBy: 'x' });
+    awx2.jobs.set(77, {
+      id: 77,
+      tpl: 42,
+      tplName: 'nginx_config_audit',
+      status: 'running',
+      started: ago(120),
+      created: ago(120),
+      createdBy: 'x',
+    });
     awx2.templates.set(42, { name: 'nginx_config_audit', admins: ['portal_svc2'] });
     const cfg = CFG({
       templates: [
@@ -1059,7 +1261,10 @@ test('TK20 coklu AWX sunucusu: token YALNIZ kaydedildigi sunucuya gider; diger s
       const g = await app.call('GET', '/api/ansible/longjob-cancel/tokens');
       const s = await cycle(db);
 
-      for (const [etiket, perms] of [['GET /permissions', p.json.permissions], ['PUT yaniti', put.json.permissions]]) {
+      for (const [etiket, perms] of [
+        ['GET /permissions', p.json.permissions],
+        ['PUT yaniti', put.json.permissions],
+      ]) {
         assert.deepEqual(
           perms.map((x) => [x.serverId, x.state, x.via, x.tokenOwner]),
           [
@@ -1070,7 +1275,10 @@ test('TK20 coklu AWX sunucusu: token YALNIZ kaydedildigi sunucuya gider; diger s
         );
       }
       assert.equal(g.json.servers.find((x) => x.serverId === 2).defined, false);
-      assert.deepEqual(posts().map((x) => [x.path, x.user]), [['/api/v2/jobs/2000/cancel/', 'onurdemir3']]);
+      assert.deepEqual(
+        posts().map((x) => [x.path, x.user]),
+        [['/api/v2/jobs/2000/cancel/', 'onurdemir3']],
+      );
       assert.deepEqual(
         awx2.istekler.filter((x) => x.method === 'POST').map((x) => [x.path, x.user]),
         [['/api/v2/jobs/77/cancel/', 'portal_svc2']],
@@ -1080,8 +1288,15 @@ test('TK20 coklu AWX sunucusu: token YALNIZ kaydedildigi sunucuya gider; diger s
       assert.doesNotMatch(fold(s.jobs.find((j) => j.jobId === 77).reason), /token'iyla/);
       assert.ok(awx2.istekler.length > 0, 'test kurgusu: ikinci sunucuya hic istek gitmedi');
       for (const r of awx2.istekler) {
-        assert.ok(!r.auth.includes(KISISEL), `${r.method} ${r.path}: kisisel token IKINCI sunucuya gitti`);
-        assert.equal(r.user, 'portal_svc2', `${r.method} ${r.path}: ikinci sunucuda servis kullanicisi kullanilmadi`);
+        assert.ok(
+          !r.auth.includes(KISISEL),
+          `${r.method} ${r.path}: kisisel token IKINCI sunucuya gitti`,
+        );
+        assert.equal(
+          r.user,
+          'portal_svc2',
+          `${r.method} ${r.path}: ikinci sunucuda servis kullanicisi kullanilmadi`,
+        );
       }
     } finally {
       await app.kapat();
@@ -1101,7 +1316,9 @@ test('TK21 token kaydedildigi AWX ADRESINE bagli: adres degisirse token yeni adr
   const eskiTok = process.env.AWX_1_TOKEN;
   try {
     await tokenKaydet(app);
-    const once = (await app.call('GET', '/api/ansible/longjob-cancel/tokens')).json.servers.find((x) => x.serverId === 1);
+    const once = (await app.call('GET', '/api/ansible/longjob-cancel/tokens')).json.servers.find(
+      (x) => x.serverId === 1,
+    );
     assert.equal(once.boundTo, `http://127.0.0.1:${awx.port}/api/v2`, 'kayit adrese baglanmadi');
     assert.equal(once.addressChanged, false);
     assert.equal(once.invalid, false);
@@ -1111,7 +1328,15 @@ test('TK21 token kaydedildigi AWX ADRESINE bagli: adres degisirse token yeni adr
     process.env.AWX_1_URL = `http://127.0.0.1:${awx2.port}`;
     process.env.AWX_1_TOKEN = SVC2;
     awx2.users.set(KISISEL, 'onurdemir3');
-    awx2.jobs.set(88, { id: 88, tpl: 42, tplName: 'nginx_config_audit', status: 'running', started: ago(120), created: ago(120), createdBy: 'x' });
+    awx2.jobs.set(88, {
+      id: 88,
+      tpl: 42,
+      tplName: 'nginx_config_audit',
+      status: 'running',
+      started: ago(120),
+      created: ago(120),
+      createdBy: 'x',
+    });
     awx2.templates.set(42, { name: 'nginx_config_audit', admins: ['onurdemir3', 'portal_svc2'] });
 
     const dry = await app.call('POST', '/api/ansible/longjob-cancel/dry-run');
@@ -1123,11 +1348,22 @@ test('TK21 token kaydedildigi AWX ADRESINE bagli: adres degisirse token yeni adr
     await cycle(db); // kalici: tekrar denenmez
 
     assert.ok(awx2.istekler.length > 0, 'test kurgusu: yeni adrese hic istek gitmedi');
-    for (const r of awx2.istekler) assert.ok(!r.auth.includes(KISISEL), `${r.method} ${r.path}: kisisel token YENI adrese gitti`);
-    assert.equal(awx2.istekler.filter((x) => x.method === 'POST').length, 0, 'adres degisince iptal yine denendi');
+    for (const r of awx2.istekler)
+      assert.ok(
+        !r.auth.includes(KISISEL),
+        `${r.method} ${r.path}: kisisel token YENI adrese gitti`,
+      );
+    assert.equal(
+      awx2.istekler.filter((x) => x.method === 'POST').length,
+      0,
+      'adres degisince iptal yine denendi',
+    );
     assert.equal(awx2.jobs.get(88).status, 'running');
 
-    assert.match(fold(dry.json.result.jobs.find((j) => j.jobId === 88).reason), /bu AWX adresi icin kaydedilmedi: gercek taramada iptal DENENMEZ/);
+    assert.match(
+      fold(dry.json.result.jobs.find((j) => j.jobId === 88).reason),
+      /bu AWX adresi icin kaydedilmedi: gercek taramada iptal DENENMEZ/,
+    );
     const row = s.jobs.find((j) => j.jobId === 88);
     assert.equal(row.decision, 'cancel_failed');
     assert.match(fold(row.reason), /BU AWX ADRESI ICIN KAYDEDILMEDI/);
@@ -1135,20 +1371,28 @@ test('TK21 token kaydedildigi AWX ADRESINE bagli: adres degisirse token yeni adr
     const kart = teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
     assert.equal(kart.length, 1);
     assert.match(fold(kartBaslik(kart[0])), /BU AWX ADRESI ICIN KAYDEDILMEDI \(onurdemir3\)/);
-    const f = audits.filter((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail').map((a) => JSON.parse(a.detail));
+    const f = audits
+      .filter((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail')
+      .map((a) => JSON.parse(a.detail));
     assert.equal(f.length, 1);
     assert.equal(f[0].tokenServerMismatch, true);
     assert.equal(f[0].permanent, true);
     assert.equal(f[0].via, 'cancel_token');
 
-    assert.deepEqual(p.json.permissions.map((x) => [x.state, x.via, x.tokenOwner]), [['unknown', 'cancel_token', 'onurdemir3']]);
+    assert.deepEqual(
+      p.json.permissions.map((x) => [x.state, x.via, x.tokenOwner]),
+      [['unknown', 'cancel_token', 'onurdemir3']],
+    );
     assert.equal(v.json.result.ok, false);
     assert.equal(v.json.result.addressChanged, true);
     assert.match(fold(v.json.result.message), /BU AWX ADRESI ICIN KAYDEDILMEDI/);
     const s1 = g.json.servers.find((x) => x.serverId === 1);
     assert.equal(s1.addressChanged, true, 'ekran adres degisimini bilmiyor');
     assert.equal(s1.invalid, true);
-    assert.match(fold(s1.addressMessage), /sunucu simdi http:\/\/127\.0\.0\.1:\d+\/api\/v2 adresini gosteriyor/);
+    assert.match(
+      fold(s1.addressMessage),
+      /sunucu simdi http:\/\/127\.0\.0\.1:\d+\/api\/v2 adresini gosteriyor/,
+    );
     assert.equal(st.open.tokenInvalid, 1, 'durum ekraninda token kullanilamiyor bandi yok');
     for (const y of [dry.text, p.text, v.text, g.text]) sizintiYok(y, 'HTTP yaniti');
   } finally {
@@ -1166,15 +1410,27 @@ test('TK22 adres baglamasi olmayan kayit KULLANILMAZ (ilk kullanimda baglanmaz):
   const db = dbOf(CFG());
   const enc = require('../../db/env-overrides.cjs').encryptSecretValue(KISISEL);
   assert.match(enc, /^enc:v1:/);
-  db.blobs.set(tokenStore.BLOB_NAME, JSON.stringify({ servers: { 1: { tokenEnc: enc, owner: 'onurdemir3' } } }));
+  db.blobs.set(
+    tokenStore.BLOB_NAME,
+    JSON.stringify({ servers: { 1: { tokenEnc: enc, owner: 'onurdemir3' } } }),
+  );
   const s = await cycle(db);
   assert.equal(posts().length, 0, 'baglamasiz kayitla (ya da servis kullanicisiyla) iptal denendi');
-  assert.ok(awx.istekler.every((x) => !x.auth.includes(KISISEL)), 'baglamasiz kaydin token i AWX e gitti');
-  assert.match(fold(s.jobs.find((j) => j.jobId === 2200).reason), /kayitta token'in hangi AWX adresi icin girildigi yok/);
+  assert.ok(
+    awx.istekler.every((x) => !x.auth.includes(KISISEL)),
+    'baglamasiz kaydin token i AWX e gitti',
+  );
+  assert.match(
+    fold(s.jobs.find((j) => j.jobId === 2200).reason),
+    /kayitta token'in hangi AWX adresi icin girildigi yok/,
+  );
   // Baglanan adres: origin (kullanici:sifre@ YOK, kucuk harf) + API tabani; AAP 2.5 gateway yolu
   // (ayni host, farkli taban) da ayri adres sayilir.
   assert.equal(
-    tokenStore.serverFingerprint({ url: 'https://u:p@AWX.Example:8443/eski/yol', apiBase: 'api/controller/v2/' }),
+    tokenStore.serverFingerprint({
+      url: 'https://u:p@AWX.Example:8443/eski/yol',
+      apiBase: 'api/controller/v2/',
+    }),
     'https://awx.example:8443/api/controller/v2',
   );
   assert.notEqual(
@@ -1200,12 +1456,24 @@ test('TK23 gecici 401 sonrasi Dogrula GECERLI: kirmizi bant kalkar, iptal edilem
     const v = await app.call('POST', '/api/ansible/longjob-cancel/tokens/1/verify');
     assert.equal(v.json.result.ok, true);
     const st = ljc.getStatus();
-    assert.equal(st.open.tokenInvalid, 0, "Dogrula gecerli dedi ama IPTAL TOKEN'I GECERSIZ bandi kalkmadi");
-    assert.equal(st.open.failed, 0, 'Dogrula sonrasi iptal edilemeyen is yeniden denemeye acilmadi');
+    assert.equal(
+      st.open.tokenInvalid,
+      0,
+      "Dogrula gecerli dedi ama IPTAL TOKEN'I GECERSIZ bandi kalkmadi",
+    );
+    assert.equal(
+      st.open.failed,
+      0,
+      'Dogrula sonrasi iptal edilemeyen is yeniden denemeye acilmadi',
+    );
     assert.equal(v.json.token.invalid, false);
     awx.istekler.length = 0;
     const s = await cycle(db);
-    assert.deepEqual(posts().map((x) => x.user), ['onurdemir3'], 'Dogrula sonrasi is token la yeniden denenmedi');
+    assert.deepEqual(
+      posts().map((x) => x.user),
+      ['onurdemir3'],
+      'Dogrula sonrasi is token la yeniden denenmedi',
+    );
     assert.equal(awx.jobs.get(2300).status, 'canceled');
     assert.equal(s.jobs.find((j) => j.jobId === 2300).decision, 'cancel_requested');
   } finally {
@@ -1223,12 +1491,20 @@ test('TK24 kuru calistirma iptalin hangi token la yapilacagini soyler; token yok
     let r = await app.call('POST', '/api/ansible/longjob-cancel/dry-run');
     let row = r.json.result.jobs.find((j) => j.jobId === 2400);
     assert.equal(row.decision, 'would_cancel');
-    assert.doesNotMatch(fold(row.reason), /token'iyla/, 'token yokken kuru calistirma token dan soz etti');
+    assert.doesNotMatch(
+      fold(row.reason),
+      /token'iyla/,
+      'token yokken kuru calistirma token dan soz etti',
+    );
     await tokenKaydet(app);
     r = await app.call('POST', '/api/ansible/longjob-cancel/dry-run');
     row = r.json.result.jobs.find((j) => j.jobId === 2400);
     assert.equal(row.decision, 'would_cancel');
-    assert.match(fold(row.reason), /iptal onurdemir3 token'iyla yapilir/, 'kuru calistirma iptal kimligini soylemiyor');
+    assert.match(
+      fold(row.reason),
+      /iptal onurdemir3 token'iyla yapilir/,
+      'kuru calistirma iptal kimligini soylemiyor',
+    );
     assert.equal(posts().length, 0, 'kuru calistirma iptal istegi gonderdi');
     sizintiYok(r.text, 'kuru calistirma yaniti');
   } finally {
@@ -1251,19 +1527,36 @@ test("TK25 403 + isi token sahibi baslatmis: sebep template Admin rolu DEGIL, to
   }
   awx.istekler.length = 0;
   const s = await cycle(db);
-  assert.deepEqual(posts().map((x) => x.user), ['onurdemir3']);
+  assert.deepEqual(
+    posts().map((x) => x.user),
+    ['onurdemir3'],
+  );
   const row = s.jobs.find((j) => j.jobId === 2500);
   assert.equal(row.decision, 'cancel_failed');
   const r = fold(row.reason);
-  assert.match(r, /isi iptal token'inin sahibi onurdemir3 baslatmis/i, 'durum satiri isi token sahibinin baslattigini soylemiyor');
+  assert.match(
+    r,
+    /isi iptal token'inin sahibi onurdemir3 baslatmis/i,
+    'durum satiri isi token sahibinin baslattigini soylemiyor',
+  );
   assert.match(r, /'write' kapsamli/);
-  assert.doesNotMatch(r, /token sahibi onurdemir3 bu template'te Admin degil/i, 'yanlis sebep: Admin rolu');
+  assert.doesNotMatch(
+    r,
+    /token sahibi onurdemir3 bu template'te Admin degil/i,
+    'yanlis sebep: Admin rolu',
+  );
   const kart = teams.kartlar.find((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
   const km = fold(JSON.stringify(kart));
   assert.match(km, /Bu isi iptal token'inin sahibi onurdemir3 baslatmis/);
   assert.match(km, /sebep template Admin rolu DEGIL/);
-  assert.doesNotMatch(km, /kullanicisina bu template'te Admin rolu verin/, 'kart yanlis duzeltme (Admin rolu) oneriyor');
-  const d = JSON.parse(audits.find((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail').detail);
+  assert.doesNotMatch(
+    km,
+    /kullanicisina bu template'te Admin rolu verin/,
+    'kart yanlis duzeltme (Admin rolu) oneriyor',
+  );
+  const d = JSON.parse(
+    audits.find((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail').detail,
+  );
   assert.equal(d.createdByPortal, true);
   assert.equal(d.permanent, true);
   assert.match(fold(d.error), /baslatmis/);
@@ -1277,8 +1570,15 @@ test('TK26 runner sozlesmesi: JSON OLMAYAN hata govdesi (vekil HTML) istegin tok
     await assert.rejects(
       () => runner.whoAmIWithTokenOnServer(1, KISISEL),
       /** @param {any} e */ (e) => {
-        assert.match(String(e.message), /JSON değil \(502\)/, 'test kurgusu: JSON-olmayan yol calismadi');
-        assert.ok(!String(e.message).includes(KISISEL), 'token degeri JSON-olmayan hata metnine sizdi');
+        assert.match(
+          String(e.message),
+          /JSON değil \(502\)/,
+          'test kurgusu: JSON-olmayan yol calismadi',
+        );
+        assert.ok(
+          !String(e.message).includes(KISISEL),
+          'token degeri JSON-olmayan hata metnine sizdi',
+        );
         return true;
       },
     );

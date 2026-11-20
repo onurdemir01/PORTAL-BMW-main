@@ -65,13 +65,17 @@ describe('OcpRouteProd', () => {
     render(<OcpRouteProd />);
     await screen.findByText('kart-api');
     for (const c of ['gbocpprod1', 'gbocpprod2', 'gbocpdrcprod1', 'gbocpprod3'])
-      expect(screen.getAllByRole('columnheader', { name: new RegExp(c) }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole('columnheader', { name: new RegExp(c) }).length).toBeGreaterThan(
+        0,
+      );
     expect(screen.getAllByText('veri yok').length).toBeGreaterThan(0);
     const kart = satirlar().find((r) => within(r).queryByText('kart-api'))!;
     expect(within(kart).getByText('2/2')).toBeTruthy();
     const iban = satirlar().find((r) => within(r).queryByText('IBAN-web'))!;
     expect(within(iban).getByText('1/2')).toBeTruthy();
-    expect((screen.getByLabelText('gbocpdrcprod1 sütununa göre süz') as HTMLSelectElement).disabled).toBe(true);
+    expect(
+      (screen.getByLabelText('gbocpdrcprod1 sütununa göre süz') as HTMLSelectElement).disabled,
+    ).toBe(true);
   });
 
   it('metin, cluster ve kapsam filtreleri satirlari suzer; ozet sabit kalir', async () => {
@@ -84,12 +88,16 @@ describe('OcpRouteProd', () => {
     expect(screen.getByText('1 / 3 prod route')).toBeTruthy();
 
     fireEvent.click(screen.getByText('Filtreleri temizle'));
-    fireEvent.change(screen.getByLabelText('gbocpprod2 sütununa göre süz'), { target: { value: 'yok' } });
+    fireEvent.change(screen.getByLabelText('gbocpprod2 sütununa göre süz'), {
+      target: { value: 'yok' },
+    });
     expect(screen.queryByText('kart-api')).toBeNull();
     expect(screen.getByText('IBAN-web')).toBeTruthy();
     expect(screen.getByText('eski-app')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('gbocpprod3 sütununa göre süz'), { target: { value: 'var' } });
+    fireEvent.change(screen.getByLabelText('gbocpprod3 sütununa göre süz'), {
+      target: { value: 'var' },
+    });
     expect(screen.queryByText('IBAN-web')).toBeNull();
     expect(screen.getByText('eski-app')).toBeTruthy();
 
@@ -99,7 +107,9 @@ describe('OcpRouteProd', () => {
     expect(screen.queryByText('eski-app')).toBeNull();
 
     fireEvent.click(screen.getByText('Filtreleri temizle'));
-    fireEvent.change(screen.getByLabelText('Namespace adına göre süz'), { target: { value: 'arsiv' } });
+    fireEvent.change(screen.getByLabelText('Namespace adına göre süz'), {
+      target: { value: 'arsiv' },
+    });
     expect(screen.getByText('eski-app')).toBeTruthy();
     expect(screen.queryByText('kart-api')).toBeNull();
     // ozet filtreden etkilenmez: toplam 3 prod route

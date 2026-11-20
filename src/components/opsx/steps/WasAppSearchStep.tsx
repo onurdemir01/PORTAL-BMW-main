@@ -7,10 +7,15 @@
 // Keşif SALT OKUNURDUR ve tek seferde en çok 10 sunucuda koşar. Uygulamanın Linux sunucusu
 // 10 veya daha azsa hepsi kendiliğinden keşfe girer; fazlaysa kullanıcı en çok 10 tane
 // işaretler. İşlem (restart/stop/start) burada DEĞİL, keşiften sonra TEK JVM üzerinde seçilir.
-import React, { useEffect, useMemo, useState } from "react";
-import { MagnifyingGlassIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
-import { opsxWasApi, type WasHost } from "@/api/opsxApi";
-import { WasEnvBadge } from "./WasBadges";
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  ArrowLeftIcon,
+} from '@heroicons/react/24/outline';
+import { opsxWasApi, type WasHost } from '@/api/opsxApi';
+import { WasEnvBadge } from './WasBadges';
 import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 export interface WasAppSelection {
@@ -40,7 +45,7 @@ const WasHostPicker: React.FC<{
       .then((r) => {
         if (cancelled) return;
         if (!r.ok) {
-          setError(r.message || "Sunucu listesi alınamadı.");
+          setError(r.message || 'Sunucu listesi alınamadı.');
           return;
         }
         setHosts(r.hosts || []);
@@ -106,7 +111,7 @@ const WasHostPicker: React.FC<{
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             {needPick
               ? `Bu uygulamanın ${selectable.length} Linux sunucusu var; tek keşifte en çok ${max} sunucu taranır — taranacak sunucuları işaretleyin.`
-              : "Keşif aşağıdaki Linux sunucularının hepsinde salt okunur olarak çalışır; hiçbir şey değiştirilmez."}
+              : 'Keşif aşağıdaki Linux sunucularının hepsinde salt okunur olarak çalışır; hiçbir şey değiştirilmez.'}
           </p>
         </div>
         <button
@@ -123,8 +128,8 @@ const WasHostPicker: React.FC<{
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>
             {hosts.length === 0
-              ? "Bu uygulama için WAS envanterinde sunucu kaydı bulunamadı — adı kontrol edin ya da başka uygulama seçin."
-              : "Bu uygulamanın keşfedilebilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor)."}
+              ? 'Bu uygulama için WAS envanterinde sunucu kaydı bulunamadı — adı kontrol edin ya da başka uygulama seçin.'
+              : 'Bu uygulamanın keşfedilebilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor).'}
           </span>
         </div>
       )}
@@ -133,7 +138,7 @@ const WasHostPicker: React.FC<{
         {hosts.map((h) => (
           <div
             key={h.host}
-            className={`flex items-center gap-2 px-3 py-2 ${h.selectable ? "" : "opacity-60"}`}
+            className={`flex items-center gap-2 px-3 py-2 ${h.selectable ? '' : 'opacity-60'}`}
             title={h.selectable ? undefined : h.reason}
           >
             {needPick && (
@@ -146,22 +151,31 @@ const WasHostPicker: React.FC<{
                 className="rounded"
               />
             )}
-            <span className="flex-1 text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={h.host}>
+            <span
+              className="flex-1 text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal"
+              title={h.host}
+            >
               {h.host}
             </span>
             <WasEnvBadge env={h.env} />
             <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
-              {h.os || "OS ?"}
-              {h.wasVersion ? ` · WAS ${h.wasVersion}` : ""}
+              {h.os || 'OS ?'}
+              {h.wasVersion ? ` · WAS ${h.wasVersion}` : ''}
             </span>
-            {!h.selectable && <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">desteklenmiyor</span>}
+            {!h.selectable && (
+              <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
+                desteklenmiyor
+              </span>
+            )}
           </div>
         ))}
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-[var(--text-muted)]">
-          {needPick ? `${picked.size} / ${max} sunucu seçildi` : `${selectable.length} sunucu taranacak`}
+          {needPick
+            ? `${picked.size} / ${max} sunucu seçildi`
+            : `${selectable.length} sunucu taranacak`}
         </span>
         <button onClick={submit} disabled={!canStart} className="btn-primary">
           Canlı keşfi başlat
@@ -174,8 +188,12 @@ const WasHostPicker: React.FC<{
 // `initialApp` (Application Hub derin bağlantısı): uygulama ÖN-SEÇİLİ gelir, doğrudan sunucu
 // listesi (WasHostPicker) açılır. Ad envanterde yoksa sunucu listesi boş/hatalı döner ve picker
 // bunu görünür biçimde söyler; "Başka uygulama" her zaman arama listesine döndürür.
-const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit: (v: WasAppSelection) => void }> = ({ busy, initialApp, onSubmit }) => {
-  const [search, setSearch] = useState("");
+const WasAppSearchStep: React.FC<{
+  busy?: boolean;
+  initialApp?: string;
+  onSubmit: (v: WasAppSelection) => void;
+}> = ({ busy, initialApp, onSubmit }) => {
+  const [search, setSearch] = useState('');
   const [apps, setApps] = useState<string[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -193,7 +211,7 @@ const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit
           if (cancelled) return;
           if (!r.ok) {
             setApps([]);
-            setError(r.message || "Uygulama listesi alınamadı.");
+            setError(r.message || 'Uygulama listesi alınamadı.');
             return;
           }
           setApps(r.apps || []);
@@ -231,7 +249,9 @@ const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {truncated && (
-        <p className="text-xs text-amber-700">Liste kırpıldı — aradığınız uygulamayı görmüyorsanız aramayı daraltın.</p>
+        <p className="text-xs text-amber-700">
+          Liste kırpıldı — aradığınız uygulamayı görmüyorsanız aramayı daraltın.
+        </p>
       )}
       <div className="max-h-[70vh] overflow-y-auto border border-[var(--border)] rounded-xl divide-y divide-[var(--border)]">
         {loading ? (

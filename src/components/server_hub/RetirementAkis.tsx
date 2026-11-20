@@ -56,25 +56,35 @@ export function kalanGun(effectiveDeleteAt: string | null, bugun = new Date()): 
 /** Hedefin durumundan asama listesi. SAF fonksiyon - birebir test edilebilir. */
 export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[] {
   const st = t.status;
-  const stopBitti = Boolean(t.stoppedAt) || ['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(st);
+  const stopBitti =
+    Boolean(t.stoppedAt) ||
+    ['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(st);
   const silindi = st === 'deleted' || Boolean(t.deletedAt);
   const geriAlindi = st === 'active' || Boolean(t.rolledBackAt);
 
   // ── Plan
   const planDurum: Durum =
-    st === 'planning' ? 'suruyor'
-    : st === 'pending' ? 'bekliyor'
-    : st === 'skipped' ? 'atlandi'
-    : 'bitti';
+    st === 'planning'
+      ? 'suruyor'
+      : st === 'pending'
+        ? 'bekliyor'
+        : st === 'skipped'
+          ? 'atlandi'
+          : 'bitti';
 
   // ── STOP
   const stopDurum: Durum =
-    st === 'stopping' ? 'suruyor'
-    : st === 'stop_scheduled' ? 'bekliyor'
-    : st === 'failed' ? 'hata'
-    : stopBitti ? 'bitti'
-    : ['pending', 'planning', 'planned'].includes(st) ? 'bekliyor'
-    : 'bilinmiyor';
+    st === 'stopping'
+      ? 'suruyor'
+      : st === 'stop_scheduled'
+        ? 'bekliyor'
+        : st === 'failed'
+          ? 'hata'
+          : stopBitti
+            ? 'bitti'
+            : ['pending', 'planning', 'planned'].includes(st)
+              ? 'bekliyor'
+              : 'bilinmiyor';
 
   const stopBilgi =
     st === 'stop_scheduled' && t.scheduledAt
@@ -91,22 +101,43 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
   // "BITTI" YALNIZ KANITLA (2026-10-08 uretim bulgusu): eskiden bilinmeyen her durum en sonda
   // 'bitti'ye dusuyordu; sonucu hic okunmayan 'running' isler "bitti" gorunuyordu. Artik
   // 'bitti' yalniz her girdi 'ok'/'skip'/'restored' iken; tanimadigimiz durum 'bilinmiyor'.
-  const BILINEN = new Set(['pending', 'running', 'ok', 'skip', 'failed', 'manual', 'restoring', 'restored', 'restore_manual', 'restore_failed']);
+  const BILINEN = new Set([
+    'pending',
+    'running',
+    'ok',
+    'skip',
+    'failed',
+    'manual',
+    'restoring',
+    'restored',
+    'restore_manual',
+    'restore_failed',
+  ]);
   const webDurum: Durum =
-    web.length === 0 ? (stopBitti ? 'atlandi' : 'bekliyor')
-    : sayi('pending') > 0 ? 'bekliyor'
-    : sayi('running') > 0 || sayi('restoring') > 0 ? 'suruyor'
-    : web.some((w) => w.status === 'failed' || w.status === 'restore_failed') ? 'hata'
-    : web.some((w) => w.status === 'manual' || w.status === 'restore_manual') ? 'elle'
-    : web.some((w) => !BILINEN.has(w.status)) ? 'bilinmiyor'
-    : 'bitti';
+    web.length === 0
+      ? stopBitti
+        ? 'atlandi'
+        : 'bekliyor'
+      : sayi('pending') > 0
+        ? 'bekliyor'
+        : sayi('running') > 0 || sayi('restoring') > 0
+          ? 'suruyor'
+          : web.some((w) => w.status === 'failed' || w.status === 'restore_failed')
+            ? 'hata'
+            : web.some((w) => w.status === 'manual' || w.status === 'restore_manual')
+              ? 'elle'
+              : web.some((w) => !BILINEN.has(w.status))
+                ? 'bilinmiyor'
+                : 'bitti';
   const webBilgi =
     web.length === 0
       ? 'kaldırılacak Apache/IHS vhost yok'
       : [
           sayi('ok') ? `${sayi('ok')} kaldırıldı` : '',
           sayi('running') ? `${sayi('running')} iş sürüyor (sonuç henüz okunmadı)` : '',
-          sayi('skip') ? `${sayi('skip')} atlandı — yapılacak şey bulunmadı, “kaldırıldı” DEĞİL` : '',
+          sayi('skip')
+            ? `${sayi('skip')} atlandı — yapılacak şey bulunmadı, “kaldırıldı” DEĞİL`
+            : '',
           sayi('manual') ? `${sayi('manual')} ELLE (NGINX)` : '',
           sayi('pending') ? `${sayi('pending')} bekliyor` : '',
           sayi('restoring') ? `${sayi('restoring')} geri açılıyor` : '',
@@ -114,66 +145,78 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
           web.filter((w) => w.status === 'failed' || w.status === 'restore_failed').length
             ? `${web.filter((w) => w.status === 'failed' || w.status === 'restore_failed').length} HATA`
             : '',
-        ].filter(Boolean).join(' · ');
+        ]
+          .filter(Boolean)
+          .join(' · ');
 
   // ── Bekleme + DELETE
   const kg = kalanGun(rec.effectiveDeleteAt, bugun);
-  const beklemeDurum: Durum =
-    silindi ? 'bitti'
-    : geriAlindi ? 'atlandi'
-    : !stopBitti ? 'bekliyor'
-    : kg === null ? 'bilinmiyor'
-    : kg > 0 ? 'suruyor'
-    : 'bitti';
+  const beklemeDurum: Durum = silindi
+    ? 'bitti'
+    : geriAlindi
+      ? 'atlandi'
+      : !stopBitti
+        ? 'bekliyor'
+        : kg === null
+          ? 'bilinmiyor'
+          : kg > 0
+            ? 'suruyor'
+            : 'bitti';
   // SILME SAATI (2026-10-08): DELETE gunun herhangi bir saatinde degil, 23:00 (TR)'den
   // sonraki ilk turda baslar; kacirilan pencere ertesi geceye kalir. Admin "beklemeyi
   // atla" saati atlar. Saat sunucudan gelir (deleteAt), burada tahmin edilmez.
   const saat = rec.deleteAt?.saat || '23:00';
-  const beklemeBilgi =
-    geriAlindi ? 'geri alındı — silme devre dışı'
-    : rec.deleteNowAt && !silindi ? `admin beklemeyi atladı — ${saat} beklenmez, zamanlayıcının ilk turunda başlar`
-    : rec.effectiveDeleteAt
-      ? kg === null ? 'tarih okunamadı'
-        : kg > 0 ? `${kg} gün kaldı — silme ${fmtDate(rec.effectiveDeleteAt)} ${saat}`
-        : kg === 0 ? `silme BUGÜN ${saat}'te (${fmtDate(rec.effectiveDeleteAt)})`
-        : `silme günü geçti (${fmtDate(rec.effectiveDeleteAt)}) — sıradaki ${saat} penceresinde`
-      : `tarih YOK — STOP yapılınca ${rec.deleteAfterDays} gün sonrası, ${saat}`;
+  const beklemeBilgi = geriAlindi
+    ? 'geri alındı — silme devre dışı'
+    : rec.deleteNowAt && !silindi
+      ? `admin beklemeyi atladı — ${saat} beklenmez, zamanlayıcının ilk turunda başlar`
+      : rec.effectiveDeleteAt
+        ? kg === null
+          ? 'tarih okunamadı'
+          : kg > 0
+            ? `${kg} gün kaldı — silme ${fmtDate(rec.effectiveDeleteAt)} ${saat}`
+            : kg === 0
+              ? `silme BUGÜN ${saat}'te (${fmtDate(rec.effectiveDeleteAt)})`
+              : `silme günü geçti (${fmtDate(rec.effectiveDeleteAt)}) — sıradaki ${saat} penceresinde`
+        : `tarih YOK — STOP yapılınca ${rec.deleteAfterDays} gün sonrası, ${saat}`;
 
   const delDurum: Durum =
-    st === 'deleting' ? 'suruyor'
-    : silindi ? 'bitti'
-    : geriAlindi ? 'atlandi'
-    : 'bekliyor';
+    st === 'deleting' ? 'suruyor' : silindi ? 'bitti' : geriAlindi ? 'atlandi' : 'bekliyor';
 
   const liste: Asama[] = [
     {
       ad: '1 · Ön kontrol',
       durum: planDurum,
-      komut: 'app_retirement_stop.yml · plan_only=true — sunucuya DOKUNMAZ, ne yapılacağını listeler (“Retirement’ı başlat”)',
+      komut:
+        'app_retirement_stop.yml · plan_only=true — sunucuya DOKUNMAZ, ne yapılacağını listeler (“Retirement’ı başlat”)',
       bilgi: t.planText || undefined,
     },
     {
       ad: '2 · STOP',
       durum: stopDurum,
-      komut: 'auto-start=false → /server-group=<APP>_Group:stop-servers (STOPPED beklenir) → paketler .<smart>.old',
+      komut:
+        'auto-start=false → /server-group=<APP>_Group:stop-servers (STOPPED beklenir) → paketler .<smart>.old',
       bilgi: stopBilgi,
     },
     {
       ad: '3 · Web (vhost)',
       durum: webDurum,
-      komut: 'server_hub_fix · apache_retire_vhost — yedek alır, apachectl -t geçmezse GERİ ALIR. NGINX otomatik DEĞİL',
+      komut:
+        'server_hub_fix · apache_retire_vhost — yedek alır, apachectl -t geçmezse GERİ ALIR. NGINX otomatik DEĞİL',
       bilgi: webBilgi,
     },
     {
       ad: '4 · Bekleme',
       durum: beklemeDurum,
-      komut: 'Portal zamanlayıcısı birkaç dakikada bir bakar; silme günü 23:00’ten (TR) sonraki ilk turda DELETE başlar, Portal o saatte kapalıysa ertesi gece. Ekstra onay İSTENMEZ',
+      komut:
+        'Portal zamanlayıcısı birkaç dakikada bir bakar; silme günü 23:00’ten (TR) sonraki ilk turda DELETE başlar, Portal o saatte kapalıysa ertesi gece. Ekstra onay İSTENMEZ',
       bilgi: beklemeBilgi,
     },
     {
       ad: '5 · DELETE',
       durum: delDurum,
-      komut: 'app_retirement_delete.yml — *.<smart>.old sil + deployment kaydı + boşsa server-group kaldır. GERİ ALINAMAZ',
+      komut:
+        'app_retirement_delete.yml — *.<smart>.old sil + deployment kaydı + boşsa server-group kaldır. GERİ ALINAMAZ',
       bilgi: silindi && t.deletedAt ? fmtDateTime(t.deletedAt) : undefined,
     },
   ];
@@ -183,7 +226,8 @@ export function asamalar(rec: RtRecord, t: RtTarget, bugun = new Date()): Asama[
     liste.push({
       ad: '↩ Geri alma',
       durum: st === 'rolling_back' ? 'suruyor' : st === 'rollback_failed' ? 'hata' : 'bitti',
-      komut: 'app_retirement_rollback.yml — paketler .old’dan kurtarılır → auto-start=true → JVM başlatılır',
+      komut:
+        'app_retirement_rollback.yml — paketler .old’dan kurtarılır → auto-start=true → JVM başlatılır',
       bilgi: t.rolledBackAt ? fmtDateTime(t.rolledBackAt) : t.resultText || undefined,
     });
   }
@@ -207,16 +251,25 @@ export default function RetirementAkis({ rec, t }: { rec: RtRecord; t: RtTarget 
         const s = SIM[a.durum];
         return (
           <div key={a.ad} className="flex items-start gap-2 text-[11px]">
-            <span className="w-4 text-center flex-shrink-0 font-semibold" style={{ color: s.renk }} title={a.durum}>
+            <span
+              className="w-4 text-center flex-shrink-0 font-semibold"
+              style={{ color: s.renk }}
+              title={a.durum}
+            >
               {s.isaret}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{a.ad}</span>
+                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {a.ad}
+                </span>
                 <span style={{ color: s.renk }}>{a.durum}</span>
                 {a.bilgi && <span style={{ color: 'var(--text-secondary)' }}>· {a.bilgi}</span>}
               </div>
-              <div className="font-mono text-[11px] leading-snug" style={{ color: 'var(--text-muted)' }}>
+              <div
+                className="font-mono text-[11px] leading-snug"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {a.komut}
               </div>
             </div>

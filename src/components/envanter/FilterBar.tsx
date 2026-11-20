@@ -1,6 +1,6 @@
-import React from "react";
-import { XMarkIcon, FunnelIcon } from "@heroicons/react/24/outline";
-import type { FilterGroup, ColumnFilter, FilterOp } from "@/api/inventoryApi";
+import React from 'react';
+import { XMarkIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import type { FilterGroup, ColumnFilter, FilterOp } from '@/api/inventoryApi';
 
 interface Props {
   filterGroup: FilterGroup;
@@ -9,41 +9,36 @@ interface Props {
 }
 
 const OP_LABELS: Record<FilterOp, string> = {
-  contains:    "İçerir",
-  notContains: "İçermez",
-  equals:      "Eşittir",
-  notEquals:   "Eşit Değil",
-  startsWith:  "Başlar",
-  endsWith:    "Biter",
-  isNull:      "Boş",
-  isNotNull:   "Dolu",
-  gt:          ">",
-  gte:         ">=",
-  lt:          "<",
-  lte:         "<=",
+  contains: 'İçerir',
+  notContains: 'İçermez',
+  equals: 'Eşittir',
+  notEquals: 'Eşit Değil',
+  startsWith: 'Başlar',
+  endsWith: 'Biter',
+  isNull: 'Boş',
+  isNotNull: 'Dolu',
+  gt: '>',
+  gte: '>=',
+  lt: '<',
+  lte: '<=',
 };
 
-const NO_VALUE_OPS: FilterOp[] = ["isNull", "isNotNull"];
+const NO_VALUE_OPS: FilterOp[] = ['isNull', 'isNotNull'];
 
 export function FilterBar({ filterGroup, onChange, columns }: Props) {
-  function setMode(mode: "AND" | "OR") {
+  function setMode(mode: 'AND' | 'OR') {
     onChange({ ...filterGroup, mode });
   }
 
   function addFilter() {
     onChange({
       ...filterGroup,
-      filters: [
-        ...filterGroup.filters,
-        { col: columns[0] || "", op: "contains", value: "" },
-      ],
+      filters: [...filterGroup.filters, { col: columns[0] || '', op: 'contains', value: '' }],
     });
   }
 
   function updateFilter(idx: number, patch: Partial<ColumnFilter>) {
-    const filters = filterGroup.filters.map((f, i) =>
-      i === idx ? { ...f, ...patch } : f
-    );
+    const filters = filterGroup.filters.map((f, i) => (i === idx ? { ...f, ...patch } : f));
     onChange({ ...filterGroup, filters });
   }
 
@@ -69,14 +64,14 @@ export function FilterBar({ filterGroup, onChange, columns }: Props) {
 
         {/* AND / OR toggle */}
         <div className="flex items-center bg-gray-100 rounded-lg p-0.5 ml-2">
-          {(["AND", "OR"] as const).map((m) => (
+          {(['AND', 'OR'] as const).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
               className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
                 filterGroup.mode === m
-                  ? "bg-[#1A56DB] text-white shadow-sm"
-                  : "text-gray-500 hover:text-gray-800"
+                  ? 'bg-[#1A56DB] text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               {m}
@@ -119,7 +114,9 @@ export function FilterBar({ filterGroup, onChange, columns }: Props) {
             className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] bg-white max-w-[160px]"
           >
             {columns.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
 
@@ -130,7 +127,9 @@ export function FilterBar({ filterGroup, onChange, columns }: Props) {
             className="px-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-[#1A56DB] bg-white"
           >
             {(Object.keys(OP_LABELS) as FilterOp[]).map((op) => (
-              <option key={op} value={op}>{OP_LABELS[op]}</option>
+              <option key={op} value={op}>
+                {OP_LABELS[op]}
+              </option>
             ))}
           </select>
 

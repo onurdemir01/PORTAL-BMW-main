@@ -21,7 +21,11 @@ test('createConversation(): RETURNING id kullanilir, ham OUTPUT INSERTED DEGIL',
   const id = await history.createConversation('JDoe', 'Test sohbeti');
   assert.equal(id, 42);
   assert.match(captured.sql, /RETURNING id/i);
-  assert.doesNotMatch(captured.sql, /OUTPUT INSERTED/i, 'adaptorun cevirdigi tasinabilir sozdizimi kullanilmali');
+  assert.doesNotMatch(
+    captured.sql,
+    /OUTPUT INSERTED/i,
+    'adaptorun cevirdigi tasinabilir sozdizimi kullanilmali',
+  );
   assert.equal(captured.params[0], 'jdoe', 'username lowercase saklanir');
 });
 
@@ -57,7 +61,10 @@ test('usageSummary(): days SQL metnine gomulmez, baglanmis parametre olarak gece
 
 test('usageSummary(): days 365 ile sinirlanir (ust sinir asilmaz)', async (t) => {
   let captured = null;
-  t.mock.method(db, 'query', async (sql, params) => { captured = { sql, params }; return { rows: [] }; });
+  t.mock.method(db, 'query', async (sql, params) => {
+    captured = { sql, params };
+    return { rows: [] };
+  });
   await history.usageSummary(9999);
   assert.equal(captured.params[0], 365);
 });

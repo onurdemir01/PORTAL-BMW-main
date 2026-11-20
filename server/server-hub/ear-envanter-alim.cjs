@@ -57,7 +57,16 @@ const SINIR_WAR = 200;
 const SINIR_KUTUPHANE = 2000;
 const SINIR_KOK_GIRDI = 500;
 const SINIR_XML_KAYIT = 300;
-const XML_DURUMLARI = Object.freeze(['OKUNDU', 'YOK', 'IZIN', 'DOSYA_DEGIL', 'BUYUK', 'REDDEDILDI', 'BOZUK', 'HATA']);
+const XML_DURUMLARI = Object.freeze([
+  'OKUNDU',
+  'YOK',
+  'IZIN',
+  'DOSYA_DEGIL',
+  'BUYUK',
+  'REDDEDILDI',
+  'BOZUK',
+  'HATA',
+]);
 const ESLESME_DURUMLARI = Object.freeze(['VAR', 'JVM_YOK', 'OLCULEMEDI']);
 const WEB_BASLA = Buffer.from('@@EAR_WEB_BASLA@@');
 const WEB_BITTI = Buffer.from('@@EAR_WEB_BITTI@@');
@@ -109,7 +118,8 @@ const S = (v) => {
 };
 const B = (v) => (v === true ? 1 : 0);
 const D = (v, liste, varsayilan) => (liste.includes(v) ? v : varsayilan);
-const N = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.trunc(Number(v))));
+const N = (v) =>
+  v == null || !Number.isFinite(Number(v)) ? null : Math.max(0, Math.trunc(Number(v)));
 const dizi = (v) => (Array.isArray(v) ? v : []);
 const nesne = (v) => (v && typeof v === 'object' ? v : {});
 
@@ -141,7 +151,8 @@ function kosuAltDizini(kosu) {
       p = {};
     }
     const n = Number(p && p.awx_job_id);
-    if (!Number.isInteger(n) || n <= 0) throw kodluHata('GECERSIZ', 'AWX koşusunun iş numarası yok');
+    if (!Number.isInteger(n) || n <= 0)
+      throw kodluHata('GECERSIZ', 'AWX koşusunun iş numarası yok');
     return `awx-${n}`;
   }
   return `kosu-${Number(kosu && kosu.id)}`;
@@ -149,8 +160,11 @@ function kosuAltDizini(kosu) {
 
 /** kosu: Portal kosu numarasi ya da kosuAltDizini() sonucu (kosu-<n> / awx-<n>). */
 function hamDosyaYolu(dizin, kosu, host) {
-  const alt =
-    (() => { if (typeof kosu === 'string' && ALT_DIZIN_RE.test(kosu)) return kosu; if (Number.isInteger(Number(kosu))) return `kosu-${Number(kosu)}`; return null; })();
+  const alt = (() => {
+    if (typeof kosu === 'string' && ALT_DIZIN_RE.test(kosu)) return kosu;
+    if (Number.isInteger(Number(kosu))) return `kosu-${Number(kosu)}`;
+    return null;
+  })();
   if (!alt || !HOST_RE.test(String(host))) throw kodluHata('GECERSIZ', 'geçersiz koşu / host');
   return path.join(dizin, alt, 'raw', `${String(host).toUpperCase()}.out`);
 }
@@ -222,12 +236,22 @@ function wasJvm(v) {
     jvm_girisi: N(j.jvm_girisi),
     ilk_heap_mb: tamsayi(j.ilk_heap_mb),
     en_cok_heap_mb: tamsayi(j.en_cok_heap_mb),
-    jvm_argumanlari: M(maskJvmArgs(M(j.jvm_argumanlari, 8192).replace(/[\t\r\n]/g, ' ')), SINIR_WAS_JVM_ARG),
+    jvm_argumanlari: M(
+      maskJvmArgs(M(j.jvm_argumanlari, 8192).replace(/[\t\r\n]/g, ' ')),
+      SINIR_WAS_JVM_ARG,
+    ),
     sistem_ozellikleri: ozellikler.slice(0, SINIR_WAS_OZELLIK).map((o) => {
       const ad = M(nesne(o).ad, 256);
       const d = nesne(o).deger;
       // Acik (sir adli olmayan) deger de serbest metin maskesinden gecer: URL / kullanici/parola@ (2026-11-12).
-      return { ad, deger: (() => { if (d == null) return null; if (degerAcik(ad)) return M(maskText(M(d, 1024)), 512); return '***'; })() };
+      return {
+        ad,
+        deger: (() => {
+          if (d == null) return null;
+          if (degerAcik(ad)) return M(maskText(M(d, 1024)), 512);
+          return '***';
+        })(),
+      };
     }),
     ozellik_kesildi: j.ozellik_kesildi === true || ozellikler.length > SINIR_WAS_OZELLIK,
   };
@@ -238,8 +262,15 @@ function wasOzeti(p) {
   if (!p.was || typeof p.was !== 'object') return null;
   const w = p.was;
   return JSON.stringify({
-    kokler: dizi(w.kokler).slice(0, 10).map((k) => ({ yol: M(nesne(k).yol, 300), durum: D(nesne(k).durum, ['VAR', 'YOK', 'IZIN', 'HATA'], 'HATA') })),
-    dosyalar: dizi(w.dosyalar).slice(0, 100).map((d) => ({ yol: M(nesne(d).yol, 400), durum: D(nesne(d).durum, XML_DURUMLARI, 'HATA') })),
+    kokler: dizi(w.kokler)
+      .slice(0, 10)
+      .map((k) => ({
+        yol: M(nesne(k).yol, 300),
+        durum: D(nesne(k).durum, ['VAR', 'YOK', 'IZIN', 'HATA'], 'HATA'),
+      })),
+    dosyalar: dizi(w.dosyalar)
+      .slice(0, 100)
+      .map((d) => ({ yol: M(nesne(d).yol, 400), durum: D(nesne(d).durum, XML_DURUMLARI, 'HATA') })),
     sunucular: dizi(w.sunucular)
       .slice(0, SINIR_XML_KAYIT)
       .map((ham) => {
@@ -250,8 +281,16 @@ function wasOzeti(p) {
           dugum: M(s.dugum, 128),
           ad: M(s.ad, 128),
           tur: M(s.tur, 64),
-          uclar: dizi(s.uclar).slice(0, 20).map((u) => ({ ad: M(nesne(u).ad, 64), host: M(nesne(u).host, 256), port: tamsayi(nesne(u).port) })),
-          uygulamalar: dizi(s.uygulamalar).slice(0, 200).map((v) => M(v, 256)),
+          uclar: dizi(s.uclar)
+            .slice(0, 20)
+            .map((u) => ({
+              ad: M(nesne(u).ad, 64),
+              host: M(nesne(u).host, 256),
+              port: tamsayi(nesne(u).port),
+            })),
+          uygulamalar: dizi(s.uygulamalar)
+            .slice(0, 200)
+            .map((v) => M(v, 256)),
           // eski tarayicinin paketinde 'jvm' yok -> ozette de yok (olculmedi)
           ...(s.jvm !== undefined ? { jvm: wasJvm(s.jvm) } : {}),
         };
@@ -275,10 +314,18 @@ function baglantiOzeti(p) {
         const x = nesne(ham);
         return {
           port: tamsayi(x.port),
-          sahipler: dizi(x.sahipler).slice(0, 10).map((s) => ({ jvm: M(nesne(s).jvm, 128), kurulum: M(nesne(s).kurulum, 200), tur: M(nesne(s).tur, 16) })),
+          sahipler: dizi(x.sahipler)
+            .slice(0, 10)
+            .map((s) => ({
+              jvm: M(nesne(s).jvm, 128),
+              kurulum: M(nesne(s).kurulum, 200),
+              tur: M(nesne(s).tur, 16),
+            })),
           dinleniyor: x.dinleniyor === true,
           en_cok: N(x.en_cok),
-          uzaklar: dizi(x.uzaklar).slice(0, 10).map((u) => ({ ip: M(nesne(u).ip, 64), gozlem: N(nesne(u).gozlem) })),
+          uzaklar: dizi(x.uzaklar)
+            .slice(0, 10)
+            .map((u) => ({ ip: M(nesne(u).ip, 64), gozlem: N(nesne(u).gozlem) })),
         };
       }),
   });
@@ -336,11 +383,17 @@ function teknoloji(liste) {
     jackson: al('jackson-databind'),
     thymeleaf: al('thymeleaf'),
     struts: al('struts2-core', 'struts-core', 'struts'),
-    servlet: (() => { if (jakarta && javax) return 'karisik'; if (jakarta) return 'jakarta'; if (javax) return 'javax'; return null; })(),
+    servlet: (() => {
+      if (jakarta && javax) return 'karisik';
+      if (jakarta) return 'jakarta';
+      if (javax) return 'javax';
+      return null;
+    })(),
   };
 }
 
-const izOf = (v) => crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
+const izOf = (v) =>
+  crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
 
 /**
  * SURUM IZI (2026-11-05): ayni setin BOYUTSUZ izi ([ad, surum] listesi, ayni sirayla). Iki kopyanin
@@ -357,9 +410,13 @@ function kutuphaneSeti(liste) {
   const satirlar = ham
     .slice(0, SINIR_KUTUPHANE)
     .map((k) => [M(k && k[0], 200), M(k && k[1], 100), S(k && k[2])])
-    .sort((x, y) =>
-      { if (x[0] < y[0]) return -1; if (x[0] > y[0]) return 1; if (x[1] < y[1]) return -1; if (x[1] > y[1]) return 1; return x[2] - y[2]; },
-    );
+    .sort((x, y) => {
+      if (x[0] < y[0]) return -1;
+      if (x[0] > y[0]) return 1;
+      if (x[1] < y[1]) return -1;
+      if (x[1] > y[1]) return 1;
+      return x[2] - y[2];
+    });
   if (!satirlar.length) return null;
   return {
     iz: izOf(satirlar),
@@ -430,29 +487,40 @@ function xmlOzeti(p) {
           ad: M(nesne(x).ad, 256),
           tur: D(nesne(x).tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
           yol: M(nesne(x).yol, 400),
-          ...faz(nesne(x), 'yol_durumu', (v) => (v == null ? null : D(v, ['VAR', 'YOK', 'OLCULEMEDI'], 'OLCULEMEDI'))),
+          ...faz(nesne(x), 'yol_durumu', (v) =>
+            v == null ? null : D(v, ['VAR', 'YOK', 'OLCULEMEDI'], 'OLCULEMEDI'),
+          ),
         })),
         // Faz A (surum 3); eski pakette alan yok -> alan YAZILMAZ (olculmedi).
         ...(Array.isArray(k.profiller)
           ? {
               profiller: k.profiller.slice(0, 50).map((ham2) => {
                 const p2 = nesne(ham2);
-                const mc = p2.modcluster && typeof p2.modcluster === 'object' ? p2.modcluster : null;
+                const mc =
+                  p2.modcluster && typeof p2.modcluster === 'object' ? p2.modcluster : null;
                 return {
                   ad: M(p2.ad, 128),
                   modcluster: mc
                     ? {
                         tur: D(mc.tur, ['proxy', 'mod-cluster-config'], 'proxy'),
-                        proxies: dizi(mc.proxies).slice(0, 50).map((v) => M(v, 128)),
-                        proxy_list: dizi(mc.proxy_list).slice(0, 50).map((v) => M(v, 300)),
+                        proxies: dizi(mc.proxies)
+                          .slice(0, 50)
+                          .map((v) => M(v, 128)),
+                        proxy_list: dizi(mc.proxy_list)
+                          .slice(0, 50)
+                          .map((v) => M(v, 300)),
                         balancer: M(mc.balancer, 128),
                         advertise: mc.advertise !== false,
                         advertise_soketi: M(mc.advertise_soketi, 128),
                         dinleyici: M(mc.dinleyici, 128),
                       }
                     : null,
-                  ajp: dizi(p2.ajp).slice(0, 20).map((v) => M(v, 128)),
-                  http: dizi(p2.http).slice(0, 20).map((v) => M(v, 128)),
+                  ajp: dizi(p2.ajp)
+                    .slice(0, 20)
+                    .map((v) => M(v, 128)),
+                  http: dizi(p2.http)
+                    .slice(0, 20)
+                    .map((v) => M(v, 128)),
                 };
               }),
             }
@@ -470,7 +538,11 @@ function xmlOzeti(p) {
                   ),
                   outbound: dizi(sg.outbound)
                     .slice(0, 50)
-                    .map((o) => ({ ad: M(nesne(o).ad, 128), host: M(nesne(o).host, 256), port: tamsayi(nesne(o).port) })),
+                    .map((o) => ({
+                      ad: M(nesne(o).ad, 128),
+                      host: M(nesne(o).host, 256),
+                      port: tamsayi(nesne(o).port),
+                    })),
                 };
               }),
             }
@@ -650,7 +722,10 @@ function dmrAyristir(metin) {
     m = /^[A-Za-z_][\w.$-]*/.exec(kalan);
     if (m) {
       i += m[0].length;
-      if (m[0] === 'true') return true; if (m[0] === 'false') return false; if (m[0] === 'undefined') return null; return m[0];
+      if (m[0] === 'true') return true;
+      if (m[0] === 'false') return false;
+      if (m[0] === 'undefined') return null;
+      return m[0];
     }
     throw new Error(`DMR beklenmeyen karakter: ${JSON.stringify(c)}`);
   };
@@ -674,14 +749,24 @@ function deploymentCoz(buf) {
     if (son.durum === 'OK') {
       try {
         const v = dmrAyristir(govde.join('\n'));
-        if (v && v.outcome === 'success' && v.result && typeof v.result === 'object' && !Array.isArray(v.result)) {
+        if (
+          v &&
+          v.outcome === 'success' &&
+          v.result &&
+          typeof v.result === 'object' &&
+          !Array.isArray(v.result)
+        ) {
           const liste = Object.entries(v.result);
           son.deploymentlar = liste.slice(0, SINIR_DEP).map(([k, d]) => {
             const r = d && typeof d === 'object' ? d : {};
             return {
               ad: M(r.name || k, 256),
               calisma_adi: M(r['runtime-name'] || '', 256) || null,
-              etkin: (() => { if (r.enabled === false) return false; if (r.enabled === true) return true; return null; })(),
+              etkin: (() => {
+                if (r.enabled === false) return false;
+                if (r.enabled === true) return true;
+                return null;
+              })(),
               durum: r.status == null ? null : M(r.status, 32),
             };
           });
@@ -694,7 +779,8 @@ function deploymentCoz(buf) {
         son.durum = 'AYRISTIRILAMADI';
         son.hata = M(e.message, 300);
       }
-    } else if (son.durum === 'HATA') son.hata = M(govde.join(' ').replace(/\s+/g, ' ').trim(), 300) || null;
+    } else if (son.durum === 'HATA')
+      son.hata = M(govde.join(' ').replace(/\s+/g, ' ').trim(), 300) || null;
     if (out.jvmler.length < SINIR_DEP_JVM) out.jvmler.push(son);
     else out.kesik = true;
     son = null;
@@ -722,7 +808,10 @@ function deploymentCoz(buf) {
 }
 
 // ── FAZ W ────────────────────────────────────────────────────────────────────────────────────────
-const sinirli = (v, n, fn) => dizi(v).slice(0, n).map((x) => fn(nesne(x)));
+const sinirli = (v, n, fn) =>
+  dizi(v)
+    .slice(0, n)
+    .map((x) => fn(nesne(x)));
 const ipNo = (v) => (v == null ? null : Math.min(N(v), 65535));
 const zaman = (v) => (v == null ? null : N(v));
 const hedefOf = (h) => ({
@@ -752,7 +841,9 @@ const logOf = (l) => ({
   hc_24s: N(l.hc_24s),
   hc_7g: N(l.hc_7g),
   statik_7g: N(l.statik_7g),
-  durum_sinif: Object.fromEntries(['2xx', '3xx', '4xx', '5xx'].map((k) => [k, N(nesne(l.durum_sinif)[k])])),
+  durum_sinif: Object.fromEntries(
+    ['2xx', '3xx', '4xx', '5xx'].map((k) => [k, N(nesne(l.durum_sinif)[k])]),
+  ),
   istemci_sayisi: N(l.istemci_sayisi),
   hc_istemcileri: sayilar(l.hc_istemcileri),
   ilk_istemciler: sayilar(l.ilk_istemciler),
@@ -767,20 +858,40 @@ const logOf = (l) => ({
   ornek: l.ornek === true,
   ayristirilamayan: N(l.ayristirilamayan),
   satir: N(l.satir),
-  dosyalar: sinirli(l.dosyalar, 20, (x) => ({ yol: M(x.yol, 400), durum: M(x.durum, 32), bayt: N(x.bayt) })),
+  dosyalar: sinirli(l.dosyalar, 20, (x) => ({
+    yol: M(x.yol, 400),
+    durum: M(x.durum, 32),
+    bayt: N(x.bayt),
+  })),
 });
 const vhostOf = (v) => ({
-  adres: dizi(v.adres).slice(0, 8).map((x) => M(x, 128)),
+  adres: dizi(v.adres)
+    .slice(0, 8)
+    .map((x) => M(x, 128)),
   server_name: M(v.server_name, 256),
-  aliases: dizi(v.aliases).slice(0, 100).map((x) => M(x, 256)),
+  aliases: dizi(v.aliases)
+    .slice(0, 100)
+    .map((x) => M(x, 256)),
   dosya: M(v.dosya, 400),
   satir: N(v.satir),
   belirsiz: v.belirsiz === true,
   document_root: M(v.document_root, 400),
   error_log: M(v.error_log, 400),
   hedefler: sinirli(v.hedefler, 200, hedefOf),
-  ssl: (() => { if (v.ssl && typeof v.ssl === 'object') return { sertifika: M(v.ssl.sertifika, 400), var: typeof v.ssl.var === 'boolean' ? v.ssl.var : null }; return null; })(),
-  jk_mount: sinirli(v.jk_mount, 200, (x) => ({ yol: M(x.yol, 300), worker: M(x.worker, 128), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+  ssl: (() => {
+    if (v.ssl && typeof v.ssl === 'object')
+      return {
+        sertifika: M(v.ssl.sertifika, 400),
+        var: typeof v.ssl.var === 'boolean' ? v.ssl.var : null,
+      };
+    return null;
+  })(),
+  jk_mount: sinirli(v.jk_mount, 200, (x) => ({
+    yol: M(x.yol, 300),
+    worker: M(x.worker, 128),
+    dosya: M(x.dosya, 400),
+    satir: N(x.satir),
+  })),
   mcmp: v.mcmp === true,
   loglar: sinirli(v.loglar, 5, logOf),
 });
@@ -793,7 +904,12 @@ const kurulumOf = (k) => {
     Object.fromEntries(
       Object.entries(nesne(o))
         .slice(0, 200)
-        .map(([a, l]) => [M(a, 256), dizi(l).slice(0, 200).map((x) => M(x, 300))]),
+        .map(([a, l]) => [
+          M(a, 256),
+          dizi(l)
+            .slice(0, 200)
+            .map((x) => M(x, 300)),
+        ]),
     );
   return {
     kok: M(k.kok, 400),
@@ -802,26 +918,51 @@ const kurulumOf = (k) => {
     kaynak: D(k.kaynak, ['ps', 'aday'], 'aday'),
     calisiyor: typeof k.calisiyor === 'boolean' ? k.calisiyor : null,
     surec_sayisi: N(k.surec_sayisi),
-    tanimlar: dizi(k.tanimlar).slice(0, 50).map((x) => M(x, 64)),
-    moduller: dizi(k.moduller).slice(0, 300).map((x) => M(x, 128)),
+    tanimlar: dizi(k.tanimlar)
+      .slice(0, 50)
+      .map((x) => M(x, 64)),
+    moduller: dizi(k.moduller)
+      .slice(0, 300)
+      .map((x) => M(x, 128)),
     dosya_sayisi: dizi(k.dosyalar).length,
-    okunamayan_dosyalar: sinirli(dizi(k.dosyalar).filter((x) => nesne(x).durum !== 'OKUNDU'), 100, (x) => ({ yol: M(x.yol, 400), durum: M(x.durum, 32) })),
-    hatalar: sinirli(k.hatalar, 500, (x) => ({ tur: M(x.tur, 32), dosya: M(x.dosya, 400), satir: N(x.satir), deger: M(x.deger, 300) })),
+    okunamayan_dosyalar: sinirli(
+      dizi(k.dosyalar).filter((x) => nesne(x).durum !== 'OKUNDU'),
+      100,
+      (x) => ({ yol: M(x.yol, 400), durum: M(x.durum, 32) }),
+    ),
+    hatalar: sinirli(k.hatalar, 500, (x) => ({
+      tur: M(x.tur, 32),
+      dosya: M(x.dosya, 400),
+      satir: N(x.satir),
+      deger: M(x.deger, 300),
+    })),
     belirsiz_kararlar: dizi(k.if_kararlari).filter((x) => nesne(x).belirsiz === true).length,
-    dinle: sinirli(k.dinle, 500, (x) => ({ adres: M(x.adres, 128), port: ipNo(x.port), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+    dinle: sinirli(k.dinle, 500, (x) => ({
+      adres: M(x.adres, 128),
+      port: ipNo(x.port),
+      dosya: M(x.dosya, 400),
+      satir: N(x.satir),
+    })),
     vhostlar: sinirli(k.vhostlar, 2000, vhostOf),
     ana: (() => {
       const a = nesne(k.ana);
       return {
         server_name: M(a.server_name, 256),
         hedefler: sinirli(a.hedefler, 200, hedefOf),
-        access_log: dizi(a.access_log).slice(0, 10).map((x) => M(x, 400)),
+        access_log: dizi(a.access_log)
+          .slice(0, 10)
+          .map((x) => M(x, 400)),
         error_log: M(a.error_log, 400),
       };
     })(),
     balancerlar: sinirli(k.balancerlar, 500, (b) => ({
       ad: M(b.ad, 128),
-      uyeler: sinirli(b.uyeler, 200, (u) => ({ url: M(u.url, 300), sema: u.sema == null ? null : M(u.sema, 16), host: M(u.host, 256), port: ipNo(u.port) })),
+      uyeler: sinirli(b.uyeler, 200, (u) => ({
+        url: M(u.url, 300),
+        sema: u.sema == null ? null : M(u.sema, 16),
+        host: M(u.host, 256),
+        port: ipNo(u.port),
+      })),
       dosya: M(b.dosya, 400),
       satir: N(b.satir),
     })),
@@ -831,18 +972,39 @@ const kurulumOf = (k) => {
             yol: M(w.yol, 400),
             durum: M(w.durum, 32),
             workerlar: sinirli(w.workerlar, 500, (x) => ({
-              ad: M(x.ad, 128), tur: M(x.tur, 16), host: M(x.host, 256), port: ipNo(x.port),
-              uyeler: dizi(x.uyeler).slice(0, 200).map((u) => M(u, 128)), listede: x.listede === true,
+              ad: M(x.ad, 128),
+              tur: M(x.tur, 16),
+              host: M(x.host, 256),
+              port: ipNo(x.port),
+              uyeler: dizi(x.uyeler)
+                .slice(0, 200)
+                .map((u) => M(u, 128)),
+              listede: x.listede === true,
             })),
           }
         : null,
-      mount_global: sinirli(jk.mount_global, 200, (x) => ({ yol: M(x.yol, 300), worker: M(x.worker, 128), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+      mount_global: sinirli(jk.mount_global, 200, (x) => ({
+        yol: M(x.yol, 300),
+        worker: M(x.worker, 128),
+        dosya: M(x.dosya, 400),
+        satir: N(x.satir),
+      })),
       log: M(jk.log, 400),
     },
     mod_cluster: {
       yuklu: mc.yuklu === true,
-      yonergeler: Object.fromEntries(Object.entries(nesne(mc.yonergeler)).slice(0, 20).map(([a, b]) => [M(a, 40), M(b, 200)])),
-      mcmp_vhostlari: sinirli(mc.mcmp_vhostlari, 50, (x) => ({ adres: dizi(x.adres).slice(0, 8).map((y) => M(y, 128)), dosya: M(x.dosya, 400), satir: N(x.satir) })),
+      yonergeler: Object.fromEntries(
+        Object.entries(nesne(mc.yonergeler))
+          .slice(0, 20)
+          .map(([a, b]) => [M(a, 40), M(b, 200)]),
+      ),
+      mcmp_vhostlari: sinirli(mc.mcmp_vhostlari, 50, (x) => ({
+        adres: dizi(x.adres)
+          .slice(0, 8)
+          .map((y) => M(y, 128)),
+        dosya: M(x.dosya, 400),
+        satir: N(x.satir),
+      })),
     },
     was: was
       ? {
@@ -851,17 +1013,31 @@ const kurulumOf = (k) => {
           log: M(was.log, 400),
           clusterlar: sinirli(was.clusterlar, 500, (c) => ({
             ad: M(c.ad, 256),
-            sunucular: sinirli(c.sunucular, 200, (s) => ({ ad: M(s.ad, 256), host: M(s.host, 256), port: ipNo(s.port), protokol: M(s.protokol, 16) })),
+            sunucular: sinirli(c.sunucular, 200, (s) => ({
+              ad: M(s.ad, 256),
+              host: M(s.host, 256),
+              port: ipNo(s.port),
+              protokol: M(s.protokol, 16),
+            })),
           })),
           urigruplari: grup(was.urigruplari),
           vhostgruplari: grup(was.vhostgruplari),
-          rotalar: sinirli(was.rotalar, 500, (r) => ({ cluster: M(r.cluster, 256), urigroup: M(r.urigroup, 256), vhostgroup: M(r.vhostgroup, 256) })),
+          rotalar: sinirli(was.rotalar, 500, (r) => ({
+            cluster: M(r.cluster, 256),
+            urigroup: M(r.urigroup, 256),
+            vhostgroup: M(r.vhostgroup, 256),
+          })),
         }
       : null,
     error_loglari: sinirli(k.error_loglari, 50, (e) => ({
       yol: M(e.yol, 400),
       durum: M(e.durum, 32),
-      hatalar: sinirli(e.hatalar, 200, (x) => ({ tur: M(x.tur, 16), hedef: M(x.hedef, 300), n: N(x.n), son: zaman(x.son) })),
+      hatalar: sinirli(e.hatalar, 200, (x) => ({
+        tur: M(x.tur, 16),
+        hedef: M(x.hedef, 300),
+        n: N(x.n),
+        son: zaman(x.son),
+      })),
     })),
     kesildi: k.kesildi === true,
   };
@@ -873,7 +1049,8 @@ const kurulumOf = (k) => {
  */
 function webCoz(buf) {
   const a = buf.indexOf(WEB_BASLA);
-  if (a < 0) return buf.includes('@@EAR_WEB_PYTHON_YOK@@') ? { durum: 'PYTHON_YOK', surum: null } : null;
+  if (a < 0)
+    return buf.includes('@@EAR_WEB_PYTHON_YOK@@') ? { durum: 'PYTHON_YOK', surum: null } : null;
   const b = buf.indexOf(WEB_BITTI, a + WEB_BASLA.length);
   if (b < 0) return { durum: 'KESIK', surum: null };
   let p;
@@ -889,29 +1066,48 @@ function webCoz(buf) {
   const oz = {
     durum: D(p.durum, WEB_DURUMLARI, 'OLCULEMEDI'),
     surum: N(p.surum),
-    baslangic_utc: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(String(p.baslangic_utc || '')) ? p.baslangic_utc : null,
+    baslangic_utc: /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(String(p.baslangic_utc || ''))
+      ? p.baslangic_utc
+      : null,
     python: M(p.python, 32) || null,
     uid: N(p.uid),
     ps_gorunur: p.ps_gorunur === true,
     pencere_gun: N(p.pencere_gun),
-    hc_adlari: dizi(p.hc_adlari).slice(0, 20).map((x) => M(x, 64)),
+    hc_adlari: dizi(p.hc_adlari)
+      .slice(0, 20)
+      .map((x) => M(x, 64)),
     sure_sn: Number.isFinite(Number(p.sure_sn)) ? Number(p.sure_sn) : null,
     log_bayt: N(p.log_bayt),
     kurulumlar: sinirli(p.kurulumlar, 8, kurulumOf),
     soketler: {
       durum: s.durum === 'OLCULDU' ? 'OLCULDU' : 'OLCULEMEDI',
-      dinlenen: sinirli(s.dinlenen, 500, (x) => ({ adres: M(x.adres, 64), port: ipNo(x.port), aile: x.aile === 6 ? 6 : 4 })),
+      dinlenen: sinirli(s.dinlenen, 500, (x) => ({
+        adres: M(x.adres, 64),
+        port: ipNo(x.port),
+        aile: x.aile === 6 ? 6 : 4,
+      })),
     },
     ipler: {
       durum: ip.durum === 'OLCULDU' ? 'OLCULDU' : 'OLCULEMEDI',
-      liste: sinirli(ip.liste, 500, (x) => ({ ip: M(x.ip, 64), onek: N(x.onek), iface: M(x.iface, 32), aile: x.aile === 6 ? 6 : 4 })),
+      liste: sinirli(ip.liste, 500, (x) => ({
+        ip: M(x.ip, 64),
+        onek: N(x.onek),
+        iface: M(x.iface, 32),
+        aile: x.aile === 6 ? 6 : 4,
+      })),
     },
-    uyarilar: dizi(p.uyarilar).slice(0, 50).map((x) => M(x, 300)),
+    uyarilar: dizi(p.uyarilar)
+      .slice(0, 50)
+      .map((x) => M(x, 300)),
     kesildi: false,
   };
   // DB satiri sinirli: sigmazsa vhost'lar kirpilir ve bu ACIKCA isaretlenir (eksik liste "tam" gorunmez).
-  while (JSON.stringify(oz).length > WEB_OZET_SINIR && oz.kurulumlar.some((k) => k.vhostlar.length)) {
-    for (const k of oz.kurulumlar) k.vhostlar = k.vhostlar.slice(0, Math.floor(k.vhostlar.length / 2));
+  while (
+    JSON.stringify(oz).length > WEB_OZET_SINIR &&
+    oz.kurulumlar.some((k) => k.vhostlar.length)
+  ) {
+    for (const k of oz.kurulumlar)
+      k.vhostlar = k.vhostlar.slice(0, Math.floor(k.vhostlar.length / 2));
     oz.kesildi = true;
   }
   if (oz.kesildi && oz.durum === 'TAM') oz.durum = 'KISMI';
@@ -928,7 +1124,10 @@ const birlesik = (degerler, n) => {
  * Tarayici yuku -> DB'ye yazilacak duz kayitlar. Agac satirlari (satirlar) ALINMAZ.
  * @returns {{ host: object, uygulamalar: object[], warlar: object[], setler: Map<string, Array<[string, string, number]>> }}
  */
-function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deployment = null, web = null }) {
+function hostKaydi(
+  p,
+  { host, kip, partiNo, ortam, playbookDurum, hamBayt, deployment = null, web = null },
+) {
   const setler = new Map();
   // SESSIZ KESILME YOK (2026-11-05): sinirdan fazlasi alinmaz ama uygulama KISMI_SINIR olur ve
   // uyarisi yazilir; eksik liste eslenik karsilastirmasinda "ayni" ya da "farkli" sayilmaz.
@@ -936,7 +1135,8 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deplo
   const setEkle = (liste, yer) => {
     const s = kutuphaneSeti(liste);
     if (!s) return null;
-    if (s.kesildi && kesilen) kesilen.push(`${yer}: kütüphane sayısı ${liste.length}; ilk ${SINIR_KUTUPHANE} alındı`);
+    if (s.kesildi && kesilen)
+      kesilen.push(`${yer}: kütüphane sayısı ${liste.length}; ilk ${SINIR_KUTUPHANE} alındı`);
     if (!setler.has(s.iz)) setler.set(s.iz, s.satirlar);
     return s.iz;
   };
@@ -986,10 +1186,7 @@ function hostKaydi(p, { host, kip, partiNo, ortam, playbookDurum, hamBayt, deplo
     const uygDurum = M(u.durum, 24);
     const durumU = kesilen.length && uygDurum === 'TAM' ? 'KISMI_SINIR' : uygDurum;
     if (durumU !== 'TAM') eksikUygulama = true;
-    const uyariListesi = [
-      ...kesilen,
-      ...(Array.isArray(u.uyarilar) ? u.uyarilar : []),
-    ];
+    const uyariListesi = [...kesilen, ...(Array.isArray(u.uyarilar) ? u.uyarilar : [])];
     uygulamalar.push({
       uyg_no: i,
       kip: M(kip, 8),

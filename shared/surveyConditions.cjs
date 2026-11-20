@@ -47,9 +47,7 @@ function evaluateList(conditions, mode, values) {
  *  alani sessizce gizlememeli). */
 function nonEmptyGroups(dependsOn) {
   if (!Array.isArray(dependsOn?.groups)) return [];
-  return dependsOn.groups.filter(
-    (g) => Array.isArray(g?.conditions) && g.conditions.length > 0,
-  );
+  return dependsOn.groups.filter((g) => Array.isArray(g?.conditions) && g.conditions.length > 0);
 }
 
 /**

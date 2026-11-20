@@ -7,40 +7,59 @@
 // kısa ve tek bir tetiklemeyle bitiyor, dolayısıyla adım durumu client'ta tutulur.
 // Güvenlik buna dayanmaz: son POST /api/opsx/run çağrısında sunucu uygulama-host
 // eşleşmesini ve cluster'ı envanterden YENİDEN doğrular.
-import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowDownTrayIcon, ClockIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  ArrowDownTrayIcon,
+  ClockIcon,
+  Cog6ToothIcon,
+} from '@heroicons/react/24/outline';
 import {
   opsxApi,
-  type OpsxPlatform, type OpsxOperation, type OpsxOcpOperation, type OpsxOcpPair,
-  type OpsxRunResult, type OpsxDumpType, type OpsxDumpLaunchResult, type OpsxDumpStatus,
+  type OpsxPlatform,
+  type OpsxOperation,
+  type OpsxOcpOperation,
+  type OpsxOcpPair,
+  type OpsxRunResult,
+  type OpsxDumpType,
+  type OpsxDumpLaunchResult,
+  type OpsxDumpStatus,
   type OpsxPodDeleteStatus,
-  type OpsxPidSelection, type OpsxServerConfigSelection,
-  opsxWasApi, type WasTarget, type WasOperation, type WasRunResult, type WasRunStatus,
-} from "@/api/opsxApi";
-import { useJobTracker } from "@/contexts/JobTrackerContext";
-import { useAuth } from "@/contexts/AuthContext";
-import OpsXSmartConfigModal from "./OpsXSmartConfigModal";
-import KapamaOnayiUyarisi from "@/components/self_service/KapamaOnayiUyarisi";
-import { useOnaySonrasiTakip } from "./useOnaySonrasiTakip";
-import SmartTalepSayaci from "@/components/common/SmartTalepSayaci";
-import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
-import PlatformStep from "./steps/PlatformStep";
-import AppSearchStep from "./steps/AppSearchStep";
-import JbossVersionStep from "./steps/JbossVersionStep";
-import HostSelectStep from "./steps/HostSelectStep";
-import OcpTargetStep from "./steps/OcpTargetStep";
-import OperationStep from "./steps/OperationStep";
-import OcpOperationStep from "./steps/OcpOperationStep";
-import OcpClusterPickStep from "./steps/OcpClusterPickStep";
-import OcpPodSelectStep from "./steps/OcpPodSelectStep";
-import LegacyJvmSelectStep from "./steps/LegacyJvmSelectStep";
-import ServerConfigSelectStep from "./steps/ServerConfigSelectStep";
-import LegacyProductStep from "./steps/LegacyProductStep";
-import WasAppSearchStep, { type WasAppSelection } from "./steps/WasAppSearchStep";
-import WasJvmSelectStep, { type WasDiscoveryRef } from "./steps/WasJvmSelectStep";
-import WasConfirmStep from "./steps/WasConfirmStep";
-import WasResultPanel from "./steps/WasResultPanel";
-import { opsxOnSecimOku, derinBaglantiTemizle, type OcpHedef } from "@/utils/derinBaglanti";
+  type OpsxPidSelection,
+  type OpsxServerConfigSelection,
+  opsxWasApi,
+  type WasTarget,
+  type WasOperation,
+  type WasRunResult,
+  type WasRunStatus,
+} from '@/api/opsxApi';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { useAuth } from '@/contexts/AuthContext';
+import OpsXSmartConfigModal from './OpsXSmartConfigModal';
+import KapamaOnayiUyarisi from '@/components/self_service/KapamaOnayiUyarisi';
+import { useOnaySonrasiTakip } from './useOnaySonrasiTakip';
+import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
+import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import PlatformStep from './steps/PlatformStep';
+import AppSearchStep from './steps/AppSearchStep';
+import JbossVersionStep from './steps/JbossVersionStep';
+import HostSelectStep from './steps/HostSelectStep';
+import OcpTargetStep from './steps/OcpTargetStep';
+import OperationStep from './steps/OperationStep';
+import OcpOperationStep from './steps/OcpOperationStep';
+import OcpClusterPickStep from './steps/OcpClusterPickStep';
+import OcpPodSelectStep from './steps/OcpPodSelectStep';
+import LegacyJvmSelectStep from './steps/LegacyJvmSelectStep';
+import ServerConfigSelectStep from './steps/ServerConfigSelectStep';
+import LegacyProductStep from './steps/LegacyProductStep';
+import WasAppSearchStep, { type WasAppSelection } from './steps/WasAppSearchStep';
+import WasJvmSelectStep, { type WasDiscoveryRef } from './steps/WasJvmSelectStep';
+import WasConfirmStep from './steps/WasConfirmStep';
+import WasResultPanel from './steps/WasResultPanel';
+import { opsxOnSecimOku, derinBaglantiTemizle, type OcpHedef } from '@/utils/derinBaglanti';
 
 // WAS (WebSphere) akışı JBoss'tan AYRI adımlardan geçer (2026-10-02):
 //   legacy_product → was_app (uygulama + keşif sunucuları) → was_jvm (canlı keşif, TEK JVM,
@@ -48,47 +67,47 @@ import { opsxOnSecimOku, derinBaglantiTemizle, type OcpHedef } from "@/utils/der
 // TOPLU İŞLEM YOK: tek sunucu + tek JVM; "tümünü seç" yok. Sunucu (server/opsx/was.cjs)
 // aynı kuralları ayrıca uygular — bu ekranlar bir kolaylık katmanıdır, güvenlik sınırı değil.
 type Step =
-  | "platform"
-  | "legacy_product"
-  | "was_app"
-  | "was_jvm"
-  | "was_confirm"
-  | "was_done"
-  | "legacy_app"
-  | "legacy_jboss_version"
-  | "legacy_hosts"
-  | "legacy_jvm"
-  | "legacy_serverconfig"
-  | "ocp_target"
-  | "operation"
-  | "ocp_operation"
-  | "ocp_cluster"
-  | "ocp_pods"
-  | "done";
+  | 'platform'
+  | 'legacy_product'
+  | 'was_app'
+  | 'was_jvm'
+  | 'was_confirm'
+  | 'was_done'
+  | 'legacy_app'
+  | 'legacy_jboss_version'
+  | 'legacy_hosts'
+  | 'legacy_jvm'
+  | 'legacy_serverconfig'
+  | 'ocp_target'
+  | 'operation'
+  | 'ocp_operation'
+  | 'ocp_cluster'
+  | 'ocp_pods'
+  | 'done';
 
 const STEP_TITLES: Record<Step, string> = {
-  platform: "",
-  legacy_product: "Uygulama Sunucusu",
-  was_app: "WAS Uygulama Seçimi",
-  was_jvm: "WAS JVM Seçimi",
-  was_confirm: "Onay",
-  was_done: "İşlem Başlatıldı",
-  legacy_app: "Uygulama Seçimi",
-  legacy_jboss_version: "JBoss Sürümü",
-  legacy_hosts: "Sunucu Seçimi",
-  legacy_jvm: "JVM Seçimi",
-  legacy_serverconfig: "JVM Seçimi",
-  ocp_target: "Openshift Hedefi",
-  operation: "İşlem Seçimi",
-  ocp_operation: "İşlem Seçimi",
-  ocp_cluster: "Cluster Seçimi",
-  ocp_pods: "Pod Seçimi",
-  done: "İşlem Başlatıldı",
+  platform: '',
+  legacy_product: 'Uygulama Sunucusu',
+  was_app: 'WAS Uygulama Seçimi',
+  was_jvm: 'WAS JVM Seçimi',
+  was_confirm: 'Onay',
+  was_done: 'İşlem Başlatıldı',
+  legacy_app: 'Uygulama Seçimi',
+  legacy_jboss_version: 'JBoss Sürümü',
+  legacy_hosts: 'Sunucu Seçimi',
+  legacy_jvm: 'JVM Seçimi',
+  legacy_serverconfig: 'JVM Seçimi',
+  ocp_target: 'Openshift Hedefi',
+  operation: 'İşlem Seçimi',
+  ocp_operation: 'İşlem Seçimi',
+  ocp_cluster: 'Cluster Seçimi',
+  ocp_pods: 'Pod Seçimi',
+  done: 'İşlem Başlatıldı',
 };
 
-const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
+const DUMP_OPERATIONS = new Set(['threaddump', 'heapdump']);
 // Pod silme de dump ile AYNI kesif/secim adimini kullanir (2026-09-18)
-const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
+const POD_SELECT_OPERATIONS = new Set(['threaddump', 'heapdump', 'poddelete']);
 
 // ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
 // Parametreler İLK render'da bir kez okunur (lazy useState) ve mount effect'inde URL'den silinir —
@@ -97,11 +116,11 @@ const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
 // GET /api/opsx/hosts?app= ile, WAS uygulaması assertAppAllowed ile, OCP hedefi ve prod Smart onayı
 // POST /api/opsx/run'da yeniden doğrulanır. Her ön-dolum alanı ilk kullanımda TÜKETİLİR: kullanıcı
 // "← Geri" ile döndüğünde aynı otomatik seçim tekrar devreye girip onu ileri itmez.
-function ilkAdim(os: ReturnType<typeof opsxOnSecimOku>["onSecim"]): Step {
-  if (!os) return "platform";
-  if (os.platform === "jboss") return "legacy_app";
-  if (os.platform === "was") return "was_app";
-  return "ocp_target";
+function ilkAdim(os: ReturnType<typeof opsxOnSecimOku>['onSecim']): Step {
+  if (!os) return 'platform';
+  if (os.platform === 'jboss') return 'legacy_app';
+  if (os.platform === 'was') return 'was_app';
+  return 'ocp_target';
 }
 
 const OpsXWizardPage: React.FC = () => {
@@ -113,38 +132,40 @@ const OpsXWizardPage: React.FC = () => {
   const [onSecimUyari, setOnSecimUyari] = useState<string | null>(ilkOnSecim.uyari);
   // JBoss: arama kutusu bu adla dolu gelir; `otomatik` yalnız İLK girişte tek tam eşleşmeyi seçer.
   const [jbossOnSecim, setJbossOnSecim] = useState<{ app: string; otomatik: boolean } | null>(() =>
-    ilkOnSecim.onSecim?.platform === "jboss" ? { app: ilkOnSecim.onSecim.app, otomatik: true } : null,
+    ilkOnSecim.onSecim?.platform === 'jboss'
+      ? { app: ilkOnSecim.onSecim.app, otomatik: true }
+      : null,
   );
   const [wasOnApp, setWasOnApp] = useState<string | null>(() =>
-    ilkOnSecim.onSecim?.platform === "was" ? ilkOnSecim.onSecim.app : null,
+    ilkOnSecim.onSecim?.platform === 'was' ? ilkOnSecim.onSecim.app : null,
   );
   const [ocpOnSecim, setOcpOnSecim] = useState<OcpHedef | null>(() => {
     const os = ilkOnSecim.onSecim;
-    if (os?.platform !== "ocp") return null;
+    if (os?.platform !== 'ocp') return null;
     const { app, env, tenant, namespace } = os;
     return { app, env, tenant, namespace };
   });
   const [ocpOnCluster, setOcpOnCluster] = useState<string | null>(() =>
-    ilkOnSecim.onSecim?.platform === "ocp" ? ilkOnSecim.onSecim.cluster || null : null,
+    ilkOnSecim.onSecim?.platform === 'ocp' ? ilkOnSecim.onSecim.cluster || null : null,
   );
   // Yapilandirma dugmesi YALNIZCA adminlere gorunur. Bu KOZMETIK bir kapi:
   // /api/opsx/smart-config uclari ayrica requireAdmin tasir (bkz. server/opsx/index.cjs),
   // yani dugmeyi gizlemek tek basina bir guvenlik siniri degildir.
-  const admin = user?.role === "Admin";
+  const admin = user?.role === 'Admin';
   const [smartConfigOpen, setSmartConfigOpen] = useState(false);
   const [step, setStep] = useState<Step>(() => ilkAdim(ilkOnSecim.onSecim));
   const [platform, setPlatform] = useState<OpsxPlatform | null>(() =>
-    !ilkOnSecim.onSecim ? null : ilkOnSecim.onSecim.platform === "ocp" ? "openshift" : "legacy",
+    !ilkOnSecim.onSecim ? null : ilkOnSecim.onSecim.platform === 'ocp' ? 'openshift' : 'legacy',
   );
-  const [app, setApp] = useState("");
+  const [app, setApp] = useState('');
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
   // KULLANICININ FIILEN ISARETLEDIGI JBoss MAJORLERI. Backend eskiden bunu envanterden
   // TURETIYORDU; ayni host hem 7 hem 8 satiriyla gelince turetme keyfi bir sonuc veriyordu
   // (bkz. server/opsx/index.cjs resolveLegacyTargets). Artik secim dogrudan tasiniyor.
   const [hostMajors, setHostMajors] = useState<string[]>([]);
-  const [env, setEnv] = useState("");
-  const [tenant, setTenant] = useState("");
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
   // restart/rollout "ocp_operation"da secilir ama hemen tetiklenmez — araya "ocp_cluster"
   // adimi girdigi icin secim burada bekletilir (dump'in dumpType'i ile AYNI desen).
@@ -163,7 +184,8 @@ const OpsXWizardPage: React.FC = () => {
   // Smart talebi acildiysa sagdaki "Taleplerim" paneline haber ver (2026-10-12): panel Outlet disinda
   // mount edilir ve kendiliginden yeni talebi ogrenemez.
   useEffect(() => {
-    if (result && 'pendingApproval' in result && result.pendingApproval) window.dispatchEvent(new CustomEvent("portal:smart-ticket-created"));
+    if (result && 'pendingApproval' in result && result.pendingApproval)
+      window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
   }, [result]);
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   // Dump akışı restart/stop/start'tan FARKLI: iş bitince indirilecek bir dosya üretir.
@@ -173,13 +195,15 @@ const OpsXWizardPage: React.FC = () => {
   const [dumpJob, setDumpJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
   const [dumpStatus, setDumpStatus] = useState<OpsxDumpStatus | null>(null);
   // Pod silme (2026-09-18): ayri durum ucu, pod basina Silindi / Bulunamadi / Hata
-  const [podDeleteJob, setPodDeleteJob] = useState<{ awxServerId: number; jobId: number } | null>(null);
+  const [podDeleteJob, setPodDeleteJob] = useState<{ awxServerId: number; jobId: number } | null>(
+    null,
+  );
   const [podDeleteStatus, setPodDeleteStatus] = useState<OpsxPodDeleteStatus | null>(null);
   const [podDeleteMode, setPodDeleteMode] = useState(false);
   useEffect(() => {
     if (!podDeleteJob) return;
     let cancelled = false;
-    const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+    const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
     const tick = async () => {
       try {
         const r = await opsxApi.podDeleteStatus(podDeleteJob.awxServerId, podDeleteJob.jobId);
@@ -187,12 +211,20 @@ const OpsXWizardPage: React.FC = () => {
         setPodDeleteStatus(r);
         if (r.ok && TERMINAL.has(r.status)) return;
       } catch (e) {
-        if (!cancelled) setPodDeleteStatus({ ok: false, status: "unknown", message: e instanceof Error ? e.message : String(e) });
+        if (!cancelled)
+          setPodDeleteStatus({
+            ok: false,
+            status: 'unknown',
+            message: e instanceof Error ? e.message : String(e),
+          });
       }
       if (!cancelled) timer = window.setTimeout(tick, 5000);
     };
     let timer = window.setTimeout(tick, 3000);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [podDeleteJob]);
   // Openshift'te işlem seçimi ile dump'ın tetiklenmesi arasında bir pod seçim adımı
   // olduğu için, seçilen dump tipi o adım boyunca burada tutulur.
@@ -215,16 +247,16 @@ const OpsXWizardPage: React.FC = () => {
   const trackedJob = trackedJobId ? jobs.find((j) => j.id === trackedJobId) : undefined;
 
   function restart() {
-    setStep("platform");
+    setStep('platform');
     setPodDeleteJob(null);
     setPodDeleteStatus(null);
     setPodDeleteMode(false);
     setPlatform(null);
-    setApp("");
+    setApp('');
     setJbossVersions([]);
     setHosts([]);
-    setEnv("");
-    setTenant("");
+    setEnv('');
+    setTenant('');
     setPairs([]);
     setOcOperationPending(null);
     setError(null);
@@ -253,7 +285,11 @@ const OpsXWizardPage: React.FC = () => {
   // talep beklerken durum aralikla sorulur; LAUNCHED olunca ekran "Islem baslatildi"ya doner ve
   // is takibine (pod silmede pod sonuclari) gecilir; reddedilen / iptal / hatali talep soylenir.
   const bekleyenTalep =
-    result && "pendingApproval" in result && result.pendingApproval && "ticketId" in result && result.ticketId
+    result &&
+    'pendingApproval' in result &&
+    result.pendingApproval &&
+    'ticketId' in result &&
+    result.ticketId
       ? result.ticketId
       : null;
   const {
@@ -263,10 +299,21 @@ const OpsXWizardPage: React.FC = () => {
     sonDurumAlindiMs: talepDurumuAlindiMs,
   } = useOnaySonrasiTakip(bekleyenTalep, ({ jobId, awxServerId }) => {
     setResult((onceki) =>
-      onceki ? ({ ...onceki, pendingApproval: false, jobId, awxServerId, status: "pending" } as typeof onceki) : onceki,
+      onceki
+        ? ({
+            ...onceki,
+            pendingApproval: false,
+            jobId,
+            awxServerId,
+            status: 'pending',
+          } as typeof onceki)
+        : onceki,
     );
     if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });
-    const id = addJob({ title: `OpsX #${jobId}`, fetchStatus: () => opsxApi.jobStatus(awxServerId, jobId) });
+    const id = addJob({
+      title: `OpsX #${jobId}`,
+      fetchStatus: () => opsxApi.jobStatus(awxServerId, jobId),
+    });
     setTrackedJobId(id);
   });
 
@@ -286,7 +333,7 @@ const OpsXWizardPage: React.FC = () => {
     if (!dumpJob) return;
     let cancelled = false;
     let timer: number | undefined;
-    const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+    const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
     async function tick() {
       try {
@@ -311,31 +358,31 @@ const OpsXWizardPage: React.FC = () => {
   // Adıma göre "← Geri" hedefi. Hedefi olmayan adımlarda buton hiç render edilmez.
   function backTargetFor(s: Step): Step | null {
     switch (s) {
-      case "legacy_product":
-      case "ocp_target":
-        return "platform";
-      case "legacy_app":
-      case "was_app":
-        return "legacy_product";
-      case "was_jvm":
-        return "was_app";
-      case "was_confirm":
-        return "was_jvm";
-      case "legacy_jboss_version":
-        return "legacy_app";
-      case "legacy_hosts":
-        return "legacy_jboss_version";
-      case "operation":
-        return "legacy_hosts";
-      case "legacy_jvm":
-      case "legacy_serverconfig":
-        return "operation";
-      case "ocp_operation":
-        return "ocp_target";
-      case "ocp_cluster":
-        return "ocp_operation";
-      case "ocp_pods":
-        return "ocp_operation";
+      case 'legacy_product':
+      case 'ocp_target':
+        return 'platform';
+      case 'legacy_app':
+      case 'was_app':
+        return 'legacy_product';
+      case 'was_jvm':
+        return 'was_app';
+      case 'was_confirm':
+        return 'was_jvm';
+      case 'legacy_jboss_version':
+        return 'legacy_app';
+      case 'legacy_hosts':
+        return 'legacy_jboss_version';
+      case 'operation':
+        return 'legacy_hosts';
+      case 'legacy_jvm':
+      case 'legacy_serverconfig':
+        return 'operation';
+      case 'ocp_operation':
+        return 'ocp_target';
+      case 'ocp_cluster':
+        return 'ocp_operation';
+      case 'ocp_pods':
+        return 'ocp_operation';
       default:
         return null;
     }
@@ -345,7 +392,10 @@ const OpsXWizardPage: React.FC = () => {
     const target = backTargetFor(step);
     if (!target) return;
     setError(null);
-    if (target === "platform") { restart(); return; }
+    if (target === 'platform') {
+      restart();
+      return;
+    }
     setStep(target);
   }
 
@@ -353,22 +403,32 @@ const OpsXWizardPage: React.FC = () => {
   // kullanicinin ServerConfigSelectStep'te sectigi {HOST: [{name,jbossMajor}]} eslemesi.
   // Openshift: env/oc_cluster + oc_input (bir veya daha fazla namespace/uygulama cifti) +
   // islem (su an SADECE restart aktif).
-  async function runLegacy(operation: OpsxOperation, serverConfigMap?: Record<string, OpsxServerConfigSelection[]>) {
+  async function runLegacy(
+    operation: OpsxOperation,
+    serverConfigMap?: Record<string, OpsxServerConfigSelection[]>,
+  ) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.run({ platform: "legacy", application: app, operation, hosts, hostMajors, serverConfigMap });
+      const r = await opsxApi.run({
+        platform: 'legacy',
+        application: app,
+        operation,
+        hosts,
+        hostMajors,
+        serverConfigMap,
+      });
       // safeJson() 4xx/5xx'te reddetmez (bkz. src/api/http.ts) — backend'in ok:false +
       // message ile döndüğü hatalar burada AÇIKÇA kontrol edilmezse kullanıcıya "İşlem
       // başlatıldı" yeşil onayı gösterilir (job hiç tetiklenmemiş olsa bile).
       if (!r.ok) {
-        setError(r.message || "İşlem başlatılamadı.");
+        setError(r.message || 'İşlem başlatılamadı.');
         return;
       }
       setResult(r);
-      setStep("done");
+      setStep('done');
       trackJob(r);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -391,11 +451,11 @@ const OpsXWizardPage: React.FC = () => {
     try {
       const r = await opsxApi.dumpLegacy(app, hosts, dumpType, pidMap, hostMajors);
       if (!r.ok) {
-        setError(r.message || "Dump işi başlatılamadı.");
+        setError(r.message || 'Dump işi başlatılamadı.');
         return;
       }
       setResult(r);
-      setStep("done");
+      setStep('done');
       if (r.jobId != null) {
         setDumpJob({ awxServerId: r.awxServerId, jobId: r.jobId });
         trackJob(r);
@@ -417,10 +477,10 @@ const OpsXWizardPage: React.FC = () => {
   function handleLegacyOperation(operation: OpsxOperation) {
     if (DUMP_OPERATIONS.has(operation)) {
       setDumpType(operation as OpsxDumpType);
-      setStep("legacy_jvm");
+      setStep('legacy_jvm');
     } else {
       setPendingOperation(operation);
-      setStep("legacy_serverconfig");
+      setStep('legacy_serverconfig');
     }
   }
 
@@ -432,8 +492,8 @@ const OpsXWizardPage: React.FC = () => {
       title: `OpsX WAS ${label} #${jobId}`,
       fetchStatus: async () => {
         const s = await opsxWasApi.runStatus(awxServerId, jobId);
-        if (!s.ok) throw new Error(s.message || "Durum okunamadı.");
-        return { status: s.status, output: s.output || "", result: s.result ? s : undefined };
+        if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+        return { status: s.status, output: s.output || '', result: s.result ? s : undefined };
       },
     });
     setTrackedJobId(id);
@@ -463,11 +523,11 @@ const OpsXWizardPage: React.FC = () => {
         ackWarnings: v.ackWarnings,
       });
       if (!r.ok || r.jobId == null || r.awxServerId == null) {
-        setError(r.message || "İşlem başlatılamadı.");
+        setError(r.message || 'İşlem başlatılamadı.');
         return;
       }
       setWasRun(r);
-      setStep("was_done");
+      setStep('was_done');
       trackWasJob(r.awxServerId, r.jobId, `${wasOperation} ${wasTarget.server}@${wasTarget.host}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -477,12 +537,15 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
-  const wasEnv = (wasSel && wasTarget && wasSel.hostInfo.find((h) => h.host === wasTarget.host)?.env) || "";
+  const wasEnv =
+    (wasSel && wasTarget && wasSel.hostInfo.find((h) => h.host === wasTarget.host)?.env) || '';
 
   function submitOcpTarget(v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) {
-    setEnv(v.env); setTenant(v.tenant); setPairs(v.pairs);
+    setEnv(v.env);
+    setTenant(v.tenant);
+    setPairs(v.pairs);
     setOcpOnSecim(null);
-    setStep("ocp_operation");
+    setStep('ocp_operation');
   }
 
   async function runOpenshift(ocOperation: OpsxOcpOperation, cluster: string) {
@@ -491,13 +554,20 @@ const OpsXWizardPage: React.FC = () => {
     setBusy(true);
     setError(null);
     try {
-      const r = await opsxApi.run({ platform: "openshift", env, tenant, pairs, ocOperation, cluster });
+      const r = await opsxApi.run({
+        platform: 'openshift',
+        env,
+        tenant,
+        pairs,
+        ocOperation,
+        cluster,
+      });
       if (!r.ok) {
-        setError(r.message || "İşlem başlatılamadı.");
+        setError(r.message || 'İşlem başlatılamadı.');
         return;
       }
       setResult(r);
-      setStep("done");
+      setStep('done');
       trackJob(r);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -522,16 +592,20 @@ const OpsXWizardPage: React.FC = () => {
     setError(null);
     try {
       const r = await opsxApi.dumpOpenshift(
-        env, tenant, pairs, selectedPods, dumpType,
-        dumpType === "threaddump" ? threadDumpCount : undefined,
-        dumpType === "threaddump" ? threadDumpInterval : undefined,
+        env,
+        tenant,
+        pairs,
+        selectedPods,
+        dumpType,
+        dumpType === 'threaddump' ? threadDumpCount : undefined,
+        dumpType === 'threaddump' ? threadDumpInterval : undefined,
       );
       if (!r.ok) {
-        setError(r.message || "Dump işi başlatılamadı.");
+        setError(r.message || 'Dump işi başlatılamadı.');
         return;
       }
       setResult(r);
-      setStep("done");
+      setStep('done');
       if (r.jobId != null) {
         setDumpJob({ awxServerId: r.awxServerId, jobId: r.jobId });
         trackJob(r);
@@ -544,7 +618,10 @@ const OpsXWizardPage: React.FC = () => {
     }
   }
 
-  async function runOpenshiftPodDelete(selectedPods: { cluster: string; namespace: string; pod: string }[], consent: boolean) {
+  async function runOpenshiftPodDelete(
+    selectedPods: { cluster: string; namespace: string; pod: string }[],
+    consent: boolean,
+  ) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -552,11 +629,11 @@ const OpsXWizardPage: React.FC = () => {
     try {
       const r = await opsxApi.podDeleteOpenshift(env, tenant, pairs, selectedPods, consent);
       if (!r.ok) {
-        setError(r.message || "Pod silme işi başlatılamadı.");
+        setError(r.message || 'Pod silme işi başlatılamadı.');
         return;
       }
       setResult(r);
-      setStep("done");
+      setStep('done');
       if (r.jobId != null) {
         setPodDeleteJob({ awxServerId: r.awxServerId, jobId: r.jobId });
         trackJob(r);
@@ -570,11 +647,11 @@ const OpsXWizardPage: React.FC = () => {
   }
 
   function handleOcpOperation(ocOperation: OpsxOcpOperation) {
-    if (ocOperation === "poddelete") {
+    if (ocOperation === 'poddelete') {
       // Pod silme: dump ile ayni kesif + secim adimi, dump secenekleri yerine onay kutusu.
       setPodDeleteMode(true);
-      setDumpType("threaddump"); // adimin zorunlu prop'u; poddelete modunda kullanilmaz
-      setStep("ocp_pods");
+      setDumpType('threaddump'); // adimin zorunlu prop'u; poddelete modunda kullanilmaz
+      setStep('ocp_pods');
       return;
     }
     if (DUMP_OPERATIONS.has(ocOperation)) {
@@ -582,13 +659,13 @@ const OpsXWizardPage: React.FC = () => {
       // hedefleyebiliyor (bkz. opsx_openshift_pods.yaml/opsx_openshift_dump.yaml'ın
       // cluster × namespace çapraz çarpımı) — eskiden burada tek çifte zorlanıyordu.
       setDumpType(ocOperation as OpsxDumpType);
-      setStep("ocp_pods");
+      setStep('ocp_pods');
     } else {
       // restart/rollout: hemen tetiklenmez, önce hedeflenecek TEK gerçek cluster sorulur
       // (bkz. OcpClusterPickStep dosya başı notu — AWX `limit` yerine playbook'un `hosts:`
       // satırı doğrudan bu cluster'a şablonlanır, server/opsx/index.cjs).
       setOcOperationPending(ocOperation);
-      setStep("ocp_cluster");
+      setStep('ocp_cluster');
     }
   }
 
@@ -602,10 +679,13 @@ const OpsXWizardPage: React.FC = () => {
   const operationSummary = (
     <>
       Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
-      {" · "}
-      JBoss: <span className="font-mono text-[var(--text-primary)]">{jbossVersions.map((v) => v ? `JBoss ${v}` : "Bilinmiyor").join(", ")}</span>
-      {" · "}
-      {hosts.length} sunucu: <span className="font-mono">{hosts.join(", ")}</span>
+      {' · '}
+      JBoss:{' '}
+      <span className="font-mono text-[var(--text-primary)]">
+        {jbossVersions.map((v) => (v ? `JBoss ${v}` : 'Bilinmiyor')).join(', ')}
+      </span>
+      {' · '}
+      {hosts.length} sunucu: <span className="font-mono">{hosts.join(', ')}</span>
     </>
   );
 
@@ -625,7 +705,9 @@ const OpsXWizardPage: React.FC = () => {
         )}
         <div className="flex-1">
           <h1 className="page-title">OpsX - Güvenli Uygulama Operasyonları</h1>
-          {STEP_TITLES[step] && <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>}
+          {STEP_TITLES[step] && (
+            <p className="mt-1 text-sm font-medium text-[var(--text-muted)]">{STEP_TITLES[step]}</p>
+          )}
         </div>
         {/* Kullanici (2026-10-06): "Self service otomasyonunda her job'in icine girdigimde
             Smart entegrasyonunu ayarlayabiliyorum; OpsX icin de OpsX'in icinde, sag ustte,
@@ -671,21 +753,27 @@ const OpsXWizardPage: React.FC = () => {
       )}
 
       <div key={step} className="card p-5 animate-slide-up">
-        {step === "platform" && (
+        {step === 'platform' && (
           <PlatformStep
             busy={busy}
             onSelect={(p) => {
               setPlatform(p);
-              setStep(p === "legacy" ? "legacy_product" : "ocp_target");
+              setStep(p === 'legacy' ? 'legacy_product' : 'ocp_target');
             }}
           />
         )}
 
-        {step === "legacy_product" && (
-          <LegacyProductStep busy={busy} onSelect={(p) => { setError(null); setStep(p === "was" ? "was_app" : "legacy_app"); }} />
+        {step === 'legacy_product' && (
+          <LegacyProductStep
+            busy={busy}
+            onSelect={(p) => {
+              setError(null);
+              setStep(p === 'was' ? 'was_app' : 'legacy_app');
+            }}
+          />
         )}
 
-        {step === "was_app" && (
+        {step === 'was_app' && (
           <WasAppSearchStep
             busy={busy}
             initialApp={wasOnApp || undefined}
@@ -696,29 +784,33 @@ const OpsXWizardPage: React.FC = () => {
               setWasTarget(null);
               setWasOperation(null);
               setWasDiscovery(null);
-              setStep("was_jvm");
+              setStep('was_jvm');
             }}
           />
         )}
 
-        {step === "was_jvm" && wasSel && (
+        {step === 'was_jvm' && wasSel && (
           <WasJvmSelectStep
             app={wasSel.app}
             hosts={wasSel.hosts}
             hostInfo={wasSel.hostInfo}
             busy={busy}
-            resume={wasDiscovery ? { jobId: wasDiscovery.jobId, awxServerId: wasDiscovery.awxServerId } : null}
+            resume={
+              wasDiscovery
+                ? { jobId: wasDiscovery.jobId, awxServerId: wasDiscovery.awxServerId }
+                : null
+            }
             onSubmit={(v) => {
               setError(null);
               setWasTarget(v.target);
               setWasOperation(v.operation);
               setWasDiscovery(v.discovery);
-              setStep("was_confirm");
+              setStep('was_confirm');
             }}
           />
         )}
 
-        {step === "was_confirm" && wasSel && wasTarget && wasOperation && (
+        {step === 'was_confirm' && wasSel && wasTarget && wasOperation && (
           <WasConfirmStep
             app={wasSel.app}
             target={wasTarget}
@@ -729,14 +821,14 @@ const OpsXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "was_done" && wasTarget && wasOperation && wasRun?.jobId != null && (
+        {step === 'was_done' && wasTarget && wasOperation && wasRun?.jobId != null && (
           <WasResultPanel
             target={wasTarget}
             operation={wasOperation}
             env={wasEnv}
             jobId={wasRun.jobId}
-            awxStatus={trackedJob?.status || wasRun.status || "pending"}
-            output={trackedJob?.output || ""}
+            awxStatus={trackedJob?.status || wasRun.status || 'pending'}
+            output={trackedJob?.output || ''}
             run={trackedJob?.result as WasRunStatus | undefined}
             pollErr={trackedJob?.pollErr}
             title={trackedJob?.title || `OpsX WAS #${wasRun.jobId}`}
@@ -745,44 +837,62 @@ const OpsXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "legacy_app" && (
+        {step === 'legacy_app' && (
           <AppSearchStep
             busy={busy}
             initialSearch={jbossOnSecim?.app}
             autoSelectExact={jbossOnSecim?.otomatik}
             onSelect={(a) => {
               setJbossOnSecim((o) => (o ? { ...o, otomatik: false } : o));
-              setApp(a); setJbossVersions([]); setHosts([]); setStep("legacy_jboss_version");
+              setApp(a);
+              setJbossVersions([]);
+              setHosts([]);
+              setStep('legacy_jboss_version');
             }}
           />
         )}
 
-        {step === "legacy_jboss_version" && (
+        {step === 'legacy_jboss_version' && (
           <JbossVersionStep
             app={app}
             busy={busy}
-            onSubmit={(v) => { setJbossVersions(v); setHosts([]); setHostMajors([]); setStep("legacy_hosts"); }}
+            onSubmit={(v) => {
+              setJbossVersions(v);
+              setHosts([]);
+              setHostMajors([]);
+              setStep('legacy_hosts');
+            }}
           />
         )}
 
-        {step === "legacy_hosts" && (
+        {step === 'legacy_hosts' && (
           <HostSelectStep
             app={app}
             jbossVersions={jbossVersions}
             busy={busy}
-            onSubmit={(v) => { setHosts(v.hosts); setHostMajors(v.hostMajors); setStep("operation"); }}
+            onSubmit={(v) => {
+              setHosts(v.hosts);
+              setHostMajors(v.hostMajors);
+              setStep('operation');
+            }}
           />
         )}
 
-        {step === "ocp_target" && (
+        {step === 'ocp_target' && (
           <OcpTargetStep busy={busy} initial={ocpOnSecim} onSubmit={submitOcpTarget} />
         )}
 
-        {step === "operation" && (
-          <OperationStep summary={operationSummary} application={app} hosts={hosts} busy={busy} onSelect={handleLegacyOperation} />
+        {step === 'operation' && (
+          <OperationStep
+            summary={operationSummary}
+            application={app}
+            hosts={hosts}
+            busy={busy}
+            onSelect={handleLegacyOperation}
+          />
         )}
 
-        {step === "legacy_jvm" && dumpType && (
+        {step === 'legacy_jvm' && dumpType && (
           <LegacyJvmSelectStep
             application={app}
             hosts={hosts}
@@ -792,7 +902,7 @@ const OpsXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "legacy_serverconfig" && pendingOperation && (
+        {step === 'legacy_serverconfig' && pendingOperation && (
           <ServerConfigSelectStep
             application={app}
             hosts={hosts}
@@ -803,27 +913,43 @@ const OpsXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === "ocp_operation" && (
-          <OcpOperationStep env={env} tenant={tenant} pairs={pairs} busy={busy} onSelect={handleOcpOperation} />
+        {step === 'ocp_operation' && (
+          <OcpOperationStep
+            env={env}
+            tenant={tenant}
+            pairs={pairs}
+            busy={busy}
+            onSelect={handleOcpOperation}
+          />
         )}
 
-        {step === "ocp_cluster" && (
-          <OcpClusterPickStep env={env} tenant={tenant} busy={busy} initialCluster={ocpOnCluster} onSubmit={submitOcpCluster} />
+        {step === 'ocp_cluster' && (
+          <OcpClusterPickStep
+            env={env}
+            tenant={tenant}
+            busy={busy}
+            initialCluster={ocpOnCluster}
+            onSubmit={submitOcpCluster}
+          />
         )}
 
-        {step === "ocp_pods" && dumpType && pairs.length > 0 && (
+        {step === 'ocp_pods' && dumpType && pairs.length > 0 && (
           <OcpPodSelectStep
             env={env}
             tenant={tenant}
             pairs={pairs}
             dumpType={dumpType}
-            mode={podDeleteMode ? "poddelete" : "dump"}
+            mode={podDeleteMode ? 'poddelete' : 'dump'}
             busy={busy}
-            onSubmit={(v) => (podDeleteMode ? runOpenshiftPodDelete(v.pods, v.consent) : runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval))}
+            onSubmit={(v) =>
+              podDeleteMode
+                ? runOpenshiftPodDelete(v.pods, v.consent)
+                : runOpenshiftDump(dumpType, v.pods, v.threadDumpCount, v.threadDumpInterval)
+            }
           />
         )}
 
-        {step === "done" && result && (
+        {step === 'done' && result && (
           <div className="flex flex-col items-center gap-4 py-6 text-center">
             {/* ONAY BEKLEYEN TALEP "BASLATILDI" DEGILDIR (2026-10-06): production
                 islemleri Smart onayindan geciyor ve o anda AWX'te is YOK. Yesil
@@ -836,13 +962,13 @@ const OpsXWizardPage: React.FC = () => {
                 <ExclamationTriangleIcon className="w-10 h-10 text-red-500" />
                 <div data-testid="opsx-talep-sonu">
                   <p className="text-sm font-medium text-[var(--text-primary)]">
-                    {talepSonu.status === "REJECTED"
-                      ? "Smart talebi reddedildi — iş başlatılmadı."
-                      : talepSonu.status === "CANCELLED" || talepSonu.status === "CANCELED"
-                        ? "Smart talebi iptal edildi — iş başlatılmadı."
-                        : talepSonu.status === "TIMEOUT"
-                          ? "Smart talebi zaman aşımına uğradı — iş başlatılmadı."
-                          : "Onay sonrası iş başlatılamadı."}
+                    {talepSonu.status === 'REJECTED'
+                      ? 'Smart talebi reddedildi — iş başlatılmadı.'
+                      : talepSonu.status === 'CANCELLED' || talepSonu.status === 'CANCELED'
+                        ? 'Smart talebi iptal edildi — iş başlatılmadı.'
+                        : talepSonu.status === 'TIMEOUT'
+                          ? 'Smart talebi zaman aşımına uğradı — iş başlatılmadı.'
+                          : 'Onay sonrası iş başlatılamadı.'}
                   </p>
                   {talepSonu.errorMessage && (
                     <p className="mt-1 text-xs text-red-600">{talepSonu.errorMessage}</p>
@@ -880,13 +1006,17 @@ const OpsXWizardPage: React.FC = () => {
                   alindiMs={talepDurumuAlindiMs}
                   className="w-full max-w-sm text-left"
                 />
-                <KapamaOnayiUyarisi smartNo={'externalTicketId' in result ? result.externalTicketId : null} />
+                <KapamaOnayiUyarisi
+                  smartNo={'externalTicketId' in result ? result.externalTicketId : null}
+                />
               </>
             ) : (
               <>
                 <CheckCircleIcon className="w-10 h-10 text-green-600" />
                 <div>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">İşlem başlatıldı.</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">
+                    İşlem başlatıldı.
+                  </p>
                   {result.jobId != null && (
                     <p className="mt-1 text-xs text-[var(--text-muted)]">
                       AWX Job: <span className="font-mono">#{result.jobId}</span>
@@ -904,10 +1034,12 @@ const OpsXWizardPage: React.FC = () => {
               <div className="w-full text-left">
                 <AnsibleLogTerminal
                   output={trackedJob.output}
-                  status={trackedJob.status || result.status || "pending"}
+                  status={trackedJob.status || result.status || 'pending'}
                   title={trackedJob.title}
                 />
-                {trackedJob.pollErr && <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>}
+                {trackedJob.pollErr && (
+                  <p className="mt-1.5 text-xs text-amber-600">{trackedJob.pollErr}</p>
+                )}
               </div>
             )}
 
@@ -917,28 +1049,50 @@ const OpsXWizardPage: React.FC = () => {
                 <div className="text-xs font-medium text-[var(--text-muted)]">
                   Pod Silme Sonuçları
                   {podDeleteStatus?.overallStatus && (
-                    <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${podDeleteStatus.overallStatus === "ok" ? "bg-green-100 text-green-700" : podDeleteStatus.overallStatus === "partial" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-700"}`}>
-                      {podDeleteStatus.overallStatus === "ok" ? "hepsi silindi" : podDeleteStatus.overallStatus === "partial" ? "kısmen" : "başarısız"}
+                    <span
+                      className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${podDeleteStatus.overallStatus === 'ok' ? 'bg-green-100 text-green-700' : podDeleteStatus.overallStatus === 'partial' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}
+                    >
+                      {podDeleteStatus.overallStatus === 'ok'
+                        ? 'hepsi silindi'
+                        : podDeleteStatus.overallStatus === 'partial'
+                          ? 'kısmen'
+                          : 'başarısız'}
                     </span>
                   )}
                 </div>
                 {podDeleteStatus?.results && podDeleteStatus.results.length > 0 ? (
                   podDeleteStatus.results.map((r, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]">
-                      <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={`${r.cluster} / ${r.namespace}`}>
-                        {r.pod} <span className="text-xs text-[var(--text-muted)]">· {r.namespace} · {r.cluster}</span>
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-lg bg-[var(--bg-base)]"
+                    >
+                      <span
+                        className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal"
+                        title={`${r.cluster} / ${r.namespace}`}
+                      >
+                        {r.pod}{' '}
+                        <span className="text-xs text-[var(--text-muted)]">
+                          · {r.namespace} · {r.cluster}
+                        </span>
                       </span>
                       {r.ok ? (
-                        <span className="text-xs text-green-700">Silindi · yeni pod ayağa kalkıyor</span>
+                        <span className="text-xs text-green-700">
+                          Silindi · yeni pod ayağa kalkıyor
+                        </span>
                       ) : (
-                        <span className="text-xs text-red-600">{r.existence === "Not Exist" ? "Bulunamadı" : "Başarısız"}{r.error ? ` — ${r.error}` : ""}</span>
+                        <span className="text-xs text-red-600">
+                          {r.existence === 'Not Exist' ? 'Bulunamadı' : 'Başarısız'}
+                          {r.error ? ` — ${r.error}` : ''}
+                        </span>
                       )}
                     </div>
                   ))
                 ) : podDeleteStatus?.message ? (
                   <p className="text-xs text-amber-700">{podDeleteStatus.message}</p>
                 ) : (
-                  <p className="text-xs text-[var(--text-muted)]">Pod'lar siliniyor, lütfen bekleyin…</p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Pod'lar siliniyor, lütfen bekleyin…
+                  </p>
                 )}
               </div>
             )}
@@ -960,12 +1114,12 @@ const OpsXWizardPage: React.FC = () => {
                           tek cluster/pod taşır. */}
                       <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal">
                         {r.host
-                          ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ""}`
+                          ? `${r.host}${r.pid ? ` · PID ${r.pid}` : ''}`
                           : (r.pods?.length
-                              ? `${r.cluster ? `${r.cluster} · ` : ""}${r.namespaces?.join(",") ? `${r.namespaces.join(",")} · ` : ""}${r.pods.length} pod`
-                              : null)
-                          || (r.pod ? `${r.cluster ? `${r.cluster}/` : ""}${r.pod}` : null)
-                          || (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
+                              ? `${r.cluster ? `${r.cluster} · ` : ''}${r.namespaces?.join(',') ? `${r.namespaces.join(',')} · ` : ''}${r.pods.length} pod`
+                              : null) ||
+                            (r.pod ? `${r.cluster ? `${r.cluster}/` : ''}${r.pod}` : null) ||
+                            (r.application ? `${r.namespace}/${r.application}` : r.namespace)}
                       </span>
                       {r.ok && r.downloadToken ? (
                         <a
@@ -976,14 +1130,16 @@ const OpsXWizardPage: React.FC = () => {
                           İndir
                         </a>
                       ) : (
-                        <span className="text-xs text-red-600">{r.error || "Başarısız"}</span>
+                        <span className="text-xs text-red-600">{r.error || 'Başarısız'}</span>
                       )}
                     </div>
                   ))
                 ) : dumpStatus?.message ? (
                   <p className="text-xs text-amber-700">{dumpStatus.message}</p>
                 ) : (
-                  <p className="text-xs text-[var(--text-muted)]">Dump alınıyor, lütfen bekleyin…</p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Dump alınıyor, lütfen bekleyin…
+                  </p>
                 )}
               </div>
             )}

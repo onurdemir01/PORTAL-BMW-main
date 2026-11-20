@@ -55,7 +55,9 @@ function sahteAwx(bayt) {
 function sureSinirli(p, ms, etiket) {
   return Promise.race([
     p,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`${etiket}: promise ${ms} ms icinde cozulmedi`)), ms)),
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error(`${etiket}: promise ${ms} ms icinde cozulmedi`)), ms),
+    ),
   ]);
 }
 
@@ -278,14 +280,15 @@ test('JO6 normal JSON yaniti REDDEDILMIYOR', async () => {
 // dolana kadar beklemek, ayni dev yaniti saatlerce her turda yeniden indirmeye
 // calismak olurdu — OOM'u cozup yerine bir indirme dongusu birakmak.
 test('JO7 `tooLarge` reddi YASI BEKLEMEDEN "bilinmiyor" isaretleniyor', () => {
-  const src = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'scalex', 'reconciler.cjs'),
-    'utf8',
-  );
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'scalex', 'reconciler.cjs'), 'utf8');
   const i = src.indexOf('const ageHours = j.created_at');
   assert.ok(i > 0, 'uzlastiricinin hata dali bulunamadi');
   const dal = src.slice(i, i + 900);
-  assert.match(dal, /e\s*&&\s*e\.tooLarge/, '`tooLarge` dali yok — dev yanit her turda yeniden indirilir');
+  assert.match(
+    dal,
+    /e\s*&&\s*e\.tooLarge/,
+    '`tooLarge` dali yok — dev yanit her turda yeniden indirilir',
+  );
   // Kapi yas kontrolunden ONCE gelmeli; sonra gelseydi hic ates almazdi.
   assert.ok(
     dal.indexOf('tooLarge') < dal.indexOf('ageHours >= cfg.staleHours'),
@@ -381,14 +384,29 @@ test('JO10 filtre SOZLESMESI degismedi (eski uygulamayla birebir ayni)', () => {
     };
   };
 
-  const parcalar = ['TASK [foo]', '  ok: [host]', 'changed=1', '', '   ', 'fatal: FAILED', 'ok', '\r'];
+  const parcalar = [
+    'TASK [foo]',
+    '  ok: [host]',
+    'changed=1',
+    '',
+    '   ',
+    'fatal: FAILED',
+    'ok',
+    '\r',
+  ];
   let denendi = 0;
   for (let t = 0; t < 1500; t++) {
     const n = t % 11;
-    const metin = Array.from({ length: n }, () => parcalar[(t * 7 + n) % parcalar.length]).join('\n');
+    const metin = Array.from({ length: n }, () => parcalar[(t * 7 + n) % parcalar.length]).join(
+      '\n',
+    );
     for (const needle of ['ok', 'changed', 'TASK', 'zzz', '  ', 'a']) {
       const ov = { outputFilter: { enabled: true, contains: needle } };
-      assert.deepEqual(filtre(metin, ov), eski(metin, ov), `sozlesme kaydi: ${JSON.stringify(metin)} / ${needle}`);
+      assert.deepEqual(
+        filtre(metin, ov),
+        eski(metin, ov),
+        `sozlesme kaydi: ${JSON.stringify(metin)} / ${needle}`,
+      );
       denendi++;
     }
   }
@@ -396,11 +414,20 @@ test('JO10 filtre SOZLESMESI degismedi (eski uygulamayla birebir ayni)', () => {
   // `lastIndexOf` negatif `fromIndex`i 0 gibi ele aliyor ve needle satir
   // sinirinin OTESINE tasabiliyordu.
   for (const [metin, needle] of [
-    ['', 'x'], ['tek satir', 'tek'], ['a\n', 'a'], ['\n\n', 'x'],
-    ['abc', 'abcd'], ['a\nb', 'a\nb'], ['a\nb\nc', 'b\nc'],
+    ['', 'x'],
+    ['tek satir', 'tek'],
+    ['a\n', 'a'],
+    ['\n\n', 'x'],
+    ['abc', 'abcd'],
+    ['a\nb', 'a\nb'],
+    ['a\nb\nc', 'b\nc'],
   ]) {
     const ov = { outputFilter: { enabled: true, contains: needle } };
-    assert.deepEqual(filtre(metin, ov), eski(metin, ov), `kenar: ${JSON.stringify(metin)} / ${JSON.stringify(needle)}`);
+    assert.deepEqual(
+      filtre(metin, ov),
+      eski(metin, ov),
+      `kenar: ${JSON.stringify(metin)} / ${JSON.stringify(needle)}`,
+    );
     denendi++;
   }
   assert.ok(denendi > 9000, `yeterince durum denenmedi: ${denendi}`);
@@ -436,7 +463,7 @@ test('JO11 bellek nabzi duruyor ve surecin kapanmasini ENGELLEMIYOR', () => {
 // JO12 - CAGIRANIN GIZLILERI (Crypto Hub node kancasi, 2026-11-03): AWX 4xx govdesi bir
 // degiskenin DEGERINI yansitirsa (anket dogrulama mesaji) log satiri, hata metni ve e.body
 // o degeri tasimaz. Gizli bildirilmeyen cagrida davranis aynen kalir (body korunur).
-test('JO12 opts.gizliler: 4xx govdesindeki deger log/hata/body\'ye dusmuyor', async () => {
+test("JO12 opts.gizliler: 4xx govdesindeki deger log/hata/body'ye dusmuyor", async () => {
   const GIZLI = 'eyJkZWdlcmxlciI6/SIRSIRb64';
   const mod = gercekJsonIstek('awxRequestToServer', {
     maskRequestSecrets: (s) => String(s),
@@ -456,14 +483,21 @@ test('JO12 opts.gizliler: 4xx govdesindeki deger log/hata/body\'ye dusmuyor', as
     const sunucu = { url: `http://127.0.0.1:${srv.address().port}` };
     let hata = null;
     try {
-      await sureSinirli(mod.fn(sunucu, 't', 'POST', '/api/v2/x/', {}, { gizliler: [GIZLI] }), 15000, 'JO12');
+      await sureSinirli(
+        mod.fn(sunucu, 't', 'POST', '/api/v2/x/', {}, { gizliler: [GIZLI] }),
+        15000,
+        'JO12',
+      );
     } catch (e) {
       hata = e;
     }
     assert.ok(hata && hata.status === 400, 'hata beklenirdi');
     const hepsi = [hata.message, JSON.stringify(hata.body), ...loglar].join('\n');
     assert.ok(!hepsi.includes('SIRSIR'), `gizli sizdi: ${hepsi}`);
-    assert.ok(loglar.some((l) => l.includes('HTTP 400') && l.includes('****')), 'log satiri yok ya da maskesiz - test kor');
+    assert.ok(
+      loglar.some((l) => l.includes('HTTP 400') && l.includes('****')),
+      'log satiri yok ya da maskesiz - test kor',
+    );
     loglar.length = 0;
     hata = null;
     try {
@@ -471,7 +505,10 @@ test('JO12 opts.gizliler: 4xx govdesindeki deger log/hata/body\'ye dusmuyor', as
     } catch (e) {
       hata = e;
     }
-    assert.ok(hata && hata.body && hata.body.detail.includes('SIRSIR'), 'gizlisiz cagrida body degismemeli');
+    assert.ok(
+      hata && hata.body && hata.body.detail.includes('SIRSIR'),
+      'gizlisiz cagrida body degismemeli',
+    );
   } finally {
     console.error = eski;
     srv.close();

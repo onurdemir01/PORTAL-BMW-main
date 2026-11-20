@@ -30,18 +30,30 @@ const ROT3 = '20260929031500';
 // Eski sunucuda bir proxy_pass location'i: tasima gorunumune girmesi icin sart.
 function proxy(host, location, target) {
   return {
-    host, vhost: 'GLOMO-PROD.conf', service: 'GLOMO', location,
-    kind: 'proxy', upstream_name: null, target_url: target, upstream_defined: 1,
+    host,
+    vhost: 'GLOMO-PROD.conf',
+    service: 'GLOMO',
+    location,
+    kind: 'proxy',
+    upstream_name: null,
+    target_url: target,
+    upstream_defined: 1,
   };
 }
 
-const ROUTES = [{ namespace_name: 'glomo-prod', route_address: 'base-app-v0-glomo-prod.apps.fw.garanti.com.tr' }];
+const ROUTES = [
+  { namespace_name: 'glomo-prod', route_address: 'base-app-v0-glomo-prod.apps.fw.garanti.com.tr' },
+];
 const OCP = [{ namespace: 'glomo-prod', application: 'base-app-v0' }];
 
 function kur(trafficRows) {
   return buildMigration({
     proxyRows: [proxy(ESKI, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.garanti.com.tr/')],
-    upstreamRows: [], routeRows: ROUTES, ocpRows: OCP, dirRows: [], newLocRows: [],
+    upstreamRows: [],
+    routeRows: ROUTES,
+    ocpRows: OCP,
+    dirRows: [],
+    newLocRows: [],
     trafficRows,
     groups: MIGRATION_GROUPS.filter((g) => g.id === 'glomo'),
   });
@@ -56,9 +68,19 @@ const yolOf = (groups) => {
 
 // Varsayilan: log 7 gunden uzun bir pencereyi kapsiyor (first_seen TAM) - "idle" ancak boyle.
 const satir = (host, over = {}) => ({
-  host, service: 'GLOMO', env: 'PROD', location: '/base/',
-  req_24h: 0, req_7d: 0, hc_24h: 0, sampled: 0, last_seen: null, error: null,
-  first_seen: TAM, scan_date: GUN, ...over,
+  host,
+  service: 'GLOMO',
+  env: 'PROD',
+  location: '/base/',
+  req_24h: 0,
+  req_7d: 0,
+  hc_24h: 0,
+  sampled: 0,
+  last_seen: null,
+  error: null,
+  first_seen: TAM,
+  scan_date: GUN,
+  ...over,
 });
 
 test('MT1 olcum ESKI sunuculardan alinir; YENI sunucu satiri karismaz', () => {
@@ -67,17 +89,18 @@ test('MT1 olcum ESKI sunuculardan alinir; YENI sunucu satiri karismaz', () => {
   const yalnizYeni = yolOf(kur([satir(YENI, { req_7d: 5000, req_24h: 700 })]));
   assert.equal(yalnizYeni.traffic, null, 'yeni sunucu satiri olcume karismis');
 
-  const eski = yolOf(kur([satir(ESKI, { req_7d: 5000, req_24h: 700, last_seen: '20260927101500' })]));
+  const eski = yolOf(
+    kur([satir(ESKI, { req_7d: 5000, req_24h: 700, last_seen: '20260927101500' })]),
+  );
   assert.ok(eski.traffic, 'eski sunucu satiri okunmamis');
   assert.equal(eski.traffic.state, 'active');
   assert.equal(eski.traffic.req7, 5000);
   assert.equal(eski.traffic.lastSeen, '20260927101500');
 
   // Ikisi birden geldiginde YALNIZ eski sayilir.
-  const ikisi = yolOf(kur([
-    satir(ESKI, { req_7d: 10, req_24h: 2 }),
-    satir(YENI, { req_7d: 9999, req_24h: 999 }),
-  ]));
+  const ikisi = yolOf(
+    kur([satir(ESKI, { req_7d: 10, req_24h: 2 }), satir(YENI, { req_7d: 9999, req_24h: 999 })]),
+  );
   assert.equal(ikisi.traffic.req7, 10, 'yeni sunucunun sayisi toplama girmis');
   assert.equal(ikisi.traffic.hosts, 1);
 });
@@ -106,20 +129,21 @@ test('MT2 uc durum: olcememek "yuk yok" DEGIL', () => {
 });
 
 test('MT3 mirror sunucular TOPLANIR; okunamayan sunucu "yuk yok" yapmaz', () => {
-  const t = yolOf(kur([
-    satir(ESKI, { req_7d: 100, req_24h: 10, last_seen: '20260926080000' }),
-    satir(ESKI2, { req_7d: 40, req_24h: 4, last_seen: '20260927090000' }),
-  ])).traffic;
+  const t = yolOf(
+    kur([
+      satir(ESKI, { req_7d: 100, req_24h: 10, last_seen: '20260926080000' }),
+      satir(ESKI2, { req_7d: 40, req_24h: 4, last_seen: '20260927090000' }),
+    ]),
+  ).traffic;
   assert.equal(t.req7, 140, 'mirror sunucular toplanmamis');
   assert.equal(t.req24, 14);
   assert.equal(t.hosts, 2);
   assert.equal(t.lastSeen, '20260927090000', 'son istek EN YENI olmali');
 
   // Biri okunamadi ama otekinde yuk var: durum ACTIVE kalir, okunamayan sayilir.
-  const karma = yolOf(kur([
-    satir(ESKI, { req_7d: 7 }),
-    satir(ESKI2, { error: 'izin yok' }),
-  ])).traffic;
+  const karma = yolOf(
+    kur([satir(ESKI, { req_7d: 7 }), satir(ESKI2, { error: 'izin yok' })]),
+  ).traffic;
   assert.equal(karma.state, 'active');
   assert.equal(karma.hosts, 1);
   assert.equal(karma.unknownHosts, 1, 'okunamayan sunucu bildirilmiyor');
@@ -153,7 +177,18 @@ test('MT5 "olculemedi" IKI sebebi ayirt edilebilir olmali', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const ui = fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8');
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'denetim',
+      'NginxProdMigration.tsx',
+    ),
+    'utf8',
+  );
   assert.match(ui, /log okunamadı/, 'log okunamadi etiketi yok');
   assert.match(ui, /kısmi ölçüm/, 'kismi olcum etiketi yok');
   assert.match(ui, /function yukEtiket/, 'etiket ayrimi yapilmiyor');
@@ -163,17 +198,21 @@ test('MT6 kismi olcumde OLCULEN PENCERE bildirilir, yorumlanabilir olur', () => 
   // Kullanici (2026-09-27): "'? kismi olcum' yazanlar var, bunlari tam anlamlandiramiyorum".
   // Eksik bilgi olcumun GERCEKTEN kac gunu kapsadigiydi: log kuyrugu 7 gunu kapsamiyorsa
   // "0 istek" atil DEMEK DEGIL - yalnizca o kadar gunde istek gorulmedi demek.
-  const t = yolOf(kur([satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260925120000' })])).traffic;
+  const t = yolOf(
+    kur([satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260925120000' })]),
+  ).traffic;
   assert.equal(t.state, 'unknown');
   assert.equal(t.firstSeen, '20260925120000', 'olculen pencerenin basi tasinmiyor');
 
   // Mirror sunucularda EN DAR pencere alinir (en YENI first_seen): ESKI2 6 gun gormus olsa da
   // ESKI yalniz 1 gun gordu; kalan 5 gunde ESKI'ye gelen istek bilinmez. (2026-10-02'ye kadar
   // bu test EN ESKIYI istiyordu - "7 gun olctuk" yalaninin TA KENDISI; kural ters cevrildi.)
-  const iki = yolOf(kur([
-    satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260926000000' }),
-    satir(ESKI2, { req_7d: 0, sampled: 1, first_seen: '20260921000000' }),
-  ])).traffic;
+  const iki = yolOf(
+    kur([
+      satir(ESKI, { req_7d: 0, sampled: 1, first_seen: '20260926000000' }),
+      satir(ESKI2, { req_7d: 0, sampled: 1, first_seen: '20260921000000' }),
+    ]),
+  ).traffic;
   assert.equal(iki.firstSeen, '20260926000000', 'en ESKI pencere alinmis - "7 gun olctuk" yalani');
   assert.equal(iki.pencereSaat, 144);
 
@@ -187,8 +226,21 @@ test('MT6 kismi olcumde OLCULEN PENCERE bildirilir, yorumlanabilir olur', () => 
   const fs = require('node:fs');
   const path = require('node:path');
   const { normalize } = require('../../util/guard-text.cjs');
-  const ui = normalize(fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8'));
+  const ui = normalize(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'denetim',
+        'NginxProdMigration.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(ui, /import \{[^}]*\bkismiEtiket\b[^}]*\} from '\.\/yukPencere'/);
   assert.match(ui, /return kismiEtiket\(t\) \|\| 'kısmi ölçüm';/, 'etiket ortak modulden gelmiyor');
   assert.ok(!/Date\.now\(\) - bas/.test(ui), 'sure yine tarayici saatiyle hesaplaniyor');
@@ -201,20 +253,37 @@ test('MT6 kismi olcumde OLCULEN PENCERE bildirilir, yorumlanabilir olur', () => 
 // Gercek analyzer bicimiyle: eski sunucularin vhost adi '.conf'suz (GLOMO-PROD) ve LOADERR
 // satiri service/env/location NULL.
 function proxy2(host) {
-  return { ...proxy(host, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.garanti.com.tr/'), vhost: 'GLOMO-PROD' };
+  return {
+    ...proxy(host, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.garanti.com.tr/'),
+    vhost: 'GLOMO-PROD',
+  };
 }
 function kur2(hosts, trafficRows) {
   return buildMigration({
     proxyRows: hosts.map(proxy2),
-    upstreamRows: [], routeRows: ROUTES, ocpRows: OCP, dirRows: [], newLocRows: [],
+    upstreamRows: [],
+    routeRows: ROUTES,
+    ocpRows: OCP,
+    dirRows: [],
+    newLocRows: [],
     trafficRows,
     groups: MIGRATION_GROUPS.filter((g) => g.id === 'glomo'),
   });
 }
 const loaderr = (host, vhost) => ({
-  host, vhost, service: null, env: null, location: null,
-  req_24h: null, req_7d: null, hc_24h: null, sampled: 0, last_seen: null,
-  error: 'log www ile okunamiyor: /web_log/glomo.log', first_seen: null, scan_date: GUN,
+  host,
+  vhost,
+  service: null,
+  env: null,
+  location: null,
+  req_24h: null,
+  req_7d: null,
+  hc_24h: null,
+  sampled: 0,
+  last_seen: null,
+  error: 'log www ile okunamiyor: /web_log/glomo.log',
+  first_seen: null,
+  scan_date: GUN,
 });
 
 test('MT7 gunluk rotasyon: tum dosyalar okundu, sampled=0, pencere ~3 gun -> idle DEGIL', () => {
@@ -254,7 +323,10 @@ test('MT9 okunamayan / satirsiz mirror: tanimin bir sunucusu olculmediyse idle D
 
 test('MT10 host kipi satirlari ve kovalar tasima olcumune KARISMAZ', () => {
   const hk = [
-    { ...satir(ESKI, { service: null, env: null, location: '@base.irp.local', req_7d: 900 }), vhost: 'base-app-v0-glomo-prod' },
+    {
+      ...satir(ESKI, { service: null, env: null, location: '@base.irp.local', req_7d: 900 }),
+      vhost: 'base-app-v0-glomo-prod',
+    },
     { ...satir(ESKI, { service: 'GLOMO', env: null, location: '@_', req_7d: 50 }), vhost: '_' },
     { ...satir(ESKI, { service: 'GLOMO', location: '/base/', req_7d: 70 }), vhost: '_' },
   ];
@@ -291,7 +363,11 @@ function sahteDb({ fs = 40, trafik = [] } = {}) {
   return { query, sql, sorgular };
 }
 const yuklenen = async (db) => {
-  const r = await loadMigration({ query: db.query, sql: db.sql, hasProxyColumns: async () => true });
+  const r = await loadMigration({
+    query: db.query,
+    sql: db.sql,
+    hasProxyColumns: async () => true,
+  });
   return { r, yol: yolOf(r.groups) };
 };
 
@@ -307,20 +383,28 @@ test('MT11 loadMigration: first_seen kolonu YOKKEN sorgu dusmez, durum idle OLMA
   const kolonlu = sahteDb({ fs: 40, trafik: [satir(ESKI)] });
   const b = await yuklenen(kolonlu);
   assert.equal(b.yol.traffic.state, 'idle', 'tam pencerede gercek 0 idle olmali');
-  const trf = kolonlu.sorgular.find((t) => t.includes('FROM dbo.Nginx_Spa_Traffic') && t.includes('req_7d'));
+  const trf = kolonlu.sorgular.find(
+    (t) => t.includes('FROM dbo.Nginx_Spa_Traffic') && t.includes('req_7d'),
+  );
   assert.match(trf, /location NOT LIKE '@%'/, 'host kipi satirlari SQL de suzulmuyor');
   assert.match(trf, /scan_date, 23\) AS scan_date/, 'pencere icin scan_date secilmiyor');
   assert.match(trf, /AND host IN \(@o0/, 'yalniz eski sunucular okunmali');
 });
 
 test('MT12 loadMigration: yalniz host kipi satiri varken trafficReady YANLIS', async () => {
-  const hk = [{ ...satir(ESKI, { service: null, env: null, location: '@base.irp.local', req_7d: 5 }), vhost: 'x' }];
+  const hk = [
+    {
+      ...satir(ESKI, { service: null, env: null, location: '@base.irp.local', req_7d: 5 }),
+      vhost: 'x',
+    },
+  ];
   // SQL suzgeci olmasa bile (sahte DB'ye dogrudan) JS suzgeci "olcum var" demez.
   const db = sahteDb({ trafik: hk });
   const sorgu = db.query;
-  db.query = async (t) => (String(t).includes('FROM dbo.Nginx_Spa_Traffic') && String(t).includes('req_7d')
-    ? { recordset: hk }
-    : sorgu(t));
+  db.query = async (t) =>
+    String(t).includes('FROM dbo.Nginx_Spa_Traffic') && String(t).includes('req_7d')
+      ? { recordset: hk }
+      : sorgu(t);
   const { r, yol } = await yuklenen(db);
   assert.equal(r.trafficReady, false, 'host kipi satiri "yuk olcumu var" sayildi');
   assert.equal(yol.traffic, null);
@@ -333,12 +417,31 @@ test('MT13 uygulama ozeti: HIC olculmeyen yol "yuk almiyor" bandina dusurmez (ek
   const fs = require('node:fs');
   const path = require('node:path');
   const { normalize } = require('../../util/guard-text.cjs');
-  const ui = normalize(fs.readFileSync(
-    path.join(__dirname, '..', '..', '..', 'src', 'components', 'denetim', 'NginxProdMigration.tsx'), 'utf8'));
+  const ui = normalize(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'denetim',
+        'NginxProdMigration.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(ui, /import \{[^}]*\byolYukOzeti\b[^}]*\} from '\.\/yukPencere'/);
-  assert.match(ui, /function yukOzet\(paths: NginxMigrationApp\['paths'\]\): YukBilgi \{ return yolYukOzeti\(paths\); \}/,
-    'ekran uygulama ozetini ortak kuraldan almiyor');
-  assert.ok(!/\.filter\(Boolean\) as NonNullable<YukBilgi>/.test(ui), 'olculmeyen yolu atan eski ozet geri gelmis');
+  assert.match(
+    ui,
+    /function yukOzet\(paths: NginxMigrationApp\['paths'\]\): YukBilgi \{ return yolYukOzeti\(paths\); \}/,
+    'ekran uygulama ozetini ortak kuraldan almiyor',
+  );
+  assert.ok(
+    !/\.filter\(Boolean\) as NonNullable<YukBilgi>/.test(ui),
+    'olculmeyen yolu atan eski ozet geri gelmis',
+  );
 });
 
 test('MT14 loadMigration: ekip UYGULAMA sahibinden (dbo.Openshift_App_Owners), yoksa namespace sahibi', async () => {
@@ -350,7 +453,16 @@ test('MT14 loadMigration: ekip UYGULAMA sahibinden (dbo.Openshift_App_Owners), y
     db.query = async (t) => {
       const s = String(t);
       if (s.includes('dbo.Openshift_Namespace_Owners'))
-        return { recordset: [{ namespace: 'glomo-prod', owner_group_name: 'GT-NS', owner_email: 'ns@x', lookup_status: 'OK' }] };
+        return {
+          recordset: [
+            {
+              namespace: 'glomo-prod',
+              owner_group_name: 'GT-NS',
+              owner_email: 'ns@x',
+              lookup_status: 'OK',
+            },
+          ],
+        };
       if (s.includes('dbo.Openshift_App_Owners')) {
         if (appRows === null) throw new Error("Invalid object name 'dbo.Openshift_App_Owners'.");
         return { recordset: appRows };
@@ -359,17 +471,36 @@ test('MT14 loadMigration: ekip UYGULAMA sahibinden (dbo.Openshift_App_Owners), y
     };
     return db;
   };
-  const appOf = (r) => r.groups.find((x) => x.id === 'glomo').apps.find((x) => x.application === 'base-app-v0');
+  const appOf = (r) =>
+    r.groups.find((x) => x.id === 'glomo').apps.find((x) => x.application === 'base-app-v0');
   try {
     nsOwners._resetCache();
-    const { r: r1 } = await yuklenen(kur2([{ namespace: 'glomo-prod', application: 'base-app-v0', owner_group_name: 'GT-APP', kaynak: 'SI51_AGILE' }]));
-    assert.deepEqual([appOf(r1).owner.groups, appOf(r1).owner.kaynaklar], [['GT-APP'], ['SI51_AGILE']]);
+    const { r: r1 } = await yuklenen(
+      kur2([
+        {
+          namespace: 'glomo-prod',
+          application: 'base-app-v0',
+          owner_group_name: 'GT-APP',
+          kaynak: 'SI51_AGILE',
+        },
+      ]),
+    );
+    assert.deepEqual(
+      [appOf(r1).owner.groups, appOf(r1).owner.kaynaklar],
+      [['GT-APP'], ['SI51_AGILE']],
+    );
     nsOwners._resetCache();
     const { r: r2 } = await yuklenen(kur2([]));
-    assert.deepEqual([appOf(r2).owner.groups, appOf(r2).owner.kaynaklar], [['GT-NS'], ['NAMESPACE']]);
+    assert.deepEqual(
+      [appOf(r2).owner.groups, appOf(r2).owner.kaynaklar],
+      [['GT-NS'], ['NAMESPACE']],
+    );
     nsOwners._resetCache();
     const { r: r3 } = await yuklenen(kur2(null));
-    assert.deepEqual([appOf(r3).owner.groups, appOf(r3).owner.kaynaklar, r3.ownersReady], [['GT-NS'], [], true]);
+    assert.deepEqual(
+      [appOf(r3).owner.groups, appOf(r3).owner.kaynaklar, r3.ownersReady],
+      [['GT-NS'], [], true],
+    );
   } finally {
     nsOwners._resetCache();
   }

@@ -5,7 +5,14 @@
 // Bu dosyada React yok — bileşenler ve testler aynı fonksiyonları kullanır. Değer doğrulama ve
 // maskeleme sunucuyla AYNI modülden (shared/cryptoHubNodes.cjs): ekran "geçerli" deyip sunucu
 // reddetmesin.
-import { degerDogrula, maskele, ocoPencereKarari, DEGER_EN_COK, OCO_SON_PAY_DK, OCO_UFUK_GUN } from '../../../shared/cryptoHubNodes.cjs';
+import {
+  degerDogrula,
+  maskele,
+  ocoPencereKarari,
+  DEGER_EN_COK,
+  OCO_SON_PAY_DK,
+  OCO_UFUK_GUN,
+} from '../../../shared/cryptoHubNodes.cjs';
 import type {
   NodeBekleyen,
   NodeDep,
@@ -51,7 +58,7 @@ export const METIN = {
   yetkiYok: 'Talep açma yetkiniz yok — yalnız görüntüleyebilirsiniz.',
   bolumUis: "Yeni tip indexer'lar (uis)",
   bolumEski: "Eski tip indexer'lar",
-  eskiOkumaYok: 'Eski tip grupları görmek için mevcut node\'ları okuyun.',
+  eskiOkumaYok: "Eski tip grupları görmek için mevcut node'ları okuyun.",
   bilesenYok: 'bu ağda yok',
   baglantiYok: 'node bağlantısı yok',
   /** Yeni tip (uis) kart tablosu */
@@ -72,7 +79,8 @@ export const METIN = {
   bekleyen: (no: string, kullanici: string, zaman: string) =>
     `Onay bekleyen değişiklik: ${no} — ${kullanici}, ${zaman}`,
   /** Bileti olmayan koşan talep (Smart kapalı test yolu): beklenen bir onay yok. */
-  uygulanan: (no: string, kullanici: string, zaman: string) => `Uygulanan değişiklik: ${no} — ${kullanici}, ${zaman}`,
+  uygulanan: (no: string, kullanici: string, zaman: string) =>
+    `Uygulanan değişiklik: ${no} — ${kullanici}, ${zaman}`,
   envFromVar: 'envFrom var (node değişkeni tanımlamıyor)',
   envFromOlculemedi: 'envFrom kaynağı okunamadı',
   secimBaslik: 'Değişecek bileşenler',
@@ -98,21 +106,24 @@ export const METIN = {
     "Her rol için yeni değeri yazın. Değer Portal'da şifreli tutulur; ekranda, Smart'ta ve denetimde yalnız maskeli görünür; onaydan sonra AWX işine iletilir.",
   yeniAciklamaOnaysiz:
     "Her rol için yeni değeri yazın. Değer Portal'da şifreli tutulur; ekranda ve denetimde yalnız maskeli görünür; iş başlarken AWX'e iletilir.",
-  bicimEtiketi: { url: 'URL (http, https, ws, wss)', hostport: 'host:port', sir: 'gizli değer' } as Record<
-    string,
-    string
-  >,
+  bicimEtiketi: {
+    url: 'URL (http, https, ws, wss)',
+    hostport: 'host:port',
+    sir: 'gizli değer',
+  } as Record<string, string>,
   rolEtiket: (rol: string, bicimAd: string) => `${rol} — ${bicimAd}`,
   rolEnvler: (envler: string) => `Env: ${envler}`,
-  yerTutucu: { url: 'https://ornek-node.invalid:8545/…', hostport: 'ornek-node.invalid:8333', sir: '' } as Record<
-    string,
-    string
-  >,
+  yerTutucu: {
+    url: 'https://ornek-node.invalid:8545/…',
+    hostport: 'ornek-node.invalid:8333',
+    sir: '',
+  } as Record<string, string>,
   /** Anahtarlar sunucunun neden kodlarıyla (degerDogrula) BİREBİR — bekçi denetler. */
   degerHata: {
     bicim: 'Bu rolün biçimi tanınmadı.',
     tip: 'Değer metin olmalı.',
-    karakter: 'Yalnız yazdırılabilir ASCII karakterler kullanılabilir (Türkçe harf, sekme, satır sonu yok).',
+    karakter:
+      'Yalnız yazdırılabilir ASCII karakterler kullanılabilir (Türkçe harf, sekme, satır sonu yok).',
     uzun: `En çok ${DEGER_EN_COK} karakter.`,
     yasak: '`;`, `$(` ve ters tırnak (`) kullanılamaz.',
     url: 'URL http://, https://, ws:// ya da wss:// (küçük harf) ile başlamalı; boşluk, tırnak, $, <, > ve ters eğik çizgi içeremez.',
@@ -138,7 +149,7 @@ export const METIN = {
   gerekceEtiket: 'Gerekçe (10–500 karakter)',
   sayac: (n: number) => `${n}/${GEREKCE_EN_COK}`,
   onayBilgi:
-    "Smart talebi açılır; onaylanınca değişiklik otomatik uygulanır. Onay beklerken mevcut node ya da gruptaki bileşenler değişirse iş hiçbir şey yazmadan durur.",
+    'Smart talebi açılır; onaylanınca değişiklik otomatik uygulanır. Onay beklerken mevcut node ya da gruptaki bileşenler değişirse iş hiçbir şey yazmadan durur.',
   onayTest:
     'Smart talebi açılacağını ve onaydan sonra değişikliğin otomatik uygulanacağını anlıyorum.',
   onayProd: (grupId: string) => `Onaylamak için grup adını yazın: ${grupId}`,
@@ -150,7 +161,8 @@ export const METIN = {
     onayKutusu: 'Smart onayı olmadan işin hemen başlayacağını anlıyorum.',
     dugme: 'İşi onaysız başlat',
     gonderiliyor: 'İş başlatılıyor…',
-    basladi: (job: number | string) => `İş onaysız başlatıldı (AWX #${job}). Sonuç bu ekrana düşer.`,
+    basladi: (job: number | string) =>
+      `İş onaysız başlatıldı (AWX #${job}). Sonuç bu ekrana düşer.`,
     gorunum: (m: string) => `Ekranda ve denetimde böyle görünecek: ${m}`,
   },
   dugme: {
@@ -186,7 +198,14 @@ export const METIN = {
   ankaraDugme: 'Ankara için de talep aç',
   ankaraKapali: 'Bu ortamda node değişikliği şimdilik kapalı.',
   gecmisBaslik: 'Son talepler',
-  gecmisBasliklar: ['Zaman', 'Grup', 'Yeni değer (maskeli)', 'Talep eden', 'Smart', 'Durum'] as const,
+  gecmisBasliklar: [
+    'Zaman',
+    'Grup',
+    'Yeni değer (maskeli)',
+    'Talep eden',
+    'Smart',
+    'Durum',
+  ] as const,
 
   /** OCO penceresi (D8) */
   oco: {
@@ -205,9 +224,11 @@ export const METIN = {
       gecersiz: 'OCO penceresi okunamadı; talep açılamaz.',
       gecti: 'OCO penceresi kapandı. Yeni bir OCO kaydı ile deneyin.',
       kisa: `OCO penceresi ${OCO_SON_PAY_DK} dakikadan kısa; iş pencere içinde tamamlanamaz. Yeni bir OCO kaydı ile deneyin.`,
-      son_pay: 'Son başlama saati geçti; iş pencere bitmeden tamamlanamaz. Yeni bir OCO kaydı ile deneyin.',
+      son_pay:
+        'Son başlama saati geçti; iş pencere bitmeden tamamlanamaz. Yeni bir OCO kaydı ile deneyin.',
       ufuk: `OCO penceresi ${OCO_UFUK_GUN} günden ileride. Pencereye en çok ${OCO_UFUK_GUN} gün kala talep açın.`,
-      bekle_kapali: 'OCO penceresi henüz açılmadı. Smart onayı kapalıyken iş bekletilemez; pencere açılınca tekrar açın.',
+      bekle_kapali:
+        'OCO penceresi henüz açılmadı. Smart onayı kapalıyken iş bekletilemez; pencere açılınca tekrar açın.',
     } as Record<string, string>,
     onayliBekliyor: 'Onaylandı, pencere bekleniyor',
     bekleyen: (no: string, kullanici: string, zaman: string) =>
@@ -215,7 +236,8 @@ export const METIN = {
     takip: (no: string, bas: string, son: string) => `OCO ${no} · Pencere: ${bas} – ${son}`,
     zamanAsimi:
       "Son başlama saatine kadar Portal Smart onayı görmedi; iş başlamadı. Onay bu sırada verilmiş olabilir, Smart'taki kaydı kontrol edin. Kayıt açık kalabilir, sonradan onaylansa da iş başlamaz. Yeni talep açın.",
-    zamanAsimiOnayli: 'Smart onayı alınmıştı ancak iş son başlama saatine kadar başlatılamadı; iş başlamadı. Yeni talep açın.',
+    zamanAsimiOnayli:
+      'Smart onayı alınmıştı ancak iş son başlama saatine kadar başlatılamadı; iş başlamadı. Yeni talep açın.',
   },
 
   adminKapatDugme: 'Talebi kapat (yönetici)',
@@ -230,7 +252,8 @@ export const METIN = {
     dugme: 'Smart Onayı',
     dugmeIpucu: 'Crypto Hub Smart onayı yapılandırması (yalnızca yöneticiler)',
     baslik: 'Crypto Hub · Smart Onayı Yapılandırması',
-    altBaslik: 'Yalnızca yöneticiler. Indexer / Node değişikliği talepleri bu ayarla Smart\'a düşer.',
+    altBaslik:
+      "Yalnızca yöneticiler. Indexer / Node değişikliği talepleri bu ayarla Smart'a düşer.",
     yukleniyor: 'Yükleniyor…',
     okunamadi: 'Yapılandırma okunamadı.',
     kaydet: 'Kaydet',
@@ -249,11 +272,11 @@ export const METIN = {
     kaynakOpsx: 'Şu an OpsX OpenShift ayarı kullanılıyor',
     kaynakYok: 'Kullanılabilir bir Smart ayarı yok.',
     blokKurali:
-      "Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. İkisi de boşsa OpsX OpenShift ayarının tamamı kullanılır; alan alan karıştırılmaz.",
+      'Flow Key ile metadata şablonu birlikte dolu ya da birlikte boş olmalı. İkisi de boşsa OpsX OpenShift ayarının tamamı kullanılır; alan alan karıştırılmaz.',
     acKapa: 'Smart onayı istensin',
     acKapaNot: "Yalnız test ortamlarında geçerli; production'da Smart zorunludur.",
     kapaliUyari:
-      'KAPALI. Test ortamlarında node değişiklikleri onaysız ve Smart\'ta kayıtsız çalışır; her çalıştırma denetime yazılır.',
+      "KAPALI. Test ortamlarında node değişiklikleri onaysız ve Smart'ta kayıtsız çalışır; her çalıştırma denetime yazılır.",
     kapatOnay: 'Test ortamlarında node değişikliklerinin onaysız çalışacağını anlıyorum.',
     ocoTest: 'Test ortamlarında OCO iste',
     ocoNot: "Production'da OCO zorunludur.",
@@ -262,7 +285,8 @@ export const METIN = {
     alanlariGetir: 'Alanları Getir',
     sorgulaniyor: 'Sorgulanıyor…',
     alanHata: 'Smart alanları okunamadı.',
-    alanNot: 'Alanları Getir sistem anahtarıyla sorgular; flow kendi anahtarıyla yayınlandıysa sonuç gelmeyebilir.',
+    alanNot:
+      'Alanları Getir sistem anahtarıyla sorgular; flow kendi anahtarıyla yayınlandıysa sonuç gelmeyebilir.',
     sablon: 'Metadata Şablonu',
     otomatikDoldur: 'Otomatik Doldur',
     sablonNot:
@@ -270,12 +294,13 @@ export const METIN = {
     onizle: 'Önizle',
     onizleniyor: 'Render ediliyor…',
     onizlemeHata: 'Önizleme yapılamadı.',
-    onizlemeNot: "Örnek bir talep gerçek şablon yoluyla render edilir; Smart'a gönderilmez, kaydedilmez.",
+    onizlemeNot:
+      "Örnek bir talep gerçek şablon yoluyla render edilir; Smart'a gönderilmez, kaydedilmez.",
     token: 'Entegrasyon Anahtarı (opsiyonel)',
     tokenTanimli: 'Tanımlı — değiştirmek için yeni değeri yazın',
     tokenBos: 'Boşsa sistem geneli varsayılan kullanılır',
     tokenNot:
-      'Şifreli saklanır, ekrana getirilmez. Boş bırakırsanız değişmez; Flow Key silinir ya da değişirse anahtar da silinir. OpsX\'in anahtarı kullanılmaz.',
+      "Şifreli saklanır, ekrana getirilmez. Boş bırakırsanız değişmez; Flow Key silinir ya da değişirse anahtar da silinir. OpsX'in anahtarı kullanılmaz.",
     tokenSilinir:
       'Flow Key değişti: kayıtlı anahtar bu kayıtla silinir. Yeni flow kendi anahtarıyla çalışıyorsa buraya girin; boş kalırsa sistem geneli anahtar kullanılır.',
     tokenSifrelemeYok: 'Değer şifreleme anahtarı tanımlı değil; entegrasyon anahtarı kaydedilemez.',
@@ -315,7 +340,8 @@ export type Ton = 'ok' | 'warn' | 'danger' | 'muted' | 'accent';
 export function durumTonu(d: NodeTalepDurumu): Ton {
   if (d === 'BASARILI') return 'ok';
   if (d === 'BEKLIYOR' || d === 'ACILIYOR' || d === 'CALISIYOR') return 'accent';
-  if (d === 'GERI_ALINDI' || d === 'BAYAT' || d === 'ZAMAN_ASIMI' || d === 'OLCULEMEDI') return 'warn';
+  if (d === 'GERI_ALINDI' || d === 'BAYAT' || d === 'ZAMAN_ASIMI' || d === 'OLCULEMEDI')
+    return 'warn';
   if (d === 'IPTAL') return 'muted';
   return 'danger';
 }
@@ -362,7 +388,8 @@ export function sonucMetni(
     case 'REDDEDILDI':
       return "Smart'ta reddedildi.";
     case 'ZAMAN_ASIMI':
-      if (ocoPencereli) return sonuc?.smart?.onayGeldi ? METIN.oco.zamanAsimiOnayli : METIN.oco.zamanAsimi;
+      if (ocoPencereli)
+        return sonuc?.smart?.onayGeldi ? METIN.oco.zamanAsimiOnayli : METIN.oco.zamanAsimi;
       return 'Onay 24 saat içinde gelmedi; talep kapandı.';
     case 'IPTAL':
       if (k === 'ADMIN_KAPATTI') return "Yönetici tarafından kapatıldı. Mevcut node'ları okuyun.";
@@ -439,7 +466,8 @@ export async function ayniDegerMi(
 /** Grubun "yeniden başlatılacak" deployment'ları: seçim verildiyse yalnız seçilenler,
  *  yoksa node'a bağlı olanların hepsi. */
 export function etkilenenDeploymentlar(g: NodeGrup, secim?: readonly string[] | null): string[] {
-  if (secim && secim.length) return g.deploymentlar.filter((d) => secim.includes(d.ad)).map((d) => d.ad);
+  if (secim && secim.length)
+    return g.deploymentlar.filter((d) => secim.includes(d.ad)).map((d) => d.ad);
   const bagli = g.deploymentlar.filter((d) => d.nodeBagli).map((d) => d.ad);
   if (bagli.length) return bagli;
   return Array.from(new Set(g.envler.map((e) => e.deployment)));
@@ -480,7 +508,9 @@ export function mevcutNodeMetni(d: NodeDep, roller: NodeRol[]): string {
 
 /** Yeni tip kart tablosu "Node değişkeni": bu deployment'ın env adları (benzersiz). */
 export function depEnvAdlari(g: NodeGrup, deployment: string): string {
-  const adlar = Array.from(new Set(g.envler.filter((e) => e.deployment === deployment).map((e) => e.env)));
+  const adlar = Array.from(
+    new Set(g.envler.filter((e) => e.deployment === deployment).map((e) => e.env)),
+  );
   return adlar.length ? adlar.join(', ') : '—';
 }
 
@@ -535,7 +565,11 @@ export function smartNo(externalTicketId: string | null | undefined, talepId?: n
 export function bekleyenMetni(b: NodeBekleyen): string {
   const no = smartNo(b.externalTicketId, b.talepId);
   const biletsizKosuyor = b.durum === 'CALISIYOR' && !String(b.externalTicketId ?? '').trim();
-  const metin = b.pencereBekliyor ? METIN.oco.bekleyen : biletsizKosuyor ? METIN.uygulanan : METIN.bekleyen;
+  const metin = b.pencereBekliyor
+    ? METIN.oco.bekleyen
+    : biletsizKosuyor
+      ? METIN.uygulanan
+      : METIN.bekleyen;
   return metin(no, b.username, fmtDateTime(b.createdAt));
 }
 

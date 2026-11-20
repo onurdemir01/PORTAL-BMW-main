@@ -17,7 +17,13 @@ test('HK1 fileCapMb: -1 ve 2 TB "sinirsiz" -> null; 0 -> mevcut boyut; sayfa -> 
 });
 
 test('HK2 effectivePercent: ust sinir varsa ona gore (kullanicinin %96.4 durumu)', () => {
-  const f = { used_mb: 9636.4, size_mb: 10000, cap_mb: 10000, volume_free_mb: 500000, pct_of_file: 96.4 };
+  const f = {
+    used_mb: 9636.4,
+    size_mb: 10000,
+    cap_mb: 10000,
+    volume_free_mb: 500000,
+    pct_of_file: 96.4,
+  };
   assert.equal(hk.effectivePercent(f).toFixed(1), '96.4');
 });
 
@@ -38,10 +44,16 @@ test('HK4 filesNeedingAlert: esik ustu ve bugun uyarilmamis olanlar; dosya basin
   };
   const cfg = { alertPercent: 85 };
   const due = hk.filesNeedingAlert(usage, cfg, { primary: '2026-09-18' }, '2026-09-18');
-  assert.deepEqual(due.map((f) => f.name), ['FG_DATA']);
+  assert.deepEqual(
+    due.map((f) => f.name),
+    ['FG_DATA'],
+  );
   // ertesi gun primary yeniden uyarilir
   const due2 = hk.filesNeedingAlert(usage, cfg, { primary: '2026-09-18' }, '2026-09-19');
-  assert.deepEqual(due2.map((f) => f.name), ['FG_DATA', 'primary']);
+  assert.deepEqual(
+    due2.map((f) => f.name),
+    ['FG_DATA', 'primary'],
+  );
 });
 
 test('HK5 buildAlertCard: Adaptive Card; log icin BACKUP LOG, veri icin MAXSIZE ipucu; log_reuse_wait', () => {
@@ -72,7 +84,13 @@ test('HK6 temizlik parti parti: her UPDATE/DELETE "TOP (@n)" tasir (tek buyuk is
 
 test('HK7 env belgeleri ve kayit: .env.example + server/index.cjs', () => {
   const env = fs.readFileSync(path.join(__dirname, '..', '..', '..', '.env.example'), 'utf8');
-  for (const k of ['DB_USAGE_ALERT_PERCENT', 'DB_USAGE_ALERT_WEBHOOK_URL', 'DB_HOUSEKEEPING_HOUR', 'LOGX_V2_BLOB_RETENTION_DAYS', 'LOGX_V2_ROW_RETENTION_DAYS']) {
+  for (const k of [
+    'DB_USAGE_ALERT_PERCENT',
+    'DB_USAGE_ALERT_WEBHOOK_URL',
+    'DB_HOUSEKEEPING_HOUR',
+    'LOGX_V2_BLOB_RETENTION_DAYS',
+    'LOGX_V2_ROW_RETENTION_DAYS',
+  ]) {
     assert.match(env, new RegExp(`^${k}=`, 'm'), `${k} .env.example'da yok`);
   }
   const idx = fs.readFileSync(path.join(__dirname, '..', '..', 'index.cjs'), 'utf8');
@@ -96,8 +114,12 @@ test('HK8 getConfig: bos/NaN env varsayilana duser, sinirlar kelepcelenir', () =
 
 // 2026-11-14: /api/admin/db-usage imzali webhook adresini maskesiz donduruyordu.
 test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
-  const ADRES = 'https://akis.example/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=ORNEKIMZA0123456789';
-  const onceki = { a: process.env.DB_USAGE_ALERT_WEBHOOK_URL, b: process.env.TEAMS_LONGJOB_WEBHOOK_URL };
+  const ADRES =
+    'https://akis.example/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=ORNEKIMZA0123456789';
+  const onceki = {
+    a: process.env.DB_USAGE_ALERT_WEBHOOK_URL,
+    b: process.env.TEAMS_LONGJOB_WEBHOOK_URL,
+  };
   try {
     process.env.DB_USAGE_ALERT_WEBHOOK_URL = ADRES;
     delete process.env.TEAMS_LONGJOB_WEBHOOK_URL;
@@ -105,30 +127,57 @@ test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
     const c = hk.configForClient();
     assert.equal(c.webhookConfigured, true);
     assert.ok(!('webhookUrl' in c));
-    assert.ok(!JSON.stringify(c).includes('ORNEKIMZA') && !JSON.stringify(c).includes('akis.example'));
+    assert.ok(
+      !JSON.stringify(c).includes('ORNEKIMZA') && !JSON.stringify(c).includes('akis.example'),
+    );
     // Diger alanlar aynen (ekran bunlari gosteriyor).
     const { webhookUrl: _w, ...beklenen } = hk.getConfig();
-    assert.deepEqual({ ...c, webhookConfigured: undefined }, { ...beklenen, webhookConfigured: undefined });
+    assert.deepEqual(
+      { ...c, webhookConfigured: undefined },
+      { ...beklenen, webhookConfigured: undefined },
+    );
     // Yedek kaynak (uzun is webhook'u) da ayni sekilde gizlenir.
     delete process.env.DB_USAGE_ALERT_WEBHOOK_URL;
     process.env.TEAMS_LONGJOB_WEBHOOK_URL = ADRES;
     assert.deepEqual(
-      [hk.configForClient().webhookConfigured, JSON.stringify(hk.configForClient()).includes('sig=')],
+      [
+        hk.configForClient().webhookConfigured,
+        JSON.stringify(hk.configForClient()).includes('sig='),
+      ],
       [true, false],
     );
     delete process.env.TEAMS_LONGJOB_WEBHOOK_URL;
     assert.equal(hk.configForClient().webhookConfigured, false);
   } finally {
-    for (const [k, v] of [['DB_USAGE_ALERT_WEBHOOK_URL', onceki.a], ['TEAMS_LONGJOB_WEBHOOK_URL', onceki.b]]) {
+    for (const [k, v] of [
+      ['DB_USAGE_ALERT_WEBHOOK_URL', onceki.a],
+      ['TEAMS_LONGJOB_WEBHOOK_URL', onceki.b],
+    ]) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
   }
   // Rota: istemciye giden TEK yapilandirma configForClient'tan gelir.
   const kaynak = fs.readFileSync(path.join(__dirname, '..', 'housekeeping.cjs'), 'utf8');
-  assert.match(kaynak, /res\.json\(\{ ok: true, usage, config: configForClient\(\), state: stateForClient\(\) \}\)/);
+  assert.match(
+    kaynak,
+    /res\.json\(\{ ok: true, usage, config: configForClient\(\), state: stateForClient\(\) \}\)/,
+  );
   assert.doesNotMatch(kaynak, /res\.(json|send)\([^)]*getConfig\(\)/);
-  const panel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'admin', 'tabs', 'DbUsagePanel.tsx'), 'utf8');
+  const panel = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'admin',
+      'tabs',
+      'DbUsagePanel.tsx',
+    ),
+    'utf8',
+  );
   assert.doesNotMatch(panel, /webhookUrl/);
 });
 

@@ -133,14 +133,30 @@ test('AK3 baskasinin oturumu kapatilamaz', async () => {
   assert.equal(r.status, 404);
   // Hedef kullanici HICBIR istek parametresinden alinmaz (yalnizca oturumdaki kimlik).
   for (const q of ['?u=yereladmin', '?username=yereladmin', '?user=yereladmin']) {
-    assert.equal((await iste(saldirgan.cerez, `/api/auth/sessions/${kurbanId}${q}`, 'DELETE')).status, 404, q);
+    assert.equal(
+      (await iste(saldirgan.cerez, `/api/auth/sessions/${kurbanId}${q}`, 'DELETE')).status,
+      404,
+      q,
+    );
   }
-  const liste = await (await iste(saldirgan.cerez, '/api/auth/sessions?u=yereladmin&username=yereladmin')).json();
-  assert.ok(liste.sessions.every((x) => x.id !== kurbanId), 'baskasinin oturumu listede');
-  assert.equal((await iste(kurban.cerez, '/api/auth/me')).status, 200, 'baskasinin oturumu kapandi');
+  const liste = await (
+    await iste(saldirgan.cerez, '/api/auth/sessions?u=yereladmin&username=yereladmin')
+  ).json();
+  assert.ok(
+    liste.sessions.every((x) => x.id !== kurbanId),
+    'baskasinin oturumu listede',
+  );
+  assert.equal(
+    (await iste(kurban.cerez, '/api/auth/me')).status,
+    200,
+    'baskasinin oturumu kapandi',
+  );
   // Admin uclari da User'a kapali.
   assert.equal((await iste(saldirgan.cerez, '/api/auth/sessions/admin/yereladmin')).status, 403);
-  assert.equal((await iste(saldirgan.cerez, '/api/auth/sessions/admin/yereladmin', 'DELETE')).status, 403);
+  assert.equal(
+    (await iste(saldirgan.cerez, '/api/auth/sessions/admin/yereladmin', 'DELETE')).status,
+    403,
+  );
   assert.equal((await iste(kurban.cerez, '/api/auth/me')).status, 200);
 });
 
@@ -154,7 +170,11 @@ test('AK4 digerlerinin hepsinden cik: bu oturum kalir', async () => {
   assert.equal((await iste(a.cerez, '/api/auth/me')).status, 200);
   assert.equal((await iste(b.cerez, '/api/auth/me')).status, 401);
   assert.equal((await iste(c.cerez, '/api/auth/me')).status, 401);
-  assert.equal((await iste(a.cerez, '/api/auth/sessions', 'DELETE')).status, 400, 'scope olmadan toplu silme');
+  assert.equal(
+    (await iste(a.cerez, '/api/auth/sessions', 'DELETE')).status,
+    400,
+    'scope olmadan toplu silme',
+  );
 });
 
 test('AK5 admin listeler ve sonlandirir; denetime by=admin', async () => {
@@ -172,7 +192,11 @@ test('AK5 admin listeler ve sonlandirir; denetime by=admin', async () => {
   assert.equal((await iste(u1.cerez, '/api/auth/me')).status, 401);
   assert.equal((await iste(u2.cerez, '/api/auth/me')).status, 401);
   assert.equal((await iste(admin.cerez, '/api/auth/me')).status, 200);
-  assert.ok(denetimler.some((x) => x.action === 'session_revoked' && /by=admin target=yereluser/.test(x.detail)));
+  assert.ok(
+    denetimler.some(
+      (x) => x.action === 'session_revoked' && /by=admin target=yereluser/.test(x.detail),
+    ),
+  );
 });
 
 test('AK6 esanli sinir: en eski oturum kapanir, closedOthers soylenir', async () => {
@@ -187,10 +211,18 @@ test('AK6 esanli sinir: en eski oturum kapanir, closedOthers soylenir', async ()
   await iste(a.cerez, '/api/auth/session/extend', 'POST');
   const c = await giris();
   assert.equal(c.body.closedOthers, 1);
-  assert.equal((await iste(b.cerez, '/api/auth/me')).status, 401, 'en eski (son etkinligi en eski) kapanmadi');
+  assert.equal(
+    (await iste(b.cerez, '/api/auth/me')).status,
+    401,
+    'en eski (son etkinligi en eski) kapanmadi',
+  );
   assert.equal((await iste(a.cerez, '/api/auth/me')).status, 200);
   assert.equal((await iste(c.cerez, '/api/auth/me')).status, 200);
-  assert.ok(denetimler.some((x) => x.action === 'session_revoked' && /by=concurrency max=2 count=1/.test(x.detail)));
+  assert.ok(
+    denetimler.some(
+      (x) => x.action === 'session_revoked' && /by=concurrency max=2 count=1/.test(x.detail),
+    ),
+  );
   delete process.env.SESSION_MAX_CONCURRENT;
   const d = await giris();
   assert.equal(d.body.closedOthers, 0, 'sinir kapaliyken oturum kapandi');
@@ -222,10 +254,22 @@ test('AK9 bosta kalma suresi dolmus (henuz silinmemis) oturum acik listelenmez',
 test('AK8 cihaz ozeti', () => {
   assert.equal(cihazOzeti(UA.win), 'Chrome · Windows');
   assert.equal(cihazOzeti(UA.mac), 'Safari · macOS');
-  assert.equal(cihazOzeti('Mozilla/5.0 (Windows NT 10.0) Chrome/129 Safari/537.36 Edg/129'), 'Edge · Windows');
-  assert.equal(cihazOzeti('Mozilla/5.0 (Linux; Android 14) Chrome/129 Mobile Safari/537.36'), 'Chrome · Android');
-  assert.equal(cihazOzeti('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17 Mobile Safari/604.1'), 'Safari · iOS');
-  assert.equal(cihazOzeti('Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko Firefox/130.0'), 'Firefox · Linux');
+  assert.equal(
+    cihazOzeti('Mozilla/5.0 (Windows NT 10.0) Chrome/129 Safari/537.36 Edg/129'),
+    'Edge · Windows',
+  );
+  assert.equal(
+    cihazOzeti('Mozilla/5.0 (Linux; Android 14) Chrome/129 Mobile Safari/537.36'),
+    'Chrome · Android',
+  );
+  assert.equal(
+    cihazOzeti('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17 Mobile Safari/604.1'),
+    'Safari · iOS',
+  );
+  assert.equal(
+    cihazOzeti('Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko Firefox/130.0'),
+    'Firefox · Linux',
+  );
   assert.equal(cihazOzeti(''), 'Bilinmiyor');
 });
 
@@ -236,15 +280,20 @@ test('AK10 store silme hatasi tekli, toplu ve admin iptalini basarili gostermez'
     req.session = { user: { username: 'yereluser' } };
     req.sessionID = 'sid-current';
     req.sessionStore = {
-      all: (cb) => cb(null, {
-        'sid-other': {
-          user: { username: 'yereluser' },
-          meta: {
-            id: 'deadbeef', createdAt: simdi, lastSeenAt: simdi,
-            remember: false, ip: '', ua: UA.mac,
+      all: (cb) =>
+        cb(null, {
+          'sid-other': {
+            user: { username: 'yereluser' },
+            meta: {
+              id: 'deadbeef',
+              createdAt: simdi,
+              lastSeenAt: simdi,
+              remember: false,
+              ip: '',
+              ua: UA.mac,
+            },
           },
-        },
-      }),
+        }),
       destroy: (_sid, cb) => cb(new Error('MSSQL unavailable')),
     };
     next();

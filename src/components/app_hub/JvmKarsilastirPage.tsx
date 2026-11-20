@@ -8,7 +8,12 @@
 // Adres: /application-hub/jvm-karsilastir?uygulamalar=A,B&ortam=PROD&nesil=hepsi (paylaşılabilir; açılınca koşar).
 import React, { useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon, ScaleIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  ScaleIcon,
+} from '@heroicons/react/24/outline';
 import Button from '@/components/common/Button';
 import LoadError from '@/components/common/LoadError';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,12 +49,35 @@ function ortamOku(v: string | null): string {
   return ORTAMLAR.some((x) => x.deger === o) ? o : 'PROD';
 }
 
-const DURUM: Record<KarsilastirmaDurumu, { ad: string; ton: 'iyi' | 'uyari' | 'kritik' | 'notr' | 'bilgi'; aciklama: string }> = {
-  ESIT: { ad: 'Eşit', ton: 'iyi', aciklama: 'Tüm JVM’lerde argümanlar aynı (sıra önemsiz; sunucuya özgü değerler hariç).' },
-  FARKLI: { ad: 'Farklı', ton: 'kritik', aciklama: 'En az bir argümanın değeri farklı ya da bazı sunucularda eksik.' },
-  TEK_SUNUCU: { ad: 'Tek sunucu', ton: 'bilgi', aciklama: 'Bu ortamda karşılaştırılacak ikinci JVM yok.' },
-  OLCULEMEDI: { ad: 'Ölçülemedi', ton: 'uyari', aciklama: 'Argüman okunamadı, tarama yok ya da bayat.' },
-  BULUNAMADI: { ad: 'Bulunamadı', ton: 'notr', aciklama: 'Uygulama yok ya da seçilen ortamda JVM’i yok.' },
+const DURUM: Record<
+  KarsilastirmaDurumu,
+  { ad: string; ton: 'iyi' | 'uyari' | 'kritik' | 'notr' | 'bilgi'; aciklama: string }
+> = {
+  ESIT: {
+    ad: 'Eşit',
+    ton: 'iyi',
+    aciklama: 'Tüm JVM’lerde argümanlar aynı (sıra önemsiz; sunucuya özgü değerler hariç).',
+  },
+  FARKLI: {
+    ad: 'Farklı',
+    ton: 'kritik',
+    aciklama: 'En az bir argümanın değeri farklı ya da bazı sunucularda eksik.',
+  },
+  TEK_SUNUCU: {
+    ad: 'Tek sunucu',
+    ton: 'bilgi',
+    aciklama: 'Bu ortamda karşılaştırılacak ikinci JVM yok.',
+  },
+  OLCULEMEDI: {
+    ad: 'Ölçülemedi',
+    ton: 'uyari',
+    aciklama: 'Argüman okunamadı, tarama yok ya da bayat.',
+  },
+  BULUNAMADI: {
+    ad: 'Bulunamadı',
+    ton: 'notr',
+    aciklama: 'Uygulama yok ya da seçilen ortamda JVM’i yok.',
+  },
 };
 
 /** Metin kutusundaki adlar: virgül, noktalı virgül, boşluk ya da satır ile ayrılır; tekrar (harf duyarsız) atılır. */
@@ -81,24 +109,46 @@ export function DurumRozeti({ durum }: { durum: KarsilastirmaDurumu }) {
 }
 
 const kod = (s: string) => (
-  <code className="px-1 py-0.5 rounded text-[11.5px] break-all" style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
+  <code
+    className="px-1 py-0.5 rounded text-[11.5px] break-all"
+    style={{
+      fontFamily: 'var(--font-mono)',
+      background: 'var(--bg-inset)',
+      border: '1px solid var(--border-subtle)',
+      color: 'var(--text-primary)',
+    }}
+  >
     {s === '' ? '(değersiz)' : s}
   </code>
 );
 
 function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
   return (
-    <div className="space-y-3 px-4 py-3" data-testid="fark-ayrintisi" style={{ background: 'var(--bg-inset)' }}>
-      {g.neden && <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{g.neden}</p>}
+    <div
+      className="space-y-3 px-4 py-3"
+      data-testid="fark-ayrintisi"
+      style={{ background: 'var(--bg-inset)' }}
+    >
+      {g.neden && (
+        <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+          {g.neden}
+        </p>
+      )}
       {g.uyarilar.map((u) => (
-        <p key={u} className="text-[12px] flex items-start gap-1.5" style={{ color: 'var(--status-warning-text)' }}>
+        <p
+          key={u}
+          className="text-[12px] flex items-start gap-1.5"
+          style={{ color: 'var(--status-warning-text)' }}
+        >
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0" /> {u}
         </p>
       ))}
 
       {g.degerFarklari.length > 0 && (
         <div>
-          <h4 className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Değer farkı ({g.degerFarklari.length})</h4>
+          <h4 className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+            Değer farkı ({g.degerFarklari.length})
+          </h4>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead style={{ color: 'var(--text-muted)' }}>
@@ -114,21 +164,35 @@ function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
                     <td className={TD}>{kod(f.anahtar)}</td>
                     <td className={TD}>
                       {f.belirsiz ? (
-                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Belirsiz: değer bazı sunucularda kendi adını taşıyor, sapan seçilemedi</span>
+                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                          Belirsiz: değer bazı sunucularda kendi adını taşıyor, sapan seçilemedi
+                        </span>
                       ) : f.cogunluk != null ? (
                         <div className="space-y-0.5">
                           {kod(f.cogunluk)}
-                          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.cogunlukUyeler.length} JVM</div>
+                          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                            {f.cogunlukUyeler.length} JVM
+                          </div>
                         </div>
                       ) : (
-                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Çoğunluk yok (eşit bölünmüş)</span>
+                        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                          Çoğunluk yok (eşit bölünmüş)
+                        </span>
                       )}
                     </td>
                     <td className={TD}>
                       <ul className="space-y-0.5">
                         {f.sapanlar.map((s) => (
                           <li key={s.uye} className="text-[12px]">
-                            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{s.uye}</span> {kod(s.deger)}
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                color: 'var(--text-primary)',
+                              }}
+                            >
+                              {s.uye}
+                            </span>{' '}
+                            {kod(s.deger)}
                           </li>
                         ))}
                       </ul>
@@ -143,7 +207,9 @@ function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
 
       {g.eksikFazla.length > 0 && (
         <div>
-          <h4 className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>Yalnız bazı sunucularda olan ({g.eksikFazla.length})</h4>
+          <h4 className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+            Yalnız bazı sunucularda olan ({g.eksikFazla.length})
+          </h4>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead style={{ color: 'var(--text-muted)' }}>
@@ -158,19 +224,24 @@ function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
                   <tr key={f.anahtar} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                     <td className={TD}>
                       {kod(f.anahtar)}{' '}
-                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{f.cogunlukta ? 'çoğunlukta var · eksik' : 'azınlıkta · fazla'}</span>
+                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        {f.cogunlukta ? 'çoğunlukta var · eksik' : 'azınlıkta · fazla'}
+                      </span>
                     </td>
                     <td className={TD}>
                       <ul className="space-y-0.5">
                         {f.degerler.map((d) => (
                           <li key={d.uye} className="text-[12px]">
-                            <span style={{ fontFamily: 'var(--font-mono)' }}>{d.uye}</span> {kod(d.deger)}
+                            <span style={{ fontFamily: 'var(--font-mono)' }}>{d.uye}</span>{' '}
+                            {kod(d.deger)}
                           </li>
                         ))}
                       </ul>
                     </td>
                     <td className={TD}>
-                      <span className="text-[12px]" style={{ fontFamily: 'var(--font-mono)' }}>{f.olmayan.join(', ')}</span>
+                      <span className="text-[12px]" style={{ fontFamily: 'var(--font-mono)' }}>
+                        {f.olmayan.join(', ')}
+                      </span>
                       {f.kesikte.length > 0 && (
                         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                           Kesik metin, bilinmiyor: {f.kesikte.join(', ')}
@@ -188,14 +259,31 @@ function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
       {(g.sunucuyaOzgu.length > 0 || g.maskeli.length > 0 || g.karsilastirilamadi.length > 0) && (
         <div className="text-[12px] space-y-1" style={{ color: 'var(--text-muted)' }}>
           {g.sunucuyaOzgu.length > 0 && (
-            <p title={g.sunucuyaOzgu.map((s) => `${s.anahtar}: ${s.degerler.map((d) => `${d.uye}=${d.deger}`).join(', ')}`).join('\n')}>
-              Sunucuya özgü ({g.sunucuyaOzgu.length}, eşitsizlik sayılmadı): {g.sunucuyaOzgu.map((s) => s.anahtar).join(', ')}
+            <p
+              title={g.sunucuyaOzgu
+                .map(
+                  (s) => `${s.anahtar}: ${s.degerler.map((d) => `${d.uye}=${d.deger}`).join(', ')}`,
+                )
+                .join('\n')}
+            >
+              Sunucuya özgü ({g.sunucuyaOzgu.length}, eşitsizlik sayılmadı):{' '}
+              {g.sunucuyaOzgu.map((s) => s.anahtar).join(', ')}
             </p>
           )}
-          {g.maskeli.length > 0 && <p>Maskeli değer (*** kısmı görülmez; açık kalan kısım karşılaştırıldı): {g.maskeli.join(', ')}</p>}
+          {g.maskeli.length > 0 && (
+            <p>
+              Maskeli değer (*** kısmı görülmez; açık kalan kısım karşılaştırıldı):{' '}
+              {g.maskeli.join(', ')}
+            </p>
+          )}
           {g.karsilastirilamadi.length > 0 && (
-            <p title={g.karsilastirilamadi.map((x) => `${x.anahtar}: ${x.kesik.join(', ')}`).join('\n')}>
-              Karşılaştırılamadı ({g.karsilastirilamadi.length}, argüman metni kesik JVM’lerde görülmüyor): {g.karsilastirilamadi.map((x) => x.anahtar).join(', ')}
+            <p
+              title={g.karsilastirilamadi
+                .map((x) => `${x.anahtar}: ${x.kesik.join(', ')}`)
+                .join('\n')}
+            >
+              Karşılaştırılamadı ({g.karsilastirilamadi.length}, argüman metni kesik JVM’lerde
+              görülmüyor): {g.karsilastirilamadi.map((x) => x.anahtar).join(', ')}
             </p>
           )}
         </div>
@@ -206,8 +294,20 @@ function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
         {g.jvmler.map((j, i) => (
           <span key={j.etiket}>
             {i > 0 && ' · '}
-            <span style={{ fontFamily: 'var(--font-mono)', color: j.olculdu ? 'var(--text-primary)' : 'var(--text-muted)' }}>{j.etiket}</span>
-            {' '}({!j.olculdu ? 'okunamadı' : j.kaynak === 'YAPILANDIRILAN' ? 'yapılandırma' : 'çalışan süreç'}
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                color: j.olculdu ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {j.etiket}
+            </span>{' '}
+            (
+            {!j.olculdu
+              ? 'okunamadı'
+              : j.kaynak === 'YAPILANDIRILAN'
+                ? 'yapılandırma'
+                : 'çalışan süreç'}
             {j.calisiyor === false ? ', kapalı' : ''}
             {!j.taze ? ', bayat tarama' : ''}
             {j.kesik ? ', kesik metin' : ''})
@@ -230,7 +330,9 @@ function satirlar(liste: UygulamaKarsilastirmasi[]): Satir[] {
   const out: Satir[] = [];
   for (const u of liste) {
     if (!u.gruplar.length) out.push({ anahtar: u.ad, u, g: null, ilk: true });
-    u.gruplar.forEach((g, i) => out.push({ anahtar: `${u.ad}|${g.ortam}|${g.nesil}`, u, g, ilk: i === 0 }));
+    u.gruplar.forEach((g, i) =>
+      out.push({ anahtar: `${u.ad}|${g.ortam}|${g.nesil}`, u, g, ilk: i === 0 }),
+    );
   }
   return out;
 }
@@ -253,12 +355,25 @@ function Sonuclar({ y, tumOrtam }: { y: JvmKarsilastirmaYaniti; tumOrtam: boolea
   ];
   return (
     <section className="card p-0 overflow-hidden">
-      <header className="px-4 py-3 flex flex-wrap items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        <p className="text-[14px]" data-testid="karsilastirma-ozeti" style={{ color: 'var(--text-primary)' }}>
+      <header
+        className="px-4 py-3 flex flex-wrap items-center justify-between gap-2"
+        style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      >
+        <p
+          className="text-[14px]"
+          data-testid="karsilastirma-ozeti"
+          style={{ color: 'var(--text-primary)' }}
+        >
           <strong>{oz.toplam} uygulama:</strong> {parcalar.join(', ')}
         </p>
-        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }} title={fmtDateTime(y.okundu)}>
-          {ORTAMLAR.find((o) => o.deger === y.ortam)?.ad || y.ortam} · {y.nesil === 'hepsi' ? 'JBoss 7 ve 8 ayrı ayrı' : `JBoss ${y.nesil}`} · {fmtDateTime(y.okundu)}
+        <span
+          className="text-[12px]"
+          style={{ color: 'var(--text-muted)' }}
+          title={fmtDateTime(y.okundu)}
+        >
+          {ORTAMLAR.find((o) => o.deger === y.ortam)?.ad || y.ortam} ·{' '}
+          {y.nesil === 'hepsi' ? 'JBoss 7 ve 8 ayrı ayrı' : `JBoss ${y.nesil}`} ·{' '}
+          {fmtDateTime(y.okundu)}
         </span>
       </header>
       <div className="overflow-x-auto">
@@ -275,7 +390,15 @@ function Sonuclar({ y, tumOrtam }: { y: JvmKarsilastirmaYaniti; tumOrtam: boolea
           </thead>
           <tbody>
             {satirlar(y.uygulamalar).map(({ anahtar, u, g, ilk }) => {
-              const acilir = !!g && (g.farkSayisi > 0 || g.uyarilar.length > 0 || g.sunucuyaOzgu.length > 0 || g.maskeli.length > 0 || g.karsilastirilamadi.length > 0 || !!g.neden || g.jvmSayisi > 0);
+              const acilir =
+                !!g &&
+                (g.farkSayisi > 0 ||
+                  g.uyarilar.length > 0 ||
+                  g.sunucuyaOzgu.length > 0 ||
+                  g.maskeli.length > 0 ||
+                  g.karsilastirilamadi.length > 0 ||
+                  !!g.neden ||
+                  g.jvmSayisi > 0);
               const ac = acik.has(anahtar);
               const durum = g ? g.durum : u.durum;
               return (
@@ -288,8 +411,21 @@ function Sonuclar({ y, tumOrtam }: { y: JvmKarsilastirmaYaniti; tumOrtam: boolea
                   >
                     <td className={TD}>
                       {acilir && (
-                        <button type="button" aria-expanded={ac} aria-label={`${u.ad} ayrıntısı`} className="pf-btn-link" onClick={(e) => { e.stopPropagation(); degistir(anahtar); }}>
-                          {ac ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+                        <button
+                          type="button"
+                          aria-expanded={ac}
+                          aria-label={`${u.ad} ayrıntısı`}
+                          className="pf-btn-link"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            degistir(anahtar);
+                          }}
+                        >
+                          {ac ? (
+                            <ChevronDownIcon className="w-4 h-4" />
+                          ) : (
+                            <ChevronRightIcon className="w-4 h-4" />
+                          )}
                         </button>
                       )}
                     </td>
@@ -299,27 +435,53 @@ function Sonuclar({ y, tumOrtam }: { y: JvmKarsilastirmaYaniti; tumOrtam: boolea
                           <Link
                             to={`/application-hub?tip=jboss&ad=${encodeURIComponent(u.tabanAd || u.ad)}`}
                             onClick={(e) => e.stopPropagation()}
-                            style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                            }}
                           >
                             {u.ad}
                           </Link>
-                          {u.neden && !g && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{u.neden}</div>}
+                          {u.neden && !g && (
+                            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                              {u.neden}
+                            </div>
+                          )}
                           {u.uyarilar.map((w) => (
-                            <div key={w} className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>{w}</div>
+                            <div
+                              key={w}
+                              className="text-[11px]"
+                              style={{ color: 'var(--status-warning-text)' }}
+                            >
+                              {w}
+                            </div>
                           ))}
                         </div>
                       ) : null}
                     </td>
-                    <td className={TD}>{g ? `${tumOrtam ? `${g.ortam} · ` : ''}${g.nesil ? `JBoss ${g.nesil}` : 'Nesil bilinmiyor'}` : '—'}</td>
-                    <td className={`${TD} tabular-nums`}>{g ? `${g.sunucuSayisi} / ${g.jvmSayisi}` : '—'}</td>
+                    <td className={TD}>
+                      {g
+                        ? `${tumOrtam ? `${g.ortam} · ` : ''}${g.nesil ? `JBoss ${g.nesil}` : 'Nesil bilinmiyor'}`
+                        : '—'}
+                    </td>
+                    <td className={`${TD} tabular-nums`}>
+                      {g ? `${g.sunucuSayisi} / ${g.jvmSayisi}` : '—'}
+                    </td>
                     <td className={TD}>
                       <DurumRozeti durum={durum} />
                     </td>
-                    <td className={`${TD} tabular-nums`}>{g && (g.durum === 'FARKLI' || g.durum === 'ESIT') ? g.farkSayisi : '—'}</td>
+                    <td className={`${TD} tabular-nums`}>
+                      {g && (g.durum === 'FARKLI' || g.durum === 'ESIT') ? g.farkSayisi : '—'}
+                    </td>
                   </tr>
                   {g && ac && (
                     <tr>
-                      <td colSpan={6} className="p-0" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                      <td
+                        colSpan={6}
+                        className="p-0"
+                        style={{ borderTop: '1px solid var(--border-subtle)' }}
+                      >
                         <GrupAyrintisi g={g} />
                       </td>
                     </tr>
@@ -366,7 +528,10 @@ export default function JvmKarsilastirPage() {
       setHata('');
       setBilgi('');
       try {
-        const r = await jvmKarsilastirApi.karsilastir({ uygulamalar: liste, ortam, nesil }, ac.signal);
+        const r = await jvmKarsilastirApi.karsilastir(
+          { uygulamalar: liste, ortam, nesil },
+          ac.signal,
+        );
         if (!alive() || ac.signal.aborted) return;
         setSonuc(r);
       } catch (e) {
@@ -404,19 +569,36 @@ export default function JvmKarsilastirPage() {
     <div className="space-y-5">
       <header className="card px-5 py-4 space-y-1" style={{ borderTop: '3px solid var(--ah-hue)' }}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="inline-flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-            <ScaleIcon className="w-6 h-6" style={{ color: 'var(--ah-hue)' }} /> JVM argümanı karşılaştırması
+          <h1
+            className="inline-flex items-center gap-2"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '1.4rem',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}
+          >
+            <ScaleIcon className="w-6 h-6" style={{ color: 'var(--ah-hue)' }} /> JVM argümanı
+            karşılaştırması
           </h1>
-          <Link to="/application-hub" className="pf-btn-link text-[13px]">Application Hub’a dön</Link>
+          <Link to="/application-hub" className="pf-btn-link text-[13px]">
+            Application Hub’a dön
+          </Link>
         </div>
         <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-          Her JBoss uygulamasının JVM’leri kendi aralarında karşılaştırılır (JBoss 7 ve 8 ayrı). Sıra önemsizdir; host adı, IP ya da JVM adı içeren
-          değerler ve node adı / port ofseti gibi sunucuya özgü argümanlar eşitsizlik sayılmaz. Salt okunur: Server Hub taramasındaki argümanlar okunur, hiçbir şey değiştirilmez.
+          Her JBoss uygulamasının JVM’leri kendi aralarında karşılaştırılır (JBoss 7 ve 8 ayrı).
+          Sıra önemsizdir; host adı, IP ya da JVM adı içeren değerler ve node adı / port ofseti gibi
+          sunucuya özgü argümanlar eşitsizlik sayılmaz. Salt okunur: Server Hub taramasındaki
+          argümanlar okunur, hiçbir şey değiştirilmez.
         </p>
       </header>
 
       <form className="card px-5 py-4 space-y-3" onSubmit={karsilastir}>
-        <label className="block text-[13px] font-semibold" htmlFor="jk-uygulamalar" style={{ color: 'var(--text-secondary)' }}>
+        <label
+          className="block text-[13px] font-semibold"
+          htmlFor="jk-uygulamalar"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           Uygulamalar (en çok {UYGULAMA_TAVANI}; virgül, boşluk ya da satırla ayırın)
         </label>
         <textarea
@@ -426,26 +608,63 @@ export default function JvmKarsilastirPage() {
           rows={5}
           placeholder={'MUSTERI\nKREDI\nODEME'}
           className="w-full rounded border px-3 py-2 text-[13px]"
-          style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+          style={{
+            fontFamily: 'var(--font-mono)',
+            background: 'var(--bg-surface)',
+            borderColor: 'var(--border)',
+            color: 'var(--text-primary)',
+          }}
         />
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-[12px] flex flex-col gap-1" style={{ color: 'var(--text-secondary)' }}>
+          <label
+            className="text-[12px] flex flex-col gap-1"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             Ortam
-            <select value={ortamSec} onChange={(e) => setOrtamSec(e.target.value)} className="rounded border px-2 py-1 text-[13px]" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+            <select
+              value={ortamSec}
+              onChange={(e) => setOrtamSec(e.target.value)}
+              className="rounded border px-2 py-1 text-[13px]"
+              style={{
+                background: 'var(--bg-surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--text-primary)',
+              }}
+            >
               {ORTAMLAR.map((o) => (
-                <option key={o.deger} value={o.deger}>{o.ad}</option>
+                <option key={o.deger} value={o.deger}>
+                  {o.ad}
+                </option>
               ))}
             </select>
           </label>
-          <label className="text-[12px] flex flex-col gap-1" style={{ color: 'var(--text-secondary)' }}>
+          <label
+            className="text-[12px] flex flex-col gap-1"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             Nesil
-            <select value={String(nesilSec)} onChange={(e) => setNesilSec(nesilOku(e.target.value))} className="rounded border px-2 py-1 text-[13px]" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+            <select
+              value={String(nesilSec)}
+              onChange={(e) => setNesilSec(nesilOku(e.target.value))}
+              className="rounded border px-2 py-1 text-[13px]"
+              style={{
+                background: 'var(--bg-surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--text-primary)',
+              }}
+            >
               <option value="hepsi">JBoss 7 ve 8 (ayrı ayrı)</option>
               <option value="7">Yalnız JBoss 7</option>
               <option value="8">Yalnız JBoss 8</option>
             </select>
           </label>
-          <Button type="submit" variant="primary" icon={<ScaleIcon className="w-4 h-4" />} loading={yukleniyor} disabled={!yazilan.length || gecersiz.length > 0 || fazla}>
+          <Button
+            type="submit"
+            variant="primary"
+            icon={<ScaleIcon className="w-4 h-4" />}
+            loading={yukleniyor}
+            disabled={!yazilan.length || gecersiz.length > 0 || fazla}
+          >
             Karşılaştır
           </Button>
           {yukleniyor && (
@@ -453,7 +672,10 @@ export default function JvmKarsilastirPage() {
               İptal
             </Button>
           )}
-          <span className="text-[12px] tabular-nums" style={{ color: fazla ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+          <span
+            className="text-[12px] tabular-nums"
+            style={{ color: fazla ? 'var(--status-danger)' : 'var(--text-muted)' }}
+          >
             {yazilan.length} / {UYGULAMA_TAVANI} uygulama
           </span>
         </div>
@@ -469,9 +691,18 @@ export default function JvmKarsilastirPage() {
         )}
       </form>
 
-      {bilgi && <p className="text-[13px]" role="status" style={{ color: 'var(--text-muted)' }}>{bilgi}</p>}
+      {bilgi && (
+        <p className="text-[13px]" role="status" style={{ color: 'var(--text-muted)' }}>
+          {bilgi}
+        </p>
+      )}
       {hata ? (
-        <LoadError title="Karşılaştırma yapılamadı" message={hata} onRetry={() => setKosuNo((n) => n + 1)} retrying={yukleniyor} />
+        <LoadError
+          title="Karşılaştırma yapılamadı"
+          message={hata}
+          onRetry={() => setKosuNo((n) => n + 1)}
+          retrying={yukleniyor}
+        />
       ) : yukleniyor && !sonuc ? (
         <div className="h-48 card skeleton" />
       ) : sonuc ? (

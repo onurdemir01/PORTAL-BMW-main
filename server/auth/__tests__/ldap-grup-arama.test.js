@@ -29,12 +29,21 @@ class SahteClient {
 }
 
 function yukle() {
-  require.cache[ldaptsYol] = { id: ldaptsYol, filename: ldaptsYol, loaded: true, exports: { Client: SahteClient } };
+  require.cache[ldaptsYol] = {
+    id: ldaptsYol,
+    filename: ldaptsYol,
+    loaded: true,
+    exports: { Client: SahteClient },
+  };
   delete require.cache[LDAP_YOL];
   return require(LDAP_YOL);
 }
 
-const GRUP = { dn: 'CN=GT-Middleware,OU=Groups,DC=fw', cn: 'GT-Middleware', description: ['Middleware ekibi'] };
+const GRUP = {
+  dn: 'CN=GT-Middleware,OU=Groups,DC=fw',
+  cn: 'GT-Middleware',
+  description: ['Middleware ekibi'],
+};
 
 beforeEach(() => {
   process.env.LDAP_URL = 'ldaps://sahte';
@@ -65,7 +74,10 @@ test('LG2 onek bos donerse ICEREN aramasi', async () => {
 test('LG3 kacis; kisa sorgu LDAP a gitmez', async () => {
   const { searchLdapGroups } = yukle();
   await searchLdapGroups('a*)(x');
-  assert.ok(filtreler.every((f) => !f.includes('a*)(x')), filtreler.join(' | '));
+  assert.ok(
+    filtreler.every((f) => !f.includes('a*)(x')),
+    filtreler.join(' | '),
+  );
   const once = filtreler.length;
   assert.deepEqual(await searchLdapGroups('gt'), []);
   assert.equal(filtreler.length, once);

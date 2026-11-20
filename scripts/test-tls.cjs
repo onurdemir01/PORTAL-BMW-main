@@ -69,7 +69,9 @@ function hedefler() {
   if (tekUrl) {
     const ent = getArg('--entegrasyon') || 'awx';
     if (!ENTEGRASYONLAR[ent]) {
-      console.error(`--entegrasyon su degerlerden biri olmali: ${Object.keys(ENTEGRASYONLAR).join(', ')}`);
+      console.error(
+        `--entegrasyon su degerlerden biri olmali: ${Object.keys(ENTEGRASYONLAR).join(', ')}`,
+      );
       process.exit(2);
     }
     const u = hedefUrl(tekUrl);
@@ -77,7 +79,14 @@ function hedefler() {
       console.error(`--url https:// ile baslayan gecerli bir adres olmali: ${tekUrl}`);
       process.exit(2);
     }
-    return [{ etiket: ENTEGRASYONLAR[ent].ad, host: u.hostname, port: Number(u.port) || 443, entegrasyon: ent }];
+    return [
+      {
+        etiket: ENTEGRASYONLAR[ent].ad,
+        host: u.hostname,
+        port: Number(u.port) || 443,
+        entegrasyon: ent,
+      },
+    ];
   }
   const tekHost = getArg('--host');
   if (tekHost) return [{ etiket: 'AI / MCP', host: tekHost, port: 443 }];
@@ -88,12 +97,19 @@ function hedefler() {
   ];
   for (const anahtar of ['DT_MANAGED_MCP_URL', 'INSTANA_MCP_URL']) {
     const u = hedefUrl(process.env[anahtar] || '');
-    if (u) liste.push({ etiket: `MCP (${anahtar})`, host: u.hostname, port: Number(u.port) || 443 });
+    if (u)
+      liste.push({ etiket: `MCP (${anahtar})`, host: u.hostname, port: Number(u.port) || 443 });
   }
   // AWX: eski tek-sunucu AWX_URL + coklu AWX_<1-9>_URL (server/ansible/runner.cjs getServers ile ayni).
   for (const anahtar of ['AWX_URL', ...Array.from({ length: 9 }, (_, i) => `AWX_${i + 1}_URL`)]) {
     const u = hedefUrl(process.env[anahtar] || '');
-    if (u) liste.push({ etiket: `AWX (${anahtar})`, host: u.hostname, port: Number(u.port) || 443, entegrasyon: 'awx' });
+    if (u)
+      liste.push({
+        etiket: `AWX (${anahtar})`,
+        host: u.hostname,
+        port: Number(u.port) || 443,
+        entegrasyon: 'awx',
+      });
   }
   const nobetci = hedefUrl(process.env.NOBETCI_API_URL || '');
   if (nobetci) {
@@ -137,7 +153,11 @@ function testHost(h) {
         const cert = socket.getPeerCertificate();
         const sonuc = {
           ok: true,
-          issuer: cert?.issuer ? Object.entries(cert.issuer).map(([k, v]) => `${k}=${v}`).join(', ') : null,
+          issuer: cert?.issuer
+            ? Object.entries(cert.issuer)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(', ')
+            : null,
           validTo: cert?.valid_to || null,
         };
         socket.destroy();
@@ -155,7 +175,9 @@ function testHost(h) {
 function basligiYaz() {
   console.log('── TLS dogrulama testi ───────────────────────────────');
   const ortamDosyasi = ortam ? `.env.${ortam} + ` : '';
-  console.log(`Ortam dosyasi: ${ortamDosyasi}.env.local + .env (Admin ekranindan kaydedilen degerler burada YOK)`);
+  console.log(
+    `Ortam dosyasi: ${ortamDosyasi}.env.local + .env (Admin ekranindan kaydedilen degerler burada YOK)`,
+  );
   console.log(`NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || '(yok)'}`);
   console.log(`CORP_CA_CERT_PATH: ${process.env.CORP_CA_CERT_PATH || '(yok)'}`);
   for (const [anahtar, e] of Object.entries(ENTEGRASYONLAR)) {
@@ -170,14 +192,18 @@ function ipucuYaz(h, hata) {
   const metin = String(hata);
   const onek = h.entegrasyon ? ENTEGRASYONLAR[h.entegrasyon].onek : null;
   if (/UNABLE_TO|SELF_SIGNED|CERT_|INVALID_CA/.test(metin)) {
-    console.log(`    → Zincir bu guven deposunda yok. Zinciri gormek / cekmek icin: bash scripts/fetch-ca.sh ${h.host}`);
+    console.log(
+      `    → Zincir bu guven deposunda yok. Zinciri gormek / cekmek icin: bash scripts/fetch-ca.sh ${h.host}`,
+    );
     console.log(
       onek
         ? `    → CA'yi ${onek}_TLS_CA=<pem yolu> ile verin ya da sunucunun sistem CA paketine ekleyin.`
         : '    → build-ca-bundle ile CORP_CA_CERT_PATH paketine ekleyin (docs/TLS-SETUP.md).',
     );
   } else if (/ALTNAME|HOSTNAME/.test(metin)) {
-    console.log('    → Sertifika bu adi kapsamiyor: adresin sertifikadaki ad(lar)la yazildigini kontrol edin.');
+    console.log(
+      '    → Sertifika bu adi kapsamiyor: adresin sertifikadaki ad(lar)la yazildigini kontrol edin.',
+    );
   } else if (/ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED|TIMEOUT/.test(metin)) {
     console.log('    → Ag/DNS erisimi yok (VPN/kurumsal ag gerekebilir) — sertifika sorunu DEGIL.');
   }
@@ -202,7 +228,9 @@ function ipucuYaz(h, hata) {
     }
     console.log('');
   }
-  console.log(hatali === 0 ? '✓ TUM HEDEFLER DOGRULANDI' : `⚠ ${hatali}/${liste.length} hedef basarisiz`);
+  console.log(
+    hatali === 0 ? '✓ TUM HEDEFLER DOGRULANDI' : `⚠ ${hatali}/${liste.length} hedef basarisiz`,
+  );
   process.exit(hatali === 0 ? 0 : 1);
 })().catch((e) => {
   console.error(`[tls] HATA: ${e && e.message}`);

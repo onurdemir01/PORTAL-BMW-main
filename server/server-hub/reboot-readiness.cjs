@@ -58,7 +58,8 @@ const KOD_ANLAMI = Object.freeze({
   // (risk) URETILMEZ. Reboot'ta domain'in (ve auto-start acik JVM'lerin) kalkip kalkmayacagi bilinmiyor.
   JBOSS_DOMAIN_DOWN: {
     tip: 'unknown',
-    aciklama: "JBoss domain taramada kapalıydı (host controller çalışmıyor) — açılışta domain'in ve JVM'lerin kalkıp kalkmayacağı bilinmiyor",
+    aciklama:
+      "JBoss domain taramada kapalıydı (host controller çalışmıyor) — açılışta domain'in ve JVM'lerin kalkıp kalkmayacağı bilinmiyor",
   },
   // ── SOZLESME v3 (dalga 1): olculemeyen her sey "sorun yok" DEGIL ──
   RUNNING_UNMEASURED: {
@@ -79,7 +80,8 @@ const KOD_ANLAMI = Object.freeze({
   // eksik iddiasi YOK; bilinmeyen, bu surecin reboot'ta kimin tarafindan acilacagidir.
   JVM_UNDEFINED_PROCESS: {
     tip: 'unknown',
-    aciklama: "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — reboot sonrası açılışı belirsiz",
+    aciklama:
+      "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — reboot sonrası açılışı belirsiz",
   },
   // Yalniz zaman butcesi (deadline) bir fazi atlattiysa olculemedi; yalniz sigorta (fuse)
   // kesmesi acilisi etkilemez (vhost envanteri).
@@ -179,13 +181,23 @@ function rebootReadiness(hosts, istenen, latestScan = null) {
     // SIRA ONEMLI: engel > olculemedi > risk. Olculemeyeni "risk"in altina koymak,
     // bilmedigimiz bir seyi bildigimiz bir seyden daha masum gostermek olurdu.
     // BAYAT sunucu engel/risk/hazir DEGIL, olculemedidir (EK-2); sema bilinmiyorsa da (C3).
-    const verdict = (() => { if (bayat || sema) return 'unknown'; if (varMi('blocker')) return 'blocked'; if (varMi('unknown')) return 'unknown'; if (varMi('risk')) return 'risk'; return 'ok'; })();
+    const verdict = (() => {
+      if (bayat || sema) return 'unknown';
+      if (varMi('blocker')) return 'blocked';
+      if (varMi('unknown')) return 'unknown';
+      if (varMi('risk')) return 'risk';
+      return 'ok';
+    })();
     return {
       host,
       verdict,
       scanDate: h.scanDate || null,
       reasons,
-      note: (() => { if (bayat) return `Tarama bayat (${h.scanDate || '?'}) — güncel durum bilinmiyor.`; if (sema) return 'Server Hub şeması okunamadı — güncel durum bilinmiyor.'; return ''; })(),
+      note: (() => {
+        if (bayat) return `Tarama bayat (${h.scanDate || '?'}) — güncel durum bilinmiyor.`;
+        if (sema) return 'Server Hub şeması okunamadı — güncel durum bilinmiyor.';
+        return '';
+      })(),
     };
   });
 

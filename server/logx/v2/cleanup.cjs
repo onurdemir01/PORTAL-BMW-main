@@ -7,18 +7,23 @@ const downloads = require('./downloads.cjs');
 const ingest = require('./ingest.cjs');
 
 function startCleanupJob() {
-  const t = setInterval(async () => {
-    try {
-      const expiredRequests = await requests.expireOldRequests(downloads.deleteStagedFile);
-      const expiredDownloads = await downloads.cleanupExpiredDownloads();
-      const expiredIngest = await ingest.cleanupExpiredIngest();
-      if (expiredRequests > 0 || expiredDownloads > 0 || expiredIngest > 0) {
-        console.log(`[LogXv2] Temizlik: ${expiredRequests} istek, ${expiredDownloads} indirme, ${expiredIngest} ingest suresi doldu.`);
+  const t = setInterval(
+    async () => {
+      try {
+        const expiredRequests = await requests.expireOldRequests(downloads.deleteStagedFile);
+        const expiredDownloads = await downloads.cleanupExpiredDownloads();
+        const expiredIngest = await ingest.cleanupExpiredIngest();
+        if (expiredRequests > 0 || expiredDownloads > 0 || expiredIngest > 0) {
+          console.log(
+            `[LogXv2] Temizlik: ${expiredRequests} istek, ${expiredDownloads} indirme, ${expiredIngest} ingest suresi doldu.`,
+          );
+        }
+      } catch (err) {
+        console.error('[LogXv2] Temizlik job hatasi:', err.message);
       }
-    } catch (err) {
-      console.error('[LogXv2] Temizlik job hatasi:', err.message);
-    }
-  }, 5 * 60 * 1000);
+    },
+    5 * 60 * 1000,
+  );
   // `unref()`: temizlik turu dagitimda/kapanista sureci CANLI TUTMASIN.
   // `ocp-sync.cjs`teki ayni desen — orada vardi, burada atlanmisti.
   if (typeof t.unref === 'function') t.unref();

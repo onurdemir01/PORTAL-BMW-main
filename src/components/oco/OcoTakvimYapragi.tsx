@@ -78,7 +78,8 @@ export function saatEtiketi(o: Oge): string {
   const { row, devam, surer, sinirda } = o;
   if (sinirda) return 'tüm gün (sürüyor, bitiş takvim sınırının ötesinde)';
   if (!devam && !surer) {
-    const ertesiGeceYarisi = geceYarisiMi(row.plannedEnd) && gunAnahtari(row.plannedEnd) > gunAnahtari(row.plannedStart);
+    const ertesiGeceYarisi =
+      geceYarisiMi(row.plannedEnd) && gunAnahtari(row.plannedEnd) > gunAnahtari(row.plannedStart);
     return `${saat(row.plannedStart)}–${ertesiGeceYarisi ? '24:00' : saat(row.plannedEnd)}`;
   }
   if (!devam && surer) return `${saat(row.plannedStart)} →`;
@@ -123,8 +124,10 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
 
   /** Paneli açan/değiştiren seçim: panel dışından açılıyorsa tetikleyiciyi sakla. */
   const sec = (s: Exclude<Secim, null>) => {
-    const aktif = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
-    if (aktif && aktif !== document.body && !panelRef.current?.contains(aktif)) tetikleyici.current = aktif;
+    const aktif =
+      typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+    if (aktif && aktif !== document.body && !panelRef.current?.contains(aktif))
+      tetikleyici.current = aktif;
     setSecimHam(s);
   };
   /** Paneli kullanıcı kapattı (Kapat / Escape): odak tetikleyiciye döner. */
@@ -167,7 +170,9 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
 
   const git = (yon: -1 | 1) => {
     paneliBirak();
-    setOdak((d) => (kip === 'ay' ? new Date(d.getFullYear(), d.getMonth() + yon, 1) : gunEkle(d, 7 * yon)));
+    setOdak((d) =>
+      kip === 'ay' ? new Date(d.getFullYear(), d.getMonth() + yon, 1) : gunEkle(d, 7 * yon),
+    );
   };
 
   // GECMIS NOTU: gorunen donemin basi, servisten gelen EN ESKI tarihli kayittan once mi?
@@ -179,9 +184,12 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
     }
     return m;
   }, [tumRows]);
-  const donemBasi = kip === 'ay' ? tarihAnahtari(new Date(odak.getFullYear(), odak.getMonth(), 1)) : hafta[0].gun;
+  const donemBasi =
+    kip === 'ay' ? tarihAnahtari(new Date(odak.getFullYear(), odak.getMonth(), 1)) : hafta[0].gun;
   const donemSonu =
-    kip === 'ay' ? tarihAnahtari(new Date(odak.getFullYear(), odak.getMonth() + 1, 0)) : hafta[6].gun;
+    kip === 'ay'
+      ? tarihAnahtari(new Date(odak.getFullYear(), odak.getMonth() + 1, 0))
+      : hafta[6].gun;
   const servisOncesi = !!enEski && donemBasi < enEski;
   const donemdeOgeVar = useMemo(() => {
     for (const k of gunler.keys()) if (k >= donemBasi && k <= donemSonu) return true;
@@ -230,12 +238,20 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
         </span>
         {/* OCO no'lu elle olay "#123" diye yazilir; servis OCO'su sanilmasin diye ayrica isaretlenir. */}
         {r.manuel?.ocoNo && (
-          <span className="shrink-0 text-[9px] font-semibold" style={{ color: 'var(--status-info)' }} aria-hidden>
+          <span
+            className="shrink-0 text-[9px] font-semibold"
+            style={{ color: 'var(--status-info)' }}
+            aria-hidden
+          >
             manuel
           </span>
         )}
         {r.pcabRequired && (
-          <span className="shrink-0 text-[9px] font-semibold" style={{ color: 'var(--status-warning-text)' }} aria-hidden>
+          <span
+            className="shrink-0 text-[9px] font-semibold"
+            style={{ color: 'var(--status-warning-text)' }}
+            aria-hidden
+          >
             PCAB
           </span>
         )}
@@ -254,7 +270,10 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
     <button
       type="button"
       onClick={() => sec({ tur: 'gun', gun })}
-      aria-label={etiket ?? `${uzunGun(gun)}${gun === bugun ? ' (bugün)' : ''}, ${n} OCO — günün tüm listesini aç`}
+      aria-label={
+        etiket ??
+        `${uzunGun(gun)}${gun === bugun ? ' (bugün)' : ''}, ${n} OCO — günün tüm listesini aç`
+      }
       className={`${className} focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]`}
       style={style}
     >
@@ -323,7 +342,8 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
   const ajandaBosMetni = () => {
     // Sira onemli: servisOncesi ayin YALNIZ basi en eski kayittan onceyse de dogru olur; suzulmemis
     // listede bu ayda oge varsa bos olmanin nedeni suzgectir. Yoksa servisOncesi tum ayi kapsar.
-    for (const k of tumGunler.keys()) if (k >= donemBasi && k <= donemSonu) return 'Bu ayda süzgece uyan OCO yok.';
+    for (const k of tumGunler.keys())
+      if (k >= donemBasi && k <= donemSonu) return 'Bu ayda süzgece uyan OCO yok.';
     if (servisOncesi) return 'Bu ay için servis veri döndürmedi.';
     if (eksik) return 'Bu ayda görünen OCO yok (liste eksik olabilir).';
     return 'Bu ayda OCO yok.';
@@ -334,13 +354,15 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
       // DAR EKRAN: 7 sutun sigmaz; ayin OCO'lu gunleri alt alta (ajanda).
       <div className="space-y-2" data-testid="oco-takvim-ajanda">
         {ay.filter((h) => h.ayIci && gunler.has(h.gun)).length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--text-muted)' }} data-testid="oco-takvim-ajanda-bos">
+          <div
+            className="text-[12px]"
+            style={{ color: 'var(--text-muted)' }}
+            data-testid="oco-takvim-ajanda-bos"
+          >
             {ajandaBosMetni()}
           </div>
         ) : (
-          ay
-            .filter((h) => h.ayIci && gunler.has(h.gun))
-            .map((h) => gunSutunu(h.gun, h.tarih))
+          ay.filter((h) => h.ayIci && gunler.has(h.gun)).map((h) => gunSutunu(h.gun, h.tarih))
         )}
       </div>
     ) : (
@@ -361,7 +383,10 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 border-r border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div
+          className="grid grid-cols-7 border-r border-b"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           {ay.map(ayHucresi)}
         </div>
       </div>
@@ -386,12 +411,15 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
           className="px-2 py-1 text-[11px] flex items-center gap-1"
           style={{
             color: bugunMu ? 'var(--accent)' : 'var(--text-muted)',
-            background: bugunMu ? 'color-mix(in srgb, var(--accent) 12%, var(--bg-elevated))' : 'var(--bg-elevated)',
+            background: bugunMu
+              ? 'color-mix(in srgb, var(--accent) 12%, var(--bg-elevated))'
+              : 'var(--bg-elevated)',
             fontWeight: bugunMu ? 600 : undefined,
           }}
         >
           <span>
-            {GUN_KISA[(tarih.getDay() + 6) % 7]} {tarih.getDate()} {AY_ADLARI[tarih.getMonth()].slice(0, 3)}
+            {GUN_KISA[(tarih.getDay() + 6) % 7]} {tarih.getDate()}{' '}
+            {AY_ADLARI[tarih.getMonth()].slice(0, 3)}
           </span>
           {bugunMu && <span className="uppercase text-[9px]">Bugün</span>}
           <span className="ml-auto tabular-nums">{liste.length || ''}</span>
@@ -425,7 +453,11 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
         type="button"
         onClick={kapatVeDon}
         className="ml-auto inline-flex items-center gap-1 h-7 px-2 text-xs rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+        style={{
+          borderColor: 'var(--border)',
+          background: 'var(--bg-surface)',
+          color: 'var(--text-primary)',
+        }}
       >
         <XMarkIcon className="h-3.5 w-3.5" /> Kapat
       </button>
@@ -447,17 +479,29 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
         {secim.tur === 'gun' ? (
           <>
             <div className="flex items-center gap-2">
-              <h2 ref={panelBaslik} tabIndex={-1} className="text-sm font-semibold focus:outline-none" style={{ color: 'var(--text-primary)' }}>
+              <h2
+                ref={panelBaslik}
+                tabIndex={-1}
+                className="text-sm font-semibold focus:outline-none"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 {uzunGun(secim.gun)} · {secilenGunListe.length} OCO
               </h2>
               {kapat}
             </div>
-            <div className="flex flex-col gap-1">{secilenGunListe.map((o) => ogeDugmesi(o, secim.gun, true))}</div>
+            <div className="flex flex-col gap-1">
+              {secilenGunListe.map((o) => ogeDugmesi(o, secim.gun, true))}
+            </div>
           </>
         ) : secilenOco ? (
           <>
             <div className="flex items-start gap-2">
-              <h2 ref={panelBaslik} tabIndex={-1} className="text-sm font-semibold min-w-0 break-words focus:outline-none" style={{ color: 'var(--text-primary)' }}>
+              <h2
+                ref={panelBaslik}
+                tabIndex={-1}
+                className="text-sm font-semibold min-w-0 break-words focus:outline-none"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 {secilenOco.subject || '(başlıksız)'}
               </h2>
               {gunler.get(secim.gun) && gunler.get(secim.gun)!.length > 1 && (
@@ -474,7 +518,12 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
             </div>
             <span className="flex flex-wrap items-center gap-1.5">
               {ocoKopya(secilenOco) && (
-                <CodeChip value={ocoKopya(secilenOco)!} label={ocoEtiket(secilenOco)} copyable tone="muted" />
+                <CodeChip
+                  value={ocoKopya(secilenOco)!}
+                  label={ocoEtiket(secilenOco)}
+                  copyable
+                  tone="muted"
+                />
               )}
               <OcoRozetleri
                 r={secilenOco}
@@ -484,7 +533,10 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
             <OcoDetay r={secilenOco} className="space-y-2" />
           </>
         ) : (
-          <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="flex items-center gap-2 text-[12px]"
+            style={{ color: 'var(--text-muted)' }}
+          >
             <h2 ref={panelBaslik} tabIndex={-1} className="focus:outline-none">
               Bu OCO süzgeçlerle gizlendi.
             </h2>
@@ -495,23 +547,57 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
     );
   };
 
-  const navDugme = 'inline-flex items-center justify-center h-8 px-2 text-xs rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
-  const navStil = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
+  const navDugme =
+    'inline-flex items-center justify-center h-8 px-2 text-xs rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
+  const navStil = {
+    borderColor: 'var(--border)',
+    background: 'var(--bg-surface)',
+    color: 'var(--text-primary)',
+  };
   const birim = kip === 'ay' ? 'ay' : 'hafta';
 
   return (
     <div className="space-y-3" data-testid="oco-takvim">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => git(-1)} aria-label={`Önceki ${birim}`} title={`Önceki ${birim}`} className={navDugme} style={navStil}>
+        <button
+          type="button"
+          onClick={() => git(-1)}
+          aria-label={`Önceki ${birim}`}
+          title={`Önceki ${birim}`}
+          className={navDugme}
+          style={navStil}
+        >
           <ChevronLeftIcon className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => { paneliBirak(); setOdak(anahtardanTarih(bugun)); }} className={navDugme} style={navStil}>
+        <button
+          type="button"
+          onClick={() => {
+            paneliBirak();
+            setOdak(anahtardanTarih(bugun));
+          }}
+          className={navDugme}
+          style={navStil}
+        >
           Bugün
         </button>
-        <button type="button" onClick={() => git(1)} aria-label={`Sonraki ${birim}`} title={`Sonraki ${birim}`} className={navDugme} style={navStil}>
+        <button
+          type="button"
+          onClick={() => git(1)}
+          aria-label={`Sonraki ${birim}`}
+          title={`Sonraki ${birim}`}
+          className={navDugme}
+          style={navStil}
+        >
           <ChevronRightIcon className="h-4 w-4" />
         </button>
-        <h2 ref={takvimBaslik} tabIndex={-1} className="text-base font-semibold focus:outline-none" style={{ color: 'var(--text-primary)' }} aria-live="polite" data-testid="oco-takvim-baslik">
+        <h2
+          ref={takvimBaslik}
+          tabIndex={-1}
+          className="text-base font-semibold focus:outline-none"
+          style={{ color: 'var(--text-primary)' }}
+          aria-live="polite"
+          data-testid="oco-takvim-baslik"
+        >
           {baslik}
         </h2>
         <div
@@ -550,7 +636,11 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
       {(servisOncesi || (eksik && !donemdeOgeVar)) && (
         <div
           className="text-[11px] rounded-lg px-3 py-1.5 border"
-          style={{ color: 'var(--status-warning-text)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}
+          style={{
+            color: 'var(--status-warning-text)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
           data-testid="oco-takvim-gecmis-notu"
         >
           {servisOncesi
@@ -570,7 +660,10 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
           className="rounded-xl border p-2 space-y-1"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
         >
-          <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="text-[11px] uppercase tracking-wide"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Tarihsiz · {tarihsiz.length}
           </div>
           <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">

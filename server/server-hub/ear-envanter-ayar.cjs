@@ -30,7 +30,15 @@ const { varsayilanSira } = require('../util/siralama.cjs');
 const TR_OFSET_MS = 3 * 60 * 60 * 1000;
 const GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 // "ayin ilk Pazari": iyelik ekli gun adlari.
-const GUNLER_IYELIK = ['Pazarı', 'Pazartesisi', 'Salısı', 'Çarşambası', 'Perşembesi', 'Cuması', 'Cumartesisi'];
+const GUNLER_IYELIK = [
+  'Pazarı',
+  'Pazartesisi',
+  'Salısı',
+  'Çarşambası',
+  'Perşembesi',
+  'Cuması',
+  'Cumartesisi',
+];
 // Kacirilan zamanlama (Portal kapaliydi) en gec bu kadar sonra yine baslar; sonrasi bir sonraki hafta.
 const TELAFI_MS = 24 * 60 * 60 * 1000;
 
@@ -41,7 +49,13 @@ const tamSayi = (min, max) => (v) => {
 const secenek = (liste) => (v) => (liste.includes(String(v).trim()) ? String(v).trim() : null);
 
 const SIRALAR = Object.freeze(['ILK', 'IKINCI', 'UCUNCU', 'DORDUNCU', 'SON']);
-const SIRA_METNI = { ILK: 'ilk', IKINCI: 'ikinci', UCUNCU: 'üçüncü', DORDUNCU: 'dördüncü', SON: 'son' };
+const SIRA_METNI = {
+  ILK: 'ilk',
+  IKINCI: 'ikinci',
+  UCUNCU: 'üçüncü',
+  DORDUNCU: 'dördüncü',
+  SON: 'son',
+};
 const PLANLAR = Object.freeze(['p1', 'p2']);
 const ESKI_ANAHTARLAR = Object.freeze(['zamanlayici', 'gun', 'saat', 'kip']);
 const ORTAM_RE = /^[A-Z0-9][A-Z0-9 ._-]{0,63}$/;
@@ -54,7 +68,14 @@ function kapsamDogrula(v) {
   if (s === 'FILO' || s === 'SORUNLU' || s === 'WEB' || s === 'FILO_WEB') return s;
   const m = /^ORTAM:(.+)$/.exec(s);
   if (!m) return null;
-  const l = [...new Set(m[1].split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))].sort(varsayilanSira);
+  const l = [
+    ...new Set(
+      m[1]
+        .split(',')
+        .map((x) => x.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ].sort(varsayilanSira);
   if (!l.length || l.length > 20 || l.some((x) => !ORTAM_RE.test(x))) return null;
   return `ORTAM:${l.join(',')}`;
 }
@@ -109,23 +130,63 @@ function kokDogrula(v) {
 }
 
 const PLAN_VARSAYILAN = Object.freeze({
-  p1: { acik: 'KAPALI', birim: 'HAFTA', aralik: '4', gun: '0', sira: 'ILK', saat: '02:00', kip: 'OZET', kapsam: 'FILO', baslangic: '2026-01-01' },
-  p2: { acik: 'KAPALI', birim: 'AY', aralik: '2', gun: '0', sira: 'ILK', saat: '03:00', kip: 'TAM', kapsam: 'FILO', baslangic: '2026-01-01' },
+  p1: {
+    acik: 'KAPALI',
+    birim: 'HAFTA',
+    aralik: '4',
+    gun: '0',
+    sira: 'ILK',
+    saat: '02:00',
+    kip: 'OZET',
+    kapsam: 'FILO',
+    baslangic: '2026-01-01',
+  },
+  p2: {
+    acik: 'KAPALI',
+    birim: 'AY',
+    aralik: '2',
+    gun: '0',
+    sira: 'ILK',
+    saat: '03:00',
+    kip: 'TAM',
+    kapsam: 'FILO',
+    baslangic: '2026-01-01',
+  },
 });
 
 function planAyarlari(p) {
   const v = PLAN_VARSAYILAN[p];
   const n = p.slice(1);
   return {
-    [`${p}_acik`]: { ad: `Plan ${n}: açık`, varsayilan: v.acik, dogrula: secenek(['ACIK', 'KAPALI']) },
-    [`${p}_birim`]: { ad: `Plan ${n}: birim`, varsayilan: v.birim, dogrula: secenek(['HAFTA', 'AY']) },
-    [`${p}_aralik`]: { ad: `Plan ${n}: her N birimde bir`, varsayilan: v.aralik, dogrula: tamSayi(1, 12) },
+    [`${p}_acik`]: {
+      ad: `Plan ${n}: açık`,
+      varsayilan: v.acik,
+      dogrula: secenek(['ACIK', 'KAPALI']),
+    },
+    [`${p}_birim`]: {
+      ad: `Plan ${n}: birim`,
+      varsayilan: v.birim,
+      dogrula: secenek(['HAFTA', 'AY']),
+    },
+    [`${p}_aralik`]: {
+      ad: `Plan ${n}: her N birimde bir`,
+      varsayilan: v.aralik,
+      dogrula: tamSayi(1, 12),
+    },
     [`${p}_gun`]: { ad: `Plan ${n}: gün`, varsayilan: v.gun, dogrula: tamSayi(0, 6) },
-    [`${p}_sira`]: { ad: `Plan ${n}: ayın kaçıncı günü`, varsayilan: v.sira, dogrula: secenek(SIRALAR) },
+    [`${p}_sira`]: {
+      ad: `Plan ${n}: ayın kaçıncı günü`,
+      varsayilan: v.sira,
+      dogrula: secenek(SIRALAR),
+    },
     [`${p}_saat`]: { ad: `Plan ${n}: saat (TR)`, varsayilan: v.saat, dogrula: saatDogrula },
     [`${p}_kip`]: { ad: `Plan ${n}: kip`, varsayilan: v.kip, dogrula: secenek(['OZET', 'TAM']) },
     [`${p}_kapsam`]: { ad: `Plan ${n}: kapsam`, varsayilan: v.kapsam, dogrula: kapsamDogrula },
-    [`${p}_baslangic`]: { ad: `Plan ${n}: başlangıç`, varsayilan: v.baslangic, dogrula: tarihDogrula },
+    [`${p}_baslangic`]: {
+      ad: `Plan ${n}: başlangıç`,
+      varsayilan: v.baslangic,
+      dogrula: tarihDogrula,
+    },
   };
 }
 
@@ -167,11 +228,14 @@ const AYARLAR = Object.freeze({
     ad: 'Sağlık kontrolü dosyaları (gerçek istek sayılmaz)',
     varsayilan: 'hc.html,hc.jsp',
     dogrula: (v) =>
-      /^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$/.test(String(v).trim()) ? String(v).trim() : null,
+      /^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$/.test(String(v).trim())
+        ? String(v).trim()
+        : null,
   },
   web_kokler: {
     ad: 'Web kurulum kök adayları (çalışanlar süreçten bulunur)',
-    varsayilan: '/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd',
+    varsayilan:
+      '/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd',
     dogrula: webKokDogrula,
   },
   // FAZ A (2026-11-07): yapilandirilmis JVM / WAS portlarina ESTABLISHED baglanti goruntusu (/proc/net/tcp,
@@ -248,7 +312,10 @@ async function eskiyiTasi(rows) {
     });
   }
   const yaz = Object.entries(yeni).filter(([k, v]) => v !== AYARLAR[k].varsayilan);
-  const sil = [...ESKI_ANAHTARLAR, ...Object.keys(yeni).filter((k) => yeni[k] === AYARLAR[k].varsayilan)];
+  const sil = [
+    ...ESKI_ANAHTARLAR,
+    ...Object.keys(yeni).filter((k) => yeni[k] === AYARLAR[k].varsayilan),
+  ];
   await db().query(
     `SET XACT_ABORT ON;
      BEGIN TRAN;
@@ -333,16 +400,22 @@ async function yaz(anahtar, deger, kim) {
  */
 async function planYaz(plan, alanlar, kim) {
   const p = String(plan || '').toLowerCase();
-  if (!PLANLAR.includes(p)) throw hata(400, `Bilinmeyen plan: ${String(plan).slice(0, 10)}`, 'bilinmeyen_plan');
+  if (!PLANLAR.includes(p))
+    throw hata(400, `Bilinmeyen plan: ${String(plan).slice(0, 10)}`, 'bilinmeyen_plan');
   const girdi = alanlar && typeof alanlar === 'object' ? alanlar : {};
   const yeni = {};
   for (const [alan, deger] of Object.entries(girdi)) {
     const anahtar = `${p}_${alan}`;
     const a = AYARLAR[anahtar];
-    if (!a) throw hata(400, `Bilinmeyen plan alanı: ${String(alan).slice(0, 30)}`, 'bilinmeyen_ayar');
+    if (!a)
+      throw hata(400, `Bilinmeyen plan alanı: ${String(alan).slice(0, 30)}`, 'bilinmeyen_ayar');
     const d = a.dogrula(deger == null ? '' : deger);
     if (d == null)
-      throw hata(400, `${a.ad} için geçersiz değer: ${String(deger ?? '').slice(0, 60) || '(boş)'}`, 'gecersiz_ayar');
+      throw hata(
+        400,
+        `${a.ad} için geçersiz değer: ${String(deger ?? '').slice(0, 60) || '(boş)'}`,
+        'gecersiz_ayar',
+      );
     yeni[anahtar] = d;
   }
   if (!Object.keys(yeni).length) throw hata(400, 'Değişecek alan yok.', 'bos_istek');
@@ -383,7 +456,8 @@ const trGun = (d) => new Date(d.getTime() + TR_OFSET_MS).toISOString().slice(0, 
 
 /** Ayar degerleri -> plan nesnesi. */
 function planOf(deger, p) {
-  const al = (k) => (deger && deger[`${p}_${k}`] != null ? deger[`${p}_${k}`] : PLAN_VARSAYILAN[p][k]);
+  const al = (k) =>
+    deger && deger[`${p}_${k}`] != null ? deger[`${p}_${k}`] : PLAN_VARSAYILAN[p][k];
   const [ss, dd] = String(al('saat')).split(':').map(Number);
   const [by, ba, bg] = String(al('baslangic')).split('-').map(Number);
   return {
@@ -437,7 +511,8 @@ function sonK(plan, simdi) {
   const k0 = ilkK(plan);
   if (ornek(plan, k0).getTime() > t) return null;
   let k;
-  if (plan.birim === 'HAFTA') k = Math.floor((t - ornek(plan, 0).getTime()) / (7 * 86400000 * plan.aralik));
+  if (plan.birim === 'HAFTA')
+    k = Math.floor((t - ornek(plan, 0).getTime()) / (7 * 86400000 * plan.aralik));
   else {
     const yerel = new Date(t + TR_OFSET_MS);
     const ay = (yerel.getUTCFullYear() - plan.by) * 12 + (yerel.getUTCMonth() - plan.ba);
@@ -504,7 +579,11 @@ function bekleyenZamanlama(deger, simdi = new Date()) {
       birlesti: tam ? tam.ad : null,
     });
   }
-  return out.sort((a, b) => { if (a.plan.kip === b.plan.kip) return 0; if (a.plan.kip === 'TAM') return -1; return 1; });
+  return out.sort((a, b) => {
+    if (a.plan.kip === b.plan.kip) return 0;
+    if (a.plan.kip === 'TAM') return -1;
+    return 1;
+  });
 }
 
 function kapsamMetni(k) {
@@ -514,8 +593,14 @@ function kapsamMetni(k) {
 }
 
 function zamanlamaMetni(plan) {
-  const sik =
-    (() => { if (plan.birim === 'HAFTA') { if (plan.aralik === 1) return 'Her hafta'; return `Her ${plan.aralik} haftada bir`; } if (plan.aralik === 1) return 'Her ay'; return `Her ${plan.aralik} ayda bir`; })();
+  const sik = (() => {
+    if (plan.birim === 'HAFTA') {
+      if (plan.aralik === 1) return 'Her hafta';
+      return `Her ${plan.aralik} haftada bir`;
+    }
+    if (plan.aralik === 1) return 'Her ay';
+    return `Her ${plan.aralik} ayda bir`;
+  })();
   const ne =
     plan.birim === 'HAFTA'
       ? GUNLER[plan.gun] || '?'

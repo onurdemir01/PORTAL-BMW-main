@@ -420,11 +420,14 @@ test('EA9 SEMA SOZLESMESI: OPENJSON WITH kolonlari DDL ile ayni', () => {
 });
 
 test('EA11 kesilme isaretlenir; surum izi yazilir', async () => {
-  const cok = Array.from({ length: alim.SINIR_WAR + 1 }, (_, i) => F.ornekWar({ yol: `W${i}.war`, ad: `W${i}.war` }));
-  const k = alim.hostKaydi(
-    F.ornekYuk({ uygulamalar: [F.ornekUygulama({ warlar: cok })] }),
-    { host: 'APPSRV01', kip: 'TAM', partiNo: 1 },
+  const cok = Array.from({ length: alim.SINIR_WAR + 1 }, (_, i) =>
+    F.ornekWar({ yol: `W${i}.war`, ad: `W${i}.war` }),
   );
+  const k = alim.hostKaydi(F.ornekYuk({ uygulamalar: [F.ornekUygulama({ warlar: cok })] }), {
+    host: 'APPSRV01',
+    kip: 'TAM',
+    partiNo: 1,
+  });
   const u = k.uygulamalar[0];
   assert.equal(u.durum, 'KISMI_SINIR');
   assert.equal(u.war_sayisi, alim.SINIR_WAR + 1, 'gercek WAR sayisi');
@@ -434,7 +437,9 @@ test('EA11 kesilme isaretlenir; surum izi yazilir', async () => {
 
   const libler = Array.from({ length: alim.SINIR_KUTUPHANE + 1 }, (_, i) => [`lib${i}`, '1.0', 10]);
   const k2 = alim.hostKaydi(
-    F.ornekYuk({ uygulamalar: [F.ornekUygulama({ warlar: [F.ornekWar({ kutuphaneler: libler })] })] }),
+    F.ornekYuk({
+      uygulamalar: [F.ornekUygulama({ warlar: [F.ornekWar({ kutuphaneler: libler })] })],
+    }),
     { host: 'APPSRV01', kip: 'TAM', partiNo: 1 },
   );
   assert.equal(k2.warlar[0].durum, 'KISMI_SINIR');
@@ -444,17 +449,32 @@ test('EA11 kesilme isaretlenir; surum izi yazilir', async () => {
   const tamK = alim.hostKaydi(F.ornekYuk(), { host: 'APPSRV01', kip: 'TAM', partiNo: 1 });
   assert.equal(tamK.uygulamalar[0].durum, 'TAM', 'sinir altinda durum degismez');
 
-  const a = alim.kutuphaneSeti([['x', '1', 5], ['y', '2', 7]]);
-  const b = alim.kutuphaneSeti([['y', '2', 8], ['x', '1', 5]]);
+  const a = alim.kutuphaneSeti([
+    ['x', '1', 5],
+    ['y', '2', 7],
+  ]);
+  const b = alim.kutuphaneSeti([
+    ['y', '2', 8],
+    ['x', '1', 5],
+  ]);
   assert.notEqual(a.iz, b.iz, 'boyut izi degistirir');
   assert.equal(a.surumIzi, b.surumIzi, 'surum izi boyuttan bagimsiz');
-  assert.notEqual(a.surumIzi, alim.kutuphaneSeti([['x', '1', 5], ['y', '3', 7]]).surumIzi);
+  assert.notEqual(
+    a.surumIzi,
+    alim.kutuphaneSeti([
+      ['x', '1', 5],
+      ['y', '3', 7],
+    ]).surumIzi,
+  );
   const db = F.sahteDb([]);
   await alim.hostuYaz(db.mod, 7, 'APPSRV01', tamK);
   const yaz = db.cagrilar.find((c) => c.sql === alim.HOST_YAZ_SQL);
   const setler = JSON.parse(yaz.params[5]);
   assert.ok(setler.length && setler.every((x) => /^[0-9a-f]{32}$/.test(x.surum_izi)));
-  assert.match(alim.HOST_YAZ_SQL, /INSERT INTO ear_envanter_kutuphane_setleri \(iz, sayi, surum_izi\)/);
+  assert.match(
+    alim.HOST_YAZ_SQL,
+    /INSERT INTO ear_envanter_kutuphane_setleri \(iz, sayi, surum_izi\)/,
+  );
 });
 
 test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () => {
@@ -464,9 +484,18 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
       {
         ...p,
         ...ek,
-        uygulamalar: [{ kok: '/vhosting', ad: 'A.ear', bicim: 'ACIK', durum: 'TAM', warlar: [], ...uygEk }],
+        uygulamalar: [
+          { kok: '/vhosting', ad: 'A.ear', bicim: 'ACIK', durum: 'TAM', warlar: [], ...uygEk },
+        ],
       },
-      { host: 'APPSRV01', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 10 },
+      {
+        host: 'APPSRV01',
+        kip: 'OZET',
+        partiNo: 1,
+        ortam: 'PROD',
+        playbookDurum: 'SONUC',
+        hamBayt: 10,
+      },
     );
 
   // Eski tarayici: alanlar yok -> NULL (olculmedi), bos liste DEGIL.
@@ -485,7 +514,15 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
   const k = kayit(
     {
       kok_girdileri: [
-        { kok: '/vhosting', ad: 'X.ear.bak', tip: 'F', boyut: 12, mtime: 1700000000, hedef: '', fazla: 'SIZMA' },
+        {
+          kok: '/vhosting',
+          ad: 'X.ear.bak',
+          tip: 'F',
+          boyut: 12,
+          mtime: 1700000000,
+          hedef: '',
+          fazla: 'SIZMA',
+        },
         { kok: '/vhosting', ad: 'Y', tip: 'Q', boyut: 'abc', mtime: -5 },
       ],
       kok_girdisi_kesilen: 3,
@@ -495,7 +532,10 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
           nesil: '7',
           domain: 'OKUNDU',
           host: 'TUHAF',
-          sunucular: [{ ad: 'J1', grup: 'g', auto_start: false, parola: 'SIZMA' }, { ad: 'J2', grup: 'g' }],
+          sunucular: [
+            { ad: 'J1', grup: 'g', auto_start: false, parola: 'SIZMA' },
+            { ad: 'J2', grup: 'g' },
+          ],
           gruplar: [{ ad: 'g', deploymentlar: [{ ad: 'A.ear', acik: false }] }],
           deploymentlar: [{ ad: 'A.ear', tur: 'ACIK', yol: '/vhosting/A.ear', sha1: 'SIZMA' }],
           ozellikler: { sifre: 'SIZMA' },
@@ -505,19 +545,48 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
     {
       xml_eslesme: {
         durum: 'VAR',
-        deploymentlar: [{ kurulum: '/usr/jboss/AppServer', ad: 'A.ear', tur: 'ACIK', yol: '/vhosting/A.ear', yontem: 'YOL', gruplar: [{ ad: 'g', acik: false }] }],
-        jvmler: [{ ad: 'J1', grup: 'g', auto_start: false, deployment_acik: false, kurulum: '/usr/jboss/AppServer', gizli: 'SIZMA' }],
+        deploymentlar: [
+          {
+            kurulum: '/usr/jboss/AppServer',
+            ad: 'A.ear',
+            tur: 'ACIK',
+            yol: '/vhosting/A.ear',
+            yontem: 'YOL',
+            gruplar: [{ ad: 'g', acik: false }],
+          },
+        ],
+        jvmler: [
+          {
+            ad: 'J1',
+            grup: 'g',
+            auto_start: false,
+            deployment_acik: false,
+            kurulum: '/usr/jboss/AppServer',
+            gizli: 'SIZMA',
+          },
+        ],
       },
     },
   );
   for (const v of [k.host.kok_girdileri, k.host.xml_ozeti, k.uygulamalar[0].xml_eslesme])
     assert.ok(!v.includes('SIZMA'), `bilinmeyen alan DB'ye gitti: ${v.slice(0, 200)}`);
   const kg = JSON.parse(k.host.kok_girdileri);
-  assert.deepEqual(kg.girdiler[1], { kok: '/vhosting', ad: 'Y', tip: '?', boyut: null, mtime: 0, hedef: null });
+  assert.deepEqual(kg.girdiler[1], {
+    kok: '/vhosting',
+    ad: 'Y',
+    tip: '?',
+    boyut: null,
+    mtime: 0,
+    hedef: null,
+  });
   assert.equal(kg.kesilen, 3);
   const xo = JSON.parse(k.host.xml_ozeti)[0];
   assert.equal(xo.host, 'HATA', 'bilinmeyen XML durumu HATA');
-  assert.deepEqual(xo.sunucular.map((x) => x.auto_start), [false, true], 'auto_start yalniz false ise kapali');
+  assert.deepEqual(
+    xo.sunucular.map((x) => x.auto_start),
+    [false, true],
+    'auto_start yalniz false ise kapali',
+  );
   assert.equal(xo.gruplar[0].deploymentlar[0].acik, false);
   const x = JSON.parse(k.uygulamalar[0].xml_eslesme);
   assert.deepEqual([x.jvmler[0].auto_start, x.jvmler[0].deployment_acik], [false, false]);
@@ -525,25 +594,49 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
   // EAR icindeki modulun deployment'i (tarayici ALT_YOL) alimda AD'ye dusmemeli; bilinmeyen yontem AD olur.
   const altYol = (yontem) =>
     JSON.parse(
-      kayit({}, { xml_eslesme: { durum: 'VAR', deploymentlar: [{ ad: 'DA-X-prd.war', yol: '/vhosting8/X.ear/X.war', yontem }], jvmler: [{ ad: 'J' }] } })
-        .uygulamalar[0].xml_eslesme,
+      kayit(
+        {},
+        {
+          xml_eslesme: {
+            durum: 'VAR',
+            deploymentlar: [{ ad: 'DA-X-prd.war', yol: '/vhosting8/X.ear/X.war', yontem }],
+            jvmler: [{ ad: 'J' }],
+          },
+        },
+      ).uygulamalar[0].xml_eslesme,
     ).deploymentlar[0].yontem;
   assert.equal(altYol('ALT_YOL'), 'ALT_YOL');
   assert.equal(altYol('UYDURMA'), 'AD');
 
   const tuhaf = kayit({}, { xml_eslesme: { durum: 'BELKI', jvmler: [{ ad: 'J' }] } });
-  assert.equal(JSON.parse(tuhaf.uygulamalar[0].xml_eslesme).durum, 'OLCULEMEDI', 'bilinmeyen eslesme durumu VAR sayilmaz');
+  assert.equal(
+    JSON.parse(tuhaf.uygulamalar[0].xml_eslesme).durum,
+    'OLCULEMEDI',
+    'bilinmeyen eslesme durumu VAR sayilmaz',
+  );
 
   // Sinirlar: 600 kok girdisi -> 500 alinir, kesilen = tarayicinin + fazlasi.
   const cok = kayit({
-    kok_girdileri: Array.from({ length: 600 }, (_, i) => ({ kok: '/vhosting', ad: `d${i}`, tip: 'F' })),
+    kok_girdileri: Array.from({ length: 600 }, (_, i) => ({
+      kok: '/vhosting',
+      ad: `d${i}`,
+      tip: 'F',
+    })),
     kok_girdisi_kesilen: 7,
   });
   const c = JSON.parse(cok.host.kok_girdileri);
   assert.equal(c.girdiler.length, alim.SINIR_KOK_GIRDI);
   assert.equal(c.kesilen, 107);
   const xcok = kayit({
-    yapilandirma: [{ kurulum: '/k', nesil: '8', domain: 'OKUNDU', host: 'OKUNDU', sunucular: Array.from({ length: 301 }, (_, i) => ({ ad: `J${i}`, grup: 'g' })) }],
+    yapilandirma: [
+      {
+        kurulum: '/k',
+        nesil: '8',
+        domain: 'OKUNDU',
+        host: 'OKUNDU',
+        sunucular: Array.from({ length: 301 }, (_, i) => ({ ad: `J${i}`, grup: 'g' })),
+      },
+    ],
   });
   const xc = JSON.parse(xcok.host.xml_ozeti)[0];
   assert.equal(xc.sunucular.length, 300);
@@ -552,16 +645,27 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
   // SESSIZ KAYIP YOK: hostKaydi'nin urettigi her alan OPENJSON WITH listesinde (yoksa SQL onu
   // sessizce atar) ve WITH'teki her alan kayitta (yoksa NULL yazilir).
   const withAdlari = (tablo) => {
-    const m = new RegExp(`INSERT INTO ${tablo} \\(kosu_id, host, ([^)]*)\\)`).exec(alim.HOST_YAZ_SQL);
+    const m = new RegExp(`INSERT INTO ${tablo} \\(kosu_id, host, ([^)]*)\\)`).exec(
+      alim.HOST_YAZ_SQL,
+    );
     assert.ok(m, `${tablo} INSERT yok`);
-    return m[1].split(',').map((x) => x.trim()).sort();
+    return m[1]
+      .split(',')
+      .map((x) => x.trim())
+      .sort();
   };
   assert.deepEqual(Object.keys(k.host).sort(), withAdlari('ear_envanter_hostlari'));
   assert.deepEqual(Object.keys(k.uygulamalar[0]).sort(), withAdlari('ear_envanter_uygulamalari'));
-  assert.deepEqual(Object.keys(alim.bosHostKaydi({ partiNo: 1, durum: 'HATA' }).host).sort(), withAdlari('ear_envanter_hostlari'));
+  assert.deepEqual(
+    Object.keys(alim.bosHostKaydi({ partiNo: 1, durum: 'HATA' }).host).sort(),
+    withAdlari('ear_envanter_hostlari'),
+  );
 
   // KURULU ORTAM: yeni kolonlarin ALTER adimi var (CREATE TABLE yalniz yeni kurulumda calisir).
-  const kurulum = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
+  const kurulum = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'),
+    'utf8',
+  );
   for (const [t, c] of [
     ['ear_envanter_hostlari', 'kok_girdileri'],
     ['ear_envanter_hostlari', 'xml_ozeti'],
@@ -596,7 +700,14 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
             },
           ],
         },
-        { host: 'APPSRV01', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 10 },
+        {
+          host: 'APPSRV01',
+          kip: 'OZET',
+          partiNo: 1,
+          ortam: 'PROD',
+          playbookDurum: 'SONUC',
+          hamBayt: 10,
+        },
       ).uygulamalar[0].xml_eslesme,
     );
   // Eski tarayici: alan yok -> null (olculmedi; "kullanilmiyor" degil).
@@ -620,7 +731,10 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
     cmdline: 'SIZMA',
     ortam: { PAROLA: 'SIZMA' },
   });
-  assert.ok(!JSON.stringify(ham).includes('SIZMA'), `cmdline / bilinmeyen alan DB'ye gitti: ${JSON.stringify(ham)}`);
+  assert.ok(
+    !JSON.stringify(ham).includes('SIZMA'),
+    `cmdline / bilinmeyen alan DB'ye gitti: ${JSON.stringify(ham)}`,
+  );
   assert.deepEqual(Object.keys(ham.kullanim).sort(), [
     'durum',
     'hidepid',
@@ -648,7 +762,10 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
   );
   assert.equal(ham.kullanim.son_yazma, 1795384380);
   // 10'dan cok surec kirpilir; surecsiz VAR tutarsiz -> OLCULEMEDI; surec varken YOK -> VAR; bilinmeyen durum.
-  const cok = kayit({ durum: 'VAR', surecler: Array.from({ length: 15 }, (_, i) => ({ pid: i + 1, nasil: 'fd' })) });
+  const cok = kayit({
+    durum: 'VAR',
+    surecler: Array.from({ length: 15 }, (_, i) => ({ pid: i + 1, nasil: 'fd' })),
+  });
   assert.equal(cok.kullanim.surecler.length, 10);
   assert.equal(kayit({ durum: 'VAR', surecler: [] }).kullanim.durum, 'OLCULEMEDI');
   assert.equal(kayit({ durum: 'YOK', surecler: [{ pid: 5, nasil: 'cwd' }] }).kullanim.durum, 'VAR');
@@ -677,7 +794,11 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
 
 test('EA13 Faz 2 deployment blogu: DMR, olculemeyen durumlar, kesik blok, hostKaydi', () => {
   const D = (ic) => Buffer.from(`ONCEKI\n@@EAR_DEPLOYMENT_BASLA@@\nsurum=1\n${ic}`);
-  assert.equal(alim.deploymentCoz(Buffer.from('@@EAR_ENVANTER_BITTI@@\n')), null, 'blok yok = olculmedi');
+  assert.equal(
+    alim.deploymentCoz(Buffer.from('@@EAR_ENVANTER_BITTI@@\n')),
+    null,
+    'blok yok = olculmedi',
+  );
   const ok = alim.deploymentCoz(
     D(`@@JVM@@ 7 A OK 0
 {
@@ -706,7 +827,9 @@ bu DMR degil
 `),
   );
   const j = Object.fromEntries(ok.jvmler.map((x) => [x.ad, x]));
-  assert.deepEqual(j.A.deploymentlar, [{ ad: 'X.ear', calisma_adi: 'X-rt.ear', etkin: false, durum: 'FAILED' }]);
+  assert.deepEqual(j.A.deploymentlar, [
+    { ad: 'X.ear', calisma_adi: 'X-rt.ear', etkin: false, durum: 'FAILED' },
+  ]);
   assert.deepEqual([j.B.durum, j.B.deploymentlar], ['HATA', null]);
   assert.match(j.B.hata, /WFLYCTL0216/);
   assert.deepEqual([j.C.durum, j.C.deploymentlar], ['AYRISTIRILAMADI', null]);
@@ -716,18 +839,33 @@ bu DMR degil
   const kesik = alim.deploymentCoz(D('@@JVM@@ 7 A CLI_YOK\n'));
   assert.deepEqual([kesik.kesik, kesik.jvmler[0].durum], [true, 'CLI_YOK']);
   // DMR: tirnak icinde kacis, L sayi, undefined, bytes.
-  assert.deepEqual(alim.dmrAyristir('{"a" => "x\\"y", "n" => 12L, "u" => undefined, "b" => bytes { 0x01 }, "t" => true}'), {
-    a: 'x"y',
-    n: 12,
-    u: null,
-    b: null,
-    t: true,
-  });
+  assert.deepEqual(
+    alim.dmrAyristir(
+      '{"a" => "x\\"y", "n" => 12L, "u" => undefined, "b" => bytes { 0x01 }, "t" => true}',
+    ),
+    {
+      a: 'x"y',
+      n: 12,
+      u: null,
+      b: null,
+      t: true,
+    },
+  );
   assert.throws(() => alim.dmrAyristir('{"a" => '), /DMR/);
   assert.throws(() => alim.dmrAyristir('{'.repeat(80) + '}'.repeat(80)), /derin/);
   // hostKaydi: verilirse JSON, verilmezse NULL (olculmedi).
   const p = { sema: 1, durum: 'TAM', kokler: [], uyarilar: [], uygulamalar: [] };
-  const o = { host: 'H', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 1 };
+  const o = {
+    host: 'H',
+    kip: 'OZET',
+    partiNo: 1,
+    ortam: 'PROD',
+    playbookDurum: 'SONUC',
+    hamBayt: 1,
+  };
   assert.equal(alim.hostKaydi(p, o).host.deployment_ozeti, null);
-  assert.deepEqual(JSON.parse(alim.hostKaydi(p, { ...o, deployment: ok }).host.deployment_ozeti).jvmler.length, 5);
+  assert.deepEqual(
+    JSON.parse(alim.hostKaydi(p, { ...o, deployment: ok }).host.deployment_ozeti).jvmler.length,
+    5,
+  );
 });

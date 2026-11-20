@@ -83,7 +83,8 @@ function kopyaOf(h, j) {
     // Domain kapali (taramada host controller calismiyordu) JVM'de assess STOPPED_AUTOSTART_ON uretmez.
     autostartUyumsuz: (() => {
       if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK';
-      if (calisiyor === false && autoStart === 'true' && j.domainKapali !== true) return 'STOPPED_AUTOSTART_ON';
+      if (calisiyor === false && autoStart === 'true' && j.domainKapali !== true)
+        return 'STOPPED_AUTOSTART_ON';
       return null;
     })(),
     trafik: j.trafficState || null,

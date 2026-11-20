@@ -10,7 +10,14 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtNumber } from '@/utils/datetime';
 
 /** Sunucunun kod varsayılanları (server/server-hub/ayarlar.cjs LIMITLER ile aynı). */
-export const VARSAYILAN_LIMIT: Record<ShLimitAd, number> = { tara: 50, reboot: 500, hazirlik: 500, toplu_autostart: 500, toplu_restart: 200, toplu_is_basina_jvm: 10 };
+export const VARSAYILAN_LIMIT: Record<ShLimitAd, number> = {
+  tara: 50,
+  reboot: 500,
+  hazirlik: 500,
+  toplu_autostart: 500,
+  toplu_restart: 200,
+  toplu_is_basina_jvm: 10,
+};
 
 export interface SunucuLimiti {
   /** null = henüz okunmadı (engelleme yapılmaz; sunucu yine uygular) */
@@ -27,7 +34,11 @@ export function useSunucuLimiti(ad: ShLimitAd): SunucuLimiti {
         const r = await serverHubApi.limitler();
         const l = r.ok ? r.limitler.find((x) => x.ad === ad) : undefined;
         if (!alive()) return;
-        setS(l ? { enCok: l.gecerli, tahmini: !!r.okunamadi } : { enCok: VARSAYILAN_LIMIT[ad], tahmini: true });
+        setS(
+          l
+            ? { enCok: l.gecerli, tahmini: !!r.okunamadi }
+            : { enCok: VARSAYILAN_LIMIT[ad], tahmini: true },
+        );
       } catch {
         if (alive()) setS({ enCok: VARSAYILAN_LIMIT[ad], tahmini: true });
       }
@@ -62,9 +73,12 @@ export function LimitNotu({ limit, sayi }: { limit: SunucuLimiti; sayi: number }
       data-testid="sunucu-limiti"
       title="Admin bu sınırı Server Hub › Kurallar & Limitler'den değiştirebilir."
     >
-      {fmtNumber(sayi)} / {fmtNumber(limit.enCok)} sunucu · tek seferde en fazla {fmtNumber(limit.enCok)}
+      {fmtNumber(sayi)} / {fmtNumber(limit.enCok)} sunucu · tek seferde en fazla{' '}
+      {fmtNumber(limit.enCok)}
       {limit.tahmini ? ' (varsayılan; güncel limit okunamadı)' : ''}
-      {asti ? ` — ${fmtNumber(sayi - limit.enCok)} fazla; listeyi bölün ya da Admin Kurallar & Limitler'den artırsın` : ''}
+      {asti
+        ? ` — ${fmtNumber(sayi - limit.enCok)} fazla; listeyi bölün ya da Admin Kurallar & Limitler'den artırsın`
+        : ''}
     </span>
   );
 }

@@ -17,8 +17,20 @@ const SRC = path.join(SISTEM, '..', '..', '..', '..');
 const oku = (p) => fs.readFileSync(p, 'utf8');
 const ad = (p) => path.basename(p);
 
-const TSX = [TAB, ...fs.readdirSync(SISTEM).filter((f) => f.endsWith('.tsx')).map((f) => path.join(SISTEM, f))];
-const KAYNAK = [...TSX, ...fs.readdirSync(SISTEM).filter((f) => f.endsWith('.ts')).map((f) => path.join(SISTEM, f))];
+const TSX = [
+  TAB,
+  ...fs
+    .readdirSync(SISTEM)
+    .filter((f) => f.endsWith('.tsx'))
+    .map((f) => path.join(SISTEM, f)),
+];
+const KAYNAK = [
+  ...TSX,
+  ...fs
+    .readdirSync(SISTEM)
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => path.join(SISTEM, f)),
+];
 
 /** Yorum satirlari atilmis kaynak. */
 function kod(src) {
@@ -69,7 +81,10 @@ test('SD1 ekranin kok kabi ve radyo etiketi konumlandirilmis (relative)', () => 
   const duz = oku(path.join(SISTEM, 'AyarDuzenleyici.tsx'));
   const segment = dizeler(duz).find((s) => /(^|\s)pf-segment(\s|$)/.test(s));
   assert.ok(segment, 'AyarDuzenleyici pf-segment etiketi bulunamadi');
-  assert.ok(segment.split(/\s+/).includes('relative'), `pf-segment etiketi 'relative' degil: "${segment}"`);
+  assert.ok(
+    segment.split(/\s+/).includes('relative'),
+    `pf-segment etiketi 'relative' degil: "${segment}"`,
+  );
 });
 
 // ── SD2 — scrollIntoView yok ───────────────────────────────────────────────────────────────
@@ -87,7 +102,8 @@ test('SD2 Sistem ekraninda scrollIntoView cagrisi yok (yalniz en yakin kaydirma 
 // Olculen: "Ayrintilar" text-xs yerine 14px, Duzenle cercevesi saydam, bolum basligi
 // --text-muted/600 yerine --text-primary/500. Ayni ozelligi ezen utility `!` tasimali.
 const PF_SINIFLARI = ['pf-btn-link', 'btn-secondary', 'pf-segment'];
-const PF_EZILEN = /^(text-(?!left$|right$|center$)|border|p[xytblr]?-|rounded|gap-|whitespace-|justify-|font-|leading-|tracking-)/;
+const PF_EZILEN =
+  /^(text-(?!left$|right$|center$)|border|p[xytblr]?-|rounded|gap-|whitespace-|justify-|font-|leading-|tracking-)/;
 const BASLIK_EZILEN = /^(text-\[var\(|font-|leading-|tracking-)/;
 
 function ezilenler(siniflar, desen) {
@@ -107,7 +123,8 @@ test('SD3 PF sinifi tasiyan ogelerde ve basliklarda ayni ozelligi ezen utility `
     for (const s of dizeler(src)) {
       const tokenlar = s.split(/\s+/);
       if (!PF_SINIFLARI.some((c) => tokenlar.includes(c))) continue;
-      for (const t of ezilenler(s, PF_EZILEN)) kotu.push(`${ad(p)}: ${t}  (${s.trim().slice(0, 60)}…)`);
+      for (const t of ezilenler(s, PF_EZILEN))
+        kotu.push(`${ad(p)}: ${t}  (${s.trim().slice(0, 60)}…)`);
     }
     for (const m of src.matchAll(/<h[1-6]\b[^>]*?className=(?:"([^"]*)"|\{`([^`]*)`\})/g)) {
       for (const t of ezilenler(m[1] ?? m[2], BASLIK_EZILEN)) kotu.push(`${ad(p)}: baslik ${t}`);
@@ -121,13 +138,18 @@ test('SD3 PF sinifi tasiyan ogelerde ve basliklarda ayni ozelligi ezen utility `
 // ezildi; input sr-only oldugu icin kendi outline'i da gorunmez -> odak hic gorunmuyordu
 // (WCAG 2.4.7). outline'i pf-segment ezmez.
 test('SD4 pf-segment odak gostergesi outline ile verilir (ring ezilir)', () => {
-  const segment = dizeler(oku(path.join(SISTEM, 'AyarDuzenleyici.tsx'))).find((s) => /(^|\s)pf-segment(\s|$)/.test(s));
+  const segment = dizeler(oku(path.join(SISTEM, 'AyarDuzenleyici.tsx'))).find((s) =>
+    /(^|\s)pf-segment(\s|$)/.test(s),
+  );
   const t = segment.split(/\s+/);
   assert.ok(
     t.some((x) => x.startsWith('has-[:focus-visible]:outline')),
     `pf-segment etiketinde has-[:focus-visible]:outline yok: "${segment}"`,
   );
-  assert.ok(!t.some((x) => /^has-\[:focus-visible\]:ring/.test(x)), 'pf-segment odagi ring ile veriliyor (ezilir)');
+  assert.ok(
+    !t.some((x) => /^has-\[:focus-visible\]:ring/.test(x)),
+    'pf-segment odagi ring ile veriliyor (ezilir)',
+  );
 });
 
 // ── SD5 — kirilimlar gercek kabuga gore ────────────────────────────────────────────────────
@@ -136,10 +158,15 @@ test('SD4 pf-segment odak gostergesi outline ile verilir (ring ezilir)', () => {
 test('SD5 Sistem ekraninda @2xl/sistem ve uzeri kirilim yok (1366 masaustunde kap 640px)', () => {
   const kotu = [];
   for (const p of TSX) {
-    for (const m of kod(oku(p)).matchAll(/@([2-7]xl)\/sistem:/g)) kotu.push(`${ad(p)}: @${m[1]}/sistem`);
+    for (const m of kod(oku(p)).matchAll(/@([2-7]xl)\/sistem:/g))
+      kotu.push(`${ad(p)}: @${m[1]}/sistem`);
   }
   assert.deepEqual(kotu, [], `640px kapta hic acilmayan kirilimlar:\n  ${kotu.join('\n  ')}`);
-  assert.match(oku(path.join(SISTEM, 'AyarSatiri.tsx')), /@xl\/sistem:grid(\s|`)/, 'satir izgarasi @xl/sistem kiriliminda acilmali');
+  assert.match(
+    oku(path.join(SISTEM, 'AyarSatiri.tsx')),
+    /@xl\/sistem:grid(\s|`)/,
+    'satir izgarasi @xl/sistem kiriliminda acilmali',
+  );
 });
 
 // ── SD6 — rozet kontrasti iki temada ───────────────────────────────────────────────────────
@@ -153,7 +180,10 @@ function blok(baslangic) {
   assert.ok(i >= 0, `index.css icinde blok yok: ${baslangic}`);
   return CSS.slice(i, CSS.indexOf('\n}', i));
 }
-const tokenlar = (b) => Object.fromEntries([...b.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+const tokenlar = (b) =>
+  Object.fromEntries(
+    [...b.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]),
+  );
 const ACIK = tokenlar(blok(':root {'));
 const KOYU = { ...ACIK, ...tokenlar(blok(':root[data-theme="dark"] {')) };
 
@@ -163,7 +193,10 @@ function rgba(deger) {
   if (m) return [...[0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)), 1];
   m = c.match(/^rgba?\(([^)]+)\)$/i);
   if (m) {
-    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    const p = m[1]
+      .split(/[\s,/]+/)
+      .filter(Boolean)
+      .map(Number);
     return [p[0], p[1], p[2], p[3] === undefined ? 1 : p[3]];
   }
   throw new Error(`renk cozulemedi: ${deger}`);
@@ -185,14 +218,22 @@ const oran = (a, b) => {
 test('SD6 yesil ve kirmizi rozet metni iki temada en kotu zeminde AA (4.5) gecer', () => {
   const rozet = oku(path.join(SISTEM, 'Rozet.tsx'));
   const karisimlar = Object.fromEntries(
-    [...rozet.matchAll(/(green|red):\s*'color-mix\(in srgb, var\((--[a-z-]+)\) (\d+)%, var\((--[a-z-]+)\)\)'/g)].map((m) => [
-      m[1],
-      { a: m[2], yuzde: Number(m[3]) / 100, b: m[4] },
-    ]),
+    [
+      ...rozet.matchAll(
+        /(green|red):\s*'color-mix\(in srgb, var\((--[a-z-]+)\) (\d+)%, var\((--[a-z-]+)\)\)'/g,
+      ),
+    ].map((m) => [m[1], { a: m[2], yuzde: Number(m[3]) / 100, b: m[4] }]),
   );
-  assert.deepEqual(Object.keys(karisimlar).sort(), ['green', 'red'], 'Rozet.tsx yesil/kirmizi metin karisimi bulunamadi');
+  assert.deepEqual(
+    Object.keys(karisimlar).sort(),
+    ['green', 'red'],
+    'Rozet.tsx yesil/kirmizi metin karisimi bulunamadi',
+  );
   const zemin = { green: '--status-success-bg', red: '--status-danger-bg' };
-  for (const [tema, t] of [['acik', ACIK], ['koyu', KOYU]]) {
+  for (const [tema, t] of [
+    ['acik', ACIK],
+    ['koyu', KOYU],
+  ]) {
     for (const ton of ['green', 'red']) {
       const k = karisimlar[ton];
       const a = rgba(t[k.a]);
@@ -219,9 +260,15 @@ test('SD6 yesil ve kirmizi rozet metni iki temada en kotu zeminde AA (4.5) gecer
 test('SD7 restart bandi: ayar adlari sarar, "Listeyi temizle" icerik sutununu sikistirmaz', () => {
   const bant = kod(oku(path.join(SISTEM, 'YenidenBaslatmaBandi.tsx')));
   const etiket = dizeler(bant).find((s) => s.split(/\s+/).includes('pf-btn-link'));
-  assert.ok(etiket && etiket.split(/\s+/).includes('!whitespace-normal'), `bant etiket dugmesi sarmiyor: "${etiket}"`);
+  assert.ok(
+    etiket && etiket.split(/\s+/).includes('!whitespace-normal'),
+    `bant etiket dugmesi sarmiyor: "${etiket}"`,
+  );
   const temizle = dizeler(bant).find((s) => s.split(/\s+/).includes('btn-secondary'));
-  assert.ok(temizle && !/flex-shrink-0|shrink-0/.test(temizle), `"Listeyi temizle" yan sutunda: "${temizle}"`);
+  assert.ok(
+    temizle && !/flex-shrink-0|shrink-0/.test(temizle),
+    `"Listeyi temizle" yan sutunda: "${temizle}"`,
+  );
 });
 
 // ── SD8 — acma/kapama oku sabit yerde ──────────────────────────────────────────────────────

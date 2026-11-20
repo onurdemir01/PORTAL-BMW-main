@@ -14,14 +14,31 @@
 const { KOLON } = require('./kurgu.cjs');
 
 // wrk_kos.sh JSON_ANAHTARLARI (sozlesme 5.1): yuk_k6.js ozet_hesapla ciktisinin anahtar sirasi.
-const JSON_ANAHTARLARI = Object.freeze(('tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 ' +
-  'connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme ' +
-  'p95_js p95_css p95_html p95_json p95_config').split(' '));
+const JSON_ANAHTARLARI = Object.freeze(
+  (
+    'tur adim senaryo kip ae hiz n_olcum rps_gercek p50 p95 p99 ttfb_p95 tls_p95 ' +
+    'connect_p95 hata_orani n_429 n_5xx dropped http2 bayt_istek p95_buyuk sikistirma_turu isinma_sn sure_sn deneme ' +
+    'p95_js p95_css p95_html p95_json p95_config'
+  ).split(' '),
+);
 // wrk'nin olcemedigi istemci alanlari (5.4): null, CSV'de bos hucre.
-const WRK_OLCULMEYEN = Object.freeze(['ttfb_p95', 'tls_p95', 'connect_p95', 'dropped', 'p95_js', 'p95_css', 'p95_html',
-  'p95_json', 'p95_config', 'p95_buyuk']);
+const WRK_OLCULMEYEN = Object.freeze([
+  'ttfb_p95',
+  'tls_p95',
+  'connect_p95',
+  'dropped',
+  'p95_js',
+  'p95_css',
+  'p95_html',
+  'p95_json',
+  'p95_config',
+  'p95_buyuk',
+]);
 /** wrk satirinda ZORLA yazilan alanlar: olculmeyenler null, http2 0. */
-const WRK_ALANLARI = Object.freeze({ ...Object.fromEntries(WRK_OLCULMEYEN.map((k) => [k, null])), http2: 0 });
+const WRK_ALANLARI = Object.freeze({
+  ...Object.fromEntries(WRK_OLCULMEYEN.map((k) => [k, null])),
+  http2: 0,
+});
 
 /** C printf %.15g (fikstur buyuklukleri icin; ussel bicim gerektiren deger fikstur hatasidir). */
 function g15(x) {
@@ -46,7 +63,12 @@ function wrkIstemci(d) {
   const x = { ...Object.fromEntries(KOLON.map((k) => [k, null])), ...d, ...WRK_ALANLARI };
   const csv = KOLON.join(',') + '\n' + KOLON.map((k) => wrkHucre(x[k])).join(',') + '\n';
   const j = {};
-  for (const k of JSON_ANAHTARLARI) j[k] = (() => { if (typeof x[k] === 'number') return Number(g15(x[k])); if (x[k] === undefined) return null; return x[k]; })();
+  for (const k of JSON_ANAHTARLARI)
+    j[k] = (() => {
+      if (typeof x[k] === 'number') return Number(g15(x[k]));
+      if (x[k] === undefined) return null;
+      return x[k];
+    })();
   return { csv, json: JSON.stringify(j, null, 2) + '\n' };
 }
 
@@ -85,11 +107,29 @@ function serbestDosyalari(dosyalar) {
 const WRK_ORNEK = Object.freeze({
   tur: 'R70_K_ka_br_4_r1',
   satir: Object.freeze({
-    tur: 'R70_K_ka_br_4_r1', adim: 'R70', senaryo: 'K', kip: 'ka', ae: 'br', hiz: 4, n_olcum: 22812, rps_gercek: 22812 / 120,
-    p50: 12.346, p95: 25.512, p99: 40.125, hata_orani: 8 / 22812, n_429: 0, n_5xx: 0, bayt_istek: 35004321 / 22812,
-    sikistirma_turu: 'STATIK', isinma_sn: 30, sure_sn: 120, deneme: 1,
+    tur: 'R70_K_ka_br_4_r1',
+    adim: 'R70',
+    senaryo: 'K',
+    kip: 'ka',
+    ae: 'br',
+    hiz: 4,
+    n_olcum: 22812,
+    rps_gercek: 22812 / 120,
+    p50: 12.346,
+    p95: 25.512,
+    p99: 40.125,
+    hata_orani: 8 / 22812,
+    n_429: 0,
+    n_5xx: 0,
+    bayt_istek: 35004321 / 22812,
+    sikistirma_turu: 'STATIK',
+    isinma_sn: 30,
+    sure_sn: 120,
+    deneme: 1,
   }),
-  csv: KOLON.join(',') + '\n' +
+  csv:
+    KOLON.join(',') +
+    '\n' +
     'R70_K_ka_br_4_r1,R70,K,ka,br,4,22812,190.1,12.346,25.512,40.125,,,,0,0,0,,0,1534.47,,,,,,,STATIK,30,120,1\n',
   json: [
     '{',
@@ -142,6 +182,15 @@ function wrkOrnekDosyalari() {
 }
 
 module.exports = {
-  JSON_ANAHTARLARI, WRK_OLCULMEYEN, WRK_ALANLARI, WRK_ORNEK, g15, wrkHucre, wrkIstemci, wrkKosu, wrkDosyalari,
-  serbestDosyalari, wrkOrnekDosyalari,
+  JSON_ANAHTARLARI,
+  WRK_OLCULMEYEN,
+  WRK_ALANLARI,
+  WRK_ORNEK,
+  g15,
+  wrkHucre,
+  wrkIstemci,
+  wrkKosu,
+  wrkDosyalari,
+  serbestDosyalari,
+  wrkOrnekDosyalari,
 };

@@ -40,14 +40,22 @@ test('LR2 route BAGLI DEGIL', () => {
 
 test('LR3 sayfayi her aciliste silen temizlik CAGRILIYOR (DB nav grubu da menuden dussun)', () => {
   const setup = codeOnly(read('server/db/mssql-setup.cjs'));
-  assert.match(setup, /^\s*await removeKaynaklarNavGroup\(pool\);/m, 'removeKaynaklarNavGroup cagrilmiyor — DB-driven menude grup kalir');
+  assert.match(
+    setup,
+    /^\s*await removeKaynaklarNavGroup\(pool\);/m,
+    'removeKaynaklarNavGroup cagrilmiyor — DB-driven menude grup kalir',
+  );
 });
 
 test("LR4 DB seed'i sayfayi YENIDEN OLUSTURMUYOR", () => {
   const setup = codeOnly(read('server/db/mssql-setup.cjs'));
   assert.doesNotMatch(setup, /element_key: 'Linkler'/, 'ELEMENT_SEED icinde "Linkler" hala var');
   assert.doesNotMatch(setup, /element_key: 'navgroup:kaynaklar'/, 'nav grubu hala seed ediliyor');
-  assert.doesNotMatch(setup, /page_name: 'Linkler'/, 'PAGE_VISIBILITY_SEED icinde "Linkler" hala var');
+  assert.doesNotMatch(
+    setup,
+    /page_name: 'Linkler'/,
+    'PAGE_VISIBILITY_SEED icinde "Linkler" hala var',
+  );
 });
 
 test('LR5 yeni alanlar MEVCUT kurulumlara da gidiyor (ALTER var)', () => {

@@ -78,7 +78,15 @@ function dogrula(g, { veri = null } = {}) {
           'CALISMA_DINLEME',
           uyum ? 'UYUM' : 'CELISKI',
           ['server_hub', 'baglanti'],
-          (() => { if (uyum) { if (d.veri.calisiyor) return 'calisiyor ve portu dinleniyor'; return 'kapali ve portu dinlenmiyor'; } if (d.veri.calisiyor) return 'Server Hub calisiyor diyor ama yapilandirilmis portlari dinlenmiyor'; return 'Server Hub kapali diyor ama yapilandirilmis portu dinleniyor'; })(),
+          (() => {
+            if (uyum) {
+              if (d.veri.calisiyor) return 'calisiyor ve portu dinleniyor';
+              return 'kapali ve portu dinlenmiyor';
+            }
+            if (d.veri.calisiyor)
+              return 'Server Hub calisiyor diyor ama yapilandirilmis portlari dinlenmiyor';
+            return 'Server Hub kapali diyor ama yapilandirilmis portu dinleniyor';
+          })(),
         );
       }
     } else if (d.tur === 'vhost') {
@@ -150,7 +158,13 @@ function dogrula(g, { veri = null } = {}) {
           'WEB_CALISMA',
           uyum ? 'UYUM' : 'CELISKI',
           ['server_hub', 'faz_w'],
-          (() => { if (uyum) { if (d.veri.calisiyor) return 'calisiyor'; return 'calismiyor'; } return `Server Hub ${d.veri.calisiyor ? 'calisiyor' : 'calismiyor'}, Faz W ${d.veri.fazWCalisiyor ? 'calisiyor' : 'calismiyor'}`; })(),
+          (() => {
+            if (uyum) {
+              if (d.veri.calisiyor) return 'calisiyor';
+              return 'calismiyor';
+            }
+            return `Server Hub ${d.veri.calisiyor ? 'calisiyor' : 'calismiyor'}, Faz W ${d.veri.fazWCalisiyor ? 'calisiyor' : 'calismiyor'}`;
+          })(),
         );
       }
       // VHOST_KAPSAMI: ayni web uzerindeki vhost'larin kaynaklari
@@ -183,7 +197,7 @@ function dogrula(g, { veri = null } = {}) {
             'VHOST_KAPSAMI',
             'CELISKI',
             ['server_hub', 'faz_w'],
-            `${yalnizSh.length ? ("yalniz Server Hub: " + yalnizSh.slice(0, 5).join(', ')) : ''}${yalnizSh.length && yalnizW.length ? '; ' : ''}${yalnizW.length ? ("yalniz config: " + yalnizW.slice(0, 5).join(', ')) : ''}`,
+            `${yalnizSh.length ? 'yalniz Server Hub: ' + yalnizSh.slice(0, 5).join(', ') : ''}${yalnizSh.length && yalnizW.length ? '; ' : ''}${yalnizW.length ? 'yalniz config: ' + yalnizW.slice(0, 5).join(', ') : ''}`,
           );
       }
     } else if (d.tur === 'sunucu') {

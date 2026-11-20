@@ -21,7 +21,13 @@ export interface SmartTalepSayaciProps {
   className?: string;
 }
 
-export default function SmartTalepSayaci({ talep, serverNow, alindiMs, kompakt, className }: SmartTalepSayaciProps) {
+export default function SmartTalepSayaci({
+  talep,
+  serverNow,
+  alindiMs,
+  kompakt,
+  className,
+}: SmartTalepSayaciProps) {
   if (talep?.status !== 'PENDING') return null;
   return (
     <SmartBeklemeSayaci

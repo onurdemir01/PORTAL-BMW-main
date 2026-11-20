@@ -72,7 +72,9 @@ function grupListesiOku(raw) {
   if (raw === undefined || raw === null || raw === '') return [];
   try {
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.map((g) => String(g == null ? '' : g)).filter((g) => g.trim()) : null;
+    return Array.isArray(v)
+      ? v.map((g) => String(g == null ? '' : g)).filter((g) => g.trim())
+      : null;
   } catch {
     return null;
   }
@@ -80,7 +82,7 @@ function grupListesiOku(raw) {
 
 // Admin'in gonderdigi { mode, groups } -> kaydedilecek alanlar ya da { hata }.
 function ssErisimDogrula(govde) {
-  const mode = String((govde?.mode) || '').trim();
+  const mode = String(govde?.mode || '').trim();
   if (!MODLAR.includes(mode)) return { hata: 'Geçersiz erişim türü (kapali | ekipler | herkes).' };
   const ham = govde?.groups;
   if (ham !== undefined && !Array.isArray(ham)) return { hata: 'Ekip listesi bir dizi olmalı.' };
@@ -90,8 +92,10 @@ function ssErisimDogrula(govde) {
     if (typeof g !== 'string') return { hata: 'Ekip adı metin olmalı.' };
     const t = g.trim();
     if (!t) continue;
-    if (t.length > GRUP_UZUNLUK) return { hata: `Ekip adı en fazla ${GRUP_UZUNLUK} karakter olabilir.` };
-    if (require('../util/control-chars.cjs').hasControlChars(t)) return { hata: 'Ekip adında kontrol karakteri olamaz.' };
+    if (t.length > GRUP_UZUNLUK)
+      return { hata: `Ekip adı en fazla ${GRUP_UZUNLUK} karakter olabilir.` };
+    if (require('../util/control-chars.cjs').hasControlChars(t))
+      return { hata: 'Ekip adında kontrol karakteri olamaz.' };
     const k = grupAnahtari(t);
     if (gorulen.has(k)) continue;
     gorulen.add(k);

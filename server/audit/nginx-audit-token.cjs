@@ -55,4 +55,10 @@ async function migrationToken(query) {
   return `${audit}|${tarihler.join(',')}`;
 }
 
-module.exports = { nginxAuditToken, migrationToken, CEKIRDEK_SQL, FILES_SQL, MIGRATION_TARIH_TABLOLARI };
+module.exports = {
+  nginxAuditToken,
+  migrationToken,
+  CEKIRDEK_SQL,
+  FILES_SQL,
+  MIGRATION_TARIH_TABLOLARI,
+};

@@ -57,7 +57,7 @@ async function pendingJobs(limit) {
        FROM scalex_operations
       WHERE status = 'RUNNING' AND awx_server_id IS NOT NULL AND awx_job_id IS NOT NULL
       GROUP BY awx_server_id, awx_job_id
-      ORDER BY MIN(created_at) ASC`
+      ORDER BY MIN(created_at) ASC`,
   );
   return rows.slice(0, Math.min(limit, HARD_TOP));
 }
@@ -67,17 +67,17 @@ async function markStale(serverId, jobId, reason) {
   // sunucu tarafinda, kimse bakmadan olur. Denetim kaydinda gorunmezse "bu is neden
   // UNKNOWN?" sorusunun cevabi hicbir yerde olmaz.
   auditPortal(null, 'scalex_reconcile_stale', {
-    username: 'system:scalex-reconciler', result: 'fail',
+    username: 'system:scalex-reconciler',
+    result: 'fail',
     detail: JSON.stringify({ serverId, jobId, reason: String(reason).slice(0, 400) }),
   });
   await db.query(
     `UPDATE scalex_operations
         SET status = 'UNKNOWN', error_message = $3, updated_at = GETUTCDATE()
       WHERE awx_server_id = $1 AND awx_job_id = $2 AND status = 'RUNNING'`,
-    [serverId, jobId, String(reason).slice(0, 500)]
+    [serverId, jobId, String(reason).slice(0, 500)],
   );
 }
-
 
 // ── SMART ONAYI BEKLEYEN SATIRLAR ───────────────────────────────────────────
 //
@@ -101,7 +101,7 @@ async function pendingApprovalTickets(limit) {
        FROM scalex_operations
       WHERE status = 'PENDING_APPROVAL' AND smart_ticket_id IS NOT NULL
       GROUP BY smart_ticket_id
-      ORDER BY MIN(created_at) ASC`
+      ORDER BY MIN(created_at) ASC`,
   );
   return rows.slice(0, Math.min(limit, HARD_TOP));
 }
@@ -114,7 +114,8 @@ async function adoptApprovedTickets(cfg) {
   if (!tickets.length) return { adopted: 0, cancelled: 0 };
 
   const smartStore = require('../smart/store.cjs');
-  let adopted = 0, cancelled = 0;
+  let adopted = 0,
+    cancelled = 0;
 
   for (const t of tickets) {
     const ticketId = Number(t.smart_ticket_id);
@@ -132,8 +133,12 @@ async function adoptApprovedTickets(cfg) {
     if (!ticket) {
       const ageHours = t.created_at ? (Date.now() - new Date(t.created_at).getTime()) / 3600000 : 0;
       if (ageHours >= cfg.staleHours) {
-        await resolveApproval(ticketId, 'CANCELLED', 'ORPHANED',
-          'Smart bileti bulunamadi; onay durumu ogrenilemedi.');
+        await resolveApproval(
+          ticketId,
+          'CANCELLED',
+          'ORPHANED',
+          'Smart bileti bulunamadi; onay durumu ogrenilemedi.',
+        );
         cancelled++;
       }
       continue;
@@ -146,24 +151,33 @@ async function adoptApprovedTickets(cfg) {
                 request_key = CONCAT(CAST(COALESCE(awx_server_id, $3) AS NVARCHAR(20)), ':', CAST($2 AS NVARCHAR(20))),
                 approval_state = 'APPROVED', approved_at = GETUTCDATE(), updated_at = GETUTCDATE()
           WHERE smart_ticket_id = $1 AND status = 'PENDING_APPROVAL'`,
-        [ticketId, Number(ticket.awxJobId), Number(ticket.awxServerId)]
+        [ticketId, Number(ticket.awxJobId), Number(ticket.awxServerId)],
       );
       // IZ: onaylanmis bir prod islemi TAM BURADA baslamis sayilir — kullanicinin
       // "Calistir"a bastigi andan saatler sonra olabilir. Denetim kaydinda bu gecis
       // yoksa, isin ne zaman gercekten calistigi hicbir yerden okunamaz.
       auditPortal(null, 'scalex_approval_adopted', {
         username: ticket.username || 'system:scalex-reconciler',
-        detail: JSON.stringify({ ticketId, awxServerId: ticket.awxServerId, awxJobId: ticket.awxJobId }),
+        detail: JSON.stringify({
+          ticketId,
+          awxServerId: ticket.awxServerId,
+          awxJobId: ticket.awxJobId,
+        }),
       });
       adopted++;
       continue;
     }
 
     if (['REJECTED', 'TIMEOUT', 'CANCELLED', 'ERROR'].includes(ticket.status)) {
-      await resolveApproval(ticketId, 'CANCELLED', ticket.status,
-        ticket.errorMessage || `Smart bileti ${ticket.status} — is tetiklenmedi.`);
+      await resolveApproval(
+        ticketId,
+        'CANCELLED',
+        ticket.status,
+        ticket.errorMessage || `Smart bileti ${ticket.status} — is tetiklenmedi.`,
+      );
       auditPortal(null, 'scalex_approval_resolved', {
-        username: ticket.username || 'system:scalex-reconciler', result: 'fail',
+        username: ticket.username || 'system:scalex-reconciler',
+        result: 'fail',
         detail: JSON.stringify({ ticketId, smartStatus: ticket.status }),
       });
       cancelled++;
@@ -178,7 +192,7 @@ async function resolveApproval(ticketId, status, approvalState, message) {
     `UPDATE scalex_operations
         SET status = $2, approval_state = $3, error_message = $4, updated_at = GETUTCDATE()
       WHERE smart_ticket_id = $1 AND status = 'PENDING_APPROVAL'`,
-    [ticketId, status, approvalState, String(message).slice(0, 500)]
+    [ticketId, status, approvalState, String(message).slice(0, 500)],
   );
 }
 
@@ -208,7 +222,7 @@ async function scheduledOperations(limit) {
        FROM scalex_operations
       WHERE status = 'SCHEDULED' AND request_key LIKE 'oco:%'
       GROUP BY request_key
-      ORDER BY MIN(created_at) ASC`
+      ORDER BY MIN(created_at) ASC`,
   );
   return rows.slice(0, Math.min(limit, HARD_TOP));
 }
@@ -218,7 +232,7 @@ async function closeScheduled(requestKey, status, message) {
     `UPDATE scalex_operations
         SET status = $2, error_message = $3, updated_at = GETUTCDATE()
       WHERE request_key = $1 AND status = 'SCHEDULED'`,
-    [requestKey, status, String(message).slice(0, 500)]
+    [requestKey, status, String(message).slice(0, 500)],
   );
 }
 
@@ -227,7 +241,8 @@ async function adoptScheduledLaunches(cfg) {
   if (!bekleyen.length) return { scheduledAdopted: 0, scheduledClosed: 0 };
 
   const ocoStore = require('../oco/store.cjs');
-  let scheduledAdopted = 0, scheduledClosed = 0;
+  let scheduledAdopted = 0,
+    scheduledClosed = 0;
 
   for (const b of bekleyen) {
     const requestKey = String(b.request_key || '');
@@ -245,7 +260,11 @@ async function adoptScheduledLaunches(cfg) {
     if (!rec) {
       const ageHours = b.created_at ? (Date.now() - new Date(b.created_at).getTime()) / 3600000 : 0;
       if (ageHours >= cfg.staleHours) {
-        await closeScheduled(requestKey, 'CANCELLED', 'Zamanlama kaydi bulunamadi; is tetiklenmedi sayildi.');
+        await closeScheduled(
+          requestKey,
+          'CANCELLED',
+          'Zamanlama kaydi bulunamadi; is tetiklenmedi sayildi.',
+        );
         scheduledClosed++;
       }
       continue;
@@ -258,29 +277,42 @@ async function adoptScheduledLaunches(cfg) {
                 request_key = CONCAT(CAST(COALESCE(awx_server_id, $3) AS NVARCHAR(20)), ':', CAST($2 AS NVARCHAR(20))),
                 updated_at = GETUTCDATE()
           WHERE request_key = $1 AND status = 'SCHEDULED'`,
-        [requestKey, Number(rec.awxJobId), Number(rec.awxServerId)]
+        [requestKey, Number(rec.awxJobId), Number(rec.awxServerId)],
       );
       // IZ: zamanlanmis bir prod islemi TAM BURADA baslamis sayilir — kullanicinin
       // "zamanla"ya bastigi andan saatler sonra.
       auditPortal(null, 'scalex_schedule_adopted', {
         username: rec.username || 'system:scalex-reconciler',
-        detail: JSON.stringify({ scheduleId: kayitId, awxServerId: rec.awxServerId, awxJobId: rec.awxJobId, oco: rec.ocoNumber }),
+        detail: JSON.stringify({
+          scheduleId: kayitId,
+          awxServerId: rec.awxServerId,
+          awxJobId: rec.awxJobId,
+          oco: rec.ocoNumber,
+        }),
       });
       scheduledAdopted++;
       continue;
     }
 
     if (rec.status === 'CANCELLED') {
-      await closeScheduled(requestKey, 'CANCELLED',
-        `Zamanlama iptal edildi${rec.cancelledBy ? (" (" + rec.cancelledBy + ")") : ''}.`);
+      await closeScheduled(
+        requestKey,
+        'CANCELLED',
+        `Zamanlama iptal edildi${rec.cancelledBy ? ' (' + rec.cancelledBy + ')' : ''}.`,
+      );
       scheduledClosed++;
     } else if (rec.status === 'EXPIRED' || rec.status === 'FAILED') {
-      await closeScheduled(requestKey, 'FAILED',
-        rec.errorMessage || (rec.status === 'EXPIRED'
-          ? 'OCO penceresi kapandi; is tetiklenmedi.'
-          : 'Zamanlanan is tetiklenemedi.'));
+      await closeScheduled(
+        requestKey,
+        'FAILED',
+        rec.errorMessage ||
+          (rec.status === 'EXPIRED'
+            ? 'OCO penceresi kapandi; is tetiklenmedi.'
+            : 'Zamanlanan is tetiklenemedi.'),
+      );
       auditPortal(null, 'scalex_schedule_closed', {
-        username: rec.username || 'system:scalex-reconciler', result: 'fail',
+        username: rec.username || 'system:scalex-reconciler',
+        result: 'fail',
         detail: JSON.stringify({ scheduleId: kayitId, status: rec.status }),
       });
       scheduledClosed++;
@@ -314,14 +346,18 @@ async function releaseOrphanRestoreLocks() {
   const { rows } = await db.query(
     `SELECT env, tenant, cluster_name, namespace, app_names_json
        FROM scalex_operations
-      WHERE action = 'restore' AND status IN ('RUNNING', 'PENDING_APPROVAL')`
+      WHERE action = 'restore' AND status IN ('RUNNING', 'PENDING_APPROVAL')`,
   );
   const active = new Set();
   for (const r of rows) {
     let apps = [];
     // Bozuk JSON tum turu dusurmemeli: o satir icin "aktif is yok" varsaymak,
     // kilidi birakmak demek — guvenli taraf (kullanici tekrar deneyebilir).
-    try { apps = JSON.parse(r.app_names_json || '[]'); } catch { apps = []; }
+    try {
+      apps = JSON.parse(r.app_names_json || '[]');
+    } catch {
+      apps = [];
+    }
     for (const app of Array.isArray(apps) ? apps : []) {
       active.add([r.env, r.tenant, r.cluster_name, r.namespace, app].join('\u001f'));
     }
@@ -356,7 +392,9 @@ async function tick() {
     console.warn('[ScaleX] uzlastirici: onay turu basarisiz:', e.message);
   }
   if (approval.adopted || approval.cancelled) {
-    console.log(`[ScaleX] uzlastirici: ${approval.adopted} onayli is devralindi, ${approval.cancelled} onay kaydi kapatildi.`);
+    console.log(
+      `[ScaleX] uzlastirici: ${approval.adopted} onayli is devralindi, ${approval.cancelled} onay kaydi kapatildi.`,
+    );
   }
 
   // Zamanlanmis isler: RUNNING'e cekilen kayit ayni tick'te sonuclandirilabilir.
@@ -368,7 +406,9 @@ async function tick() {
     console.warn('[ScaleX] uzlastirici: zamanlama turu basarisiz:', e.message);
   }
   if (scheduled.scheduledAdopted || scheduled.scheduledClosed) {
-    console.log(`[ScaleX] uzlastirici: ${scheduled.scheduledAdopted} zamanlanmis is devralindi, ${scheduled.scheduledClosed} zamanlama kaydi kapatildi.`);
+    console.log(
+      `[ScaleX] uzlastirici: ${scheduled.scheduledAdopted} zamanlanmis is devralindi, ${scheduled.scheduledClosed} zamanlama kaydi kapatildi.`,
+    );
   }
 
   // Yetim kilitler: bu tur PATLASA BILE asagidaki sonuclandirma calismali.
@@ -380,7 +420,8 @@ async function tick() {
   }
 
   const jobs = await pendingJobs(cfg.batchSize);
-  if (!jobs.length) return { checked: 0, finalized: 0, stale: 0, ...approval, ...scheduled, ...locks };
+  if (!jobs.length)
+    return { checked: 0, finalized: 0, stale: 0, ...approval, ...scheduled, ...locks };
 
   // Gec require: modul yuklenme sirasi dongusune girmemek icin (index.cjs bu dosyayi
   // cagiriyor, bu dosya da index.cjs'in `finalizeOperation`ini kullaniyor).
@@ -388,7 +429,8 @@ async function tick() {
   const runner = require('../ansible/runner.cjs');
   const result = require('./result.cjs');
 
-  let finalized = 0, stale = 0;
+  let finalized = 0,
+    stale = 0;
   for (const j of jobs) {
     const serverId = Number(j.awx_server_id);
     const jobId = Number(j.awx_job_id);
@@ -408,16 +450,26 @@ async function tick() {
       // beklemek, ayni dev yaniti her turda yeniden indirmeye calismak demekti:
       // OOM'u cozup yerine sonu gelmez bir indirme dongusu birakirdik.
       if (e && e.tooLarge) {
-        await markStale(serverId, jobId, `AWX yaniti portalin okuyabilecegi boyutu asiyor; isin sonucu AWX arayuzunden incelenmeli: ${e.message}`);
+        await markStale(
+          serverId,
+          jobId,
+          `AWX yaniti portalin okuyabilecegi boyutu asiyor; isin sonucu AWX arayuzunden incelenmeli: ${e.message}`,
+        );
         stale++;
       } else if (ageHours >= cfg.staleHours) {
-        await markStale(serverId, jobId, `AWX durumu okunamadi (${ageHours.toFixed(0)} saattir bekliyor): ${e.message}`);
+        await markStale(
+          serverId,
+          jobId,
+          `AWX durumu okunamadi (${ageHours.toFixed(0)} saattir bekliyor): ${e.message}`,
+        );
         stale++;
       }
     }
   }
   if (finalized || stale) {
-    console.log(`[ScaleX] uzlastirici: ${finalized} is sonuclandirildi, ${stale} is "bilinmiyor" isaretlendi.`);
+    console.log(
+      `[ScaleX] uzlastirici: ${finalized} is sonuclandirildi, ${stale} is "bilinmiyor" isaretlendi.`,
+    );
   }
   return { checked: jobs.length, finalized, stale, ...approval, ...scheduled, ...locks };
 }
@@ -427,7 +479,8 @@ let _timer = null;
 function startReconciler() {
   if (_timer) return; // zaten calisiyor (hot-reload/test ortami)
   const cfg = getConfig();
-  const run = () => tick().catch((e) => console.warn('[ScaleX] uzlastirici tick hatasi:', e.message));
+  const run = () =>
+    tick().catch((e) => console.warn('[ScaleX] uzlastirici tick hatasi:', e.message));
   _timer = setInterval(run, cfg.intervalSeconds * 1000);
   _timer.unref?.();
   // Ilk tur GECIKMELI: sunucu acilisinda DB ve AWX baglantilari daha hazir olmayabilir.
@@ -439,4 +492,14 @@ function startReconciler() {
 // engellemiyor ve depoda cagrilacagi bir kapanis yolu da yok. Cagrilmayan bir
 // "temizlik" fonksiyonu birakmak, ileride birinin onun gercekten kullanildigini
 // sanmasina yol acardi (J1 bekcisi bu spekulatif olu kodu zaten reddediyor).
-module.exports = { tick, startReconciler, getConfig, pendingJobs, pendingApprovalTickets, adoptApprovedTickets, adoptScheduledLaunches, releaseOrphanRestoreLocks, HARD_TOP };
+module.exports = {
+  tick,
+  startReconciler,
+  getConfig,
+  pendingJobs,
+  pendingApprovalTickets,
+  adoptApprovedTickets,
+  adoptScheduledLaunches,
+  releaseOrphanRestoreLocks,
+  HARD_TOP,
+};

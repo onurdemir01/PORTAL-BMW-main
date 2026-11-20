@@ -115,27 +115,49 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
   if (!beklenenHost.length) return { ...bos, durum: 'sunucu-yok' };
   const k = `${L(ns)}|${L(app)}`;
   const kesinByHost = new Map(
-    (idx.kesin.get(k) || []).filter((r) => beklenenHost.includes(U(r.host))).map((r) => [U(r.host), r]),
+    (idx.kesin.get(k) || [])
+      .filter((r) => beklenenHost.includes(U(r.host)))
+      .map((r) => [U(r.host), r]),
   );
   const ekProdByHost = new Map(
-    (idx.ekProd.get(k) || []).filter((r) => beklenenHost.includes(U(r.host))).map((r) => [U(r.host), r]),
+    (idx.ekProd.get(k) || [])
+      .filter((r) => beklenenHost.includes(U(r.host)))
+      .map((r) => [U(r.host), r]),
   );
   // Namespace yazimi sunucular arasinda gecis sirasinda karisik olabilir. Her sunucuda kesin
   // eslesmeyi tercih et; yalniz o sunucuda yoksa '-prod' eksiz yazima dus. Bir sunucudaki kesin
   // satir diger sunucunun gecerli fallback satirini bastirmamali.
-  const satirlar = beklenenHost.map((h) => kesinByHost.get(h) || ekProdByHost.get(h)).filter(Boolean);
-  const eslesme = (() => { if (satirlar.some((r) => !kesinByHost.has(U(r.host)))) return 'ek-prod'; if (satirlar.length) return 'kesin'; return ''; })();
+  const satirlar = beklenenHost
+    .map((h) => kesinByHost.get(h) || ekProdByHost.get(h))
+    .filter(Boolean);
+  const eslesme = (() => {
+    if (satirlar.some((r) => !kesinByHost.has(U(r.host)))) return 'ek-prod';
+    if (satirlar.length) return 'kesin';
+    return '';
+  })();
   const taranan = beklenenHost.filter((h) => idx.taranan.has(h));
   const taranmayan = beklenenHost.filter((h) => !idx.taranan.has(h));
   const byHost = new Map(satirlar.map((r) => [U(r.host), r]));
   const sunucular = taranan.map((h) => {
     const r = byHost.get(h);
     return r
-      ? { host: h, site: siteOfHost(h) || '', hys: bit(r.hys_deployed), app: bit(r.app_deployed), conf: bit(r.conf_exists), status: T(r.status) }
+      ? {
+          host: h,
+          site: siteOfHost(h) || '',
+          hys: bit(r.hys_deployed),
+          app: bit(r.app_deployed),
+          conf: bit(r.conf_exists),
+          status: T(r.status),
+        }
       : { host: h, site: siteOfHost(h) || '', hys: false, app: false, conf: false, status: 'YOK' };
   });
   const tam = sunucular.filter((s) => s.status === 'OK').length;
-  const durum = (() => { if (!taranan.length) return 'olculemedi'; if (tam === taranan.length) return 'tamam'; if (satirlar.length) return 'kismi'; return 'yok'; })();
+  const durum = (() => {
+    if (!taranan.length) return 'olculemedi';
+    if (tam === taranan.length) return 'tamam';
+    if (satirlar.length) return 'kismi';
+    return 'yok';
+  })();
   return {
     durum,
     tam,
@@ -161,7 +183,17 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
  * @param {string[]} [p.hosts]     intranet sunuculari (varsayilan nginx-hosts listesi)
  * @param {string}   [p.platform]  yalniz bu platformun cluster'larindaki uygulamalar (bkz. PLATFORM)
  */
-function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirRows, dizinDurum = 'var', hosts, platform = 'ark' }) {
+function buildIntranetRapor({
+  apps,
+  ownersByNs,
+  owners,
+  beyanlar,
+  coverage,
+  dirRows,
+  dizinDurum = 'var',
+  hosts,
+  platform = 'ark',
+}) {
   const sunucuListesi = (hosts || intranetHosts()).map(U);
   const dIdx = dizinIndeksi(dizinDurum === 'var' ? dirRows : []);
   const { ownersForApp } = require('../audit/ns-owners.cjs');
@@ -175,60 +207,74 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
   const icinde = adaylar.filter((a) => {
     const cl = (a.clusters || []).map(L);
     if (cl.some((c) => platformOfCluster(c) === platform)) return true;
-    const p = [...new Set(cl.map((c) => platformOfCluster(c) || 'bilinmiyor'))].sort(varsayilanSira).join('+') || 'cluster-yok';
+    const p =
+      [...new Set(cl.map((c) => platformOfCluster(c) || 'bilinmiyor'))]
+        .sort(varsayilanSira)
+        .join('+') || 'cluster-yok';
     if (!disi.has(p)) disi.set(p, { platform: p, uygulama: 0, clusters: new Set() });
     disi.get(p).uygulama += 1;
     for (const c of cl) disi.get(p).clusters.add(c);
     return false;
   });
   const platformDisi = [...disi.values()]
-    .map((d) => ({ platform: d.platform, uygulama: d.uygulama, clusters: [...d.clusters].sort(varsayilanSira) }))
+    .map((d) => ({
+      platform: d.platform,
+      uygulama: d.uygulama,
+      clusters: [...d.clusters].sort(varsayilanSira),
+    }))
     .sort((a, b) => b.uygulama - a.uygulama || a.platform.localeCompare(b.platform));
 
-  const rows = icinde
-    .map((a) => {
-      const ns = T(a.namespace);
-      const app = T(a.application);
-      const b = beyan.get(`${L(ns)}/${L(app)}`) || null;
-      const o = ownersForApp(sahip, app, [ns]);
-      const u = a.usage || null;
-      const r = {
-        env: a.env ? U(a.env) : 'BILINMIYOR',
-        namespace: ns,
-        application: app,
-        ag: a.ag,
-        // Route adresleri (kullanicinin uygulamayi tanidigi ad) ve cluster'lar.
-        adresler: [...(a.hosts || [])],
-        clusters: [...(a.clusters || [])],
-        eskiCluster: [...(a.staleClusters || [])],
-        kapsam: { durum: a.kapsamDurum || 'olculemedi', var: a.kapsamVar || 0, toplam: a.kapsamToplam || 0 },
-        zayifKanit: !!a.weakEvidence,
-        adKalibi: a.pattern === 'uyuyor',
-        istek: a.istek || 'olcum-yok',
-        // SAYI YALNIZ OLCULDUYSE (reqShown null = olculemedi / olcum yok).
-        req: a.reqShown == null ? null : Number(a.reqShown),
-        dynatrace: (() => { if (u) return {
-              scanDate: u.scanDate || null,
-              windowDays: u.windowDays || null,
-              services: u.services == null ? null : Number(u.services),
-              note: u.note || '',
-              olcum: u.olcum || '',
-            }; return null; })(),
-        ekip: o.groups,
-        ekipEposta: o.emails,
-        // ekip ile AYNI SIRADA kaynak (SI51_AGILE ... / NAMESPACE); bos = kaynak bilinmiyor.
-        ekipKaynak: o.kaynaklar,
-        // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
-        ...(o.veriYokNs && o.veriYokNs.length ? { ekipVeriYok: true } : {}),
-        inUse: b && b.inUse && BEYAN.has(b.inUse) ? b.inUse : null,
-        inUseBy: (b && b.inUseBy) || null,
-        inUseAt: b ? iso(b.inUseAt) : null,
-        note: (b && b.note) || '',
-      };
-      r.kurulum = kurulumHesapla(r.env, ns, app, dIdx, sunucuListesi);
-      r.degerlendirme = degerlendir(r);
-      return r;
-    });
+  const rows = icinde.map((a) => {
+    const ns = T(a.namespace);
+    const app = T(a.application);
+    const b = beyan.get(`${L(ns)}/${L(app)}`) || null;
+    const o = ownersForApp(sahip, app, [ns]);
+    const u = a.usage || null;
+    const r = {
+      env: a.env ? U(a.env) : 'BILINMIYOR',
+      namespace: ns,
+      application: app,
+      ag: a.ag,
+      // Route adresleri (kullanicinin uygulamayi tanidigi ad) ve cluster'lar.
+      adresler: [...(a.hosts || [])],
+      clusters: [...(a.clusters || [])],
+      eskiCluster: [...(a.staleClusters || [])],
+      kapsam: {
+        durum: a.kapsamDurum || 'olculemedi',
+        var: a.kapsamVar || 0,
+        toplam: a.kapsamToplam || 0,
+      },
+      zayifKanit: !!a.weakEvidence,
+      adKalibi: a.pattern === 'uyuyor',
+      istek: a.istek || 'olcum-yok',
+      // SAYI YALNIZ OLCULDUYSE (reqShown null = olculemedi / olcum yok).
+      req: a.reqShown == null ? null : Number(a.reqShown),
+      dynatrace: (() => {
+        if (u)
+          return {
+            scanDate: u.scanDate || null,
+            windowDays: u.windowDays || null,
+            services: u.services == null ? null : Number(u.services),
+            note: u.note || '',
+            olcum: u.olcum || '',
+          };
+        return null;
+      })(),
+      ekip: o.groups,
+      ekipEposta: o.emails,
+      // ekip ile AYNI SIRADA kaynak (SI51_AGILE ... / NAMESPACE); bos = kaynak bilinmiyor.
+      ekipKaynak: o.kaynaklar,
+      // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
+      ...(o.veriYokNs && o.veriYokNs.length ? { ekipVeriYok: true } : {}),
+      inUse: b && b.inUse && BEYAN.has(b.inUse) ? b.inUse : null,
+      inUseBy: (b && b.inUseBy) || null,
+      inUseAt: b ? iso(b.inUseAt) : null,
+      note: (b && b.note) || '',
+    };
+    r.kurulum = kurulumHesapla(r.env, ns, app, dIdx, sunucuListesi);
+    r.degerlendirme = degerlendir(r);
+    return r;
+  });
   // Bilinmeyen ortam EN SONDA (namespace ortam eki tasimiyor).
   const sira = (e) => (ENV_SIRA.includes(e) ? ENV_SIRA.indexOf(e) : ENV_SIRA.length);
   rows.sort(
@@ -248,15 +294,25 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
     const app = L(d.application);
     if (!ns || !app || !sunucuListesi.includes(host)) continue;
     const env = envOfHost(host);
-    if (satirKey.has(`${env}|${ns}|${app}`) || (!ns.endsWith('-prod') && satirKey.has(`${env}|${ns}-prod|${app}`))) continue;
+    if (
+      satirKey.has(`${env}|${ns}|${app}`) ||
+      (!ns.endsWith('-prod') && satirKey.has(`${env}|${ns}-prod|${app}`))
+    )
+      continue;
     const k = `${env}|${ns}|${app}`;
-    if (!fazla.has(k)) fazla.set(k, { env, namespace: T(d.namespace), application: T(d.application), hosts: [] });
+    if (!fazla.has(k))
+      fazla.set(k, { env, namespace: T(d.namespace), application: T(d.application), hosts: [] });
     if (!fazla.get(k).hosts.includes(host)) fazla.get(k).hosts.push(host);
   }
   const sunucudaFazla = [...fazla.values()].sort(
-    (a, b) => sira(a.env) - sira(b.env) || a.application.localeCompare(b.application) || a.namespace.localeCompare(b.namespace),
+    (a, b) =>
+      sira(a.env) - sira(b.env) ||
+      a.application.localeCompare(b.application) ||
+      a.namespace.localeCompare(b.namespace),
   );
-  const envler = [...new Set(rows.map((r) => r.env))].sort((a, b) => sira(a) - sira(b) || a.localeCompare(b));
+  const envler = [...new Set(rows.map((r) => r.env))].sort(
+    (a, b) => sira(a) - sira(b) || a.localeCompare(b),
+  );
   const envs = envler.map((env) => {
     const rs = rows.filter((r) => r.env === env);
     const say = (f) => rs.filter((r) => f(r)).length;
@@ -297,19 +353,28 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
     dizinTarihi: dIdx.tarih || null,
     intranetSunuculari: sunucuListesi,
     // Son dizin taramasinda satiri olmayan intranet sunuculari: oradaki kurulum OLCULEMEDI.
-    taranmayanSunucu: dizinDurum === 'var' ? sunucuListesi.filter((h) => !dIdx.taranan.has(h)) : sunucuListesi,
+    taranmayanSunucu:
+      dizinDurum === 'var' ? sunucuListesi.filter((h) => !dIdx.taranan.has(h)) : sunucuListesi,
     sunucudaFazla,
   };
 }
 
 /** Gercek SPA Kesfi hesabi + ekip sahipleri (TBMWANS) + beyanlar (Portal DB). */
 async function loadIntranet(fresh, deps) {
-  if (!fresh && _cache.value && Date.now() - _cache.at < TTL_MS) return { ..._cache.value, cached: true };
+  if (!fresh && _cache.value && Date.now() - _cache.at < TTL_MS)
+    return { ..._cache.value, cached: true };
   const kesif = deps.spaKesfi || require('../nginx-console/index.cjs').spaKesfiPaylas;
   const sonuc = await kesif();
   if (!sonuc || sonuc.tableMissing) {
     // KESIF TABLOSU YOKSA BOS LISTE "hic intranet SPA yok" DEGIL: ekran bunu ayri soyler.
-    return { ok: true, notScanned: true, message: (sonuc && sonuc.message) || '', rows: [], envs: [], sorunluCluster: [] };
+    return {
+      ok: true,
+      notScanned: true,
+      message: (sonuc && sonuc.message) || '',
+      rows: [],
+      envs: [],
+      sorunluCluster: [],
+    };
   }
   const { query } = deps.mssql || require('../inventory/mssql.cjs');
   const { loadNamespaceOwners } = require('../audit/ns-owners.cjs');
@@ -324,7 +389,7 @@ async function loadIntranet(fresh, deps) {
             CONVERT(varchar(10), scan_date, 23) AS scan_date
        FROM dbo.Nginx_Intranet_Audit
       WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
-        AND host IN (${hosts.map((_, i) => ("@h" + i)).join(', ')})`,
+        AND host IN (${hosts.map((_, i) => '@h' + i).join(', ')})`,
     hosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
   )
     .then((r) => r.recordset || [])
@@ -369,8 +434,10 @@ function mountIntranet(router, deps) {
     const app = T(req.body?.application);
     const inUse = req.body?.inUse == null || req.body.inUse === '' ? null : T(req.body.inUse);
     const note = String(req.body?.note || '').slice(0, 500);
-    if (!ns || !app) return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
-    if (inUse !== null && !BEYAN.has(inUse)) return res.status(400).json({ ok: false, message: 'Geçersiz beyan.' });
+    if (!ns || !app)
+      return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
+    if (inUse !== null && !BEYAN.has(inUse))
+      return res.status(400).json({ ok: false, message: 'Geçersiz beyan.' });
     const user = require('../auth/utils.cjs').getRequestUser(req) || {};
     const by = user.username || null;
     try {

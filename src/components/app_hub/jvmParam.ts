@@ -25,11 +25,13 @@ export function parametreAnahtari(opt: string): string {
 export function parametreHatasi(opt: string): string | null {
   const s = String(opt || '').trim();
   if (!s) return 'Parametre girin.';
-  if (s.includes('***')) return 'Maskeli değer (***) yazılamaz; gizlenen değeri yeniden girmeniz gerekir.';
+  if (s.includes('***'))
+    return 'Maskeli değer (***) yazılamaz; gizlenen değeri yeniden girmeniz gerekir.';
   if (/\s/.test(s)) return 'Tek parametre girin (boşluk olamaz).';
   if (!JVMOPT_RE.test(s))
     return 'Biçim desteklenmiyor. Örnekler: -Dozellik=deger, -Xmx2g, -XX:+UseG1GC, -XX:MaxMetaspaceSize=512m (tırnak, virgül, $ ; ( ) kullanılamaz).';
-  if (JVMOPT_YASAK_RE.test(s)) return `${parametreAnahtari(s)} Portal'dan değiştirilemez (komut çalıştırır ya da güvenliği kapatır).`;
+  if (JVMOPT_YASAK_RE.test(s))
+    return `${parametreAnahtari(s)} Portal'dan değiştirilemez (komut çalıştırır ya da güvenliği kapatır).`;
   if (s.startsWith('-D') && SIR_RE.test(parametreAnahtari(s).slice(2)))
     return 'Parola / anahtar içeren parametreler Portal’dan yazılmaz (değer iş kaydında açık görünürdü).';
   return null;

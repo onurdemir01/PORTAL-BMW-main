@@ -9,7 +9,13 @@
 // job'i da 2026-09-24'te kaldirildi.
 'use strict';
 
-const { envOfHost, envFromInventory, siteOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
+const {
+  envOfHost,
+  envFromInventory,
+  siteOfHost,
+  tierOfHost,
+  UNKNOWN_ENV,
+} = require('./nginx-hosts.cjs');
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const bit = (v) => v === true || v === 1 || v === '1';
@@ -36,7 +42,12 @@ async function readLatestAuditDate(query) {
  *  "GLOMO-PROD.conf". Tam yol ipucunda durur. */
 /** Deger karsilastirmasi: bosluk/tirnak/noktali virgul farki ve buyuk-kucuk harf goz ardi (10m = 10M). */
 function normVal(v) {
-  return String(v == null ? '' : v).trim().replace(/;$/, '').replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').toLowerCase();
+  return String(v == null ? '' : v)
+    .trim()
+    .replace(/;$/, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 function baseName(p) {
@@ -53,19 +64,41 @@ function baseName(p) {
  *                   sunucular: metrikler gosterilmez, toplamlara girmez, puan 0 (listede sona)
  * @returns {{hosts: Array, totals: Object}}
  */
-function summarizeAudit({ hosts, servers, locations, upstreams, settings, files, inventory, exceptions, allowed }) {
+function summarizeAudit({
+  hosts,
+  servers,
+  locations,
+  upstreams,
+  settings,
+  files,
+  inventory,
+  exceptions,
+  allowed,
+}) {
   // KABUL EDILEN DEGERLER (2026-09-22): directive -> Set(value). Referansla eslesmeyen ama listede
   // olan global deger bulgu sayilmaz (accepted); host'un settingsMismatch sayaci ona gore duser.
   const allowedMap = new Map();
   for (const a of allowed || []) {
-    const d = String(a.directive || '').trim().toLowerCase();
+    const d = String(a.directive || '')
+      .trim()
+      .toLowerCase();
     if (!d) continue;
     if (!allowedMap.has(d)) allowedMap.set(d, new Set());
     allowedMap.get(d).add(normVal(a.value));
   }
-  const isAllowed = (directive, value) => { const s = allowedMap.get(String(directive || '').trim().toLowerCase()); return !!s && s.has(normVal(value)); };
+  const isAllowed = (directive, value) => {
+    const s = allowedMap.get(
+      String(directive || '')
+        .trim()
+        .toLowerCase(),
+    );
+    return !!s && s.has(normVal(value));
+  };
   const byHost = new Map();
-  const H = (h) => String(h || '').trim().toUpperCase();
+  const H = (h) =>
+    String(h || '')
+      .trim()
+      .toUpperCase();
 
   // ORTAM: once ad kalibi (istisnalari bilir), tutmuyorsa envanter. Ikisi de
   // bilmiyorsa BILINMIYOR - ve kaynak ekranda gorunur (envSource), sessiz atama yok.
@@ -212,7 +245,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     const isGlobal = ctx === 'main' || ctx === 'http' || ctx === 'events' || ctx === 'global';
     // kabul edilen deger: referansla eslesmiyor ama listede -> bulgu degil
     const accepted = matches === false && String(r.conf_file || '') && isAllowed(directive, value);
-    if (accepted) { matches = true; if (isGlobal) h.settingsAccepted += 1; }
+    if (accepted) {
+      matches = true;
+      if (isGlobal) h.settingsAccepted += 1;
+    }
     if (isGlobal) {
       if (ref !== null) {
         h.settingsAll.push({
@@ -244,14 +280,17 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
       }
     } else if (matches === false) {
       const k = [host, ctx, directive, value].join('|');
-      if (!overAgg.has(k)) overAgg.set(k, { context: ctx, directive, value, reference: ref, count: 0 });
+      if (!overAgg.has(k))
+        overAgg.set(k, { context: ctx, directive, value, reference: ref, count: 0 });
       overAgg.get(k).count += 1;
     }
   }
   for (const [k, o] of overAgg) {
     byHost.get(k.split('|')[0]).settingsOverrides.push(o);
   }
-  for (const h of byHost.values()) if (h.settingsAccepted > 0) h.settingsMismatch = Math.max(0, h.settingsMismatch - h.settingsAccepted);
+  for (const h of byHost.values())
+    if (h.settingsAccepted > 0)
+      h.settingsMismatch = Math.max(0, h.settingsMismatch - h.settingsAccepted);
 
   // Kurulum dosyalari: identical NULL = referans yok, hukum yok (ne bulgu ne temiz).
   for (const r of files || []) {
@@ -293,11 +332,16 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   const excMap = new Map();
   for (const e of exceptions || []) {
     const h = H(e.host);
-    if (h) excMap.set(h, {
-      note: String(e.note || ''),
-      by: e.updated_by || e.created_by || null,
-      at: (() => { if (e.updated_at) return new Date(e.updated_at).toISOString(); if (e.created_at) return new Date(e.created_at).toISOString(); return null; })(),
-    });
+    if (h)
+      excMap.set(h, {
+        note: String(e.note || ''),
+        by: e.updated_by || e.created_by || null,
+        at: (() => {
+          if (e.updated_at) return new Date(e.updated_at).toISOString();
+          if (e.created_at) return new Date(e.created_at).toISOString();
+          return null;
+        })(),
+      });
   }
 
   const list = [...byHost.values()];
@@ -338,15 +382,35 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
       parts.push(['upstream zone', h.upstreams - h.upsNoZone, h.upstreams]);
       parts.push(['upstream kullanımı', h.upstreams - h.unusedUpstreams, h.upstreams]);
     }
-    if (h.locationsProxy > 0) parts.push(['proxy hedefi', h.locationsProxy - h.proxyUndefined - h.proxyFqdn, h.locationsProxy]);
+    if (h.locationsProxy > 0)
+      parts.push([
+        'proxy hedefi',
+        h.locationsProxy - h.proxyUndefined - h.proxyFqdn,
+        h.locationsProxy,
+      ]);
     const refTotal = h.settingsAll.length;
-    if (refTotal > 0) parts.push(['global ayarlar', h.settingsAll.filter((s) => s.matches).length, refTotal]);
-    if (h.refFiles.length > 0) parts.push(['kurulum dosyaları', h.refFiles.filter((f) => f.identical === true).length, h.refFiles.length]);
+    if (refTotal > 0)
+      parts.push(['global ayarlar', h.settingsAll.filter((s) => s.matches).length, refTotal]);
+    if (h.refFiles.length > 0)
+      parts.push([
+        'kurulum dosyaları',
+        h.refFiles.filter((f) => f.identical === true).length,
+        h.refFiles.length,
+      ]);
     const passed = parts.reduce((a, x) => a + Math.max(0, x[1]), 0);
     const total = parts.reduce((a, x) => a + x[2], 0);
-    h.complianceParts = parts.map(([label, ok, tot]) => ({ label, ok: Math.max(0, ok), total: tot, pct: tot > 0 ? Math.round((Math.max(0, ok) / tot) * 100) : null }));
+    h.complianceParts = parts.map(([label, ok, tot]) => ({
+      label,
+      ok: Math.max(0, ok),
+      total: tot,
+      pct: tot > 0 ? Math.round((Math.max(0, ok) / tot) * 100) : null,
+    }));
     h.complianceChecks = total;
-    h.compliance = (() => { if (h.status === 'fail') return 0; if (total > 0) return Math.round((passed / total) * 100); return null; })();
+    h.compliance = (() => {
+      if (h.status === 'fail') return 0;
+      if (total > 0) return Math.round((passed / total) * 100);
+      return null;
+    })();
   }
   list.sort((a, b) => b.issues - a.issues || a.host.localeCompare(b.host));
 
@@ -357,7 +421,10 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
   const totals = {
     hosts: list.length,
     excepted: list.filter((h) => h.exception).length,
-    complianceAvg: (() => { const v = list.filter((h) => h.compliance != null); return v.length ? Math.round(v.reduce((a, h) => a + h.compliance, 0) / v.length) : null; })(),
+    complianceAvg: (() => {
+      const v = list.filter((h) => h.compliance != null);
+      return v.length ? Math.round(v.reduce((a, h) => a + h.compliance, 0) / v.length) : null;
+    })(),
     complianceUnder90: list.filter((h) => h.compliance != null && h.compliance < 90).length,
     configInvalid: list.filter((h) => h.status === 'fail').length,
     serverBlocks: sum((h) => h.serverBlocks),
@@ -376,7 +443,9 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     hostsEnvUnknown: list.filter((h) => h.env === UNKNOWN_ENV).length,
   };
 
-  reference.sort((a, b) => a.directive.localeCompare(b.directive) || a.value.localeCompare(b.value));
+  reference.sort(
+    (a, b) => a.directive.localeCompare(b.directive) || a.value.localeCompare(b.value),
+  );
   return { hosts: list, totals, reference };
 }
 

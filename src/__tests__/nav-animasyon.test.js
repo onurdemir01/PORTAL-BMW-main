@@ -24,7 +24,10 @@ test('NA1 menu hep yerinde, kapaliyken inert', () => {
 test('NA2 gecis hafif ve kisa; masaustu genislik+saydamlik, mobil kayma', () => {
   const sureler = [...L.matchAll(/(\d+)ms/g)].map((m) => Number(m[1]));
   assert.ok(sureler.length >= 3, 'gecis sureleri bulunamadi');
-  assert.ok(sureler.every((s) => s > 0 && s < 300), `gecis cok hafif olmali (<300 ms): ${sureler}`);
+  assert.ok(
+    sureler.every((s) => s > 0 && s < 300),
+    `gecis cok hafif olmali (<300 ms): ${sureler}`,
+  );
   assert.match(L, /width: navOpen \? "var\(--nav-w\)" : 0/);
   assert.match(L, /opacity: navOpen \? 1 : 0/);
   assert.match(L, /transform: navOpen \? "translateX\(0\)" : "translateX\(-100%\)"/);
@@ -33,14 +36,21 @@ test('NA2 gecis hafif ve kisa; masaustu genislik+saydamlik, mobil kayma', () => 
 
 test('NA3 hareket azaltma tercihi gecisi kapatir', () => {
   const css = oku('index.css');
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{[\s\S]*?transition-duration: 0\.001ms !important;/);
+  assert.match(
+    css,
+    /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{[\s\S]*?transition-duration: 0\.001ms !important;/,
+  );
 });
 
 // NA4 (2026-11-08): ortak Modal aniden beliriyordu. Ortu solar, panel hafif buyur; ikisi de kisa
 // ve hareket azaltma tercihinde genel kural (animation-duration) sureyi sifirlar.
 test('NA4 modal acilis hareketi hafif ve hareket azaltmaya bagli', () => {
   const M = oku('components/common/Modal.tsx');
-  assert.match(M, /className="fixed inset-0 z-\[1000\][^"]*\banimate-fade-in\b/, 'ortu animasyonsuz');
+  assert.match(
+    M,
+    /className="fixed inset-0 z-\[1000\][^"]*\banimate-fade-in\b/,
+    'ortu animasyonsuz',
+  );
   assert.match(M, /\$\{SIZE_MAP\[size\]\}[^`]*\banimate-scale-in\b/, 'panel animasyonsuz');
   const A = oku('styles/animations.css');
   for (const ad of ['fade-in', 'scale-in']) {
@@ -48,5 +58,8 @@ test('NA4 modal acilis hareketi hafif ve hareket azaltmaya bagli', () => {
     assert.ok(m, `.animate-${ad} tanimsiz`);
     assert.ok(Number(m[1]) < 0.3, `.animate-${ad} cok uzun: ${m[1]}s`);
   }
-  assert.match(oku('index.css'), /prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{\s*animation-duration: 0\.001ms !important;/);
+  assert.match(
+    oku('index.css'),
+    /prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{\s*animation-duration: 0\.001ms !important;/,
+  );
 });

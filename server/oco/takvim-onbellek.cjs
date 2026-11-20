@@ -113,7 +113,11 @@ function createTakvimOnbellek({
    * Varsayilan grubu periyodik tazeler. Ilk /calendar isteginden sonra cagrilir; ikinci
    * cagri yeni zamanlayici kurmaz. Son ISIT_SESSIZ_MS icinde istek yoksa tur atlanir.
    */
-  function isit({ group, araMs = envMs('OCO_TAKVIM_ISIT_MS', VARSAYILAN_TAZE_MS), isConfigured = () => true } = {}) {
+  function isit({
+    group,
+    araMs = envMs('OCO_TAKVIM_ISIT_MS', VARSAYILAN_TAZE_MS),
+    isConfigured = () => true,
+  } = {}) {
     if (isitIv) return false;
     const anahtar = String(group || '');
     isitIv = setInterval(() => {
@@ -145,4 +149,10 @@ function createTakvimOnbellek({
   return { get, isit, isitTuru, durdur, _girisler: girisler };
 }
 
-module.exports = { createTakvimOnbellek, VARSAYILAN_TAZE_MS, VARSAYILAN_EN_ESKI_MS, EKSIK_TAZE_MS, MAKS_ANAHTAR };
+module.exports = {
+  createTakvimOnbellek,
+  VARSAYILAN_TAZE_MS,
+  VARSAYILAN_EN_ESKI_MS,
+  EKSIK_TAZE_MS,
+  MAKS_ANAHTAR,
+};

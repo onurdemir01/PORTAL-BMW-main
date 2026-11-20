@@ -132,11 +132,11 @@ function normalizeRow(r) {
   }
   // Anahtar bozuksa/bossa koddaki DOGRULANMIS anahtara duselim — bos anahtarla
   // calismak tum satirlari tek bir anahtara toplar ve gecmisi bozar.
-  if (!Array.isArray(key) || key.length === 0) key = (fallback?.key ?? null);
+  if (!Array.isArray(key) || key.length === 0) key = fallback?.key ?? null;
   if (!key) return null;
   return {
     table: r.table_name,
-    label: r.label || (fallback?.label) || r.table_name,
+    label: r.label || fallback?.label || r.table_name,
     mode: r.mode === 'native' ? 'native' : 'snapshot',
     key,
     volatile: Array.isArray(volatile) && volatile.length ? volatile : COMMON_VOLATILE,
@@ -162,7 +162,7 @@ async function effectiveTables() {
     _cacheAt = Date.now();
     return _cache;
   } catch (e) {
-    console.warn('[EnvanterGecmis] kapsam DB\'den okunamadi, kod varsayilanlari:', e.message);
+    console.warn("[EnvanterGecmis] kapsam DB'den okunamadi, kod varsayilanlari:", e.message);
     return TABLES;
   }
 }
@@ -190,6 +190,13 @@ function invalidateCache() {
 const MIN_ROW_RATIO = 0.5;
 
 module.exports = {
-  TABLES, getTable, snapshotTables, COMMON_VOLATILE, MIN_ROW_RATIO,
-  effectiveTables, effectiveSnapshotTables, getEffectiveTable, invalidateCache,
+  TABLES,
+  getTable,
+  snapshotTables,
+  COMMON_VOLATILE,
+  MIN_ROW_RATIO,
+  effectiveTables,
+  effectiveSnapshotTables,
+  getEffectiveTable,
+  invalidateCache,
 };

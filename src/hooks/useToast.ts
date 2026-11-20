@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback } from 'react';
 
-export type ToastType = "success" | "error" | "info" | "warning";
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 export interface ToastItem {
   id: string;
@@ -15,9 +15,7 @@ export function useToast() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const dismiss = useCallback((id: string) => {
-    setToasts((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, exiting: true } : t))
-    );
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 280);
@@ -30,14 +28,14 @@ export function useToast() {
       setTimeout(() => dismiss(id), duration);
       return id;
     },
-    [dismiss]
+    [dismiss],
   );
 
   const toast = {
-    success: (msg: string, dur?: number) => add("success", msg, dur),
-    error:   (msg: string, dur?: number) => add("error",   msg, dur),
-    info:    (msg: string, dur?: number) => add("info",    msg, dur),
-    warning: (msg: string, dur?: number) => add("warning", msg, dur),
+    success: (msg: string, dur?: number) => add('success', msg, dur),
+    error: (msg: string, dur?: number) => add('error', msg, dur),
+    info: (msg: string, dur?: number) => add('info', msg, dur),
+    warning: (msg: string, dur?: number) => add('warning', msg, dur),
   };
 
   return { toasts, toast, dismiss };
@@ -46,8 +44,8 @@ export function useToast() {
 // Singleton store for global toast access
 type ToastFn = {
   success: (msg: string, dur?: number) => void;
-  error:   (msg: string, dur?: number) => void;
-  info:    (msg: string, dur?: number) => void;
+  error: (msg: string, dur?: number) => void;
+  info: (msg: string, dur?: number) => void;
   warning: (msg: string, dur?: number) => void;
 };
 
@@ -59,7 +57,7 @@ export function setGlobalToast(fn: ToastFn) {
 
 export const toast: ToastFn = {
   success: (msg, dur) => _globalToast?.success(msg, dur),
-  error:   (msg, dur) => _globalToast?.error(msg, dur),
-  info:    (msg, dur) => _globalToast?.info(msg, dur),
+  error: (msg, dur) => _globalToast?.error(msg, dur),
+  info: (msg, dur) => _globalToast?.info(msg, dur),
   warning: (msg, dur) => _globalToast?.warning(msg, dur),
 };

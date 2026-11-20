@@ -15,18 +15,46 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
-import { NginxEnvanteri, surumCoz, surumEtiketi, surumKarsilastir } from '@/components/denetim/NginxEnvanteri';
+import {
+  NginxEnvanteri,
+  surumCoz,
+  surumEtiketi,
+  surumKarsilastir,
+} from '@/components/denetim/NginxEnvanteri';
 import type { NginxInventoryResult, NginxInvHost } from '@/api/denetimApi';
 
 const api = vi.hoisted(() => ({ inv: vi.fn() }));
 vi.mock('@/api/denetimApi', () => ({ denetimApi: { nginxInventory: api.inv } }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: 'u', role: 'User' } }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'u', role: 'User' } }),
+}));
 
 const host = (o: Partial<NginxInvHost>): NginxInvHost => ({
-  hostname: 'H', fqdn: null, env: 'production', location: 'pendik', service: null, services: 'glomo',
-  service_count: 1, domain: null, ip: null, subnet: null, os: 'RHEL 8.10', kernel: null, architecture: null,
-  cpu: 4, memory: '16G', nginx_version: '1.24.0', nginx_user: 'www', nginx_prefix: null, config_count: 3,
-  disk_usr_nginx: null, disk_web_log: null, source_last_update: null, metadata_version: 1, envByName: 'PROD', ...o,
+  hostname: 'H',
+  fqdn: null,
+  env: 'production',
+  location: 'pendik',
+  service: null,
+  services: 'glomo',
+  service_count: 1,
+  domain: null,
+  ip: null,
+  subnet: null,
+  os: 'RHEL 8.10',
+  kernel: null,
+  architecture: null,
+  cpu: 4,
+  memory: '16G',
+  nginx_version: '1.24.0',
+  nginx_user: 'www',
+  nginx_prefix: null,
+  config_count: 3,
+  disk_usr_nginx: null,
+  disk_web_log: null,
+  source_last_update: null,
+  metadata_version: 1,
+  envByName: 'PROD',
+  ...o,
 });
 const size = { totalGiB: 0, parsed: 0, unparsed: 0 };
 const HOSTS = [
@@ -34,11 +62,31 @@ const HOSTS = [
   host({ hostname: 'GBNGXP02', nginx_version: '1.25.3 (nginx-plus-r31-p1)', location: 'ankara' }),
   host({ hostname: 'GBNGXP03', nginx_version: 'nginx-plus-r36-p4', os: 'RHEL 9.4' }),
   host({ hostname: 'GBNGXP04', nginx_version: '1.24.0' }),
-  host({ hostname: 'GBNGXQ01', envByName: 'QA', env: 'non-production', nginx_version: 'nginx/1.26.3' }),
+  host({
+    hostname: 'GBNGXQ01',
+    envByName: 'QA',
+    env: 'non-production',
+    nginx_version: 'nginx/1.26.3',
+  }),
   host({ hostname: 'GBNGXQ02', envByName: 'QA', env: 'non-production', nginx_version: '1.26.3' }),
-  host({ hostname: 'GBNGXQ03', envByName: 'QA', env: 'non-production', nginx_version: '1.25.1 (nginx-plus-r30)' }),
-  host({ hostname: 'GBNGXQ04', envByName: 'QA', env: 'non-production', nginx_version: 'nginx/1.29.3 (nginx-plus-r35)' }),
-  host({ hostname: 'GBNGXQ05', envByName: 'QA', env: 'non-production', nginx_version: 'nginx-plus-r35-p1' }),
+  host({
+    hostname: 'GBNGXQ03',
+    envByName: 'QA',
+    env: 'non-production',
+    nginx_version: '1.25.1 (nginx-plus-r30)',
+  }),
+  host({
+    hostname: 'GBNGXQ04',
+    envByName: 'QA',
+    env: 'non-production',
+    nginx_version: 'nginx/1.29.3 (nginx-plus-r35)',
+  }),
+  host({
+    hostname: 'GBNGXQ05',
+    envByName: 'QA',
+    env: 'non-production',
+    nginx_version: 'nginx-plus-r35-p1',
+  }),
   host({ hostname: 'GBNGXQ06', envByName: 'QA', env: 'non-production', nginx_version: '1.20.1' }),
   host({ hostname: 'GBNGXQ07', envByName: 'QA', env: 'non-production', nginx_version: '1.22.1' }),
   host({ hostname: 'GBNGXQ08', envByName: 'QA', env: 'non-production', nginx_version: 'unknown' }),
@@ -51,22 +99,47 @@ const dagilim = (vs: (string | null)[]) => {
 const veri = (): NginxInventoryResult => ({
   ok: true,
   lastUpdate: '2026-11-15T06:30:00',
-  totals: { hosts: HOSTS.length, envs: 2, services: 1, servicesUnlisted: [], nginxVersions: 10, osVersions: 2, cpuTotal: 48, memory: size, diskNginx: size, diskWebLog: size },
+  totals: {
+    hosts: HOSTS.length,
+    envs: 2,
+    services: 1,
+    servicesUnlisted: [],
+    nginxVersions: 10,
+    osVersions: 2,
+    cpuTotal: 48,
+    memory: size,
+    diskNginx: size,
+    diskWebLog: size,
+  },
   byEnv: [],
-  byService: [{ service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['GBNGXP01', 'GBNGXP03'] }],
+  byService: [
+    { service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['GBNGXP01', 'GBNGXP03'] },
+  ],
   versions: {
     nginx: dagilim(HOSTS.map((h) => h.nginx_version)),
     os: dagilim(HOSTS.map((h) => h.os)),
-    kernel: [], architecture: [], metadata: [],
+    kernel: [],
+    architecture: [],
+    metadata: [],
   },
-  resources: { cpu: [], memory: [], diskNginx: [], diskWebLog: [], configCount: [], serviceCount: [] },
+  resources: {
+    cpu: [],
+    memory: [],
+    diskNginx: [],
+    diskWebLog: [],
+    configCount: [],
+    serviceCount: [],
+  },
   other: { domain: [], subnet: [], nginxUser: [] },
   hosts: HOSTS,
 });
 
 const satirAdlari = () =>
-  screen.getAllByTestId('sunucu-satiri').map((r) => r.querySelector('td')!.textContent!.trim().split(/\s/)[0]);
-const ortamKarti = (ad: string) => screen.getAllByTestId('ortam-karti').find((k) => k.querySelector('h3')!.textContent === ad)!;
+  screen
+    .getAllByTestId('sunucu-satiri')
+    .map((r) => r.querySelector('td')!.textContent!.trim().split(/\s/)[0]);
+const ortamKarti = (ad: string) =>
+  screen.getAllByTestId('ortam-karti').find((k) => k.querySelector('h3')!.textContent === ad)!;
 /** Bir başlıktan sonraki ilk dağılım listesinin satırları (aynı grid'de kardeş). */
 const bolumSatirlari = (baslik: HTMLElement) => {
   const ul = baslik.nextElementSibling as HTMLElement;
@@ -95,8 +168,16 @@ describe('surumEtiketi / surumCoz', () => {
       // anahtar kararlı: tam metin yeniden çözülünce aynı
       if (tam !== 'bilinmiyor') expect(surumEtiketi(tam), tam).toBe(tam);
     }
-    expect(surumCoz('nginx/1.25.3 (nginx-plus-r31-p1)')).toMatchObject({ sayi: '1.25.3', plus: { r: 31, p: 1 }, diger: '' });
-    expect(surumCoz('nginx-plus-r36-p4')).toMatchObject({ sayi: '', plus: { r: 36, p: 4 }, diger: '' });
+    expect(surumCoz('nginx/1.25.3 (nginx-plus-r31-p1)')).toMatchObject({
+      sayi: '1.25.3',
+      plus: { r: 31, p: 1 },
+      diger: '',
+    });
+    expect(surumCoz('nginx-plus-r36-p4')).toMatchObject({
+      sayi: '',
+      plus: { r: 36, p: 4 },
+      diger: '',
+    });
     expect(surumCoz('1.25.1 (nginx-plus-r30)').plus).toEqual({ r: 30, p: null });
     expect(surumCoz('surplus-r3').plus).toBeNull();
     expect(surumCoz('bilinmiyor').bilinmiyor).toBe(true);
@@ -104,10 +185,26 @@ describe('surumEtiketi / surumCoz', () => {
 
   it('TS2 sıralama: numaralı yeniden eskiye, numarasız Plus R yüksekten, tanınmayan, bilinmeyen', () => {
     expect(
-      ['nginx-plus-r35-p1', '1.24.0', 'unknown', 'nginx-plus-r36-p4', '1.25.1', '1.25.1 (nginx-plus-r30)', 'openresty', 'nginx-plus-r35'].sort(
-        surumKarsilastir,
-      ),
-    ).toEqual(['1.25.1 (nginx-plus-r30)', '1.25.1', '1.24.0', 'nginx-plus-r36-p4', 'nginx-plus-r35-p1', 'nginx-plus-r35', 'openresty', 'unknown']);
+      [
+        'nginx-plus-r35-p1',
+        '1.24.0',
+        'unknown',
+        'nginx-plus-r36-p4',
+        '1.25.1',
+        '1.25.1 (nginx-plus-r30)',
+        'openresty',
+        'nginx-plus-r35',
+      ].sort(surumKarsilastir),
+    ).toEqual([
+      '1.25.1 (nginx-plus-r30)',
+      '1.25.1',
+      '1.24.0',
+      'nginx-plus-r36-p4',
+      'nginx-plus-r35-p1',
+      'nginx-plus-r35',
+      'openresty',
+      'unknown',
+    ]);
   });
 });
 
@@ -123,7 +220,11 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     const nginx = within(prod).getByTestId('ortam-nginx');
     const satirlar = bolumSatirlari(nginx);
     // çoktan aza, eşitse yeniden eskiye; aynı sürümün iki yazımı tek satır
-    expect(satirlar.map((s) => s.getAttribute('data-anahtar'))).toEqual(['1.25.3 Plus R31 p1', '1.24.0', 'Plus R36 p4']);
+    expect(satirlar.map((s) => s.getAttribute('data-anahtar'))).toEqual([
+      '1.25.3 Plus R31 p1',
+      '1.24.0',
+      'Plus R36 p4',
+    ]);
     // Plus adı görünür metin (title değil)
     expect(within(satirlar[0]).getByTestId('plus-etiketi').textContent).toBe('Plus R31 p1');
     expect(satirlar[0].textContent).toContain('1.25.3 Plus R31 p1');
@@ -131,14 +232,28 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     expect(within(satirlar[2]).getByTestId('plus-etiketi').textContent).toBe('Plus R36 p4');
     // ham yazımlar title'da
     const dugme = within(satirlar[0]).getByRole('button');
-    expect(dugme.getAttribute('title')).toContain('ham: nginx/1.25.3 (nginx-plus-r31-p1), 1.25.3 (nginx-plus-r31-p1)');
+    expect(dugme.getAttribute('title')).toContain(
+      'ham: nginx/1.25.3 (nginx-plus-r31-p1), 1.25.3 (nginx-plus-r31-p1)',
+    );
     // lokasyon ve OS aynı satır görünümünde
-    expect(within(prod).getAllByTestId('dagilim-satiri').map((s) => s.getAttribute('data-anahtar'))).toEqual([
-      'pendik', 'ankara', '1.25.3 Plus R31 p1', '1.24.0', 'Plus R36 p4', 'RHEL 8.10', 'RHEL 9.4',
+    expect(
+      within(prod)
+        .getAllByTestId('dagilim-satiri')
+        .map((s) => s.getAttribute('data-anahtar')),
+    ).toEqual([
+      'pendik',
+      'ankara',
+      '1.25.3 Plus R31 p1',
+      '1.24.0',
+      'Plus R36 p4',
+      'RHEL 8.10',
+      'RHEL 9.4',
     ]);
     fireEvent.click(dugme);
     expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
-    expect(within(screen.getByTestId('surum-suzgeci')).getByTestId('plus-etiketi').textContent).toBe('Plus R31 p1');
+    expect(
+      within(screen.getByTestId('surum-suzgeci')).getByTestId('plus-etiketi').textContent,
+    ).toBe('Plus R31 p1');
     // geri dönünce etkin süzgeç satırda vurgulu
     fireEvent.click(screen.getByRole('tab', { name: /Ortamlar/ }));
     const yeni = bolumSatirlari(within(ortamKarti('PROD')).getByTestId('ortam-nginx'));
@@ -154,7 +269,15 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     expect(bolumSatirlari(nginx)).toHaveLength(6);
     fireEvent.click(within(qa).getByRole('button', { name: '+1 daha' }));
     const hepsi = bolumSatirlari(nginx).map((s) => s.getAttribute('data-anahtar'));
-    expect(hepsi).toEqual(['1.26.3', '1.29.3 Plus R35', '1.25.1 Plus R30', '1.22.1', '1.20.1', 'Plus R35 p1', '(bilinmiyor)']);
+    expect(hepsi).toEqual([
+      '1.26.3',
+      '1.29.3 Plus R35',
+      '1.25.1 Plus R30',
+      '1.22.1',
+      '1.20.1',
+      'Plus R35 p1',
+      '(bilinmiyor)',
+    ]);
     fireEvent.click(within(qa).getByRole('button', { name: 'daha az' }));
     expect(bolumSatirlari(nginx)).toHaveLength(6);
     fireEvent.click(within(qa).getByTitle('QA · RHEL 8.10: 8 sunucu — listele'));
@@ -167,15 +290,38 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     await screen.findByTestId('filo-ozeti');
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const kart = screen.getByTestId('surum-aile-karti');
-    const satirlar = within(kart).getAllByTestId('dagilim-satiri').map((s) => s.getAttribute('data-anahtar'));
+    const satirlar = within(kart)
+      .getAllByTestId('dagilim-satiri')
+      .map((s) => s.getAttribute('data-anahtar'));
     expect(satirlar).toEqual([
-      '1.29.3 Plus R35', '1.26.3', '1.25.3 Plus R31 p1', '1.25.1 Plus R30', '1.24.0', '1.22.1', '1.20.1',
-      'Plus R36 p4', 'Plus R35 p1', '(bilinmiyor)',
+      '1.29.3 Plus R35',
+      '1.26.3',
+      '1.25.3 Plus R31 p1',
+      '1.25.1 Plus R30',
+      '1.24.0',
+      '1.22.1',
+      '1.20.1',
+      'Plus R36 p4',
+      'Plus R35 p1',
+      '(bilinmiyor)',
     ]);
-    const aileler = within(kart).getAllByTestId('surum-ailesi').map((a) => a.textContent!.split(/\s/)[0]);
-    expect(aileler).toEqual(['1.29', '1.26', '1.25', '1.24', '1.22', '1.20', 'NGINX', 'bilinmiyor:']);
+    const aileler = within(kart)
+      .getAllByTestId('surum-ailesi')
+      .map((a) => a.textContent!.split(/\s/)[0]);
+    expect(aileler).toEqual([
+      '1.29',
+      '1.26',
+      '1.25',
+      '1.24',
+      '1.22',
+      '1.20',
+      'NGINX',
+      'bilinmiyor:',
+    ]);
     expect(within(kart).getByText(/7 aile · 10 sürüm/)).toBeTruthy();
-    const plusSatir = within(kart).getAllByTestId('dagilim-satiri').find((s) => s.getAttribute('data-anahtar') === 'Plus R36 p4')!;
+    const plusSatir = within(kart)
+      .getAllByTestId('dagilim-satiri')
+      .find((s) => s.getAttribute('data-anahtar') === 'Plus R36 p4')!;
     expect(within(plusSatir).getByTestId('plus-etiketi').textContent).toBe('Plus R36 p4');
     const iki = within(kart).getByTitle('1.26.3: 2 sunucu — listele (ham: nginx/1.26.3)');
     fireEvent.click(iki);
@@ -185,7 +331,8 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
   it('TS5 Sunucular: sürüm hücresi tam metin, Plus etiketi görünür, ham değer title', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
-    const satir = (ad: string) => screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
+    const satir = (ad: string) =>
+      screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
     const r = within(satir('GBNGXP01')).getByTestId('surum-rozeti');
     expect(r.textContent).toBe('1.25.3 Plus R31 p1');
     expect(within(r).getByTestId('plus-etiketi').textContent).toBe('Plus R31 p1');
@@ -197,14 +344,21 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
   });
 
-  it('TS6 Service\'ler: sürüm rozetinde Plus etiketi görünür', async () => {
+  it("TS6 Service'ler: sürüm rozetinde Plus etiketi görünür", async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Service'ler/ }));
     const rozetler = screen.getAllByTestId('surum-rozeti');
-    expect(rozetler.map((x) => x.textContent)).toEqual(['1.25.3 Plus R31 p1, 1 sunucu', 'Plus R36 p4, 1 sunucu']);
+    expect(rozetler.map((x) => x.textContent)).toEqual([
+      '1.25.3 Plus R31 p1, 1 sunucu',
+      'Plus R36 p4, 1 sunucu',
+    ]);
     fireEvent.click(screen.getByRole('button', { name: 'glomo sunucularını göster' }));
     const ozet = screen.getByTestId('service-surumleri');
-    expect(within(ozet).getAllByTestId('plus-etiketi').map((x) => x.textContent)).toEqual(['Plus R31 p1', 'Plus R36 p4']);
+    expect(
+      within(ozet)
+        .getAllByTestId('plus-etiketi')
+        .map((x) => x.textContent),
+    ).toEqual(['Plus R31 p1', 'Plus R36 p4']);
   });
 
   it('TS7 Sunucular araması ekranda görünen sürüm metnini de bulur', async () => {
@@ -224,7 +378,9 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     await screen.findByTestId('filo-ozeti');
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const aile = (ad: string) =>
-      within(screen.getByTestId('surum-aile-karti')).getAllByTestId('surum-ailesi').find((a) => a.textContent!.startsWith(ad))!;
+      within(screen.getByTestId('surum-aile-karti'))
+        .getAllByTestId('surum-ailesi')
+        .find((a) => a.textContent!.startsWith(ad))!;
     const tekli = aile('1.22');
     expect((tekli.textContent!.match(/%/g) ?? []).length).toBe(1);
     const coklu = aile('1.25');

@@ -63,7 +63,9 @@ function hasBlob(sha) {
  * -> { added:[...], changed:[{...,oldSha}], deleted:[{path, oldSha}] }
  */
 function diffState(prevState, tree) {
-  const added = [], changed = [], deleted = [];
+  const added = [],
+    changed = [],
+    deleted = [];
   const seen = new Set();
   for (const f of tree) {
     seen.add(f.path);
@@ -71,7 +73,8 @@ function diffState(prevState, tree) {
     if (!prev) added.push(f);
     else if (prev.sha256 !== f.sha256) changed.push({ ...f, oldSha: prev.sha256 });
   }
-  for (const [p, prev] of prevState) if (!seen.has(p)) deleted.push({ path: p, oldSha: prev.sha256 });
+  for (const [p, prev] of prevState)
+    if (!seen.has(p)) deleted.push({ path: p, oldSha: prev.sha256 });
   return { added, changed, deleted };
 }
 
@@ -92,8 +95,13 @@ async function ingestDump(parsed) {
       if (f.sha256 && putBlob(f.sha256, f.content)) newBlobs++;
     }
     // 2) onceki durum
-    const st = await db.query(`SELECT path, sha256, size, mtime FROM nginx_hub_file_state WHERE host = $1`, [host]);
-    const prev = new Map(st.rows.map((r) => [r.path, { sha256: r.sha256, size: r.size, mtime: r.mtime }]));
+    const st = await db.query(
+      `SELECT path, sha256, size, mtime FROM nginx_hub_file_state WHERE host = $1`,
+      [host],
+    );
+    const prev = new Map(
+      st.rows.map((r) => [r.path, { sha256: r.sha256, size: r.size, mtime: r.mtime }]),
+    );
     const firstTime = prev.size === 0;
     const { added, changed, deleted } = diffState(prev, parsed.tree);
     // 3) beklemedeki publish'ler (bu host, son 7 gun) — kaynak eslestirme
@@ -104,9 +112,15 @@ async function ingestDump(parsed) {
     const pendingByKey = new Map(pend.rows.map((r) => [`${r.path}|${r.new_sha256}`, r.id]));
     const dumpTime = parsed.time ? new Date(parsed.time) : new Date(parsed.dumpedAt);
     const events = [];
-    for (const f of added) events.push({ kind: firstTime ? 'first-seen' : 'server', f, oldSha: null });
+    for (const f of added)
+      events.push({ kind: firstTime ? 'first-seen' : 'server', f, oldSha: null });
     for (const f of changed) events.push({ kind: 'server', f, oldSha: f.oldSha });
-    for (const d of deleted) events.push({ kind: 'deleted', f: { path: d.path, sha256: null, size: null, mtime: null, owner: null }, oldSha: d.oldSha });
+    for (const d of deleted)
+      events.push({
+        kind: 'deleted',
+        f: { path: d.path, sha256: null, size: null, mtime: null, owner: null },
+        oldSha: d.oldSha,
+      });
     for (const e of events) {
       const key = `${e.f.path}|${e.f.sha256}`;
       const pendingId = e.f.sha256 ? pendingByKey.get(key) : null;
@@ -120,25 +134,53 @@ async function ingestDump(parsed) {
         await db.query(
           `INSERT INTO nginx_hub_file_history (host, path, old_sha256, new_sha256, size, file_mtime, file_owner, source, requester, job_id, seen_at, dump_time, pending)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, GETUTCDATE(), $9, 0)`,
-          [host, e.f.path, e.oldSha, e.f.sha256, e.f.size, e.f.mtime, e.f.owner || null, e.kind, dumpTime],
+          [
+            host,
+            e.f.path,
+            e.oldSha,
+            e.f.sha256,
+            e.f.size,
+            e.f.mtime,
+            e.f.owner || null,
+            e.kind,
+            dumpTime,
+          ],
         );
       }
     }
     // 4) durum tablosu (MERGE yerine sil/yaz — satir sayisi kucuk, host basina ~200)
     if (added.length || changed.length || deleted.length) {
       for (const f of [...added, ...changed]) {
-        await db.query(
-          `UPDATE nginx_hub_file_state SET sha256 = $3, size = $4, mtime = $5, last_seen = GETUTCDATE() WHERE host = $1 AND path = $2`,
-          [host, f.path, f.sha256, f.size, f.mtime],
-        ).then(async (r) => {
-          if (!r.rowCount) await db.query(`INSERT INTO nginx_hub_file_state (host, path, sha256, size, mtime, last_seen) VALUES ($1, $2, $3, $4, $5, GETUTCDATE())`, [host, f.path, f.sha256, f.size, f.mtime]);
-        });
+        await db
+          .query(
+            `UPDATE nginx_hub_file_state SET sha256 = $3, size = $4, mtime = $5, last_seen = GETUTCDATE() WHERE host = $1 AND path = $2`,
+            [host, f.path, f.sha256, f.size, f.mtime],
+          )
+          .then(async (r) => {
+            if (!r.rowCount)
+              await db.query(
+                `INSERT INTO nginx_hub_file_state (host, path, sha256, size, mtime, last_seen) VALUES ($1, $2, $3, $4, $5, GETUTCDATE())`,
+                [host, f.path, f.sha256, f.size, f.mtime],
+              );
+          });
       }
-      for (const d of deleted) await db.query(`DELETE FROM nginx_hub_file_state WHERE host = $1 AND path = $2`, [host, d.path]);
+      for (const d of deleted)
+        await db.query(`DELETE FROM nginx_hub_file_state WHERE host = $1 AND path = $2`, [
+          host,
+          d.path,
+        ]);
     }
     _ingested.set(host, parsed.dumpedAt);
-    const summary = { host, newBlobs, added: added.length, changed: changed.length, deleted: deleted.length, firstTime };
-    if (added.length || changed.length || deleted.length) console.log(`[NginxHub] gecmis: ${JSON.stringify(summary)}`);
+    const summary = {
+      host,
+      newBlobs,
+      added: added.length,
+      changed: changed.length,
+      deleted: deleted.length,
+      firstTime,
+    };
+    if (added.length || changed.length || deleted.length)
+      console.log(`[NginxHub] gecmis: ${JSON.stringify(summary)}`);
     return summary;
   } catch (e) {
     console.warn('[NginxHub] gecmis islenemedi:', host, e.message);
@@ -179,11 +221,26 @@ async function changes({ limit = 200, host, pathLike, source, since, hosts } = {
   const db = require('../db/index.cjs');
   const where = ['pending = 0'];
   const params = [];
-  if (host) { params.push(host); where.push(`host = $${params.length}`); }
-  if (hosts && hosts.length) { params.push(hosts.join(',')); where.push(`host IN (SELECT value FROM STRING_SPLIT($${params.length}, ','))`); }
-  if (pathLike) { params.push(`%${pathLike}%`); where.push(`path LIKE $${params.length}`); }
-  if (source) { params.push(source); where.push(`source = $${params.length}`); }
-  if (since) { params.push(since); where.push(`seen_at >= $${params.length}`); }
+  if (host) {
+    params.push(host);
+    where.push(`host = $${params.length}`);
+  }
+  if (hosts && hosts.length) {
+    params.push(hosts.join(','));
+    where.push(`host IN (SELECT value FROM STRING_SPLIT($${params.length}, ','))`);
+  }
+  if (pathLike) {
+    params.push(`%${pathLike}%`);
+    where.push(`path LIKE $${params.length}`);
+  }
+  if (source) {
+    params.push(source);
+    where.push(`source = $${params.length}`);
+  }
+  if (since) {
+    params.push(since);
+    where.push(`seen_at >= $${params.length}`);
+  }
   const top = Math.min(1000, Math.max(1, Number(limit) || 200));
   const { rows } = await db.query(
     `SELECT TOP ${top} id, host, path, old_sha256, new_sha256, size, file_mtime, file_owner, source, requester, job_id, seen_at, dump_time
@@ -242,4 +299,18 @@ function unut(host) {
   _inflight.delete(H);
 }
 
-module.exports = { init, putBlob, getBlob, hasBlob, diffState, ingestDump, recordPublishIntent, fileHistory, changes, startWatcher, sweep, unut, _objectsDir: objectsDir };
+module.exports = {
+  init,
+  putBlob,
+  getBlob,
+  hasBlob,
+  diffState,
+  ingestDump,
+  recordPublishIntent,
+  fileHistory,
+  changes,
+  startWatcher,
+  sweep,
+  unut,
+  _objectsDir: objectsDir,
+};

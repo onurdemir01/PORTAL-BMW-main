@@ -45,7 +45,12 @@ export interface BmwOzet {
   tamamlanan30: number;
 }
 
-export type BmwIsGirdi = Partial<Pick<BmwIs, 'baslik' | 'aciklama' | 'durum' | 'oncelik' | 'kategori' | 'sahip' | 'beklenen' | 'sonTarih'>>;
+export type BmwIsGirdi = Partial<
+  Pick<
+    BmwIs,
+    'baslik' | 'aciklama' | 'durum' | 'oncelik' | 'kategori' | 'sahip' | 'beklenen' | 'sonTarih'
+  >
+>;
 
 const JSON_HDR = { 'Content-Type': 'application/json' };
 
@@ -61,30 +66,56 @@ export const bmwHubApi = {
     return j;
   },
   async ekle(girdi: BmwIsGirdi): Promise<BmwIs> {
-    const j = await okJson(await fetch(`${BASE}/isler`, { method: 'POST', headers: JSON_HDR, body: JSON.stringify(girdi) }));
+    const j = await okJson(
+      await fetch(`${BASE}/isler`, {
+        method: 'POST',
+        headers: JSON_HDR,
+        body: JSON.stringify(girdi),
+      }),
+    );
     if (j.ok === false) throw new Error(j.error || 'İş kaydedilemedi.');
     return j.is;
   },
-  async guncelle(id: string, girdi: BmwIsGirdi, beklenenGuncelleme?: string | null): Promise<BmwIs> {
+  async guncelle(
+    id: string,
+    girdi: BmwIsGirdi,
+    beklenenGuncelleme?: string | null,
+  ): Promise<BmwIs> {
     const body = beklenenGuncelleme ? { ...girdi, beklenenGuncelleme } : girdi;
     const j = await okJson(
-      await fetch(`${BASE}/isler/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HDR, body: JSON.stringify(body) }),
+      await fetch(`${BASE}/isler/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: JSON_HDR,
+        body: JSON.stringify(body),
+      }),
     );
     if (j.ok === false) throw new Error(j.error || 'İş güncellenemedi.');
     return j.is;
   },
   async notEkle(id: string, metin: string): Promise<void> {
     const j = await okJson(
-      await fetch(`${BASE}/isler/${encodeURIComponent(id)}/notlar`, { method: 'POST', headers: JSON_HDR, body: JSON.stringify({ metin }) }),
+      await fetch(`${BASE}/isler/${encodeURIComponent(id)}/notlar`, {
+        method: 'POST',
+        headers: JSON_HDR,
+        body: JSON.stringify({ metin }),
+      }),
     );
     if (j.ok === false) throw new Error(j.error || 'Not kaydedilemedi.');
   },
   async sil(id: string): Promise<void> {
-    const j = await okJson(await fetch(`${BASE}/isler/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+    const j = await okJson(
+      await fetch(`${BASE}/isler/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    );
     if (j.ok === false) throw new Error(j.error || 'İş silinemedi.');
   },
   async toplu(metin: string): Promise<number> {
-    const j = await okJson(await fetch(`${BASE}/toplu`, { method: 'POST', headers: JSON_HDR, body: JSON.stringify({ metin }) }));
+    const j = await okJson(
+      await fetch(`${BASE}/toplu`, {
+        method: 'POST',
+        headers: JSON_HDR,
+        body: JSON.stringify({ metin }),
+      }),
+    );
     if (j.ok === false) throw new Error(j.error || 'Toplu ekleme yapılamadı.');
     return j.eklenen;
   },

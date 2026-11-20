@@ -53,17 +53,25 @@ test('ON2 useOnay kullanan her dosya {onayPenceresi}ni ciziyor', () => {
 // "Yardım" / "Nasıl kullanılır?" dugmeleri; farkli kose, boy, renk). HelpModal acan sayfa
 // tetikleyiciyi ortak bilesenden alir. Kapsam disi: nginx_console (sahibi baska ekip, zaten
 // ayni metin) ve kendi yardim penceresini tasiyan PageVisibilityTab.
-const YARDIM_KAPSAM_DISI = /^components\/nginx_console\/|^components\/admin\/tabs\/PageVisibilityTab\.tsx$/;
+const YARDIM_KAPSAM_DISI =
+  /^components\/nginx_console\/|^components\/admin\/tabs\/PageVisibilityTab\.tsx$/;
 test('YD1 HelpModal acan sayfa yardim dugmesini YardimDugmesi`nden alir', () => {
   const sayfalar = SRC_FILES.filter((f) => !f.split(path.sep).includes('__tests__'))
     .map((f) => [path.relative(ROOT, f), stripComments(fs.readFileSync(f, 'utf8'))])
     // Yol ayraci normalize: Windows'ta path.relative ters egik cizgi verir, desen '/' bekler (bekci platformdan bagimsiz).
     .map(([f, s]) => [f.split(path.sep).join('/'), s])
-    .filter(([f, s]) => /<HelpModal\b/.test(s) && !YARDIM_KAPSAM_DISI.test(f) && !/common\/HelpModal\.tsx$/.test(f));
+    .filter(
+      ([f, s]) =>
+        /<HelpModal\b/.test(s) && !YARDIM_KAPSAM_DISI.test(f) && !/common\/HelpModal\.tsx$/.test(f),
+    );
   assert.ok(sayfalar.length >= 6, `HelpModal kullanan sayfa az: ${sayfalar.length}`);
   for (const [f, s] of sayfalar) {
     assert.match(s, /<YardimDugmesi\b/, `${f}: ortak yardim dugmesi yok`);
-    assert.doesNotMatch(s, /\bYardım\s*<\/button>|Bu sayfa nasıl kullanılır\?/, `${f}: eski yardim tetikleyicisi duruyor`);
+    assert.doesNotMatch(
+      s,
+      /\bYardım\s*<\/button>|Bu sayfa nasıl kullanılır\?/,
+      `${f}: eski yardim tetikleyicisi duruyor`,
+    );
   }
 });
 
@@ -71,7 +79,9 @@ test('YD1 HelpModal acan sayfa yardim dugmesini YardimDugmesi`nden alir', () => 
 // (`pf-input pr-10` giris parolasi, `pf-input pl-9` arama): metin ikonun altina giriyordu.
 test('IN1 .pf-input @layer components icinde; katmansiz tanim yok', () => {
   // Yorumlar ayiklanir: bas yorumu `.input-modern` adini duz metin olarak anar.
-  const css = fs.readFileSync(path.join(ROOT, 'index.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = fs
+    .readFileSync(path.join(ROOT, 'index.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
   const i = css.indexOf('@layer components {');
   assert.ok(i >= 0, '@layer components blogu yok');
   let derin = 0;
@@ -84,6 +94,10 @@ test('IN1 .pf-input @layer components icinde; katmansiz tanim yok', () => {
   const dis = css.slice(0, i) + css.slice(j);
   assert.match(ic, /\.pf-input\s*\{/);
   assert.match(ic, /\.input-modern,/);
-  assert.doesNotMatch(dis, /\.(pf-input|input-modern)\b[^{]*\{/, 'katman disinda .pf-input kurali var');
+  assert.doesNotMatch(
+    dis,
+    /\.(pf-input|input-modern)\b[^{]*\{/,
+    'katman disinda .pf-input kurali var',
+  );
   assert.match(ic, /border-radius: var\(--radius-md\)/, 'PF6 kosesi yok');
 });

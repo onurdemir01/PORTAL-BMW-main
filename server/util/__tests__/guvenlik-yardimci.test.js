@@ -143,7 +143,12 @@ async function vekildenIstek(trustProxy) {
     next();
   });
   app.use(
-    session({ secret: 'deneme-sirri', resave: false, saveUninitialized: false, cookie: { secure: true } }),
+    session({
+      secret: 'deneme-sirri',
+      resave: false,
+      saveUninitialized: false,
+      cookie: { secure: true },
+    }),
   );
   app.get('/giris', (req, res) => {
     req.session.user = { username: 'deneme' };
@@ -171,7 +176,9 @@ test('GY6 uretim varsayilaniyla vekil arkasinda oturum cerezi VERILIR ve istemci
   assert.equal(yalnizLoopback.cerez, null);
   assert.equal(yalnizLoopback.govde.ip, VEKIL_ADRESI);
   // Adres sabitlenmis yapilandirma (onerilen) da calisir.
-  const sabit = await vekildenIstek(resolveTrustProxy(`loopback, ${VEKIL_ADRESI}`, { isProd: true }));
+  const sabit = await vekildenIstek(
+    resolveTrustProxy(`loopback, ${VEKIL_ADRESI}`, { isProd: true }),
+  );
   assert.equal(sabit.govde.secure, true);
   assert.match(String(sabit.cerez), /connect\.sid=/);
 });
@@ -181,7 +188,11 @@ test('GY7 tek atlama yalniz dogrudan baglanan vekile guvenir; zincirin gerisi sa
   app.set('trust proxy', resolveTrustProxy(undefined, { isProd: true }));
   const guven = app.get('trust proxy fn');
   assert.equal(guven(VEKIL_ADRESI, 0), true, 'dogrudan baglanan vekil');
-  assert.equal(guven('198.51.100.7', 1), false, 'ikinci atlama (istemcinin yazdigi baslik) guvenilmez');
+  assert.equal(
+    guven('198.51.100.7', 1),
+    false,
+    'ikinci atlama (istemcinin yazdigi baslik) guvenilmez',
+  );
   // Gelistirme varsayilani: yalniz loopback.
   const gel = express();
   gel.set('trust proxy', resolveTrustProxy(undefined, { isProd: false }));

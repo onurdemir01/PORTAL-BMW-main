@@ -28,7 +28,8 @@ const CREATE_TPL = 10;
 const JOB_ID = 9001;
 
 for (const k of Object.keys(process.env)) {
-  if (/^AWX_/.test(k) || /^(HTTPS?_PROXY|https?_proxy)$/.test(k) || k === 'VISIBILITY_FAIL_OPEN') delete process.env[k];
+  if (/^AWX_/.test(k) || /^(HTTPS?_PROXY|https?_proxy)$/.test(k) || k === 'VISIBILITY_FAIL_OPEN')
+    delete process.env[k];
 }
 
 // ── ENJEKSIYON ───────────────────────────────────────────────────────────────
@@ -46,11 +47,46 @@ const stub = (rel, exports) => {
 // + Nginx Hub sayfasi + SPA sekmesi, hepsi varsayilan KAPALI. Denetim KAYITLI olmali: motor
 // kayitsiz ogeyi gorunur sayar ve 'Denetim' kapisi testte bos yere yesil kalirdi.
 const ELEMENTS = [
-  { element_key: 'Denetim', element_type: 'page', parent_key: null, label: 'Middleware Ic Denetim', route: '/denetim', sort_order: 3, enabled: 1, default_visible: 0, metadata: null },
-  { element_key: 'NginxConsole', element_type: 'page', parent_key: null, label: 'Nginx Hub', route: '/nginx-console', sort_order: 1, enabled: 1, default_visible: 0, metadata: null },
-  { element_key: 'tab:nginx:spa', element_type: 'tab', parent_key: 'NginxConsole', label: 'SPA', route: null, sort_order: 28, enabled: 1, default_visible: 0, metadata: null },
+  {
+    element_key: 'Denetim',
+    element_type: 'page',
+    parent_key: null,
+    label: 'Middleware Ic Denetim',
+    route: '/denetim',
+    sort_order: 3,
+    enabled: 1,
+    default_visible: 0,
+    metadata: null,
+  },
+  {
+    element_key: 'NginxConsole',
+    element_type: 'page',
+    parent_key: null,
+    label: 'Nginx Hub',
+    route: '/nginx-console',
+    sort_order: 1,
+    enabled: 1,
+    default_visible: 0,
+    metadata: null,
+  },
+  {
+    element_key: 'tab:nginx:spa',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'SPA',
+    route: null,
+    sort_order: 28,
+    enabled: 1,
+    default_visible: 0,
+    metadata: null,
+  },
 ];
-const allow = (elementKey, principalType, principalId) => ({ element_key: elementKey, principal_type: principalType, principal_id: principalId, allow: 1 });
+const allow = (elementKey, principalType, principalId) => ({
+  element_key: elementKey,
+  principal_type: principalType,
+  principal_id: principalId,
+  allow: 1,
+});
 
 // Oturum nesnesi GERCEK sekliyle: auth/index.cjs login'i `mail` yazar, `email` YAZMAZ
 // (eskiden burada `email` vardi ve user.email okuyan kod testte dolu, uretimde bos gidiyordu).
@@ -63,7 +99,10 @@ const USERS = {
 // "Nginx Hub Erisimi" paneli YALNIZ NginxConsole + tab:nginx:* yazar (visibility-routes.cjs);
 // ekranin veri ucu (/api/denetim/nginx-migration) ek olarak 'Denetim' ister - ekip uyesine
 // Admin > "Denetim Erisimi"nden o da acilmis olmali.
-const NGINX_PANEL_RULES = [allow('NginxConsole', 'user', 'odemir'), allow('tab:nginx:spa', 'user', 'odemir')];
+const NGINX_PANEL_RULES = [
+  allow('NginxConsole', 'user', 'odemir'),
+  allow('tab:nginx:spa', 'user', 'odemir'),
+];
 const EKIP_RULES = [allow('Denetim', 'user', 'odemir'), ...NGINX_PANEL_RULES];
 
 const h = {
@@ -98,15 +137,30 @@ stub('db/index.cjs', {
       return { rows: h.rules };
     }
     if (/FROM portal_config_blobs/.test(sql)) {
-      return { rows: [{ data: JSON.stringify({ awxServerId: 1, templateId: CREATE_TPL, deleteTemplateId: DELETE_TPL }) }] };
+      return {
+        rows: [
+          {
+            data: JSON.stringify({
+              awxServerId: 1,
+              templateId: CREATE_TPL,
+              deleteTemplateId: DELETE_TPL,
+            }),
+          },
+        ],
+      };
     }
     return { rows: [], rowCount: 0 };
   },
 });
 stub('auth/index.cjs', {
-  requireAuth: (req, res, next) => (req.session && req.session.user ? next() : res.status(401).json({ ok: false, error: 'Oturum yok' })),
+  requireAuth: (req, res, next) =>
+    req.session && req.session.user
+      ? next()
+      : res.status(401).json({ ok: false, error: 'Oturum yok' }),
   requireAdmin: (req, res, next) =>
-    req.session && req.session.user && req.session.user.role === 'Admin' ? next() : res.status(403).json({ ok: false, error: 'Admin' }),
+    req.session && req.session.user && req.session.user.role === 'Admin'
+      ? next()
+      : res.status(403).json({ ok: false, error: 'Admin' }),
   getRequestUser: (req) => (req.session && req.session.user) || null,
 });
 stub('inventory/mssql.cjs', { query: async () => ({ recordset: [] }), sql: {} });
@@ -150,7 +204,9 @@ h.GROUPS = [
   },
 ];
 stub('audit/nginx-migration.cjs', { loadMigration: async () => ({ groups: h.GROUPS }) });
-stub('audit/index.cjs', { auditPortal: (_req, action, opts) => h.audits.push({ action, ...opts }) });
+stub('audit/index.cjs', {
+  auditPortal: (_req, action, opts) => h.audits.push({ action, ...opts }),
+});
 
 // ── SAHTE AWX ────────────────────────────────────────────────────────────────
 function awxSifirla() {
@@ -169,7 +225,9 @@ function awxSifirla() {
   a.jobTemplate = DELETE_TPL; // GET /jobs/<JOB_ID>/ job_template alani; null -> alan YOK
   a.stdout = 'TASK [nginx_ops] ok\n';
   // Bu modulun OLMAYAN isler (job-status IDOR kurgusu): id -> { job_template, stdout }
-  a.foreignJobs = { 7777: { job_template: 999, stdout: `TASK [debug] ok: db_password=${BASKA_EKIP_SIRRI}\n` } };
+  a.foreignJobs = {
+    7777: { job_template: 999, stdout: `TASK [debug] ok: db_password=${BASKA_EKIP_SIRRI}\n` },
+  };
   a.launchNoId = false; // launch yaniti job id TASIMAZ
   a.lastLaunch = null;
   a.lastIgnored = undefined;
@@ -186,12 +244,21 @@ function awxIstegi(req, res, body) {
   };
   if (req.method === 'GET' && yol === `/api/v2/job_templates/${DELETE_TPL}/`) {
     if (a.tplStatus) return send(a.tplStatus, { detail: 'gecici AWX hatasi' });
-    const t = { id: DELETE_TPL, name: 'Nginx Reverse Proxy Operations', ask_variables_on_launch: a.tpl.ask_variables_on_launch, survey_enabled: a.tpl.survey_enabled, extra_vars: '' };
+    const t = {
+      id: DELETE_TPL,
+      name: 'Nginx Reverse Proxy Operations',
+      ask_variables_on_launch: a.tpl.ask_variables_on_launch,
+      survey_enabled: a.tpl.survey_enabled,
+      extra_vars: '',
+    };
     for (const k of a.tpl.omit || []) delete t[k];
     return send(200, t);
   }
   if (req.method === 'GET' && yol === `/api/v2/job_templates/${DELETE_TPL}/survey_spec/`) {
-    if (a.surveyStatus) return send(a.surveyStatus, { detail: `You do not have permission (got ${req.headers.authorization})` });
+    if (a.surveyStatus)
+      return send(a.surveyStatus, {
+        detail: `You do not have permission (got ${req.headers.authorization})`,
+      });
     if (a.surveyBody !== undefined) return send(200, a.surveyBody);
     return send(200, a.tpl.survey_enabled ? { name: '', description: '', spec: a.tpl.spec } : {});
   }
@@ -207,18 +274,25 @@ function awxIstegi(req, res, body) {
       const t = a.tpl;
       const inSurvey = new Set((t.survey_enabled ? t.spec : []).map((q) => q.variable));
       for (const [k, v] of Object.entries(ev)) {
-        if (a.forceIgnore.includes(k) || (!t.ask_variables_on_launch && !inSurvey.has(k))) ignored[k] = v;
+        if (a.forceIgnore.includes(k) || (!t.ask_variables_on_launch && !inSurvey.has(k)))
+          ignored[k] = v;
       }
     }
     a.lastLaunch = { tplId, ev };
     a.lastIgnored = Object.keys(ignored).length ? { extra_vars: ignored } : {};
-    const resp = a.launchNoId ? { status: 'pending' } : { job: JOB_ID, id: JOB_ID, status: 'pending' };
+    const resp = a.launchNoId
+      ? { status: 'pending' }
+      : { job: JOB_ID, id: JOB_ID, status: 'pending' };
     if (!a.noIgnoredFields) resp.ignored_fields = a.lastIgnored;
     return send(201, resp);
   }
   if (req.method === 'GET' && yol === `/api/v2/jobs/${JOB_ID}/`) {
     if (a.jobGetStatus) return send(a.jobGetStatus, { detail: 'gecici AWX hatasi' });
-    const j = { id: JOB_ID, status: a.jobStatus, summary_fields: { created_by: { username: 'portal_svc' } } };
+    const j = {
+      id: JOB_ID,
+      status: a.jobStatus,
+      summary_fields: { created_by: { username: 'portal_svc' } },
+    };
     if (a.jobTemplate != null) j.job_template = a.jobTemplate;
     return send(200, j);
   }
@@ -233,11 +307,19 @@ function awxIstegi(req, res, body) {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       return res.end(fj.stdout);
     }
-    return send(200, { id: Number(yabanciM[1]), status: 'successful', job_template: fj.job_template, finished: '2026-10-01', failed: false });
+    return send(200, {
+      id: Number(yabanciM[1]),
+      status: 'successful',
+      job_template: fj.job_template,
+      finished: '2026-10-01',
+      failed: false,
+    });
   }
   if (req.method === 'POST' && yol === `/api/v2/jobs/${JOB_ID}/cancel/`) {
     if (a.cancel === '403') {
-      return send(403, { detail: `You do not have permission to perform this action. (got ${req.headers.authorization})` });
+      return send(403, {
+        detail: `You do not have permission to perform this action. (got ${req.headers.authorization})`,
+      });
     }
     // 405/409: araya giren vekil/WAF POST'u reddeder ya da AWX "iptal edilemez" der.
     if (a.cancel === '405') return send(405, { detail: 'Method "POST" not allowed.' });
@@ -245,7 +327,8 @@ function awxIstegi(req, res, body) {
     a.jobStatus = 'canceled';
     return send(202);
   }
-  if (req.method === 'GET' && yol === '/api/v2/me/') return send(200, { results: [{ username: 'portal_svc' }] });
+  if (req.method === 'GET' && yol === '/api/v2/me/')
+    return send(200, { results: [{ username: 'portal_svc' }] });
   return send(404, { detail: 'Not found.' });
 }
 
@@ -302,40 +385,60 @@ h.setRules = (rules) => {
 h.call = (method, urlPath, body) =>
   new Promise((resolve, reject) => {
     const data = body === undefined ? '' : JSON.stringify(body);
-    const headers = data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {};
-    const req = http.request({ host: '127.0.0.1', port: h.portal.port, path: urlPath, method, headers }, (res) => {
-      let b = '';
-      res.on('data', (c) => (b += c));
-      res.on('end', () => {
-        let json = {};
-        try {
-          json = JSON.parse(b || '{}');
-        } catch {
-          json = {};
-        }
-        resolve({ status: res.statusCode, body: b, json });
-      });
-    });
+    const headers = data
+      ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
+      : {};
+    const req = http.request(
+      { host: '127.0.0.1', port: h.portal.port, path: urlPath, method, headers },
+      (res) => {
+        let b = '';
+        res.on('data', (c) => (b += c));
+        res.on('end', () => {
+          let json = {};
+          try {
+            json = JSON.parse(b || '{}');
+          } catch {
+            json = {};
+          }
+          resolve({ status: res.statusCode, body: b, json });
+        });
+      },
+    );
     req.on('error', reject);
     req.end(data);
   });
 
-h.BODY = { group: 'other', namespace: 'webforms-ch-prod', application: 'base-app-v0', service: 'WEBFORMS', inputPath: '/base/' };
+h.BODY = {
+  group: 'other',
+  namespace: 'webforms-ch-prod',
+  application: 'base-app-v0',
+  service: 'WEBFORMS',
+  inputPath: '/base/',
+};
 // GLOMO satiri: eski filosu kapali (silme reddedilir), tanim yeni filoya gider.
-h.GLOMO_BODY = { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', service: 'GLOMO', inputPath: '/base/' };
+h.GLOMO_BODY = {
+  group: 'glomo',
+  namespace: 'digital-banking-ch-prod',
+  application: 'base-app-v0',
+  service: 'GLOMO',
+  inputPath: '/base/',
+};
 h.sil = (body = h.BODY) => h.call('POST', '/api/nginx-migration/delete', body);
 
 h.launches = () => h.awx.istekler.filter((r) => r.method === 'POST' && /\/launch\/$/.test(r.yol));
 /** Bir isin CIKTISINA (stdout ya da job_events) giden istekler. */
-h.outputReads = (jobId) => h.awx.istekler.filter((r) => new RegExp(`/jobs/${jobId}/(stdout|job_events)/`).test(r.yol));
+h.outputReads = (jobId) =>
+  h.awx.istekler.filter((r) => new RegExp(`/jobs/${jobId}/(stdout|job_events)/`).test(r.yol));
 h.cancels = () => h.awx.istekler.filter((r) => r.method === 'POST' && /\/cancel\/$/.test(r.yol));
-h.deleteStamp = () => h.dbLog.filter((q) => /delete_job_id/.test(q.sql) && /(UPDATE|INSERT)/.test(q.sql));
+h.deleteStamp = () =>
+  h.dbLog.filter((q) => /delete_job_id/.test(q.sql) && /(UPDATE|INSERT)/.test(q.sql));
 /** Gorunurluk motorunun kendi okumalari DISINDAKI DB sorgulari (uca "ulasildi" kaniti). */
 h.appQueries = () => h.dbLog.filter((q) => !VIS_SQL.test(q.sql));
 
 h.mockConsole = (t) => {
   const out = { warn: [], error: [], log: [] };
-  for (const n of ['warn', 'error', 'log']) t.mock.method(console, n, (...a) => out[n].push(a.join(' ')));
+  for (const n of ['warn', 'error', 'log'])
+    t.mock.method(console, n, (...a) => out[n].push(a.join(' ')));
   return out;
 };
 

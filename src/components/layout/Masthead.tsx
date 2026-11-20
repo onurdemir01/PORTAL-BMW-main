@@ -8,8 +8,8 @@
 // degisir (acik #f2f2f2, koyu #151515 — masthead.css: background--color--secondary).
 // Bu yuzden buradaki sabit renkler (text-white, #b8bbbe, #3c3f42, #4f5255) token'a
 // cevrildi; kalsalardi acik temada beyaz uzerine beyaz metin cikardi.
-import React, { useContext, useEffect, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
+import React, { useContext, useEffect, useRef, useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import {
   Bars3Icon,
   MagnifyingGlassIcon,
@@ -21,15 +21,15 @@ import {
   UserCircleIcon,
   ExclamationTriangleIcon,
   EyeIcon,
-} from "@heroicons/react/24/outline";
-import { AuthContext } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
-import { prefsApi } from "@/api/prefsApi";
-import { CSV_SEPARATOR_PREF, csvSeparator, type CsvSeparator } from "@/utils/csv";
-import { PortalLogo } from "@/components/common/PortalLogo";
-import { Modal } from "@/components/common/Modal";
-import OturumListesi from "@/components/oturum/OturumListesi";
-import { okJson } from "@/api/http";
+} from '@heroicons/react/24/outline';
+import { AuthContext } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { prefsApi } from '@/api/prefsApi';
+import { CSV_SEPARATOR_PREF, csvSeparator, type CsvSeparator } from '@/utils/csv';
+import { PortalLogo } from '@/components/common/PortalLogo';
+import { Modal } from '@/components/common/Modal';
+import OturumListesi from '@/components/oturum/OturumListesi';
+import { okJson } from '@/api/http';
 
 interface Props {
   onToggleNav: () => void;
@@ -54,21 +54,30 @@ export default function Masthead({ onToggleNav }: Props) {
   // zaman sadece kendi tetiklemelerinde Smart onayini kapatabilsin; deneme yapacagimiz zaman
   // tekrar acip akisi test edebiliyor olalim." Kapaliyken (atla=true) ustte SUREKLI uyari durur -
   // unutulup production islerin onaysiz kosmasi gorunmez kalmasin. Kapsam: server/ansible/admin-smart-atla.cjs.
-  const adminMi = user?.role === "Admin";
+  const adminMi = user?.role === 'Admin';
   const [smartAtla, setSmartAtla] = useState<boolean | null>(null);
   useEffect(() => {
     if (!adminMi) return;
     let alive = true;
-    fetch("/api/auth/smart-atla", { credentials: "include" })
+    fetch('/api/auth/smart-atla', { credentials: 'include' })
       .then((r) => okJson<{ ok: boolean; atla: boolean }>(r))
-      .then((d) => { if (alive) setSmartAtla(!!d.atla); })
-      .catch(() => { if (alive) setSmartAtla(null); });
-    return () => { alive = false; };
+      .then((d) => {
+        if (alive) setSmartAtla(!!d.atla);
+      })
+      .catch(() => {
+        if (alive) setSmartAtla(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, [adminMi]);
   const smartAtlaDegistir = async (atla: boolean) => {
     try {
-      const r = await fetch("/api/auth/smart-atla", {
-        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ atla }),
+      const r = await fetch('/api/auth/smart-atla', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ atla }),
       });
       const d = await okJson<{ ok: boolean; atla: boolean }>(r);
       setSmartAtla(!!d.atla);
@@ -77,8 +86,8 @@ export default function Masthead({ onToggleNav }: Props) {
     }
   };
 
-  const displayName = user?.displayName || user?.username || "?";
-  const initial = displayName[0]?.toUpperCase() ?? "?";
+  const displayName = user?.displayName || user?.username || '?';
+  const initial = displayName[0]?.toUpperCase() ?? '?';
 
   useEffect(() => {
     let alive = true;
@@ -99,8 +108,8 @@ export default function Masthead({ onToggleNav }: Props) {
     function onDocClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
   // ESC menuyu kapatir ve odagi dugmeye geri verir (2026-10-07). Menu yalnizca DISARI
@@ -109,19 +118,22 @@ export default function Masthead({ onToggleNav }: Props) {
   useEffect(() => {
     if (!menuOpen) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
+      if (e.key !== 'Escape') return;
       setMenuOpen(false);
       menuDugmesiRef.current?.focus();
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
   // Ctrl+K komut paletini acan mevcut global kisayolu tetikler. Kisayol etiketi isletim sistemine
   // gore (Mac'te Cmd); useCommandPalette ikisini de dinler.
-  const kisayol = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl K";
+  const kisayol =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+      ? '⌘K'
+      : 'Ctrl K';
   const openSearch = () =>
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
 
   return (
     <header className="pf-masthead">
@@ -137,12 +149,16 @@ export default function Masthead({ onToggleNav }: Props) {
         <PortalLogo className="h-9 w-9" />
         <span
           className="hidden sm:block text-[1.0625rem]"
-          style={{ fontFamily: "var(--font-display)", fontWeight: 500, color: "var(--nav-text)" }}
+          style={{ fontFamily: 'var(--font-display)', fontWeight: 500, color: 'var(--nav-text)' }}
         >
-          BMW <span style={{ color: "var(--nav-text-muted)" }}>Portal</span>
+          BMW <span style={{ color: 'var(--nav-text-muted)' }}>Portal</span>
         </span>
       </NavLink>
-      <span aria-hidden="true" className="hidden sm:block h-8 w-px" style={{ background: "var(--masthead-border)" }} />
+      <span
+        aria-hidden="true"
+        className="hidden sm:block h-8 w-px"
+        style={{ background: 'var(--masthead-border)' }}
+      />
 
       <div className="flex-1" />
 
@@ -150,14 +166,24 @@ export default function Masthead({ onToggleNav }: Props) {
         {/* Genis ekranda kutu gorunumlu arama (kisayol etiketiyle), dar ekranda ikon. Gizleme
             sarmalayicida: `.pf-masthead-btn` / `.pf-masthead-ara` katmansiz, utility'yi ezerdi. */}
         <span className="hidden md:inline-flex">
-          <button type="button" className="pf-masthead-ara" onClick={openSearch} aria-label={`Ara (${kisayol})`}>
+          <button
+            type="button"
+            className="pf-masthead-ara"
+            onClick={openSearch}
+            aria-label={`Ara (${kisayol})`}
+          >
             <MagnifyingGlassIcon className="h-4 w-4" aria-hidden="true" />
             <span>Ara…</span>
             <kbd>{kisayol}</kbd>
           </button>
         </span>
         <span className="inline-flex md:hidden">
-          <button className="pf-masthead-btn" onClick={openSearch} aria-label={`Ara (${kisayol})`} title={`Ara (${kisayol})`}>
+          <button
+            className="pf-masthead-btn"
+            onClick={openSearch}
+            aria-label={`Ara (${kisayol})`}
+            title={`Ara (${kisayol})`}
+          >
             <MagnifyingGlassIcon className="h-5 w-5" />
           </button>
         </span>
@@ -165,10 +191,10 @@ export default function Masthead({ onToggleNav }: Props) {
         <button
           className="pf-masthead-btn"
           onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Açık temaya geç" : "Koyu temaya geç"}
-          title={theme === "dark" ? "Açık tema" : "Koyu tema"}
+          aria-label={theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
+          title={theme === 'dark' ? 'Açık tema' : 'Koyu tema'}
         >
-          {theme === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+          {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
         </button>
 
         {/* RENK KORLUGU MODU (2026-11-17, kullanici: "ekipteki renk koru arkadasimiz kirmizilari goremiyor"): kirmizi/yesil
@@ -177,10 +203,18 @@ export default function Masthead({ onToggleNav }: Props) {
           className="pf-masthead-btn"
           onClick={() => setRenkKoru(!renkKoru)}
           aria-pressed={renkKoru}
-          aria-label={renkKoru ? "Renk körü modunu kapat" : "Renk körü modunu aç"}
-          title={renkKoru ? "Renk körü modu açık (kırmızı/yeşil yerine turuncu/mavi)" : "Renk körü modu (kırmızı/yeşil yerine turuncu/mavi)"}
+          aria-label={renkKoru ? 'Renk körü modunu kapat' : 'Renk körü modunu aç'}
+          title={
+            renkKoru
+              ? 'Renk körü modu açık (kırmızı/yeşil yerine turuncu/mavi)'
+              : 'Renk körü modu (kırmızı/yeşil yerine turuncu/mavi)'
+          }
           data-testid="renk-koru-dugme"
-          style={renkKoru ? { color: "var(--accent)", boxShadow: "inset 0 -2px 0 var(--accent)" } : undefined}
+          style={
+            renkKoru
+              ? { color: 'var(--accent)', boxShadow: 'inset 0 -2px 0 var(--accent)' }
+              : undefined
+          }
         >
           <EyeIcon className="h-5 w-5" />
         </button>
@@ -189,7 +223,11 @@ export default function Masthead({ onToggleNav }: Props) {
           <button
             onClick={() => setMenuOpen(true)}
             className="hidden sm:inline-flex items-center gap-1.5 h-7 px-2.5 mr-2 rounded-full text-[0.75rem] font-semibold"
-            style={{ color: "var(--status-warning-text)", background: "var(--status-warning-bg)", border: "1px solid var(--status-warning)" }}
+            style={{
+              color: 'var(--status-warning-text)',
+              background: 'var(--status-warning-bg)',
+              border: '1px solid var(--status-warning)',
+            }}
             title="Sizin tetiklediğiniz işlerde Smart onayı istenmiyor (diğer kullanıcılar etkilenmez). Kapatmak için kullanıcı menüsü."
           >
             <ExclamationTriangleIcon className="h-4 w-4" /> Smart onayı kapalı (yalnız siz)
@@ -202,7 +240,7 @@ export default function Masthead({ onToggleNav }: Props) {
             ref={menuDugmesiRef}
             onClick={() => setMenuOpen((v) => !v)}
             className="flex items-center gap-2 h-10 px-3 text-[0.875rem] transition-colors hover:bg-[var(--nav-hover-bg)]"
-            style={{ color: "var(--nav-text)", borderRadius: "var(--radius-sm)" }}
+            style={{ color: 'var(--nav-text)', borderRadius: 'var(--radius-sm)' }}
             aria-expanded={menuOpen}
             aria-haspopup="true"
             aria-controls="kullanici-menusu"
@@ -212,12 +250,14 @@ export default function Masthead({ onToggleNav }: Props) {
             ) : (
               <span
                 className="h-6 w-6 rounded-full text-[0.6875rem] flex items-center justify-center"
-                style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
+                style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
               >
                 {initial}
               </span>
             )}
-            <span className="hidden md:inline max-w-[11rem] truncate" title={displayName}>{displayName}</span>
+            <span className="hidden md:inline max-w-[11rem] truncate" title={displayName}>
+              {displayName}
+            </span>
             <ChevronDownIcon className="h-3.5 w-3.5 opacity-70" />
           </button>
 
@@ -226,17 +266,25 @@ export default function Masthead({ onToggleNav }: Props) {
               id="kullanici-menusu"
               aria-label="Kullanıcı menüsü"
               className="absolute right-0 top-full min-w-[16rem] py-1 z-50"
-              style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", border: "1px solid var(--border)" }}
+              style={{
+                background: 'var(--bg-surface)',
+                boxShadow: 'var(--shadow-lg)',
+                border: '1px solid var(--border)',
+              }}
             >
-              <div className="px-4 py-2" style={{ borderBottom: "1px solid var(--border)" }}>
-                <p className="text-[0.875rem] font-bold" style={{ color: "var(--text-primary)" }}>{displayName}</p>
-                <p className="text-[0.75rem]" style={{ color: "var(--text-muted)" }}>{user?.role}</p>
+              <div className="px-4 py-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                <p className="text-[0.875rem] font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {displayName}
+                </p>
+                <p className="text-[0.75rem]" style={{ color: 'var(--text-muted)' }}>
+                  {user?.role}
+                </p>
               </div>
               <NavLink
                 to="/duty-roster"
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-2 px-4 py-2 text-[0.875rem] no-underline hover:bg-[var(--bg-elevated)]"
-                style={{ color: "var(--text-primary)" }}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <UserCircleIcon className="h-4 w-4" /> Nöbet listesi
               </NavLink>
@@ -247,10 +295,10 @@ export default function Masthead({ onToggleNav }: Props) {
                   degistirmek olurdu ve iki mesru ihtiyac var: Turkce Excel `;`
                   bekler, bir script'e besleyen RFC 4180 virgulunu ister.
                   Bu yuzden KULLANICI BASINA bir tercih. */}
-              <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="px-4 py-2" style={{ borderTop: '1px solid var(--border)' }}>
                 <label
                   className="flex items-center justify-between gap-2 text-[0.75rem]"
-                  style={{ color: "var(--text-muted)" }}
+                  style={{ color: 'var(--text-muted)' }}
                 >
                   <span className="whitespace-nowrap">CSV ayırıcı</span>
                   <select
@@ -264,9 +312,9 @@ export default function Masthead({ onToggleNav }: Props) {
                     }}
                     className="rounded border px-1.5 py-0.5 text-[0.75rem]"
                     style={{
-                      background: "var(--bg-surface)",
-                      color: "var(--text-primary)",
-                      borderColor: "var(--border)",
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-primary)',
+                      borderColor: 'var(--border)',
                     }}
                   >
                     <option value=";">noktalı virgül ( ; ) — Excel</option>
@@ -275,8 +323,11 @@ export default function Masthead({ onToggleNav }: Props) {
                 </label>
               </div>
               {adminMi && (
-                <div className="px-4 py-2" style={{ borderTop: "1px solid var(--border)" }}>
-                  <label className="flex items-start gap-2 text-[0.75rem] cursor-pointer" style={{ color: "var(--text-primary)" }}>
+                <div className="px-4 py-2" style={{ borderTop: '1px solid var(--border)' }}>
+                  <label
+                    className="flex items-start gap-2 text-[0.75rem] cursor-pointer"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5"
@@ -287,26 +338,39 @@ export default function Masthead({ onToggleNav }: Props) {
                     {/* Baslik etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
                     <span className="font-semibold">
                       Smart onayı (tetiklemelerim)
-                      <span className="block font-normal" style={{ color: smartAtla ? "var(--status-warning-text)" : "var(--text-muted)" }}>
-                        {smartAtla === null ? "durum okunamadı — onay istenir"
-                          : smartAtla ? "KAPALI — başlattığınız işler onaysız çalışır (denetime yazılır)"
-                            : "açık — işleriniz normal onay akışından geçer"}
+                      <span
+                        className="block font-normal"
+                        style={{
+                          color: smartAtla ? 'var(--status-warning-text)' : 'var(--text-muted)',
+                        }}
+                      >
+                        {smartAtla === null
+                          ? 'durum okunamadı — onay istenir'
+                          : smartAtla
+                            ? 'KAPALI — başlattığınız işler onaysız çalışır (denetime yazılır)'
+                            : 'açık — işleriniz normal onay akışından geçer'}
                       </span>
                     </span>
                   </label>
                 </div>
               )}
               <button
-                onClick={() => { setMenuOpen(false); setOturumlarAcik(true); }}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setOturumlarAcik(true);
+                }}
                 className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"
-                style={{ color: "var(--text-primary)", borderTop: "1px solid var(--border)" }}
+                style={{ color: 'var(--text-primary)', borderTop: '1px solid var(--border)' }}
               >
                 <ShieldCheckIcon className="h-4 w-4" /> Aktif oturumlarım
               </button>
               <button
-                onClick={() => { setMenuOpen(false); logout(); }}
+                onClick={() => {
+                  setMenuOpen(false);
+                  logout();
+                }}
                 className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.875rem] hover:bg-[var(--bg-elevated)]"
-                style={{ color: "var(--text-primary)" }}
+                style={{ color: 'var(--text-primary)' }}
               >
                 <ArrowRightOnRectangleIcon className="h-4 w-4" /> Oturumu kapat
               </button>

@@ -79,7 +79,11 @@ function karsilastir(files, sirRe) {
     return {
       anahtar: a,
       // GOSTERILEN deger maskeli olabilir; `ayni` YUKARIDA HAM degerlerden hesaplandi.
-      degerler: ham.map((v) => { if (v === null) return null; if (sirli) return '****'; return v; }),
+      degerler: ham.map((v) => {
+        if (v === null) return null;
+        if (sirli) return '****';
+        return v;
+      }),
       ayni,
       sirli,
       eksikVar: ham.some((v) => v === null),

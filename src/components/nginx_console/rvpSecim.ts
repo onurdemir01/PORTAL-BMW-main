@@ -201,7 +201,10 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
                 '(fw.garanti.com.tr) durur. Aşama sırası Dev → T14/T15, Test → T16/T17, ' +
                 'QA → T18/T19, Edu → T20/T21.',
             },
-      prod: { durum: 'sunucu', sunucular: liste('GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33') },
+      prod: {
+        durum: 'sunucu',
+        sunucular: liste('GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33'),
+      },
     };
 
   if (s.backend === 'ark')
@@ -212,7 +215,10 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
         'Uygulama kurum içine hizmet edecek (Step, Connect, Corpus gibi). Reverse proxy katmanı ' +
         'iç domainde (fw.garanti.com.tr) durur.',
       nonProd: { durum: 'sunucu', sunucular: liste('GBNGXD50', 'GBNGXT50', 'GBNGXQ50') },
-      prod: { durum: 'sunucu', sunucular: liste('GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51') },
+      prod: {
+        durum: 'sunucu',
+        sunucular: liste('GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51'),
+      },
     };
 
   if (internet)

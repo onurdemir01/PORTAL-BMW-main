@@ -44,7 +44,9 @@ test('DL2 yalniz genel sinir: createdAt + N dk, kaynak genel', () => {
 
 test('DL3 yalniz OCO: son tarih pencere SONU, kaynak oco', () => {
   const W = T0 + 3 * 60 * DK;
-  const r = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: iso(W) } }), { ticketTimeoutMinutes: null });
+  const r = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: iso(W) } }), {
+    ticketTimeoutMinutes: null,
+  });
   assert.equal(r.deadlineKaynak, 'oco');
   assert.equal(r.deadline.toISOString(), iso(W));
   assert.equal(r.timeoutMinutes, 180);
@@ -52,10 +54,9 @@ test('DL3 yalniz OCO: son tarih pencere SONU, kaynak oco', () => {
 
 test('DL4 ikisi birden: gecerli pencere varsa son tarih HER ZAMAN pencere sonu (oco)', () => {
   // pencere (180 dk) > genel (60 dk) -> oco: kisa genel sinir pencereyi KISALTMAZ
-  let r = talepSonTarihi(
-    talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 180 * DK) } }),
-    { ticketTimeoutMinutes: 60 },
-  );
+  let r = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 180 * DK) } }), {
+    ticketTimeoutMinutes: 60,
+  });
   assert.equal(r.deadlineKaynak, 'oco');
   assert.equal(r.deadline.toISOString(), iso(T0 + 180 * DK));
   assert.equal(r.timeoutMinutes, 180);
@@ -63,19 +64,17 @@ test('DL4 ikisi birden: gecerli pencere varsa son tarih HER ZAMAN pencere sonu (
   // genel (600 dk) > pencere (30 dk) -> YINE oco (2026-10-15 denetim): pencere kapandiktan
   // sonra gelen onay isi zaten calistirmaz (runner nextRunAt 'none' -> ERROR). Eski kural
   // (BUYUGU) talebi 600 dk acik tutuyor, ekran olu bir talep icin "kalan sure" gosteriyordu.
-  r = talepSonTarihi(
-    talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 30 * DK) } }),
-    { ticketTimeoutMinutes: 600 },
-  );
+  r = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 30 * DK) } }), {
+    ticketTimeoutMinutes: 600,
+  });
   assert.equal(r.deadlineKaynak, 'oco');
   assert.equal(r.deadline.toISOString(), iso(T0 + 30 * DK));
   assert.equal(r.timeoutMinutes, 30);
 
   // esit -> oco
-  r = talepSonTarihi(
-    talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 90 * DK) } }),
-    { ticketTimeoutMinutes: 90 },
-  );
+  r = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: iso(T0 + 90 * DK) } }), {
+    ticketTimeoutMinutes: 90,
+  });
   assert.equal(r.deadlineKaynak, 'oco');
   assert.equal(r.deadline.toISOString(), iso(T0 + 90 * DK));
 });
@@ -86,15 +85,29 @@ test('DL4b gosterilen son tarih onayin ISE YARAYACAGI son ani asmaz (genel > pen
   // serbest (poller zaten TIMEOUT yazar); ONCE donmesi ekranin olu talep icin sure saymasidir.
   const { nextRunAt } = require('../../oco/window.cjs');
   const bas = T0 + 10 * DK;
-  for (const [genel, pencereDk] of [[null, 120], [60, 120], [600, 30], [240, 60], [90, 90]]) {
+  for (const [genel, pencereDk] of [
+    [null, 120],
+    [60, 120],
+    [600, 30],
+    [240, 60],
+    [90, 90],
+  ]) {
     const son = T0 + pencereDk * DK;
     const t = talep({ pendingLaunch: { ocoWindowStartIso: iso(bas), ocoWindowEndIso: iso(son) } });
     const { deadline } = talepSonTarihi(t, { ticketTimeoutMinutes: genel });
     const etiket = `genel=${genel} pencere=${pencereDk}dk`;
     assert.ok(deadline.getTime() <= son, `${etiket}: son tarih pencere sonundan SONRA`);
     for (const an of [deadline.getTime() - 1000, deadline.getTime()]) {
-      const plan = nextRunAt({ windowStart: new Date(bas), windowEnd: new Date(son), now: new Date(an) });
-      assert.notEqual(plan.mode, 'none', `${etiket}: sayac sure gosterirken onay isi calistiramiyor`);
+      const plan = nextRunAt({
+        windowStart: new Date(bas),
+        windowEnd: new Date(son),
+        now: new Date(an),
+      });
+      assert.notEqual(
+        plan.mode,
+        'none',
+        `${etiket}: sayac sure gosterirken onay isi calistiramiyor`,
+      );
     }
   }
   // KORLUK NOTU: nextRunAt pencere sonundan sonra 60 sn tolerans (graceMs) tanir; poller ise
@@ -104,15 +117,31 @@ test('DL4b gosterilen son tarih onayin ISE YARAYACAGI son ani asmaz (genel > pen
 
 test('DL5 gecersiz pencere tarihi YOK SAYILIR (genel ya da sinirsiz kalir)', () => {
   for (const bozuk of ['abc', 'not-a-date', '2026-13-45T99:99']) {
-    const g = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: bozuk } }), { ticketTimeoutMinutes: 20 });
+    const g = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: bozuk } }), {
+      ticketTimeoutMinutes: 20,
+    });
     assert.equal(g.deadlineKaynak, 'genel', `"${bozuk}" genel siniri bozdu`);
     assert.equal(g.deadline.toISOString(), iso(T0 + 20 * DK));
-    const s = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: bozuk } }), { ticketTimeoutMinutes: null });
-    assert.deepEqual(s, { deadline: null, deadlineKaynak: null, timeoutMinutes: null }, `"${bozuk}" sinir uydurdu`);
+    const s = talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: bozuk } }), {
+      ticketTimeoutMinutes: null,
+    });
+    assert.deepEqual(
+      s,
+      { deadline: null, deadlineKaynak: null, timeoutMinutes: null },
+      `"${bozuk}" sinir uydurdu`,
+    );
   }
   // null / bos dizgi de "pencere yok"
-  assert.equal(talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: null } }), { ticketTimeoutMinutes: null }).deadline, null);
-  assert.equal(talepSonTarihi(talep({ pendingLaunch: null }), { ticketTimeoutMinutes: null }).deadline, null);
+  assert.equal(
+    talepSonTarihi(talep({ pendingLaunch: { ocoWindowEndIso: null } }), {
+      ticketTimeoutMinutes: null,
+    }).deadline,
+    null,
+  );
+  assert.equal(
+    talepSonTarihi(talep({ pendingLaunch: null }), { ticketTimeoutMinutes: null }).deadline,
+    null,
+  );
 });
 
 test('DL6 okunamayan createdAt: tarih UYDURULMAZ (poller da bu talebi zaman asimina dusurmez)', () => {
@@ -129,32 +158,54 @@ test('DL7 createdAt Date nesnesi de kabul edilir (mssql surucusu Date dondurur)'
 test('DL8 yanit alanlari: yalniz PENDING/LAUNCHING te hesaplanir, ISO dizgi doner', () => {
   const cfg = { ticketTimeoutMinutes: 15 };
   for (const st of ['PENDING', 'LAUNCHING']) {
-    assert.deepEqual(talepSonTarihiAlanlari(talep({ status: st }), cfg), {
-      deadline: iso(T0 + 15 * DK),
-      deadlineKaynak: 'genel',
-    }, st);
+    assert.deepEqual(
+      talepSonTarihiAlanlari(talep({ status: st }), cfg),
+      {
+        deadline: iso(T0 + 15 * DK),
+        deadlineKaynak: 'genel',
+      },
+      st,
+    );
   }
-  for (const st of ['LAUNCHED', 'SCHEDULED', 'REJECTED', 'TIMEOUT', 'CANCELLED', 'ERROR', undefined]) {
-    assert.deepEqual(talepSonTarihiAlanlari(talep({ status: st }), cfg), { deadline: null, deadlineKaynak: null }, String(st));
+  for (const st of [
+    'LAUNCHED',
+    'SCHEDULED',
+    'REJECTED',
+    'TIMEOUT',
+    'CANCELLED',
+    'ERROR',
+    undefined,
+  ]) {
+    assert.deepEqual(
+      talepSonTarihiAlanlari(talep({ status: st }), cfg),
+      { deadline: null, deadlineKaynak: null },
+      String(st),
+    );
   }
   assert.deepEqual(talepSonTarihiAlanlari(null, cfg), { deadline: null, deadlineKaynak: null });
 });
 
 // ── TEK KAYNAK: poller ile son tarih ayni ani mi kullaniyor ─────────────────
 
-const SMART_ENV = { SMART_API_URL: 'https://smart.example', SMART_API_USERNAME: 'u', SMART_API_PASSWORD: 'p' };
+const SMART_ENV = {
+  SMART_API_URL: 'https://smart.example',
+  SMART_API_USERNAME: 'u',
+  SMART_API_PASSWORD: 'p',
+};
 
 async function withEnv(vars, fn) {
   const saved = {};
   for (const k of Object.keys(vars)) saved[k] = process.env[k];
   for (const [k, v] of Object.entries(vars)) {
-    if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
   }
   try {
     return await fn();
   } finally {
     for (const k of Object.keys(vars)) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
     }
   }
 }
@@ -170,7 +221,11 @@ async function pollerYazimlari(tickets) {
   const clientPath = require.resolve('../client.cjs');
   const configPath = require.resolve('../config.cjs');
   const pollerPath = require.resolve('../poller.cjs');
-  const saved = { s: require.cache[storePath], c: require.cache[clientPath], p: require.cache[pollerPath] };
+  const saved = {
+    s: require.cache[storePath],
+    c: require.cache[clientPath],
+    p: require.cache[pollerPath],
+  };
   const marks = [];
   const sahte = (p, exports) => {
     const m = new Module(p, null);
@@ -181,10 +236,19 @@ async function pollerYazimlari(tickets) {
   sahte(storePath, {
     listPending: async () => tickets,
     claimForLaunch: async (id) => ({ id }),
-    markState: async (id, patch) => { marks.push({ id, ...patch }); return true; },
+    markState: async (id, patch) => {
+      marks.push({ id, ...patch });
+      return true;
+    },
   });
   // Smart hep "Onay Bekliyor" der: TIMEOUT disinda hicbir yazim olmamali.
-  sahte(clientPath, { checkTicketStatus: async () => ({ completed: false, rejected: false, stateName: 'Onay Bekliyor' }) });
+  sahte(clientPath, {
+    checkTicketStatus: async () => ({
+      completed: false,
+      rejected: false,
+      stateName: 'Onay Bekliyor',
+    }),
+  });
   delete require.cache[pollerPath];
   delete require.cache[configPath];
   const poller = require('../poller.cjs');
@@ -193,8 +257,13 @@ async function pollerYazimlari(tickets) {
     await poller.tick();
   } finally {
     poller.stopPoller();
-    for (const [p, k] of [[storePath, 's'], [clientPath, 'c'], [pollerPath, 'p']]) {
-      if (saved[k]) require.cache[p] = saved[k]; else delete require.cache[p];
+    for (const [p, k] of [
+      [storePath, 's'],
+      [clientPath, 'c'],
+      [pollerPath, 'p'],
+    ]) {
+      if (saved[k]) require.cache[p] = saved[k];
+      else delete require.cache[p];
     }
     delete require.cache[configPath];
   }
@@ -223,7 +292,8 @@ test('DL9 TEK KAYNAK: son tarihi GECMIS talep TIMEOUT olur, GECMEMIS olmaz (her 
         const sonTarih = simdi + kaymaMs;
         const createdMs = sonTarih - sureDk * DK;
         const t = talep({ id, createdAt: iso(createdMs), externalTicketId: String(id) });
-        if (s.pencereDk != null) t.pendingLaunch = { ocoWindowEndIso: iso(createdMs + s.pencereDk * DK) };
+        if (s.pencereDk != null)
+          t.pendingLaunch = { ocoWindowEndIso: iso(createdMs + s.pencereDk * DK) };
         return t;
       };
       const gecmis = kur(1, -20000);
@@ -236,8 +306,14 @@ test('DL9 TEK KAYNAK: son tarihi GECMIS talep TIMEOUT olur, GECMEMIS olmaz (her 
       assert.ok(talepSonTarihi(gelecek, cfg).deadline.getTime() > simdi, `${s.ad}: kurgu bozuk`);
 
       const timeout = await pollerKararlari([gecmis, gelecek]);
-      assert.ok(timeout.has(1), `${s.ad}: son tarihi gecmis talep TIMEOUT yazilmadi - ekran "bitti" derken talep acik kaliyor`);
-      assert.ok(!timeout.has(2), `${s.ad}: son tarihi GELMEMIS talep TIMEOUT oldu - ekran "kaldi" derken talep iptal ediliyor`);
+      assert.ok(
+        timeout.has(1),
+        `${s.ad}: son tarihi gecmis talep TIMEOUT yazilmadi - ekran "bitti" derken talep acik kaliyor`,
+      );
+      assert.ok(
+        !timeout.has(2),
+        `${s.ad}: son tarihi GELMEMIS talep TIMEOUT oldu - ekran "kaldi" derken talep iptal ediliyor`,
+      );
     });
   }
 });
@@ -251,14 +327,33 @@ test('DL9c TIMEOUT mesaji son tarihin KAYNAGINI soyler; okunamayan pencere tick 
   t.mock.method(console, 'log', () => {});
   await withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: '30' }, async () => {
     const eski = iso(Date.now() - 45 * DK); // genel sinir (30 dk) dolmus
-    const bozukPencere = talep({ id: 1, createdAt: eski, externalTicketId: '1', pendingLaunch: { ocoWindowEndIso: 'bozuk' } });
+    const bozukPencere = talep({
+      id: 1,
+      createdAt: eski,
+      externalTicketId: '1',
+      pendingLaunch: { ocoWindowEndIso: 'bozuk' },
+    });
     const genelSinir = talep({ id: 2, createdAt: eski, externalTicketId: '2' });
     const pencereSonu = iso(Date.now() - DK);
-    const ocoSinir = talep({ id: 3, createdAt: eski, externalTicketId: '3', pendingLaunch: { ocoWindowEndIso: pencereSonu } });
+    const ocoSinir = talep({
+      id: 3,
+      createdAt: eski,
+      externalTicketId: '3',
+      pendingLaunch: { ocoWindowEndIso: pencereSonu },
+    });
     const marks = await pollerYazimlari([bozukPencere, genelSinir, ocoSinir]);
-    const mesaj = (id) => (marks.find((m) => m.id === id && m.status === 'TIMEOUT') || {}).errorMessage;
-    assert.match(String(mesaj(1)), /30 dakika icinde Smart onayi alinmadi/, 'bozuk pencereli talep TIMEOUT olmadi / tick koptu');
-    assert.match(String(mesaj(2)), /30 dakika icinde Smart onayi alinmadi/, 'bozuk pencereden SONRAKI talep islenmedi');
+    const mesaj = (id) =>
+      (marks.find((m) => m.id === id && m.status === 'TIMEOUT') || {}).errorMessage;
+    assert.match(
+      String(mesaj(1)),
+      /30 dakika icinde Smart onayi alinmadi/,
+      'bozuk pencereli talep TIMEOUT olmadi / tick koptu',
+    );
+    assert.match(
+      String(mesaj(2)),
+      /30 dakika icinde Smart onayi alinmadi/,
+      'bozuk pencereden SONRAKI talep islenmedi',
+    );
     assert.match(String(mesaj(3)), /Kesinti penceresi/);
     assert.ok(String(mesaj(3)).includes(pencereSonu), 'mesaj pencere sonunu soylemiyor');
   });
@@ -267,7 +362,11 @@ test('DL9c TIMEOUT mesaji son tarihin KAYNAGINI soyler; okunamayan pencere tick 
 test('DL13 ISLEM KURALI (OpsX production 15 dk): genel sinirin yerine gecer; OCO ile ERKEN olan', () => {
   const islem = (pl, cfg = {}) => talepSonTarihi(talep({ pendingLaunch: pl }), cfg);
   // Sinirsiz sistemde de, genel sinir daha uzunken de 15 dk.
-  for (const cfg of [{ ticketTimeoutMinutes: null }, { ticketTimeoutMinutes: 240 }, { ticketTimeoutMinutes: 5 }]) {
+  for (const cfg of [
+    { ticketTimeoutMinutes: null },
+    { ticketTimeoutMinutes: 240 },
+    { ticketTimeoutMinutes: 5 },
+  ]) {
     const r = islem({ onayZamanAsimiDk: 15 }, cfg);
     assert.equal(r.deadlineKaynak, 'islem', `genel=${cfg.ticketTimeoutMinutes}`);
     assert.equal(r.timeoutMinutes, 15);
@@ -282,11 +381,19 @@ test('DL13 ISLEM KURALI (OpsX production 15 dk): genel sinirin yerine gecer; OCO
   assert.equal(gec.deadline.toISOString(), iso(T0 + 15 * DK));
   // Gecersiz deger YOK SAYILIR (eski davranis: genel ya da sinirsiz).
   for (const v of [0, -3, 'x', null, undefined, Infinity]) {
-    assert.equal(islem({ onayZamanAsimiDk: v }, { ticketTimeoutMinutes: 30 }).deadlineKaynak, 'genel', `deger=${String(v)}`);
+    assert.equal(
+      islem({ onayZamanAsimiDk: v }, { ticketTimeoutMinutes: 30 }).deadlineKaynak,
+      'genel',
+      `deger=${String(v)}`,
+    );
     assert.equal(islem({ onayZamanAsimiDk: v }, {}).deadline, null, `deger=${String(v)}`);
   }
   // Okunamayan createdAt: tarih uydurulmaz.
-  assert.equal(talepSonTarihi(talep({ createdAt: 'bozuk', pendingLaunch: { onayZamanAsimiDk: 15 } }), {}).deadline, null);
+  assert.equal(
+    talepSonTarihi(talep({ createdAt: 'bozuk', pendingLaunch: { onayZamanAsimiDk: 15 } }), {})
+      .deadline,
+    null,
+  );
   // Yanit alanlari ayni kaynagi soyler.
   assert.deepEqual(talepSonTarihiAlanlari(talep({ pendingLaunch: { onayZamanAsimiDk: 15 } }), {}), {
     deadline: iso(T0 + 15 * DK),
@@ -300,11 +407,25 @@ test('DL14 ISLEM KURALI poller da: 15 dk dolan talep TIMEOUT (yeni talep acin me
   await withEnv({ ...SMART_ENV, SMART_TICKET_TIMEOUT_MINUTES: undefined }, async () => {
     const simdi = Date.now();
     const pl = { onayZamanAsimiDk: 15 };
-    const dolmus = talep({ id: 1, createdAt: iso(simdi - 15 * DK - 20000), externalTicketId: '1', pendingLaunch: pl });
-    const dolmamis = talep({ id: 2, createdAt: iso(simdi - 15 * DK + 20000), externalTicketId: '2', pendingLaunch: pl });
+    const dolmus = talep({
+      id: 1,
+      createdAt: iso(simdi - 15 * DK - 20000),
+      externalTicketId: '1',
+      pendingLaunch: pl,
+    });
+    const dolmamis = talep({
+      id: 2,
+      createdAt: iso(simdi - 15 * DK + 20000),
+      externalTicketId: '2',
+      pendingLaunch: pl,
+    });
     const marks = await pollerYazimlari([dolmus, dolmamis]);
     const zaman = marks.filter((m) => m.status === 'TIMEOUT');
-    assert.deepEqual(zaman.map((m) => m.id), [1], '15 dk kurali poller da uygulanmiyor');
+    assert.deepEqual(
+      zaman.map((m) => m.id),
+      [1],
+      '15 dk kurali poller da uygulanmiyor',
+    );
     const mesaj = String(zaman[0].errorMessage);
     assert.match(mesaj, /onay suresi 15 dakikadir/);
     // Smart'taki kayit API ile kapatilamiyor: kullaniciya sonradan onayin isi BASLATMAYACAGI soylenir.
@@ -314,17 +435,25 @@ test('DL14 ISLEM KURALI poller da: 15 dk dolan talep TIMEOUT (yeni talep acin me
 });
 
 test('DL9b poller kurali KENDISI hesaplamaz, deadline.cjs i cagirir (ikinci kopya yok)', () => {
-  const kod = fs.readFileSync(path.join(__dirname, '..', 'poller.cjs'), 'utf8')
+  const kod = fs
+    .readFileSync(path.join(__dirname, '..', 'poller.cjs'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
   assert.match(kod, /require\('\.\/deadline\.cjs'\)/, 'poller deadline.cjs i yuklemiyor');
   assert.match(kod, /talepSonTarihi\(ticket, cfg\)/, 'poller son tarih yardimcisini cagirmiyor');
-  assert.doesNotMatch(kod, /Math\.max\(/, 'poller kuralin bir KOPYASINI tasiyor - iki hesap ayrisabilir');
+  assert.doesNotMatch(
+    kod,
+    /Math\.max\(/,
+    'poller kuralin bir KOPYASINI tasiyor - iki hesap ayrisabilir',
+  );
 });
 
 // ── HTTP uclari: runner.cjs'teki GERCEK govde ───────────────────────────────
 
-const RUNNER_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
+const RUNNER_SRC = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'),
+  'utf8',
+);
 
 /**
  * Ucun GERCEK kaydini runner.cjs kaynagindan cikarir (kopyasi degil) ve sahte
@@ -338,14 +467,26 @@ function gercekUc(yol, { store, cfg }) {
   assert.ok(son > bas, `uc sonu bulunamadi: ${yol}`);
   const kod = RUNNER_SRC.slice(bas, son + '\n  });'.length);
   const kayit = {};
-  const app = { get: (p, ...h) => { kayit[p] = h; } };
+  const app = {
+    get: (p, ...h) => {
+      kayit[p] = h;
+    },
+  };
   const sahteRequire = (m) => {
     if (m === '../smart/store.cjs') return store;
     if (m === '../smart/config.cjs') return { getConfig: () => cfg };
     if (m === '../smart/deadline.cjs') return require('../deadline.cjs');
     throw new Error(`beklenmeyen require: ${m}`);
   };
-  new Function('app', 'requireAuth', 'requireAdmin', 'require', 'redactExtraVarsForHistory', 'resolveModuleTagger', kod)(
+  new Function(
+    'app',
+    'requireAuth',
+    'requireAdmin',
+    'require',
+    'redactExtraVarsForHistory',
+    'resolveModuleTagger',
+    kod,
+  )(
     app,
     (_q, _s, n) => n(),
     (_q, _s, n) => n(),
@@ -358,8 +499,14 @@ function gercekUc(yol, { store, cfg }) {
   return async (req) => {
     const out = { kod: 200, govde: null };
     const res = {
-      status(k) { out.kod = k; return this; },
-      json(g) { out.govde = JSON.parse(JSON.stringify(g)); return this; },
+      status(k) {
+        out.kod = k;
+        return this;
+      },
+      json(g) {
+        out.govde = JSON.parse(JSON.stringify(g));
+        return this;
+      },
     };
     await isleyici(req, res);
     return out;
@@ -370,29 +517,51 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function serverNowTaze(g) {
   assert.match(String(g.serverNow), ISO_RE, 'serverNow ISO degil');
-  assert.ok(Math.abs(Date.parse(g.serverNow) - Date.now()) < 5000, 'serverNow yanit anini gostermiyor');
+  assert.ok(
+    Math.abs(Date.parse(g.serverNow) - Date.now()) < 5000,
+    'serverNow yanit anini gostermiyor',
+  );
 }
 
 test('DL10 status ucu: createdAt + deadline + deadlineKaynak + serverNow; mevcut alanlar korunur', async () => {
   const bekleyen = talep({
-    id: 7, username: 'ali', smartStateName: 'Onay Bekliyor', awxJobId: null, awxServerId: 2,
-    errorMessage: null, externalTicketId: 'X-7',
+    id: 7,
+    username: 'ali',
+    smartStateName: 'Onay Bekliyor',
+    awxJobId: null,
+    awxServerId: 2,
+    errorMessage: null,
+    externalTicketId: 'X-7',
     createdAt: new Date(T0), // mssql Date dondurur
     pendingLaunch: { ocoWindowEndIso: iso(T0 + 120 * DK) },
   });
   const kapali = { ...bekleyen, id: 8, status: 'LAUNCHED', awxJobId: 99 };
-  const store = { getTicket: async (id) => ({ 7: bekleyen, 8: kapali }[id] || null) };
-  const uc = gercekUc('/api/ansible/ss/smart-ticket/:id/status', { store, cfg: { ticketTimeoutMinutes: 30 } });
-  const req = (id, user = { username: 'ali', role: 'User' }) => ({ params: { id: String(id) }, session: { user } });
+  const store = { getTicket: async (id) => ({ 7: bekleyen, 8: kapali })[id] || null };
+  const uc = gercekUc('/api/ansible/ss/smart-ticket/:id/status', {
+    store,
+    cfg: { ticketTimeoutMinutes: 30 },
+  });
+  const req = (id, user = { username: 'ali', role: 'User' }) => ({
+    params: { id: String(id) },
+    session: { user },
+  });
 
   let r = await uc(req(7));
   assert.equal(r.kod, 200);
   assert.deepEqual(
     { ...r.govde, serverNow: undefined },
     {
-      ok: true, status: 'PENDING', smartStateName: 'Onay Bekliyor', jobId: null, awxServerId: 2,
-      errorMessage: null, externalTicketId: 'X-7',
-      createdAt: iso(T0), deadline: iso(T0 + 120 * DK), deadlineKaynak: 'oco', serverNow: undefined,
+      ok: true,
+      status: 'PENDING',
+      smartStateName: 'Onay Bekliyor',
+      jobId: null,
+      awxServerId: 2,
+      errorMessage: null,
+      externalTicketId: 'X-7',
+      createdAt: iso(T0),
+      deadline: iso(T0 + 120 * DK),
+      deadlineKaynak: 'oco',
+      serverNow: undefined,
     },
   );
   serverNowTaze(r.govde);
@@ -415,11 +584,24 @@ test('DL11 mine ucu: her talepte deadline/deadlineKaynak, yanit kokunde serverNo
   const liste = [
     talep({ id: 1, status: 'PENDING', createdAt: iso(T0), pendingLaunch: { templateName: 'A' } }),
     talep({ id: 2, status: 'TIMEOUT', createdAt: iso(T0) }),
-    talep({ id: 3, status: 'LAUNCHING', createdAt: iso(T0), pendingLaunch: { ocoWindowEndIso: iso(T0 + 600 * DK) } }),
+    talep({
+      id: 3,
+      status: 'LAUNCHING',
+      createdAt: iso(T0),
+      pendingLaunch: { ocoWindowEndIso: iso(T0 + 600 * DK) },
+    }),
   ];
   let sorulan = null;
-  const store = { listByUsername: async (u) => { sorulan = u; return liste; } };
-  const uc = gercekUc('/api/ansible/ss/smart-tickets/mine', { store, cfg: { ticketTimeoutMinutes: 15 } });
+  const store = {
+    listByUsername: async (u) => {
+      sorulan = u;
+      return liste;
+    },
+  };
+  const uc = gercekUc('/api/ansible/ss/smart-tickets/mine', {
+    store,
+    cfg: { ticketTimeoutMinutes: 15 },
+  });
   const r = await uc({ session: { user: { username: 'ali' } } });
   assert.equal(r.kod, 200);
   assert.equal(sorulan, 'ali');
@@ -441,7 +623,10 @@ test('DL12 all (admin) ucu: her talepte deadline/deadlineKaynak, kokte serverNow
     listAll: async () => ({ total: 2, tickets: liste }),
     statusSummary: async () => ({ PENDING: 1, CANCELLED: 1 }),
   };
-  const uc = gercekUc('/api/ansible/ss/smart-tickets/all', { store, cfg: { ticketTimeoutMinutes: null } });
+  const uc = gercekUc('/api/ansible/ss/smart-tickets/all', {
+    store,
+    cfg: { ticketTimeoutMinutes: null },
+  });
   const r = await uc({ query: {}, session: { user: { username: 'adm', role: 'Admin' } } });
   assert.equal(r.kod, 200);
   assert.equal(r.govde.total, 2);
@@ -453,10 +638,19 @@ test('DL12 all (admin) ucu: her talepte deadline/deadlineKaynak, kokte serverNow
   assert.equal(r.govde.tickets[0].module, 'Self Service', 'mevcut alan bozuldu');
 
   // Genel sinir verilince ayni uc son tarihi doldurur.
-  const uc2 = gercekUc('/api/ansible/ss/smart-tickets/all', { store, cfg: { ticketTimeoutMinutes: 60 } });
+  const uc2 = gercekUc('/api/ansible/ss/smart-tickets/all', {
+    store,
+    cfg: { ticketTimeoutMinutes: 60 },
+  });
   const r2 = await uc2({ query: {}, session: { user: { username: 'adm', role: 'Admin' } } });
-  assert.deepEqual([r2.govde.tickets[0].deadline, r2.govde.tickets[0].deadlineKaynak], [iso(T0 + 60 * DK), 'genel']);
-  assert.deepEqual([r2.govde.tickets[1].deadline, r2.govde.tickets[1].deadlineKaynak], [null, null]);
+  assert.deepEqual(
+    [r2.govde.tickets[0].deadline, r2.govde.tickets[0].deadlineKaynak],
+    [iso(T0 + 60 * DK), 'genel'],
+  );
+  assert.deepEqual(
+    [r2.govde.tickets[1].deadline, r2.govde.tickets[1].deadlineKaynak],
+    [null, null],
+  );
 });
 
 test('D8 sonBaslamaIso oco sinirinin yerine gecer; okunamazsa pencere sonuna duser; yoksa degismez', () => {
@@ -475,6 +669,13 @@ test('D8 sonBaslamaIso oco sinirinin yerine gecer; okunamazsa pencere sonuna dus
   const pl = { pencereBekle: true, ocoWindowStartIso: bas };
   assert.equal(pencereBekliyorMu({ pendingLaunch: pl }, Date.parse(bas) - 1), true);
   assert.equal(pencereBekliyorMu({ pendingLaunch: pl }, Date.parse(bas)), false);
-  assert.equal(pencereBekliyorMu({ pendingLaunch: { ocoWindowStartIso: bas } }, 0), false, 'bayraksiz bilet bekletildi');
-  assert.equal(pencereBekliyorMu({ pendingLaunch: { pencereBekle: true, ocoWindowStartIso: 'x' } }, 0), false);
+  assert.equal(
+    pencereBekliyorMu({ pendingLaunch: { ocoWindowStartIso: bas } }, 0),
+    false,
+    'bayraksiz bilet bekletildi',
+  );
+  assert.equal(
+    pencereBekliyorMu({ pendingLaunch: { pencereBekle: true, ocoWindowStartIso: 'x' } }, 0),
+    false,
+  );
 });

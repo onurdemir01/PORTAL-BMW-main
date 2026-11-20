@@ -39,13 +39,20 @@ function yeniBelirtec() {
 
 // 32 karakter: denetim tablolarindaki session_id NVARCHAR(36) sinirina sigar.
 function kimlik(belirtec) {
-  return KIMLIK_ISARETI + crypto.createHash('sha256').update(String(belirtec)).digest('base64url').slice(0, 31);
+  return (
+    KIMLIK_ISARETI +
+    crypto.createHash('sha256').update(String(belirtec)).digest('base64url').slice(0, 31)
+  );
 }
 
 // express-session'in bekledigi imza (cookie-signature ile ayni algoritma). Yalnizca
 // express-session'in ic denetimini gecmek icin — guvenlik buna DAYANMAZ.
 function imzala(deger, secret) {
-  return `${deger}.${crypto.createHmac('sha256', secret).update(deger).digest('base64').replace(/(?<!=)=+$/, '')}`;
+  return `${deger}.${crypto
+    .createHmac('sha256', secret)
+    .update(deger)
+    .digest('base64')
+    .replace(/(?<!=)=+$/, '')}`;
 }
 
 /** express-session `genid`: yeni oturuma belirtec uretir, kimlik olarak OZETINI verir. */
@@ -84,7 +91,7 @@ function belirtecKatmani({ ad, secret }) {
           const belirtec = ham.slice(ONEK.length);
           const sid = kimlik(belirtec);
           req._oturumBelirtecleri.set(sid, belirtec);
-          parcalar[i] = ` ${ad}=${encodeURIComponent(("s:" + imzala(sid, secret)))}`;
+          parcalar[i] = ` ${ad}=${encodeURIComponent('s:' + imzala(sid, secret))}`;
           degisti = true;
           continue;
         }
@@ -141,4 +148,12 @@ function belirtecKatmani({ ad, secret }) {
   };
 }
 
-module.exports = { belirtecKatmani, kimlikUret, kimlik, yeniBelirtec, imzala, ONEK, KIMLIK_ISARETI };
+module.exports = {
+  belirtecKatmani,
+  kimlikUret,
+  kimlik,
+  yeniBelirtec,
+  imzala,
+  ONEK,
+  KIMLIK_ISARETI,
+};

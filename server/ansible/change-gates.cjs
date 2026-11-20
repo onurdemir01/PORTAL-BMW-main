@@ -41,7 +41,7 @@ function assertHooks(ctx, names) {
   if (missing.length) {
     throw Object.assign(
       new Error(`change-gates: zorunlu fonksiyon(lar) gecilmemis: ${missing.join(', ')}`),
-      { status: 500, code: 'change_gates_missing_hook' }
+      { status: 500, code: 'change_gates_missing_hook' },
     );
   }
 }
@@ -96,8 +96,16 @@ function parseSmartSkipRules(raw) {
 //     launch-ss/ss-test 400 doner, poller yolu hatayi oldugu gibi yukari birakir.
 //     (Burada `onMissingFlowKey` gibi bir parametre YOKTUR.)
 async function openSmartTicket({
-  server, templateId, username, email = '', templateName = '',
-  overrides, extraVars, detail, resolvedLaunchOptions, specFields,
+  server,
+  templateId,
+  username,
+  email = '',
+  templateName = '',
+  overrides,
+  extraVars,
+  detail,
+  resolvedLaunchOptions,
+  specFields,
   pendingLaunchExtras = {},
   buildSmartMetadata,
   auditAction = null,
@@ -119,13 +127,20 @@ async function openSmartTicket({
   // ile reddediyordu; admin artik "Alanlari Getir" ile gercek adlari gorup esleyebiliyor.
   const metadataFieldsRaw = String(overrides.smartApproval.metadataFields || '').trim();
   const metadata = buildSmartMetadata(metadataFieldsRaw, {
-    username, email, templateName, templateId, extraVars,
+    username,
+    email,
+    templateName,
+    templateId,
+    extraVars,
   });
   // Servis bazinda RFF token override'i; bos ise createTicket() global SMART_RFF_TOKEN'a duser.
   const integrationKey = String(overrides.smartApproval.integrationKey || '').trim();
 
   const created = await smartClient.createTicket({
-    flowKey, username, metadata, integrationKey: integrationKey || undefined,
+    flowKey,
+    username,
+    metadata,
+    integrationKey: integrationKey || undefined,
   });
 
   // BURADAN SONRASI KRITIK: Smart bileti DIS SISTEMDE ARTIK ACILDI. Yerel kayit
@@ -141,20 +156,33 @@ async function openSmartTicket({
       awxTemplateId: templateId,
       flowKey,
       pendingLaunch: {
-        detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName,
+        detail,
+        extraVars,
+        resolvedLaunchOptions,
+        specFields,
+        overrides,
+        username,
+        templateName,
         ...pendingLaunchExtras,
       },
     });
   } catch (storeErr) {
     throw Object.assign(
-      new Error(`Smart talebi AÇILDI (kayıt no: ${created.ticketId}) ancak portal kaydı yazılamadı: ${storeErr.message}`),
-      { status: 500, code: 'smart_ticket_store_failed', externalTicketId: created.ticketId }
+      new Error(
+        `Smart talebi AÇILDI (kayıt no: ${created.ticketId}) ancak portal kaydı yazılamadı: ${storeErr.message}`,
+      ),
+      { status: 500, code: 'smart_ticket_store_failed', externalTicketId: created.ticketId },
     );
   }
 
   if (auditAction) {
     require('../audit/index.cjs').auditPortal(req, auditAction, {
-      detail: JSON.stringify({ awxServerId: server.id, templateId, flowKey, ticketId: created.ticketId }),
+      detail: JSON.stringify({
+        awxServerId: server.id,
+        templateId,
+        flowKey,
+        ticketId: created.ticketId,
+      }),
     });
   }
 
@@ -202,7 +230,15 @@ async function openSmartTicket({
 // vermek olurdu.
 function normalizeOcoEnvironments(raw) {
   if (!Array.isArray(raw)) return null; // "liste yok" — politikaya birak
-  return new Set(raw.map((e) => String(e ?? '').trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    raw
+      .map((e) =>
+        String(e ?? '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean),
+  );
 }
 
 function isOcoGateApplicable(overrides, extraVars, gateVars) {
@@ -222,11 +258,23 @@ function isOcoGateApplicable(overrides, extraVars, gateVars) {
 }
 
 async function evaluateOcoGate({
-  server, templateId, username, req,
-  overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
-  ocoNumber: rawOcoNumber, ocoAction: rawOcoAction,
-  createOcoAwxSchedule, friendlyAwxError,
-  preferPortalScheduler, ownerGroups,
+  server,
+  templateId,
+  username,
+  req,
+  overrides,
+  extraVars,
+  gateVars,
+  detail,
+  resolvedLaunchOptions,
+  specFields,
+  templateName,
+  ocoNumber: rawOcoNumber,
+  ocoAction: rawOcoAction,
+  createOcoAwxSchedule,
+  friendlyAwxError,
+  preferPortalScheduler,
+  ownerGroups,
   // Smart bileti artik BU kapida (kesinti saatinde degil, talep aninda) acilabiliyor.
   buildSmartMetadata: ctxBuildSmartMetadata,
   // Admin KENDI isteginde Smart onayini atladi (runChangeGates karar verdi).
@@ -234,7 +282,10 @@ async function evaluateOcoGate({
   // Ertelenen baslatmada AWX degisken yutarsa is iptal edilsin (bkz. runChangeGates).
   yutmaKorumasi = false,
 }) {
-  assertHooks({ createOcoAwxSchedule, friendlyAwxError }, ['createOcoAwxSchedule', 'friendlyAwxError']);
+  assertHooks({ createOcoAwxSchedule, friendlyAwxError }, [
+    'createOcoAwxSchedule',
+    'friendlyAwxError',
+  ]);
   const ocoClient = require('../oco/client.cjs');
   const ocoWindow = require('../oco/window.cjs');
   const ocoStore = require('../oco/store.cjs');
@@ -242,7 +293,15 @@ async function evaluateOcoGate({
 
   const ocoNumber = String(rawOcoNumber || '').trim();
   if (!ocoNumber) {
-    return { outcome: 'error', status: 400, body: { ok: false, ocoRequired: true, message: 'Bu PRODUCTION talebi için OCO numarası gerekli.' } };
+    return {
+      outcome: 'error',
+      status: 400,
+      body: {
+        ok: false,
+        ocoRequired: true,
+        message: 'Bu PRODUCTION talebi için OCO numarası gerekli.',
+      },
+    };
   }
 
   let order;
@@ -250,12 +309,23 @@ async function evaluateOcoGate({
     order = await ocoClient.getChangeOrder(ocoNumber);
   } catch (ocoErr) {
     // status: nginx'in yakaladigi kodlar (404/502/503) 400'e cevrilir - bkz. oco/client httpStatus
-    return { outcome: 'error', status: ocoClient.httpStatus(ocoErr), body: { ok: false, ocoRequired: true, message: ocoErr.message } };
+    return {
+      outcome: 'error',
+      status: ocoClient.httpStatus(ocoErr),
+      body: { ok: false, ocoRequired: true, message: ocoErr.message },
+    };
   }
 
   const pi = ocoWindow.extractPlannedInterruption(order.payload);
   if (!pi?.startDate) {
-    return { outcome: 'error', status: 400, body: { ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti tarihi yok (PlannedStartDate/PlannedEndDate ya da PlannedInterruption) — işlem yapılmadı.` } };
+    return {
+      outcome: 'error',
+      status: 400,
+      body: {
+        ok: false,
+        message: `OCO ${ocoNumber} kaydında planlanan kesinti tarihi yok (PlannedStartDate/PlannedEndDate ya da PlannedInterruption) — işlem yapılmadı.`,
+      },
+    };
   }
   const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
   if (!w.ok) return { outcome: 'error', status: 400, body: { ok: false, message: w.message } };
@@ -273,27 +343,46 @@ async function evaluateOcoGate({
   const ocoInfo = {
     ocoNumber,
     subject: order.result?.OcoWfIdSubject || order.result?.Subject || '',
-    startText: w.startText, endText: w.endText,
-    windowStartText: w.windowStartText, windowEndText: w.windowEndText,
-    equal: w.equal, phase: w.phase,
+    startText: w.startText,
+    endText: w.endText,
+    windowStartText: w.windowStartText,
+    windowEndText: w.windowEndText,
+    equal: w.equal,
+    phase: w.phase,
   };
 
   if (w.phase === 'expired') {
     audit.auditPortal(req, 'selfservice_oco_expired', {
       detail: JSON.stringify({ templateId, ocoNumber, windowEnd: w.windowEndText }),
     });
-    return { outcome: 'error', status: 400, body: { ok: false, ocoExpired: true, oco: ocoInfo, message: w.message } };
+    return {
+      outcome: 'error',
+      status: 400,
+      body: { ok: false, ocoExpired: true, oco: ocoInfo, message: w.message },
+    };
   }
 
   if (w.phase === 'before') {
     const ocoAction = String(rawOcoAction || '').trim();
     if (ocoAction !== 'schedule' && ocoAction !== 'later') {
-      return { outcome: 'error', status: 400, body: { ok: false, ocoDecisionRequired: true, oco: ocoInfo, message: w.message } };
+      return {
+        outcome: 'error',
+        status: 400,
+        body: { ok: false, ocoDecisionRequired: true, oco: ocoInfo, message: w.message },
+      };
     }
     if (ocoAction === 'later') {
       return { outcome: 'respond', body: { ok: true, ocoDeferred: true, oco: ocoInfo } };
     }
-    const pendingLaunch = { detail, extraVars, resolvedLaunchOptions, specFields, overrides, username, templateName };
+    const pendingLaunch = {
+      detail,
+      extraVars,
+      resolvedLaunchOptions,
+      specFields,
+      overrides,
+      username,
+      templateName,
+    };
     // Admin Smart onayini atladiysa zamanlanan plan bunu tasir: pencere saatindeki oynatma
     // (runner.launchOrRequestApproval) ikinci kez onay istemez.
     if (adminAtladi) pendingLaunch.adminSmartAtla = true;
@@ -303,7 +392,8 @@ async function evaluateOcoGate({
     // onaylamak zorunda kaliyordu. Artik Smart bileti HEMEN acilir; onay gelince is
     // pencereye zamanlanir (pencere zaten aciksa hemen calisir). Pencere bilgisi bilete
     // gomulur (oco/window.nextRunAt bunu onay aninda yeniden degerlendirir).
-    pendingLaunch.ocoWindowStartIso = w.windowStart instanceof Date ? w.windowStart.toISOString() : null;
+    pendingLaunch.ocoWindowStartIso =
+      w.windowStart instanceof Date ? w.windowStart.toISOString() : null;
     pendingLaunch.ocoWindowEndIso = w.windowEnd instanceof Date ? w.windowEnd.toISOString() : null;
     pendingLaunch.ocoNumber = ocoNumber;
 
@@ -323,36 +413,66 @@ async function evaluateOcoGate({
       let sched;
       try {
         sched = await createOcoAwxSchedule(server, templateId, detail, {
-          name: schedName, runAt: w.windowStart, extraVars, resolvedLaunchOptions,
+          name: schedName,
+          runAt: w.windowStart,
+          extraVars,
+          resolvedLaunchOptions,
           requester: req?.session?.user,
         });
       } catch (schedErr) {
         const { status, message } = schedErr.status ? schedErr : friendlyAwxError(schedErr);
-        return { outcome: 'error', status: status || 502, body: { ok: false, message: `AWX zamanlaması oluşturulamadı: ${message || schedErr.message}` } };
+        return {
+          outcome: 'error',
+          status: status || 502,
+          body: {
+            ok: false,
+            message: `AWX zamanlaması oluşturulamadı: ${message || schedErr.message}`,
+          },
+        };
       }
       const rec = await ocoStore.createAwxScheduled({
-        username, awxServerId: server.id, awxTemplateId: templateId,
-        ocoNumber, ocoSubject: ocoInfo.subject,
-        runAt: w.windowStart, windowEnd: w.windowEnd,
-        awxScheduleId: sched.scheduleId, pendingLaunch, ownerGroups,
+        username,
+        awxServerId: server.id,
+        awxTemplateId: templateId,
+        ocoNumber,
+        ocoSubject: ocoInfo.subject,
+        runAt: w.windowStart,
+        windowEnd: w.windowEnd,
+        awxScheduleId: sched.scheduleId,
+        pendingLaunch,
+        ownerGroups,
       });
       audit.auditPortal(req, 'selfservice_oco_awx_scheduled', {
-        detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, awxScheduleId: sched.scheduleId, rrule: sched.rrule }),
+        detail: JSON.stringify({
+          templateId,
+          ocoNumber,
+          runAt: w.windowStartText,
+          scheduleId: rec.id,
+          awxScheduleId: sched.scheduleId,
+          rrule: sched.rrule,
+        }),
       });
       return {
         outcome: 'respond',
         body: {
-          ok: true, ocoScheduled: true, scheduleId: rec.id,
-          awxScheduleId: sched.scheduleId, awxScheduleName: sched.scheduleName,
+          ok: true,
+          ocoScheduled: true,
+          scheduleId: rec.id,
+          awxScheduleId: sched.scheduleId,
+          awxScheduleName: sched.scheduleName,
           oco: ocoInfo,
         },
       };
     }
 
     const rec = await ocoStore.create({
-      username, awxServerId: server.id, awxTemplateId: templateId,
-      ocoNumber, ocoSubject: ocoInfo.subject,
-      runAt: w.windowStart, windowEnd: w.windowEnd,
+      username,
+      awxServerId: server.id,
+      awxTemplateId: templateId,
+      ocoNumber,
+      ocoSubject: ocoInfo.subject,
+      runAt: w.windowStart,
+      windowEnd: w.windowEnd,
       pendingLaunch,
       // Gorunurluk icin: kullanici KENDI ve GRUBUNUN kayitlarini gorur.
       ownerGroups,
@@ -364,11 +484,16 @@ async function evaluateOcoGate({
     if (smartAlsoRequired) {
       try {
         const opened = await openSmartTicket({
-          server, templateId, username,
+          server,
+          templateId,
+          username,
           email: req?.session?.user?.mail || '',
-          templateName, overrides,
+          templateName,
+          overrides,
           extraVars: { ...extraVars },
-          detail, resolvedLaunchOptions, specFields,
+          detail,
+          resolvedLaunchOptions,
+          specFields,
           buildSmartMetadata: ctxBuildSmartMetadata,
           auditAction: 'selfservice_smart_ticket_open',
           req,
@@ -378,36 +503,69 @@ async function evaluateOcoGate({
         // burada HICBIR SEY yazmiyordu (2026-10-08 uretim olayi: pencere saatinde ikinci
         // Smart bileti). Dogru gecis + sonuc DENETLENIR. Yazilamazsa OCO zamanlayicisi yine
         // korunur: baslatmadan once bagli bileti bulup benimser (oco/poller.cjs).
-        const yazildi = await ocoStore.markPendingApprovalAtRequest(rec.id, { smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId });
-        if (!yazildi) console.warn(`[OCO] #${rec.id} PENDING_APPROVAL yazilamadi (kayit SCHEDULED degil) - bilet ${opened.externalTicketId}; zamanlayici bileti benimseyecek.`);
+        const yazildi = await ocoStore.markPendingApprovalAtRequest(rec.id, {
+          smartTicketId: opened.ticketId,
+          externalTicketId: opened.externalTicketId,
+        });
+        if (!yazildi)
+          console.warn(
+            `[OCO] #${rec.id} PENDING_APPROVAL yazilamadi (kayit SCHEDULED degil) - bilet ${opened.externalTicketId}; zamanlayici bileti benimseyecek.`,
+          );
         audit.auditPortal(req, 'selfservice_oco_smart_first', {
-          detail: JSON.stringify({ templateId, ocoNumber, scheduleId: rec.id, runAt: w.windowStartText, externalTicketId: opened.externalTicketId }),
+          detail: JSON.stringify({
+            templateId,
+            ocoNumber,
+            scheduleId: rec.id,
+            runAt: w.windowStartText,
+            externalTicketId: opened.externalTicketId,
+          }),
         });
         return {
           outcome: 'respond',
           body: {
-            ok: true, ocoScheduled: true, scheduleId: rec.id,
-            viaSmart: true, viaPortalScheduler: true, smartFirst: true,
-            smartTicketId: opened.ticketId, externalTicketId: opened.externalTicketId,
+            ok: true,
+            ocoScheduled: true,
+            scheduleId: rec.id,
+            viaSmart: true,
+            viaPortalScheduler: true,
+            smartFirst: true,
+            smartTicketId: opened.ticketId,
+            externalTicketId: opened.externalTicketId,
             oco: ocoInfo,
             message: `Smart onay talebi açıldı (${opened.externalTicketId}). Onay verildiğinde iş ${w.windowStartText} kesinti penceresine zamanlanacak; pencere o an açıksa hemen çalışacak.`,
           },
         };
       } catch (smartErr) {
         audit.auditPortal(req, 'selfservice_oco_smart_first_failed', {
-          detail: JSON.stringify({ templateId, ocoNumber, scheduleId: rec.id, error: smartErr.message }),
+          detail: JSON.stringify({
+            templateId,
+            ocoNumber,
+            scheduleId: rec.id,
+            error: smartErr.message,
+          }),
         });
-        console.warn('[OCO] Smart bileti simdi acilamadi, kesinti saatinde denenecek:', smartErr.message);
+        console.warn(
+          '[OCO] Smart bileti simdi acilamadi, kesinti saatinde denenecek:',
+          smartErr.message,
+        );
       }
     }
 
     audit.auditPortal(req, 'selfservice_oco_scheduled', {
-      detail: JSON.stringify({ templateId, ocoNumber, runAt: w.windowStartText, scheduleId: rec.id, viaPortalPoller: true }),
+      detail: JSON.stringify({
+        templateId,
+        ocoNumber,
+        runAt: w.windowStartText,
+        scheduleId: rec.id,
+        viaPortalPoller: true,
+      }),
     });
     return {
       outcome: 'respond',
       body: {
-        ok: true, ocoScheduled: true, scheduleId: rec.id,
+        ok: true,
+        ocoScheduled: true,
+        scheduleId: rec.id,
         // `viaSmart` ADI YANILTICIYDI: bu dal artik yalnizca "SMART da gerekiyor"
         // diye degil, cagiran PORTAL zamanlayicisini istedigi icin de secilebiliyor.
         viaSmart: smartAlsoRequired,
@@ -419,7 +577,11 @@ async function evaluateOcoGate({
 
   // phase === 'inside': pencere acik, akis normal devam eder (Smart onayi varsa o devreye girer).
   audit.auditPortal(req, 'selfservice_oco_ok', {
-    detail: JSON.stringify({ templateId, ocoNumber, window: `${w.windowStartText} - ${w.windowEndText}` }),
+    detail: JSON.stringify({
+      templateId,
+      ocoNumber,
+      window: `${w.windowStartText} - ${w.windowEndText}`,
+    }),
   });
   // PENCERE ACIK OLSA DA SINIRI TASI (2026-10-06). `ocoWindowStartIso/EndIso` eskiden
   // YALNIZCA 'before' dalinda pakete giriyordu. Oysa Smart biletinin sure sinirini
@@ -452,10 +614,22 @@ async function evaluateOcoGate({
 async function runChangeGates(ctx) {
   assertHooks(ctx, ['createOcoAwxSchedule', 'friendlyAwxError', 'buildSmartMetadata']);
   const {
-    server, templateId, username, req,
-    overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
-    ocoNumber, ocoAction,
-    createOcoAwxSchedule, friendlyAwxError, buildSmartMetadata,
+    server,
+    templateId,
+    username,
+    req,
+    overrides,
+    extraVars,
+    gateVars,
+    detail,
+    resolvedLaunchOptions,
+    specFields,
+    templateName,
+    ocoNumber,
+    ocoAction,
+    createOcoAwxSchedule,
+    friendlyAwxError,
+    buildSmartMetadata,
     smartAuditAction = 'selfservice_smart_ticket_open',
     // ZAMANLAMA NEREDE TUTULSUN (2026-09-20): varsayilan AWX-native, ama cagiran
     // PORTAL zamanlayicisini zorlayabilir. ScaleX bunu kullaniyor — istenen sey
@@ -482,15 +656,36 @@ async function runChangeGates(ctx) {
   // atlanir; OCO kapisi asagida AYNEN calisir. Karar BIR KEZ verilir ve OCO zamanlamasina da
   // tasinir (zamanlanan is pencere saatinde ikinci kez onay istemesin).
   const smartGerekli = isSmartRequired(overrides.smartApproval, gateVars);
-  const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
-  if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, smartAuditAction, { templateId, templateName });
+  const adminAtladi =
+    smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+  if (adminAtladi)
+    require('./admin-smart-atla.cjs').atlamayiDenetle(req, smartAuditAction, {
+      templateId,
+      templateName,
+    });
 
   if (isOcoGateApplicable(overrides, extraVars, gateVars)) {
     const ocoDecision = await evaluateOcoGate({
-      server, templateId, username, req,
-      overrides, extraVars, gateVars, detail, resolvedLaunchOptions, specFields, templateName,
-      ocoNumber, ocoAction, createOcoAwxSchedule, friendlyAwxError,
-      preferPortalScheduler, ownerGroups, buildSmartMetadata, adminAtladi, yutmaKorumasi,
+      server,
+      templateId,
+      username,
+      req,
+      overrides,
+      extraVars,
+      gateVars,
+      detail,
+      resolvedLaunchOptions,
+      specFields,
+      templateName,
+      ocoNumber,
+      ocoAction,
+      createOcoAwxSchedule,
+      friendlyAwxError,
+      preferPortalScheduler,
+      ownerGroups,
+      buildSmartMetadata,
+      adminAtladi,
+      yutmaKorumasi,
     });
     if (ocoDecision.outcome !== 'proceed') return ocoDecision;
     // Kapi 'proceed' derken de bilgi tasiyabilir: pencere ACIK dalinda kesinti penceresi
@@ -504,24 +699,55 @@ async function runChangeGates(ctx) {
   let opened;
   try {
     opened = await openSmartTicket({
-      server, templateId, username,
+      server,
+      templateId,
+      username,
       email: req?.session?.user?.mail || '',
-      templateName, overrides, extraVars, detail, resolvedLaunchOptions, specFields,
-      pendingLaunchExtras: yutmaKorumasi ? { ...smartPendingExtras, yutmaKorumasi: true } : smartPendingExtras,
-      buildSmartMetadata, auditAction: smartAuditAction, req,
+      templateName,
+      overrides,
+      extraVars,
+      detail,
+      resolvedLaunchOptions,
+      specFields,
+      pendingLaunchExtras: yutmaKorumasi
+        ? { ...smartPendingExtras, yutmaKorumasi: true }
+        : smartPendingExtras,
+      buildSmartMetadata,
+      auditAction: smartAuditAction,
+      req,
     });
   } catch (smartErr) {
     if (smartErr.code === 'smart_flow_key_missing') {
-      return { outcome: 'error', status: 400, body: { ok: false, message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.' } };
+      return {
+        outcome: 'error',
+        status: 400,
+        body: {
+          ok: false,
+          message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.',
+        },
+      };
     }
     if (smartErr.code === 'smart_ticket_store_failed') {
-      return { outcome: 'error', status: smartErr.status || 500, body: { ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId } };
+      return {
+        outcome: 'error',
+        status: smartErr.status || 500,
+        body: { ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId },
+      };
     }
-    return { outcome: 'error', status: smartErr.status || 502, body: { ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` } };
+    return {
+      outcome: 'error',
+      status: smartErr.status || 502,
+      body: { ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` },
+    };
   }
   return {
     outcome: 'respond',
-    body: { ok: true, pendingApproval: true, ticketId: opened.ticketId, externalTicketId: opened.externalTicketId },
+    body: {
+      ok: true,
+      pendingApproval: true,
+      ticketId: opened.ticketId,
+      externalTicketId: opened.externalTicketId,
+    },
   };
 }
 

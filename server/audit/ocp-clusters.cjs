@@ -58,7 +58,11 @@ function envClustersResmi(apps, envs, resmi, gorulen) {
   const kaynak = {};
   for (const e of envs) {
     const liste = resmi && resmi[e];
-    if (!liste || !liste.length) { kumeler[e] = veri[e]; kaynak[e] = 'veri'; continue; }
+    if (!liste || !liste.length) {
+      kumeler[e] = veri[e];
+      kaynak[e] = 'veri';
+      continue;
+    }
     const sayi = new Map((veri[e] || []).map((x) => [x.cluster.toLowerCase(), x.apps]));
     const resmiSet = new Set(liste.map((c) => c.toLowerCase()));
     kumeler[e] = [
@@ -69,7 +73,9 @@ function envClustersResmi(apps, envs, resmi, gorulen) {
         apps: sayi.get(c.toLowerCase()) || 0,
         ...(gorulen && !gorulen.has(c.toLowerCase()) ? { veriYok: true } : {}),
       })),
-      ...(veri[e] || []).filter((x) => !resmiSet.has(x.cluster.toLowerCase())).map((x) => ({ ...x, beklenmeyen: true })),
+      ...(veri[e] || [])
+        .filter((x) => !resmiSet.has(x.cluster.toLowerCase()))
+        .map((x) => ({ ...x, beklenmeyen: true })),
     ];
     kaynak[e] = 'resmi';
   }

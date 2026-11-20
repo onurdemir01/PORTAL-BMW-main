@@ -138,8 +138,15 @@ function birlestir(onbellekMetni, gelen) {
 }
 
 module.exports = {
-  al, yaz, sil, birlestir, baslangicSatiri,
+  al,
+  yaz,
+  sil,
+  birlestir,
+  baslangicSatiri,
   BINDIRME,
-  MAX_BYTES_PER_JOB, MAX_ENTRIES, TTL_MS,
-  _durum, _sifirla,
+  MAX_BYTES_PER_JOB,
+  MAX_ENTRIES,
+  TTL_MS,
+  _durum,
+  _sifirla,
 };

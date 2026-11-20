@@ -10,7 +10,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@/test/test-utils';
 
-const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+const toastMock = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock('@/hooks/useToast', () => ({ toast: toastMock }));
 const api = vi.hoisted(() => ({
   smartTicketsAll: vi.fn(),
@@ -96,7 +101,11 @@ describe('Admin > Smart Talepleri yeniden tetikleme', () => {
     const onceki = api.smartTicketsAll.mock.calls.length;
     fireEvent.click(tetikle());
     await waitFor(() => expect(api.smartTicketRetrigger).toHaveBeenCalled());
-    expect(api.smartTicketRetrigger).toHaveBeenCalledWith(329, { note: NOT, mode: 'oco', ocoNumber: '23800001' });
+    expect(api.smartTicketRetrigger).toHaveBeenCalledWith(329, {
+      note: NOT,
+      mode: 'oco',
+      ocoNumber: '23800001',
+    });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.smartTicketsAll.mock.calls.length).toBe(onceki + 1);
   });
@@ -123,7 +132,11 @@ describe('Admin > Smart Talepleri yeniden tetikleme', () => {
 
   it('YT4 Smart reddettiyse form yok, tetiklenemez', async () => {
     api.smartTicketRetriggerCheck.mockResolvedValue(
-      kontrol({ durum: 'reddedildi', engel: true, message: 'Smart kaydı REDDEDİLMİŞ; iş tetiklenmez.' }),
+      kontrol({
+        durum: 'reddedildi',
+        engel: true,
+        message: 'Smart kaydı REDDEDİLMİŞ; iş tetiklenmez.',
+      }),
     );
     await modaliAc();
     expect((await screen.findByTestId('ss-retrigger-smart')).textContent).toContain('REDDEDİLMİŞ');
@@ -152,7 +165,10 @@ describe('Admin > Smart Talepleri yeniden tetikleme', () => {
   });
 
   it('YT6 kontrol basarisiz: hata, form yok', async () => {
-    api.smartTicketRetriggerCheck.mockResolvedValue({ ok: false, message: 'Bu talep bir ScaleX işlemine bağlı' });
+    api.smartTicketRetriggerCheck.mockResolvedValue({
+      ok: false,
+      message: 'Bu talep bir ScaleX işlemine bağlı',
+    });
     await modaliAc();
     expect((await screen.findByTestId('ss-retrigger-hata')).textContent).toContain('ScaleX');
     expect(screen.queryByLabelText(/Gerekçe/)).toBeNull();
@@ -164,7 +180,13 @@ describe('Admin > Smart Talepleri yeniden tetikleme', () => {
       ...kontrol({ durum: 'onayli' }),
       oco: { kapsamli: false, ocoNumber: null, windowStartIso: null, windowEndIso: null },
     });
-    api.smartTicketRetrigger.mockResolvedValue({ ok: true, warning: true, status: 'LAUNCHED', jobId: 4, message: 'kayıt güncellenemedi' });
+    api.smartTicketRetrigger.mockResolvedValue({
+      ok: true,
+      warning: true,
+      status: 'LAUNCHED',
+      jobId: 4,
+      message: 'kayıt güncellenemedi',
+    });
     await modaliAc();
     await screen.findByTestId('ss-retrigger-smart');
     fireEvent.change(screen.getByLabelText(/Gerekçe/), { target: { value: NOT } });

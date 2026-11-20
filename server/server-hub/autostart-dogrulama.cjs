@@ -48,19 +48,30 @@ const XML_KAPAT_EYLEMI = 'jboss_autostart_xml_off';
 const XML_KAPAT_MAX = 200;
 /** Eylemin yazdigi auto-start degeri ('true' | 'false'); auto-start eylemi degilse null. */
 const hedefOf = (action) =>
-  action === 'jboss_autostart_on' ? 'true' : action === 'jboss_autostart_off' || action === XML_KAPAT_EYLEMI ? 'false' : null;
+  action === 'jboss_autostart_on'
+    ? 'true'
+    : action === 'jboss_autostart_off' || action === XML_KAPAT_EYLEMI
+      ? 'false'
+      : null;
 
 /** RESULT\t<action>\t<OK|SKIP|FAIL|PLAN>\t<mesaj> -> { action, durum, mesaj } ya da null. */
 function sonucSatiri(line) {
   const p = String(line || '').split('\t');
   if (p[0] !== 'RESULT' || p.length < 3) return null;
-  return { action: p[1] || '', durum: String(p[2] || '').toUpperCase(), mesaj: p.slice(3).join(' ').trim() };
+  return {
+    action: p[1] || '',
+    durum: String(p[2] || '').toUpperCase(),
+    mesaj: p.slice(3).join(' ').trim(),
+  };
 }
 
 const dogruMu = (v) => v === true || String(v).toLowerCase() === 'true';
 const sayiMi = (x) => typeof x === 'number' && Number.isFinite(x);
 const LISTE_EYLEMI = 'jboss_autostart_items';
-const jvmAnahtari = (gen, jvm) => `${Number(gen)}|${String(jvm || '').trim().toLowerCase()}`;
+const jvmAnahtari = (gen, jvm) =>
+  `${Number(gen)}|${String(jvm || '')
+    .trim()
+    .toLowerCase()}`;
 
 /**
  * Toplu (liste kipi) isin set_stats sonucunu ogelere esler. items: [{gen, jvm, action}].
@@ -69,12 +80,14 @@ const jvmAnahtari = (gen, jvm) => `${Number(gen)}|${String(jvm || '').trim().toL
  */
 function ogeSonuclari(items, result) {
   const r = result && typeof result === 'object' ? result : null;
-  const listeMi = !!r && (r.action === LISTE_EYLEMI || r.action === XML_KAPAT_EYLEMI) && Array.isArray(r.items);
+  const listeMi =
+    !!r && (r.action === LISTE_EYLEMI || r.action === XML_KAPAT_EYLEMI) && Array.isArray(r.items);
   const plan = !r || dogruMu(r.plan_only);
   const satirlar = new Map();
   if (listeMi)
     for (const x of r.items)
-      if (x && typeof x === 'object') satirlar.set(`${jvmAnahtari(x.gen, x.jvm)}|${String(x.action || '')}`, x);
+      if (x && typeof x === 'object')
+        satirlar.set(`${jvmAnahtari(x.gen, x.jvm)}|${String(x.action || '')}`, x);
   return (items || []).map((m) => {
     const x = satirlar.get(`${jvmAnahtari(m.gen, m.jvm)}|${m.action}`);
     const s = x ? sonucSatiri(x.line) : null;
@@ -115,7 +128,10 @@ function sunucuYazmaKapisi(a, h, host) {
  */
 function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
   if (!j)
-    return { status: 400, message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.` };
+    return {
+      status: 400,
+      message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.`,
+    };
   // YALNIZ ENVANTERDE (2026-11-14): MWAppsInventory satiri, taramada JVM'i yok (gen 0). Playbook'un
   // degistirecegi bir JVM tanimi bilinmiyor: is ACILMAZ.
   if (j.yalnizEnvanter === true || j.source === 'envanter')
@@ -165,7 +181,10 @@ function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
  */
 function xmlKapatKapisi(j, { host, jvm, gen }) {
   if (!j)
-    return { status: 400, message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin; iş açılmadı.` };
+    return {
+      status: 400,
+      message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin; iş açılmadı.`,
+    };
   if (j.yalnizEnvanter === true || j.source === 'envanter')
     return {
       status: 400,
@@ -179,7 +198,10 @@ function xmlKapatKapisi(j, { host, jvm, gen }) {
   // Inceleme 2026-11-15 (F6): arayuz (xmlKapatilabilir) gibi KAYNAKTAN BAGIMSIZ - tanim kaynaginda olmayan JVM'in
   // host XML'de degistirilecek <server> tanimi yoktur (betik de 'tanimli degil' FAIL verirdi).
   if (String(j.cfgSrc || '').toUpperCase() === 'UNAVAILABLE')
-    return { status: 400, message: `${jvm} (JBoss ${gen}) tanım kaynağında yok — host XML'de değiştirilecek tanım yok; iş açılmadı.` };
+    return {
+      status: 400,
+      message: `${jvm} (JBoss ${gen}) tanım kaynağında yok — host XML'de değiştirilecek tanım yok; iş açılmadı.`,
+    };
   if (j.runningKnown === false)
     return {
       status: 400,
@@ -196,7 +218,10 @@ function xmlKapatKapisi(j, { host, jvm, gen }) {
       message: `${jvm} zaten auto-start KAPALI görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
     };
   if (j.autoStart !== 'true')
-    return { status: 400, message: `${jvm} auto-start değeri taramada bilinmiyor — host XML yolu açılmaz; iş açılmadı.` };
+    return {
+      status: 400,
+      message: `${jvm} auto-start değeri taramada bilinmiyor — host XML yolu açılmaz; iş açılmadı.`,
+    };
   return null;
 }
 
@@ -211,7 +236,9 @@ function kur({ simdi = Date.now } = {}) {
   const rezerveXml = new Set();
   const xmlAnahtar = (host, gen) => `${String(host || '').toUpperCase()}|${Number(gen)}`;
   const anahtar = (host, gen, jvm) =>
-    `${String(host || '').toUpperCase()}|${Number(gen)}|${String(jvm || '').trim().toLowerCase()}`;
+    `${String(host || '').toUpperCase()}|${Number(gen)}|${String(jvm || '')
+      .trim()
+      .toLowerCase()}`;
   const sinirla = (m, max) => {
     while (m.size > max) m.delete(m.keys().next().value);
   };
@@ -282,7 +309,13 @@ function kur({ simdi = Date.now } = {}) {
       !!s &&
       s.action === m.action &&
       (s.durum === 'OK' || s.durum === 'SKIP');
-    if (!tamam) return { kayitli: true, dogrulandi: false, durum: s ? s.durum : null, mesaj: s ? s.mesaj : '' };
+    if (!tamam)
+      return {
+        kayitli: true,
+        dogrulandi: false,
+        durum: s ? s.durum : null,
+        mesaj: s ? s.mesaj : '',
+      };
     dogrulandiYaz(m.host, m.gen, m.jvm, m.hedef, jobId, m.scanDate, m.loadedAt);
     return { kayitli: true, dogrulandi: true, deger: m.hedef, durum: s.durum, mesaj: s.mesaj };
   }
@@ -333,7 +366,12 @@ function kur({ simdi = Date.now } = {}) {
     const d = gecerli(h, { gen: f.fix.gen, name: f.fix.jvm });
     const hedef = f.fix.action === 'jboss_autostart_on' ? 'true' : 'false';
     if (!d || d.autoStart !== hedef) return f;
-    return { ...f, fix: null, ...('fixable' in f ? { fixable: false } : {}), autoStartDogrulama: dogrulamaBilgisi(d) };
+    return {
+      ...f,
+      fix: null,
+      ...('fixable' in f ? { fixable: false } : {}),
+      autoStartDogrulama: dogrulamaBilgisi(d),
+    };
   }
 
   /**
@@ -386,7 +424,9 @@ function kur({ simdi = Date.now } = {}) {
   function xmlSurenIs(host, gen) {
     const ak = xmlAnahtar(host, gen);
     for (const [k, t] of topluIsler) {
-      const o = t.items.find((x) => x.action === XML_KAPAT_EYLEMI && xmlAnahtar(t.host, x.gen) === ak);
+      const o = t.items.find(
+        (x) => x.action === XML_KAPAT_EYLEMI && xmlAnahtar(t.host, x.gen) === ak,
+      );
       if (!o) continue;
       const [serverId, jobId] = k.split(':').map(Number);
       return { serverId, jobId, jvm: o.jvm };
@@ -420,7 +460,13 @@ function kur({ simdi = Date.now } = {}) {
     rezervasyon,
     xmlSurenIs,
     xmlRezervasyon,
-    _boyut: () => ({ isler: isler.size, topluIsler: topluIsler.size, dogrulanan: dogrulanan.size, rezerve: rezerve.size, rezerveXml: rezerveXml.size }),
+    _boyut: () => ({
+      isler: isler.size,
+      topluIsler: topluIsler.size,
+      dogrulanan: dogrulanan.size,
+      rezerve: rezerve.size,
+      rezerveXml: rezerveXml.size,
+    }),
   };
 }
 

@@ -60,7 +60,10 @@ test('G13: kirpilmis hash KOPYALANABILIR', () => {
   // sonunda durup bekciyi kirmisti.
   // 2026-11-14: Init referansi ekip surumu olabilir; refHashOf(sc) yoksa cogunluga duser.
   assert.match(src.replace(/\s+/g, ' '), /<CodeChip value=\{refHashOf\(sc\)\}[^>]*copyable/);
-  assert.match(src, /return sc\.referenceHash \|\| sc\.referenceNorm \|\| sc\.majorityHash \|\| '';/);
+  assert.match(
+    src,
+    /return sc\.referenceHash \|\| sc\.referenceNorm \|\| sc\.majorityHash \|\| '';/,
+  );
 });
 
 // ── G2/G3: eylem hiyerarsisi ────────────────────────────────────────────────
@@ -93,7 +96,10 @@ test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
   // (sonuclanmis) talebi olan HERKESTE yoklamayi durduruyordu; yeni Smart talebi panele sayfa
   // yenilenmeden gelmiyordu. Yoklama HER ZAMAN calisir, hicbir erken cikis olmaz.
   assert.ok(!/if \(collapsed\) return;/.test(src), 'kendini kilitleyen guard duruyor');
-  assert.ok(!/tickets\.length > 0\) return;/.test(src), 'eski talebi olan kullanicida yoklama duruyor');
+  assert.ok(
+    !/tickets\.length > 0\) return;/.test(src),
+    'eski talebi olan kullanicida yoklama duruyor',
+  );
   assert.ok(!/if \(userPref === true\) return;/.test(src), 'daraltilmis panel (rozet) yoklanmiyor');
   assert.match(src, /setInterval\(\(\) => \{[^}]*load\(\);/, 'periyodik yoklama yok');
   assert.match(src, /addEventListener\(["']visibilitychange["']/, 'sekmeye donunce tazeleme yok');
@@ -277,10 +283,12 @@ test('G28: sabit sutunlu ozet kutusu izgarasinda yetim kutu yok', () => {
       let kutu = 0;
       for (let j = i + 1; j < satirlar.length && !satirlar[j].startsWith(m[1] + '</div>'); j++) {
         if (satirlar[j].includes('.map(')) return;
-        if (satirlar[j].startsWith(ic + '<') && /^<Stat\b/.test(satirlar[j].slice(ic.length))) kutu++;
+        if (satirlar[j].startsWith(ic + '<') && /^<Stat\b/.test(satirlar[j].slice(ic.length)))
+          kutu++;
       }
       const en = Math.max(...sutun);
-      if (kutu > en && kutu % en !== 0) bad.push(`${path.relative(ROOT, f)}:${i + 1} (${kutu} kutu, ${en} sutun)`);
+      if (kutu > en && kutu % en !== 0)
+        bad.push(`${path.relative(ROOT, f)}:${i + 1} (${kutu} kutu, ${en} sutun)`);
     });
   }
   assert.deepEqual(bad, []);

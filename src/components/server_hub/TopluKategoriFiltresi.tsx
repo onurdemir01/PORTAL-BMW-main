@@ -32,7 +32,9 @@ export function TopluKategoriFiltresi({
   return (
     <div className="space-y-1" role="group" aria-label="Başarısız öğe kategorileri">
       <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-        <span style={{ color: 'var(--text-muted)' }}>Başarısız / düşen / atlanan {fmtNumber(toplam)}:</span>
+        <span style={{ color: 'var(--text-muted)' }}>
+          Başarısız / düşen / atlanan {fmtNumber(toplam)}:
+        </span>
         <button
           type="button"
           className="px-2 py-0.5 rounded-full border"
@@ -56,7 +58,11 @@ export function TopluKategoriFiltresi({
         ))}
       </div>
       {etkin && (
-        <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }} data-testid="kategori-ne-yapilir">
+        <div
+          className="text-[11px]"
+          style={{ color: 'var(--text-secondary)' }}
+          data-testid="kategori-ne-yapilir"
+        >
           Ne yapılır: {KATEGORI[etkin].ne}
         </div>
       )}

@@ -47,7 +47,12 @@ describe('useOnaySonrasiTakip', () => {
     durum.mockResolvedValue({ ok: true, status: 'REJECTED', errorMessage: 'Onaylayan reddetti' });
     const basladi = vi.fn();
     const { result } = renderHook(() => useOnaySonrasiTakip(78, basladi, HIZLI));
-    await waitFor(() => expect(result.current.talepSonu).toEqual({ status: 'REJECTED', errorMessage: 'Onaylayan reddetti' }));
+    await waitFor(() =>
+      expect(result.current.talepSonu).toEqual({
+        status: 'REJECTED',
+        errorMessage: 'Onaylayan reddetti',
+      }),
+    );
     expect(basladi).not.toHaveBeenCalled();
   });
 
@@ -125,11 +130,21 @@ describe('useOnaySonrasiTakip', () => {
       });
     // Sihirbazdaki satirin aynisi (OS7 kaynak iddiasi asagida bunu sabitler).
     function Bekleme({ id }: { id: number }) {
-      const { sonDurum: talepDurumu, sonDurumAlindiMs: talepDurumuAlindiMs } = useOnaySonrasiTakip(id, vi.fn(), {
-        ilkMs: 5,
-        aralikMs: 300,
-      });
-      return <SmartTalepSayaci talep={talepDurumu} serverNow={talepDurumu?.serverNow} alindiMs={talepDurumuAlindiMs} />;
+      const { sonDurum: talepDurumu, sonDurumAlindiMs: talepDurumuAlindiMs } = useOnaySonrasiTakip(
+        id,
+        vi.fn(),
+        {
+          ilkMs: 5,
+          aralikMs: 300,
+        },
+      );
+      return (
+        <SmartTalepSayaci
+          talep={talepDurumu}
+          serverNow={talepDurumu?.serverNow}
+          alindiMs={talepDurumuAlindiMs}
+        />
+      );
     }
     render(<Bekleme id={82} />);
     expect(screen.queryByRole('timer')).toBeNull(); // ilk yanit gelmeden cizilmez
@@ -146,7 +161,10 @@ describe('useOnaySonrasiTakip', () => {
     expect(s).toMatch(
       /sonDurum: talepDurumu,\s*sonDurumAlindiMs: talepDurumuAlindiMs,?\s*\} = useOnaySonrasiTakip\(bekleyenTalep,/,
     );
-    const bekleme = s.slice(s.indexOf('Onay bekleniyor — iş henüz başlamadı.'), s.indexOf('<KapamaOnayiUyarisi smartNo='));
+    const bekleme = s.slice(
+      s.indexOf('Onay bekleniyor — iş henüz başlamadı.'),
+      s.indexOf('<KapamaOnayiUyarisi smartNo='),
+    );
     expect(bekleme).toMatch(
       /<SmartTalepSayaci\s+talep=\{talepDurumu\}\s+serverNow=\{talepDurumu\?\.serverNow\}\s+alindiMs=\{talepDurumuAlindiMs\}/,
     );

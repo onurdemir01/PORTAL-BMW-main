@@ -3,9 +3,9 @@
 // Test ortamındaki bir API tanımını, internete açık sunucuya (varsayılan GBNGXT07)
 // kopyalayan AWX job'ını tetikler. Arkasındaki playbook:
 //   gar_bmt_ansible_scripts/bmw_nginx/api_expose/api_expose.yml
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/nginx-expose";
+const BASE = '/api/nginx-expose';
 
 export interface NginxExposeLocation {
   path: string;
@@ -49,15 +49,15 @@ export const nginxExposeApi = {
 
   open: (api: string, sourceHost: string): Promise<NginxExposeLaunchResult> =>
     fetch(`${BASE}/open`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ api, sourceHost }),
     }).then(safeJson),
 
   saveConfig: (cfg: NginxExposeConfig): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cfg),
     }).then(safeJson),
 };

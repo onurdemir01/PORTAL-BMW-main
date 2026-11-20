@@ -20,8 +20,8 @@
 const db = require('../db/index.cjs');
 const { getRequestUser, oturumYok } = require('./utils.cjs');
 
-let _version = 1;         // her yazimda artar — istemci bunu izler
-let _cache = null;        // { elements, rules } anlik goruntusu
+let _version = 1; // her yazimda artar — istemci bunu izler
+let _cache = null; // { elements, rules } anlik goruntusu
 let _cacheAt = 0;
 const CACHE_TTL_MS = 15000;
 
@@ -33,21 +33,21 @@ const CACHE_TTL_MS = 15000;
 // (PageVisibilityTab element-bazli motoru kullanir) ve `canViewPage` bunu okumaz. Yeni
 // sayfalar eklendiginde yine de senkron tutulur ki eski istemci/probe yollari sasmasin.
 const DEFAULT_VISIBILITY = {
-  "Dashboard":    ["Admin", "User"],
-  "Envanter":     ["Admin"],
-  "Denetim":      ["Admin"],
-  "LogX":         ["Admin", "User"],
-  "Self Service": ["Admin", "User"],
-  "Ansible":      ["Admin"],
-  "OpsX":         ["Admin", "User"],
-  "FileX":        ["Admin", "User"],
-  "Telnet":       ["Admin", "User"],
-  "ScaleX":       ["Admin", "User"],
-  "Performance":  ["Admin", "User"],
-  "AI Analist":   ["Admin", "User"],
-  "Nöbet":        ["Admin", "User"],
-  "Linkler":      ["Admin", "User"],
-  "Admin":        ["Admin"],
+  Dashboard: ['Admin', 'User'],
+  Envanter: ['Admin'],
+  Denetim: ['Admin'],
+  LogX: ['Admin', 'User'],
+  'Self Service': ['Admin', 'User'],
+  Ansible: ['Admin'],
+  OpsX: ['Admin', 'User'],
+  FileX: ['Admin', 'User'],
+  Telnet: ['Admin', 'User'],
+  ScaleX: ['Admin', 'User'],
+  Performance: ['Admin', 'User'],
+  'AI Analist': ['Admin', 'User'],
+  Nöbet: ['Admin', 'User'],
+  Linkler: ['Admin', 'User'],
+  Admin: ['Admin'],
 };
 
 async function readVisibility() {
@@ -55,9 +55,15 @@ async function readVisibility() {
     const { rows } = await db.query(`SELECT page_name, roles FROM page_visibility`);
     if (rows.length === 0) return { ...DEFAULT_VISIBILITY };
     const map = {};
-    for (const r of rows) map[r.page_name] = String(r.roles).split(",").map((s) => s.trim()).filter(Boolean);
+    for (const r of rows)
+      map[r.page_name] = String(r.roles)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     return map;
-  } catch { return { ...DEFAULT_VISIBILITY }; }
+  } catch {
+    return { ...DEFAULT_VISIBILITY };
+  }
 }
 
 // Ayni UPDATE-once → 0 satir ise INSERT deseni — 11 sayfa icin 22 sorgu yerine yaygin
@@ -70,11 +76,17 @@ async function readVisibility() {
 async function writeVisibility(data) {
   const failed = [];
   for (const [pageName, roles] of Object.entries(data)) {
-    const rolesStr = Array.isArray(roles) ? roles.join(",") : String(roles);
+    const rolesStr = Array.isArray(roles) ? roles.join(',') : String(roles);
     try {
-      const upd = await db.query(`UPDATE page_visibility SET roles = $1, updated_at = GETUTCDATE() WHERE page_name = $2`, [rolesStr, pageName]);
+      const upd = await db.query(
+        `UPDATE page_visibility SET roles = $1, updated_at = GETUTCDATE() WHERE page_name = $2`,
+        [rolesStr, pageName],
+      );
       if (!upd.rowCount) {
-        await db.query(`INSERT INTO page_visibility (page_name, roles) VALUES ($1, $2)`, [pageName, rolesStr]);
+        await db.query(`INSERT INTO page_visibility (page_name, roles) VALUES ($1, $2)`, [
+          pageName,
+          rolesStr,
+        ]);
       }
     } catch (err) {
       console.warn(`[visibility] '${pageName}' gorunurlugu kaydedilemedi:`, err.message);
@@ -84,23 +96,35 @@ async function writeVisibility(data) {
   return { ok: failed.length === 0, failed };
 }
 
-function getVersion() { return _version; }
+function getVersion() {
+  return _version;
+}
 
 // Admin bir gorunurluk/element degisikligi yaptiginda cagrilir — cache'i dusurur + versiyon++.
-function bumpVersion() { _version++; _cache = null; _cacheAt = 0; }
+function bumpVersion() {
+  _version++;
+  _cache = null;
+  _cacheAt = 0;
+}
 
 async function loadAll() {
   if (_cache && Date.now() - _cacheAt < CACHE_TTL_MS) return _cache;
   const [elementsRes, rulesRes] = await Promise.all([
-    db.query(`SELECT element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible, metadata FROM portal_elements`),
-    db.query(`SELECT element_key, principal_type, principal_id, allow FROM portal_element_visibility`),
+    db.query(
+      `SELECT element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible, metadata FROM portal_elements`,
+    ),
+    db.query(
+      `SELECT element_key, principal_type, principal_id, allow FROM portal_element_visibility`,
+    ),
   ]);
   _cache = { elements: elementsRes.rows || [], rules: rulesRes.rows || [] };
   _cacheAt = Date.now();
   return _cache;
 }
 
-function truthy(v) { return v === true || v === 1 || v === '1'; }
+function truthy(v) {
+  return v === true || v === 1 || v === '1';
+}
 
 function buildRuleIndex(rules) {
   // key: `${element_key}|${principal_type}|${principal_id_lower}` → boolean allow
@@ -109,7 +133,10 @@ function buildRuleIndex(rules) {
     // Kural anahtarlari KUCUK HARF: yazma tarafi da kucuk harfe ceviriyor ama eski
     // kayitlar ya da elle atilmis satirlar buyuk harf icerebilir - okuma tarafinda da
     // normalize ediyoruz ki "OsmanKoz" yazilmis bir satir sessizce olu kalmasin.
-    idx.set(`${r.element_key}|${r.principal_type}|${String(r.principal_id).trim().toLowerCase()}`, truthy(r.allow));
+    idx.set(
+      `${r.element_key}|${r.principal_type}|${String(r.principal_id).trim().toLowerCase()}`,
+      truthy(r.allow),
+    );
   }
   return idx;
 }
@@ -120,7 +147,9 @@ function buildRuleIndex(rules) {
 function groupKeysOf(user) {
   const out = new Set();
   for (const g of Array.isArray(user?.groups) ? user.groups : []) {
-    const dn = String(g || '').trim().toLowerCase();
+    const dn = String(g || '')
+      .trim()
+      .toLowerCase();
     if (!dn) continue;
     out.add(dn);
     const m = /^cn=([^,]+)/.exec(dn);
@@ -130,8 +159,16 @@ function groupKeysOf(user) {
 }
 
 function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
-  const not = (sebep, kural) => { if (iz) { iz.sebep = sebep; iz.kural = kural || null; } };
-  if (!truthy(el.enabled)) { not('kill-switch: oge kapali (enabled=false)'); return false; }
+  const not = (sebep, kural) => {
+    if (iz) {
+      iz.sebep = sebep;
+      iz.kural = kural || null;
+    }
+  };
+  if (!truthy(el.enabled)) {
+    not('kill-switch: oge kapali (enabled=false)');
+    return false;
+  }
 
   // SIKI ELEMENT.
   //
@@ -147,13 +184,24 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
   // Yani "yalniz istedigim kisiler" kurali korunuyor, yoneticiler disinda.
   let strict = false;
   try {
-    const m = (() => { if (el.metadata) { if (typeof el.metadata === 'string') return JSON.parse(el.metadata); return el.metadata; } return null; })();
-    strict = !!(m?.strict);
-  } catch { strict = false; }
+    const m = (() => {
+      if (el.metadata) {
+        if (typeof el.metadata === 'string') return JSON.parse(el.metadata);
+        return el.metadata;
+      }
+      return null;
+    })();
+    strict = !!m?.strict;
+  } catch {
+    strict = false;
+  }
 
   if (iz) iz.strict = strict;
   // ADMIN MUAFIYETI KOSULSUZ: siki oge de olsa yonetici gorur (bkz. yukaridaki not).
-  if (role === 'Admin') { not('admin muafiyeti'); return true; }
+  if (role === 'Admin') {
+    not('admin muafiyeti');
+    return true;
+  }
   const uKey = `${el.element_key}|user|${usernameLower}`;
   if (ruleIndex.has(uKey)) {
     const v = ruleIndex.get(uKey);
@@ -170,13 +218,26 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
       return v;
     }
   }
-  if (groupKeys?.size) {                     // 3b) grup kurali: bir allow yeter
-    let seen = false, allow = false, eslesen = null;
+  if (groupKeys?.size) {
+    // 3b) grup kurali: bir allow yeter
+    let seen = false,
+      allow = false,
+      eslesen = null;
     for (const g of groupKeys) {
       const gKey = `${el.element_key}|group|${g}`;
-      if (ruleIndex.has(gKey)) { seen = true; if (ruleIndex.get(gKey)) { allow = true; eslesen = gKey; break; } }
+      if (ruleIndex.has(gKey)) {
+        seen = true;
+        if (ruleIndex.get(gKey)) {
+          allow = true;
+          eslesen = gKey;
+          break;
+        }
+      }
     }
-    if (seen) { not(`grup kurali -> ${allow ? 'gorur' : 'gizli'}`, eslesen); return allow; }
+    if (seen) {
+      not(`grup kurali -> ${allow ? 'gorur' : 'gizli'}`, eslesen);
+      return allow;
+    }
   }
   const rKey = `${el.element_key}|role|${role.toLowerCase()}`;
   if (ruleIndex.has(rKey)) {
@@ -185,9 +246,12 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
     return v;
   }
   // SIKI ogede varsayilan HER ZAMAN kapalidir: acik bir kural yoksa erisim yok.
-  if (strict) { not('SIKI oge ve eslesen kural YOK -> kapali'); return false; }
+  if (strict) {
+    not('SIKI oge ve eslesen kural YOK -> kapali');
+    return false;
+  }
   not(`varsayilan: default_visible=${truthy(el.default_visible) ? 1 : 0}`);
-  return truthy(el.default_visible);                     // 5) varsayilan
+  return truthy(el.default_visible); // 5) varsayilan
 }
 
 // Parent → child kaskadi (G11): admin ekraninda belgelenen "bir menu/sayfa kapatilirsa
@@ -209,7 +273,7 @@ function applyParentCascade(map, elements) {
 
   function visible(key, seen) {
     if (resolved.has(key)) return resolved.get(key);
-    if (seen.has(key)) return map[key] ?? true;   // dongu korumasi (bozuk parent zinciri)
+    if (seen.has(key)) return map[key] ?? true; // dongu korumasi (bozuk parent zinciri)
     seen.add(key);
     const el = byKey.get(key);
     let out = map[key] ?? true;
@@ -232,11 +296,14 @@ let _resolvedMemoVersion = _version;
 
 // Bir kullanici icin TUM elementlerin cozulmus gorunurluk haritasini doner.
 async function resolveVisibility(user) {
-  const role = (user?.role) || 'User';
-  const usernameLower = ((user?.username) || '').toLowerCase();
-  const mailLower = ((user?.mail) || '').trim().toLowerCase();
+  const role = user?.role || 'User';
+  const usernameLower = (user?.username || '').toLowerCase();
+  const mailLower = (user?.mail || '').trim().toLowerCase();
 
-  if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
+  if (_resolvedMemoVersion !== _version) {
+    _resolvedMemo = new Map();
+    _resolvedMemoVersion = _version;
+  }
   const groupKeys = groupKeysOf(user);
   const memoKey = `${role}|${usernameLower}|${mailLower}|${[...groupKeys].sort((a, b) => Number(a > b) - Number(a < b)).join(',')}`;
   const hit = _resolvedMemo.get(memoKey);
@@ -257,7 +324,8 @@ async function resolveVisibility(user) {
   }
   const ruleIndex = buildRuleIndex(rules);
   const map = {};
-  for (const el of elements) map[el.element_key] = decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower);
+  for (const el of elements)
+    map[el.element_key] = decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower);
   const visibility = applyParentCascade(map, elements);
   _resolvedMemo.set(memoKey, { visibility, at: Date.now() });
   return { version: _version, visibility };
@@ -274,13 +342,15 @@ async function resolveVisibility(user) {
 async function explainVisibility(user, elementKey) {
   const { elements, rules } = await loadAll();
   const el = elements.find((e) => e.element_key === elementKey);
-  const role = (user?.role) || 'User';
-  const usernameLower = ((user?.username) || '').toLowerCase();
-  const mailLower = ((user?.mail) || '').trim().toLowerCase();
+  const role = user?.role || 'User';
+  const usernameLower = (user?.username || '').toLowerCase();
+  const mailLower = (user?.mail || '').trim().toLowerCase();
   const groupKeys = groupKeysOf(user);
   if (!el) {
     return {
-      element: elementKey, bulundu: false, gorunur: true,
+      element: elementKey,
+      bulundu: false,
+      gorunur: true,
       sebep: 'oge kayitli degil - kayitsiz oge varsayilan olarak GORUNUR',
       kullanici: { username: usernameLower, mail: mailLower, role, grupSayisi: groupKeys.size },
     };
@@ -312,7 +382,9 @@ async function explainVisibility(user, elementKey) {
     bulundu: true,
     siki: !!iz.strict,
     gorunur: kendi && !ataEngeli,
-    sebep: ataEngeli ? `ust oge gizli: ${ataEngeli.element} (${ataEngeli.sebep})` : (iz.sebep || null),
+    sebep: ataEngeli
+      ? `ust oge gizli: ${ataEngeli.element} (${ataEngeli.sebep})`
+      : iz.sebep || null,
     eslesenKural: iz.kural || null,
     atalar: zincir,
     kullanici: { username: usernameLower, mail: mailLower, role, grupSayisi: groupKeys.size },
@@ -358,17 +430,27 @@ function requireVisible(elementKey) {
       return next();
     } catch (err) {
       if (user && user.role === 'Admin') {
-        console.warn(`[visibility] motor okunamadi, Admin muafiyeti ile devam (${elementKey}):`, err.message);
+        console.warn(
+          `[visibility] motor okunamadi, Admin muafiyeti ile devam (${elementKey}):`,
+          err.message,
+        );
         return next();
       }
       if (process.env.VISIBILITY_FAIL_OPEN === '1') {
-        console.warn(`[visibility] motor okunamadi, VISIBILITY_FAIL_OPEN=1 ile ACILDI (${elementKey}):`, err.message);
+        console.warn(
+          `[visibility] motor okunamadi, VISIBILITY_FAIL_OPEN=1 ile ACILDI (${elementKey}):`,
+          err.message,
+        );
         return next();
       }
-      console.error(`[visibility] motor okunamadi, erisim REDDEDILDI (${elementKey}):`, err.message);
+      console.error(
+        `[visibility] motor okunamadi, erisim REDDEDILDI (${elementKey}):`,
+        err.message,
+      );
       return res.status(503).json({
         ok: false,
-        error: 'Görünürlük servisi geçici olarak kullanılamıyor, erişim güvenlik gereği reddedildi.',
+        error:
+          'Görünürlük servisi geçici olarak kullanılamıyor, erişim güvenlik gereği reddedildi.',
       });
     }
   };
@@ -389,10 +471,19 @@ function requireVisiblePrefix(elementKey, opts = {}) {
 
 module.exports = {
   explainVisibility,
-  resolveVisibility, resolveVisibilitySoft, canSee, requireVisible, requireVisiblePrefix, getVersion, bumpVersion,
+  resolveVisibility,
+  resolveVisibilitySoft,
+  canSee,
+  requireVisible,
+  requireVisiblePrefix,
+  getVersion,
+  bumpVersion,
   _applyParentCascade: applyParentCascade,
   // Legacy sayfa-gorunurlugu (DEFAULT_VISIBILITY tablosu) — element-bazli motordan ayri.
-  readVisibility, writeVisibility, DEFAULT_VISIBILITY,
+  readVisibility,
+  writeVisibility,
+  DEFAULT_VISIBILITY,
   // saf yardimcilar — birim testleri icin acildi (DB gerektirmez)
-  _decide: decide, _buildRuleIndex: buildRuleIndex,
+  _decide: decide,
+  _buildRuleIndex: buildRuleIndex,
 };

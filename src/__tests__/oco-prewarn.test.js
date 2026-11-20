@@ -26,7 +26,11 @@ test('OP1: survey rotasi kapi bilgisini (gates) HER IKI donuste de verir', () =>
   const end = src.indexOf('app.get(', start + 10);
   const route = src.slice(start, end);
   const gatesReturns = route.match(/templateId: req\.params\.templateId,\s*gates,/g) || [];
-  assert.equal(gatesReturns.length, 2, 'ozel alanlar ve normal survey donuslerinin ikisi de gates tasimali');
+  assert.equal(
+    gatesReturns.length,
+    2,
+    'ozel alanlar ve normal survey donuslerinin ikisi de gates tasimali',
+  );
   assert.match(route, /oco: !!overrides\.ocoCheck\?\.enabled/);
   assert.match(route, /smart: !!overrides\.smartApproval\?\.enabled/);
 });
@@ -37,14 +41,19 @@ test('OP2: OCO on uyarisi form alanlarindan ONCE, yalniz form asamasinda', () =>
   const fields = src.indexOf('{visibleFields.map((f) => {');
   assert.ok(banner > 0 && fields > 0 && banner < fields, 'serit alanlardan once gelmeli');
   const guard = src.slice(src.lastIndexOf('{!loading', banner), banner);
-  assert.match(guard, /!ocoState && ocoHint &&/, 'OCO paneli acikken / kapi yokken serit gosterilmez');
+  assert.match(
+    guard,
+    /!ocoState && ocoHint &&/,
+    'OCO paneli acikken / kapi yokken serit gosterilmez',
+  );
 });
 
 test('OP3: uyari tonu sunucu kurali ile ayni anahtar/degerleri kullanir (env|ortam = prod|production)', () => {
   const src = read('src/components/SelfServicePage.tsx');
   const { ENV_KEYS, PROD_VALUES } = require('../../server/oco/prod-detect.cjs');
   for (const k of ENV_KEYS) assert.ok(src.includes(`'${k}'`), `anahtar ${k} client kopyasinda yok`);
-  for (const v of PROD_VALUES) assert.ok(src.includes(`'${v}'`), `deger ${v} client kopyasinda yok`);
+  for (const v of PROD_VALUES)
+    assert.ok(src.includes(`'${v}'`), `deger ${v} client kopyasinda yok`);
   assert.match(src, /data-tone=\{ocoHint\.willAsk \? 'warning' : 'info'\}/);
 });
 
@@ -52,7 +61,10 @@ test('OP4: servis basina URL — App rotasi ve slug uretimi', () => {
   assert.match(read('src/App.tsx'), /path="\/self-service\/:slug"/);
   const src = read('src/components/SelfServicePage.tsx');
   assert.match(src, /export function ssSlug\(/);
-  assert.match(src, /navigate\(id === 'ansible' \? '\/self-service' : `\/self-service\/\$\{SLUG\[id\]\}`\)/);
+  assert.match(
+    src,
+    /navigate\(id === 'ansible' \? '\/self-service' : `\/self-service\/\$\{SLUG\[id\]\}`\)/,
+  );
 });
 
 test('OP5: AnsibleSection mount anindaki bos listeyi ust bilesene bildirmez (slug cozumu bozulmasin)', () => {

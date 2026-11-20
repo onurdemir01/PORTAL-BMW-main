@@ -178,9 +178,15 @@ test('OC5: uc sozlesmesi - yapilandirilmamis servis BOS LISTE donmez', () => {
     'izin listesinde olmayan YAZAN bir yol var',
   );
   // Elle olay uclari kurumsal OCO servisine GITMEZ: yalniz Portal DB (oco/manuel.cjs).
-  const manuelGovde = kod.slice(kod.indexOf('function initManuelUclari'), kod.indexOf('module.exports'));
+  const manuelGovde = kod.slice(
+    kod.indexOf('function initManuelUclari'),
+    kod.indexOf('module.exports'),
+  );
   assert.ok(manuelGovde.length > 200, 'initManuelUclari govdesi bulunamadi');
-  assert.ok(manuelGovde.includes("require('./manuel.cjs')"), 'elle olay uclari manuel.cjs uzerinden degil');
+  assert.ok(
+    manuelGovde.includes("require('./manuel.cjs')"),
+    'elle olay uclari manuel.cjs uzerinden degil',
+  );
   assert.ok(
     !/require\('\.\/(search|client)\.cjs'\)|searchChangeOrders|getChangeOrder/.test(manuelGovde),
     'elle olay uclari kurumsal OCO servisine erisiyor',
@@ -330,7 +336,9 @@ test('OC10: acan + sorumlu sorgulari birlesir; ortak OCO bir kez, iki iliskiyle;
     `${BAS}&pcabRequired=-1&isAgentPatch=-1&changeEnvironment=-1&parameterChange=-1&openningGroupId=6203`,
   );
   const kayit = (id) => ({ ...ORNEK, OcoWfInstanceId: id });
-  const sayfa = (ids) => ({ SearchChangeOrderWithOffsetResult: { TotalCount: ids.length, Result: ids.map(kayit) } });
+  const sayfa = (ids) => ({
+    SearchChangeOrderWithOffsetResult: { TotalCount: ids.length, Result: ids.map(kayit) },
+  });
   const roller = [];
   const r = await searchChangeOrders({
     groupId: '6203',
@@ -341,7 +349,10 @@ test('OC10: acan + sorumlu sorgulari birlesir; ortak OCO bir kez, iki iliskiyle;
     },
   });
   assert.deepEqual([...new Set(roller)].sort(), ['acan', 'sorumlu'], 'iki sorgu da cagrilmali');
-  assert.deepEqual(r.rows.map((x) => x.oco), [1, 2, 3]);
+  assert.deepEqual(
+    r.rows.map((x) => x.oco),
+    [1, 2, 3],
+  );
   const iliski = Object.fromEntries(r.rows.map((x) => [x.oco, [...x.iliski].sort()]));
   assert.deepEqual(iliski, { 1: ['acan'], 2: ['acan', 'sorumlu'], 3: ['sorumlu'] });
   assert.equal(r.total, 3, 'ortak OCO iki kez sayilmis');
@@ -354,12 +365,21 @@ test('OC10: acan + sorumlu sorgulari birlesir; ortak OCO bir kez, iki iliskiyle;
       return skip > 0 ? sayfa([]) : sayfa([3]);
     },
   });
-  assert.deepEqual(yarim.rows.map((x) => x.oco), [3], 'bir sorgu dustu diye liste bosalmamali');
+  assert.deepEqual(
+    yarim.rows.map((x) => x.oco),
+    [3],
+    'bir sorgu dustu diye liste bosalmamali',
+  );
   assert.equal(yarim.eksik.length, 1);
   assert.match(yarim.eksik[0].message, /açtığımız OCO'lar alınamadı: zaman asimi/);
 
   await assert.rejects(
-    searchChangeOrders({ groupId: '6203', fetchPage: async () => { throw new Error('kapali'); } }),
+    searchChangeOrders({
+      groupId: '6203',
+      fetchPage: async () => {
+        throw new Error('kapali');
+      },
+    }),
     /kapali/,
   );
 });

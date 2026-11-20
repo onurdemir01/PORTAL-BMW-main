@@ -13,8 +13,19 @@ import { retirementAdimi } from '../retirementAdim';
 import type { RtTargetStatus } from '@/api/retirementApi';
 
 const HEPSI: RtTargetStatus[] = [
-  'pending', 'planning', 'planned', 'stop_scheduled', 'stopping', 'stopped',
-  'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed', 'failed', 'skipped',
+  'pending',
+  'planning',
+  'planned',
+  'stop_scheduled',
+  'stopping',
+  'stopped',
+  'deleting',
+  'deleted',
+  'rolling_back',
+  'active',
+  'rollback_failed',
+  'failed',
+  'skipped',
 ];
 
 describe('retirement satir adimi', () => {
@@ -31,12 +42,19 @@ describe('retirement satir adimi', () => {
     expect(retirementAdimi('planned', false).yenile).toBe(true);
   });
 
-  test('RA3 OCO\'ya ZAMANLANMIS hedefte on kontrol SUNULMAZ (zamanlamayi dusururdu)', () => {
+  test("RA3 OCO'ya ZAMANLANMIS hedefte on kontrol SUNULMAZ (zamanlamayi dusururdu)", () => {
     expect(retirementAdimi('stop_scheduled', false).tur).toBe('yok');
   });
 
   test('RA4 gecis ve son durumlarda birincil dugme yok', () => {
-    for (const s of ['stopping', 'stopped', 'deleting', 'deleted', 'rolling_back', 'rollback_failed'] as RtTargetStatus[])
+    for (const s of [
+      'stopping',
+      'stopped',
+      'deleting',
+      'deleted',
+      'rolling_back',
+      'rollback_failed',
+    ] as RtTargetStatus[])
       expect(retirementAdimi(s, false).tur, s).toBe('yok');
     expect(retirementAdimi('planning', false).tur).toBe('suruyor');
   });

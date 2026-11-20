@@ -28,7 +28,9 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BASH, posixYol } = require('./fixtures/kabuk.cjs');
 
-const DIR = process.env.NGINX_LOADTEST_AYNA || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest');
+const DIR =
+  process.env.NGINX_LOADTEST_AYNA ||
+  path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest');
 const oku = (rel) => fs.readFileSync(path.join(DIR, ...rel.split('/')), 'utf8');
 const ARGV = `- "PROTOKOL={{ yuk_protokol | default('h1') }}"`;
 
@@ -47,7 +49,11 @@ test('NA9 (a) girdi kapisi: uc protokol kurali tek assert, default h1, fail_msg'
   }
   assert.match(assertGovde, /fail_msg: "[^"\n]*protokol h1\|h2 \(h2 yalniz k6 ve kip ka\)[^"\n]*"/);
   const yalin = [...yml.matchAll(/yuk_protokol(?! \| default\('h1'\))/g)];
-  assert.deepEqual(yalin.map((m) => yml.slice(m.index, m.index + 40)), [], "her yuk_protokol | default('h1') ile (eski Portal)");
+  assert.deepEqual(
+    yalin.map((m) => yml.slice(m.index, m.index + 40)),
+    [],
+    "her yuk_protokol | default('h1') ile (eski Portal)",
+  );
 });
 
 test('NA9 (b) argv: kosu (AE sonrasi) ve yollar (UA_ONEK sonrasi) gorevlerinde TAM PROTOKOL', () => {
@@ -57,22 +63,52 @@ test('NA9 (b) argv: kosu (AE sonrasi) ve yollar (UA_ONEK sonrasi) gorevlerinde T
   // 2026-11-04: hazirlik.sh uygula, dosyalar ve kanit da protokolu alir (ucu 'env'den hemen sonra, betik adi 8-11 satir sonra).
   assert.equal(yerler.length, 5, `bes gorevde tam ${ARGV}: ${yerler}`);
   const onceki = yerler.map((i) => s[i - 1]).sort();
-  assert.deepEqual(onceki, ['- "AE={{ yuk_ae }}"', '- "UA_ONEK={{ yuk_ua_onek }}"', '- env', '- env', '- env'].sort());
-  const hazirlik = yerler.filter((i) => s[i - 1] === '- env').map((i) => s.slice(i, i + 12).find((x) => x.endsWith('/hazirlik.sh"')));
-  assert.deepEqual(hazirlik, Array(3).fill('- "{{ yt_dizin }}/hazirlik.sh"'), 'env ile baslayan PROTOKOL yalniz hazirlik.sh gorevlerinde');
+  assert.deepEqual(
+    onceki,
+    ['- "AE={{ yuk_ae }}"', '- "UA_ONEK={{ yuk_ua_onek }}"', '- env', '- env', '- env'].sort(),
+  );
+  const hazirlik = yerler
+    .filter((i) => s[i - 1] === '- env')
+    .map((i) => s.slice(i, i + 12).find((x) => x.endsWith('/hazirlik.sh"')));
+  assert.deepEqual(
+    hazirlik,
+    Array(3).fill('- "{{ yt_dizin }}/hazirlik.sh"'),
+    'env ile baslayan PROTOKOL yalniz hazirlik.sh gorevlerinde',
+  );
   const yollar = yerler.find((i) => s[i - 1] === '- "UA_ONEK={{ yuk_ua_onek }}"');
-  assert.equal(s[yollar + 2], '- "{{ yt_dizin }}/on_kontrol.sh"', 'UA_ONEK + PROTOKOL yollar gorevinde (on_kontrol.sh)');
-  assert.ok(s.includes('- name: --- [Task] Senaryodaki her tekil yol icin TEK istek (h1 ya da h2; cerezsiz, vekilsiz) ---'));
+  assert.equal(
+    s[yollar + 2],
+    '- "{{ yt_dizin }}/on_kontrol.sh"',
+    'UA_ONEK + PROTOKOL yollar gorevinde (on_kontrol.sh)',
+  );
+  assert.ok(
+    s.includes(
+      '- name: --- [Task] Senaryodaki her tekil yol icin TEK istek (h1 ya da h2; cerezsiz, vekilsiz) ---',
+    ),
+  );
 });
 
 test('NA9 (c) set_stats: on_kontrol 5 alan, ALPN engelleri yalniz h2, kok protokol yankisi (yedek sonucta da)', () => {
   const yml = oku('nginx_loadtest.yml');
-  for (const a of ['protokol', 'curl_h2', 'alpn_h2', 'alpn_kaynak', 'yollar_yanitli', 'yollar_h2']) {
+  for (const a of [
+    'protokol',
+    'curl_h2',
+    'alpn_h2',
+    'alpn_kaynak',
+    'yollar_yanitli',
+    'yollar_h2',
+  ]) {
     assert.match(yml, new RegExp(`^ {18}'${a}': `, 'm'), `yt_s_onk '${a}'`);
   }
-  assert.match(yml, /'alpn_h2': \(\(\{'1': true, '0': false\}\)\[\(\(hostvars\[yuk_yuk_host\]\.yt_yk \| default\(\{\}\)\)\.alpn_h2 \| default\('-'\)\)\] \| default\(none\)\)/);
+  assert.match(
+    yml,
+    /'alpn_h2': \(\(\{'1': true, '0': false\}\)\[\(\(hostvars\[yuk_yuk_host\]\.yt_yk \| default\(\{\}\)\)\.alpn_h2 \| default\('-'\)\)\] \| default\(none\)\)/,
+  );
   const kay = "((hostvars[yuk_yuk_host].yt_yk | default({})).alpn_kaynak | default(''))";
-  assert.ok(yml.includes(`'alpn_kaynak': (${kay} if (${kay} in ['curl', 'openssl']) else none),`), "alpn_kaynak yalniz 'curl' | 'openssl' metni, digeri none");
+  assert.ok(
+    yml.includes(`'alpn_kaynak': (${kay} if (${kay} in ['curl', 'openssl']) else none),`),
+    "alpn_kaynak yalniz 'curl' | 'openssl' metni, digeri none",
+  );
   const h2 = "((yuk_protokol | default('h1') | string) == 'h2')";
   const oss = "(yt_s_onk.alpn_kaynak == 'openssl')";
   assert.ok(
@@ -91,32 +127,77 @@ test('NA9 (c) set_stats: on_kontrol 5 alan, ALPN engelleri yalniz h2, kok protok
     ),
     'olculemedi engeli yalniz h2 ve alpn_h2 null iken (kaynak openssl ise openssl metni)',
   );
-  assert.ok(!/curl_h2 is sameas false|not yt_s_onk\.curl_h2/.test(yml), 'curl_h2 false TEK BASINA playbook engeli DEGIL');
+  assert.ok(
+    !/curl_h2 is sameas false|not yt_s_onk\.curl_h2/.test(yml),
+    'curl_h2 false TEK BASINA playbook engeli DEGIL',
+  );
   // Bicimden bagimsiz: curl_h2 playbook'ta YALNIZ yt_s_onk anahtari olarak gecer ('== false', 'is false', '| bool'
   // gibi her kullanim ikinci bir gecis olur ve burada patlar).
   const curlGecisleri = yml.split('\n').filter((s) => s.includes('curl_h2'));
-  assert.equal(curlGecisleri.length, 1, `curl_h2 playbook'ta yalniz yt_s_onk anahtari olmali: ${curlGecisleri.join(' | ')}`);
-  assert.equal((curlGecisleri[0].match(/curl_h2/g) || []).length, 2, 'curl_h2 satirinda yalniz anahtar + yt_yk.curl_h2 okuma');
-  assert.match(curlGecisleri[0], /^\s*'curl_h2': \(\(\{'1': true, '0': false\}\)\[\(\(hostvars\[yuk_yuk_host\]\.yt_yk \| default\(\{\}\)\)\.curl_h2 \| default\('-'\)\)\] \| default\(none\)\),$/);
-  assert.ok(yml.includes("['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (' ~ (yt_s_onk.yollar_h2 | string) ~ '/' ~ (yt_s_onk.yollar_yanitli | string)"));
+  assert.equal(
+    curlGecisleri.length,
+    1,
+    `curl_h2 playbook'ta yalniz yt_s_onk anahtari olmali: ${curlGecisleri.join(' | ')}`,
+  );
+  assert.equal(
+    (curlGecisleri[0].match(/curl_h2/g) || []).length,
+    2,
+    'curl_h2 satirinda yalniz anahtar + yt_yk.curl_h2 okuma',
+  );
+  assert.match(
+    curlGecisleri[0],
+    /^\s*'curl_h2': \(\(\{'1': true, '0': false\}\)\[\(\(hostvars\[yuk_yuk_host\]\.yt_yk \| default\(\{\}\)\)\.curl_h2 \| default\('-'\)\)\] \| default\(none\)\),$/,
+  );
+  assert.ok(
+    yml.includes(
+      "['HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (' ~ (yt_s_onk.yollar_h2 | string) ~ '/' ~ (yt_s_onk.yollar_yanitli | string)",
+    ),
+  );
   const yanki =
     "'protokol': ((yuk_protokol | default('h1') | string) if ((yuk_protokol | default('h1') | string) in ['h1', 'h2']) else none),";
-  assert.equal(yml.split(yanki).length - 1, 2, 'kok protokol yankisi sonuc sozlesmesinde ve rescue yedek sonucunda');
+  assert.equal(
+    yml.split(yanki).length - 1,
+    2,
+    'kok protokol yankisi sonuc sozlesmesinde ve rescue yedek sonucunda',
+  );
   assert.match(yml, /'surum': 2,/, 'surum 2 kalir');
 });
 
 test('NA9 (d) kos.sh: GODEBUG yalniz h1, miras http2client suzulur, -e PROTOKOL, DUR protokol kolonlarindan', () => {
   const k = oku('files/kos.sh');
-  assert.ok(!k.includes('export GODEBUG="${GODEBUG:+$GODEBUG,}http2client=0"'), 'kosulsuz GODEBUG http2client=0 kalmamali');
-  assert.ok(k.includes('case "$g" in ""|http2client=*) ;; *) GD="${GD:+$GD,}$g" ;; esac'), 'miras http2client= girdileri silinir');
-  assert.ok(k.includes('[ "$PROTOKOL" = h1 ] && GD="${GD:+$GD,}http2client=0"'), 'http2client=0 yalniz h1');
+  assert.ok(
+    !k.includes('export GODEBUG="${GODEBUG:+$GODEBUG,}http2client=0"'),
+    'kosulsuz GODEBUG http2client=0 kalmamali',
+  );
+  assert.ok(
+    k.includes('case "$g" in ""|http2client=*) ;; *) GD="${GD:+$GD,}$g" ;; esac'),
+    'miras http2client= girdileri silinir',
+  );
+  assert.ok(
+    k.includes('[ "$PROTOKOL" = h1 ] && GD="${GD:+$GD,}http2client=0"'),
+    'http2client=0 yalniz h1',
+  );
   assert.ok(k.includes('if [ -n "$GD" ]; then export GODEBUG="$GD"; else unset GODEBUG; fi'));
   assert.ok(k.includes('-e PROTOKOL="$PROTOKOL" "$BETIK_M" &'), "k6'ya -e PROTOKOL");
-  assert.ok(k.includes('[ "$PROTOKOL" = h2 ] && [ "$KIP" != ka ]; then hata "PROTOKOL=h2 yalniz KIP=ka ile"'));
-  assert.ok(!/kolon "\$CSV" http2\)/.test(k), 'DUR icin http2 kolonu OKUNMAZ (h2 kosusunda her yanitta dolu)');
+  assert.ok(
+    k.includes(
+      '[ "$PROTOKOL" = h2 ] && [ "$KIP" != ka ]; then hata "PROTOKOL=h2 yalniz KIP=ka ile"',
+    ),
+  );
+  assert.ok(
+    !/kolon "\$CSV" http2\)/.test(k),
+    'DUR icin http2 kolonu OKUNMAZ (h2 kosusunda her yanitta dolu)',
+  );
   assert.ok(k.includes('pr="$(kolon "$CSV" protokol)"; pu="$(kolon "$CSV" protokol_uyumsuz)"'));
-  const sira = ['elif [ "$pr" != "$PROTOKOL" ]; then', 'elif [ "${pu:-0}" != 0 ]; then', 'elif [ "$rc" != 0 ]; then'].map((x) => k.indexOf(x));
-  assert.ok(sira.every((x, i) => x > 0 && (i === 0 || x > sira[i - 1])), `DUR sirasi 429 -> protokol -> uyumsuz -> rc: ${sira}`);
+  const sira = [
+    'elif [ "$pr" != "$PROTOKOL" ]; then',
+    'elif [ "${pu:-0}" != 0 ]; then',
+    'elif [ "$rc" != 0 ]; then',
+  ].map((x) => k.indexOf(x));
+  assert.ok(
+    sira.every((x, i) => x > 0 && (i === 0 || x > sira[i - 1])),
+    `DUR sirasi 429 -> protokol -> uyumsuz -> rc: ${sira}`,
+  );
 });
 
 test('NA9 (e) on_kontrol.sh: h2 --http2, curl h2siz red YOK (yollar h1, ALPN openssl), alpn_h2 hesabi', () => {
@@ -127,61 +208,115 @@ test('NA9 (e) on_kontrol.sh: h2 --http2, curl h2siz red YOK (yollar h1, ALPN ope
   assert.ok(h2 > 0 && xargs > h2, 'curl_h2 satiri isteklerden (xargs) ONCE');
   assert.ok(!o.includes('red "curl HTTP/2 desteklemiyor'), 'curl h2siz artik red DEGIL');
   assert.ok(
-    o.includes('[ "$ch2" = 1 ] && HTTP_SURUM=--http2\n  elif [ "$ch2" = 1 ]; then\n    HTTP_SURUM=--http1.1\n  fi'),
+    o.includes(
+      '[ "$ch2" = 1 ] && HTTP_SURUM=--http2\n  elif [ "$ch2" = 1 ]; then\n    HTTP_SURUM=--http1.1\n  fi',
+    ),
     'h2 + curl h2li --http2, curl h2siz bayraksiz (h1 yolu), h1 bugunku --http1.1',
   );
-  assert.ok(o.includes('(ny == 0 ? "-" : (n2 == ny ? "1" : "0"))'), 'alpn_h2 (curl): yanitli 0 -> -, hepsi h2 -> 1, aksi 0');
+  assert.ok(
+    o.includes('(ny == 0 ? "-" : (n2 == ny ? "1" : "0"))'),
+    'alpn_h2 (curl): yanitli 0 -> -, hepsi h2 -> 1, aksi 0',
+  );
   assert.ok(o.includes('$1 == "YOL" && $3 != "-" { ny++; if ($3 ~ /^HTTP\\/2/) n2++ }'));
   const ozet = o.indexOf('END { printf "OZET\\t');
   const curlYol = o.indexOf('if [ "$PROTOKOL" = h2 ] && [ "$ch2" = 1 ]; then', ozet);
   const osslYol = o.indexOf('elif [ "$PROTOKOL" = h2 ]; then', curlYol);
-  assert.ok(ozet > 0 && curlYol > ozet && osslYol > curlYol, 'alpn satirlari OZET sonrasi: curl yolu, sonra openssl yolu');
-  assert.equal(o.indexOf("printf 'alpn_kaynak\\tcurl\\n'", curlYol) > curlYol && o.indexOf("printf 'alpn_kaynak\\tcurl\\n'", curlYol) < osslYol, true, 'curl yolunda alpn_kaynak curl');
-  assert.ok(o.includes("printf 'yollar_h2\\t-\\nalpn_h2\\t%s\\nalpn_kaynak\\topenssl\\n' \"$(alpn_openssl)\""), "openssl yolunda yollar_h2 '-', alpn_kaynak openssl");
-  assert.ok(o.includes('local a=(s_client -connect "$HEDEF_IP:443" -alpn h2,http/1.1)'), 'openssl TEK baglanti, k6 gibi h2,http/1.1 sunar');
-  assert.ok(o.includes('if [ "$SNI" = 1 ]; then a+=(-servername "$HOST_BASLIGI"); else a+=(-noservername); fi'), 'SNI=1 -servername, SNI=0 -noservername');
-  assert.ok(o.includes('timeout -k 2 "$ZAMAN" openssl ${a[@]+"${a[@]}"} < /dev/null > "$d/alpn" 2>&1'), 'timeout, stdin /dev/null, cikti yalniz gecici dosyada');
-  assert.ok(o.includes('END { if (!y) print "-"; else if (p == "h2") print 1; else if (p != "" || n) print 0; else print "-" }'), 'el sikisma yoksa -, h2 -> 1, h2 disi / ALPN yok -> 0');
+  assert.ok(
+    ozet > 0 && curlYol > ozet && osslYol > curlYol,
+    'alpn satirlari OZET sonrasi: curl yolu, sonra openssl yolu',
+  );
+  assert.equal(
+    o.indexOf("printf 'alpn_kaynak\\tcurl\\n'", curlYol) > curlYol &&
+      o.indexOf("printf 'alpn_kaynak\\tcurl\\n'", curlYol) < osslYol,
+    true,
+    'curl yolunda alpn_kaynak curl',
+  );
+  assert.ok(
+    o.includes(
+      'printf \'yollar_h2\\t-\\nalpn_h2\\t%s\\nalpn_kaynak\\topenssl\\n\' "$(alpn_openssl)"',
+    ),
+    "openssl yolunda yollar_h2 '-', alpn_kaynak openssl",
+  );
+  assert.ok(
+    o.includes('local a=(s_client -connect "$HEDEF_IP:443" -alpn h2,http/1.1)'),
+    'openssl TEK baglanti, k6 gibi h2,http/1.1 sunar',
+  );
+  assert.ok(
+    o.includes(
+      'if [ "$SNI" = 1 ]; then a+=(-servername "$HOST_BASLIGI"); else a+=(-noservername); fi',
+    ),
+    'SNI=1 -servername, SNI=0 -noservername',
+  );
+  assert.ok(
+    o.includes('timeout -k 2 "$ZAMAN" openssl ${a[@]+"${a[@]}"} < /dev/null > "$d/alpn" 2>&1'),
+    'timeout, stdin /dev/null, cikti yalniz gecici dosyada',
+  );
+  assert.ok(
+    o.includes(
+      'END { if (!y) print "-"; else if (p == "h2") print 1; else if (p != "" || n) print 0; else print "-" }',
+    ),
+    'el sikisma yoksa -, h2 -> 1, h2 disi / ALPN yok -> 0',
+  );
 });
 
 test('NA9 (f) wrk_kos.sh: yalniz h1, istemci dosyasinda protokol h1 / protokol_uyumsuz 0', () => {
   const w = oku('files/wrk_kos.sh');
-  const hata = w.indexOf('[ "$PROTOKOL" = h1 ] || hata "wrk yalniz HTTP/1.1 konusur (PROTOKOL=$PROTOKOL)"');
+  const hata = w.indexOf(
+    '[ "$PROTOKOL" = h1 ] || hata "wrk yalniz HTTP/1.1 konusur (PROTOKOL=$PROTOKOL)"',
+  );
   assert.ok(hata > 0 && hata < w.indexOf('"$WRK" -v'), 'PROTOKOL denetimi wrk cagrisindan ONCE');
   assert.ok(w.includes('NUM["http2"] = 0; STR["protokol"] = "h1"; NUM["protokol_uyumsuz"] = 0'));
   assert.match(w, /^KOLONLAR="[^"]*,deneme,protokol,protokol_uyumsuz"$/m);
-  assert.match(w, /^JSON_ANAHTARLARI="[^"]* p95_config protokol protokol_uyumsuz ag_alinan_bayt ag_gonderilen_bayt ag_sure_sn"$/m);
+  assert.match(
+    w,
+    /^JSON_ANAHTARLARI="[^"]* p95_config protokol protokol_uyumsuz ag_alinan_bayt ag_gonderilen_bayt ag_sure_sn"$/m,
+  );
 });
 
 const bashVar = spawnSync(BASH, ['-c', 'echo ok'], { encoding: 'utf8' }).stdout === 'ok\n';
-test('NA9 (g) bash: wrk_kos.sh PROTOKOL=h2 rc 2; kos.sh h2 + yeni rc 2; kos.sh --kuru h2 plani', { skip: bashVar ? false : 'bash yok' }, () => {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'nlh2_'));
-  try {
-    fs.mkdirSync(path.join(d, 'senaryo'));
-    fs.writeFileSync(path.join(d, 'senaryo', 'K.tsv'), '1\t1\thtml\tkucuk\t/app-v1/\n');
-    const kos = (betik, ortam, ...arg) =>
-      spawnSync(BASH, [posixYol(path.join(DIR, 'files', betik)), 'R1', 'K', ...arg], {
-        cwd: d,
-        encoding: 'utf8',
-        env: { ...process.env, HEDEF: 'https://10.1.2.3', HOST_BASLIGI: 'vhost.test.local', TAVAN_RPS: '450', SENARYO_DIZIN: './senaryo', SONUC: './sonuc', ...ortam },
-      });
-    let r = kos('wrk_kos.sh', { PROTOKOL: 'h2', WRK: '/yok/wrk' });
-    assert.equal(r.status, 2, r.stderr);
-    assert.match(r.stderr, /HATA: wrk yalniz HTTP\/1\.1 konusur \(PROTOKOL=h2\)/);
-    r = kos('wrk_kos.sh', { PROTOKOL: 'h1' }, '--kuru');
-    assert.equal(r.status, 0, `wrk h1 --kuru: ${r.stderr}`);
-    r = kos('kos.sh', { PROTOKOL: 'h2', KIP: 'yeni', K6: '/yok/k6' });
-    assert.equal(r.status, 2, r.stderr);
-    assert.match(r.stderr, /PROTOKOL=h2 yalniz KIP=ka ile/);
-    r = kos('kos.sh', { PROTOKOL: 'h3' });
-    assert.equal(r.status, 2);
-    assert.match(r.stderr, /PROTOKOL h1 ya da h2 olmali/);
-    r = kos('kos.sh', { PROTOKOL: 'h2', KIP: 'ka', HIZLAR: '100' }, '--kuru');
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /^== kos\.sh {2}adim=R1 senaryo=K \(1 satir\) kip=ka ae=br protokol=h2 hizlar=\[100\] tekrar=2$/m);
-    r = kos('kos.sh', { HIZLAR: '100', PROTOKOL: '' }, '--kuru');
-    assert.match(r.stdout, / protokol=h1 /, 'PROTOKOL yoksa h1');
-  } finally {
-    fs.rmSync(d, { recursive: true, force: true });
-  }
-});
+test(
+  'NA9 (g) bash: wrk_kos.sh PROTOKOL=h2 rc 2; kos.sh h2 + yeni rc 2; kos.sh --kuru h2 plani',
+  { skip: bashVar ? false : 'bash yok' },
+  () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'nlh2_'));
+    try {
+      fs.mkdirSync(path.join(d, 'senaryo'));
+      fs.writeFileSync(path.join(d, 'senaryo', 'K.tsv'), '1\t1\thtml\tkucuk\t/app-v1/\n');
+      const kos = (betik, ortam, ...arg) =>
+        spawnSync(BASH, [posixYol(path.join(DIR, 'files', betik)), 'R1', 'K', ...arg], {
+          cwd: d,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HEDEF: 'https://10.1.2.3',
+            HOST_BASLIGI: 'vhost.test.local',
+            TAVAN_RPS: '450',
+            SENARYO_DIZIN: './senaryo',
+            SONUC: './sonuc',
+            ...ortam,
+          },
+        });
+      let r = kos('wrk_kos.sh', { PROTOKOL: 'h2', WRK: '/yok/wrk' });
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /HATA: wrk yalniz HTTP\/1\.1 konusur \(PROTOKOL=h2\)/);
+      r = kos('wrk_kos.sh', { PROTOKOL: 'h1' }, '--kuru');
+      assert.equal(r.status, 0, `wrk h1 --kuru: ${r.stderr}`);
+      r = kos('kos.sh', { PROTOKOL: 'h2', KIP: 'yeni', K6: '/yok/k6' });
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /PROTOKOL=h2 yalniz KIP=ka ile/);
+      r = kos('kos.sh', { PROTOKOL: 'h3' });
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, /PROTOKOL h1 ya da h2 olmali/);
+      r = kos('kos.sh', { PROTOKOL: 'h2', KIP: 'ka', HIZLAR: '100' }, '--kuru');
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(
+        r.stdout,
+        /^== kos\.sh {2}adim=R1 senaryo=K \(1 satir\) kip=ka ae=br protokol=h2 hizlar=\[100\] tekrar=2$/m,
+      );
+      r = kos('kos.sh', { HIZLAR: '100', PROTOKOL: '' }, '--kuru');
+      assert.match(r.stdout, / protokol=h1 /, 'PROTOKOL yoksa h1');
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  },
+);

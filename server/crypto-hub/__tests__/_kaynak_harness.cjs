@@ -69,14 +69,23 @@ async function kur(secenek = {}) {
     'server/ansible/template-preflight.cjs': { assertTemplateAcceptsExtraVars: async () => {} },
     'server/ansible/ss-customizations.cjs': {
       readCustom: async () =>
-        secenek.gizliAlan ? { fieldOverrides: [{ fieldName: secenek.gizliAlan, hidden: true }] } : {},
+        secenek.gizliAlan
+          ? { fieldOverrides: [{ fieldName: secenek.gizliAlan, hidden: true }] }
+          : {},
     },
     'server/ansible/runner.cjs': {
       redactExtraVarsForHistory: REAL_REDACT,
       async launchJobOnServer(serverId, templateId, extraVars, limit, user) {
         if (durum.launchHata) throw Object.assign(new Error(durum.launchHata), { status: 502 });
         const jobId = durum.nextJob++;
-        durum.launches.push({ serverId, templateId, extraVars: { ...extraVars }, limit, user, jobId });
+        durum.launches.push({
+          serverId,
+          templateId,
+          extraVars: { ...extraVars },
+          limit,
+          user,
+          jobId,
+        });
         durum.jobs.set(jobId, { status: 'running', artifacts: {} });
         return { jobId, status: 'pending' };
       },
@@ -101,7 +110,14 @@ async function kur(secenek = {}) {
         if (/Crypto_Hub_Releases/.test(sqlText)) {
           return {
             recordset: durum.kosan
-              ? [{ release_name: 'wydenapp', chart: 'wyden', chart_version: durum.kosan, status: 'deployed' }]
+              ? [
+                  {
+                    release_name: 'wydenapp',
+                    chart: 'wyden',
+                    chart_version: durum.kosan,
+                    status: 'deployed',
+                  },
+                ]
               : [],
           };
         }
@@ -117,7 +133,9 @@ async function kur(secenek = {}) {
 
   const onceki = new Map();
   for (const [p, exp] of Object.entries(sahte)) {
-    const r = p.startsWith('shared/') ? require.resolve(path.join(KOK, '..', p)) : yol(p.replace(/^server\//, ''));
+    const r = p.startsWith('shared/')
+      ? require.resolve(path.join(KOK, '..', p))
+      : yol(p.replace(/^server\//, ''));
     onceki.set(r, require.cache[r]);
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exp };
   }
@@ -218,7 +236,9 @@ function dbSorgu(durum, sqlText, p) {
     return Promise.resolve({ rows: [], rowCount: 1 });
   }
   if (/^SELECT TOP 1 username, template_name FROM ansible_job_history/.test(s)) {
-    const r = durum.history.find((h) => Number(h.job_id) === Number(p[0]) && Number(h.awx_server_id) === Number(p[1]));
+    const r = durum.history.find(
+      (h) => Number(h.job_id) === Number(p[0]) && Number(h.awx_server_id) === Number(p[1]),
+    );
     return Promise.resolve({ rows: r ? [r] : [], rowCount: r ? 1 : 0 });
   }
   const simdi = Date.now();
@@ -227,7 +247,10 @@ function dbSorgu(durum, sqlText, p) {
     const row = L.get(p[0]);
     // CAS: yalniz bos / birakilmis / suresi dolmus kilit alinir. Kosul metinden okunur ki
     // kosul gevserse (mutasyon) sahte DB de gevsesin.
-    const cas = /AND \(held IS NULL OR held = 0 OR locked_until IS NULL OR locked_until < GETUTCDATE\(\)\)/.test(s);
+    const cas =
+      /AND \(held IS NULL OR held = 0 OR locked_until IS NULL OR locked_until < GETUTCDATE\(\)\)/.test(
+        s,
+      );
     if (!row) return Promise.resolve({ rows: [], rowCount: 0 });
     const bos = !row.held || !row.locked_until || row.locked_until < simdi;
     if (cas && !bos) return Promise.resolve({ rows: [], rowCount: 0 });
@@ -241,12 +264,22 @@ function dbSorgu(durum, sqlText, p) {
     });
     return Promise.resolve({ rows: [], rowCount: 1 });
   }
-  if (/^SELECT TOP 1 held, holder, awx_server_id, awx_job_id, locked_until FROM crypto_hub_locks/.test(s)) {
+  if (
+    /^SELECT TOP 1 held, holder, awx_server_id, awx_job_id, locked_until FROM crypto_hub_locks/.test(
+      s,
+    )
+  ) {
     const row = L.get(p[0]);
     return Promise.resolve({ rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 });
   }
-  if (/^SELECT TOP 50 lock_key, awx_server_id, awx_job_id FROM crypto_hub_locks WHERE held = 1 AND awx_job_id IS NOT NULL$/.test(s)) {
-    const rows = [...L.values()].filter((r) => r.held && r.awx_job_id != null).map((r) => ({ ...r }));
+  if (
+    /^SELECT TOP 50 lock_key, awx_server_id, awx_job_id FROM crypto_hub_locks WHERE held = 1 AND awx_job_id IS NOT NULL$/.test(
+      s,
+    )
+  ) {
+    const rows = [...L.values()]
+      .filter((r) => r.held && r.awx_job_id != null)
+      .map((r) => ({ ...r }));
     return Promise.resolve({ rows, rowCount: rows.length });
   }
   if (/^INSERT INTO crypto_hub_locks/.test(s)) {

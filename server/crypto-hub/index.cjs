@@ -92,7 +92,9 @@ const SIR_ANAHTARI =
 function maskValues(lines) {
   return (lines || []).map((raw) => {
     const l = String(raw == null ? '' : raw);
-    const m = l.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/);
+    const m = l.match(
+      /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/,
+    );
     if (!m) return l;
     const [, girinti, anahtar, deger] = m;
     if (!SIR_ANAHTARI.test(anahtar)) return l;
@@ -649,7 +651,11 @@ async function loadTenant(tenant) {
     ready: r.ready == null ? null : Number(r.ready),
     image: r.image || '',
     version: r.version || '',
-    state: (() => { if (r.want === 0) return 'stopped'; if (Number(r.ready) >= Number(r.want)) return 'running'; return 'degraded'; })(),
+    state: (() => {
+      if (r.want === 0) return 'stopped';
+      if (Number(r.ready) >= Number(r.want)) return 'running';
+      return 'degraded';
+    })(),
   }));
 
   const releases = rel.map((r) => ({
@@ -790,7 +796,16 @@ async function uygulamaSonuclariniTara() {
     try {
       const st = await runner.getJobStatusOnServer(k.awx_server_id, k.awx_job_id);
       if (st && TERMINAL.includes(st.status)) {
-        if (await uygulamaSonucunuKapat(null, Number(k.awx_server_id), Number(k.awx_job_id), st, 'tarama')) n += 1;
+        if (
+          await uygulamaSonucunuKapat(
+            null,
+            Number(k.awx_server_id),
+            Number(k.awx_job_id),
+            st,
+            'tarama',
+          )
+        )
+          n += 1;
       }
     } catch {
       /* bu is icin AWX okunamadi - bir sonraki turda yeniden denenir */
@@ -946,7 +961,9 @@ function initCryptoHub(app) {
     // nodeOpen isaretleri ekran sekme suzgecini ve "kapali" gostergesini besler.
     const nodeGorunen = await nodeYetkisi(req);
     const { nodeAcikMi } = require('../../shared/cryptoHubNodes.cjs');
-    const suzulmus = selectionTree().filter((a) => acik.has(a.app) || (a.app === 'metaco' && nodeGorunen));
+    const suzulmus = selectionTree().filter(
+      (a) => acik.has(a.app) || (a.app === 'metaco' && nodeGorunen),
+    );
     const apps = suzulmus.map((a) =>
       a.app !== 'metaco'
         ? a
@@ -1168,7 +1185,11 @@ function initCryptoHub(app) {
         kayit,
         asim: d.asimKullanildi,
         dogrulama: d,
-        canliKaynagi: (() => { if (canliSunucu) return 'sunucu'; if (params.live) return 'istemci'; return 'olculemedi'; })(),
+        canliKaynagi: (() => {
+          if (canliSunucu) return 'sunucu';
+          if (params.live) return 'istemci';
+          return 'olculemedi';
+        })(),
       };
     }
     if (params.action === 'resources_apply') {
@@ -1365,7 +1386,13 @@ function initCryptoHub(app) {
           .getJobStatusOnServer(row.awx_server_id, row.awx_job_id)
           .catch(() => null);
         if (st && TERMINAL.includes(st.status)) {
-          await uygulamaSonucunuKapat(req, Number(row.awx_server_id), Number(row.awx_job_id), st, 'devralma');
+          await uygulamaSonucunuKapat(
+            req,
+            Number(row.awx_server_id),
+            Number(row.awx_job_id),
+            st,
+            'devralma',
+          );
           return RES.kilitOku(db, tenant.key, tenant.helmRelease);
         }
         return row;
@@ -1497,8 +1524,13 @@ function initCryptoHub(app) {
               kap: params.container || (kaynak.plan && kaynak.plan.kap),
               degisiklikler: params.changes || (kaynak.plan && kaynak.plan.degisiklikler),
               asim: params.action === 'resources_plan' ? kaynak.asim : kaynak.plan.asim,
-              gerekce:
-                (() => { if (params.action === 'resources_plan') { if (kaynak.asim) return params.reason; return undefined; } return kaynak.plan.gerekce || undefined; })(),
+              gerekce: (() => {
+                if (params.action === 'resources_plan') {
+                  if (kaynak.asim) return params.reason;
+                  return undefined;
+                }
+                return kaynak.plan.gerekce || undefined;
+              })(),
               riskliOnay: params.riskyAck || undefined,
               bekleyenOnay: params.acceptPending || undefined,
             }),
@@ -1519,9 +1551,12 @@ function initCryptoHub(app) {
       });
     } catch (err) {
       if (kilit) {
-        await RES.kilitBirak(require('../db/index.cjs'), kilit.key, kilit.lockId, 'baslatilamadi').catch(
-          (e) => console.warn('[CryptoHub] kilit birakilamadi:', e.message),
-        );
+        await RES.kilitBirak(
+          require('../db/index.cjs'),
+          kilit.key,
+          kilit.lockId,
+          'baslatilamadi',
+        ).catch((e) => console.warn('[CryptoHub] kilit birakilamadi:', e.message));
       }
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }

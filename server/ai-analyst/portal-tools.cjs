@@ -103,7 +103,8 @@ function formatFetchResult({ hostname, logFilePath, grepPattern, safeLines, rawL
     text = text.slice(-LOG_RESULT_MAX); // loglarin SONU daha degerli — sondan kirp
     text = `…(baş taraf kırpıldı)\n${text}`;
   }
-  const header = `[${hostname}:${logFilePath}] son ${safeLines} satır` +
+  const header =
+    `[${hostname}:${logFilePath}] son ${safeLines} satır` +
     (grepPattern ? `, filtre: ${grepPattern}` : '') +
     (totalMasked > 0 ? ` — ${totalMasked} PII değeri maskelendi` : '');
   return `${header}\n${'─'.repeat(40)}\n${text}`;
@@ -111,11 +112,21 @@ function formatFetchResult({ hostname, logFilePath, grepPattern, safeLines, rawL
 
 async function formatAnalyzeResult({ hostname, logFilePath, rawLines, context, username }) {
   const aiAnalyzer = require('../logx/ai-analyzer.cjs');
-  const analysis = await aiAnalyzer.analyze(rawLines, context || `Host: ${hostname}, dosya: ${logFilePath}`, username);
-  return `[${hostname}:${logFilePath}] LogX AI analizi (${analysis.provider}/${analysis.model}, ` +
+  const analysis = await aiAnalyzer.analyze(
+    rawLines,
+    context || `Host: ${hostname}, dosya: ${logFilePath}`,
+    username,
+  );
+  return (
+    `[${hostname}:${logFilePath}] LogX AI analizi (${analysis.provider}/${analysis.model}, ` +
     `${analysis.maskedCount} PII maskelendi):\nÖZET: ${analysis.summary}\nSEVİYE: ${analysis.severity}\n` +
-    (analysis.possibleCauses?.length ? `OLASI NEDENLER:\n${analysis.possibleCauses.map((c) => ("- " + c)).join('\n')}\n` : '') +
-    (analysis.recommendations?.length ? `ÖNERİLER:\n${analysis.recommendations.map((r) => ("- " + r)).join('\n')}` : '');
+    (analysis.possibleCauses?.length
+      ? `OLASI NEDENLER:\n${analysis.possibleCauses.map((c) => '- ' + c).join('\n')}\n`
+      : '') +
+    (analysis.recommendations?.length
+      ? `ÖNERİLER:\n${analysis.recommendations.map((r) => '- ' + r).join('\n')}`
+      : '')
+  );
 }
 
 function formatRawTemplateResult(label, output) {
@@ -131,21 +142,32 @@ async function fetchRawLogLines({ hostname, logFilePath, grepPattern, lines }) {
   if (!hostname || !logFilePath) throw new Error('hostname ve logFilePath zorunlu.');
 
   let runnerMod;
-  try { runnerMod = require('../ansible/runner.cjs'); }
-  catch { throw new Error('Ansible runner yüklenemedi.'); }
+  try {
+    runnerMod = require('../ansible/runner.cjs');
+  } catch {
+    throw new Error('Ansible runner yüklenemedi.');
+  }
   if (!runnerMod.isConfigured()) throw new Error('AWX yapılandırılmamış — log çekme kullanılamaz.');
   const templateId = process.env.AWX_LOG_FETCH_TEMPLATE_ID;
-  if (!templateId) throw new Error('AWX_LOG_FETCH_TEMPLATE_ID tanımlı değil — log çekme kullanılamaz.');
+  if (!templateId)
+    throw new Error('AWX_LOG_FETCH_TEMPLATE_ID tanımlı değil — log çekme kullanılamaz.');
 
   const safeLines = Math.min(Number(lines) || 200, 500);
-  const launch = await runnerMod.launchJob(Number(templateId), {
-    target_host: hostname,
-    log_file_path: logFilePath,
-    grep_pattern: grepPattern || '',
-    lines: String(safeLines),
-  }, hostname);
+  const launch = await runnerMod.launchJob(
+    Number(templateId),
+    {
+      target_host: hostname,
+      log_file_path: logFilePath,
+      grep_pattern: grepPattern || '',
+      lines: String(safeLines),
+    },
+    hostname,
+  );
 
-  const jobStatus = await waitForJob(runnerMod, launch.jobId, { maxRetries: QUICK_CHECK_RETRIES, delayMs: _quickCheckDelayMs });
+  const jobStatus = await waitForJob(runnerMod, launch.jobId, {
+    maxRetries: QUICK_CHECK_RETRIES,
+    delayMs: _quickCheckDelayMs,
+  });
   if (!isTerminalStatus(jobStatus)) {
     return { pending: true, jobId: launch.jobId, safeLines };
   }
@@ -164,17 +186,30 @@ async function fetchRawLogLines({ hostname, logFilePath, grepPattern, lines }) {
 // cozulmus) VEYA envVarName uzerinden okunabilir (geriye donuk uyumluluk — hicbir mevcut
 // cagiran kalmadi ama fonksiyon ileride dogrudan env'den okumak isteyen bir cagiran icin
 // esnek kalir). fetchRawLogLines ile ayni kisa-kontrol/pending deseni (review.md #23).
-async function runReadOnlyAwxTemplate({ templateId: explicitTemplateId, envVarName, extraVars = {}, limit, missingTemplateMsg }) {
+async function runReadOnlyAwxTemplate({
+  templateId: explicitTemplateId,
+  envVarName,
+  extraVars = {},
+  limit,
+  missingTemplateMsg,
+}) {
   let runnerMod;
-  try { runnerMod = require('../ansible/runner.cjs'); }
-  catch { throw new Error('Ansible runner yüklenemedi.'); }
+  try {
+    runnerMod = require('../ansible/runner.cjs');
+  } catch {
+    throw new Error('Ansible runner yüklenemedi.');
+  }
   if (!runnerMod.isConfigured()) throw new Error('AWX yapılandırılmamış.');
   const templateId = explicitTemplateId || (envVarName && process.env[envVarName]);
-  if (!templateId) throw new Error(missingTemplateMsg || `${envVarName || 'template ID'} tanımlı değil.`);
+  if (!templateId)
+    throw new Error(missingTemplateMsg || `${envVarName || 'template ID'} tanımlı değil.`);
 
   const launch = await runnerMod.launchJob(Number(templateId), extraVars, limit || '');
 
-  const jobStatus = await waitForJob(runnerMod, launch.jobId, { maxRetries: QUICK_CHECK_RETRIES, delayMs: _quickCheckDelayMs });
+  const jobStatus = await waitForJob(runnerMod, launch.jobId, {
+    maxRetries: QUICK_CHECK_RETRIES,
+    delayMs: _quickCheckDelayMs,
+  });
   if (!isTerminalStatus(jobStatus)) {
     return { pending: true, jobId: launch.jobId };
   }
@@ -189,8 +224,9 @@ async function runReadOnlyAwxTemplate({ templateId: explicitTemplateId, envVarNa
 // ── Tool 1: LogX envanterinden host arama ─────────────────────────────────────
 const listHostsTool = {
   name: 'portal_logx_list_hosts',
-  description: 'Kurumsal uygulama envanterinden (EnvanterApps) sunucuları listeler/arar. Log ' +
-    'okumadan önce doğru hostname\'i bulmak için kullan. Sonuç: hostname, ortam(lar) ve o ' +
+  description:
+    'Kurumsal uygulama envanterinden (EnvanterApps) sunucuları listeler/arar. Log ' +
+    "okumadan önce doğru hostname'i bulmak için kullan. Sonuç: hostname, ortam(lar) ve o " +
     'sunucuda çalışan uygulamalar.',
   inputSchema: {
     type: 'object',
@@ -205,12 +241,15 @@ const listHostsTool = {
     const grouped = groupByHost(await envanterHostRows());
     const q = (search || '').toLowerCase().trim();
     const filtered = q
-      ? grouped.filter((g) =>
-          g.host.toLowerCase().includes(q) || g.apps.some((a) => a.toLowerCase().includes(q)))
+      ? grouped.filter(
+          (g) =>
+            g.host.toLowerCase().includes(q) || g.apps.some((a) => a.toLowerCase().includes(q)),
+        )
       : grouped;
     filtered.sort((a, b) => a.host.localeCompare(b.host));
     const rows = filtered.slice(0, 25).map((g) => {
-      const appsPreview = g.apps.slice(0, 4).join(', ') + (g.apps.length > 4 ? ` (+${g.apps.length - 4})` : '');
+      const appsPreview =
+        g.apps.slice(0, 4).join(', ') + (g.apps.length > 4 ? ` (+${g.apps.length - 4})` : '');
       return `${g.host} | env=${g.envs.join('/') || '-'} | uygulamalar: ${appsPreview || '-'}`;
     });
     return rows.length
@@ -225,8 +264,9 @@ const listHostsTool = {
 // (or. bir DT problem'inin ait oldugu host) baglamini otomatik enjekte etmek icin.
 const inventoryLookupTool = {
   name: 'portal_inventory_lookup',
-  description: 'Tek bir hostname için envanter kaydını getirir: o sunucuda çalışan TÜM uygulamalar ' +
-    've ortam(lar). Sohbette bir hostname geçtiğinde (ör. bir Dynatrace/Instana bulgusunun host\'u) ' +
+  description:
+    'Tek bir hostname için envanter kaydını getirir: o sunucuda çalışan TÜM uygulamalar ' +
+    "ve ortam(lar). Sohbette bir hostname geçtiğinde (ör. bir Dynatrace/Instana bulgusunun host'u) " +
     'bağlam almak için kullan. Birden fazla host arıyorsan portal_logx_list_hosts kullan.',
   inputSchema: {
     type: 'object',
@@ -239,8 +279,9 @@ const inventoryLookupTool = {
     if (!hostname) throw new Error('hostname zorunlu.');
     const grouped = groupByHost(await envanterHostRows());
     const q = String(hostname).toLowerCase().trim();
-    const match = grouped.find((g) => g.host.toLowerCase() === q)
-      || grouped.find((g) => g.host.toLowerCase().includes(q));
+    const match =
+      grouped.find((g) => g.host.toLowerCase() === q) ||
+      grouped.find((g) => g.host.toLowerCase().includes(q));
     if (!match) {
       return `"${hostname}" envanterde (EnvanterApps) bulunamadı — hostname'i doğrulamak için portal_logx_list_hosts kullan.`;
     }
@@ -256,17 +297,27 @@ const inventoryLookupTool = {
 // ── Tool 2: Ansible ile hosttan log cekme (maskeli) ───────────────────────────
 const fetchLogTool = {
   name: 'portal_logx_fetch_log',
-  description: 'Belirtilen sunucudan log dosyası içeriğini çeker (Ansible üzerinden). Hemen ' +
+  description:
+    'Belirtilen sunucudan log dosyası içeriğini çeker (Ansible üzerinden). Hemen ' +
     'sonuçlanmazsa jobId ile birlikte "henüz tamamlanmadı" mesajı döner — bu durumda birkaç ' +
-    'saniye sonra portal_logx_job_result\'ı AYNI jobId ile çağırın. Önce portal_logx_list_hosts ' +
-    'ile doğru hostname\'i bul. İçerik PII-maskelenmiş döner. Bulgularını Dynatrace ' +
+    "saniye sonra portal_logx_job_result'ı AYNI jobId ile çağırın. Önce portal_logx_list_hosts " +
+    "ile doğru hostname'i bul. İçerik PII-maskelenmiş döner. Bulgularını Dynatrace " +
     '(dynatrace_managed_query_logs / list_events) veya Instana araçlarıyla çapraz doğrula.',
   inputSchema: {
     type: 'object',
     properties: {
-      hostname: { type: 'string', description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)' },
-      logFilePath: { type: 'string', description: 'Log dosyasının tam yolu (ör. /var/log/jboss/server.log)' },
-      grepPattern: { type: 'string', description: 'Opsiyonel filtre deseni (ör. "ERROR|OutOfMemory")' },
+      hostname: {
+        type: 'string',
+        description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)',
+      },
+      logFilePath: {
+        type: 'string',
+        description: 'Log dosyasının tam yolu (ör. /var/log/jboss/server.log)',
+      },
+      grepPattern: {
+        type: 'string',
+        description: 'Opsiyonel filtre deseni (ör. "ERROR|OutOfMemory")',
+      },
       lines: { type: 'number', description: 'Son kaç satır (varsayılan 200, maks 500)' },
     },
     required: ['hostname', 'logFilePath'],
@@ -274,10 +325,22 @@ const fetchLogTool = {
   async exec({ hostname, logFilePath, grepPattern, lines } = {}) {
     const result = await fetchRawLogLines({ hostname, logFilePath, grepPattern, lines });
     if (result.pending) {
-      rememberPendingJob(result.jobId, { mode: 'fetch', hostname, logFilePath, grepPattern, safeLines: result.safeLines });
+      rememberPendingJob(result.jobId, {
+        mode: 'fetch',
+        hostname,
+        logFilePath,
+        grepPattern,
+        safeLines: result.safeLines,
+      });
       return pendingMessage(result.jobId);
     }
-    return formatFetchResult({ hostname, logFilePath, grepPattern, safeLines: result.safeLines, rawLines: result.rawLines });
+    return formatFetchResult({
+      hostname,
+      logFilePath,
+      grepPattern,
+      safeLines: result.safeLines,
+      rawLines: result.rawLines,
+    });
   },
 };
 
@@ -289,30 +352,57 @@ const fetchLogTool = {
 function makeAnalyzeLogTool(username) {
   return {
     name: 'portal_logx_analyze_log',
-    description: 'Belirtilen sunucudan log çeker VE LogX AI analiz motoruyla (özet/severity/olası ' +
+    description:
+      'Belirtilen sunucudan log çeker VE LogX AI analiz motoruyla (özet/severity/olası ' +
       'nedenler/öneriler) analiz eder — tek adımda. Hemen sonuçlanmazsa jobId ile "henüz ' +
       'tamamlanmadı" mesajı döner — bu durumda birkaç saniye sonra portal_logx_job_result\'ı AYNI ' +
       'jobId ile çağırın. Kullanıcı "şu logu analiz et / logda ne olmuş" tarzı bir istekte ' +
       'bulunduğunda ham log okumak yerine BU aracı kullan; ham metin gerekiyorsa ' +
-      'portal_logx_fetch_log kullan. Önce portal_logx_list_hosts ile doğru hostname\'i bul.',
+      "portal_logx_fetch_log kullan. Önce portal_logx_list_hosts ile doğru hostname'i bul.",
     inputSchema: {
       type: 'object',
       properties: {
-        hostname: { type: 'string', description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)' },
-        logFilePath: { type: 'string', description: 'Log dosyasının tam yolu (ör. /var/log/jboss/server.log)' },
-        grepPattern: { type: 'string', description: 'Opsiyonel filtre deseni (ör. "ERROR|OutOfMemory")' },
+        hostname: {
+          type: 'string',
+          description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)',
+        },
+        logFilePath: {
+          type: 'string',
+          description: 'Log dosyasının tam yolu (ör. /var/log/jboss/server.log)',
+        },
+        grepPattern: {
+          type: 'string',
+          description: 'Opsiyonel filtre deseni (ör. "ERROR|OutOfMemory")',
+        },
         lines: { type: 'number', description: 'Son kaç satır (varsayılan 200, maks 500)' },
-        context: { type: 'string', description: 'Opsiyonel ek bağlam (ör. ortam, servis adı, deploy zamanı)' },
+        context: {
+          type: 'string',
+          description: 'Opsiyonel ek bağlam (ör. ortam, servis adı, deploy zamanı)',
+        },
       },
       required: ['hostname', 'logFilePath'],
     },
     async exec({ hostname, logFilePath, grepPattern, lines, context } = {}) {
       const result = await fetchRawLogLines({ hostname, logFilePath, grepPattern, lines });
       if (result.pending) {
-        rememberPendingJob(result.jobId, { mode: 'analyze', hostname, logFilePath, context, username });
+        rememberPendingJob(result.jobId, {
+          mode: 'analyze',
+          hostname,
+          logFilePath,
+          context,
+          username,
+        });
         return { text: pendingMessage(result.jobId) };
       }
-      return { text: await formatAnalyzeResult({ hostname, logFilePath, rawLines: result.rawLines, context, username }) };
+      return {
+        text: await formatAnalyzeResult({
+          hostname,
+          logFilePath,
+          rawLines: result.rawLines,
+          context,
+          username,
+        }),
+      };
     },
   };
 }
@@ -329,14 +419,15 @@ function makeAnalyzeLogTool(username) {
 function makeAnsibleRunTemplateTool(user) {
   return {
     name: 'portal_ansible_run_template',
-    description: 'İzin verilen (allowlist\'teki) bir Ansible/AWX job template\'ini başlatır. Yalnızca ' +
-      'zaten onaylı/salt-okunur sınıflandırılmış template ID\'leri kabul edilir — allowlist dışı bir ID ' +
+    description:
+      "İzin verilen (allowlist'teki) bir Ansible/AWX job template'ini başlatır. Yalnızca " +
+      "zaten onaylı/salt-okunur sınıflandırılmış template ID'leri kabul edilir — allowlist dışı bir ID " +
       'reddedilir (kullanıcıyı Self Service sayfasına yönlendirmeyi öner). Job hemen tamamlanmayabilir; ' +
       'sonucu job ID + kısa süre sonraki durumdur, tam çıktı için portal_ansible_job_status kullan.',
     inputSchema: {
       type: 'object',
       properties: {
-        templateId: { type: 'number', description: 'AWX job template ID (allowlist\'te olmalı)' },
+        templateId: { type: 'number', description: "AWX job template ID (allowlist'te olmalı)" },
         extraVars: { type: 'object', description: 'Opsiyonel extra_vars (key-value)' },
         limit: { type: 'string', description: 'Opsiyonel Ansible --limit (ör. hedef hostname)' },
       },
@@ -344,32 +435,50 @@ function makeAnsibleRunTemplateTool(user) {
     },
     async exec({ templateId, extraVars = {}, limit = '' } = {}) {
       let runnerMod, audit;
-      try { runnerMod = require('../ansible/runner.cjs'); }
-      catch { throw new Error('Ansible runner yüklenemedi.'); }
-      try { audit = require('../logx/audit.cjs'); } catch { audit = null; }
+      try {
+        runnerMod = require('../ansible/runner.cjs');
+      } catch {
+        throw new Error('Ansible runner yüklenemedi.');
+      }
+      try {
+        audit = require('../logx/audit.cjs');
+      } catch {
+        audit = null;
+      }
 
       const detail = `templateId=${templateId} extraVars=${JSON.stringify(extraVars).slice(0, 500)} limit=${limit || '-'}`;
       try {
         const launch = await runnerMod.launchJob(Number(templateId), extraVars, limit);
-        audit?.log({
-          username: user.username, role: user.role, action: 'ai_ansible_launch',
-          result: 'success', detail: `${detail} jobId=${launch.jobId}`,
-        }).catch(() => {});
+        audit
+          ?.log({
+            username: user.username,
+            role: user.role,
+            action: 'ai_ansible_launch',
+            result: 'success',
+            detail: `${detail} jobId=${launch.jobId}`,
+          })
+          .catch(() => {});
 
         // Kisa poll (log-fetch aracindaki gibi 60s beklemek yerine) — LLM'e hizli
         // donus yapilir, gerekiyorsa portal_ansible_job_status ile takip edilir.
         await new Promise((r) => setTimeout(r, 3000));
         const status = await runnerMod.getJobStatus(launch.jobId).catch(() => null);
         return {
-          text: `AWX job başlatıldı: templateId=${templateId}, jobId=${launch.jobId}, ` +
+          text:
+            `AWX job başlatıldı: templateId=${templateId}, jobId=${launch.jobId}, ` +
             `durum=${status?.status || launch.status} (henüz sonuçlanmamış olabilir — ` +
             `portal_ansible_job_status ile takip edin).`,
         };
       } catch (err) {
-        audit?.log({
-          username: user.username, role: user.role, action: 'ai_ansible_launch',
-          result: 'error', detail: `${detail} error=${err.message}`,
-        }).catch(() => {});
+        audit
+          ?.log({
+            username: user.username,
+            role: user.role,
+            action: 'ai_ansible_launch',
+            result: 'error',
+            detail: `${detail} error=${err.message}`,
+          })
+          .catch(() => {});
         throw err;
       }
     },
@@ -380,16 +489,21 @@ function makeAnsibleRunTemplateTool(user) {
 function makeAnsibleJobStatusTool() {
   return {
     name: 'portal_ansible_job_status',
-    description: 'portal_ansible_run_template ile başlatılmış bir AWX job\'ının güncel durumunu getirir.',
+    description:
+      "portal_ansible_run_template ile başlatılmış bir AWX job'ının güncel durumunu getirir.",
     inputSchema: {
       type: 'object',
-      properties: { jobId: { type: 'number', description: 'Job ID (portal_ansible_run_template sonucundan)' } },
+      properties: {
+        jobId: { type: 'number', description: 'Job ID (portal_ansible_run_template sonucundan)' },
+      },
       required: ['jobId'],
     },
     async exec({ jobId } = {}) {
       const runnerMod = require('../ansible/runner.cjs');
       const status = await runnerMod.getJobStatus(Number(jobId));
-      return { text: `Job #${jobId}: durum=${status.status}, başladı=${status.started || '-'}, bitti=${status.finished || '-'}` };
+      return {
+        text: `Job #${jobId}: durum=${status.status}, başladı=${status.started || '-'}, bitti=${status.finished || '-'}`,
+      };
     },
   };
 }
@@ -403,7 +517,8 @@ function makeAnsibleJobStatusTool() {
 function makeJobResultTool() {
   return {
     name: 'portal_logx_job_result',
-    description: 'portal_logx_fetch_log, portal_logx_analyze_log veya portal_playbook_* bir jobId ile ' +
+    description:
+      'portal_logx_fetch_log, portal_logx_analyze_log veya portal_playbook_* bir jobId ile ' +
       '"henüz tamamlanmadı" döndüyse, bu aracı AYNI jobId ile çağırarak sonucu (hazır olduğunda) alın.',
     inputSchema: {
       type: 'object',
@@ -414,14 +529,21 @@ function makeJobResultTool() {
       const id = Number(jobId);
       const pending = _pendingJobs.get(id);
       if (!pending) {
-        return { text: `jobId=${id} için bekleyen bir kayıt bulunamadı (süresi dolmuş ya da hatalı jobId olabilir).` };
+        return {
+          text: `jobId=${id} için bekleyen bir kayıt bulunamadı (süresi dolmuş ya da hatalı jobId olabilir).`,
+        };
       }
       let runnerMod;
-      try { runnerMod = require('../ansible/runner.cjs'); }
-      catch { throw new Error('Ansible runner yüklenemedi.'); }
+      try {
+        runnerMod = require('../ansible/runner.cjs');
+      } catch {
+        throw new Error('Ansible runner yüklenemedi.');
+      }
       const status = await runnerMod.getJobStatus(id);
       if (!isTerminalStatus(status)) {
-        return { text: `Job #${id} hâlâ çalışıyor (durum=${status?.status || 'bilinmiyor'}). Birkaç saniye sonra tekrar deneyin.` };
+        return {
+          text: `Job #${id} hâlâ çalışıyor (durum=${status?.status || 'bilinmiyor'}). Birkaç saniye sonra tekrar deneyin.`,
+        };
       }
       _pendingJobs.delete(id);
       if (status.status !== 'successful') {
@@ -429,7 +551,25 @@ function makeJobResultTool() {
       }
       const output = await runnerMod.getJobOutput(id);
       const rawLines = String(output.output || '').split('\n');
-      const text = (await (async () => { if (pending.mode === 'analyze') return await formatAnalyzeResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, rawLines, context: pending.context, username: pending.username }); if (pending.mode === 'raw-template') return formatRawTemplateResult(pending.label, output.output); return formatFetchResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, grepPattern: pending.grepPattern, safeLines: pending.safeLines, rawLines }); })());
+      const text = await (async () => {
+        if (pending.mode === 'analyze')
+          return await formatAnalyzeResult({
+            hostname: pending.hostname,
+            logFilePath: pending.logFilePath,
+            rawLines,
+            context: pending.context,
+            username: pending.username,
+          });
+        if (pending.mode === 'raw-template')
+          return formatRawTemplateResult(pending.label, output.output);
+        return formatFetchResult({
+          hostname: pending.hostname,
+          logFilePath: pending.logFilePath,
+          grepPattern: pending.grepPattern,
+          safeLines: pending.safeLines,
+          rawLines,
+        });
+      })();
       return { text };
     },
   };
@@ -441,22 +581,31 @@ function makeJobResultTool() {
 // birini + sinirli bir zaman penceresini secebiliyor (injection/maliyet riski yok).
 const splunkSearchTool = {
   name: 'portal_splunk_search',
-  description: 'Splunk\'ta belirtilen ürün için son N dakikadaki log kayıtlarını getirir. ' +
+  description:
+    "Splunk'ta belirtilen ürün için son N dakikadaki log kayıtlarını getirir. " +
     'Serbest SPL sorgusu KABUL ETMEZ — yalnızca ürün adı ve zaman aralığı.',
   inputSchema: {
     type: 'object',
     properties: {
-      product: { type: 'string', description: 'SPLUNK_PRODUCTS listesinden bir ürün adı (ör. jboss, nginx, httpd)' },
+      product: {
+        type: 'string',
+        description: 'SPLUNK_PRODUCTS listesinden bir ürün adı (ör. jboss, nginx, httpd)',
+      },
       windowMinutes: { type: 'number', description: 'Son kaç dakika (varsayılan 15, maks 60)' },
     },
     required: ['product'],
   },
   async exec({ product, windowMinutes } = {}) {
     const splunkClient = require('../splunk/client.cjs');
-    if (!splunkClient.isConfigured()) throw new Error('Splunk yapılandırılmamış (SPLUNK_BASE_URL/SPLUNK_TOKEN).');
-    const result = await splunkClient.search({ product, windowMinutes: Math.min(Number(windowMinutes) || 15, 60) });
+    if (!splunkClient.isConfigured())
+      throw new Error('Splunk yapılandırılmamış (SPLUNK_BASE_URL/SPLUNK_TOKEN).');
+    const result = await splunkClient.search({
+      product,
+      windowMinutes: Math.min(Number(windowMinutes) || 15, 60),
+    });
     return {
-      text: `Splunk "${product}" (son ${windowMinutes || 15} dk): ${result.eventCount} kayıt bulundu.\n` +
+      text:
+        `Splunk "${product}" (son ${windowMinutes || 15} dk): ${result.eventCount} kayıt bulundu.\n` +
         (result.sample.length ? `Örnek kayıtlar:\n${result.sample.slice(0, 5).join('\n')}` : ''),
     };
   },
@@ -477,12 +626,16 @@ const splunkSearchTool = {
 function makeHostTargetTool(row, templateId) {
   return {
     name: `portal_playbook_${row.keyName}`,
-    description: `${row.description || row.displayName} Önce portal_logx_list_hosts ile doğru hostname'i doğrula. ` +
+    description:
+      `${row.description || row.displayName} Önce portal_logx_list_hosts ile doğru hostname'i doğrula. ` +
       'Hemen sonuçlanmazsa jobId ile "henüz tamamlanmadı" döner — portal_logx_job_result ile takip edin.',
     inputSchema: {
       type: 'object',
       properties: {
-        hostname: { type: 'string', description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)' },
+        hostname: {
+          type: 'string',
+          description: 'Envanterdeki hostname (portal_logx_list_hosts çıktısından)',
+        },
       },
       required: ['hostname'],
     },
@@ -510,15 +663,22 @@ function makeHostTargetTool(row, templateId) {
 function makeOcpPodStatusTool(row, templateId) {
   return {
     name: `portal_playbook_${row.keyName}`,
-    description: `${row.description || row.displayName} Önce hangi cluster'ların kayıtlı olduğunu ` +
+    description:
+      `${row.description || row.displayName} Önce hangi cluster'ların kayıtlı olduğunu ` +
       'bilmiyorsan kullanıcıya sor veya Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi listesine yönlendir. ' +
       'Hemen sonuçlanmazsa jobId ile "henüz tamamlanmadı" döner — portal_logx_job_result ile takip edin.',
     inputSchema: {
       type: 'object',
       properties: {
         clusterName: { type: 'string', description: 'Kayıtlı OCP cluster adı (name veya display)' },
-        namespace: { type: 'string', description: 'Opsiyonel — boş bırakılırsa tüm namespace\'ler taranır' },
-        labelSelector: { type: 'string', description: 'Opsiyonel Kubernetes label selector (ör. app=payment)' },
+        namespace: {
+          type: 'string',
+          description: "Opsiyonel — boş bırakılırsa tüm namespace'ler taranır",
+        },
+        labelSelector: {
+          type: 'string',
+          description: 'Opsiyonel Kubernetes label selector (ör. app=payment)',
+        },
       },
       required: ['clusterName'],
     },
@@ -527,13 +687,20 @@ function makeOcpPodStatusTool(row, templateId) {
       const runnerMod = require('../ansible/runner.cjs');
       const clusters = runnerMod.getOcpClusters();
       const q = String(clusterName).toLowerCase().trim();
-      const cluster = clusters.find((c) => c.name?.toLowerCase() === q || c.display?.toLowerCase() === q)
-        || clusters.find((c) => c.name?.toLowerCase().includes(q) || c.display?.toLowerCase().includes(q));
+      const cluster =
+        clusters.find((c) => c.name?.toLowerCase() === q || c.display?.toLowerCase() === q) ||
+        clusters.find(
+          (c) => c.name?.toLowerCase().includes(q) || c.display?.toLowerCase().includes(q),
+        );
       if (!cluster) {
-        return { text: `"${clusterName}" adında kayıtlı bir OCP cluster bulunamadı. Kayıtlı cluster'lar: ${clusters.map((c) => c.display || c.name).join(', ') || '(yok)'}` };
+        return {
+          text: `"${clusterName}" adında kayıtlı bir OCP cluster bulunamadı. Kayıtlı cluster'lar: ${clusters.map((c) => c.display || c.name).join(', ') || '(yok)'}`,
+        };
       }
       if (!cluster.jumpHost) {
-        return { text: `"${cluster.display || cluster.name}" cluster'ı için jump/bastion host tanımlı değil — Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi'nden ekleyin.` };
+        return {
+          text: `"${cluster.display || cluster.name}" cluster'ı için jump/bastion host tanımlı değil — Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi'nden ekleyin.`,
+        };
       }
 
       const label = `[${cluster.display || cluster.name}] ${row.displayName}`;
@@ -572,19 +739,29 @@ async function canUseTool(user, elementKey) {
 
 async function buildRegistryTools(user) {
   let playbookRegistry;
-  try { playbookRegistry = require('../ansible/playbook-registry.cjs'); }
-  catch { return []; } // DB modulu yuklenemezse (or. MSSQL yok) sessizce bos liste
+  try {
+    playbookRegistry = require('../ansible/playbook-registry.cjs');
+  } catch {
+    return [];
+  } // DB modulu yuklenemezse (or. MSSQL yok) sessizce bos liste
 
   let rows;
-  try { rows = await playbookRegistry.listEnabled(); }
-  catch { return []; } // DB erisilemezse sessizce bos liste — sohbet cokmemeli
+  try {
+    rows = await playbookRegistry.listEnabled();
+  } catch {
+    return [];
+  } // DB erisilemezse sessizce bos liste — sohbet cokmemeli
 
   const tools = [];
   for (const row of rows) {
     const templateId = playbookRegistry.getEffectiveTemplateId(row);
     if (!templateId) continue; // yapilandirilmamis — arac hic olusturulmaz
     if (!(await canUseTool(user, `aitool:${row.keyName}`))) continue; // admin bu AI aracini gizlemis
-    tools.push(row.handler === 'ocp_cluster' ? makeOcpPodStatusTool(row, templateId) : makeHostTargetTool(row, templateId));
+    tools.push(
+      row.handler === 'ocp_cluster'
+        ? makeOcpPodStatusTool(row, templateId)
+        : makeHostTargetTool(row, templateId),
+    );
   }
   return tools;
 }
@@ -595,8 +772,13 @@ async function buildRegistryTools(user) {
 async function getPortalTools(user = {}) {
   const username = user.username || 'anonymous';
   const tools = [
-    listHostsTool, inventoryLookupTool, fetchLogTool, makeAnalyzeLogTool(username),
-    makeJobResultTool(), splunkSearchTool, ...(await buildRegistryTools(user)),
+    listHostsTool,
+    inventoryLookupTool,
+    fetchLogTool,
+    makeAnalyzeLogTool(username),
+    makeJobResultTool(),
+    splunkSearchTool,
+    ...(await buildRegistryTools(user)),
   ];
   // AI-tetiklemeli Ansible LAUNCH araci: Admin rolu + `feature:ai_infra_launch` kill-switch.
   // Element varsayilan acik; admin bunu kapatarak AI'nin altyapi job'i baslatmasini tamamen
@@ -611,6 +793,8 @@ module.exports = {
   getPortalTools,
   // test-only: gercek 2s'leri beklemeden "hic terminal olmuyor" pending senaryosunu hizli
   // dogrulamak icin (review.md #23 testleri).
-  _setQuickCheckDelayMs: (ms) => { _quickCheckDelayMs = ms; },
+  _setQuickCheckDelayMs: (ms) => {
+    _quickCheckDelayMs = ms;
+  },
   _pendingJobs,
 };

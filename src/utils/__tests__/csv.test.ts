@@ -13,7 +13,13 @@ describe('csv', () => {
   it('CV1 ayırıcı, satır sonu ve tırnak içeren hücreler BOZULMADAN geçer', () => {
     // Hücreden ayırıcıyı "temizlemek" veriyi sessizce değiştirmek olurdu; RFC 4180
     // kaçışı ile değer aynen korunur.
-    const out = toCsv(['a', 'b'], [['x;y', 'tırnak "içinde"'], ['satır\nsonu', 'düz']]);
+    const out = toCsv(
+      ['a', 'b'],
+      [
+        ['x;y', 'tırnak "içinde"'],
+        ['satır\nsonu', 'düz'],
+      ],
+    );
     const satirlar = out.split('\r\n');
     expect(satirlar[0]).toBe('"a";"b"');
     expect(satirlar[1]).toBe('"x;y";"tırnak ""içinde"""');

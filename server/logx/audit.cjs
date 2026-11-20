@@ -18,16 +18,19 @@ const HASH_PREFIX = 'v3:';
 const VERIFY_PAGE = 2000;
 
 function computeEntryHash(prevHash, username, action, detail) {
-  return HASH_PREFIX + crypto
-    .createHash('sha256')
-    .update([prevHash, username, action, String(detail || '')].join('|'))
-    .digest('hex');
+  return (
+    HASH_PREFIX +
+    crypto
+      .createHash('sha256')
+      .update([prevHash, username, action, String(detail || '')].join('|'))
+      .digest('hex')
+  );
 }
 
 async function getLastHash() {
   try {
     const { rows } = await db.query(
-      `SELECT TOP 1 entry_hash FROM logx_audit_logs ORDER BY id DESC`
+      `SELECT TOP 1 entry_hash FROM logx_audit_logs ORDER BY id DESC`,
     );
     return rows[0]?.entry_hash || '';
   } catch {
@@ -49,7 +52,18 @@ function log(entry) {
   return task;
 }
 
-async function writeEntry({ sessionId, username, authSource, role, targetHost, targetIp, action, result, detail, clientIp }) {
+async function writeEntry({
+  sessionId,
+  username,
+  authSource,
+  role,
+  targetHost,
+  targetIp,
+  action,
+  result,
+  detail,
+  clientIp,
+}) {
   try {
     const prevHash = await getLastHash();
     // detail kirpmasi hash'ten ONCE yapilmali — hash yalnizca DB'de birebir saklanan
@@ -62,13 +76,19 @@ async function writeEntry({ sessionId, username, authSource, role, targetHost, t
          (session_id, username, auth_source, role, target_host, target_ip, action, result, detail, client_ip, prev_hash, entry_hash)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
-        sessionId || null, username,
-        authSource || 'local', role || null,
-        targetHost || null, targetIp || null,
-        action, result || null,
+        sessionId || null,
+        username,
+        authSource || 'local',
+        role || null,
+        targetHost || null,
+        targetIp || null,
+        action,
+        result || null,
         storedDetail,
-        clientIp || null, prevHash, entryHash,
-      ]
+        clientIp || null,
+        prevHash,
+        entryHash,
+      ],
     );
   } catch (err) {
     console.error('[audit] write failed:', err.message);
@@ -79,9 +99,18 @@ async function getLogs({ limit = 200, offset = 0, username, targetHost, action }
   const conditions = [];
   const params = [];
 
-  if (username)   { params.push(username);   conditions.push(`username = $${params.length}`);    }
-  if (targetHost) { params.push(targetHost); conditions.push(`target_host = $${params.length}`); }
-  if (action)     { params.push(action);     conditions.push(`action = $${params.length}`);      }
+  if (username) {
+    params.push(username);
+    conditions.push(`username = $${params.length}`);
+  }
+  if (targetHost) {
+    params.push(targetHost);
+    conditions.push(`target_host = $${params.length}`);
+  }
+  if (action) {
+    params.push(action);
+    conditions.push(`action = $${params.length}`);
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   params.push(offset, limit);
@@ -90,7 +119,7 @@ async function getLogs({ limit = 200, offset = 0, username, targetHost, action }
     `SELECT * FROM logx_audit_logs ${where}
      ORDER BY created_at DESC
      OFFSET $${params.length - 1} ROWS FETCH NEXT $${params.length} ROWS ONLY`,
-    params
+    params,
   );
   return rows;
 }
@@ -99,9 +128,7 @@ async function verifyChain() {
   // Yalnizca v3 kayitlari dogrulanir — v1/v2/legacy satirlara dokunulmaz, sadece
   // legacyCount olarak raporlanir (v1: saklanmayan timestamp; v2: yaris kosulu
   // altinda yazilmis olabilir — bkz. HASH_PREFIX uzerindeki sema gecmisi).
-  const { rows: countRows } = await db.query(
-    `SELECT COUNT(*) AS total FROM logx_audit_logs`
-  );
+  const { rows: countRows } = await db.query(`SELECT COUNT(*) AS total FROM logx_audit_logs`);
   const totalRows = Number(countRows[0]?.total || 0);
 
   // SAYFALI okunur. Eski hali tum tabloyu tek `SELECT` ile bellege aliyordu;

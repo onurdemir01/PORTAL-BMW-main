@@ -112,7 +112,11 @@ export default function AyarAracCubugu({
           <span className="inline-flex items-center gap-1.5">
             <Rozet ton="gold">{kirliSayisi} kaydedilmemiş değişiklik</Rozet>
             {suzgec !== 'taslak' && (
-              <button type="button" className="pf-btn-link !p-0 !text-xs" onClick={onTaslaklariGoster}>
+              <button
+                type="button"
+                className="pf-btn-link !p-0 !text-xs"
+                onClick={onTaslaklariGoster}
+              >
                 Göster
               </button>
             )}
@@ -121,7 +125,11 @@ export default function AyarAracCubugu({
         <p aria-live="polite" className="text-[var(--text-muted)] tabular-nums">
           {suzmeVar ? `${gorunenSayi} ayar gösteriliyor` : ''}
         </p>
-        <button type="button" className="pf-btn-link !p-0 !text-xs ml-auto" onClick={onTumunuAcKapat}>
+        <button
+          type="button"
+          className="pf-btn-link !p-0 !text-xs ml-auto"
+          onClick={onTumunuAcKapat}
+        >
           {tumuAcik ? 'Tümünü kapat' : 'Tümünü aç'}
         </button>
       </div>

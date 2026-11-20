@@ -50,19 +50,28 @@ describe('safeJson ag gecidi davranisi', () => {
   // HTTP2b — URETIM 2026-11-14 (Toplu Restart, 33 JVM): nginx 500 govdesini portalin index.html'iyle
   // degistirdi; ekran "[<!doctype html> <html lang="tr"> ...]" gosterdi. Tam HTML belgesi sizmaz, mesaj
   // kor "tekrar deneyin" demez (islem kismen yapilmis olabilir), durum ve teshis onizlemesi hatada kalir.
-  it.each([500, 501])('HTTP2b %i + tam HTML belgesi: onizleme yok, "durumu kontrol edin", htmlGovde', async (status) => {
-    const err = (await errorOf(htmlResponse(status))) as Error & { status?: number; htmlGovde?: boolean; bodyPreview?: string };
-    expect(err.message).not.toContain('<!doctype');
-    expect(err.message).not.toContain('<html');
-    expect(err.message).toContain(`HTTP ${status}`);
-    expect(err.message).toMatch(/durumu kontrol edin/);
-    expect(err.message).not.toMatch(/tekrar deneyin/);
-    expect(err.status).toBe(status);
-    expect(err.htmlGovde).toBe(true);
-    expect(err.bodyPreview).toContain('<!doctype html>');
-    const buyuk = (await errorOf(htmlResponse(status, '  <HTML>\n<body>x</body></HTML>'))) as Error & { htmlGovde?: boolean };
-    expect(buyuk.htmlGovde).toBe(true);
-  });
+  it.each([500, 501])(
+    'HTTP2b %i + tam HTML belgesi: onizleme yok, "durumu kontrol edin", htmlGovde',
+    async (status) => {
+      const err = (await errorOf(htmlResponse(status))) as Error & {
+        status?: number;
+        htmlGovde?: boolean;
+        bodyPreview?: string;
+      };
+      expect(err.message).not.toContain('<!doctype');
+      expect(err.message).not.toContain('<html');
+      expect(err.message).toContain(`HTTP ${status}`);
+      expect(err.message).toMatch(/durumu kontrol edin/);
+      expect(err.message).not.toMatch(/tekrar deneyin/);
+      expect(err.status).toBe(status);
+      expect(err.htmlGovde).toBe(true);
+      expect(err.bodyPreview).toContain('<!doctype html>');
+      const buyuk = (await errorOf(
+        htmlResponse(status, '  <HTML>\n<body>x</body></HTML>'),
+      )) as Error & { htmlGovde?: boolean };
+      expect(buyuk.htmlGovde).toBe(true);
+    },
+  );
 
   it('HTTP2c 4xx tam HTML belgesi eski davranista kalir (onizleme)', async () => {
     const err = await errorOf(htmlResponse(400));
@@ -158,18 +167,35 @@ const cevrilmis = (status: number, body: unknown) =>
 describe('çevrilmiş ret (upstreamStatus)', () => {
   it('HTTP9 403 / 404 kökenli ret fırlatılır: sunucunun mesajı, asıl kod, kod adı', async () => {
     const e = (await errorOf(
-      cevrilmis(409, { ok: false, message: 'Bu kaynağa erişiminiz kapalı.', code: 'portal_forbidden', upstreamStatus: 403, nginxRed: true }),
+      cevrilmis(409, {
+        ok: false,
+        message: 'Bu kaynağa erişiminiz kapalı.',
+        code: 'portal_forbidden',
+        upstreamStatus: 403,
+        nginxRed: true,
+      }),
     )) as Error & { status?: number; code?: string };
     expect(e.message).toBe('Bu kaynağa erişiminiz kapalı.');
     expect(e.status).toBe(403);
     expect(e.code).toBe('portal_forbidden');
-    const y = (await errorOf(cevrilmis(409, { ok: false, error: 'Kayıt bulunamadı.', upstreamStatus: 404, nginxRed: true }))) as Error & {
+    const y = (await errorOf(
+      cevrilmis(409, {
+        ok: false,
+        error: 'Kayıt bulunamadı.',
+        upstreamStatus: 404,
+        nginxRed: true,
+      }),
+    )) as Error & {
       status?: number;
     };
     expect(y.message).toBe('Kayıt bulunamadı.');
     expect(y.status).toBe(404);
     // okJson aynı hatayı taşır (Admin ekranı `durumKodu === 403 / 404`e bakıyor).
-    await expect(okJson(cevrilmis(409, { ok: false, message: 'yalnız Admin', upstreamStatus: 403, nginxRed: true }))).rejects.toMatchObject({
+    await expect(
+      okJson(
+        cevrilmis(409, { ok: false, message: 'yalnız Admin', upstreamStatus: 403, nginxRed: true }),
+      ),
+    ).rejects.toMatchObject({
       status: 403,
       message: 'yalnız Admin',
     });
@@ -177,7 +203,13 @@ describe('çevrilmiş ret (upstreamStatus)', () => {
 
   it('HTTP10 ortak çeviricinin 5xx reddi (nginxRed) de fırlatılır: üretimdeki akış, gerçek mesaj', async () => {
     const e = (await errorOf(
-      cevrilmis(424, { ok: false, message: 'AWX yanıt vermedi.', code: 'portal_upstream_unavailable', upstreamStatus: 503, nginxRed: true }),
+      cevrilmis(424, {
+        ok: false,
+        message: 'AWX yanıt vermedi.',
+        code: 'portal_upstream_unavailable',
+        upstreamStatus: 503,
+        nginxRed: true,
+      }),
     )) as Error & { status?: number };
     expect(e.message).toBe('AWX yanıt vermedi.');
     expect(e.status).toBe(503);
@@ -185,12 +217,19 @@ describe('çevrilmiş ret (upstreamStatus)', () => {
 
   it('HTTP10b modülün kendi çevirdiği 5xx reddi (işaretsiz, ScaleX eylemRoute) GÖVDE olarak döner; okJson asıl kodla', async () => {
     const b = await safeJson(
-      cevrilmis(424, { ok: false, message: 'AWX yanıt vermedi.', code: 'portal_upstream_unavailable', upstreamStatus: 503 }),
+      cevrilmis(424, {
+        ok: false,
+        message: 'AWX yanıt vermedi.',
+        code: 'portal_upstream_unavailable',
+        upstreamStatus: 503,
+      }),
     );
     expect(b.ok).toBe(false);
     expect(b.code).toBe('portal_upstream_unavailable');
     expect(b._httpStatus).toBe(424);
-    await expect(okJson(cevrilmis(424, { ok: false, message: 'AWX yanıt vermedi.', upstreamStatus: 503 }))).rejects.toMatchObject({
+    await expect(
+      okJson(cevrilmis(424, { ok: false, message: 'AWX yanıt vermedi.', upstreamStatus: 503 })),
+    ).rejects.toMatchObject({
       status: 503,
       message: 'AWX yanıt vermedi.',
     });

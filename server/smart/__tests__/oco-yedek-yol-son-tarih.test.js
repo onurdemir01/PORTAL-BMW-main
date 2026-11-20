@@ -28,7 +28,10 @@ const Module = require('node:module');
 const { talepSonTarihi, talepSonTarihiAlanlari } = require('../deadline.cjs');
 const { nextRunAt } = require('../../oco/window.cjs');
 
-const RUNNER_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
+const RUNNER_SRC = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'),
+  'utf8',
+);
 
 const DK = 60000;
 const PENCERE_BAS = '2026-10-15T20:00:00.000Z';
@@ -129,7 +132,11 @@ test('OY1 yedek yolla acilan bilet: son tarih pencere SONU, onay kapisi pencered
     // Bilet, deposuna yazildigi haliyle: poller ve uclar bu nesneden okur.
     const bilet = { status: 'PENDING', createdAt: '2026-10-15T20:05:00.000Z', pendingLaunch: pl };
     const r = talepSonTarihi(bilet, { ticketTimeoutMinutes: null });
-    assert.equal(r.deadlineKaynak, 'oco', 'bilet sinirsiz bekliyor - pencere kapaninca TIMEOUT olmaz');
+    assert.equal(
+      r.deadlineKaynak,
+      'oco',
+      'bilet sinirsiz bekliyor - pencere kapaninca TIMEOUT olmaz',
+    );
     assert.equal(r.deadline.toISOString(), PENCERE_SON);
     assert.deepEqual(talepSonTarihiAlanlari(bilet, { ticketTimeoutMinutes: null }), {
       deadline: PENCERE_SON,
@@ -149,7 +156,7 @@ test('OY1 yedek yolla acilan bilet: son tarih pencere SONU, onay kapisi pencered
   });
 });
 
-test('OY2 OCO\'suz plan: bilet sinirsiz kalir, pencere alani uydurulmaz', async () => {
+test("OY2 OCO'suz plan: bilet sinirsiz kalir, pencere alani uydurulmaz", async () => {
   const plan = ocoPlani();
   delete plan.ocoWindowStartIso;
   delete plan.ocoWindowEndIso;
@@ -160,7 +167,10 @@ test('OY2 OCO\'suz plan: bilet sinirsiz kalir, pencere alani uydurulmaz', async 
     assert.equal('ocoWindowEndIso' in pl, false);
     assert.equal('ocoNumber' in pl, false);
     assert.equal('ocoRecordId' in pl, false);
-    const r = talepSonTarihi({ status: 'PENDING', createdAt: '2026-10-15T20:05:00.000Z', pendingLaunch: pl }, {});
+    const r = talepSonTarihi(
+      { status: 'PENDING', createdAt: '2026-10-15T20:05:00.000Z', pendingLaunch: pl },
+      {},
+    );
     assert.equal(r.deadline, null);
   });
 });
@@ -182,13 +192,20 @@ test('OY3 guncellenmis kayit: bilet KAYDIN guncel penceresini ve numarasini tasi
   };
   const plan = ocoKaydiPlani(rec);
   assert.equal(paket.ocoWindowEndIso, PENCERE_SON, 'kaydin paketi yerinde degistirildi');
-  assert.equal(paket.extraVars.oco_number, 'OCO-123', 'kaydin extraVars nesnesi yerinde degistirildi');
+  assert.equal(
+    paket.extraVars.oco_number,
+    'OCO-123',
+    'kaydin extraVars nesnesi yerinde degistirildi',
+  );
   await yedekYolla(plan, { ocoRecordId: 7 }, async ({ acilan }) => {
     const pl = acilan[0].pendingLaunch;
     assert.equal(pl.ocoWindowStartIso, YENI_BAS);
     assert.equal(pl.ocoWindowEndIso, YENI_SON, 'bilet ESKI pencereyi tasiyor');
     assert.equal(pl.ocoNumber, 'OCO-456');
-    const r = talepSonTarihi({ status: 'PENDING', createdAt: '2026-10-16T20:01:00.000Z', pendingLaunch: pl }, {});
+    const r = talepSonTarihi(
+      { status: 'PENDING', createdAt: '2026-10-16T20:01:00.000Z', pendingLaunch: pl },
+      {},
+    );
     assert.equal(r.deadline.toISOString(), YENI_SON);
     const icinde = nextRunAt({
       windowStart: new Date(pl.ocoWindowStartIso),
@@ -208,6 +225,9 @@ test('OY3 guncellenmis kayit: bilet KAYDIN guncel penceresini ve numarasini tasi
   const bas = RUNNER_SRC.indexOf("require('../oco/poller.cjs').startPoller(");
   assert.ok(bas > 0, 'OCO poller geri cagrisi bulunamadi');
   const geriCagri = RUNNER_SRC.slice(bas, RUNNER_SRC.indexOf('});', bas));
-  assert.match(geriCagri, /launchOrRequestApproval\(server, rec\.awxTemplateId, require\('\.\.\/oco\/kayit-plani\.cjs'\)\.ocoKaydiPlani\(rec\),/);
+  assert.match(
+    geriCagri,
+    /launchOrRequestApproval\(server, rec\.awxTemplateId, require\('\.\.\/oco\/kayit-plani\.cjs'\)\.ocoKaydiPlani\(rec\),/,
+  );
   assert.doesNotMatch(geriCagri, /rec\.pendingLaunch/);
 });

@@ -22,7 +22,15 @@
 //   Router'a index.cjs'teki Admin + ServerHub kapilarindan SONRA baglanir (mount).
 'use strict';
 
-const ADIM_SIRASI = Object.freeze(['onkontrol', 'stop', 'web', 'delete_onkontrol', 'delete', 'rollback_onkontrol', 'rollback']);
+const ADIM_SIRASI = Object.freeze([
+  'onkontrol',
+  'stop',
+  'web',
+  'delete_onkontrol',
+  'delete',
+  'rollback_onkontrol',
+  'rollback',
+]);
 // Adim -> Playbook Kayitlari anahtari (beklenen playbook template-preflight BEKLENEN_PLAYBOOK'tan).
 const ADIM_ANAHTARI = Object.freeze({
   onkontrol: 'app_retirement_stop',
@@ -40,20 +48,42 @@ const AILE_ONEKI = Object.freeze({
   delete: ['retirement: silme ', 'retirement: delete '],
   rollback: ['retirement: geri al'],
 });
-const AILE = Object.freeze({ onkontrol: 'stop', stop: 'stop', delete_onkontrol: 'delete', delete: 'delete', rollback_onkontrol: 'rollback', rollback: 'rollback' });
-const PLAN_ADIMI = Object.freeze({ onkontrol: true, delete_onkontrol: true, rollback_onkontrol: true, stop: false, delete: false, rollback: false });
+const AILE = Object.freeze({
+  onkontrol: 'stop',
+  stop: 'stop',
+  delete_onkontrol: 'delete',
+  delete: 'delete',
+  rollback_onkontrol: 'rollback',
+  rollback: 'rollback',
+});
+const PLAN_ADIMI = Object.freeze({
+  onkontrol: true,
+  delete_onkontrol: true,
+  rollback_onkontrol: true,
+  stop: false,
+  delete: false,
+  rollback: false,
+});
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 // runner.cjs AWX_TRUNCATION_NOTICE'in degismeyen parcasi (bekci: IC-K).
 const KIRPMA_IZI = '[PORTAL] Bu cikti bellek korumasi nedeniyle KIRPILDI';
 const ZAMANLAYICI_KULLANICI = 'Portal (zamanlanmis)';
 
-const U = (s) => String(s ?? '').trim().toUpperCase();
+const U = (s) =>
+  String(s ?? '')
+    .trim()
+    .toUpperCase();
 const sayi = (x) => {
   const n = Number(x);
   return Number.isInteger(n) && n > 0 ? n : null;
 };
-const sunucuNo = (x) => (x == null || x === '' || !Number.isInteger(Number(x)) || Number(x) < 0 ? null : Number(x));
-const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
+const sunucuNo = (x) =>
+  x == null || x === '' || !Number.isInteger(Number(x)) || Number(x) < 0 ? null : Number(x);
+const iso = (v) => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+};
 function jsonNesne(s) {
   try {
     const o = typeof s === 'string' ? JSON.parse(s) : s;
@@ -77,23 +107,41 @@ const hassasAnahtar = (k) => HASSAS.test(k) || /(^|[_.-])pass($|[_.-])/i.test(k)
 // Sir sozcugu iceren alan fail-closed maskelenir; yalniz degeri sir olmayan kararlastirilmis
 // telemetry anahtarlari korunur. Boylece `password_hash` / `token_value` acik kalmazken sayac ve
 // durum alanlari kullanilabilir kalir.
-const YAPISAL_TELEMETRI = new Set(['token_count', 'password_rotation_days', 'credential_status', 'secret_detected']);
+const YAPISAL_TELEMETRI = new Set([
+  'token_count',
+  'password_rotation_days',
+  'credential_status',
+  'secret_detected',
+]);
 const hassasYapisalAnahtar = (k) => {
   const ad = String(k ?? '').toLowerCase();
   return !YAPISAL_TELEMETRI.has(ad) && (/(^|[_.-])authorization$/.test(ad) || hassasAnahtar(ad));
 };
 const DEGER = `("(?:\\\\.|[^"\\\\\\r\\n])*"|'(?:\\\\.|[^'\\\\\\r\\n])*'|[^\\s"',;}&]+)`;
-const ANAHTAR_DEGER = new RegExp(`(["']?)([A-Za-z0-9_.-]*(?:pass|pwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_.-]*)\\1(\\s*[=:]\\s*)${DEGER}`, 'gi');
-const SECENEK_DEGER = new RegExp(`(^|\\s)(-{1,2}[A-Za-z0-9_-]*pass[A-Za-z0-9_-]*\\s+)${DEGER}`, 'gim');
-const YETKI_JSON = new RegExp(`(["'])((?:[A-Za-z0-9_.-]*[_.-])?Authorization)\\1(\\s*:\\s*)${DEGER}`, 'gi');
+const ANAHTAR_DEGER = new RegExp(
+  `(["']?)([A-Za-z0-9_.-]*(?:pass|pwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_.-]*)\\1(\\s*[=:]\\s*)${DEGER}`,
+  'gi',
+);
+const SECENEK_DEGER = new RegExp(
+  `(^|\\s)(-{1,2}[A-Za-z0-9_-]*pass[A-Za-z0-9_-]*\\s+)${DEGER}`,
+  'gim',
+);
+const YETKI_JSON = new RegExp(
+  `(["'])((?:[A-Za-z0-9_.-]*[_.-])?Authorization)\\1(\\s*:\\s*)${DEGER}`,
+  'gi',
+);
 const YETKI_BASLIGI = /(\bAuthorization\s*:\s*)[^\r\n]+/gi;
 const URL_KIMLIGI = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)([^\s@/]+)(@)/gi;
 const tirnakli = (v) => (v[0] === '"' || v[0] === "'" ? `${v[0]}***${v[0]}` : '***');
 function yerelMaske(s) {
   return s
-    .replace(ANAHTAR_DEGER, (tam, q, k, ayr, v) => (hassasAnahtar(k) ? `${q}${k}${q}${ayr}${tirnakli(v)}` : tam))
+    .replace(ANAHTAR_DEGER, (tam, q, k, ayr, v) =>
+      hassasAnahtar(k) ? `${q}${k}${q}${ayr}${tirnakli(v)}` : tam,
+    )
     .replace(YETKI_JSON, (tam, q, k, ayr, v) => `${q}${k}${q}${ayr}${tirnakli(v)}`)
-    .replace(SECENEK_DEGER, (tam, bas, sec, v) => (hassasAnahtar(sec.trim().replace(/^-+/, '')) ? `${bas}${sec}${tirnakli(v)}` : tam))
+    .replace(SECENEK_DEGER, (tam, bas, sec, v) =>
+      hassasAnahtar(sec.trim().replace(/^-+/, '')) ? `${bas}${sec}${tirnakli(v)}` : tam,
+    )
     .replace(YETKI_BASLIGI, '$1***')
     .replace(URL_KIMLIGI, '$1***$3');
 }
@@ -103,12 +151,24 @@ function maskele(metin) {
   return redactSecrets(maskSecrets(yerelMaske(String(metin ?? ''))));
 }
 /** Nesne / dizi icindeki her metne maskele (eski job-status'un result / fixResult alanlari). */
-const maskeleDerin = (v) => { if (typeof v === 'string') return maskele(v); if (Array.isArray(v)) return v.map(maskeleDerin); if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, hassasYapisalAnahtar(k) && x != null ? '***' : maskeleDerin(x)])); return v; };
+const maskeleDerin = (v) => {
+  if (typeof v === 'string') return maskele(v);
+  if (Array.isArray(v)) return v.map(maskeleDerin);
+  if (v && typeof v === 'object')
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [
+        k,
+        hassasYapisalAnahtar(k) && x != null ? '***' : maskeleDerin(x),
+      ]),
+    );
+  return v;
+};
 
 // ── IS GECMISI ─────────────────────────────────────────────────────────────────────────────────
 function aileOf(templateName) {
   const ad = String(templateName || '').toLowerCase();
-  for (const [aile, onekler] of Object.entries(AILE_ONEKI)) if (onekler.some((o) => ad.startsWith(o))) return aile;
+  for (const [aile, onekler] of Object.entries(AILE_ONEKI))
+    if (onekler.some((o) => ad.startsWith(o))) return aile;
   return null;
 }
 function planOnlyOf(params) {
@@ -121,13 +181,21 @@ function planOnlyOf(params) {
 function hedefIcerir(params, t) {
   const p = jsonNesne(params);
   if (!p || !U(t.host) || !U(t.app_name)) return false;
-  const uyar = (host, app, gen) => U(host) === U(t.host) && U(app) === U(t.app_name) && gen !== undefined && String(gen) === String(t.jboss_gen ?? null);
+  const uyar = (host, app, gen) =>
+    U(host) === U(t.host) &&
+    U(app) === U(t.app_name) &&
+    gen !== undefined &&
+    String(gen) === String(t.jboss_gen ?? null);
   if (U(p.target_host) && uyar(p.target_host, p.application, p.jboss_gen)) return true;
-  return Array.isArray(p.rt_hedefler) && p.rt_hedefler.some((h) => h && uyar(h.host, h.application, h.jboss_gen));
+  return (
+    Array.isArray(p.rt_hedefler) &&
+    p.rt_hedefler.some((h) => h && uyar(h.host, h.application, h.jboss_gen))
+  );
 }
 function gecmisSatirlari(gecmis, jobId, t, aile) {
   return (Array.isArray(gecmis) ? gecmis : []).filter(
-    (r) => sayi(r && r.job_id) === jobId && aileOf(r.template_name) === aile && hedefIcerir(r.params, t),
+    (r) =>
+      sayi(r && r.job_id) === jobId && aileOf(r.template_name) === aile && hedefIcerir(r.params, t),
   );
 }
 
@@ -136,7 +204,14 @@ async function isGecmisiOku(db, hedefler) {
   const idler = [
     ...new Set(
       (hedefler || []).flatMap((t) =>
-        [t.last_job_id, t.delete_job_id, t.rollback_job_id, jsonNesne(t.stop_izin_json)?.jobId, jsonNesne(t.delete_onkontrol_json)?.jobId, jsonNesne(t.rollback_onkontrol_json)?.jobId]
+        [
+          t.last_job_id,
+          t.delete_job_id,
+          t.rollback_job_id,
+          jsonNesne(t.stop_izin_json)?.jobId,
+          jsonNesne(t.delete_onkontrol_json)?.jobId,
+          jsonNesne(t.rollback_onkontrol_json)?.jobId,
+        ]
           .map(sayi)
           .filter(Boolean),
       ),
@@ -163,7 +238,9 @@ async function isGecmisiOku(db, hedefler) {
 function sonIsTuru(t, gecmis) {
   const jobId = sayi(t.last_job_id);
   if (!jobId) return null;
-  const turler = new Set(gecmisSatirlari(gecmis, jobId, t, 'stop').map((r) => planOnlyOf(r.params)));
+  const turler = new Set(
+    gecmisSatirlari(gecmis, jobId, t, 'stop').map((r) => planOnlyOf(r.params)),
+  );
   turler.delete(null);
   if (turler.size > 1) return null;
   if (turler.size === 1) return turler.has(true) ? 'onkontrol' : 'stop';
@@ -174,12 +251,19 @@ function sonIsTuru(t, gecmis) {
 
 // Gecmisten sunucu: ayni is + aile + hedef + adim turu (plan_only). Birden cok sunucu = belirsiz.
 function gecmisSunucusu(gecmis, jobId, t, adim) {
-  const satirlar = gecmisSatirlari(gecmis, jobId, t, AILE[adim]).filter((r) => planOnlyOf(r.params) !== !PLAN_ADIMI[adim]);
+  const satirlar = gecmisSatirlari(gecmis, jobId, t, AILE[adim]).filter(
+    (r) => planOnlyOf(r.params) !== !PLAN_ADIMI[adim],
+  );
   const idler = new Set(satirlar.map((r) => sunucuNo(r.awx_server_id)).filter((x) => x != null));
   if (idler.size > 1) return { id: null, belirsiz: true, satir: null };
   if (idler.size === 0) return { id: null, belirsiz: false, satir: satirlar[0] || null };
   const id = [...idler][0];
-  return { id, belirsiz: false, satir: satirlar.find((r) => sunucuNo(r.awx_server_id) === id) || null, kanit: 'gecmis' };
+  return {
+    id,
+    belirsiz: false,
+    satir: satirlar.find((r) => sunucuNo(r.awx_server_id) === id) || null,
+    kanit: 'gecmis',
+  };
 }
 // Web girdisinin sunucusu: kaldirma isinde poller is no ile BIRLIKTE yazar. Geri acma (restoring /
 // restored) isinde yalniz webGeriAl'in isaretiyle (sunucuIsi = is no): isaretsiz eski girdide awxServerId
@@ -190,15 +274,32 @@ function webSunucusu(w, jobId) {
   if (sid == null) return { id: null, belirsiz: false, satir: null };
   const isaret = sayi(w.sunucuIsi);
   const guvenli = isaret != null ? isaret === jobId : !GERI_ACMA.has(String(w.status));
-  return guvenli ? { id: sid, belirsiz: false, satir: null, kanit: 'kayit' } : { id: null, belirsiz: true, satir: null };
+  return guvenli
+    ? { id: sid, belirsiz: false, satir: null, kanit: 'kayit' }
+    : { id: null, belirsiz: true, satir: null };
 }
-const kaynakOf = (satir) => { if (!satir || !satir.username) return null; if (satir.username === ZAMANLAYICI_KULLANICI) return 'zamanlayici'; return 'elle'; };
-const onKontrolDurumu = (d) => { if (d === 'running' || d === 'baslatiliyor') return 'suruyor'; if (d === 'ok') return 'basarili'; if (d === 'failed') return 'basarisiz'; return 'bilinmiyor'; };
+const kaynakOf = (satir) => {
+  if (!satir || !satir.username) return null;
+  if (satir.username === ZAMANLAYICI_KULLANICI) return 'zamanlayici';
+  return 'elle';
+};
+const onKontrolDurumu = (d) => {
+  if (d === 'running' || d === 'baslatiliyor') return 'suruyor';
+  if (d === 'ok') return 'basarili';
+  if (d === 'failed') return 'basarisiz';
+  return 'bilinmiyor';
+};
 // Web girdisinin is numarasi: running/ok/skip/failed kaldirma isi, restoring geri acma isi. restore_manual /
 // restore_failed'te geri acma HIC baslamadi: jobId hala (basarili) kaldirma isidir.
 const WEB_DURUMU = Object.freeze({
-  running: 'suruyor', restoring: 'suruyor', ok: 'basarili', skip: 'basarili', restored: 'basarili',
-  restore_manual: 'basarili', restore_failed: 'basarili', failed: 'basarisiz',
+  running: 'suruyor',
+  restoring: 'suruyor',
+  ok: 'basarili',
+  skip: 'basarili',
+  restored: 'basarili',
+  restore_manual: 'basarili',
+  restore_failed: 'basarili',
+  failed: 'basarisiz',
 });
 const SIRA = Object.fromEntries(ADIM_SIRASI.map((a, i) => [a, i]));
 
@@ -208,7 +309,16 @@ function hedefIsKayitlari(t, gecmis) {
   let eksik = false;
   const s = t.status;
   const ekle = (adim, jobId, durum, o = {}) =>
-    isler.push({ adim, ...(o.web != null ? { web: o.web } : {}), jobId, durum, basladi: o.basladi ?? null, bitti: o.bitti ?? null, kaynak: o.kaynak ?? null, _sunucu: o.sunucu });
+    isler.push({
+      adim,
+      ...(o.web != null ? { web: o.web } : {}),
+      jobId,
+      durum,
+      basladi: o.basladi ?? null,
+      bitti: o.bitti ?? null,
+      kaynak: o.kaynak ?? null,
+      _sunucu: o.sunucu,
+    });
   const gecmisli = (adim, jobId) => gecmisSunucusu(gecmis, jobId, t, adim);
 
   // ON KONTROL + STOP (ikisi de last_job_id'ye yazilir; STOP on kontrolun numarasini ezer).
@@ -219,16 +329,45 @@ function hedefIsKayitlari(t, gecmis) {
   const izinIs = sayi(izin?.jobId);
   if (tur === 'onkontrol') {
     const g = gecmisli('onkontrol', son);
-    const durum = (() => { if (s === 'planning') return 'suruyor'; if (['planned', 'stop_scheduled', 'stopping'].includes(s) || izinIs === son) return 'basarili'; if (s === 'failed') return 'basarisiz'; return 'bilinmiyor'; })();
-    ekle('onkontrol', son, durum, { basladi: iso(g.satir?.started_at), bitti: izinIs === son ? iso(izin?.at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
+    const durum = (() => {
+      if (s === 'planning') return 'suruyor';
+      if (['planned', 'stop_scheduled', 'stopping'].includes(s) || izinIs === son)
+        return 'basarili';
+      if (s === 'failed') return 'basarisiz';
+      return 'bilinmiyor';
+    })();
+    ekle('onkontrol', son, durum, {
+      basladi: iso(g.satir?.started_at),
+      bitti: izinIs === son ? iso(izin?.at) : null,
+      kaynak: kaynakOf(g.satir),
+      sunucu: g,
+    });
   } else if (izinIs && izinIs !== son) {
     const g = gecmisli('onkontrol', izinIs);
-    ekle('onkontrol', izinIs, 'basarili', { basladi: iso(g.satir?.started_at), bitti: iso(izin?.at), kaynak: kaynakOf(g.satir), sunucu: g });
+    ekle('onkontrol', izinIs, 'basarili', {
+      basladi: iso(g.satir?.started_at),
+      bitti: iso(izin?.at),
+      kaynak: kaynakOf(g.satir),
+      sunucu: g,
+    });
   }
   if (tur === 'stop') {
     const g = gecmisli('stop', son);
-    const durum = (() => { if (s === 'stopping') return 'suruyor'; if (['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(s)) return 'basarili'; if (s === 'failed' && !sayi(t.delete_job_id)) return 'basarisiz'; return 'bilinmiyor'; })();
-    ekle('stop', son, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.stopped_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
+    const durum = (() => {
+      if (s === 'stopping') return 'suruyor';
+      if (
+        ['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(s)
+      )
+        return 'basarili';
+      if (s === 'failed' && !sayi(t.delete_job_id)) return 'basarisiz';
+      return 'bilinmiyor';
+    })();
+    ekle('stop', son, durum, {
+      basladi: iso(g.satir?.started_at),
+      bitti: durum === 'basarili' ? iso(t.stopped_at) : null,
+      kaynak: kaynakOf(g.satir),
+      sunucu: g,
+    });
   }
 
   // WEB: indeks web_result_json'daki OZGUN siradir (ekran webSonuc[i] ile eslestirir).
@@ -238,12 +377,18 @@ function hedefIsKayitlari(t, gecmis) {
       const jobId = sayi(w && w.jobId);
       if (!jobId) return;
       ekle('web', jobId, WEB_DURUMU[String(w.status)] || 'bilinmiyor', {
-        web: i, basladi: iso(w.basladi), bitti: iso(w.bitti), sunucu: webSunucusu(w, jobId),
+        web: i,
+        basladi: iso(w.basladi),
+        bitti: iso(w.bitti),
+        sunucu: webSunucusu(w, jobId),
       });
     });
 
   // SILME / GERI ALMA ON KONTROLU: kendi kayitlarinda is no + sunucu + durum + kaynak.
-  for (const [adim, alan] of [['delete_onkontrol', 'delete_onkontrol_json'], ['rollback_onkontrol', 'rollback_onkontrol_json']]) {
+  for (const [adim, alan] of [
+    ['delete_onkontrol', 'delete_onkontrol_json'],
+    ['rollback_onkontrol', 'rollback_onkontrol_json'],
+  ]) {
     const o = jsonNesne(t[alan]);
     const jobId = sayi(o?.jobId);
     if (!jobId) continue;
@@ -254,21 +399,50 @@ function hedefIsKayitlari(t, gecmis) {
       basladi: suruyor ? iso(o.at) : iso(g.satir?.started_at),
       bitti: suruyor ? null : iso(o.at),
       kaynak: o.kaynak === 'elle' || o.kaynak === 'zamanlayici' ? o.kaynak : kaynakOf(g.satir),
-      sunucu: (() => { if (kayitli != null) return { id: kayitli, belirsiz: false, satir: g.id === kayitli ? g.satir : null, kanit: 'kayit' }; return g; })(),
+      sunucu: (() => {
+        if (kayitli != null)
+          return {
+            id: kayitli,
+            belirsiz: false,
+            satir: g.id === kayitli ? g.satir : null,
+            kanit: 'kayit',
+          };
+        return g;
+      })(),
     });
   }
 
   const silme = sayi(t.delete_job_id);
   if (silme) {
     const g = gecmisli('delete', silme);
-    const durum = (() => { if (s === 'deleting') return 'suruyor'; if (s === 'deleted') return 'basarili'; if (s === 'failed') return 'basarisiz'; return 'bilinmiyor'; })();
-    ekle('delete', silme, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.deleted_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
+    const durum = (() => {
+      if (s === 'deleting') return 'suruyor';
+      if (s === 'deleted') return 'basarili';
+      if (s === 'failed') return 'basarisiz';
+      return 'bilinmiyor';
+    })();
+    ekle('delete', silme, durum, {
+      basladi: iso(g.satir?.started_at),
+      bitti: durum === 'basarili' ? iso(t.deleted_at) : null,
+      kaynak: kaynakOf(g.satir),
+      sunucu: g,
+    });
   }
   const geri = sayi(t.rollback_job_id);
   if (geri) {
     const g = gecmisli('rollback', geri);
-    const durum = (() => { if (s === 'rolling_back') return 'suruyor'; if (s === 'active') return 'basarili'; if (s === 'rollback_failed') return 'basarisiz'; return 'bilinmiyor'; })();
-    ekle('rollback', geri, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.rolled_back_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
+    const durum = (() => {
+      if (s === 'rolling_back') return 'suruyor';
+      if (s === 'active') return 'basarili';
+      if (s === 'rollback_failed') return 'basarisiz';
+      return 'bilinmiyor';
+    })();
+    ekle('rollback', geri, durum, {
+      basladi: iso(g.satir?.started_at),
+      bitti: durum === 'basarili' ? iso(t.rolled_back_at) : null,
+      kaynak: kaynakOf(g.satir),
+      sunucu: g,
+    });
   }
 
   isler.sort((a, b) => SIRA[a.adim] - SIRA[b.adim] || (a.web ?? 0) - (b.web ?? 0));
@@ -292,13 +466,16 @@ function hedefIsleri(t, gecmis, { sunucuVar } = {}) {
 function awxIsAdresi(server, jobId) {
   if (!server || !server.url) return null;
   const kok = String(server.url).replace(/(?<!\/)\/+$/, '');
-  return /\/api\/controller\//.test(`${server.apiBase || ''}/`) ? `${kok}/execution/jobs/playbook/${jobId}/output` : `${kok}/#/jobs/playbook/${jobId}/output`;
+  return /\/api\/controller\//.test(`${server.apiBase || ''}/`)
+    ? `${kok}/execution/jobs/playbook/${jobId}/output`
+    : `${kok}/#/jobs/playbook/${jobId}/output`;
 }
 
 // ── UC ─────────────────────────────────────────────────────────────────────────────────────────
 const MESAJ = Object.freeze({
   hedef_yok: 'Hedef bu kayıtta yok (kayıttan çıkarılmış olabilir).',
-  sunucu_belirsiz: 'İşin hangi AWX sunucusunda çalıştığı kanıtlanamadı; aynı numaralı başka bir işi göstermemek için çıktı okunmadı.',
+  sunucu_belirsiz:
+    'İşin hangi AWX sunucusunda çalıştığı kanıtlanamadı; aynı numaralı başka bir işi göstermemek için çıktı okunmadı.',
 });
 // Reddedilen erisim denetime yazilir (yalniz baglama reddi; eksik is numarasi erisim reddi degil).
 const DENETLENEN = new Set(['hedef_yok', 'sunucu_belirsiz', 'template_uyusmuyor']);
@@ -308,14 +485,23 @@ function mount(router, deps = {}) {
     db: deps.db || (() => require('../db/index.cjs')),
     runner: deps.runner || (() => require('../ansible/runner.cjs')),
     stdoutCache: deps.stdoutCache || (() => require('../ansible/job-stdout-cache.cjs')),
-    beklenenPlaybook: deps.beklenenPlaybook || (() => require('../ansible/template-preflight.cjs').BEKLENEN_PLAYBOOK),
+    beklenenPlaybook:
+      deps.beklenenPlaybook ||
+      (() => require('../ansible/template-preflight.cjs').BEKLENEN_PLAYBOOK),
     audit: deps.audit || (() => {}),
   };
   // Beklenmeyen hata da 424 (gecici) doner: 500 gecitte HTML'e doner ve istemci kodu okuyamaz.
   router.get('/:id/targets/:tid/is-ciktisi', (req, res) =>
     isCiktisi(req, res, d).catch((e) => {
-      if (!res.headersSent) res.status(424).json({ ok: false, code: 'olculemedi', kalici: false, message: `İş çıktısı okunamadı: ${maskele(e && e.message)}` });
-    }));
+      if (!res.headersSent)
+        res.status(424).json({
+          ok: false,
+          code: 'olculemedi',
+          kalici: false,
+          message: `İş çıktısı okunamadı: ${maskele(e && e.message)}`,
+        });
+    }),
+  );
 }
 
 async function isCiktisi(req, res, d) {
@@ -335,17 +521,23 @@ async function isCiktisi(req, res, d) {
     }
     return res.status(http).json({ ok: false, code, kalici: http !== 424, message });
   };
-  if (!id || !tid || !ADIM_SIRASI.includes(adim)) return red(400, 'gecersiz', 'İstek geçersiz: kayıt, hedef ya da adım tanınmadı.');
+  if (!id || !tid || !ADIM_SIRASI.includes(adim))
+    return red(400, 'gecersiz', 'İstek geçersiz: kayıt, hedef ya da adım tanınmadı.');
   if (adim === 'web') {
-    if (!/^\d{1,4}$/.test(String(q.web ?? ''))) return red(400, 'gecersiz', 'İstek geçersiz: web adımı için vhost sırası gerekli.');
+    if (!/^\d{1,4}$/.test(String(q.web ?? '')))
+      return red(400, 'gecersiz', 'İstek geçersiz: web adımı için vhost sırası gerekli.');
     web = Number(q.web);
-  } else if (q.web != null && q.web !== '') return red(400, 'gecersiz', 'İstek geçersiz: vhost sırası yalnız web adımında verilir.');
+  } else if (q.web != null && q.web !== '')
+    return red(400, 'gecersiz', 'İstek geçersiz: vhost sırası yalnız web adımında verilir.');
 
   const db = d.db();
   let t;
   let gecmis;
   try {
-    const r = await db.query(`SELECT * FROM retirement_targets WHERE id = $1 AND record_id = $2`, [tid, id]);
+    const r = await db.query(`SELECT * FROM retirement_targets WHERE id = $1 AND record_id = $2`, [
+      tid,
+      id,
+    ]);
     t = r.rows?.[0] || null;
     if (t) gecmis = await isGecmisiOku(db, [t]);
   } catch (e) {
@@ -354,11 +546,15 @@ async function isCiktisi(req, res, d) {
   if (!t) return red(409, 'hedef_yok', MESAJ.hedef_yok);
   if (adim === 'web') {
     const liste = jsonNesne(t.web_result_json);
-    if (!Array.isArray(liste) || web >= liste.length) return red(400, 'gecersiz', 'İstek geçersiz: bu sırada vhost yok.');
+    if (!Array.isArray(liste) || web >= liste.length)
+      return red(400, 'gecersiz', 'İstek geçersiz: bu sırada vhost yok.');
   }
-  const is = hedefIsKayitlari(t, gecmis).isler.find((x) => x.adim === adim && (adim !== 'web' || x.web === web));
+  const is = hedefIsKayitlari(t, gecmis).isler.find(
+    (x) => x.adim === adim && (adim !== 'web' || x.web === web),
+  );
   if (!is) return red(409, 'is_yok', 'Bu adımın AWX iş numarası kayıtlı değil.');
-  if (!is._sunucu || is._sunucu.belirsiz || is._sunucu.id == null) return red(409, 'sunucu_belirsiz', MESAJ.sunucu_belirsiz);
+  if (!is._sunucu || is._sunucu.belirsiz || is._sunucu.id == null)
+    return red(409, 'sunucu_belirsiz', MESAJ.sunucu_belirsiz);
   const sid = is._sunucu.id;
   const jobId = is.jobId;
   const temel = { adim, ...(web != null ? { web } : {}), jobId, awxServerId: sid };
@@ -366,10 +562,14 @@ async function isCiktisi(req, res, d) {
   const arsivden = async (code, sebep) => {
     // Arsiv yolunda playbook dogrulanamaz: bag kanitli olmali (isle birlikte yazilmis sunucu ya da
     // template'li gecmis satiri); degilse baska isin arsivi gosterilmez.
-    if (is._sunucu.kanit !== 'kayit' && !sayi(is._sunucu.satir?.template_id)) return red(409, 'sunucu_belirsiz', MESAJ.sunucu_belirsiz);
+    if (is._sunucu.kanit !== 'kayit' && !sayi(is._sunucu.satir?.template_id))
+      return red(409, 'sunucu_belirsiz', MESAJ.sunucu_belirsiz);
     let satir;
     try {
-      const r = await db.query(`SELECT TOP 1 stdout, fetched_at FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`, [sid, jobId]);
+      const r = await db.query(
+        `SELECT TOP 1 stdout, fetched_at FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`,
+        [sid, jobId],
+      );
       satir = r.rows?.[0] || null;
     } catch (e) {
       return red(424, 'olculemedi', `Portal arşivi okunamadı: ${maskele(e.message)}`);
@@ -377,9 +577,22 @@ async function isCiktisi(req, res, d) {
     if (!satir) return red(409, code, `${sebep} Bu işin çıktısı Portal arşivinde de yok.`);
     const ham = String(satir.stdout ?? '');
     return res.json({
-      ok: true, kaynak: 'arsiv', ...temel, sunucuAdi: null, status: null, bitti: true,
-      output: maskele(ham), kirpildi: ham.includes(KIRPMA_IZI), started: null, finished: null, elapsed: null,
-      awxUrl: null, arsivTarihi: iso(satir.fetched_at), uyari: `${sebep} Portal arşivi gösteriliyor.`, jobExplanation: null, resultTraceback: null,
+      ok: true,
+      kaynak: 'arsiv',
+      ...temel,
+      sunucuAdi: null,
+      status: null,
+      bitti: true,
+      output: maskele(ham),
+      kirpildi: ham.includes(KIRPMA_IZI),
+      started: null,
+      finished: null,
+      elapsed: null,
+      awxUrl: null,
+      arsivTarihi: iso(satir.fetched_at),
+      uyari: `${sebep} Portal arşivi gösteriliyor.`,
+      jobExplanation: null,
+      resultTraceback: null,
     });
   };
 
@@ -388,17 +601,31 @@ async function isCiktisi(req, res, d) {
   try {
     info = await runner.getJobStatusOnServer(sid, jobId);
   } catch (e) {
-    if (e && e.code === 'awx_server_missing') return arsivden('awx_server_missing', maskele(e.message));
-    if (e && Number(e.status) === 404) return arsivden('awx_job_missing', `AWX iş #${jobId} artık yok (temizlenmiş olabilir).`);
+    if (e && e.code === 'awx_server_missing')
+      return arsivden('awx_server_missing', maskele(e.message));
+    if (e && Number(e.status) === 404)
+      return arsivden('awx_job_missing', `AWX iş #${jobId} artık yok (temizlenmiş olabilir).`);
     return red(424, 'awx_okunamadi', `AWX işi okunamadı (#${jobId}): ${maskele(e && e.message)}`);
   }
   // BAGLAMA: isin playbook'u adimin playbook'u olmali; gecmiste template varsa o da tutmali.
   const beklenen = String(d.beklenenPlaybook()[ADIM_ANAHTARI[adim]] || '').toLowerCase();
-  const gercek = String(info.playbook || '').split('/').pop().toLowerCase();
-  if (!beklenen || !gercek) return red(424, 'olculemedi', `AWX iş #${jobId}: playbook bilgisi okunamadı; çıktı doğrulanmadan gösterilmez.`);
+  const gercek = String(info.playbook || '')
+    .split('/')
+    .pop()
+    .toLowerCase();
+  if (!beklenen || !gercek)
+    return red(
+      424,
+      'olculemedi',
+      `AWX iş #${jobId}: playbook bilgisi okunamadı; çıktı doğrulanmadan gösterilmez.`,
+    );
   const gTpl = sayi(is._sunucu.satir?.template_id);
   if (gercek !== beklenen || (gTpl && info.templateId != null && Number(info.templateId) !== gTpl))
-    return red(409, 'template_uyusmuyor', `AWX’teki #${jobId} bu adımın playbook’u değil (${info.playbook || '?'}; beklenen ${beklenen}); çıktı gösterilmedi.`);
+    return red(
+      409,
+      'template_uyusmuyor',
+      `AWX’teki #${jobId} bu adımın playbook’u değil (${info.playbook || '?'}; beklenen ${beklenen}); çıktı gösterilmedi.`,
+    );
 
   // AWX isi bitirse de olay islemesi surerken stdout eksik olabilir: event_processing_finished false iken
   // is BITMEMIS sayilir (artimli okuma, arsiv yok); alan yoksa (eski AWX) durum yeterli.
@@ -409,14 +636,25 @@ async function isCiktisi(req, res, d) {
   try {
     ({ output: ham } = await runner.getJobOutputOnServer(sid, jobId, { artimli: !bitti }));
   } catch (e) {
-    return red(424, 'awx_okunamadi', `AWX iş #${jobId} çıktısı okunamadı: ${maskele(e && e.message)}`);
+    return red(
+      424,
+      'awx_okunamadi',
+      `AWX iş #${jobId} çıktısı okunamadı: ${maskele(e && e.message)}`,
+    );
   }
   ham = String(ham ?? '');
   const output = maskele(ham);
   if (bitti && output) {
     try {
-      const ex = await db.query(`SELECT 1 FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`, [sid, jobId]);
-      if (!ex.rows?.length) await db.query(`INSERT INTO ansible_job_output (awx_server_id, job_id, stdout) VALUES ($1, $2, $3)`, [sid, jobId, output]);
+      const ex = await db.query(
+        `SELECT 1 FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`,
+        [sid, jobId],
+      );
+      if (!ex.rows?.length)
+        await db.query(
+          `INSERT INTO ansible_job_output (awx_server_id, job_id, stdout) VALUES ($1, $2, $3)`,
+          [sid, jobId, output],
+        );
     } catch (e) {
       console.warn(`[Retirement] is #${jobId} ciktisi arsivlenemedi:`, maskele(e.message));
     }
@@ -424,14 +662,34 @@ async function isCiktisi(req, res, d) {
   const server = runner.getServerById(sid);
   const elapsed = Number(info.elapsed);
   return res.json({
-    ok: true, kaynak: 'awx', ...temel, sunucuAdi: server?.name || null,
-    status: info.status ?? null, bitti, output, kirpildi: ham.includes(KIRPMA_IZI),
-    started: info.started ?? null, finished: info.finished ?? null, elapsed: Number.isFinite(elapsed) && info.elapsed != null ? elapsed : null,
+    ok: true,
+    kaynak: 'awx',
+    ...temel,
+    sunucuAdi: server?.name || null,
+    status: info.status ?? null,
+    bitti,
+    output,
+    kirpildi: ham.includes(KIRPMA_IZI),
+    started: info.started ?? null,
+    finished: info.finished ?? null,
+    elapsed: Number.isFinite(elapsed) && info.elapsed != null ? elapsed : null,
     awxUrl: awxIsAdresi(server, jobId),
-    arsivTarihi: null, uyari: null,
+    arsivTarihi: null,
+    uyari: null,
     jobExplanation: info.jobExplanation ? maskele(info.jobExplanation) : null,
     resultTraceback: info.resultTraceback ? maskele(info.resultTraceback) : null,
   });
 }
 
-module.exports = { mount, hedefIsleri, isGecmisiOku, maskele, maskeleDerin, ADIM_SIRASI, KIRPMA_IZI, _hedefIsKayitlari: hedefIsKayitlari, _sonIsTuru: sonIsTuru, _awxIsAdresi: awxIsAdresi };
+module.exports = {
+  mount,
+  hedefIsleri,
+  isGecmisiOku,
+  maskele,
+  maskeleDerin,
+  ADIM_SIRASI,
+  KIRPMA_IZI,
+  _hedefIsKayitlari: hedefIsKayitlari,
+  _sonIsTuru: sonIsTuru,
+  _awxIsAdresi: awxIsAdresi,
+};

@@ -400,28 +400,22 @@ function mount(
       if (!h.grafik) return okunamadi(res);
       const g = h.kararlar.gruplar && h.kararlar.gruplar.get(anahtar);
       if (!g)
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: 'Grup artık yok (son taramada görülmedi); sayfayı yenileyin.',
-          });
+        return res.status(409).json({
+          ok: false,
+          message: 'Grup artık yok (son taramada görülmedi); sayfayı yenileyin.',
+        });
       if (String(b.imza || '') !== g.imza) {
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: 'Kanıt siz bakarken değişti; kararı yeniden inceleyip tekrar işaretleyin.',
-            imza: g.imza,
-          });
+        return res.status(409).json({
+          ok: false,
+          message: 'Kanıt siz bakarken değişti; kararı yeniden inceleyip tekrar işaretleyin.',
+          imza: g.imza,
+        });
       }
       if (b.sonuc === 'DOGRULANDI' && g.karar !== 'RETIRE_ADAYI') {
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: `Yalnız "Retire adayı" grup doğrulanabilir (bu grup: ${g.kararMetni}).`,
-          });
+        return res.status(409).json({
+          ok: false,
+          message: `Yalnız "Retire adayı" grup doğrulanabilir (bu grup: ${g.kararMetni}).`,
+        });
       }
       const kim = (req.session && req.session.user && req.session.user.username) || 'bilinmiyor';
       await kontrol.kontrolYaz({

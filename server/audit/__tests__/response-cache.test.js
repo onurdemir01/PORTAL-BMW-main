@@ -220,7 +220,11 @@ test('SF3 tek ucus: fresh=1 ucusa katilmaz; clear() bekleyeni serbest birakir, e
   release();
   await tick(5);
   assert.deepEqual(lider.jsonBody, { ok: true, eski: true }, 'lider yine yanitini alir');
-  assert.deepEqual(JSON.parse(c.store.get('/k').body), { ok: true, yeni: true }, 'clear oncesi hesap yazilmamali');
+  assert.deepEqual(
+    JSON.parse(c.store.get('/k').body),
+    { ok: true, yeni: true },
+    'clear oncesi hesap yazilmamali',
+  );
 });
 
 test('SF4 tek ucus: asili hesap inflightMaxMs sonra birakilir', async () => {
@@ -300,7 +304,11 @@ test('SWR2 yenileme basarisizsa bayat giris korunur; fresh=1 bayati atlar; stale
     mod = 'hata';
     const s = run('/k');
     assert.equal(s.headers['X-Portal-Cache'], 'STALE');
-    assert.deepEqual(JSON.parse(c.store.get('/k').body), { ok: true, n: 1 }, 'bayat giris silinmemeli');
+    assert.deepEqual(
+      JSON.parse(c.store.get('/k').body),
+      { ok: true, n: 1 },
+      'bayat giris silinmemeli',
+    );
     assert.equal(uyarilar.length, 1);
     assert.doesNotMatch(uyarilar[0], /db yok/, 'hata govdesi loglanmamali');
     mod = 'ok';
@@ -376,7 +384,8 @@ test('SWR4 gercek Express + compression: STALE yanit sonrasi arka plan yenileme 
     const s = await al();
     assert.equal(s.tag, 'STALE');
     assert.equal(s.body.n, 1);
-    for (let i = 0; i < 40 && !c.store.get('/api/denetim/veri').body.includes('"n":2'); i++) await tick(10);
+    for (let i = 0; i < 40 && !c.store.get('/api/denetim/veri').body.includes('"n":2'); i++)
+      await tick(10);
     assert.equal(calls, 2, 'arka plan yenileme kostu');
     const h = await al();
     assert.equal(h.tag, 'HIT');

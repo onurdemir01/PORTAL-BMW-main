@@ -43,7 +43,8 @@ export default function NginxSpaBirlesik({ kapsamGorunur, kesifGorunur }: Props)
     {
       id: 'kesif',
       label: 'Uygulamalar',
-      aciklama: 'OpenShift (ARK) SPA uygulamaları — pod içinde nginx ölçümü, istek ve reverse proxy durumu',
+      aciklama:
+        'OpenShift (ARK) SPA uygulamaları — pod içinde nginx ölçümü, istek ve reverse proxy durumu',
       gorunur: kesifGorunur,
     },
     {

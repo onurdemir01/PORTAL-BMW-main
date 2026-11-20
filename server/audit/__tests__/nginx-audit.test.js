@@ -144,7 +144,11 @@ test('ayarlar: GLOBAL uyumsuzluk bulgu, server/location farki OVERRIDE (sayilir)
   // Referans listesi sonuc duzeyinde (tum sunucular icin ayni kurulum dosyalari)
   assert.deepEqual(
     out.reference.map((r) => [r.directive, r.value]),
-    [['autoindex', 'off'], ['charset', 'utf-8'], ['server_tokens', 'off']],
+    [
+      ['autoindex', 'off'],
+      ['charset', 'utf-8'],
+      ['server_tokens', 'off'],
+    ],
   );
 });
 
@@ -185,7 +189,13 @@ test('ortam ve lokasyon sunucu adindan turer', () => {
 });
 
 test('bos girdi cokmez', () => {
-  const out = summarizeAudit({ hosts: [], servers: [], locations: [], upstreams: [], settings: [] });
+  const out = summarizeAudit({
+    hosts: [],
+    servers: [],
+    locations: [],
+    upstreams: [],
+    settings: [],
+  });
   assert.equal(out.hosts.length, 0);
   assert.equal(out.totals.hosts, 0);
 });
@@ -285,8 +295,18 @@ test('istisnali sunucu: atlayan/tanimsiz 0 (ham korunur), ayar sapmasi + dosya f
       host('GBISTISNA', { proxy_undefined: 3, proxy_fqdn: 7, settings_mismatch: 5 }),
       host('GBNORMAL', { settings_mismatch: 1 }),
     ],
-    servers: [], locations: [], upstreams: [], settings: [],
-    exceptions: [{ host: 'gbistisna', note: 'Eski reverse proxy, referans uygulanmaz', created_by: 'odemir', created_at: '2026-09-15T08:00:00Z' }],
+    servers: [],
+    locations: [],
+    upstreams: [],
+    settings: [],
+    exceptions: [
+      {
+        host: 'gbistisna',
+        note: 'Eski reverse proxy, referans uygulanmaz',
+        created_by: 'odemir',
+        created_at: '2026-09-15T08:00:00Z',
+      },
+    ],
   });
   const ex = out.hosts.find((h) => h.host === 'GBISTISNA');
   assert.equal(ex.exception.note, 'Eski reverse proxy, referans uygulanmaz');
@@ -308,11 +328,17 @@ test('istisnali sunucu: atlayan/tanimsiz 0 (ham korunur), ayar sapmasi + dosya f
 });
 
 test('SQL Server 208: audit tablosu yoksa schema fallback korunur', async () => {
-  const direct = Object.assign(new Error("Invalid object name 'dbo.Nginx_Audit_Hosts'."), { number: 208 });
-  const nested = Object.assign(new Error('request failed'), { originalError: { info: { number: 208 } } });
+  const direct = Object.assign(new Error("Invalid object name 'dbo.Nginx_Audit_Hosts'."), {
+    number: 208,
+  });
+  const nested = Object.assign(new Error('request failed'), {
+    originalError: { info: { number: 208 } },
+  });
 
   for (const err of [direct, nested]) {
-    const out = await readLatestAuditDate(async () => { throw err; });
+    const out = await readLatestAuditDate(async () => {
+      throw err;
+    });
     assert.deepEqual(out, { recordset: [], _missing: true });
   }
 });
@@ -325,7 +351,12 @@ test('DB timeout/login/baglanti hatasi schema eksigi gibi GIZLENMEZ', async () =
   ];
 
   for (const err of errors) {
-    await assert.rejects(readLatestAuditDate(async () => { throw err; }), (actual) => actual === err);
+    await assert.rejects(
+      readLatestAuditDate(async () => {
+        throw err;
+      }),
+      (actual) => actual === err,
+    );
   }
 });
 
@@ -336,7 +367,11 @@ test('Nginx Audit yukleyicisi genis catch yerine siniflandirici helper kullanir'
   const loader = src.slice(start, end);
 
   assert.ok(start >= 0 && end > start, 'Nginx Audit yukleyici siniri bulunamadi');
-  assert.match(loader, /readLatestAuditDate\(query\)/, 'yukleyici hata siniflandirici helpera bagli degil');
+  assert.match(
+    loader,
+    /readLatestAuditDate\(query\)/,
+    'yukleyici hata siniflandirici helpera bagli degil',
+  );
   assert.doesNotMatch(
     loader,
     /\.catch\(\(\)\s*=>\s*\(\{\s*recordset:\s*\[\],\s*_missing:\s*true\s*\}\)\)/,
@@ -370,24 +405,45 @@ test('Nginx Audit butun tarihli tablolari ayni parameterized snapshot ile okur',
 });
 
 // ── 2026-09-22: kabul edilen degerler ──────────────────────────────────────────────
-test('kabul edilen degerler: referansla eslesmeyen ama listedeki GLOBAL deger bulgu DEGIL, sayac duser; buyuk/kucuk harf ve ; farki yok; override\'lara da uygulanir', () => {
-  const S = (ctx, directive, value, ref, matches, file = '/c/x.conf') => ({ host: 'GBRVPP07', conf_file: file, context: ctx, directive, value, reference_value: ref, matches });
+test("kabul edilen degerler: referansla eslesmeyen ama listedeki GLOBAL deger bulgu DEGIL, sayac duser; buyuk/kucuk harf ve ; farki yok; override'lara da uygulanir", () => {
+  const S = (ctx, directive, value, ref, matches, file = '/c/x.conf') => ({
+    host: 'GBRVPP07',
+    conf_file: file,
+    context: ctx,
+    directive,
+    value,
+    reference_value: ref,
+    matches,
+  });
   const base = () => ({
-    hosts: [{ ...host('GBRVPP07'), settings_mismatch: 3 }], servers: [], locations: [], upstreams: [],
+    hosts: [{ ...host('GBRVPP07'), settings_mismatch: 3 }],
+    servers: [],
+    locations: [],
+    upstreams: [],
     settings: [
-      S('http', 'client_max_body_size', '10M;', '1m', 0),   // listede (10m) -> kabul
-      S('main', 'server_tokens', 'on', 'off', 0),           // listede yok -> sapma
-      S('global', 'charset', '', 'utf-8', 0, ''),           // sunucuda yok -> sapma (kabul listesi eksigi kurtarmaz)
+      S('http', 'client_max_body_size', '10M;', '1m', 0), // listede (10m) -> kabul
+      S('main', 'server_tokens', 'on', 'off', 0), // listede yok -> sapma
+      S('global', 'charset', '', 'utf-8', 0, ''), // sunucuda yok -> sapma (kabul listesi eksigi kurtarmaz)
       S('location', 'client_max_body_size', '10m', '1m', 0), // override; kabul edilince sayilmaz
     ],
   });
-  const out = summarizeAudit({ ...base(), allowed: [{ directive: 'client_max_body_size', value: '10m' }, { directive: 'CLIENT_MAX_BODY_SIZE', value: '1M' }] });
+  const out = summarizeAudit({
+    ...base(),
+    allowed: [
+      { directive: 'client_max_body_size', value: '10m' },
+      { directive: 'CLIENT_MAX_BODY_SIZE', value: '1M' },
+    ],
+  });
   const h = out.hosts[0];
-  assert.deepEqual(h.settingsMismatched.map((m) => m.directive).sort(), ['charset', 'server_tokens']);
+  assert.deepEqual(h.settingsMismatched.map((m) => m.directive).sort(), [
+    'charset',
+    'server_tokens',
+  ]);
   assert.equal(h.settingsMismatch, 2, 'hosts.settings_mismatch (3) kabul edilen 1 kadar dusmeli');
   assert.equal(h.settingsAccepted, 1);
   const all = h.settingsAll.find((x) => x.directive === 'client_max_body_size');
-  assert.equal(all.matches, true); assert.equal(all.accepted, true);
+  assert.equal(all.matches, true);
+  assert.equal(all.accepted, true);
   assert.equal(h.settingsOverrides.length, 0, 'kabul edilen deger override olarak da listelenmez');
   // liste bossa eski davranis
   const out2 = summarizeAudit({ ...base(), allowed: [] });
@@ -396,12 +452,51 @@ test('kabul edilen degerler: referansla eslesmeyen ama listedeki GLOBAL deger bu
 });
 
 test('uyum orani: gecen kontrol / toplam kontrol; -T dusen sunucu %0; veri yoksa null; kabul edilen deger orani yukseltir', () => {
-  const U = (name, resolve, keepalive, zone, used) => ({ host: 'H1', conf_file: '/c/x.conf', name, server: 'a:1', resolve, keepalive, zone, used });
-  const L = (kind) => ({ host: 'H1', conf_file: '/c/x.conf', srv_seq: 1, location: '/a', behaviour: 'proxy', proxy_target: 'up', target_kind: kind });
-  const S = (directive, value, ref, matches) => ({ host: 'H1', conf_file: '/c/x.conf', context: 'http', directive, value, reference_value: ref, matches });
+  const U = (name, resolve, keepalive, zone, used) => ({
+    host: 'H1',
+    conf_file: '/c/x.conf',
+    name,
+    server: 'a:1',
+    resolve,
+    keepalive,
+    zone,
+    used,
+  });
+  const L = (kind) => ({
+    host: 'H1',
+    conf_file: '/c/x.conf',
+    srv_seq: 1,
+    location: '/a',
+    behaviour: 'proxy',
+    proxy_target: 'up',
+    target_kind: kind,
+  });
+  const S = (directive, value, ref, matches) => ({
+    host: 'H1',
+    conf_file: '/c/x.conf',
+    context: 'http',
+    directive,
+    value,
+    reference_value: ref,
+    matches,
+  });
   const base = () => ({
-    hosts: [{ ...host('H1'), upstreams: 2, ups_no_resolve: 1, ups_no_keepalive: 0, ups_no_zone: 2, unused_upstreams: 1, locations_proxy: 2, proxy_undefined: 1, proxy_fqdn: 0, settings_mismatch: 1 }],
-    servers: [], locations: [L('upstream'), L('undefined')],
+    hosts: [
+      {
+        ...host('H1'),
+        upstreams: 2,
+        ups_no_resolve: 1,
+        ups_no_keepalive: 0,
+        ups_no_zone: 2,
+        unused_upstreams: 1,
+        locations_proxy: 2,
+        proxy_undefined: 1,
+        proxy_fqdn: 0,
+        settings_mismatch: 1,
+      },
+    ],
+    servers: [],
+    locations: [L('upstream'), L('undefined')],
     upstreams: [U('a', 1, 1, 0, 1), U('b', 0, 1, 0, 0)],
     settings: [S('client_max_body_size', '10m', '1m', 0), S('autoindex', 'off', 'off', 1)],
   });
@@ -409,16 +504,41 @@ test('uyum orani: gecen kontrol / toplam kontrol; -T dusen sunucu %0; veri yoksa
   // upstream 4 kontrol x 2 = 8 -> gecen: resolve 1, keepalive 2, zone 0, kullanim 1 = 4
   // proxy hedefi: 2 location, 1 tanimsiz -> 1/2 ; global ayar: 2 referans, 1 uyumlu -> 1/2
   assert.equal(h.complianceChecks, 12);
-  assert.equal(h.compliance, Math.round((4 + 1 + 1) / 12 * 100));
-  assert.deepEqual(h.complianceParts.find((p) => p.label === 'upstream zone'), { label: 'upstream zone', ok: 0, total: 2, pct: 0 });
+  assert.equal(h.compliance, Math.round(((4 + 1 + 1) / 12) * 100));
+  assert.deepEqual(
+    h.complianceParts.find((p) => p.label === 'upstream zone'),
+    { label: 'upstream zone', ok: 0, total: 2, pct: 0 },
+  );
   // kabul edilen deger: ayar uyumlu sayilir -> oran yukselir
-  const h2 = summarizeAudit({ ...base(), allowed: [{ directive: 'client_max_body_size', value: '10m' }] }).hosts[0];
-  assert.equal(h2.compliance, Math.round((4 + 1 + 2) / 12 * 100));
+  const h2 = summarizeAudit({
+    ...base(),
+    allowed: [{ directive: 'client_max_body_size', value: '10m' }],
+  }).hosts[0];
+  assert.equal(h2.compliance, Math.round(((4 + 1 + 2) / 12) * 100));
   assert.ok(h2.compliance > h.compliance);
   // nginx -T dusen sunucu 0; veri olmayan sunucu null
-  const fail = summarizeAudit({ ...base(), hosts: [{ ...host('H1'), status: 'fail', upstreams: 2, ups_no_resolve: 0, ups_no_keepalive: 0, ups_no_zone: 0, unused_upstreams: 0 }] }).hosts[0];
+  const fail = summarizeAudit({
+    ...base(),
+    hosts: [
+      {
+        ...host('H1'),
+        status: 'fail',
+        upstreams: 2,
+        ups_no_resolve: 0,
+        ups_no_keepalive: 0,
+        ups_no_zone: 0,
+        unused_upstreams: 0,
+      },
+    ],
+  }).hosts[0];
   assert.equal(fail.compliance, 0);
-  const empty = summarizeAudit({ hosts: [{ ...host('H2'), upstreams: 0, locations_proxy: 0 }], servers: [], locations: [], upstreams: [], settings: [] }).hosts[0];
+  const empty = summarizeAudit({
+    hosts: [{ ...host('H2'), upstreams: 0, locations_proxy: 0 }],
+    servers: [],
+    locations: [],
+    upstreams: [],
+    settings: [],
+  }).hosts[0];
   assert.equal(empty.compliance, null, 'hicbir kontrol yoksa hukum yok');
   assert.equal(empty.complianceChecks, 0);
 });

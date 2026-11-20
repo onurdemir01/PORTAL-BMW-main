@@ -601,8 +601,13 @@ test('IR18 sutun eksigi tablo bazinda; yalniz sunucu geneli sutunu olan kok bos 
     rows8: [satir('GBR1', null, SH)],
   };
   const j8 = await al('vhosting8');
-  assert.ok(!j8.missingColumns.includes('appdomain.service'), 'kok sekmesi sunucu geneliyi bildirmez');
-  assert.deepEqual(j8.sunucuGeneli.missingColumns, [{ root: 'vhosting8', label: 'appdomain.service' }]);
+  assert.ok(
+    !j8.missingColumns.includes('appdomain.service'),
+    'kok sekmesi sunucu geneliyi bildirmez',
+  );
+  assert.deepEqual(j8.sunucuGeneli.missingColumns, [
+    { root: 'vhosting8', label: 'appdomain.service' },
+  ]);
   assert.deepEqual(sgSatir(sg(j8), 'GBR1').kokler, ['vhosting']);
   const j1 = await al('vhosting');
   assert.deepEqual(j1.sunucuGeneli, j8.sunucuGeneli);
@@ -853,8 +858,16 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
     const ozelSatir = rows.filter((r) => /^(GBEVM|GBPRV)/i.test(r.host));
     const eg = eskiRapor(genelSatir, [APP_SC]);
     const a = sg(j);
-    assert.deepEqual(eskiAlanlar(a, eg.scriptStats[0]), eg.scriptStats[0], `${root}: sunucu geneli`);
-    const eo = eskiRapor(ozelSatir, [APP_SC], new Map([[APP_SC.key, eg.scriptStats[0].majorityHash]]));
+    assert.deepEqual(
+      eskiAlanlar(a, eg.scriptStats[0]),
+      eg.scriptStats[0],
+      `${root}: sunucu geneli`,
+    );
+    const eo = eskiRapor(
+      ozelSatir,
+      [APP_SC],
+      new Map([[APP_SC.key, eg.scriptStats[0].majorityHash]]),
+    );
     assert.deepEqual(eskiAlanlar(a.special, eo.scriptStats[0]), eo.scriptStats[0]);
     assert.deepEqual(
       a.rows.map((x) => [x.host, x.durum]),
@@ -865,8 +878,14 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
     );
     // Oteki kokun tablosundan YALNIZ host + sunucu geneli sutun okunur (kok dosyalari degil).
     const oteki = root === 'vhosting' ? 'dbo.InitScriptsInventory8' : 'dbo.InitScriptsInventory';
-    const otekiOkuma = sorgular.filter((t) => new RegExp(`^\\s*SELECT host\\b.*FROM ${oteki}\\s*$`).test(t));
-    assert.deepEqual(otekiOkuma, [`SELECT host, appdomain_service FROM ${oteki}`], `${root}: ${otekiOkuma}`);
+    const otekiOkuma = sorgular.filter((t) =>
+      new RegExp(`^\\s*SELECT host\\b.*FROM ${oteki}\\s*$`).test(t),
+    );
+    assert.deepEqual(
+      otekiOkuma,
+      [`SELECT host, appdomain_service FROM ${oteki}`],
+      `${root}: ${otekiOkuma}`,
+    );
   }
 });
 

@@ -177,12 +177,10 @@ function initLogX(app) {
     }
     const templateId = playbookRegistry.getEffectiveTemplateId(row);
     if (!templateId) {
-      return res
-        .status(503)
-        .json({
-          ok: false,
-          error: `${row.displayName} için template ID tanımlı değil (Admin > Playbook Kayıtları veya ${row.envVarName}).`,
-        });
+      return res.status(503).json({
+        ok: false,
+        error: `${row.displayName} için template ID tanımlı değil (Admin > Playbook Kayıtları veya ${row.envVarName}).`,
+      });
     }
 
     try {
@@ -202,13 +200,11 @@ function initLogX(app) {
       }
 
       if (!jobStatus || jobStatus.status !== 'successful') {
-        return res
-          .status(502)
-          .json({
-            ok: false,
-            error: `AWX job ${jobStatus?.status || 'timeout'}`,
-            jobId: launch.jobId,
-          });
+        return res.status(502).json({
+          ok: false,
+          error: `AWX job ${jobStatus?.status || 'timeout'}`,
+          jobId: launch.jobId,
+        });
       }
 
       const output = await runnerMod.getJobOutput(launch.jobId);

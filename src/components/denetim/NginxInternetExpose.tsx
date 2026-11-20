@@ -144,9 +144,7 @@ function ExposeConfigPanel({
 
         {msg && (
           <span
-            className={`text-[11px] ${
-              msg.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'
-            }`}
+            className={`text-[11px] ${msg.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'}`}
           >
             {msg.text}
           </span>
@@ -157,8 +155,8 @@ function ExposeConfigPanel({
         Template <Code>bmw_nginx/api_expose/api_expose.yaml</Code> için açılmalı ve{' '}
         <b>&quot;Prompt on launch&quot; → Variables</b> işaretli olmalıdır. İşaretli değilse AWX,
         Portal&apos;ın gönderdiği <Code>api</Code> / <Code>source_host</Code> /{' '}
-        <Code>target_host</Code> değişkenlerini <b>sessizce yok sayar</b> — iş başarılı görünür
-        ama yanlış (ya da hiç) API taşınır. Envanterde hem kaynak test sunucuları hem{' '}
+        <Code>target_host</Code> değişkenlerini <b>sessizce yok sayar</b> — iş başarılı görünür ama
+        yanlış (ya da hiç) API taşınır. Envanterde hem kaynak test sunucuları hem{' '}
         <Code>{targetHost || 'GBNGXT07'}</Code> bulunmalıdır.
       </p>
     </Panel>
@@ -260,8 +258,7 @@ export function NginxInternetExpose() {
     }
   }
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

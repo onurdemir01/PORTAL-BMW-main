@@ -60,7 +60,13 @@ const denetimGet = (p) =>
       .on('error', reject);
   });
 
-const TRACK = { group: 'glomo', namespace: 'digital-banking-ch-prod', application: 'base-app-v0', state: 'planned', plannedDate: '2026-10-10' };
+const TRACK = {
+  group: 'glomo',
+  namespace: 'digital-banking-ch-prod',
+  application: 'base-app-v0',
+  state: 'planned',
+  plannedDate: '2026-10-10',
+};
 const CREATE = { ...h.BODY, inputPath: '/yeni/' };
 // Modulun TUM uclari: yazanlar + okuyanlar (okuma uclari da sayfa kapisinda - gerekce index.cjs).
 const UCLAR = [
@@ -83,8 +89,16 @@ async function hepsiReddedilir(t, beklenen) {
     assert.equal(r.status, beklenen, `${method} ${url}: ${r.status} ${r.body}`);
     assert.equal(r.json.ok, false);
   }
-  assert.equal(h.awx.istekler.length, 0, `AWX'e istek gitti: ${JSON.stringify(h.awx.istekler.map((x) => x.method + ' ' + x.yol))}`);
-  assert.deepEqual(h.appQueries().map((q) => q.sql.slice(0, 60)), [], 'gorunurluk disinda DB sorgusu calisti (uca ulasildi)');
+  assert.equal(
+    h.awx.istekler.length,
+    0,
+    `AWX'e istek gitti: ${JSON.stringify(h.awx.istekler.map((x) => x.method + ' ' + x.yol))}`,
+  );
+  assert.deepEqual(
+    h.appQueries().map((q) => q.sql.slice(0, 60)),
+    [],
+    'gorunurluk disinda DB sorgusu calisti (uca ulasildi)',
+  );
   assert.equal(h.audits.length, 0, 'denetim kaydi yazildi (uca ulasildi)');
 }
 
@@ -125,8 +139,15 @@ test('Y4 sayfa + SPA sekmesi acilmis ekip uyesi (Admin DEGIL): silme ve takip ya
   assert.equal(h.launches().length, 1);
   r = await h.call('PUT', '/api/nginx-migration/tracking', TRACK);
   assert.equal(r.status, 200, r.body);
-  assert.ok(h.appQueries().some((q) => /INSERT INTO nginx_migration_tracking/.test(q.sql)), 'takip yazilmali');
-  r = await h.call('PUT', '/api/nginx-migration/config', { awxServerId: 1, templateId: 10, deleteTemplateId: 20 });
+  assert.ok(
+    h.appQueries().some((q) => /INSERT INTO nginx_migration_tracking/.test(q.sql)),
+    'takip yazilmali',
+  );
+  r = await h.call('PUT', '/api/nginx-migration/config', {
+    awxServerId: 1,
+    templateId: 10,
+    deleteTemplateId: 20,
+  });
   assert.equal(r.status, 403, 'yapilandirma yazimi Admin kapisinda kalmali');
 });
 
@@ -164,9 +185,19 @@ test('Y7 OKUMA = YAZMA: ayni kurallarla ekranin veri ucu ve PROD silme ucu AYNI 
   const { allow, USERS, NGINX_PANEL_RULES, EKIP_RULES } = h;
   // gecer: ayni kurallarla IKI uc da kapidan gecer mi
   const durumlar = [
-    { ad: 'yalniz Nginx Hub Erisimi paneli (Denetim YOK)', user: USERS.ekip, rules: NGINX_PANEL_RULES, gecer: false },
+    {
+      ad: 'yalniz Nginx Hub Erisimi paneli (Denetim YOK)',
+      user: USERS.ekip,
+      rules: NGINX_PANEL_RULES,
+      gecer: false,
+    },
     { ad: 'Denetim + Nginx Hub + SPA sekmesi', user: USERS.ekip, rules: EKIP_RULES, gecer: true },
-    { ad: 'yalniz Denetim', user: USERS.ekip, rules: [allow('Denetim', 'user', 'odemir')], gecer: false },
+    {
+      ad: 'yalniz Denetim',
+      user: USERS.ekip,
+      rules: [allow('Denetim', 'user', 'odemir')],
+      gecer: false,
+    },
     {
       ad: 'Denetim + Nginx Hub, SPA sekmesi YOK',
       user: USERS.ekip,
@@ -181,8 +212,16 @@ test('Y7 OKUMA = YAZMA: ayni kurallarla ekranin veri ucu ve PROD silme ucu AYNI 
     h.setRules(rules);
     const oku = await denetimGet('/api/denetim/nginx-migration');
     const yaz = await h.sil();
-    assert.equal(kapidanGecti(oku.status), gecer, `${ad}: ekran verisi ${oku.status} ${oku.body.slice(0, 120)}`);
-    assert.equal(kapidanGecti(yaz.status), gecer, `${ad}: PROD silme ${yaz.status} ${yaz.body.slice(0, 120)}`);
+    assert.equal(
+      kapidanGecti(oku.status),
+      gecer,
+      `${ad}: ekran verisi ${oku.status} ${oku.body.slice(0, 120)}`,
+    );
+    assert.equal(
+      kapidanGecti(yaz.status),
+      gecer,
+      `${ad}: PROD silme ${yaz.status} ${yaz.body.slice(0, 120)}`,
+    );
     assert.equal(h.launches().length, gecer ? 1 : 0, `${ad}: AWX launch`);
   }
 });
@@ -196,8 +235,16 @@ test('J1 sayfayi goren ekip uyesi BASKA bir isin (7777) ciktisini OKUYAMAZ: 404,
   assert.equal(r.status, 404, r.body);
   assert.equal(r.json.ok, false);
   assert.ok(!r.body.includes(SIR), 'baska isin stdout u sizdi');
-  assert.deepEqual(h.outputReads(7777).map((x) => x.yol), [], "yabanci isin stdout'u AWX'ten istendi");
-  assert.equal(h.appQueries().filter((q) => /UPDATE nginx_migration/.test(q.sql)).length, 0, 'yabanci is takip tablosuna yazildi');
+  assert.deepEqual(
+    h.outputReads(7777).map((x) => x.yol),
+    [],
+    "yabanci isin stdout'u AWX'ten istendi",
+  );
+  assert.equal(
+    h.appQueries().filter((q) => /UPDATE nginx_migration/.test(q.sql)).length,
+    0,
+    'yabanci is takip tablosuna yazildi',
+  );
 });
 
 test('J2 kendi isleri (silme ve tanim template i) izlenir: 200 + cikti', async (t) => {
@@ -216,7 +263,10 @@ test('J3 isin template i OLCULEMEZSE (job_template alani yok) 503: cikti verilme
   h.awx.jobTemplate = null;
   const r = await h.call('GET', `/api/nginx-migration/job-status/${h.JOB_ID}`);
   assert.equal(r.status, 503, r.body);
-  assert.deepEqual(h.outputReads(h.JOB_ID).map((x) => x.yol), []);
+  assert.deepEqual(
+    h.outputReads(h.JOB_ID).map((x) => x.yol),
+    [],
+  );
   assert.ok(log.warn.some((l) => /OLCULEMEDI/.test(l)));
 });
 
@@ -239,5 +289,9 @@ test('J5 saf: jobTemplateAllowed', () => {
   assert.equal(f({}, cfg), null);
   assert.equal(f(null, cfg), null);
   assert.equal(f({ templateId: 0 }, { templateId: 0, deleteTemplateId: 0 }), null);
-  assert.equal(f({ templateId: 5 }, { templateId: 0, deleteTemplateId: 0 }), false, 'yapilandirilmamis template hicbir isi kapsamaz');
+  assert.equal(
+    f({ templateId: 5 }, { templateId: 0, deleteTemplateId: 0 }),
+    false,
+    'yapilandirilmamis template hicbir isi kapsamaz',
+  );
 });

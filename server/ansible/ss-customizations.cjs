@@ -33,11 +33,16 @@ function key(serverId, templateId) {
 }
 
 async function load() {
-  const { rows } = await db.query(`SELECT awx_server_id, template_id, data FROM ansible_ss_customizations`);
+  const { rows } = await db.query(
+    `SELECT awx_server_id, template_id, data FROM ansible_ss_customizations`,
+  );
   const map = new Map();
   for (const r of rows) {
-    try { map.set(key(r.awx_server_id, r.template_id), JSON.parse(r.data)); }
-    catch { /* bozuk satiri atla — runner.cjs ile AYNI davranis */ }
+    try {
+      map.set(key(r.awx_server_id, r.template_id), JSON.parse(r.data));
+    } catch {
+      /* bozuk satiri atla — runner.cjs ile AYNI davranis */
+    }
   }
   _cache = map;
   _loadedAt = Date.now();
@@ -56,8 +61,9 @@ async function load() {
  */
 async function readCustom(serverId, templateId) {
   if (!_cache || Date.now() - _loadedAt > TTL_MS) {
-    try { await load(); }
-    catch (e) {
+    try {
+      await load();
+    } catch (e) {
       console.warn('[ss-customizations] okunamadi, bos ayar donuluyor:', e.message);
       return {};
     }
@@ -65,6 +71,9 @@ async function readCustom(serverId, templateId) {
   return _cache.get(key(serverId, templateId)) || {};
 }
 
-function invalidate() { _cache = null; _loadedAt = 0; }
+function invalidate() {
+  _cache = null;
+  _loadedAt = 0;
+}
 
 module.exports = { readCustom, invalidate };

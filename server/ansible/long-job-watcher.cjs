@@ -135,7 +135,8 @@ const _tickInfo = { startedAt: null, finishedAt: null, error: null };
 
 const auditOf = (deps) =>
   deps.audit ||
-  ((action, opts) => require('../audit/index.cjs').auditPortal(null, action, { username: 'system', ...opts }));
+  ((action, opts) =>
+    require('../audit/index.cjs').auditPortal(null, action, { username: 'system', ...opts }));
 
 /**
  * Tek tarama. Ust uste binmez (onceki tarama surerken gelen tick atlanir ve loglanir):
@@ -147,7 +148,9 @@ const auditOf = (deps) =>
 async function tick(deps = {}) {
   if (_inFlight) {
     _skipStreak += 1;
-    console.warn(`[LongJobWatcher] onceki tarama hala suruyor; bu tick atlandi (${_skipStreak} ust uste)`);
+    console.warn(
+      `[LongJobWatcher] onceki tarama hala suruyor; bu tick atlandi (${_skipStreak} ust uste)`,
+    );
     if (_skipStreak >= STUCK_SKIPS) {
       try {
         await require('./long-job-cancel.cjs').reportWatcherStuck({
@@ -251,7 +254,9 @@ async function tickInner(deps) {
 
   // 30 dk BILDIRIMI: yalniz CALISAN klasik job'lar (eski davranis; workflow'un ic
   // job'lari zaten bu listede oldugu icin workflow'a ayrica kart gonderilmez).
-  const jobs = (scan.jobs || []).filter((j) => j.kind === 'job' && j.status === 'running' && j.started);
+  const jobs = (scan.jobs || []).filter(
+    (j) => j.kind === 'job' && j.status === 'running' && j.started,
+  );
   const stillRunningKeys = new Set();
   for (const job of jobs) {
     const key = `${job.serverId}:${job.jobId}`;
@@ -329,4 +334,12 @@ function getWatcherInfo() {
   };
 }
 
-module.exports = { startWatcher, stopWatcher, tick, isConfigured, getConfig, cancelEnabled, getWatcherInfo };
+module.exports = {
+  startWatcher,
+  stopWatcher,
+  tick,
+  isConfigured,
+  getConfig,
+  cancelEnabled,
+  getWatcherInfo,
+};

@@ -12,7 +12,9 @@ const sync = require('../ocp-sync.cjs');
 function withConfig(cfg, fn) {
   const orig = cfgMod.getConfig;
   cfgMod.getConfig = async () => cfg;
-  return Promise.resolve(fn()).finally(() => { cfgMod.getConfig = orig; });
+  return Promise.resolve(fn()).finally(() => {
+    cfgMod.getConfig = orig;
+  });
 }
 
 test('runOnce(): varsayilan yapilandirmada CALISMAZ (opt-in)', async () => {
@@ -46,18 +48,29 @@ test('runOnce(): acikken taranacak cluster yoksa sessizce biter', async () => {
       assert.equal(r.skipped, true);
       assert.equal(r.reason, 'no_clusters');
     });
-  } finally { db.query = orig; }
+  } finally {
+    db.query = orig;
+  }
 });
 
-test('listSyncableClusters(): metadata\'si EKSIK cluster\'lari sorguya dahil etmez', async () => {
+test("listSyncableClusters(): metadata'si EKSIK cluster'lari sorguya dahil etmez", async () => {
   let captured = '';
   const orig = db.query;
-  db.query = async (sql) => { captured = sql; return { rows: [] }; };
+  db.query = async (sql) => {
+    captured = sql;
+    return { rows: [] };
+  };
   try {
     await sync.listSyncableClusters(10);
     assert.match(captured, /is_active = 1/, 'yalniz aktif cluster taranmali');
     assert.match(captured, /api_url IS NOT NULL/, 'api_url eksikse taranmamali');
-    assert.match(captured, /vault_credential_key IS NOT NULL/, 'credential anahtari eksikse taranmamali');
+    assert.match(
+      captured,
+      /vault_credential_key IS NOT NULL/,
+      'credential anahtari eksikse taranmamali',
+    );
     assert.match(captured, /last_synced_at ASC/, 'en eski senkronlanan once gelmeli');
-  } finally { db.query = orig; }
+  } finally {
+    db.query = orig;
+  }
 });

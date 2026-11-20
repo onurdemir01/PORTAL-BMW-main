@@ -8,7 +8,10 @@ const assert = require('node:assert');
 const { _adaptSql: adaptSql, _coerce: coerce } = require('../index.cjs');
 
 test('$n → @pn (tek ve çok basamaklı)', () => {
-  assert.equal(adaptSql('SELECT * FROM t WHERE a=$1 AND b=$2'), 'SELECT * FROM t WHERE a=@p1 AND b=@p2');
+  assert.equal(
+    adaptSql('SELECT * FROM t WHERE a=$1 AND b=$2'),
+    'SELECT * FROM t WHERE a=@p1 AND b=@p2',
+  );
   assert.equal(adaptSql('SELECT $10, $1'), 'SELECT @p10, @p1');
 });
 
@@ -66,23 +69,42 @@ test('RETURNING t.id, t.name (tablo-nitelikli kolonlar) OUTPUT INSERTED.<kolon> 
 
 // ── Gercek kod tabanindan alinan temsili sorgular (denetim bulgusu #20 — regresyon kapsami) ──
 test('gercek desen: UPDATE-once → rowCount kontrol (server/auth/index.cjs setRoleOverride)', () => {
-  const out = adaptSql('UPDATE user_role_overrides SET role = $1, updated_at = GETUTCDATE() WHERE username = $2');
-  assert.equal(out, 'UPDATE user_role_overrides SET role = @p1, updated_at = GETUTCDATE() WHERE username = @p2');
+  const out = adaptSql(
+    'UPDATE user_role_overrides SET role = $1, updated_at = GETUTCDATE() WHERE username = $2',
+  );
+  assert.equal(
+    out,
+    'UPDATE user_role_overrides SET role = @p1, updated_at = GETUTCDATE() WHERE username = @p2',
+  );
 });
 
 test('gercek desen: coklu $n + RETURNING id tek satirda (server/ai-analyst/history.cjs createConversation)', () => {
-  const out = adaptSql('INSERT INTO ai_conversations (username, title) VALUES ($1, $2) RETURNING id');
-  assert.match(out, /INSERT INTO ai_conversations \(username, title\) OUTPUT INSERTED\.id VALUES \(@p1, @p2\)/i);
+  const out = adaptSql(
+    'INSERT INTO ai_conversations (username, title) VALUES ($1, $2) RETURNING id',
+  );
+  assert.match(
+    out,
+    /INSERT INTO ai_conversations \(username, title\) OUTPUT INSERTED\.id VALUES \(@p1, @p2\)/i,
+  );
 });
 
 test('boolean literalleri: = true/false → = 1/0, IS true/false → = 1/0', () => {
-  assert.equal(adaptSql('SELECT * FROM t WHERE enabled = true'), 'SELECT * FROM t WHERE enabled = 1');
-  assert.equal(adaptSql('SELECT * FROM t WHERE enabled = false'), 'SELECT * FROM t WHERE enabled = 0');
+  assert.equal(
+    adaptSql('SELECT * FROM t WHERE enabled = true'),
+    'SELECT * FROM t WHERE enabled = 1',
+  );
+  assert.equal(
+    adaptSql('SELECT * FROM t WHERE enabled = false'),
+    'SELECT * FROM t WHERE enabled = 0',
+  );
   assert.equal(adaptSql('SELECT * FROM t WHERE x IS true'), 'SELECT * FROM t WHERE x = 1');
 });
 
 test('ILIKE → LIKE', () => {
-  assert.equal(adaptSql("SELECT * FROM t WHERE name ILIKE '%a%'"), "SELECT * FROM t WHERE name LIKE '%a%'");
+  assert.equal(
+    adaptSql("SELECT * FROM t WHERE name ILIKE '%a%'"),
+    "SELECT * FROM t WHERE name LIKE '%a%'",
+  );
 });
 
 test('NOW() → GETUTCDATE()', () => {
@@ -90,14 +112,22 @@ test('NOW() → GETUTCDATE()', () => {
 });
 
 test('LIMIT/OFFSET varyantları → OFFSET/FETCH', () => {
-  assert.equal(adaptSql('SELECT * FROM t LIMIT $1 OFFSET $2'),
-    'SELECT * FROM t OFFSET @p2 ROWS FETCH NEXT @p1 ROWS ONLY');
-  assert.equal(adaptSql('SELECT * FROM t LIMIT 10 OFFSET 20'),
-    'SELECT * FROM t OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY');
-  assert.equal(adaptSql('SELECT * FROM t LIMIT $1'),
-    'SELECT * FROM t OFFSET 0 ROWS FETCH NEXT @p1 ROWS ONLY');
-  assert.equal(adaptSql('SELECT * FROM t LIMIT 5'),
-    'SELECT * FROM t OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY');
+  assert.equal(
+    adaptSql('SELECT * FROM t LIMIT $1 OFFSET $2'),
+    'SELECT * FROM t OFFSET @p2 ROWS FETCH NEXT @p1 ROWS ONLY',
+  );
+  assert.equal(
+    adaptSql('SELECT * FROM t LIMIT 10 OFFSET 20'),
+    'SELECT * FROM t OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY',
+  );
+  assert.equal(
+    adaptSql('SELECT * FROM t LIMIT $1'),
+    'SELECT * FROM t OFFSET 0 ROWS FETCH NEXT @p1 ROWS ONLY',
+  );
+  assert.equal(
+    adaptSql('SELECT * FROM t LIMIT 5'),
+    'SELECT * FROM t OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY',
+  );
 });
 
 test('coerce: array→JSON string, boolean→1/0, undefined→null, düz değer korunur', () => {

@@ -60,13 +60,33 @@ function rowToRec(r) {
   };
 }
 
-async function create({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubject, runAt, windowEnd, pendingLaunch, ownerGroups }) {
+async function create({
+  username,
+  awxServerId,
+  awxTemplateId,
+  ocoNumber,
+  ocoSubject,
+  runAt,
+  windowEnd,
+  pendingLaunch,
+  ownerGroups,
+}) {
   const { rows } = await db.query(
     `INSERT INTO oco_scheduled_launches
        (username, awx_server_id, awx_template_id, oco_number, oco_subject, run_at, window_end, status, pending_launch_json, owner_groups)
      OUTPUT INSERTED.*
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'SCHEDULED', $8, $9)`,
-    [username, awxServerId, awxTemplateId, ocoNumber, ocoSubject || null, runAt, windowEnd, JSON.stringify(pendingLaunch), gruplariYaz(ownerGroups)]
+    [
+      username,
+      awxServerId,
+      awxTemplateId,
+      ocoNumber,
+      ocoSubject || null,
+      runAt,
+      windowEnd,
+      JSON.stringify(pendingLaunch),
+      gruplariYaz(ownerGroups),
+    ],
   );
   return rowToRec(rows[0]);
 }
@@ -74,13 +94,35 @@ async function create({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubj
 // AWX'in KENDI schedule'i olusturuldugunda kullanilir. status = 'AWX_SCHEDULED':
 // listScheduled() yalnizca 'SCHEDULED' dondurdugu icin Portal poller'i bu satirlara
 // DOKUNMAZ - isi AWX tetikler, Portal yalnizca kaydi tutar.
-async function createAwxScheduled({ username, awxServerId, awxTemplateId, ocoNumber, ocoSubject, runAt, windowEnd, awxScheduleId, pendingLaunch, ownerGroups }) {
+async function createAwxScheduled({
+  username,
+  awxServerId,
+  awxTemplateId,
+  ocoNumber,
+  ocoSubject,
+  runAt,
+  windowEnd,
+  awxScheduleId,
+  pendingLaunch,
+  ownerGroups,
+}) {
   const { rows } = await db.query(
     `INSERT INTO oco_scheduled_launches
        (username, awx_server_id, awx_template_id, oco_number, oco_subject, run_at, window_end, status, awx_schedule_id, pending_launch_json, owner_groups)
      OUTPUT INSERTED.*
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'AWX_SCHEDULED', $8, $9, $10)`,
-    [username, awxServerId, awxTemplateId, ocoNumber, ocoSubject || null, runAt, windowEnd, awxScheduleId, JSON.stringify(pendingLaunch), gruplariYaz(ownerGroups)]
+    [
+      username,
+      awxServerId,
+      awxTemplateId,
+      ocoNumber,
+      ocoSubject || null,
+      runAt,
+      windowEnd,
+      awxScheduleId,
+      JSON.stringify(pendingLaunch),
+      gruplariYaz(ownerGroups),
+    ],
   );
   return rowToRec(rows[0]);
 }
@@ -90,18 +132,26 @@ async function createAwxScheduled({ username, awxServerId, awxTemplateId, ocoNum
 async function listAll({ limit = 100, offset = 0, status = '', username = '', q = '' } = {}) {
   const where = [];
   const params = [];
-  if (status) { params.push(status); where.push(`status = $${params.length}`); }
-  if (username) { params.push(`%${username}%`); where.push(`username LIKE $${params.length}`); }
+  if (status) {
+    params.push(status);
+    where.push(`status = $${params.length}`);
+  }
+  if (username) {
+    params.push(`%${username}%`);
+    where.push(`username LIKE $${params.length}`);
+  }
   if (q) {
     params.push(`%${q}%`);
-    where.push(`(oco_number LIKE $${params.length} OR oco_subject LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`);
+    where.push(
+      `(oco_number LIKE $${params.length} OR oco_subject LIKE $${params.length} OR pending_launch_json LIKE $${params.length})`,
+    );
   }
   const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const { rows } = await db.query(
     `SELECT * FROM oco_scheduled_launches ${w}
       ORDER BY id DESC
       OFFSET ${Number(offset) || 0} ROWS FETCH NEXT ${Number(limit) || 100} ROWS ONLY`,
-    params
+    params,
   );
   const cnt = await db.query(`SELECT COUNT(*) AS n FROM oco_scheduled_launches ${w}`, params);
   return { items: rows.map(rowToRec), total: Number(cnt.rows[0]?.n || 0) };
@@ -116,7 +166,9 @@ async function get(id) {
 // karari JS tarafinda verilir - DB ile uygulama sunucusunun saati ayrisirsa tek bir
 // saat kaynagina (uygulama) bagli kalmak, tetiklemeyi ONGORULEBILIR kilar.
 async function listScheduled() {
-  const { rows } = await db.query(`SELECT * FROM oco_scheduled_launches WHERE status = 'SCHEDULED'`);
+  const { rows } = await db.query(
+    `SELECT * FROM oco_scheduled_launches WHERE status = 'SCHEDULED'`,
+  );
   return rows.map(rowToRec);
 }
 
@@ -124,7 +176,7 @@ async function listByUsername(username, limit = 50) {
   const { rows } = await db.query(
     `SELECT TOP (${Number(limit) || 50}) * FROM oco_scheduled_launches
       WHERE username = $1 ORDER BY id DESC`,
-    [username]
+    [username],
   );
   return rows.map(rowToRec);
 }
@@ -145,17 +197,22 @@ async function listForUser({ username, groups, limit = 100 } = {}) {
   const { rows } = await db.query(
     `SELECT TOP (${tavan + 1}) * FROM oco_scheduled_launches ORDER BY id DESC`,
   );
-  const me = String(username || '').trim().toLowerCase();
+  const me = String(username || '')
+    .trim()
+    .toLowerCase();
   const benimGruplarim = Array.isArray(groups) ? groups : [];
-  const gorunur = rows
-    .map(rowToRec)
-    .filter((rec) => {
-      if (String(rec.username || '').trim().toLowerCase() === me) return true;
-      // `ownerGroups === null` (eski kayit): grup bilgisi YOK, bu yuzden grup
-      // uzerinden gorunur SAYILMAZ. "Bilmiyoruz"u "senin grubun" saymak,
-      // baskasinin kesinti kaydini gostermek olurdu.
-      return gruplarKesisiyor(rec.ownerGroups, benimGruplarim);
-    });
+  const gorunur = rows.map(rowToRec).filter((rec) => {
+    if (
+      String(rec.username || '')
+        .trim()
+        .toLowerCase() === me
+    )
+      return true;
+    // `ownerGroups === null` (eski kayit): grup bilgisi YOK, bu yuzden grup
+    // uzerinden gorunur SAYILMAZ. "Bilmiyoruz"u "senin grubun" saymak,
+    // baskasinin kesinti kaydini gostermek olurdu.
+    return gruplarKesisiyor(rec.ownerGroups, benimGruplarim);
+  });
   const truncated = gorunur.length > tavan;
   return { items: gorunur.slice(0, tavan), truncated };
 }
@@ -167,8 +224,15 @@ async function listForUser({ username, groups, limit = 100 } = {}) {
 function canManage(rec, { username, groups, role }) {
   if (!rec) return false;
   if (role === 'Admin') return true;
-  const me = String(username || '').trim().toLowerCase();
-  if (String(rec.username || '').trim().toLowerCase() === me) return true;
+  const me = String(username || '')
+    .trim()
+    .toLowerCase();
+  if (
+    String(rec.username || '')
+      .trim()
+      .toLowerCase() === me
+  )
+    return true;
   return gruplarKesisiyor(rec.ownerGroups, Array.isArray(groups) ? groups : []);
 }
 
@@ -228,7 +292,7 @@ async function claimForLaunch(id) {
         SET status = 'LAUNCHING', updated_at = GETUTCDATE()
       OUTPUT INSERTED.*
       WHERE id = $1 AND status = 'SCHEDULED'`,
-    [id]
+    [id],
   );
   return rows[0] ? rowToRec(rows[0]) : null;
 }
@@ -241,7 +305,7 @@ async function markLaunched(id, awxJobId) {
         SET status = 'LAUNCHED', awx_job_id = $2, updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'LAUNCHING'`,
-    [id, awxJobId]
+    [id, awxJobId],
   );
   return rows.length > 0;
 }
@@ -258,8 +322,11 @@ async function markPendingApproval(id, { smartTicketId, externalTicketId }) {
             error_message = $3, updated_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'LAUNCHING'`,
-    [id, smartTicketId ?? null,
-     `Kesinti saati geldi; Smart onay talebi acildi (#${externalTicketId || '?'}). Is, onay gelince tetiklenecek.`]
+    [
+      id,
+      smartTicketId ?? null,
+      `Kesinti saati geldi; Smart onay talebi acildi (#${externalTicketId || '?'}). Is, onay gelince tetiklenecek.`,
+    ],
   );
   return rows.length > 0;
 }
@@ -298,7 +365,7 @@ async function markApprovedLaunched(id, awxJobId) {
             updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'PENDING_APPROVAL'`,
-    [id, awxJobId ?? null]
+    [id, awxJobId ?? null],
   );
   return rows.length > 0;
 }
@@ -312,7 +379,7 @@ async function markApprovalResolved(id, { status, message }) {
             updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'PENDING_APPROVAL'`,
-    [id, status, String(message || '').slice(0, 4000) || null]
+    [id, status, String(message || '').slice(0, 4000) || null],
   );
   return rows.length > 0;
 }
@@ -321,9 +388,17 @@ async function markApprovalResolved(id, { status, message }) {
 // bagli OCO kaydi markApprovalResolved ile FAILED yapilmisti. Admin isi kosturunca kayit ekranda
 // "tetiklenmedi" demeye devam etmesin. YALNIZ FAILED kayit guncellenir (iptal edilmis kayda dokunulmaz).
 // status 'LAUNCHED' (awxJobId) ya da 'AWX_SCHEDULED' (awxScheduleId + yeni OCO numarasi / pencere).
-async function markRetriggered(id, { status, awxJobId, awxScheduleId, ocoNumber, runAt, windowEnd, message }) {
-  if (status !== 'LAUNCHED' && status !== 'AWX_SCHEDULED') throw new Error(`markRetriggered: gecersiz durum ${status}`);
-  const t = (d) => { if (d == null) return null; if (d instanceof Date) return d; return new Date(d); };
+async function markRetriggered(
+  id,
+  { status, awxJobId, awxScheduleId, ocoNumber, runAt, windowEnd, message },
+) {
+  if (status !== 'LAUNCHED' && status !== 'AWX_SCHEDULED')
+    throw new Error(`markRetriggered: gecersiz durum ${status}`);
+  const t = (d) => {
+    if (d == null) return null;
+    if (d instanceof Date) return d;
+    return new Date(d);
+  };
   const { rows } = await db.query(
     `UPDATE oco_scheduled_launches
         SET status = $2, awx_job_id = $3, awx_schedule_id = COALESCE($4, awx_schedule_id),
@@ -332,7 +407,16 @@ async function markRetriggered(id, { status, awxJobId, awxScheduleId, ocoNumber,
             resolved_at = ${status === 'LAUNCHED' ? 'GETUTCDATE()' : 'NULL'}
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'FAILED'`,
-    [id, status, awxJobId ?? null, awxScheduleId ?? null, ocoNumber || null, t(runAt), t(windowEnd), String(message || '').slice(0, 4000) || null],
+    [
+      id,
+      status,
+      awxJobId ?? null,
+      awxScheduleId ?? null,
+      ocoNumber || null,
+      t(runAt),
+      t(windowEnd),
+      String(message || '').slice(0, 4000) || null,
+    ],
   );
   return rows.length > 0;
 }
@@ -345,7 +429,7 @@ async function markFailed(id, message) {
         SET status = 'FAILED', error_message = $2, updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status IN ('SCHEDULED', 'LAUNCHING', 'PENDING_APPROVAL')`,
-    [id, String(message || '').slice(0, 4000)]
+    [id, String(message || '').slice(0, 4000)],
   );
   return rows.length > 0;
 }
@@ -358,7 +442,7 @@ async function markExpired(id) {
         SET status = 'EXPIRED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE(),
             error_message = N'OCO kesinti penceresi tetikleme yapılmadan kapandı.'
       WHERE id = $1 AND status = 'SCHEDULED'`,
-    [id]
+    [id],
   );
 }
 
@@ -368,7 +452,7 @@ async function cancel(id, username) {
         SET status = 'CANCELLED', updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.*
       WHERE id = $1 AND status IN ('SCHEDULED', 'PENDING_APPROVAL') AND username = $2`,
-    [id, username]
+    [id, username],
   );
   return rows[0] ? rowToRec(rows[0]) : null;
 }
@@ -384,11 +468,10 @@ async function adminCancel(id, { cancelledBy, note }) {
             updated_at = GETUTCDATE(), resolved_at = GETUTCDATE()
       OUTPUT INSERTED.*
       WHERE id = $1 AND status IN ('SCHEDULED', 'AWX_SCHEDULED', 'LAUNCHING', 'PENDING_APPROVAL', 'LAUNCHED')`,
-    [id, cancelledBy || null, String(note || '').slice(0, 1000) || null]
+    [id, cancelledBy || null, String(note || '').slice(0, 1000) || null],
   );
   return rows[0] ? rowToRec(rows[0]) : null;
 }
-
 
 // ── TALEP ANINDA ACILAN BILET (smart-first) ─────────────────────────────────────────
 // 2026-10-08 URETIM OLAYI: smart-first yolu yeni olusturulan kaydi 'PENDING_APPROVAL'a
@@ -406,8 +489,11 @@ async function markPendingApprovalAtRequest(id, { smartTicketId, externalTicketI
             error_message = $3, updated_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'SCHEDULED'`,
-    [id, smartTicketId ?? null,
-     `Smart onay talebi talep aninda acildi (#${externalTicketId || '?'}). Onay gelince is kesinti penceresine zamanlanir.`]
+    [
+      id,
+      smartTicketId ?? null,
+      `Smart onay talebi talep aninda acildi (#${externalTicketId || '?'}). Onay gelince is kesinti penceresine zamanlanir.`,
+    ],
   );
   return rows.length > 0;
 }
@@ -421,9 +507,15 @@ async function markPendingApprovalAtRequest(id, { smartTicketId, externalTicketI
 //   TIMEOUT / FAILED / ERROR -> FAILED
 // Yalniz 'SCHEDULED' satir guncellenir (yaris: kullanici arada iptal ettiyse ezilmez).
 const BILET_KAYIT = Object.freeze({
-  PENDING: 'PENDING_APPROVAL', LAUNCHING: 'PENDING_APPROVAL', SCHEDULED: 'AWX_SCHEDULED',
-  LAUNCHED: 'LAUNCHED', REJECTED: 'CANCELLED', CANCELLED: 'CANCELLED',
-  TIMEOUT: 'FAILED', FAILED: 'FAILED', ERROR: 'FAILED',
+  PENDING: 'PENDING_APPROVAL',
+  LAUNCHING: 'PENDING_APPROVAL',
+  SCHEDULED: 'AWX_SCHEDULED',
+  LAUNCHED: 'LAUNCHED',
+  REJECTED: 'CANCELLED',
+  CANCELLED: 'CANCELLED',
+  TIMEOUT: 'FAILED',
+  FAILED: 'FAILED',
+  ERROR: 'FAILED',
 });
 async function adoptTicket(id, ticket) {
   const st = BILET_KAYIT[String(ticket?.status || '').toUpperCase()] || 'PENDING_APPROVAL';
@@ -433,13 +525,43 @@ async function adoptTicket(id, ticket) {
             awx_job_id = COALESCE($5, awx_job_id), error_message = $6, updated_at = GETUTCDATE()
       OUTPUT INSERTED.id
       WHERE id = $1 AND status = 'SCHEDULED'`,
-    [id, st, ticket?.id ?? null, ticket?.awxScheduleId ?? null, ticket?.awxJobId ?? null,
-     `Bu kaydin Smart bileti talep aninda acilmisti (#${ticket?.externalTicketId || '?'}, ${ticket?.status || '?'}); ` +
-       'Portal zamanlayicisi ikinci bilet ACMADI, kayit bilete esitlendi.'],
+    [
+      id,
+      st,
+      ticket?.id ?? null,
+      ticket?.awxScheduleId ?? null,
+      ticket?.awxJobId ?? null,
+      `Bu kaydin Smart bileti talep aninda acilmisti (#${ticket?.externalTicketId || '?'}, ${ticket?.status || '?'}); ` +
+        'Portal zamanlayicisi ikinci bilet ACMADI, kayit bilete esitlendi.',
+    ],
   );
   return rows.length > 0 ? st : null;
 }
 
 module.exports = {
-  markPendingApprovalAtRequest, adoptTicket, BILET_KAYIT,
-  markAwxScheduledAfterApproval, create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markRetriggered, markFailed, markExpired, cancel, adminCancel };
+  markPendingApprovalAtRequest,
+  adoptTicket,
+  BILET_KAYIT,
+  markAwxScheduledAfterApproval,
+  create,
+  createAwxScheduled,
+  get,
+  listScheduled,
+  listAll,
+  listByUsername,
+  listForUser,
+  canManage,
+  update,
+  cancelBy,
+  gruplarKesisiyor,
+  claimForLaunch,
+  markLaunched,
+  markPendingApproval,
+  markApprovedLaunched,
+  markApprovalResolved,
+  markRetriggered,
+  markFailed,
+  markExpired,
+  cancel,
+  adminCancel,
+};

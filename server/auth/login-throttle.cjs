@@ -78,7 +78,8 @@ function kontrol(username) {
     kayitlar.delete(anahtar(username));
     return { ok: true };
   }
-  if (now < v.lockedUntil) return { ok: false, retryAfter: Math.ceil((v.lockedUntil - now) / 1000) };
+  if (now < v.lockedUntil)
+    return { ok: false, retryAfter: Math.ceil((v.lockedUntil - now) / 1000) };
   return { ok: true };
 }
 

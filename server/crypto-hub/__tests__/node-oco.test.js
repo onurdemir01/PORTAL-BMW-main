@@ -30,7 +30,8 @@ const ocoAcik = (h, ek = {}) => {
   h.d.cryptoSmart = { enabled: true, flowKey: '', metadataFields: '', ocoTest: true, ...ek };
   h.okumaVer();
 };
-const talep = (h, o = {}) => h.istek('POST', '/node-change', K.nodecu, GOVDE({ ocoNumber: NO, ...o }));
+const talep = (h, o = {}) =>
+  h.istek('POST', '/node-change', K.nodecu, GOVDE({ ocoNumber: NO, ...o }));
 const paket = (h, i = 0) => JSON.parse(h.d.smartTickets[i].pending_launch_json);
 const aksiyon = (h, ad) => h.d.audits.filter((a) => a.action === ad);
 const detay = (h, ad) => JSON.parse(aksiyon(h, ad)[0].opts.detail);
@@ -53,9 +54,16 @@ test('O1 ocoGerekliMi: production ocoTest:false iken de true; test kiracida yaln
         assert.equal(h.SA.ocoGerekliMi(t, blob), true, `${t.key} OCO'suz kaldi`);
       }
       h.d.cryptoSmart = { ocoTest: false, flowKey: '', metadataFields: '' };
-      assert.equal((await h.SA.cryptoSmartCoz(t)).ocoGerekli, true, `${t.key} cozumde OCO'suz kaldi`);
+      assert.equal(
+        (await h.SA.cryptoSmartCoz(t)).ocoGerekli,
+        true,
+        `${t.key} cozumde OCO'suz kaldi`,
+      );
     }
-    assert.ok(prodlar.some((t) => t.key === 'metaco_das_prod_ank'), 'Ankara listede degil (bekci kor)');
+    assert.ok(
+      prodlar.some((t) => t.key === 'metaco_das_prod_ank'),
+      'Ankara listede degil (bekci kor)',
+    );
     for (const t of testler) {
       assert.equal(h.SA.ocoGerekliMi(t, null), false);
       assert.equal(h.SA.ocoGerekliMi(t, { ocoTest: false }), false);
@@ -89,7 +97,10 @@ test('O3 ocoTest: varsayilan kapali, kismi govde degistirmez, denetimde onceki -
     assert.equal(g.body.smart.ocoTest, false);
     await h.istek('PUT', '/smart-config', K.admin, { smart: { ocoTest: true } });
     assert.equal(h.d.cryptoSmart.ocoTest, true);
-    assert.deepEqual(detay(h, 'crypto_hub_smart_config_save').ocoTest, { onceki: false, yeni: true });
+    assert.deepEqual(detay(h, 'crypto_hub_smart_config_save').ocoTest, {
+      onceki: false,
+      yeni: true,
+    });
     await h.istek('PUT', '/smart-config', K.admin, { smart: { enabled: true } });
     assert.equal(h.d.cryptoSmart.ocoTest, true, 'kismi govde ocoTest i sifirladi');
     await h.istek('PUT', '/smart-config', K.admin, { smart: { ocoTest: 'hayir' } });
@@ -113,7 +124,10 @@ test('O4 OCO gerekmeyen test kiracisi: numara gonderilse de OCO okunmaz, satira 
     assert.equal(paket(h).pencereBekle, undefined);
     assert.equal(r.body.onayZamanAsimiDk, N.ONAY_DK);
     assert.match(r.body.message, /24 saat/);
-    assert.ok(!('ocoNo' in detay(h, 'crypto_hub_node_change_talep')), 'OCO suz denetim satiri degisti');
+    assert.ok(
+      !('ocoNo' in detay(h, 'crypto_hub_node_change_talep')),
+      'OCO suz denetim satiri degisti',
+    );
   }));
 
 test('O5 numara yok: 400 ocoRequired, satir ve bilet yok, OCO okunmaz', () =>
@@ -198,7 +212,8 @@ test('O11 bilet paketi: pencere alanlari var, onayZamanAsimiDk yok; deger ve num
   ile(async (h) => {
     ocoAcik(h, {
       flowKey: 'FLOW_CRYPTO',
-      metadataFields: "ACIKLAMA: {{ opsx.aciklama }}\nOCO: {{ opsx.ocoNo | default('') }}\nPENCERE: {{ opsx.ocoPencere | default('') }}",
+      metadataFields:
+        "ACIKLAMA: {{ opsx.aciklama }}\nOCO: {{ opsx.ocoNo | default('') }}\nPENCERE: {{ opsx.ocoPencere | default('') }}",
     });
     h.d.oco = H.ocoPencere(120, 360);
     const r = await talep(h);
@@ -214,7 +229,8 @@ test('O11 bilet paketi: pencere alanlari var, onayZamanAsimiDk yok; deger ve num
     assert.doesNotMatch(r.body.message, /24 saat/);
     // AWX'e giden paket
     assert.equal(p.extraVars.crypto_hub_node_yeni_b64, '');
-    for (const k of Object.keys(p.extraVars)) assert.doesNotMatch(k, /oco/i, `extra_vars a ${k} girdi`);
+    for (const k of Object.keys(p.extraVars))
+      assert.doesNotMatch(k, /oco/i, `extra_vars a ${k} girdi`);
     assert.ok(!JSON.stringify(p.extraVars).includes(NO), 'numara extra_vars a girdi');
     assert.ok(!h.d.smartTickets[0].pending_launch_json.includes(SIR), 'deger pakete girdi');
     // Satir ve denetim
@@ -231,7 +247,10 @@ test('O11 bilet paketi: pencere alanlari var, onayZamanAsimiDk yok; deger ve num
     assert.equal(meta.OCO, NO);
     assert.match(meta.PENCERE, /^\S+ \S+ – \S+ \S+$/, 'opsx.ocoPencere sablonda bos');
     assert.match(meta.ACIKLAMA, new RegExp(`OCO: ${NO} \\(pencere `));
-    assert.ok(h.d.sira.indexOf('oco') < h.d.sira.indexOf('preflight'), 'OCO satirdan once okunmadi');
+    assert.ok(
+      h.d.sira.indexOf('oco') < h.d.sira.indexOf('preflight'),
+      'OCO satirdan once okunmadi',
+    );
   }));
 
 test('O12 plan_sha ve extra_vars OCO dan bagimsiz', async () => {
@@ -288,7 +307,11 @@ test('O13 before + onay: poller claim etmez, onay ani yazilir; pencere acilinca 
     await h.pollerTuru();
     assert.equal(bilet.status, 'LAUNCHED', 'pencere acilinca sahiplenilmedi');
     assert.equal(h.d.ssLaunches.length, 1);
-    assert.notEqual(h.d.ssLaunches[0].extraVars.crypto_hub_node_yeni_b64, '', 'kanca degeri eklemedi');
+    assert.notEqual(
+      h.d.ssLaunches[0].extraVars.crypto_hub_node_yeni_b64,
+      '',
+      'kanca degeri eklemedi',
+    );
     g = await h.istek('GET', `/node-change/${r.body.talepId}`, K.nodecu);
     assert.equal(g.body.talep.durum, 'CALISIYOR');
     assert.equal(h.d.rows[0].yeni_deger_secret, null);
@@ -377,11 +400,18 @@ test('O18 launchPenceresiDenetle: schedule ve none throw; son baslama sonrasi th
     assert.doesNotThrow(() => d(pl, new Date(bas + 90 * DK)));
     assert.throws(() => d(pl, new Date(bas - DK)), /penceresi açılmadı/, 'schedule rettir');
     assert.throws(() => d(pl, new Date(bas + 91 * DK)), /Son başlama saati geçti/);
-    assert.throws(() => d(pl, new Date(bas + 120 * DK + 30000)), /Son başlama saati geçti/, 'nextRunAt toleransi son baslamayi gecemez');
+    assert.throws(
+      () => d(pl, new Date(bas + 120 * DK + 30000)),
+      /Son başlama saati geçti/,
+      'nextRunAt toleransi son baslamayi gecemez',
+    );
     assert.throws(() => d(pl, new Date(bas + 200 * DK)), /kapandı/);
     assert.throws(() => d({ ...pl, pencereBekle: undefined }, new Date(bas + DK)), /eksik/);
     assert.throws(() => d({ ...pl, ocoWindowStartIso: undefined }, new Date(bas + DK)), /eksik/);
-    assert.throws(() => d({ ...pl, sonBaslamaIso: 'bozuk' }, new Date(bas + DK)), /Son başlama saati geçti/);
+    assert.throws(
+      () => d({ ...pl, sonBaslamaIso: 'bozuk' }, new Date(bas + DK)),
+      /Son başlama saati geçti/,
+    );
   }));
 
 test('O19 runner: crypto bileti createOcoAwxSchedule a ulasamaz', () => {
@@ -394,7 +424,11 @@ test('O19 runner: crypto bileti createOcoAwxSchedule a ulasamaz', () => {
   const sched = dilim.indexOf('createOcoAwxSchedule(');
   assert.ok(dal > 0 && sched > dal, 'schedule cagrisi cryptoBilet kosulunun disinda');
   assert.equal(dilim.split('createOcoAwxSchedule(').length, 2, 'ikinci schedule cagrisi eklendi');
-  assert.match(dilim.slice(sched, sched + 200), /extraVars, resolvedLaunchOptions/, 'schedule launchExtraVars almamali');
+  assert.match(
+    dilim.slice(sched, sched + 200),
+    /extraVars, resolvedLaunchOptions/,
+    'schedule launchExtraVars almamali',
+  );
   assert.doesNotMatch(dilim, /launchExtraVars, resolvedLaunchOptions/);
 });
 
@@ -461,12 +495,21 @@ test('O24 TAKILDI uzun pencerede erken kapatmaz; pencere sonu + 90 dk dan sonra 
     const db = require('../../db/index.cjs');
     const row = h.d.rows[0];
     const yas = (dk) => new Date(row.created_at).getTime() + dk * DK;
-    assert.equal(await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', yas(N.TAKILDI_DK + 60)), null);
+    assert.equal(
+      await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', yas(N.TAKILDI_DK + 60)),
+      null,
+    );
     assert.equal(h.d.smartTickets[0].status, 'PENDING', 'bilet TAKILDI_DK da iptal edildi');
     assert.equal(row.kapandi_at, null);
-    assert.equal(await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', h.d.oco.sonMs + 89 * DK), null);
+    assert.equal(
+      await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', h.d.oco.sonMs + 89 * DK),
+      null,
+    );
     assert.equal(row.kapandi_at, null);
-    assert.equal(await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', h.d.oco.sonMs + 91 * DK), 'kapandi');
+    assert.equal(
+      await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', h.d.oco.sonMs + 91 * DK),
+      'kapandi',
+    );
     assert.equal(row.durum, 'OLCULEMEDI');
     assert.equal(row.sonuc_kod, 'TAKILDI');
     assert.equal(h.d.smartTickets[0].status, 'CANCELLED');
@@ -498,7 +541,10 @@ test('O26 eski sema: OCO lu talep 503, satir yok; OCO suz akis calisir', () =>
     h.d.cryptoSmart = { ...h.d.cryptoSmart, ocoTest: false };
     const ok = await talep(h);
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
-    assert.ok(!h.d.logs.some((l) => /^INSERT INTO crypto_hub_node_changes.*oco_no/.test(l)), 'OCO suz INSERT kolon adiyor');
+    assert.ok(
+      !h.d.logs.some((l) => /^INSERT INTO crypto_hub_node_changes.*oco_no/.test(l)),
+      'OCO suz INSERT kolon adiyor',
+    );
     const g = await h.istek('GET', `/node-change/${ok.body.talepId}`, K.nodecu);
     assert.equal(g.status, 200, JSON.stringify(g.body));
     assert.equal(g.body.talep.ocoNo, null);
@@ -535,7 +581,8 @@ test('O28 smart.sonTarih poller ile ayni: pencerede son baslama, OCO suzda +1440
 test('O29 ocoPencereKarari sinirlari', () => {
   const bas = 1_000_000_000_000;
   const k = (simdiMs, o = {}) =>
-    N.ocoPencereKarari({ basMs: bas, sonMs: bas + 120 * DK, simdiMs, smartKapali: false, ...o }).kod;
+    N.ocoPencereKarari({ basMs: bas, sonMs: bas + 120 * DK, simdiMs, smartKapali: false, ...o })
+      .kod;
   assert.equal(k(bas - DK), 'bekle');
   assert.equal(k(bas - DK, { smartKapali: true }), 'bekle_kapali');
   assert.equal(k(bas), 'acik');
@@ -562,7 +609,10 @@ test('O30 semaya kolonlar: CREATE ve alters; store markApproved yalniz PENDING d
   assert.match(setup, /ALTER TABLE smart_tickets ADD approved_at DATETIME2 NULL/);
   assert.match(setup, /\n\s+approved_at\s+DATETIME2 NULL/);
   const store = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'store.cjs'), 'utf8');
-  assert.match(store, /approved_at = GETUTCDATE\(\)[\s\S]{0,160}WHERE id = \$1 AND status = 'PENDING' AND approved_at IS NULL/);
+  assert.match(
+    store,
+    /approved_at = GETUTCDATE\(\)[\s\S]{0,160}WHERE id = \$1 AND status = 'PENDING' AND approved_at IS NULL/,
+  );
 });
 
 test('O31 ekran tenantOf disinda karar vermez: ocoNumber govdesi production i gevsetmez', () =>
@@ -572,7 +622,12 @@ test('O31 ekran tenantOf disinda karar vermez: ocoNumber govdesi production i ge
     try {
       h.d.cryptoSmart = { enabled: false, flowKey: '', metadataFields: '', ocoTest: false };
       h.okumaVer({}, Date.now(), 'metaco_das_prod');
-      const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM }));
+      const r = await h.istek(
+        'POST',
+        '/node-change',
+        K.nodecu,
+        GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM }),
+      );
       assert.equal(r.status, 400);
       assert.equal(r.body.ocoRequired, true);
       assert.equal(tenantOf('metaco_das_prod').production, true);
@@ -585,12 +640,22 @@ test('O31 ekran tenantOf disinda karar vermez: ocoNumber govdesi production i ge
 test('O32 ocoSonBaslamaMs: normal pencerede pencere sonu - pay; uzun pencerede acildiktan sonra en cok ONAY_DK', () => {
   const bas = 1_000_000_000_000;
   const f = (basDk, sonDk, talepDk = 0) =>
-    (N.ocoSonBaslamaMs({ basMs: bas + basDk * DK, sonMs: bas + sonDk * DK, talepMs: bas + talepDk * DK }) - bas) / DK;
+    (N.ocoSonBaslamaMs({
+      basMs: bas + basDk * DK,
+      sonMs: bas + sonDk * DK,
+      talepMs: bas + talepDk * DK,
+    }) -
+      bas) /
+    DK;
   assert.equal(N.OCO_ACIK_BEKLEME_DK, N.ONAY_DK);
   assert.equal(f(60, 300), 270, 'normal pencere degisti');
   assert.equal(f(60, 60 * 1440), 60 + N.ONAY_DK, 'pencere acildiktan sonra sinir yok');
   assert.equal(f(-30 * 1440, 365 * 1440), N.ONAY_DK, 'acik pencerede talepten sayilmali');
-  assert.equal(f(7 * 1440, 60 * 1440), 7 * 1440 + N.ONAY_DK, 'ufuk sinirindaki talep pencereye hic girmezdi');
+  assert.equal(
+    f(7 * 1440, 60 * 1440),
+    7 * 1440 + N.ONAY_DK,
+    'ufuk sinirindaki talep pencereye hic girmezdi',
+  );
   assert.ok(Number.isNaN(f(NaN, 300)));
 });
 
@@ -633,7 +698,10 @@ test('O34 uzun pencere: LAUNCHING de takili satir pencere sonunu beklemez, son b
     });
     assert.equal(await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', sonBaslama + 119 * DK), null);
     assert.equal(row.kapandi_at, null);
-    assert.equal(await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', sonBaslama + 121 * DK), 'kapandi');
+    assert.equal(
+      await h.NODE.satiriIlerlet(db, { ...row }, 'tarama', sonBaslama + 121 * DK),
+      'kapandi',
+    );
     assert.equal(row.sonuc_kod, 'TAKILDI');
     assert.equal(row.yeni_deger_secret, null);
   }));
@@ -695,7 +763,11 @@ test('O38 olumlu sonuc hatada korunur; hic olumlu sonuc yokken talep kapisi 503'
     const t0 = Date.now();
     assert.equal(await h.NODE.ocoKolonlariVarMi(db, t0), true);
     h.d.ocoKolonHata = Infinity;
-    assert.equal(await h.NODE.ocoKolonlariVarMi(db, t0 + 11 * DK), true, 'gecici hata olumlu sonucu sildi');
+    assert.equal(
+      await h.NODE.ocoKolonlariVarMi(db, t0 + 11 * DK),
+      true,
+      'gecici hata olumlu sonucu sildi',
+    );
     h.NODE._sifirla();
     assert.equal(await h.NODE.ocoKolonlariVarMi(db, t0), false, 'bilinmiyor kapidan gecti');
     ocoAcik(h);
@@ -741,7 +813,9 @@ test('O41 launch reddi ekrana giden metin: Turkce, ASCII degil', () =>
     h.d.oco = H.ocoPencere(-10, 120);
     await talep(h);
     const pl = paket(h);
-    assert.throws(() => h.NODE.launchPenceresiDenetle({ ...pl, sonBaslamaIso: 'bozuk' }), { message: h.NODE.METIN.ocoSonGecti });
+    assert.throws(() => h.NODE.launchPenceresiDenetle({ ...pl, sonBaslamaIso: 'bozuk' }), {
+      message: h.NODE.METIN.ocoSonGecti,
+    });
     assert.match(h.NODE.METIN.ocoSonGecti, /başlama saati geçti/);
     assert.match(h.NODE.METIN.ocoAcilmadi, /açılmadı/);
     assert.match(h.NODE.METIN.ocoPaketEksik, /başlatılmadı/);

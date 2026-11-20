@@ -41,6 +41,9 @@ test('GR2 Nginx Hub tarih yerleri rozeti kullaniyor', () => {
     assert.match(s, /<GuncellemeRozeti\b[^>]*tarih=/, `${f}: rozet render edilmiyor`);
   }
   // Eski soluk bicim geri gelmesin
-  assert.doesNotMatch(oku('src/components/nginx_console/SourceNote.tsx'), /<b[^>]*>son tarama \{scanDate\}<\/b>/);
+  assert.doesNotMatch(
+    oku('src/components/nginx_console/SourceNote.tsx'),
+    /<b[^>]*>son tarama \{scanDate\}<\/b>/,
+  );
   assert.doesNotMatch(oku('src/components/denetim/NginxEnvanteri.tsx'), /son güncelleme\{' '\}/);
 });

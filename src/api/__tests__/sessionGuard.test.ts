@@ -253,7 +253,8 @@ describe('sessionGuard', () => {
   // ── Arka plan isareti (2026-10-03) ────────────────────────────────────────
   // Sunucu varsayilan olarak her istegi etkinlik sayar. Listede olmayan tek bir
   // yoklama acik sekmede oturumu sonsuza dek acik tutuyordu; karar artik burada.
-  const isaret = (cagri: unknown[]) => new Headers((cagri[1] as RequestInit | undefined)?.headers).get(BASLIK_ETKINLIK);
+  const isaret = (cagri: unknown[]) =>
+    new Headers((cagri[1] as RequestInit | undefined)?.headers).get(BASLIK_ETKINLIK);
 
   it('SG15 — girdi tazeyken istek AYNEN gecer; bayatken arka plan isaretlenir', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -290,7 +291,10 @@ describe('sessionGuard', () => {
     kullaniciEtkinligiSifirla();
     await window.fetch('/api/yoklama');
     expect(isaret(ag.mock.calls[0])).toBe('background');
-    await window.fetch('/api/auth/session/extend', { method: 'POST', headers: { [BASLIK_ETKINLIK]: 'user' } });
+    await window.fetch('/api/auth/session/extend', {
+      method: 'POST',
+      headers: { [BASLIK_ETKINLIK]: 'user' },
+    });
     expect(isaret(ag.mock.calls[1])).toBe('user');
     // `/api` disi isteklere baslik EKLENMEZ (dis servise ozel baslik = CORS on-ucusu).
     await window.fetch('/assets/x.js');

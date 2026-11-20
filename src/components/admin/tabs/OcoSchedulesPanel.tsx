@@ -118,7 +118,16 @@ export default function OcoSchedulesPanel() {
     ]
       .filter(Boolean)
       .join('\n\n');
-    if (!(await onayla({ baslik: 'Zamanlamayı iptal et', metin: msg, onayMetni: 'Zamanlamayı iptal et', iptalMetni: 'Zamanlamayı koru', tehlikeli: true }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Zamanlamayı iptal et',
+        metin: msg,
+        onayMetni: 'Zamanlamayı iptal et',
+        iptalMetni: 'Zamanlamayı koru',
+        tehlikeli: true,
+      }))
+    )
+      return;
 
     setCancelling(r.id);
     try {

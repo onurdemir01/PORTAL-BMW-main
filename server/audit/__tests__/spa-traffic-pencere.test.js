@@ -153,19 +153,35 @@ test('PW3 mirror: pencere EN DAR olan (en yeni first_seen) - "7 gun olctuk" yala
   assert.equal(n.firstSeen, null);
   // Kenar: ilk mirror'in penceresi 0 saat (log tarama gunu rotasyona girmis), ikincisinin
   // first_seen'i yok -> toplam pencere BILINMEZ ("bugunku kayitta yok" denmez).
-  const sifir = durum([LOAD('A', { first_seen: '20261002050000' }), LOAD('B', { first_seen: null })], TANIM('A', 'B'));
+  const sifir = durum(
+    [LOAD('A', { first_seen: '20261002050000' }), LOAD('B', { first_seen: null })],
+    TANIM('A', 'B'),
+  );
   assert.equal(sifir.pencereSaat, null, 'first_seen yok mirror pencereyi zehirlemedi');
   assert.deepEqual(sifir.kismi, ['pencere-bilinmiyor']);
   // Ayni sunucuda ayni anahtara iki satir (iki vhost dosyasi): toplanir, pencere EN DAR;
   // birinin first_seen'i yoksa o sunucunun penceresi bilinmez.
-  const cift = durum([LOAD('A', { req_24h: 1 }), LOAD('A', { first_seen: ROT3, req_24h: 2 })], TANIM('A'));
+  const cift = durum(
+    [LOAD('A', { req_24h: 1 }), LOAD('A', { first_seen: ROT3, req_24h: 2 })],
+    TANIM('A'),
+  );
   assert.equal(cift.pencereSaat, 68, 'ayni sunucunun iki satirinda genis pencere alindi');
   assert.equal(cift.req24, 3);
   assert.equal(cift.hosts, 1);
-  const ciftYok = durum([LOAD('A', { first_seen: ROT3 }), LOAD('A', { first_seen: null })], TANIM('A'));
+  const ciftYok = durum(
+    [LOAD('A', { first_seen: ROT3 }), LOAD('A', { first_seen: null })],
+    TANIM('A'),
+  );
   assert.equal(ciftYok.pencereSaat, null);
-  const ciftSifir = durum([LOAD('A', { first_seen: '20261002050000' }), LOAD('A', { first_seen: null })], TANIM('A'));
-  assert.equal(ciftSifir.pencereSaat, null, 'ayni sunucuda first_seen yok satir pencereyi zehirlemedi');
+  const ciftSifir = durum(
+    [LOAD('A', { first_seen: '20261002050000' }), LOAD('A', { first_seen: null })],
+    TANIM('A'),
+  );
+  assert.equal(
+    ciftSifir.pencereSaat,
+    null,
+    'ayni sunucuda first_seen yok satir pencereyi zehirlemedi',
+  );
   // Ikisi de tam: idle; sayilar toplanir, son istek en yeni.
   const iki = durum(
     [
@@ -176,7 +192,10 @@ test('PW3 mirror: pencere EN DAR olan (en yeni first_seen) - "7 gun olctuk" yala
   );
   assert.equal(iki.state, 'idle');
   assert.equal(iki.lastSeen, '20260921000000');
-  const yuk = durum([LOAD('A', { req_7d: 5, req_24h: 1 }), LOAD('B', { req_7d: 7 })], TANIM('A', 'B'));
+  const yuk = durum(
+    [LOAD('A', { req_7d: 5, req_24h: 1 }), LOAD('B', { req_7d: 7 })],
+    TANIM('A', 'B'),
+  );
   assert.equal(yuk.req7, 12);
   assert.equal(yuk.req24, 1);
 });
@@ -231,15 +250,76 @@ test('PW6 hic olcum yok -> null ("olcum yok"); hepsi okunamadi -> unknown, sayi 
 test('PW7 host kipi satirlari ve kovalar location tanimlarina YAZILMAZ', () => {
   const hostKipi = [
     // uygulama basina vhost olcumu (service/env NULL, location '@' + server_name)
-    { host: 'A', vhost: 'x-app-v1-ns-prod', service: null, env: null, location: '@x.irp.local', req_7d: 500, req_24h: 50, error: null, first_seen: TAM, scan_date: GUN },
+    {
+      host: 'A',
+      vhost: 'x-app-v1-ns-prod',
+      service: null,
+      env: null,
+      location: '@x.irp.local',
+      req_7d: 500,
+      req_24h: 50,
+      error: null,
+      first_seen: TAM,
+      scan_date: GUN,
+    },
     // kovalar: vhost '_'
-    { host: 'A', vhost: '_', service: null, env: null, location: '@_', req_7d: 240, error: null, first_seen: TAM, scan_date: GUN },
-    { host: 'A', vhost: '_', service: null, env: null, location: '@ip', req_7d: 29, error: null, first_seen: TAM, scan_date: GUN },
-    { host: 'A', vhost: '_', service: null, env: null, location: '@-', req_7d: 3, error: null, first_seen: TAM, scan_date: GUN },
+    {
+      host: 'A',
+      vhost: '_',
+      service: null,
+      env: null,
+      location: '@_',
+      req_7d: 240,
+      error: null,
+      first_seen: TAM,
+      scan_date: GUN,
+    },
+    {
+      host: 'A',
+      vhost: '_',
+      service: null,
+      env: null,
+      location: '@ip',
+      req_7d: 29,
+      error: null,
+      first_seen: TAM,
+      scan_date: GUN,
+    },
+    {
+      host: 'A',
+      vhost: '_',
+      service: null,
+      env: null,
+      location: '@-',
+      req_7d: 3,
+      error: null,
+      first_seen: TAM,
+      scan_date: GUN,
+    },
     // host kipi hata satiri (location '@' - tam ad yok)
-    { host: 'B', vhost: 'wild', service: null, env: null, location: '@', req_7d: null, error: "server_name'de tam ad yok", first_seen: null, scan_date: GUN },
+    {
+      host: 'B',
+      vhost: 'wild',
+      service: null,
+      env: null,
+      location: '@',
+      req_7d: null,
+      error: "server_name'de tam ad yok",
+      first_seen: null,
+      scan_date: GUN,
+    },
     // '_' vhost'lu ama '/' yollu bozuk satir da kova sayilir
-    { host: 'A', vhost: '_', service: 'GLOMO', env: 'PROD', location: '/x/', req_7d: 77, error: null, first_seen: TAM, scan_date: GUN },
+    {
+      host: 'A',
+      vhost: '_',
+      service: 'GLOMO',
+      env: 'PROD',
+      location: '/x/',
+      req_7d: 77,
+      error: null,
+      first_seen: TAM,
+      scan_date: GUN,
+    },
   ];
   const idx = spaTrafikIndeksi(hostKipi, (x) => spaTrafikAnahtari(x.service, x.env, x.location));
   assert.equal(idx.satir, 0, 'host kipi satiri "olcum var" sayildi');
@@ -283,8 +363,15 @@ test('PW10 hic olculmeyen location (null) atilmaz: digeri idle olsa da hucre UNK
     [null, idle],
     [idle, null],
   ]) {
-    const t = spaTrafikBirlesik(sira, sira.map((x) => (x ? 1 : 2)));
-    assert.equal(t.state, 'unknown', `olculmeyen location "yuk yok" sayildi (${sira.map(Boolean)})`);
+    const t = spaTrafikBirlesik(
+      sira,
+      sira.map((x) => (x ? 1 : 2)),
+    );
+    assert.equal(
+      t.state,
+      'unknown',
+      `olculmeyen location "yuk yok" sayildi (${sira.map(Boolean)})`,
+    );
     assert.deepEqual(t.kismi, ['satirsiz-sunucu']);
     assert.equal(t.missingHosts, 2, 'olculmeyen tanimin sunuculari missingHosts a eklenmeli');
     assert.equal(t.hosts, 1);
@@ -313,9 +400,20 @@ test('PW9 sorgu: first_seen kolonu yoksa ADI yazilmaz; host kipi SQL de suzulur'
   assert.match(yok, /CAST\(NULL AS NVARCHAR\(20\)\) AS first_seen/);
   assert.match(spaTrafikSorgusu(true), /,\s*first_seen,/);
   for (const q of [yok, spaTrafikSorgusu(true)]) {
-    assert.match(q, /AND \(location IS NULL OR location NOT LIKE '@%'\)/, 'host kipi SQL de alinmali');
-    assert.match(q, /CONVERT\(varchar\(10\), scan_date, 23\) AS scan_date/, 'pencere icin scan_date');
+    assert.match(
+      q,
+      /AND \(location IS NULL OR location NOT LIKE '@%'\)/,
+      'host kipi SQL de alinmali',
+    );
+    assert.match(
+      q,
+      /CONVERT\(varchar\(10\), scan_date, 23\) AS scan_date/,
+      'pencere icin scan_date',
+    );
     assert.match(q, /scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.Nginx_Spa_Traffic\)/);
   }
-  assert.match(spaTrafikSorgusu(true, ' AND host IN (@o0)'), /NOT LIKE '@%'\) AND host IN \(@o0\)$/);
+  assert.match(
+    spaTrafikSorgusu(true, ' AND host IN (@o0)'),
+    /NOT LIKE '@%'\) AND host IN \(@o0\)$/,
+  );
 });

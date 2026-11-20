@@ -26,7 +26,11 @@ vi.mock('@/api/denetimApi', async (orijinal) => {
 });
 
 const H = (c: string) => c.repeat(128);
-const satir = (host: string, durum: InitSunucuGeneliRow['durum'], extra: Partial<InitSunucuGeneliRow> = {}): InitSunucuGeneliRow => ({
+const satir = (
+  host: string,
+  durum: InitSunucuGeneliRow['durum'],
+  extra: Partial<InitSunucuGeneliRow> = {},
+): InitSunucuGeneliRow => ({
   host,
   durum,
   hash: durum === 'yok' ? null : H(durum === 'farkli' ? 'b' : 'a'),
@@ -226,7 +230,9 @@ describe('Denetim > Init Scripts — sunucu geneli bölüm', () => {
     );
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=init'] });
     await screen.findByText('start.sh');
-    expect(screen.getByText(/ayrıntı\/referans tabloları okunamadı \(ayrinti dustu\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ayrıntı\/referans tabloları okunamadı \(ayrinti dustu\)/),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Sunucu geneli bölüm okunamadı/)).toBeNull();
     expect(screen.getByText('/vhosting8 → appdomain.service')).toBeInTheDocument();
     expect(bolum()).toBeInTheDocument();

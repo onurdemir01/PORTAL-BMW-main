@@ -146,7 +146,9 @@ function yalnizTekrarOzeti(vhostlar) {
     }
   return {
     istek: trafikli.reduce((a, v) => a + v.req7d, 0),
-    uriler: [...uriler.values()].sort((a, b) => b.istek - a.istek || (a.yol < b.yol ? -1 : 1)).slice(0, 3),
+    uriler: [...uriler.values()]
+      .sort((a, b) => b.istek - a.istek || (a.yol < b.yol ? -1 : 1))
+      .slice(0, 3),
   };
 }
 const tekrarMetni = (t) =>
@@ -2193,7 +2195,10 @@ function assess(data, opts = {}) {
         // KULLANIM KANITI (2026-11-17, DACRPAP01 canli Node.js): tarayici yalniz JVM_YOK EAR'da olcer. Dizini
         // gosteren surec ya da TARAMA anindan 7 gun icinde yazma varsa EAR "artik" degildir: ne "silinebilir"
         // metni ne R3 / R5 retire adayi. Referans tarama ani (veri 35 gune kadar kullanilir), duvar saati degil.
-        const kk = x && x.durum === 'JVM_YOK' ? kullanimKaniti(u.kullanim || x.kullanim, ear.taranma, now) : null;
+        const kk =
+          x && x.durum === 'JVM_YOK'
+            ? kullanimKaniti(u.kullanim || x.kullanim, ear.taranma, now)
+            : null;
         const kullanim = (kk && (u.kullanim || x.kullanim)) || null;
         // KISMI taranan EAR'da WAR'lar eksik olabilir: "WAR yok" yalniz TAM taramada.
         if (u.durum === 'TAM' && u.warSayisi === 0) {
@@ -3147,7 +3152,11 @@ function flattenFindings(hosts) {
         stale: f.stale === true,
         // JBOSS_DOMAIN_DOWN (2026-11-15): dogrulama katmani (uygulaBulgu) nesli ve sayiyi buradan okur
         ...(f.code === 'JBOSS_DOMAIN_DOWN'
-          ? { gen: f.gen, autoStartAcik: f.autoStartAcik, ...(f.adminSeviye ? { adminSeviye: true } : {}) }
+          ? {
+              gen: f.gen,
+              autoStartAcik: f.autoStartAcik,
+              ...(f.adminSeviye ? { adminSeviye: true } : {}),
+            }
           : {}),
       });
   out.sort(

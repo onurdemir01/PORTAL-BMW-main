@@ -27,7 +27,10 @@ function parseSimpleYaml(src) {
     let val = t.slice(i + 1).trim();
     if (key && (val === '|' || val === '|-')) {
       const block = [];
-      while (li + 1 < lines.length && (/^[ \t]/.test(lines[li + 1]) || lines[li + 1].trim() === '')) {
+      while (
+        li + 1 < lines.length &&
+        (/^[ \t]/.test(lines[li + 1]) || lines[li + 1].trim() === '')
+      ) {
         block.push(lines[li + 1]);
         li++;
       }

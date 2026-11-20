@@ -29,10 +29,17 @@ export type AutoStartSonucu = {
 };
 
 /** `${host}|${gen}|${jvm}` — Bulgular, sunucu paneli ve Ayrıntı penceresi AYNI anahtarı kullanır. */
-export const autoStartAnahtari = (host: string, gen: number, jvm: string) => `${host}|${gen}|${jvm}`;
+export const autoStartAnahtari = (host: string, gen: number, jvm: string) =>
+  `${host}|${gen}|${jvm}`;
 
 /** Bir işin bitişi: hangi ekrandan başlatılmış olursa olsun, o sunucuyu gösteren HER ekran dinler. */
-export type AutoStartBitisi = { anahtar: string; host: string; gen: number; jvm: string; sonuc: AutoStartSonucu };
+export type AutoStartBitisi = {
+  anahtar: string;
+  host: string;
+  gen: number;
+  jvm: string;
+  sonuc: AutoStartSonucu;
+};
 export type AutoStartSonKaydi = AutoStartSonucu & { at: number };
 
 // ── modül düzeyi kayıt (useSyncExternalStore) ─────────────────────────────────────────────
@@ -91,7 +98,12 @@ export function autoStartBittiDinle(f: (e: AutoStartBitisi) => void): () => void
  * öğesi) bu modülün yoluna yayar: satır sonucu yazılır, bitiş dinleyicileri (açık sunucu paneli, Bulgular)
  * tek JVM işindeki gibi hemen güncellenir. Süren tek JVM işi varsa ona dokunmaz.
  */
-export function autoStartSonucYay(host: string, gen: number, jvm: string, sonuc: AutoStartSonucu): void {
+export function autoStartSonucYay(
+  host: string,
+  gen: number,
+  jvm: string,
+  sonuc: AutoStartSonucu,
+): void {
   const k = autoStartAnahtari(host, gen, jvm);
   sonucYaz(k, sonuc);
   const e: AutoStartBitisi = { anahtar: k, host, gen, jvm, sonuc };
@@ -183,7 +195,8 @@ export function kapatEngeli(j: {
   runningKnown?: boolean | null;
   runningSrc?: string | null;
 }): string {
-  const bilinir = j.runningKnown !== false && String(j.runningSrc || '').toUpperCase() !== 'UNMEASURED';
+  const bilinir =
+    j.runningKnown !== false && String(j.runningSrc || '').toUpperCase() !== 'UNMEASURED';
   return bilinir && j.running === true
     ? "JVM çalışıyor — çalışan JVM'in auto-start'ı kapatılmaz (betik reddeder). Önce JVM'i durdurun, sonra yeniden tarayın."
     : '';
@@ -227,7 +240,9 @@ export async function autoStartBaslat(p: {
   const awx = r.awxServerId ?? 0;
   const baslangic = Date.now();
   yaz(k, { jobId, durum: 'pending', baslangic });
-  toast.success(`${p.jvm}: auto-start ${yon} işi başladı (#${jobId}). Bitince sonuç bildirilir ve satıra yazılır.`);
+  toast.success(
+    `${p.jvm}: auto-start ${yon} işi başladı (#${jobId}). Bitince sonuç bildirilir ve satıra yazılır.`,
+  );
   let bitti = false;
   let hata = 0;
   let sonYoklama = 0;
@@ -255,9 +270,15 @@ export async function autoStartBaslat(p: {
     if (TERMINAL.has(s.status)) {
       const son = autoStartSonucu(s.status, s.result, p.ac, jobId);
       if (son.tur === 'ok')
-        toast.success(`${p.jvm}: auto-start ${p.ac ? 'AÇILDI' : 'KAPATILDI'} (CLI ile doğrulandı, iş #${jobId}). ${son.mesaj}`, 8000);
+        toast.success(
+          `${p.jvm}: auto-start ${p.ac ? 'AÇILDI' : 'KAPATILDI'} (CLI ile doğrulandı, iş #${jobId}). ${son.mesaj}`,
+          8000,
+        );
       else if (son.tur === 'skip')
-        toast.info(`${p.jvm}: auto-start zaten ${p.ac ? 'açık' : 'kapalı'} — değişiklik yapılmadı (iş #${jobId}). ${son.mesaj}`, 8000);
+        toast.info(
+          `${p.jvm}: auto-start zaten ${p.ac ? 'açık' : 'kapalı'} — değişiklik yapılmadı (iş #${jobId}). ${son.mesaj}`,
+          8000,
+        );
       else toast.error(`${p.jvm}: auto-start ${yon} BAŞARISIZ (iş #${jobId}): ${son.mesaj}`, 12000);
       birak(son);
     } else yaz(k, { jobId, durum: s.status || 'pending', baslangic });
@@ -267,7 +288,10 @@ export async function autoStartBaslat(p: {
     hata += 1;
     if (hata >= YOKLAMA_HATA_MAX && !bitti) {
       birak(null);
-      toast.warning(`${p.jvm}: iş #${jobId} durumu okunamıyor — sonucu AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın.`, 12000);
+      toast.warning(
+        `${p.jvm}: iş #${jobId} durumu okunamıyor — sonucu AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın.`,
+        12000,
+      );
     }
   };
   /** Tek uçuş: izleyici ve yedek döngü aynı anda isterse AWX'e tek istek; sonuç bir kez işlenir. */
@@ -295,7 +319,10 @@ export async function autoStartBaslat(p: {
     if (bitti) return;
     if (Date.now() - baslangic > KILIT_EN_COK_MS) {
       birak(null);
-      toast.warning(`${p.jvm}: iş #${jobId} ${Math.round(KILIT_EN_COK_MS / 60_000)} dakikadır bitmedi — kilit bırakıldı; sonucu AWX'ten kontrol edin.`, 12000);
+      toast.warning(
+        `${p.jvm}: iş #${jobId} ${Math.round(KILIT_EN_COK_MS / 60_000)} dakikadır bitmedi — kilit bırakıldı; sonucu AWX'ten kontrol edin.`,
+        12000,
+      );
       return;
     }
     if (Date.now() - sonYoklama >= YEDEK_MS) yokla().catch(() => {});

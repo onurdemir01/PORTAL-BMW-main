@@ -42,7 +42,10 @@ test('OI1 iptal username sutunuyla eslesir; LIKE yalnizca sutunu bos satirlar ic
     },
   );
   assert.equal(cagri.length, 1);
-  assert.match(cagri[0].sql, /WHERE username = \$1 OR \(username IS NULL AND LOWER\(sess\) LIKE \$2\)/);
+  assert.match(
+    cagri[0].sql,
+    /WHERE username = \$1 OR \(username IS NULL AND LOWER\(sess\) LIKE \$2\)/,
+  );
   assert.equal(cagri[0].params[0], 'ali_veli', 'kullanici adi kucuk harfe indirilmeli');
   assert.equal(cagri[0].params[1], '%"username":"ali_veli"%');
 });
@@ -52,16 +55,22 @@ test('OI2 yeni sutunlar yoksa giris kirilmaz (eski sema ile yazilir)', async () 
   await withMock(
     async (sql) => {
       cagri.push(sql);
-      if (/username = \$3|username, created_at/.test(sql)) throw new Error("Invalid column name 'username'.");
+      if (/username = \$3|username, created_at/.test(sql))
+        throw new Error("Invalid column name 'username'.");
       return { rowCount: 1 };
     },
     () =>
       new Promise((resolve, reject) => {
         const s = store.createMssqlSessionStore(session);
-        s.set('sid-x', { user: { username: 'u' }, cookie: {} }, (err) => (err ? reject(err) : resolve()));
+        s.set('sid-x', { user: { username: 'u' }, cookie: {} }, (err) =>
+          err ? reject(err) : resolve(),
+        );
       }),
   );
-  assert.match(cagri.at(-1), /^UPDATE portal_sessions SET sess = \$1, expires = \$2 WHERE sid = \$3$/);
+  assert.match(
+    cagri.at(-1),
+    /^UPDATE portal_sessions SET sess = \$1, expires = \$2 WHERE sid = \$3$/,
+  );
 
   // Iptal de eski LIKE yoluna duser (0 sessizce donmez).
   const iptal = [];
@@ -78,7 +87,10 @@ test('OI2 yeni sutunlar yoksa giris kirilmaz (eski sema ile yazilir)', async () 
 
 test('OI3 satir omru kunyeden: mutlak bitis', () => {
   const t = Date.UTC(2026, 9, 2, 8, 0, 0);
-  const e = store.expiryFrom({ meta: { createdAt: t, lastSeenAt: t + 1000, remember: false }, cookie: {} });
+  const e = store.expiryFrom({
+    meta: { createdAt: t, lastSeenAt: t + 1000, remember: false },
+    cookie: {},
+  });
   assert.equal(e.getTime(), t + 12 * 3600e3);
   const r = store.expiryFrom({ meta: { createdAt: t, lastSeenAt: t, remember: true }, cookie: {} });
   assert.equal(r.getTime(), t + 7 * 24 * 3600e3);
@@ -91,8 +103,14 @@ function rolUygulamasi(sorgular) {
     if (/^SELECT sid, sess FROM portal_sessions/.test(sql)) {
       return {
         rows: [
-          { sid: 's1', sess: JSON.stringify({ user: { username: 'ayse', role: 'User' }, meta: {} }) },
-          { sid: 's2', sess: JSON.stringify({ user: { username: 'ayse', role: 'Admin' }, meta: {} }) },
+          {
+            sid: 's1',
+            sess: JSON.stringify({ user: { username: 'ayse', role: 'User' }, meta: {} }),
+          },
+          {
+            sid: 's2',
+            sess: JSON.stringify({ user: { username: 'ayse', role: 'Admin' }, meta: {} }),
+          },
         ],
       };
     }
@@ -124,7 +142,10 @@ test('OI4 yukseltme oturumu dusurmez (yerinde yazar); dusurme ve kaldirma sonlan
     ).json();
     assert.equal(up.sessionsRevoked, 0, 'yukseltme kullaniciyi atti');
     assert.equal(up.sessionsRefreshed, 1, 'yalnizca rolu farkli olan oturum yazilmali');
-    assert.ok(!q.some((x) => /^DELETE FROM portal_sessions/.test(x.sql)), 'yukseltmede oturum silindi');
+    assert.ok(
+      !q.some((x) => /^DELETE FROM portal_sessions/.test(x.sql)),
+      'yukseltmede oturum silindi',
+    );
     const yaz = q.find((x) => /^UPDATE portal_sessions SET sess = \$1 WHERE sid = \$2/.test(x.sql));
     assert.ok(yaz, 'oturum satiri yeniden yazilmadi');
     assert.equal(JSON.parse(yaz.params[0]).user.role, 'Admin');
@@ -138,14 +159,23 @@ test('OI4 yukseltme oturumu dusurmez (yerinde yazar); dusurme ve kaldirma sonlan
         body: JSON.stringify({ role: 'User' }),
       })
     ).json();
-    assert.ok(q.some((x) => /^DELETE FROM portal_sessions WHERE username = \$1/.test(x.sql)), 'dusurmede oturum kaldi');
+    assert.ok(
+      q.some((x) => /^DELETE FROM portal_sessions WHERE username = \$1/.test(x.sql)),
+      'dusurmede oturum kaldi',
+    );
     assert.equal(down.sessionsRevoked, 1);
-    assert.ok(!policy._rolYukseltmeleri.has('ayse'), 'dusurmeden sonra eski yukseltme kaydi kaldi — yeni giris yeniden Admin olurdu');
+    assert.ok(
+      !policy._rolYukseltmeleri.has('ayse'),
+      'dusurmeden sonra eski yukseltme kaydi kaldi — yeni giris yeniden Admin olurdu',
+    );
 
     policy.rolYukseltmesiKaydet('ayse', 'Admin');
     q.length = 0;
     await fetch(`${url}/api/roles/Ayse`, { method: 'DELETE' });
-    assert.ok(q.some((x) => /^DELETE FROM portal_sessions WHERE username = \$1/.test(x.sql)), 'kaldirmada oturum kaldi');
+    assert.ok(
+      q.some((x) => /^DELETE FROM portal_sessions WHERE username = \$1/.test(x.sql)),
+      'kaldirmada oturum kaldi',
+    );
     assert.ok(!policy._rolYukseltmeleri.has('ayse'));
   } finally {
     kapat();
@@ -159,10 +189,18 @@ test('OI5 yukseltme kaydi yalnizca kayittan ONCE acilmis oturuma uygulanir', () 
     policy.rolYukseltmesiKaydet('veli', 'Admin', t);
     const mw = policy.oturumYaptirimi();
     const res = { setHeader() {} };
-    const eski = { user: { username: 'Veli', role: 'User' }, meta: { createdAt: t - 1000, lastSeenAt: t, remember: false }, cookie: {} };
+    const eski = {
+      user: { username: 'Veli', role: 'User' },
+      meta: { createdAt: t - 1000, lastSeenAt: t, remember: false },
+      cookie: {},
+    };
     mw({ session: eski, headers: {}, method: 'GET', path: '/api/x' }, res, () => {});
     assert.equal(eski.user.role, 'Admin', 'acik oturuma yukseltme yansimadi');
-    const yeni = { user: { username: 'veli', role: 'User' }, meta: { createdAt: t + 500, lastSeenAt: t + 500, remember: false }, cookie: {} };
+    const yeni = {
+      user: { username: 'veli', role: 'User' },
+      meta: { createdAt: t + 500, lastSeenAt: t + 500, remember: false },
+      cookie: {},
+    };
     mw({ session: yeni, headers: {}, method: 'GET', path: '/api/x' }, res, () => {});
     assert.equal(yeni.user.role, 'User', 'kayittan SONRA acilan oturumun rolu ezildi');
   } finally {
@@ -173,11 +211,17 @@ test('OI5 yukseltme kaydi yalnizca kayittan ONCE acilmis oturuma uygulanir', () 
 
 test('OI6 listByUser username sutunuyla okur; bozuk satir atlanir; sutun yoksa bos liste', async () => {
   const cagri = [];
-  const oku = (s) => new Promise((resolve, reject) => s.listByUser('Ayse', (e, l) => (e ? reject(e) : resolve(l))));
+  const oku = (s) =>
+    new Promise((resolve, reject) => s.listByUser('Ayse', (e, l) => (e ? reject(e) : resolve(l))));
   await withMock(
     async (sql, params) => {
       cagri.push({ sql, params });
-      return { rows: [{ sid: 's1', sess: JSON.stringify({ user: { username: 'ayse' } }) }, { sid: 's2', sess: '{bozuk' }] };
+      return {
+        rows: [
+          { sid: 's1', sess: JSON.stringify({ user: { username: 'ayse' } }) },
+          { sid: 's2', sess: '{bozuk' },
+        ],
+      };
     },
     async () => {
       const l = await oku(store.createMssqlSessionStore(session));

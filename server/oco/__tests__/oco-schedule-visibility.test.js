@@ -39,18 +39,41 @@ test('OS1 grup kesisimi TAM ESLESME (alt-dize tuzagi yok)', () => {
 
 test('OS2 `canManage`: sahip / grup / admin — baskasi HAYIR', () => {
   const rec = { username: 'ahmet', ownerGroups: ['GT-MW'] };
-  assert.equal(store.canManage(rec, { username: 'ahmet', groups: [], role: 'User' }), true, 'sahip yonetemiyor');
-  assert.equal(store.canManage(rec, { username: 'AHMET', groups: [], role: 'User' }), true, 'kullanici adi harf duyarli');
-  assert.equal(store.canManage(rec, { username: 'mehmet', groups: ['GT-MW'], role: 'User' }), true, 'grup uyesi yonetemiyor');
-  assert.equal(store.canManage(rec, { username: 'mehmet', groups: ['BASKA'], role: 'User' }), false, 'YABANCI yonetebiliyor — SIZINTI');
-  assert.equal(store.canManage(rec, { username: 'mehmet', groups: [], role: 'Admin' }), true, 'admin yonetemiyor');
+  assert.equal(
+    store.canManage(rec, { username: 'ahmet', groups: [], role: 'User' }),
+    true,
+    'sahip yonetemiyor',
+  );
+  assert.equal(
+    store.canManage(rec, { username: 'AHMET', groups: [], role: 'User' }),
+    true,
+    'kullanici adi harf duyarli',
+  );
+  assert.equal(
+    store.canManage(rec, { username: 'mehmet', groups: ['GT-MW'], role: 'User' }),
+    true,
+    'grup uyesi yonetemiyor',
+  );
+  assert.equal(
+    store.canManage(rec, { username: 'mehmet', groups: ['BASKA'], role: 'User' }),
+    false,
+    'YABANCI yonetebiliyor — SIZINTI',
+  );
+  assert.equal(
+    store.canManage(rec, { username: 'mehmet', groups: [], role: 'Admin' }),
+    true,
+    'admin yonetemiyor',
+  );
 });
 
 test('OS3 ESKI KAYIT (ownerGroups null) grup uzerinden GORUNMEZ', () => {
   // "Bilmiyoruz"u "senin grubun" saymak, baskasinin kesinti kaydini gostermek
   // olurdu. `scalex_state_mirror.stopped_by_groups` ile ayni ayrim.
   const eski = { username: 'ahmet', ownerGroups: null };
-  assert.equal(store.canManage(eski, { username: 'mehmet', groups: ['GT-MW'], role: 'User' }), false);
+  assert.equal(
+    store.canManage(eski, { username: 'mehmet', groups: ['GT-MW'], role: 'User' }),
+    false,
+  );
   // Sahibi yine gorur.
   assert.equal(store.canManage(eski, { username: 'ahmet', groups: [], role: 'User' }), true);
 });
@@ -68,13 +91,27 @@ test('OS4 `owner_groups` HEM CREATE HEM ALTER listesinde', () => {
 
 test('OS5 guncelleme YALNIZCA beklemedeki kayda (tetiklenmisi ezmez)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'store.cjs'), 'utf8');
-  const govde = src.slice(src.indexOf('async function update('), src.indexOf('async function cancelBy('));
-  assert.match(govde, /WHERE id = \$1 AND status = 'SCHEDULED'/, 'kosulsuz UPDATE — tetiklenmis isi ezer');
-  assert.match(govde, /OUTPUT INSERTED\.\*/, 'etkilenen satir dondurulmuyor — cagiran basarisizligi GOREMEZ');
+  const govde = src.slice(
+    src.indexOf('async function update('),
+    src.indexOf('async function cancelBy('),
+  );
+  assert.match(
+    govde,
+    /WHERE id = \$1 AND status = 'SCHEDULED'/,
+    'kosulsuz UPDATE — tetiklenmis isi ezer',
+  );
+  assert.match(
+    govde,
+    /OUTPUT INSERTED\.\*/,
+    'etkilenen satir dondurulmuyor — cagiran basarisizligi GOREMEZ',
+  );
 });
 
 test('OS6 iptal SESSIZCE "oldu" demiyor (kosullu UPDATE + 409)', () => {
-  const govde = IX.slice(IX.indexOf("'/oco-schedules/:id/cancel'"), IX.indexOf("'/oco-schedules/:id/update'"));
+  const govde = IX.slice(
+    IX.indexOf("'/oco-schedules/:id/cancel'"),
+    IX.indexOf("'/oco-schedules/:id/update'"),
+  );
   assert.match(govde, /if \(!iptal\)/, 'kosullu UPDATE sonucu kontrol edilmiyor');
   assert.match(govde, /409/, 'iptal edilemedigi halde basarili donuyor');
   assert.match(govde, /cancelledBy: u\.username/, 'iptal EDEN kaydedilmiyor');
@@ -98,7 +135,10 @@ test('OS8 numara DEGISTIRILIRSE yeniden DOGRULANIYOR', () => {
   // dogrulama kodu OLU DALDA duruyordu ama metinde hala goruluyordu. Bu depoda
   // tekrar eden kor bekci bicimi #4: "tanimlayicinin VARLIGINI arar, KARAR
   // NOKTASINDAKI kullanimini degil".
-  const govde = IX.slice(IX.indexOf("'/oco-schedules/:id/update'"), IX.indexOf("'/admin/oco-diagnose'"));
+  const govde = IX.slice(
+    IX.indexOf("'/oco-schedules/:id/update'"),
+    IX.indexOf("'/admin/oco-diagnose'"),
+  );
 
   // 1) Kosul GERCEK olmali — sabit degil.
   const kosul = /if \(yeniNumara && yeniNumara !== rec\.ocoNumber\) \{/;
@@ -121,12 +161,26 @@ test('OS8 numara DEGISTIRILIRSE yeniden DOGRULANIYOR', () => {
 });
 
 test('OS9 ScaleX PORTAL zamanlayicisini kullaniyor (AWX-native DEGIL)', () => {
-  const govde = IX.slice(IX.indexOf('async function runScaleXGates'), IX.indexOf('// ── GERI ALMA KILIDI'));
-  assert.match(govde, /preferPortalScheduler: true/, 'AWX-native zamanlamaya dusuyor — guncelleme yapilamaz');
+  const govde = IX.slice(
+    IX.indexOf('async function runScaleXGates'),
+    IX.indexOf('// ── GERI ALMA KILIDI'),
+  );
+  assert.match(
+    govde,
+    /preferPortalScheduler: true/,
+    'AWX-native zamanlamaya dusuyor — guncelleme yapilamaz',
+  );
   assert.match(govde, /ownerGroups:/, 'grup bilgisi kayda GECMIYOR — gorunurluk calismaz');
   // `ocoAction` artik SABIT DEGIL: kullanicinin secimi geliyor.
-  assert.ok(!/ocoAction: 'later',/.test(govde), '`ocoAction` hala sabit — zamanlama secenegi sunulamaz');
-  assert.match(govde, /ocoAction === 'schedule' \? 'schedule' : 'later'/, 'kullanici secimi gecirilmiyor');
+  assert.ok(
+    !/ocoAction: 'later',/.test(govde),
+    '`ocoAction` hala sabit — zamanlama secenegi sunulamaz',
+  );
+  assert.match(
+    govde,
+    /ocoAction === 'schedule' \? 'schedule' : 'later'/,
+    'kullanici secimi gecirilmiyor',
+  );
 });
 
 test('OS10 ortak kapi `preferPortalScheduler`i KARAR NOKTASINDA kullaniyor', () => {
@@ -137,6 +191,9 @@ test('OS10 ortak kapi `preferPortalScheduler`i KARAR NOKTASINDA kullaniyor', () 
     '`preferPortalScheduler` AWX-native dalini engellemiyor',
   );
   // Portal dalinda gruplar saklanmali.
-  const portalDal = CG.slice(CG.indexOf('const rec = await ocoStore.create('), CG.indexOf('selfservice_oco_scheduled'));
+  const portalDal = CG.slice(
+    CG.indexOf('const rec = await ocoStore.create('),
+    CG.indexOf('selfservice_oco_scheduled'),
+  );
   assert.match(portalDal, /ownerGroups/, 'portal kaydinda grup bilgisi YOK');
 });

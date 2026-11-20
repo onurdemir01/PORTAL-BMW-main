@@ -45,9 +45,7 @@ export function useFloatingWindow(
 ) {
   const autoHeight = !!opts.autoHeight;
   const initialH: number | 'auto' = autoHeight ? 'auto' : defaultSize.h;
-  const [pos, setPos] = useState<FloatingPos>(() =>
-    centeredPos(defaultSize.w, defaultSize.h),
-  );
+  const [pos, setPos] = useState<FloatingPos>(() => centeredPos(defaultSize.w, defaultSize.h));
   const [size, setSize] = useState<FloatingSize>({ w: defaultSize.w, h: initialH });
   const ref = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -62,7 +60,12 @@ export function useFloatingWindow(
     effMinH: number;
   } | null>(null);
 
-  const liveDragRef = useRef<{ left?: string; top?: string; width?: string; height?: string } | null>(null);
+  const liveDragRef = useRef<{
+    left?: string;
+    top?: string;
+    width?: string;
+    height?: string;
+  } | null>(null);
   const onPointerUpRef = useRef<() => void>(() => {});
 
   const onPointerMove = useCallback((e: PointerEvent) => {

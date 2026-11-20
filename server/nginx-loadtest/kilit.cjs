@@ -51,7 +51,8 @@ function kilitAnahtarlari({ hedef, hedefIp = null, hedefTuru = 'sunucu', yuk, ko
   const out = [];
   if (kosu || serbest) out.push('G|global');
   if (serbest) {
-    if (!require('./dogrula.cjs').gecerliIpv4(hedefIp)) throw new TypeError('kilitAnahtarlari: serbest hedefte gecerli bir IPv4 gerekli');
+    if (!require('./dogrula.cjs').gecerliIpv4(hedefIp))
+      throw new TypeError('kilitAnahtarlari: serbest hedefte gecerli bir IPv4 gerekli');
     out.push(`T|IP:${hedefIp}`);
   } else {
     out.push(`T|${String(hedef).trim().toUpperCase()}`);
@@ -98,8 +99,14 @@ async function ensureLockRow(db, key) {
  * (birakmak yuk surerken kilidi acardi). Bilinmeyen bag turu en siki sutun (durdur) sayilir.
  */
 function bagliIsKarari(bagTuru, awxStatus) {
-  const s = String(awxStatus ?? '').trim().toLowerCase();
-  const t = (() => { if (bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol') return 'on_kontrol'; if (bagTuru === 'kosu' || bagTuru === 'araclar' || bagTuru === 'onk_srv') return 'kosu'; return 'durdur'; })();
+  const s = String(awxStatus ?? '')
+    .trim()
+    .toLowerCase();
+  const t = (() => {
+    if (bagTuru == null || bagTuru === '' || bagTuru === 'on_kontrol') return 'on_kontrol';
+    if (bagTuru === 'kosu' || bagTuru === 'araclar' || bagTuru === 'onk_srv') return 'kosu';
+    return 'durdur';
+  })();
   if (s === 'successful') return 'birak';
   if (s === 'failed') return t === 'durdur' ? 'tut' : 'birak';
   if (s === 'canceled' || s === 'error') return t === 'on_kontrol' ? 'birak' : 'tut';
@@ -159,7 +166,8 @@ async function boundJobState(jobState, row) {
   try {
     const r = await jobState(Number(row.awx_server_id), Number(row.awx_job_id));
     if (r === true) return { terminal: true, finished: null, status: null };
-    if (r && typeof r === 'object' && r.terminal === true) return { terminal: true, finished: r.finished ?? null, status: r.status ?? null };
+    if (r && typeof r === 'object' && r.terminal === true)
+      return { terminal: true, finished: r.finished ?? null, status: r.status ?? null };
   } catch {
     /* AWX okunamadi: bitmis SAYILMAZ */
   }
@@ -233,7 +241,8 @@ async function releaseLocksForJob(db, awxServerId, awxJobId, finishedIso = null)
 }
 
 // Kilit suresini EN AZ simdi + n saniyeye cekme (kisaltmaz). Tek ifade, iki yerde ayni.
-const SURE_UZAT = (p) => `locked_until = CASE WHEN locked_until IS NULL OR locked_until < DATEADD(SECOND, ${p}, GETUTCDATE()) THEN DATEADD(SECOND, ${p}, GETUTCDATE()) ELSE locked_until END`;
+const SURE_UZAT = (p) =>
+  `locked_until = CASE WHEN locked_until IS NULL OR locked_until < DATEADD(SECOND, ${p}, GETUTCDATE()) THEN DATEADD(SECOND, ${p}, GETUTCDATE()) ELSE locked_until END`;
 const UZATMA_TAVANI_SN = 24 * 3600;
 
 function uzatmaSn(v) {
@@ -249,7 +258,7 @@ async function isinKilitleriniCoz(db, awxServerId, awxJobId, uzatSn = null) {
   const n = uzatmaSn(uzatSn);
   const { rowCount } = await db.query(
     `UPDATE nginx_loadtest_kilitleri
-        SET awx_server_id = NULL, awx_job_id = NULL, bag_turu = NULL, updated_at = GETUTCDATE()${n === null ? '' : (", " + SURE_UZAT('$3'))}
+        SET awx_server_id = NULL, awx_job_id = NULL, bag_turu = NULL, updated_at = GETUTCDATE()${n === null ? '' : ', ' + SURE_UZAT('$3')}
       WHERE awx_server_id = $1 AND awx_job_id = $2 AND held = 1`,
     n === null ? [awxServerId, awxJobId] : [awxServerId, awxJobId, n],
   );
@@ -275,7 +284,11 @@ async function durdurIsineBagla(db, kilitId, { awxServerId, awxJobId, uzatSn }) 
 
 // Ayni ise bagli kilitlerin bag turu normalde tektir (bindLocks hepsine ayni degeri yazar); yine de
 // farkli gelirse EN SIKI olan alinir (durdur > kosu > on_kontrol/NULL/araclar).
-const BAG_SIRASI = (t) => { if (t == null || t === '' || t === 'on_kontrol' || t === 'araclar') return 0; if (t === 'kosu' || t === 'onk_srv') return 1; return 2; };
+const BAG_SIRASI = (t) => {
+  if (t == null || t === '' || t === 'on_kontrol' || t === 'araclar') return 0;
+  if (t === 'kosu' || t === 'onk_srv') return 1;
+  return 2;
+};
 
 /** Bir ise bagli DOLU kilitlerin isleri (poller supurmesi). Kosu satiri yazilamamis olsa da birakilsin. */
 async function bekleyenKilitIsleri(db, limit = 20) {
@@ -307,8 +320,18 @@ async function bekleyenKilitIsleri(db, limit = 20) {
 /** Dolu kilit icin kullaniciya gosterilecek tek satir (kim, ne, ne zamana kadar). */
 function doluKilitMesaji(busyKey, busy) {
   // T|IP: dali T| dalindan ONCE (serbest hedef). G metni degismez: kim bolumundeki target_desc isi soyler.
-  const ne = (() => { if (busyKey === 'G|global') return 'Başka bir yük testi koşuyor'; if (busyKey === 'A|araclar') return 'Başka bir araç hazırlama işi sürüyor'; if (busyKey.startsWith('T|IP:')) return `${busyKey.slice(5)} IP'sine yönelik başka bir iş var`; if (busyKey.startsWith('T|')) return `${busyKey.slice(2)} üzerinde başka bir iş var`; return `${busyKey.slice(2)} yük makinesi meşgul`; })();
-  const kim = (() => { if (busy && busy.holder) return ` (${busy.holder}${busy.target_desc ? (": " + busy.target_desc) : ''}${busy.awx_job_id != null ? (", AWX iş #" + busy.awx_job_id) : ''})`; return ''; })();
+  const ne = (() => {
+    if (busyKey === 'G|global') return 'Başka bir yük testi koşuyor';
+    if (busyKey === 'A|araclar') return 'Başka bir araç hazırlama işi sürüyor';
+    if (busyKey.startsWith('T|IP:')) return `${busyKey.slice(5)} IP'sine yönelik başka bir iş var`;
+    if (busyKey.startsWith('T|')) return `${busyKey.slice(2)} üzerinde başka bir iş var`;
+    return `${busyKey.slice(2)} yük makinesi meşgul`;
+  })();
+  const kim = (() => {
+    if (busy && busy.holder)
+      return ` (${busy.holder}${busy.target_desc ? ': ' + busy.target_desc : ''}${busy.awx_job_id != null ? ', AWX iş #' + busy.awx_job_id : ''})`;
+    return '';
+  })();
   return `${ne}${kim}. İş bitince kilit kendiliğinden bırakılır.`;
 }
 

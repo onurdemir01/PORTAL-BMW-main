@@ -16,29 +16,33 @@ const {
 
 const RULES = [
   // Turkish TCKN (11 digits, starts with non-zero)
-  { name: 'TCKN',       re: /\b[1-9]\d{10}\b/g,                                      tag: '[TCKN]'        },
+  { name: 'TCKN', re: /\b[1-9]\d{10}\b/g, tag: '[TCKN]' },
   // IBAN — TR format with or without spaces (TR33 0006 1005 1978 6457 8413 26)
-  { name: 'IBAN',       re: /\bTR\d{2}(?:[ -]?\d{4}){5}[ -]?\d{2}\b/gi,                tag: '[IBAN]'    },
+  { name: 'IBAN', re: /\bTR\d{2}(?:[ -]?\d{4}){5}[ -]?\d{2}\b/gi, tag: '[IBAN]' },
   // IBAN — generic international (no spaces, 15-34 alphanum after 2 letter country code)
-  { name: 'IBAN_INTL',  re: /\b[A-Z]{2}\d{2}[0-9A-Z]{11,30}\b/g,                       tag: '[IBAN]'    },
+  { name: 'IBAN_INTL', re: /\b[A-Z]{2}\d{2}[0-9A-Z]{11,30}\b/g, tag: '[IBAN]' },
   // Card numbers (13-16 digits, optionally separated by space/dash)
-  { name: 'CARD',       re: /\b(?:\d[ -]?){13,16}\b/g,                               tag: '[CARD]'        },
+  { name: 'CARD', re: /\b(?:\d[ -]?){13,16}\b/g, tag: '[CARD]' },
   // Bearer tokens / JWT (Authorization header values)
-  { name: 'BEARER',     re: /Bearer\s+[a-z0-9._~+/-]+=*/gi,                      tag: 'Bearer [TOKEN]'},
+  { name: 'BEARER', re: /Bearer\s+[a-z0-9._~+/-]+=*/gi, tag: 'Bearer [TOKEN]' },
   // JWT standalone (three base64url segments)
-  { name: 'JWT',        re: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g,  tag: '[JWT]'         },
+  { name: 'JWT', re: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g, tag: '[JWT]' },
   // Authorization header value
-  { name: 'AUTH_HDR',   re: /Authorization:\s*\S+/gi,                                tag: 'Authorization: [REDACTED]' },
+  { name: 'AUTH_HDR', re: /Authorization:\s*\S+/gi, tag: 'Authorization: [REDACTED]' },
   // Passwords in JSON/query-string patterns
-  { name: 'PASSWORD',   re: /("password"\s*:\s*)"[^"]*"/gi,                          tag: '$1"[REDACTED]"'},
-  { name: 'PASSWORD2',  re: /(password=)[^&\s]+/gi,                                   tag: '$1[REDACTED]'  },
+  { name: 'PASSWORD', re: /("password"\s*:\s*)"[^"]*"/gi, tag: '$1"[REDACTED]"' },
+  { name: 'PASSWORD2', re: /(password=)[^&\s]+/gi, tag: '$1[REDACTED]' },
   // E-mail addresses
-  { name: 'EMAIL',      re: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g, tag: '[EMAIL]'     },
+  { name: 'EMAIL', re: /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g, tag: '[EMAIL]' },
   // Turkish mobile numbers (+90 5xx xxx xx xx or 05xx...)
-  { name: 'PHONE_TR',   re: /(\+90|0)[\s-]?(5\d{2})[\s\-]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})\b/g, tag: '[PHONE]' },
+  {
+    name: 'PHONE_TR',
+    re: /(\+90|0)[\s-]?(5\d{2})[\s\-]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})\b/g,
+    tag: '[PHONE]',
+  },
   // Generic phone-like (10+ consecutive digits not already matched by TCKN rule)
   // Intentionally placed AFTER TCKN to avoid double-masking
-  { name: 'PHONE_GEN',  re: /(?<!\d)\d{10,12}(?!\d)/g,                              tag: '[PHONE]'       },
+  { name: 'PHONE_GEN', re: /(?<!\d)\d{10,12}(?!\d)/g, tag: '[PHONE]' },
 ];
 
 // ── DB'den yuklenen kural seti (cache) ────────────────────────────────────────
@@ -57,7 +61,10 @@ function compileRule(row) {
   const yapisal = icIceSinirsizNiceleyici(row.pattern);
   if (yapisal) return { red: { name: row.name, sebep: yapisal } };
   try {
-    return { kural: { name: row.name, re: new RegExp(row.pattern, flags), tag: row.replacement }, flags };
+    return {
+      kural: { name: row.name, re: new RegExp(row.pattern, flags), tag: row.replacement },
+      flags,
+    };
   } catch (e) {
     return { red: { name: row.name, sebep: `derlenemedi: ${e.message}` } };
   }
@@ -79,7 +86,7 @@ async function sinirliParalel(ogeler, esZaman, fn) {
 async function reloadMaskRules() {
   const db = require('../db/index.cjs');
   const { rows } = await db.query(
-    `SELECT name, pattern, flags, replacement, sort_order FROM logx_mask_rules WHERE enabled = 1 ORDER BY sort_order, id`
+    `SELECT name, pattern, flags, replacement, sort_order FROM logx_mask_rules WHERE enabled = 1 ORDER BY sort_order, id`,
   );
   const reddedilen = [];
   const adaylar = [];
@@ -88,7 +95,9 @@ async function reloadMaskRules() {
     if (c.red) reddedilen.push(c.red);
     else adaylar.push({ row, ...c });
   }
-  const sinamalar = await sinirliParalel(adaylar, 4, (a) => davranisDenetle(a.row.pattern, a.flags));
+  const sinamalar = await sinirliParalel(adaylar, 4, (a) =>
+    davranisDenetle(a.row.pattern, a.flags),
+  );
   const compiled = [];
   adaylar.forEach((a, i) => {
     if (sinamalar[i].ok) compiled.push(a.kural);

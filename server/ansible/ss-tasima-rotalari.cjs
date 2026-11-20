@@ -114,8 +114,11 @@ function kaydet(app, deps) {
   // Smart onayli serviste gercek deneme: admin "Smart atla" tercihi kapaliysa deneme GERCEK ve
   // sahipsiz bir Smart talebi acardi (poller'in actigi is deneme kaydina baglanmaz) -> reddedilir.
   const smartGerekliMi =
-    deps.smartGerekliMi || ((smartApproval, gateVars) => require('./change-gates.cjs').isSmartRequired(smartApproval, gateVars));
-  const adminSmartAtliyor = deps.adminSmartAtliyor || ((req) => require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+    deps.smartGerekliMi ||
+    ((smartApproval, gateVars) =>
+      require('./change-gates.cjs').isSmartRequired(smartApproval, gateVars));
+  const adminSmartAtliyor =
+    deps.adminSmartAtliyor || ((req) => require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
   // Commit sonrasi kart onbellegi tazelenemezse runner'daki liste yazimini kilitler (bayat liste
   // tasimayi / geri almayi sessizce geri yazmasin).
   const ssItemsKirliIsaretle = deps.ssItemsKirliIsaretle || (() => {});
@@ -123,15 +126,19 @@ function kaydet(app, deps) {
   // Her AWX okumasi suresiyle sinirli; gecerse hata (bilinmeyen "bos" sayilmaz).
   const sinirli = (is) =>
     sonTarihli
-      ? sonTarihli(is, sonTarihMs, () => Promise.reject(Object.assign(new Error('AWX yanıtı süre sınırını aştı.'), { sureAsimi: true })))
+      ? sonTarihli(is, sonTarihMs, () =>
+          Promise.reject(
+            Object.assign(new Error('AWX yanıtı süre sınırını aştı.'), { sureAsimi: true }),
+          ),
+        )
       : is;
 
   // sunucuAdi: hangi sunucu okunurken hata alindi (403 mesaji "hedef" diye sabit kalmasin).
   function mesajOf(err, sunucuAdi) {
     if (err?.status === 403)
-      return `Portal'ın ${sunucuAdi ? (String(sunucuAdi) + " sunucusundaki") : 'AWX'} hesabı bu template'te yetkili değil (AWX 403).`;
+      return `Portal'ın ${sunucuAdi ? String(sunucuAdi) + ' sunucusundaki' : 'AWX'} hesabı bu template'te yetkili değil (AWX 403).`;
     const { message } = friendlyAwxError(err || {});
-    const m = redactSecrets(message || (err?.message) || 'AWX isteği başarısız.');
+    const m = redactSecrets(message || err?.message || 'AWX isteği başarısız.');
     return sunucuAdi ? `${sunucuAdi}: ${m}` : m;
   }
 
@@ -197,10 +204,17 @@ function kaydet(app, deps) {
     const from = Number(item.awxServerId);
     const fromT = Number(item.awxTemplateId);
     if (acik) {
-      const ayni = acik.toServer === Number(to) && acik.toTemplate === Number(toT) && acik.fromServer === from && acik.fromTemplate === fromT;
+      const ayni =
+        acik.toServer === Number(to) &&
+        acik.toTemplate === Number(toT) &&
+        acik.fromServer === from &&
+        acik.fromTemplate === fromT;
       if (ayni) {
         if (eslesme === 'elle' && acik.eslesme !== 'elle') {
-          await dbx.query(`UPDATE ansible_ss_migrations SET eslesme = 'elle' WHERE id = $1 AND status = 'HAZIRLIK'`, [acik.id]);
+          await dbx.query(
+            `UPDATE ansible_ss_migrations SET eslesme = 'elle' WHERE id = $1 AND status = 'HAZIRLIK'`,
+            [acik.id],
+          );
           acik.eslesme = 'elle';
         }
         return acik;
@@ -221,7 +235,17 @@ function kaydet(app, deps) {
         `INSERT INTO ansible_ss_migrations (item_id, from_server, from_template, from_template_name, to_server,
            to_template, to_template_name, status, eslesme, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'HAZIRLIK', $8, $9)`,
-        [String(item.id), from, fromT, kaynakAd || null, Number(to), Number(toT), toAd || null, eslesme, by],
+        [
+          String(item.id),
+          from,
+          fromT,
+          kaynakAd || null,
+          Number(to),
+          Number(toT),
+          toAd || null,
+          eslesme,
+          by,
+        ],
       );
     } catch (err) {
       // Eszamanli hazirlik: UX_ss_migrations_acik ihlali ham SQL mesajiyla 500 donmesin.
@@ -249,19 +273,30 @@ function kaydet(app, deps) {
       return m.get(anahtar);
     };
     return {
-      detay: (s, t) => oku(`d:${s}:${t}`, () => getTemplateDetailOnServer(s, t), undefined, sunucuAdi(s)),
+      detay: (s, t) =>
+        oku(`d:${s}:${t}`, () => getTemplateDetailOnServer(s, t), undefined, sunucuAdi(s)),
       // spec: { spec, name, description } - survey yazimi kaynagin kendi ad/aciklamasini korur.
       specTam: (s, t) =>
         oku(
           `s:${s}:${t}`,
-          () => getSurveySpecOnServer(s, t).then((r) => ({ spec: r.spec, name: r.name, description: r.description })),
+          () =>
+            getSurveySpecOnServer(s, t).then((r) => ({
+              spec: r.spec,
+              name: r.name,
+              description: r.description,
+            })),
           { spec: [], name: '', description: '' },
           sunucuAdi(s),
         ),
       spec: async (s, t) => {
         const r = await oku(
           `s:${s}:${t}`,
-          () => getSurveySpecOnServer(s, t).then((x) => ({ spec: x.spec, name: x.name, description: x.description })),
+          () =>
+            getSurveySpecOnServer(s, t).then((x) => ({
+              spec: x.spec,
+              name: x.name,
+              description: x.description,
+            })),
           { spec: [], name: '', description: '' },
           sunucuAdi(s),
         );
@@ -280,20 +315,49 @@ function kaydet(app, deps) {
     const engeller = [];
     const okunamayan = [];
     if (cakisma)
-      engeller.push({ anahtar: 'hedef_cakisiyor', baslik: 'Başka bir servis de aynı hedef template ile eşleşti', adet: 1, ipucu: 'Birini elle başka bir hedefe bağlayın.' });
-    const baskasi = readSsItems().find((i) => String(i.id) !== String(item.id) && Number(i.awxServerId) === Number(to) && Number(i.awxTemplateId) === Number(toT));
+      engeller.push({
+        anahtar: 'hedef_cakisiyor',
+        baslik: 'Başka bir servis de aynı hedef template ile eşleşti',
+        adet: 1,
+        ipucu: 'Birini elle başka bir hedefe bağlayın.',
+      });
+    const baskasi = readSsItems().find(
+      (i) =>
+        String(i.id) !== String(item.id) &&
+        Number(i.awxServerId) === Number(to) &&
+        Number(i.awxTemplateId) === Number(toT),
+    );
     if (baskasi)
-      engeller.push({ anahtar: 'hedef_baska_serviste', baslik: `Hedef template zaten '${baskasi.title}' servisine bağlı`, adet: 1, ipucu: 'Diğer servisi önce taşıyın ya da başka bir hedef seçin.' });
+      engeller.push({
+        anahtar: 'hedef_baska_serviste',
+        baslik: `Hedef template zaten '${baskasi.title}' servisine bağlı`,
+        adet: 1,
+        ipucu: 'Diğer servisi önce taşıyın ya da başka bir hedef seçin.',
+      });
     try {
       const { rows } = await dbx.query(T.PLAYBOOK_KAYDI_SQL, [Number(to), Number(toT)]);
       if (rows?.[0])
-        engeller.push({ anahtar: 'hedef_playbook_kaydinda', baslik: `Hedef template Playbook Kayıtları'nda '${rows[0].key_name}' anahtarına bağlı`, adet: 1, ipucu: 'Bir Portal modülü aynı ayar satırını kullanır; başka bir hedef seçin.' });
+        engeller.push({
+          anahtar: 'hedef_playbook_kaydinda',
+          baslik: `Hedef template Playbook Kayıtları'nda '${rows[0].key_name}' anahtarına bağlı`,
+          adet: 1,
+          ipucu: 'Bir Portal modülü aynı ayar satırını kullanır; başka bir hedef seçin.',
+        });
     } catch (err) {
-      okunamayan.push({ anahtar: 'hedef_playbook_kaydinda', baslik: 'Playbook Kayıtları', hata: String(err.message || err) });
+      okunamayan.push({
+        anahtar: 'hedef_playbook_kaydinda',
+        baslik: 'Playbook Kayıtları',
+        hata: String(err.message || err),
+      });
     }
     const izin = izinListesi();
     if (izin.length && !izin.includes(Number(toT)))
-      engeller.push({ anahtar: 'izin_listesi', baslik: `Hedef template #${toT} AWX_READ_ONLY_TEMPLATE_IDS listesinde yok`, adet: 1, ipucu: 'Hedef template numarasını izin listesine ekleyin.' });
+      engeller.push({
+        anahtar: 'izin_listesi',
+        baslik: `Hedef template #${toT} AWX_READ_ONLY_TEMPLATE_IDS listesinde yok`,
+        adet: 1,
+        ipucu: 'Hedef template numarasını izin listesine ekleyin.',
+      });
     return { engeller, okunamayan };
   }
 
@@ -306,12 +370,21 @@ function kaydet(app, deps) {
       cakisma = null;
     }
     const b = await hedefBagEngelleri(item, to, toT, { cakisma: cakisma === true });
-    if (cakisma === null) b.okunamayan.push({ anahtar: 'hedef_cakisiyor', baslik: 'Eşleşme çakışması kontrol edilemedi', hata: 'kaynak template listesi okunamadı' });
-    if (b.engeller.length || b.okunamayan.length)
-      throw hata(409, `Hedef template'e yazılamaz: ${[...b.engeller.map((e) => e.baslik), ...b.okunamayan.map((e) => (String(e.baslik) + " (kontrol edilemedi)"))].join('; ')}.`, {
-        engeller: b.engeller,
-        okunamayan: b.okunamayan,
+    if (cakisma === null)
+      b.okunamayan.push({
+        anahtar: 'hedef_cakisiyor',
+        baslik: 'Eşleşme çakışması kontrol edilemedi',
+        hata: 'kaynak template listesi okunamadı',
       });
+    if (b.engeller.length || b.okunamayan.length)
+      throw hata(
+        409,
+        `Hedef template'e yazılamaz: ${[...b.engeller.map((e) => e.baslik), ...b.okunamayan.map((e) => String(e.baslik) + ' (kontrol edilemedi)')].join('; ')}.`,
+        {
+          engeller: b.engeller,
+          okunamayan: b.okunamayan,
+        },
+      );
   }
 
   /**
@@ -331,7 +404,10 @@ function kaydet(app, deps) {
       if (r.eslesme === 'elle') elleBaska.add(String(r.item_id));
     }
     const digerleri = readSsItems().filter(
-      (i) => String(i.id) !== String(item.id) && Number(i.awxServerId) === Number(item.awxServerId) && !elleBaska.has(String(i.id)),
+      (i) =>
+        String(i.id) !== String(item.id) &&
+        Number(i.awxServerId) === Number(item.awxServerId) &&
+        !elleBaska.has(String(i.id)),
     );
     if (!digerleri.length) return false;
     const hD = await guvenliOku(() => getTemplateDetailOnServer(to, toT), undefined, sunucuAdi(to));
@@ -378,7 +454,12 @@ function kaydet(app, deps) {
       sonKayitDurumu: ctx.sonDurumlar ? ctx.sonDurumlar.get(String(item.id)) || null : null,
     };
     const ic = {};
-    if (ctx.sunucuHatasi) r.okunamayan.push({ anahtar: 'kontrol_edilemedi', baslik: 'Sunucu template listesi', hata: ctx.sunucuHatasi });
+    if (ctx.sunucuHatasi)
+      r.okunamayan.push({
+        anahtar: 'kontrol_edilemedi',
+        baslik: 'Sunucu template listesi',
+        hata: ctx.sunucuHatasi,
+      });
     if (!hedef.toT) {
       const d = T.durumBelirle({ eslesmeYok: !ctx.sunucuHatasi, engelVar: !!ctx.sunucuHatasi });
       r.durum = d.durum;
@@ -393,20 +474,44 @@ function kaydet(app, deps) {
     r.engeller.push(...say.engeller);
     r.okunamayan.push(...say.okunamayan);
     if (hedef.cakisma === null)
-      r.okunamayan.push({ anahtar: 'hedef_cakisiyor', baslik: 'Eşleşme çakışması kontrol edilemedi', hata: 'kaynak template listesi okunamadı' });
+      r.okunamayan.push({
+        anahtar: 'hedef_cakisiyor',
+        baslik: 'Eşleşme çakışması kontrol edilemedi',
+        hata: 'kaynak template listesi okunamadı',
+      });
     const bag = await hedefBagEngelleri(item, to, toT, { cakisma: hedef.cakisma === true });
     r.engeller.push(...bag.engeller);
     r.okunamayan.push(...bag.okunamayan);
     // TASINDI kaydi var ama kart hedefte degil (elle /ss/items duzenlemesi ya da bayat liste
     // yazimi karti geri cevirmis): kayit tutarsiz, servis kilitli kalmasin diye gorunur ENGEL.
     if (r.kayit?.status === 'TASINDI')
-      r.engeller.push({ anahtar: 'tutarsiz_kayit', baslik: 'Taşıma kaydı TAŞINDI diyor ama kart kaynağa bağlı', adet: 1, ipucu: "Geri al penceresinden kaydı kapatın (kart değişmez), sonra yeniden taşıyın." });
+      r.engeller.push({
+        anahtar: 'tutarsiz_kayit',
+        baslik: 'Taşıma kaydı TAŞINDI diyor ama kart kaynağa bağlı',
+        adet: 1,
+        ipucu: 'Geri al penceresinden kaydı kapatın (kart değişmez), sonra yeniden taşıyın.',
+      });
 
     // -- AWX okumalari (kaynaga yalniz GET) --
     const ok = ctx.okuyucu || onbellekliOkuyucu();
-    const [kD, kS, hD, hS] = await Promise.all([ok.detay(from, fromT), ok.spec(from, fromT), ok.detay(to, toT), ok.spec(to, toT)]);
-    for (const [x, ad] of [[kD, 'Kaynak template'], [kS, 'Kaynak survey'], [hD, 'Hedef template'], [hS, 'Hedef survey']]) {
-      if (!x.ok) r.okunamayan.push({ anahtar: 'kontrol_edilemedi', baslik: `${ad} okunamadı`, hata: x.hata });
+    const [kD, kS, hD, hS] = await Promise.all([
+      ok.detay(from, fromT),
+      ok.spec(from, fromT),
+      ok.detay(to, toT),
+      ok.spec(to, toT),
+    ]);
+    for (const [x, ad] of [
+      [kD, 'Kaynak template'],
+      [kS, 'Kaynak survey'],
+      [hD, 'Hedef template'],
+      [hS, 'Hedef survey'],
+    ]) {
+      if (!x.ok)
+        r.okunamayan.push({
+          anahtar: 'kontrol_edilemedi',
+          baslik: `${ad} okunamadı`,
+          hata: x.hata,
+        });
     }
     const kDetail = kD.ok ? kD.deger : null;
     const hDetail = hD.ok ? hD.deger : null;
@@ -421,10 +526,15 @@ function kaydet(app, deps) {
     const fark = T.surveyFarki(kSpec || [], hSpec || []);
     const karar = T.surveyKarari(kaynakModu, hedefModu, hDetail, hSpec || [], fark);
     if (karar.olculemedi && !r.okunamayan.some((o) => o.anahtar === 'kontrol_edilemedi'))
-      r.okunamayan.push({ anahtar: 'kontrol_edilemedi', baslik: 'Survey türü ölçülemedi', hata: 'survey_enabled okunamadı' });
+      r.okunamayan.push({
+        anahtar: 'kontrol_edilemedi',
+        baslik: 'Survey türü ölçülemedi',
+        hata: 'survey_enabled okunamadı',
+      });
     r.uyarilar.push(...karar.uyarilar);
     r.surveyEylemi = karar.eylem;
-    r.hedefteSilinecekSoru = karar.eylem === 'yaz' ? fark.satirlar.filter((s) => s.etiket === 'yalniz_hedefte').length : 0;
+    r.hedefteSilinecekSoru =
+      karar.eylem === 'yaz' ? fark.satirlar.filter((s) => s.etiket === 'yalniz_hedefte').length : 0;
 
     // -- Ayar uyumu (hedefin SU ANKI hali + "survey yazilirsa" ongorusu) --
     const kaynakData = readCustom(from, fromT) || {};
@@ -436,15 +546,30 @@ function kaydet(app, deps) {
           ? 'Hedef template için farklı bir ayar satırı var; taşımada kaynağın ayarıyla değiştirilir (eskisi geçmişe arşivlenir).'
           : 'Hedef template için ayar satırı var ama kaynakta yok; taşımada silinir (geçmişe arşivlenir).',
       );
-    const uyum = T.ozellestirmeUyumu(kaynakData, { hedefSpec: hSpec || [], hedefDetail: hDetail, kaynakDetail: kDetail, kaynakModu });
+    const uyum = T.ozellestirmeUyumu(kaynakData, {
+      hedefSpec: hSpec || [],
+      hedefDetail: hDetail,
+      kaynakDetail: kDetail,
+      kaynakModu,
+    });
     r.uyarilar.push(...uyum.uyarilar);
     if (uyum.gomulu.length)
-      r.engeller.push({ anahtar: 'gomulu_kimlik', baslik: `Ayar JSON'unda tanınmayan kimlik alanı: ${uyum.gomulu.slice(0, 5).join(', ')}`, adet: uyum.gomulu.length, ipucu: 'Geliştiriciye bildirin; bu alan eski kimlikle taşınabilir.' });
+      r.engeller.push({
+        anahtar: 'gomulu_kimlik',
+        baslik: `Ayar JSON'unda tanınmayan kimlik alanı: ${uyum.gomulu.slice(0, 5).join(', ')}`,
+        adet: uyum.gomulu.length,
+        ipucu: 'Geliştiriciye bildirin; bu alan eski kimlikle taşınabilir.',
+      });
     let uyumTahmin = null;
     if (karar.eylem && hDetail) {
       const tahminDetay = { ...hDetail, survey_enabled: karar.eylem === 'yaz' };
       const tahminSpec = karar.eylem === 'yaz' ? T.parolaTemizle(kSpec || []) : hSpec || [];
-      uyumTahmin = T.ozellestirmeUyumu(kaynakData, { hedefSpec: tahminSpec, hedefDetail: tahminDetay, kaynakDetail: kDetail, kaynakModu });
+      uyumTahmin = T.ozellestirmeUyumu(kaynakData, {
+        hedefSpec: tahminSpec,
+        hedefDetail: tahminDetay,
+        kaynakDetail: kDetail,
+        kaynakModu,
+      });
       r.tahminSurveyYazilirsa = uyumTahmin.hatalar.length ? 'OZELLESTIRME_UYUMSUZ' : 'HAZIR';
     }
 
@@ -452,30 +577,51 @@ function kaydet(app, deps) {
     try {
       const { rows } = await dbx.query(T.SUREN_IS_SQL, [from, fromT]);
       const n = Number(rows?.[0]?.n) || 0;
-      if (n > 0) r.uyarilar.push(`Kaynakta süren ${n} iş var: kaynakta bitecek, çıktısı kaynaktan okunur.`);
+      if (n > 0)
+        r.uyarilar.push(`Kaynakta süren ${n} iş var: kaynakta bitecek, çıktısı kaynaktan okunur.`);
     } catch (err) {
       r.uyarilar.push(`Kaynakta süren işler okunamadı: ${String(err.message || err)}`);
     }
     if (Array.isArray(ctx.longjob?.templates)) {
       const l = ctx.longjob.templates;
-      const kaynakta = l.some((t) => t.serverId === from && t.templateId === fromT && t.kind !== 'workflow');
-      const hedefte = l.some((t) => t.serverId === to && t.templateId === toT && t.kind !== 'workflow');
+      const kaynakta = l.some(
+        (t) => t.serverId === from && t.templateId === fromT && t.kind !== 'workflow',
+      );
+      const hedefte = l.some(
+        (t) => t.serverId === to && t.templateId === toT && t.kind !== 'workflow',
+      );
       if (kaynakta && !hedefte)
-        r.uyarilar.push('Uzun iş otomatik iptal listesinde kaynak template var, hedef yok: hedefte bu işler otomatik iptal edilmez (Uzun İş panelinden ekleyin; hedef için ayrı iptal token\'ı gerekir).');
+        r.uyarilar.push(
+          "Uzun iş otomatik iptal listesinde kaynak template var, hedef yok: hedefte bu işler otomatik iptal edilmez (Uzun İş panelinden ekleyin; hedef için ayrı iptal token'ı gerekir).",
+        );
     }
 
     // -- Deneme kosusu gecerliligi --
-    const hedefSurveyHash = (T.surveyHash(hDetail?.survey_enabled, hSpec || []) ?? null);
+    const hedefSurveyHash = T.surveyHash(hDetail?.survey_enabled, hSpec || []) ?? null;
     const kaynakHash = T.veriHash(kaynakData);
-    if (r.kayit?.status === 'HAZIRLIK' && r.kayit.denemeJobId && r.kayit.toServer === to && r.kayit.toTemplate === toT) {
-      const deneme = { jobId: r.kayit.denemeJobId, at: r.kayit.denemeAt, status: null, gecerli: false, neden: null };
+    if (
+      r.kayit?.status === 'HAZIRLIK' &&
+      r.kayit.denemeJobId &&
+      r.kayit.toServer === to &&
+      r.kayit.toTemplate === toT
+    ) {
+      const deneme = {
+        jobId: r.kayit.denemeJobId,
+        at: r.kayit.denemeAt,
+        status: null,
+        gecerli: false,
+        neden: null,
+      };
       try {
         const j = await sinirli(getJobOnServer(to, r.kayit.denemeJobId));
         deneme.status = j.status;
         if (j.status !== 'successful') deneme.neden = `Deneme işi başarılı değil (${j.status}).`;
-        else if (Number(j.jobTemplate) !== toT) deneme.neden = 'Deneme işi başka bir template\'e ait.';
-        else if (r.kayit.denemeKaynakHash !== kaynakHash) deneme.neden = 'Denemeden sonra kaynak ayarları değişti.';
-        else if (r.kayit.denemeHedefSurveyHash !== hedefSurveyHash) deneme.neden = "Denemeden sonra hedef survey'i değişti.";
+        else if (Number(j.jobTemplate) !== toT)
+          deneme.neden = "Deneme işi başka bir template'e ait.";
+        else if (r.kayit.denemeKaynakHash !== kaynakHash)
+          deneme.neden = 'Denemeden sonra kaynak ayarları değişti.';
+        else if (r.kayit.denemeHedefSurveyHash !== hedefSurveyHash)
+          deneme.neden = "Denemeden sonra hedef survey'i değişti.";
         else deneme.gecerli = true;
       } catch (err) {
         deneme.neden = `Deneme işi okunamadı: ${mesajOf(err, sunucuAdi(to))}`;
@@ -492,12 +638,42 @@ function kaydet(app, deps) {
     r.durum = d.durum;
     r.cipler = d.cipler;
     r.nedenler.push(...uyum.hatalar);
-    if (karar.cip === 'SURVEY_BOS') r.nedenler.push("Kaynak AWX survey'i kullanıyor, hedefte survey boş.");
-    if (karar.cip === 'SURVEY_FARKLI' && karar.eylem === 'yaz') r.nedenler.push('Survey kritik düzeyde farklı (ya da hedefte kapalı).');
-    if (karar.cip === 'SURVEY_FARKLI' && karar.eylem === 'kapat') r.nedenler.push("Kaynak Portal Survey Tasarımcısı kullanıyor (survey kapalı); hedefte survey açık.");
+    if (karar.cip === 'SURVEY_BOS')
+      r.nedenler.push("Kaynak AWX survey'i kullanıyor, hedefte survey boş.");
+    if (karar.cip === 'SURVEY_FARKLI' && karar.eylem === 'yaz')
+      r.nedenler.push('Survey kritik düzeyde farklı (ya da hedefte kapalı).');
+    if (karar.cip === 'SURVEY_FARKLI' && karar.eylem === 'kapat')
+      r.nedenler.push(
+        'Kaynak Portal Survey Tasarımcısı kullanıyor (survey kapalı); hedefte survey açık.',
+      );
     r.hedefSurveyHash = hedefSurveyHash;
-    r.planHash = T.planHash({ itemId: item.id, from, fromT, to, toT, kaynakData, hedefSurveyHash, hedefData });
-    Object.assign(ic, { kDetail, hDetail, kSpec, hSpec, fark, karar, uyum, uyumTahmin, kaynakData, hedefData, hedefDataVarMi, hedefSurveyHash, kaynakHash, kaynakModu, hedefModu });
+    r.planHash = T.planHash({
+      itemId: item.id,
+      from,
+      fromT,
+      to,
+      toT,
+      kaynakData,
+      hedefSurveyHash,
+      hedefData,
+    });
+    Object.assign(ic, {
+      kDetail,
+      hDetail,
+      kSpec,
+      hSpec,
+      fark,
+      karar,
+      uyum,
+      uyumTahmin,
+      kaynakData,
+      hedefData,
+      hedefDataVarMi,
+      hedefSurveyHash,
+      kaynakHash,
+      kaynakModu,
+      hedefModu,
+    });
     return { satir: r, ic };
   }
 
@@ -513,7 +689,10 @@ function kaydet(app, deps) {
   }
 
   async function tekHedef(ctx, item, toT) {
-    const [kD, hD] = await Promise.all([ctx.okuyucu.detay(item.awxServerId, item.awxTemplateId), ctx.okuyucu.detay(ctx.to, toT)]);
+    const [kD, hD] = await Promise.all([
+      ctx.okuyucu.detay(item.awxServerId, item.awxTemplateId),
+      ctx.okuyucu.detay(ctx.to, toT),
+    ]);
     const kaynakAd = kD.ok && kD.deger ? String(kD.deger.name || '') : '';
     const toAd = hD.ok && hD.deger ? String(hD.deger.name || '') : '';
     const adla = kaynakAd && toAd && kaynakAd.trim() === toAd.trim();
@@ -548,7 +727,8 @@ function kaydet(app, deps) {
     try {
       const toS = sunucuGerekli(req.query.to, 'Hedef');
       const fromNo = Number(req.query.from);
-      if (!Number.isInteger(fromNo) || fromNo <= 0) throw hata(400, 'Kaynak sunucu bulunamadı ya da devre dışı.', {});
+      if (!Number.isInteger(fromNo) || fromNo <= 0)
+        throw hata(400, 'Kaynak sunucu bulunamadı ya da devre dışı.', {});
       // Kaynak sunucu Portal'da kapatildiysa (emekli) rapor SALT-OKUNUR calisir: yalniz TASINDI
       // satirlari ve kayitlari gosterilir, geri alma disinda islem yok.
       const fromS = getServerById(fromNo);
@@ -577,7 +757,8 @@ function kaydet(app, deps) {
         for (const row of rows || []) {
           const k = T.kayitSatiri(row);
           if (!sonDurumlar.has(k.itemId)) sonDurumlar.set(k.itemId, k.status);
-          if ((k.status === 'HAZIRLIK' || k.status === 'TASINDI') && !kayitlar.has(k.itemId)) kayitlar.set(k.itemId, k);
+          if ((k.status === 'HAZIRLIK' || k.status === 'TASINDI') && !kayitlar.has(k.itemId))
+            kayitlar.set(k.itemId, k);
         }
       } catch (err) {
         kayitHatasi = String(err.message || err);
@@ -586,31 +767,49 @@ function kaydet(app, deps) {
       const tumu = readSsItems();
       const tasinmis = tumu.filter((i) => {
         const k = kayitlar.get(String(i.id));
-        return k && k.status === 'TASINDI' && k.fromServer === from && k.toServer === to && Number(i.awxServerId) === to;
+        return (
+          k &&
+          k.status === 'TASINDI' &&
+          k.fromServer === from &&
+          k.toServer === to &&
+          Number(i.awxServerId) === to
+        );
       });
-      if (saltOkunur && !tasinmis.length) throw hata(400, 'Kaynak sunucu bulunamadı ya da devre dışı.', {});
+      if (saltOkunur && !tasinmis.length)
+        throw hata(400, 'Kaynak sunucu bulunamadı ya da devre dışı.', {});
 
       const sunucuHatalari = [];
       const [kL, hL] = saltOkunur
-        ? [{ ok: true, deger: [] }, { ok: true, deger: [] }]
+        ? [
+            { ok: true, deger: [] },
+            { ok: true, deger: [] },
+          ]
         : await Promise.all([
             guvenliOku(() => listTemplatesForServer(fromS), undefined, fromS.name),
             guvenliOku(() => listTemplatesForServer(toS), undefined, toS.name),
           ]);
       if (!kL.ok) sunucuHatalari.push({ sunucu: fromS.name, hata: kL.hata });
       if (!hL.ok) sunucuHatalari.push({ sunucu: toS.name, hata: hL.hata });
-      const kaynakAdlari = new Map((kL.ok ? kL.deger : []).map((t) => [Number(t.id), String(t.name)]));
-      const hedefListe = hL.ok ? hL.deger.map((t) => ({ id: Number(t.id), name: String(t.name) })) : [];
+      const kaynakAdlari = new Map(
+        (kL.ok ? kL.deger : []).map((t) => [Number(t.id), String(t.name)]),
+      );
+      const hedefListe = hL.ok
+        ? hL.deger.map((t) => ({ id: Number(t.id), name: String(t.name) }))
+        : [];
 
       const adaylar = saltOkunur ? [] : tumu.filter((i) => Number(i.awxServerId) === from);
 
       const elle = {};
       for (const i of adaylar) {
         const k = kayitlar.get(String(i.id));
-        if (k && k.status === 'HAZIRLIK' && k.eslesme === 'elle' && k.toServer === to) elle[i.id] = k.toTemplate;
+        if (k && k.status === 'HAZIRLIK' && k.eslesme === 'elle' && k.toServer === to)
+          elle[i.id] = k.toTemplate;
       }
       const eslesmeler = T.eslestir(
-        adaylar.map((i) => ({ id: i.id, kaynakAd: kaynakAdlari.get(Number(i.awxTemplateId)) || '' })),
+        adaylar.map((i) => ({
+          id: i.id,
+          kaynakAd: kaynakAdlari.get(Number(i.awxTemplateId)) || '',
+        })),
         hedefListe,
         elle,
       );
@@ -624,7 +823,13 @@ function kaydet(app, deps) {
       for (const [id, v] of eslesmeler) {
         if (!v.toT || v.cakisma) continue;
         for (const [kid, k] of kayitlar) {
-          if (kid !== String(id) && k.status === 'HAZIRLIK' && k.toServer === to && k.toTemplate === Number(v.toT)) v.cakisma = true;
+          if (
+            kid !== String(id) &&
+            k.status === 'HAZIRLIK' &&
+            k.toServer === to &&
+            k.toTemplate === Number(v.toT)
+          )
+            v.cakisma = true;
         }
       }
 
@@ -642,20 +847,30 @@ function kaydet(app, deps) {
         okuyucu,
         kayitlar,
         sonDurumlar,
-        sunucuHatasi: sunucuHatalari.length ? sunucuHatalari.map((h) => `${h.sunucu}: ${h.hata}`).join('; ') : null,
+        sunucuHatasi: sunucuHatalari.length
+          ? sunucuHatalari.map((h) => `${h.sunucu}: ${h.hata}`).join('; ')
+          : null,
       };
 
       const satirlar = await sinirliParalel(adaylar, ESZAMANLI, async (item) => {
         const e = eslesmeler.get(item.id) || { toT: null, neden: 'ad_yok', adaylar: [] };
-        const { satir } = await analiz(ctx, item, { ...e, kaynakAd: kaynakAdlari.get(Number(item.awxTemplateId)) || '' });
+        const { satir } = await analiz(ctx, item, {
+          ...e,
+          kaynakAd: kaynakAdlari.get(Number(item.awxTemplateId)) || '',
+        });
         if (kayitHatasi) {
-          satir.okunamayan.push({ anahtar: 'kontrol_edilemedi', baslik: 'Taşıma kayıtları', hata: kayitHatasi });
+          satir.okunamayan.push({
+            anahtar: 'kontrol_edilemedi',
+            baslik: 'Taşıma kayıtları',
+            hata: kayitHatasi,
+          });
           if (satir.durum !== 'ESLESME_YOK') {
             satir.durum = 'ENGEL';
             satir.cipler = ['ENGEL', ...satir.cipler.filter((c) => c !== 'ENGEL' && c !== 'HAZIR')];
           }
         }
-        if (satir.sonKayitDurumu === 'GERI_ALINDI' && !satir.kayit) satir.cipler = [...satir.cipler, 'GERI_ALINDI'];
+        if (satir.sonKayitDurumu === 'GERI_ALINDI' && !satir.kayit)
+          satir.cipler = [...satir.cipler, 'GERI_ALINDI'];
         satir.kayit = T.istemciKaydi(satir.kayit);
         return satir;
       });
@@ -722,8 +937,17 @@ function kaydet(app, deps) {
       const istemciKayitlari = kayitlar.map(T.istemciKaydi);
       if (acik && acik.status === 'TASINDI') {
         // Kart hedefte degilse kayit tutarsiz: ekran 'tasindi' demesin, kaydi kapatma yolunu gostersin.
-        const tutarsiz = Number(item.awxServerId) !== acik.toServer || Number(item.awxTemplateId) !== acik.toTemplate;
-        return res.json({ ok: true, tasindi: true, tutarsiz, kayit: T.istemciKaydi(acik), kayitlar: istemciKayitlari, kayitHatasi });
+        const tutarsiz =
+          Number(item.awxServerId) !== acik.toServer ||
+          Number(item.awxTemplateId) !== acik.toTemplate;
+        return res.json({
+          ok: true,
+          tasindi: true,
+          tutarsiz,
+          kayit: T.istemciKaydi(acik),
+          kayitlar: istemciKayitlari,
+          kayitHatasi,
+        });
       }
 
       const toS = sunucuGerekli(req.query.to, 'Hedef');
@@ -735,7 +959,11 @@ function kaydet(app, deps) {
       const hedef = await tekHedef(ctx, item, toT);
       const { satir, ic } = await analiz(ctx, item, hedef);
       if (kayitHatasi) {
-        satir.okunamayan.push({ anahtar: 'kontrol_edilemedi', baslik: 'Taşıma kayıtları', hata: kayitHatasi });
+        satir.okunamayan.push({
+          anahtar: 'kontrol_edilemedi',
+          baslik: 'Taşıma kayıtları',
+          hata: kayitHatasi,
+        });
         if (satir.durum !== 'ESLESME_YOK') {
           satir.durum = 'ENGEL';
           satir.cipler = ['ENGEL', ...satir.cipler.filter((c) => c !== 'ENGEL' && c !== 'HAZIR')];
@@ -744,12 +972,21 @@ function kaydet(app, deps) {
 
       // Portal disi AWX zamanlamalari (kaynak emekli olunca durur) - MAKUL: ad kalibi PORTAL_OCO_.
       try {
-        const z = await sinirli(listTemplateSchedulesOnServer(item.awxServerId, item.awxTemplateId));
+        const z = await sinirli(
+          listTemplateSchedulesOnServer(item.awxServerId, item.awxTemplateId),
+        );
         const disari = z.filter((x) => !/^PORTAL_OCO_/.test(x.name));
         if (disari.length)
-          satir.uyarilar.push(`Kaynak template'te Portal dışında kurulmuş ${disari.length} etkin AWX zamanlaması var (${disari.slice(0, 5).map((x) => x.name).join(', ')}): kaynak emekli olunca durur.`);
+          satir.uyarilar.push(
+            `Kaynak template'te Portal dışında kurulmuş ${disari.length} etkin AWX zamanlaması var (${disari
+              .slice(0, 5)
+              .map((x) => x.name)
+              .join(', ')}): kaynak emekli olunca durur.`,
+          );
       } catch (err) {
-        satir.uyarilar.push(`Kaynak AWX zamanlamaları okunamadı: ${mesajOf(err, sunucuAdi(item.awxServerId))}`);
+        satir.uyarilar.push(
+          `Kaynak AWX zamanlamaları okunamadı: ${mesajOf(err, sunucuAdi(item.awxServerId))}`,
+        );
       }
       satir.kayit = T.istemciKaydi(satir.kayit);
 
@@ -760,11 +997,18 @@ function kaydet(app, deps) {
         templateKarsilastirma: T.templateKarsilastir(ic.kDetail, ic.hDetail),
         surveyFarki: ic.fark ? ic.fark.satirlar : [],
         surveyOzet: ic.fark
-          ? { kaynakSoru: ic.fark.kaynakSoru, hedefSoru: ic.fark.hedefSoru, parolaSoru: ic.fark.parolaSoru, kritikVar: ic.fark.kritikVar }
+          ? {
+              kaynakSoru: ic.fark.kaynakSoru,
+              hedefSoru: ic.fark.hedefSoru,
+              parolaSoru: ic.fark.parolaSoru,
+              kritikVar: ic.fark.kritikVar,
+            }
           : null,
         hedefSurveyHash: ic.hedefSurveyHash || null,
         uyum: ic.uyum ? { hatalar: ic.uyum.hatalar, uyarilar: ic.uyum.uyarilar } : null,
-        uyumTahmin: ic.uyumTahmin ? { hatalar: ic.uyumTahmin.hatalar, uyarilar: ic.uyumTahmin.uyarilar } : null,
+        uyumTahmin: ic.uyumTahmin
+          ? { hatalar: ic.uyumTahmin.hatalar, uyarilar: ic.uyumTahmin.uyarilar }
+          : null,
         hedefAyarVar: !!ic.hedefDataVarMi,
         hedefAyarFarkli: !!ic.hedefDataVarMi && T.veriHash(ic.hedefData) !== ic.kaynakHash,
         kayit: T.istemciKaydi(acik),
@@ -786,13 +1030,25 @@ function kaydet(app, deps) {
       ciftKontrol(item.awxServerId, toS);
       const toT = toTGerekli(req.body?.toT);
       const izin = izinListesi();
-      if (izin.length && !izin.includes(toT)) throw hata(400, `Hedef template #${toT} AWX_READ_ONLY_TEMPLATE_IDS listesinde yok.`, {});
+      if (izin.length && !izin.includes(toT))
+        throw hata(400, `Hedef template #${toT} AWX_READ_ONLY_TEMPLATE_IDS listesinde yok.`, {});
       const ctx = await tekBaglam(toS.id);
       const hD = await ctx.okuyucu.detay(toS.id, toT);
       if (!hD.ok) throw hata(400, `Hedef template okunamadı: ${hD.hata}`, {});
       const kD = await ctx.okuyucu.detay(item.awxServerId, item.awxTemplateId);
-      const kayit = await hazirlikGetir(item, toS.id, toT, String(hD.deger.name || ''), kD.ok ? String(kD.deger.name || '') : '', 'elle', kim(req));
-      denetle(req, 'ss_migration_match', { itemId: item.id, to: { server: toS.id, template: toT } });
+      const kayit = await hazirlikGetir(
+        item,
+        toS.id,
+        toT,
+        String(hD.deger.name || ''),
+        kD.ok ? String(kD.deger.name || '') : '',
+        'elle',
+        kim(req),
+      );
+      denetle(req, 'ss_migration_match', {
+        itemId: item.id,
+        to: { server: toS.id, template: toT },
+      });
       res.json({ ok: true, kayit: T.istemciKaydi(kayit) });
     } catch (err) {
       yanitHata(res, err);
@@ -804,11 +1060,14 @@ function kaydet(app, deps) {
   // =========================================================================
   app.post(`${BASE}/:itemId/survey-yaz`, requireAuth, requireAdmin, async (req, res) => {
     try {
-      if (req.body?.onay !== true) throw hata(400, "Hedef survey'inin üzerine yazılacağı onaylanmadı.", {});
+      if (req.body?.onay !== true)
+        throw hata(400, "Hedef survey'inin üzerine yazılacağı onaylanmadı.", {});
       // Beklenen hedef hash'i ZORUNLU: admin'in gordugu hedef survey'i ile yazim anindaki ayni
       // olmali (toplu yol da plan satirindaki hash'i gonderir).
-      const beklenen = typeof req.body?.beklenenHedefHash === 'string' ? req.body.beklenenHedefHash : '';
-      if (!beklenen) throw hata(400, "Beklenen hedef survey hash'i gönderilmedi; raporu yenileyin.", {});
+      const beklenen =
+        typeof req.body?.beklenenHedefHash === 'string' ? req.body.beklenenHedefHash : '';
+      if (!beklenen)
+        throw hata(400, "Beklenen hedef survey hash'i gönderilmedi; raporu yenileyin.", {});
       const item = kartGetir(req.params.itemId);
       const from = Number(item.awxServerId);
       const fromT = Number(item.awxTemplateId);
@@ -826,15 +1085,27 @@ function kaydet(app, deps) {
         ctx.okuyucu.detay(from, fromT),
         ctx.okuyucu.specTam(from, fromT),
       ]);
-      for (const [x, ad] of [[hD, 'Hedef template'], [hS, 'Hedef survey'], [kD, 'Kaynak template'], [kSt, 'Kaynak survey']]) {
+      for (const [x, ad] of [
+        [hD, 'Hedef template'],
+        [hS, 'Hedef survey'],
+        [kD, 'Kaynak template'],
+        [kSt, 'Kaynak survey'],
+      ]) {
         if (!x.ok) throw hata(503, `${ad} okunamadı: ${x.hata}`, {});
       }
       const kS = { ok: true, deger: kSt.deger.spec };
       const simdikiHash = T.surveyHash(hD.deger.survey_enabled, hS.deger);
-      if (beklenen !== simdikiHash) throw hata(409, "Hedef survey'i siz bakarken değişti, raporu yenileyin.", {});
+      if (beklenen !== simdikiHash)
+        throw hata(409, "Hedef survey'i siz bakarken değişti, raporu yenileyin.", {});
       const kaynakModu = T.surveyModu(kD.deger, kS.deger);
       const hedefModu = T.surveyModu(hD.deger, hS.deger);
-      const karar = T.surveyKarari(kaynakModu, hedefModu, hD.deger, hS.deger, T.surveyFarki(kS.deger, hS.deger));
+      const karar = T.surveyKarari(
+        kaynakModu,
+        hedefModu,
+        hD.deger,
+        hS.deger,
+        T.surveyFarki(kS.deger, hS.deger),
+      );
       if (karar.olculemedi) throw hata(503, 'Survey türü ölçülemedi.', {});
       if (!karar.eylem) throw hata(400, 'Survey farkı yok; yazılacak bir şey yok.', {});
 
@@ -875,9 +1146,13 @@ function kaydet(app, deps) {
           eylem: karar.eylem,
           soruSayisi: T.surveyNormalize(kS.deger).length,
           parolaSoruSayisi: parolaSoru,
-          parolaKorunan: (sonuc?.parolaKorunan) || [],
-          parolaElle: (sonuc?.parolaElle) || [],
-          sonuc: (() => { if (yazimHatasi) return 'hata'; if (sonuc?.ok) return 'ok'; return 'fark'; })(),
+          parolaKorunan: sonuc?.parolaKorunan || [],
+          parolaElle: sonuc?.parolaElle || [],
+          sonuc: (() => {
+            if (yazimHatasi) return 'hata';
+            if (sonuc?.ok) return 'ok';
+            return 'fark';
+          })(),
           ...(yazimHatasi ? { hata: mesajOf(yazimHatasi, toS.name), belirsiz: true } : {}),
         });
       }
@@ -891,10 +1166,15 @@ function kaydet(app, deps) {
         } catch {
           /* kayit guncellenemedi: denetim kaydi zaten yazildi */
         }
-        throw Object.assign(new Error(`${mesajOf(yazimHatasi, toS.name)} Hedef survey yarım yazılmış olabilir; raporu yenileyip AWX'te kontrol edin.`), {
-          status: yazimHatasi.status && yazimHatasi.status < 600 ? yazimHatasi.status : 502,
-          ek: {},
-        });
+        throw Object.assign(
+          new Error(
+            `${mesajOf(yazimHatasi, toS.name)} Hedef survey yarım yazılmış olabilir; raporu yenileyip AWX'te kontrol edin.`,
+          ),
+          {
+            status: yazimHatasi.status && yazimHatasi.status < 600 ? yazimHatasi.status : 502,
+            ek: {},
+          },
+        );
       }
       await dbx.query(
         `UPDATE ansible_ss_migrations SET survey_yazildi = $1, hedef_survey_hash = $2 WHERE id = $3 AND status = 'HAZIRLIK'`,
@@ -929,8 +1209,14 @@ function kaydet(app, deps) {
       const to = toS.id;
       const toT = toTGerekli(req.body?.toT);
       const sadeceDogrula = req.body?.sadeceDogrula !== false;
-      if (!sadeceDogrula && req.body?.confirm !== true) throw hata(400, 'confirm:true gönderilmeden gerçek tetikleme yapılmaz.', {});
-      const extraVars = req.body?.extraVars && typeof req.body.extraVars === 'object' && !Array.isArray(req.body.extraVars) ? req.body.extraVars : {};
+      if (!sadeceDogrula && req.body?.confirm !== true)
+        throw hata(400, 'confirm:true gönderilmeden gerçek tetikleme yapılmaz.', {});
+      const extraVars =
+        req.body?.extraVars &&
+        typeof req.body.extraVars === 'object' &&
+        !Array.isArray(req.body.extraVars)
+          ? req.body.extraVars
+          : {};
 
       // Sahneleme hedef ciftin ayar satirini yazar: o cift bir karta / modul kaydina bagliysa,
       // izin listesi disiysa ya da baska servisle cakisiyorsa yazilmaz (survey-yaz ile ayni kontrol).
@@ -948,25 +1234,52 @@ function kaydet(app, deps) {
         });
       }
       const ctx = await tekBaglam(to);
-      const [kD, hD, hS] = await Promise.all([ctx.okuyucu.detay(from, fromT), ctx.okuyucu.detay(to, toT), ctx.okuyucu.spec(to, toT)]);
+      const [kD, hD, hS] = await Promise.all([
+        ctx.okuyucu.detay(from, fromT),
+        ctx.okuyucu.detay(to, toT),
+        ctx.okuyucu.spec(to, toT),
+      ]);
       if (!hD.ok) throw hata(503, `Hedef template okunamadı: ${hD.hata}`, {});
       if (!hS.ok) throw hata(503, `Hedef survey okunamadı: ${hS.hata}`, {});
       const kaynakAd = kD.ok ? String(kD.deger.name || '') : '';
       const toAd = String(hD.deger.name || '');
       const eslesme = kaynakAd.trim() && kaynakAd.trim() === toAd.trim() ? 'ad' : 'elle';
       const kayit = await hazirlikGetir(item, to, toT, toAd, kaynakAd, eslesme, kim(req));
-      if (farkli) await writeCustom(to, toT, kaynakData, { by: kim(req), reason: `migrate:stage:${from}_${fromT}` });
+      if (farkli)
+        await writeCustom(to, toT, kaynakData, {
+          by: kim(req),
+          reason: `migrate:stage:${from}_${fromT}`,
+        });
 
       const server = getServerById(to);
       if (sadeceDogrula) {
         let yanit;
         try {
-          const plan = await resolveSsLaunchPlan(server, toT, { submittedExtraVars: extraVars, templateName: item.title, req });
-          yanit = { ok: true, valid: true, resolvedExtraVars: plan.extraVars, resolvedLaunchOptions: plan.resolvedLaunchOptions };
+          const plan = await resolveSsLaunchPlan(server, toT, {
+            submittedExtraVars: extraVars,
+            templateName: item.title,
+            req,
+          });
+          yanit = {
+            ok: true,
+            valid: true,
+            resolvedExtraVars: plan.extraVars,
+            resolvedLaunchOptions: plan.resolvedLaunchOptions,
+          };
         } catch (err) {
-          yanit = { ok: true, valid: false, message: err.field ? err.message : mesajOf(err, toS.name), field: err.field };
+          yanit = {
+            ok: true,
+            valid: false,
+            message: err.field ? err.message : mesajOf(err, toS.name),
+            field: err.field,
+          };
         }
-        denetle(req, 'ss_migration_test', { itemId: item.id, to: { server: to, template: toT }, sadeceDogrula: true, valid: !!yanit.valid });
+        denetle(req, 'ss_migration_test', {
+          itemId: item.id,
+          to: { server: to, template: toT },
+          sadeceDogrula: true,
+          valid: !!yanit.valid,
+        });
         return res.json({ ...yanit, kayitId: kayit.id, sahnelendi: farkli });
       }
 
@@ -976,7 +1289,11 @@ function kaydet(app, deps) {
       // (ayni cozumleme orada da duser, bilet acilmaz).
       let smartPlan = null;
       try {
-        smartPlan = await resolveSsLaunchPlan(server, toT, { submittedExtraVars: extraVars, templateName: item.title, req });
+        smartPlan = await resolveSsLaunchPlan(server, toT, {
+          submittedExtraVars: extraVars,
+          templateName: item.title,
+          req,
+        });
       } catch {
         smartPlan = null;
       }
@@ -999,7 +1316,12 @@ function kaydet(app, deps) {
           `UPDATE ansible_ss_migrations
               SET deneme_job_id = $1, deneme_at = SYSUTCDATETIME(), deneme_kaynak_hash = $2, deneme_hedef_survey_hash = $3
             WHERE id = $4 AND status = 'HAZIRLIK'`,
-          [Number(body.jobId), T.veriHash(kaynakData), T.surveyHash(hD.deger.survey_enabled, hS.deger), kayit.id],
+          [
+            Number(body.jobId),
+            T.veriHash(kaynakData),
+            T.surveyHash(hD.deger.survey_enabled, hS.deger),
+            kayit.id,
+          ],
         );
       }
       denetle(req, 'ss_migration_test', {
@@ -1028,9 +1350,14 @@ function kaydet(app, deps) {
       const to = toS.id;
       const toT = toTGerekli(req.body?.toT);
       const gerekceHam = req.body?.denemesizGerekce;
-      const gerekce = gerekceHam === undefined || gerekceHam === null ? '' : String(gerekceHam).trim();
+      const gerekce =
+        gerekceHam === undefined || gerekceHam === null ? '' : String(gerekceHam).trim();
       if (gerekceHam !== undefined && gerekceHam !== null && gerekce.length < GEREKCE_EN_AZ)
-        throw hata(400, `Deneme koşusu olmadan taşımak için en az ${GEREKCE_EN_AZ} karakter gerekçe yazın.`, {});
+        throw hata(
+          400,
+          `Deneme koşusu olmadan taşımak için en az ${GEREKCE_EN_AZ} karakter gerekçe yazın.`,
+          {},
+        );
       if (gerekce.length > 500) throw hata(400, 'Gerekçe en fazla 500 karakter olabilir.', {});
 
       const acik = await acikKayit(item.id);
@@ -1043,12 +1370,21 @@ function kaydet(app, deps) {
       if (!req.body?.planHash || req.body.planHash !== satir.planHash)
         throw hata(409, 'Durum siz bakarken değişti, raporu yenileyin.', {});
       if (satir.durum !== 'HAZIR')
-        throw hata(409, `Servis taşımaya hazır değil (${satir.durum}).`, { durum: satir.durum, nedenler: satir.nedenler, engeller: satir.engeller, okunamayan: satir.okunamayan });
-      const denemeGecerli = !!(satir.deneme?.gecerli);
-      if (!denemeGecerli && !gerekce)
-        throw hata(409, 'Geçerli bir deneme koşusu yok. Önce hedefte deneme koşturun ya da gerekçe yazarak denemesiz taşıyın.', {
-          deneme: satir.deneme,
+        throw hata(409, `Servis taşımaya hazır değil (${satir.durum}).`, {
+          durum: satir.durum,
+          nedenler: satir.nedenler,
+          engeller: satir.engeller,
+          okunamayan: satir.okunamayan,
         });
+      const denemeGecerli = !!satir.deneme?.gecerli;
+      if (!denemeGecerli && !gerekce)
+        throw hata(
+          409,
+          'Geçerli bir deneme koşusu yok. Önce hedefte deneme koşturun ya da gerekçe yazarak denemesiz taşıyın.',
+          {
+            deneme: satir.deneme,
+          },
+        );
 
       const kaynakData = ic.kaynakData || {};
       // Kaynak ayar satiri onbellekten DEGIL, DB'deki ham metniyle kopyalanir; analizdeki
@@ -1057,8 +1393,11 @@ function kaydet(app, deps) {
         `SELECT data FROM ansible_ss_customizations WHERE awx_server_id = $1 AND template_id = $2`,
         [from, fromT],
       );
-      const kaynakVar = !!(hamSatir?.[0]);
-      const kaynakHam = (() => { if (kaynakVar) return String(hamSatir[0].data == null ? '' : hamSatir[0].data); return null; })();
+      const kaynakVar = !!hamSatir?.[0];
+      const kaynakHam = (() => {
+        if (kaynakVar) return String(hamSatir[0].data == null ? '' : hamSatir[0].data);
+        return null;
+      })();
       let kaynakDb = {};
       if (kaynakVar) {
         try {
@@ -1067,7 +1406,8 @@ function kaydet(app, deps) {
           throw hata(409, 'Kaynak ayar satırı okunamadı (bozuk JSON); taşınmadı.', {});
         }
       }
-      if (T.veriHash(kaynakDb) !== T.veriHash(kaynakData)) throw hata(409, 'Kaynak ayarları siz bakarken değişti; raporu yenileyin.', {});
+      if (T.veriHash(kaynakDb) !== T.veriHash(kaynakData))
+        throw hata(409, 'Kaynak ayarları siz bakarken değişti; raporu yenileyin.', {});
       const temizKart = kartOzeti(item);
       const onceki = { item: temizKart, hedefCustom: ic.hedefDataVarMi ? ic.hedefData : null };
       const uygulanan = {
@@ -1076,7 +1416,7 @@ function kaydet(app, deps) {
         kaynakCustomHash: T.veriHash(kaynakData),
         // Hedef ayar HER ZAMAN kaynagin kopyasi (kaynakta yoksa hedef satir silinir).
         hedefCustomHash: T.veriHash(kaynakData),
-        denemeJobId: (satir.deneme?.jobId ?? null),
+        denemeJobId: satir.deneme?.jobId ?? null,
       };
       const by = kim(req);
       let kayitId = null;
@@ -1097,7 +1437,7 @@ function kaydet(app, deps) {
             JSON.stringify(uygulanan),
             denemeGecerli ? null : gerekce,
             satir.kaynakTemplate.name || null,
-            (satir.hedefTemplate?.name) || null,
+            satir.hedefTemplate?.name || null,
             hedef.eslesme === 'ad' ? 'ad' : 'elle',
           ],
           { tekrar: false },
@@ -1118,13 +1458,15 @@ function kaydet(app, deps) {
         await reloadSsItemsCache();
       } catch (err) {
         ssItemsKirliIsaretle();
-        sonrasi.push(`Kart önbelleği tazelenemedi (${err.message}); servis listesi yazımı tazelenene kadar kilitlendi. Portal'ı yeniden başlatın.`);
+        sonrasi.push(
+          `Kart önbelleği tazelenemedi (${err.message}); servis listesi yazımı tazelenene kadar kilitlendi. Portal'ı yeniden başlatın.`,
+        );
       }
       // Yaris: commit ile onbellek tazelenmesi arasinda kaynaga yeni bilet acilmis olabilir.
       let yarisUyarisi = null;
       const yaris = await T.engelleriSay(dbx, from, fromT);
       if (yaris.engeller.length)
-        yarisUyarisi = `Taşındı, ancak taşıma anında kaynakta ${yaris.engeller.map((e) => (String(e.adet) + " × " + e.baslik)).join(', ')} açıldı; bunlar kaynakta sonuçlanır.`;
+        yarisUyarisi = `Taşındı, ancak taşıma anında kaynakta ${yaris.engeller.map((e) => String(e.adet) + ' × ' + e.baslik).join(', ')} açıldı; bunlar kaynakta sonuçlanır.`;
       denetle(req, 'ss_migration_apply', {
         itemId: item.id,
         title: item.title,
@@ -1133,7 +1475,7 @@ function kaydet(app, deps) {
         eslesme: hedef.eslesme,
         denemeJobId: uygulanan.denemeJobId,
         denemesiz: !denemeGecerli,
-        surveyYazildi: !!(acik?.surveyYazildi),
+        surveyYazildi: !!acik?.surveyYazildi,
         yarisUyarisi: !!yarisUyarisi,
       });
       res.json({ ok: true, kayitId, yarisUyarisi, uyarilar: sonrasi });
@@ -1148,8 +1490,11 @@ function kaydet(app, deps) {
   async function geriAlOnizleme(itemId) {
     const item = kartGetir(itemId);
     const kayit = await acikKayit(item.id);
-    if (!kayit || kayit.status !== 'TASINDI') throw hata(409, 'Bu servis için açık bir taşıma yok.', {});
-    const bagUygun = Number(item.awxServerId) === kayit.toServer && Number(item.awxTemplateId) === kayit.toTemplate;
+    if (!kayit || kayit.status !== 'TASINDI')
+      throw hata(409, 'Bu servis için açık bir taşıma yok.', {});
+    const bagUygun =
+      Number(item.awxServerId) === kayit.toServer &&
+      Number(item.awxTemplateId) === kayit.toTemplate;
     const uyg = kayit.uygulanan || {};
     const bilgiDegisiklikleri = T.alanFarki(
       Object.fromEntries(KART_ALANLARI.map((k) => [k, uyg.item?.[k]])),
@@ -1160,9 +1505,17 @@ function kaydet(app, deps) {
     const kaynakSimdi = readCustom(kayit.fromServer, kayit.fromTemplate) || {};
     const onayGerekenDegisiklikler = [];
     if (!uyg.hedefCustomHash || T.veriHash(hedefSimdi) !== uyg.hedefCustomHash)
-      onayGerekenDegisiklikler.push({ tur: 'hedef_ayar', baslik: 'Hedef ayarlar taşımadan sonra değişti', farklar: T.alanFarki(uyg.kaynakCustom || {}, hedefSimdi) });
+      onayGerekenDegisiklikler.push({
+        tur: 'hedef_ayar',
+        baslik: 'Hedef ayarlar taşımadan sonra değişti',
+        farklar: T.alanFarki(uyg.kaynakCustom || {}, hedefSimdi),
+      });
     if (!uyg.kaynakCustomHash || T.veriHash(kaynakSimdi) !== uyg.kaynakCustomHash)
-      onayGerekenDegisiklikler.push({ tur: 'kaynak_ayar', baslik: 'Kaynak ayarlar taşımadan sonra değişti', farklar: T.alanFarki(uyg.kaynakCustom || {}, kaynakSimdi) });
+      onayGerekenDegisiklikler.push({
+        tur: 'kaynak_ayar',
+        baslik: 'Kaynak ayarlar taşımadan sonra değişti',
+        farklar: T.alanFarki(uyg.kaynakCustom || {}, kaynakSimdi),
+      });
     const say = await T.engelleriSay(dbx, kayit.toServer, kayit.toTemplate);
     // Kaynak sunucu Portal'da yoksa / kapaliysa ya da template orada okunamiyorsa geri alma karti
     // olu bir baga cevirir (maestro2 emekli olduktan sonra servis sessizce kullanilamaz olur).
@@ -1175,18 +1528,31 @@ function kaydet(app, deps) {
         ipucu: 'Kart çalışmayan bir sunucuya bağlanırdı; geri alma yapılamaz.',
       });
     } else {
-      const kD = await guvenliOku(() => getTemplateDetailOnServer(kayit.fromServer, kayit.fromTemplate), undefined, kaynakS.name);
-      if (!kD.ok) say.okunamayan.push({ anahtar: 'kaynak_template', baslik: `Kaynak template #${kayit.fromTemplate} okunamadı`, hata: kD.hata });
+      const kD = await guvenliOku(
+        () => getTemplateDetailOnServer(kayit.fromServer, kayit.fromTemplate),
+        undefined,
+        kaynakS.name,
+      );
+      if (!kD.ok)
+        say.okunamayan.push({
+          anahtar: 'kaynak_template',
+          baslik: `Kaynak template #${kayit.fromTemplate} okunamadı`,
+          hata: kD.hata,
+        });
     }
     const uyarilar = [];
     try {
       const { rows } = await dbx.query(T.SUREN_IS_SQL, [kayit.toServer, kayit.toTemplate]);
       const n = Number(rows?.[0]?.n) || 0;
-      if (n > 0) uyarilar.push(`Hedefte süren ${n} iş var: hedefte bitecek, çıktısı hedeften okunur.`);
+      if (n > 0)
+        uyarilar.push(`Hedefte süren ${n} iş var: hedefte bitecek, çıktısı hedeften okunur.`);
     } catch (err) {
       uyarilar.push(`Hedefte süren işler okunamadı: ${String(err.message || err)}`);
     }
-    if (kayit.surveyYazildi) uyarilar.push("Hedef survey'i yazılmıştı; geri alma onu değiştirmez (önceki hâli taşıma kaydında saklı).");
+    if (kayit.surveyYazildi)
+      uyarilar.push(
+        "Hedef survey'i yazılmıştı; geri alma onu değiştirmez (önceki hâli taşıma kaydında saklı).",
+      );
     return {
       item,
       kayit,
@@ -1203,7 +1569,7 @@ function kaydet(app, deps) {
     const kS = getServerById(o.kayit.fromServer);
     return {
       kayit: T.istemciKaydi(o.kayit),
-      kaynakSunucuAdi: (kS?.name ?? null),
+      kaynakSunucuAdi: kS?.name ?? null,
       bagUygun: o.bagUygun,
       bilgiDegisiklikleri: o.bilgiDegisiklikleri,
       onayGerekenDegisiklikler: o.onayGerekenDegisiklikler,
@@ -1224,21 +1590,35 @@ function kaydet(app, deps) {
   app.post(`${BASE}/:itemId/geri-al`, requireAuth, requireAdmin, async (req, res) => {
     try {
       const o = await geriAlOnizleme(req.params.itemId);
-      if (Number(req.body?.migrationId) !== o.kayit.id) throw hata(409, 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.', {});
+      if (Number(req.body?.migrationId) !== o.kayit.id)
+        throw hata(409, 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.', {});
       if (!o.bagUygun) {
         // Kart elle / bayat liste yazimiyla baska bir baga donmus: kart DEGISTIRILMEZ, yalniz
         // tutarsiz TASINDI kaydi KAPANDI yapilir (servis yeniden hazirlanip tasinabilsin).
         if (req.body?.kaydiKapat !== true)
-          throw hata(409, 'Kart taşıma sonrası başka bir template\'e bağlanmış; otomatik geri alma güvenli değil. Kartı değiştirmeden yalnız kaydı kapatabilirsiniz.', {
-            bagUygun: false,
-          });
+          throw hata(
+            409,
+            "Kart taşıma sonrası başka bir template'e bağlanmış; otomatik geri alma güvenli değil. Kartı değiştirmeden yalnız kaydı kapatabilirsiniz.",
+            {
+              bagUygun: false,
+            },
+          );
         const r = await dbx.query(
           `UPDATE ansible_ss_migrations
               SET status = 'KAPANDI', geri_alan = $1, geri_alindi_at = SYSUTCDATETIME(), geri_alma_notu = $2
             WHERE id = $3 AND item_id = $4 AND status = 'TASINDI'`,
-          [kim(req), JSON.stringify({ kaydiKapat: true, kart: { server: Number(o.item.awxServerId), template: Number(o.item.awxTemplateId) } }), o.kayit.id, String(o.item.id)],
+          [
+            kim(req),
+            JSON.stringify({
+              kaydiKapat: true,
+              kart: { server: Number(o.item.awxServerId), template: Number(o.item.awxTemplateId) },
+            }),
+            o.kayit.id,
+            String(o.item.id),
+          ],
         );
-        if (!r || r.rowCount !== 1) throw hata(409, 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.', {});
+        if (!r || r.rowCount !== 1)
+          throw hata(409, 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.', {});
         denetle(req, 'ss_migration_record_close', {
           itemId: o.item.id,
           migrationId: o.kayit.id,
@@ -1259,12 +1639,24 @@ function kaydet(app, deps) {
         });
       const not = JSON.stringify({
         bilgi: o.bilgiDegisiklikleri.map((d) => d.alan),
-        onaylanan: o.onayGerekenDegisiklikler.map((d) => ({ tur: d.tur, alanlar: d.farklar.map((f) => f.alan) })),
+        onaylanan: o.onayGerekenDegisiklikler.map((d) => ({
+          tur: d.tur,
+          alanlar: d.farklar.map((f) => f.alan),
+        })),
       });
       try {
         await dbx.query(
           T.GERI_AL_SQL,
-          [o.kayit.toServer, o.kayit.toTemplate, o.kayit.fromServer, o.kayit.fromTemplate, String(o.item.id), o.kayit.id, kim(req), not],
+          [
+            o.kayit.toServer,
+            o.kayit.toTemplate,
+            o.kayit.fromServer,
+            o.kayit.fromTemplate,
+            String(o.item.id),
+            o.kayit.id,
+            kim(req),
+            not,
+          ],
           { tekrar: false },
         );
       } catch (err) {
@@ -1278,7 +1670,9 @@ function kaydet(app, deps) {
         await reloadSsItemsCache();
       } catch (err) {
         ssItemsKirliIsaretle();
-        uyarilar.push(`Kart önbelleği tazelenemedi (${err.message}); servis listesi yazımı tazelenene kadar kilitlendi. Portal'ı yeniden başlatın.`);
+        uyarilar.push(
+          `Kart önbelleği tazelenemedi (${err.message}); servis listesi yazımı tazelenene kadar kilitlendi. Portal'ı yeniden başlatın.`,
+        );
       }
       denetle(req, 'ss_migration_rollback', {
         itemId: o.item.id,
@@ -1304,7 +1698,7 @@ function kaydet(app, deps) {
         [String(item.id)],
       );
       denetle(req, 'ss_migration_prep_cancel', { itemId: item.id, adet: r?.rowCount });
-      res.json({ ok: true, adet: (r?.rowCount) || 0 });
+      res.json({ ok: true, adet: r?.rowCount || 0 });
     } catch (err) {
       yanitHata(res, err);
     }

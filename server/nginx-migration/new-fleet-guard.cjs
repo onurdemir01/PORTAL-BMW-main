@@ -43,7 +43,7 @@ const NEW_FLEET_OFF = 'false';
 // isleri 400 'value missing' ile durdurur.
 const NEW_FLEET_BLOCK_MESSAGE =
   "Silme işi yeni filoyu koruyamıyor: nginx_ops template'inde new_fleet survey sorusu (false seçeneğiyle) ya da Prompt on launch gerekli. " +
-  "Soru eklenirse ZORUNLU olmamalı ve varsayılanı boş ya da true olmalı: false varsayılanı, new_fleet göndermeyen diğer tüm prod nginx_ops işlerinde yeni filoyu atlatır.";
+  'Soru eklenirse ZORUNLU olmamalı ve varsayılanı boş ya da true olmalı: false varsayılanı, new_fleet göndermeyen diğer tüm prod nginx_ops işlerinde yeni filoyu atlatır.';
 // Playbook'un "kapali" saydigi degerler: nginx_ops.yml `(new_fleet | default('') | string | trim | lower) not in ['false','no','0']`.
 const NEW_FLEET_OFF_VALUES = ['false', 'no', '0'];
 // Sonra kontrolde new_fleet yok sayildiysa HER DURUMDA verilen uyari: GBLABT02 play'i
@@ -70,18 +70,27 @@ function surveyQuestionAcceptsFalse(q) {
   if (type === 'multiplechoice') {
     const ch = choiceList(q);
     if (ch.includes(NEW_FLEET_OFF)) return { ok: true, reason: '' };
-    return { ok: false, reason: `soru seçenekli ve 'false' seçeneklerde yok (seçenekler: ${ch.length ? ch.join(', ') : 'boş'})` };
+    return {
+      ok: false,
+      reason: `soru seçenekli ve 'false' seçeneklerde yok (seçenekler: ${ch.length ? ch.join(', ') : 'boş'})`,
+    };
   }
   if (type === 'text' || type === 'textarea' || type === 'password') {
     const len = NEW_FLEET_OFF.length;
     const min = numOrNull(q.min);
     const max = numOrNull(q.max);
-    if (min != null && len < min) return { ok: false, reason: `soru en az ${min} karakter istiyor` };
-    if (max != null && len > max) return { ok: false, reason: `soru en çok ${max} karakter kabul ediyor` };
+    if (min != null && len < min)
+      return { ok: false, reason: `soru en az ${min} karakter istiyor` };
+    if (max != null && len > max)
+      return { ok: false, reason: `soru en çok ${max} karakter kabul ediyor` };
     return { ok: true, reason: '' };
   }
   if (type === 'multiselect') {
-    return { ok: false, reason: "soru çoklu seçim (multiselect): AWX liste ister, playbook listeyi 'false' olarak okumaz" };
+    return {
+      ok: false,
+      reason:
+        "soru çoklu seçim (multiselect): AWX liste ister, playbook listeyi 'false' olarak okumaz",
+    };
   }
   return { ok: false, reason: `soru tipi '${type || 'bilinmiyor'}' 'false' metnini kabul etmez` };
 }
@@ -161,19 +170,31 @@ function assessNewFleetGuard({ template, templateError = null, survey = null }) 
       `Durum ÖLÇÜLEMEDİ: AWX template yanıtında ${missing.join(' ve ')} alanı yok (Prompt on launch / survey ayarı bilinmiyor). İş BAŞLATILMADI.`,
     );
   }
-  const spec = surveyOn && survey && survey.measured === true && Array.isArray(survey.spec) ? survey.spec : null;
+  const spec =
+    surveyOn && survey && survey.measured === true && Array.isArray(survey.spec)
+      ? survey.spec
+      : null;
   const q = spec ? spec.find((x) => x && x.variable === NEW_FLEET_VAR) : null;
   // Soru VARSA Prompt on launch acik olsa bile AWX survey dogrulamasini uygular: 'false'
   // kabul edilmiyorsa launch 400 alir. Acik mesaj burada verilir.
   if (q) {
     const acc = surveyQuestionAcceptsFalse(q);
-    if (!acc.ok) return block(true, 'survey_rejects_false', `Survey'deki new_fleet sorusu 'false' değerini kabul etmiyor: ${acc.reason}.`);
+    if (!acc.ok)
+      return block(
+        true,
+        'survey_rejects_false',
+        `Survey'deki new_fleet sorusu 'false' değerini kabul etmiyor: ${acc.reason}.`,
+      );
     const warning = surveyQuestionSideEffects(q);
     return warning ? { ok: true, via: 'survey', warning } : { ok: true, via: 'survey' };
   }
   if (ask === true) return { ok: true, via: 'prompt' };
   if (!surveyOn) {
-    return block(true, 'no_survey_no_prompt', "Template'te survey kapalı ve Prompt on launch kapalı: AWX gönderilen değişkenlerin hiçbirini almaz.");
+    return block(
+      true,
+      'no_survey_no_prompt',
+      "Template'te survey kapalı ve Prompt on launch kapalı: AWX gönderilen değişkenlerin hiçbirini almaz.",
+    );
   }
   if (!spec) {
     return block(
@@ -182,7 +203,11 @@ function assessNewFleetGuard({ template, templateError = null, survey = null }) 
       `Durum ÖLÇÜLEMEDİ: Prompt on launch kapalı ve survey okunamadı (${(survey && survey.error) || 'bilinmiyor'}). İş BAŞLATILMADI.`,
     );
   }
-  return block(true, 'survey_missing_new_fleet', "Survey'de new_fleet sorusu yok ve Prompt on launch kapalı: AWX new_fleet'i sessizce yok sayardı.");
+  return block(
+    true,
+    'survey_missing_new_fleet',
+    "Survey'de new_fleet sorusu yok ve Prompt on launch kapalı: AWX new_fleet'i sessizce yok sayardı.",
+  );
 }
 
 /**
@@ -215,14 +240,19 @@ function ignoredMessage({ jobId, outcome, awxStatus = null, error = '' }) {
   const job = jobId == null ? '?' : String(jobId);
   let what;
   if (outcome === 'canceled') what = `nginx_ops işi (job ${job}) iptal edildi.`;
-  else if (outcome === 'terminal') what = `nginx_ops işi (job ${job}) iptal edilemedi: iş zaten bitmiş (AWX durumu: ${awxStatus || 'ölçülemedi'}).`;
+  else if (outcome === 'terminal')
+    what = `nginx_ops işi (job ${job}) iptal edilemedi: iş zaten bitmiş (AWX durumu: ${awxStatus || 'ölçülemedi'}).`;
   else if (outcome === 'unverified') {
     what =
-      `nginx_ops işi (job ${job}) için iptal isteği AWX'te reddedildi ve işin durumu ÖLÇÜLEMEDİ${error ? (" (" + error + ")") : ''}: ` +
+      `nginx_ops işi (job ${job}) için iptal isteği AWX'te reddedildi ve işin durumu ÖLÇÜLEMEDİ${error ? ' (' + error + ')' : ''}: ` +
       "işin bittiği DOĞRULANMADI, HÂLÂ ÇALIŞIYOR olabilir. İşi AWX'te bulup HEMEN iptal edin.";
-  } else if (outcome === 'no_job_id') what = "AWX job numarası dönmedi; iptal isteği gönderilemedi. İşi AWX'te bulup HEMEN iptal edin.";
-  else if (outcome === 'cancel_failed') what = `nginx_ops işi (job ${job}) İPTAL EDİLEMEDİ: ${error}. İşi AWX'ten HEMEN iptal edin.`;
-  else what = `nginx_ops işinin (job ${job}) iptal sonucu belirsiz. İşi AWX'te kontrol edip gerekirse HEMEN iptal edin.`;
+  } else if (outcome === 'no_job_id')
+    what =
+      "AWX job numarası dönmedi; iptal isteği gönderilemedi. İşi AWX'te bulup HEMEN iptal edin.";
+  else if (outcome === 'cancel_failed')
+    what = `nginx_ops işi (job ${job}) İPTAL EDİLEMEDİ: ${error}. İşi AWX'ten HEMEN iptal edin.`;
+  else
+    what = `nginx_ops işinin (job ${job}) iptal sonucu belirsiz. İşi AWX'te kontrol edip gerekirse HEMEN iptal edin.`;
   return (
     'AWX new_fleet değişkenini YOK SAYDI (launch yanıtı: ignored_fields); bu iş yeni filodaki tanımı da silerdi. ' +
     `${what} ${MIGRATION_JOB_WARNING} ${NEW_FLEET_BLOCK_MESSAGE}`
@@ -235,7 +265,8 @@ function ignoredMessage({ jobId, outcome, awxStatus = null, error = '' }) {
  * runner.redactSecrets'tan gecer.
  */
 async function readNewFleetContract(serverId, templateId, { runner }) {
-  const redact = (s) => (runner && typeof runner.redactSecrets === 'function' ? runner.redactSecrets(s) : String(s));
+  const redact = (s) =>
+    runner && typeof runner.redactSecrets === 'function' ? runner.redactSecrets(s) : String(s);
   const why = (e) => redact((e && e.message) || String(e));
   let template = null;
   let templateError = null;
@@ -252,7 +283,10 @@ async function readNewFleetContract(serverId, templateId, { runner }) {
   if (template && template.surveyEnabled === true) {
     try {
       const s = await runner.getSurveySpecOnServer(serverId, templateId);
-      survey = s && Array.isArray(s.spec) ? { measured: true, spec: s.spec } : { measured: false, error: 'survey yanıtı beklenmeyen biçimde' };
+      survey =
+        s && Array.isArray(s.spec)
+          ? { measured: true, spec: s.spec }
+          : { measured: false, error: 'survey yanıtı beklenmeyen biçimde' };
     } catch (e) {
       survey = { measured: false, error: why(e) };
     }

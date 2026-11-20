@@ -26,9 +26,14 @@ export default function YenidenBaslatmaBandi({
     <div role="status" data-bolge="restart-bandi">
       {liste.size > 0 && (
         <div className="pf-alert pf-alert--warning rounded-md">
-          <ArrowPathIcon aria-hidden="true" className="w-5 h-5 flex-shrink-0 text-[var(--status-warning-text)]" />
+          <ArrowPathIcon
+            aria-hidden="true"
+            className="w-5 h-5 flex-shrink-0 text-[var(--status-warning-text)]"
+          />
           <div className="min-w-0 flex-1 space-y-1.5">
-            <p className="font-medium">{liste.size} değişiklik sunucu yeniden başlatılınca geçerli olacak:</p>
+            <p className="font-medium">
+              {liste.size} değişiklik sunucu yeniden başlatılınca geçerli olacak:
+            </p>
             <ul className="flex flex-wrap gap-x-3 gap-y-1">
               {[...liste.entries()].map(([key, label]) => (
                 <li key={key} className="min-w-0">
@@ -43,10 +48,14 @@ export default function YenidenBaslatmaBandi({
               ))}
             </ul>
             <p className="text-xs text-[var(--text-secondary)]">
-              Bu liste yalnız bu sayfada tutulur; sayfayı yenilerseniz kaybolur. Sunucu yeniden başlatıldıysa
-              listeyi temizleyin.
+              Bu liste yalnız bu sayfada tutulur; sayfayı yenilerseniz kaybolur. Sunucu yeniden
+              başlatıldıysa listeyi temizleyin.
             </p>
-            <button type="button" className="btn-secondary !py-1 !px-2.5 !text-xs" onClick={onTemizle}>
+            <button
+              type="button"
+              className="btn-secondary !py-1 !px-2.5 !text-xs"
+              onClick={onTemizle}
+            >
               Listeyi temizle
             </button>
           </div>

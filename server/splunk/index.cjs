@@ -15,13 +15,17 @@ function initSplunk(app) {
   try {
     const { requireAuth: ra } = require('../auth/index.cjs');
     if (typeof ra === 'function') requireAuth = ra;
-  } catch { /* auth modulu yoksa passthrough */ }
+  } catch {
+    /* auth modulu yoksa passthrough */
+  }
 
   // Splunk, Performance sayfasinin bir alt-tab'idir — Performance gizliyse gercek 403. /health muaf.
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     app.use('/api/splunk', requireVisiblePrefix('Performance', { exempt: ['/health'] }));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── Health ────────────────────────────────────────────────────────────────
   app.get('/api/splunk/health', requireAuth, async (req, res) => {
@@ -31,7 +35,13 @@ function initSplunk(app) {
       ok: true,
       configured,
       reachable,
-      message: (() => { if (configured) { if (reachable) return undefined; return 'Splunk sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; } return 'SPLUNK_BASE_URL/SPLUNK_TOKEN tanımlı değil — Splunk entegrasyonu devre dışı.'; })(),
+      message: (() => {
+        if (configured) {
+          if (reachable) return undefined;
+          return 'Splunk sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).';
+        }
+        return 'SPLUNK_BASE_URL/SPLUNK_TOKEN tanımlı değil — Splunk entegrasyonu devre dışı.';
+      })(),
     });
   });
 
@@ -43,7 +53,8 @@ function initSplunk(app) {
   // ── Arama (sabit urun+zaman araligi, serbest SPL yok) ─────────────────────
   app.get('/api/splunk/search', requireAuth, async (req, res) => {
     const { product, windowMinutes, refresh } = req.query;
-    if (!product) return res.status(400).json({ ok: false, message: 'product query param zorunlu.' });
+    if (!product)
+      return res.status(400).json({ ok: false, message: 'product query param zorunlu.' });
 
     const cacheKey = `splunk-${product}-${windowMinutes || 15}`;
     if (refresh !== '1') {
@@ -52,7 +63,10 @@ function initSplunk(app) {
     }
 
     try {
-      const result = await search({ product: String(product), windowMinutes: Number(windowMinutes) || 15 });
+      const result = await search({
+        product: String(product),
+        windowMinutes: Number(windowMinutes) || 15,
+      });
       cache.set(cacheKey, result);
       res.json({ ok: true, source: 'live', ...result });
     } catch (err) {

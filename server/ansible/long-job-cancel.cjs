@@ -99,7 +99,10 @@ const kindLabel = (k) => (normKind(k) === 'workflow' ? 'workflow job' : 'job');
 function genericRedact(s) {
   return String(s == null ? '' : s)
     .replace(/(Bearer\s+)[a-z0-9._~+/=-]+/gi, '$1***')
-    .replace(/((?:access_)?token|password|passwd|secret|client_secret)(["']?\s*[:=]\s*["']?)[^"'&\s,}]+/gi, '$1$2***');
+    .replace(
+      /((?:access_)?token|password|passwd|secret|client_secret)(["']?\s*[:=]\s*["']?)[^"'&\s,}]+/gi,
+      '$1$2***',
+    );
 }
 
 function makeRedactor(runner) {
@@ -134,7 +137,7 @@ function normalizeConfig(raw) {
         serverId: Number(t?.serverId) || 0,
         templateId: Number(t?.templateId) || 0,
         kind: normKind(t?.kind),
-        name: String((t?.name) || '').slice(0, 200),
+        name: String(t?.name || '').slice(0, 200),
       }))
       .filter((t) => {
         if (!(t.serverId > 0 && t.templateId > 0)) return false;
@@ -154,7 +157,9 @@ function normalizeConfig(raw) {
 async function readConfig(db) {
   if (_cache && Date.now() - _cacheAt < CACHE_TTL_MS) return _cache;
   try {
-    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
+    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      CONFIG_NAME,
+    ]);
     const raw = rows?.[0]?.data;
     const cfg = normalizeConfig(typeof raw === 'string' ? JSON.parse(raw) : raw);
     _cache = cfg;
@@ -164,11 +169,13 @@ async function readConfig(db) {
     _configError = null;
     return cfg;
   } catch (e) {
-    const message = genericRedact((e?.message) || String(e));
+    const message = genericRedact(e?.message || String(e));
     _configError = { at: iso(), message };
     console.error(
       `[LongJobCancel] yapilandirma okunamadi (portal_config_blobs '${CONFIG_NAME}'); ` +
-        (_lastGood ? 'son gecerli yapilandirmayla devam ediliyor' : 'hic gecerli yapilandirma yok -> otomatik iptal KAPALI') +
+        (_lastGood
+          ? 'son gecerli yapilandirmayla devam ediliyor'
+          : 'hic gecerli yapilandirma yok -> otomatik iptal KAPALI') +
         ':',
       message,
     );
@@ -188,8 +195,13 @@ async function writeConfig(db, body) {
   const cfg = normalizeConfig(body);
   const data = JSON.stringify(cfg);
   const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [CONFIG_NAME]);
-  if (ex.rows.length) await db.query(`UPDATE portal_config_blobs SET data = $2 WHERE name = $1`, [CONFIG_NAME, data]);
-  else await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [CONFIG_NAME, data]);
+  if (ex.rows.length)
+    await db.query(`UPDATE portal_config_blobs SET data = $2 WHERE name = $1`, [CONFIG_NAME, data]);
+  else
+    await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+      CONFIG_NAME,
+      data,
+    ]);
   _cache = cfg;
   _cacheAt = Date.now();
   _lastGood = cfg;
@@ -221,20 +233,29 @@ const cfgView = (cfg) =>
  */
 function isListed(cfg, job) {
   const kind = normKind(job.kind);
-  return ((cfg?.templates) || []).some(
-    (t) => t.serverId === Number(job.serverId) && t.templateId === Number(job.templateId) && normKind(t.kind) === kind,
+  return (cfg?.templates || []).some(
+    (t) =>
+      t.serverId === Number(job.serverId) &&
+      t.templateId === Number(job.templateId) &&
+      normKind(t.kind) === kind,
   );
 }
 
 function shouldCancel(cfg, job, nowMs = Date.now()) {
   if (!cfg?.enabled) return { cancel: false, reason: 'kapali', decision: 'disabled' };
   if (!job) return { cancel: false, reason: 'started yok', decision: 'no_started' };
-  if (!isListed(cfg, job)) return { cancel: false, reason: 'izin listesinde degil', decision: 'not_listed' };
+  if (!isListed(cfg, job))
+    return { cancel: false, reason: 'izin listesinde degil', decision: 'not_listed' };
   const queued = job.status === 'pending' || job.status === 'waiting' || job.status === 'new';
   let refIso;
   let basis;
   if (queued) {
-    if (!cfg.cancelQueued) return { cancel: false, reason: 'kuyrukta (kuyruk secenegi kapali)', decision: 'queued_option_off' };
+    if (!cfg.cancelQueued)
+      return {
+        cancel: false,
+        reason: 'kuyrukta (kuyruk secenegi kapali)',
+        decision: 'queued_option_off',
+      };
     if (!job.created) return { cancel: false, reason: 'created yok', decision: 'no_created' };
     refIso = job.created;
     basis = 'created';
@@ -245,11 +266,21 @@ function shouldCancel(cfg, job, nowMs = Date.now()) {
   }
   const refMs = new Date(refIso).getTime();
   if (!Number.isFinite(refMs)) {
-    return { cancel: false, reason: `${basis} okunamadi`, decision: basis === 'created' ? 'no_created' : 'no_started' };
+    return {
+      cancel: false,
+      reason: `${basis} okunamadi`,
+      decision: basis === 'created' ? 'no_created' : 'no_started',
+    };
   }
   const elapsedMinutes = (nowMs - refMs) / 60000;
   if (!(elapsedMinutes >= cfg.thresholdMinutes)) {
-    return { cancel: false, reason: 'esik altinda', decision: 'below_threshold', elapsedMinutes, basis };
+    return {
+      cancel: false,
+      reason: 'esik altinda',
+      decision: 'below_threshold',
+      elapsedMinutes,
+      basis,
+    };
   }
   return { cancel: true, decision: 'cancel', elapsedMinutes, basis };
 }
@@ -282,7 +313,8 @@ const jobKey = (job) => `${job.serverId}:${normKind(job.kind)}:${job.jobId}`;
 function pushLog(entry, tickLog) {
   const e = { at: iso(), ...entry };
   _attemptLog.push(e);
-  if (_attemptLog.length > ATTEMPT_LOG_MAX) _attemptLog.splice(0, _attemptLog.length - ATTEMPT_LOG_MAX);
+  if (_attemptLog.length > ATTEMPT_LOG_MAX)
+    _attemptLog.splice(0, _attemptLog.length - ATTEMPT_LOG_MAX);
   if (tickLog) tickLog.push(e);
   return e;
 }
@@ -341,16 +373,31 @@ function jobFacts(job, elapsedMinutes, cfg) {
   const ref = job.started || job.created;
   return [
     { title: 'AWX', value: job.serverName || `sunucu ${job.serverId}` },
-    { title: normKind(job.kind) === 'workflow' ? 'Workflow job' : 'Job', value: `#${job.jobId} — ${job.jobName}` },
-    { title: 'Template', value: `#${job.templateId ?? '?'}${normKind(job.kind) === 'workflow' ? ' (workflow)' : ''}` },
+    {
+      title: normKind(job.kind) === 'workflow' ? 'Workflow job' : 'Job',
+      value: `#${job.jobId} — ${job.jobName}`,
+    },
+    {
+      title: 'Template',
+      value: `#${job.templateId ?? '?'}${normKind(job.kind) === 'workflow' ? ' (workflow)' : ''}`,
+    },
     { title: 'AWX durumu', value: job.status || '—' },
     { title: 'Başlatan', value: job.executer || '—' },
-    { title: job.started ? 'Başlangıç' : 'Kuyruğa giriş', value: ref ? new Date(ref).toLocaleString('tr-TR') : '—' },
+    {
+      title: job.started ? 'Başlangıç' : 'Kuyruğa giriş',
+      value: ref ? new Date(ref).toLocaleString('tr-TR') : '—',
+    },
     {
       title: 'Süre',
-      value: elapsedMinutes != null ? `${Math.floor(elapsedMinutes)} dk (eşik ${cfg.thresholdMinutes} dk)` : '—',
+      value:
+        elapsedMinutes != null
+          ? `${Math.floor(elapsedMinutes)} dk (eşik ${cfg.thresholdMinutes} dk)`
+          : '—',
     },
-    { title: 'Kural', value: 'Admin > Ansible Info > Uzun süren işleri iptal (izin listesindeki template)' },
+    {
+      title: 'Kural',
+      value: 'Admin > Ansible Info > Uzun süren işleri iptal (izin listesindeki template)',
+    },
   ];
 }
 
@@ -365,7 +412,12 @@ const SERVICE_VIA_TEXT = "İptal Portal'ın AWX servis kullanıcısıyla yapıld
 function viaFacts(info) {
   if (!info?.via) return [];
   if (info.via === 'cancel_token') {
-    return [{ title: 'İptal kimliği', value: `${viaText(info.tokenOwner)} (kişisel iptal token'ı — geçici çözüm)` }];
+    return [
+      {
+        title: 'İptal kimliği',
+        value: `${viaText(info.tokenOwner)} (kişisel iptal token'ı — geçici çözüm)`,
+      },
+    ];
   }
   return [{ title: 'İptal kimliği', value: SERVICE_VIA_TEXT }];
 }
@@ -419,7 +471,7 @@ function forbiddenHint(info) {
   }
   if (info.createdByPortal === true) {
     return (
-      `Bu işi Portal'ın kendi AWX kullanıcısı${info.portalUser ? (" (" + info.portalUser + ")") : ''} başlatmış; AWX'te işi ` +
+      `Bu işi Portal'ın kendi AWX kullanıcısı${info.portalUser ? ' (' + info.portalUser + ')' : ''} başlatmış; AWX'te işi ` +
       'başlatan kullanıcı onu her zaman iptal edebilir — yani sebep template Admin rolü DEĞİL. ' +
       `${TOKEN_SCOPE_HINT} Şimdilik işi AWX arayüzünden elle iptal edin. ${RETRY_HINT}`
     );
@@ -434,7 +486,7 @@ function forbiddenHint(info) {
 const TOKEN_INVALID_WHAT =
   "İptal token'ı AWX'te iptal edilmiş ya da süresi dolmuş (AWX 401). Admin > Ansible Info > Uzun süren işleri iptal > " +
   "İptal token'ı bölümünden yeni token girin (kaydedince iptal edilemeyen işler yeniden denenir) ya da token'ı silin " +
-  "(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.";
+  '(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.';
 const TOKEN_STORE_UNREADABLE_WHAT =
   "Portal iptal token kaydını (portal_config_blobs 'longjob-cancel-tokens') okuyamadı: bu sunucuda iptal token'ı " +
   "tanımlı mı ÖLÇÜLEMEDİ, bu yüzden iptal DENENMEDİ (servis kullanıcısına düşülmedi). Portal'ın DB erişimini kontrol " +
@@ -442,7 +494,7 @@ const TOKEN_STORE_UNREADABLE_WHAT =
 const TOKEN_MISMATCH_WHAT =
   "Bu AWX sunucusunun adresi iptal token'ı kaydedildikten sonra değişmiş (ya da kayıtta adres yok): kişisel token " +
   "yeni adrese GÖNDERİLMEDİ ve iptal denenmedi. Admin ekranından token'ı bu sunucu için yeniden girin ya da silin " +
-  "(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.";
+  '(o zaman Portal servis kullanıcısı kullanılır). Şimdilik işi AWX arayüzünden elle iptal edin.';
 const TOKEN_UNDECRYPTABLE_WHAT =
   "Kayıtlı iptal token'ı çözülemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş olabilir). Admin ekranından " +
   "token'ı yeniden girin ya da silin. Şimdilik işi AWX arayüzünden elle iptal edin.";
@@ -451,7 +503,8 @@ const TOKEN_UNDECRYPTABLE_WHAT =
 function shortHint(info) {
   if (info.tokenInvalid) return "İPTAL TOKEN'I GEÇERSİZ — Admin ekranından yeni token girin";
   if (info.tokenStoreUnreadable) return 'iptal token kaydı OKUNAMADI — iptal denenmedi';
-  if (info.tokenServerMismatch) return "iptal token'ı bu AWX adresi için kaydedilmedi — token gönderilmedi, iptal denenmedi";
+  if (info.tokenServerMismatch)
+    return "iptal token'ı bu AWX adresi için kaydedilmedi — token gönderilmedi, iptal denenmedi";
   if (info.tokenUndecryptable) return "iptal token'ı çözülemedi — Admin ekranından yeniden girin";
   if (info.httpStatus === 403 && info.jobState === 'active' && info.via === 'cancel_token') {
     return info.createdByPortal === true
@@ -463,7 +516,8 @@ function shortHint(info) {
       ? "olası neden: token'da 'write' kapsamı yok (iş Portal'ın kendi başlattığı iş; Admin rolü sebep DEĞİL)"
       : "olası neden: Portal'ın AWX kullanıcısının bu template'te Admin rolü yok ya da token 'write' kapsamlı değil";
   }
-  if (info.jobState === 'unknown') return "işin şu anki durumu ölçülemedi; AWX arayüzünden kontrol edin";
+  if (info.jobState === 'unknown')
+    return 'işin şu anki durumu ölçülemedi; AWX arayüzünden kontrol edin';
   return null;
 }
 
@@ -475,33 +529,59 @@ function failureCard(job, elapsedMinutes, cfg, info = {}) {
   else if (info.tokenUndecryptable) what = TOKEN_UNDECRYPTABLE_WHAT;
   else if (info.httpStatus === 403 && info.jobState === 'active') what = forbiddenHint(info);
   else if (info.jobState === 'unknown') {
-    what = "AWX arayüzünden işin durumunu kontrol edin; hâlâ çalışıyorsa elle iptal edin. " + RETRY_HINT;
+    what =
+      'AWX arayüzünden işin durumunu kontrol edin; hâlâ çalışıyorsa elle iptal edin. ' + RETRY_HINT;
   } else if (info.httpStatus === 405 || info.httpStatus === 409) {
     what =
       "İşi AWX arayüzünden elle iptal edin. AWX önündeki vekil/WAF/gateway'in iptal isteğini (POST .../cancel/) " +
-      'AWX\'e ilettiğinden emin olun.';
+      "AWX'e ilettiğinden emin olun.";
   } else {
-    what = 'İşi AWX arayüzünden elle iptal edin. Hata sürüyorsa AWX erişimini ve Portal kimlik bilgisini kontrol edin.';
+    what =
+      'İşi AWX arayüzünden elle iptal edin. Hata sürüyorsa AWX erişimini ve Portal kimlik bilgisini kontrol edin.';
   }
-  const title = (() => { if (info.tokenInvalid) return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I GEÇERSİZ (${info.tokenOwner || '?'}, AWX 401)`; if (info.tokenStoreUnreadable) return '⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN KAYDI OKUNAMADI (iptal denenmedi)'; if (info.tokenServerMismatch) return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I BU AWX ADRESİ İÇİN KAYDEDİLMEDİ (${info.tokenOwner || '?'})`; if (info.tokenUndecryptable) return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I ÇÖZÜLEMEDİ (${info.tokenOwner || '?'})`; if (info.jobState === 'unknown') return '⛔ İPTAL EDİLEMEDİ — işin AWX’teki şu anki durumu ÖLÇÜLEMEDİ'; return '⛔ İPTAL EDİLEMEDİ — iş AWX’te ÇALIŞMAYA DEVAM EDİYOR'; })();
+  const title = (() => {
+    if (info.tokenInvalid)
+      return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I GEÇERSİZ (${info.tokenOwner || '?'}, AWX 401)`;
+    if (info.tokenStoreUnreadable)
+      return '⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN KAYDI OKUNAMADI (iptal denenmedi)';
+    if (info.tokenServerMismatch)
+      return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I BU AWX ADRESİ İÇİN KAYDEDİLMEDİ (${info.tokenOwner || '?'})`;
+    if (info.tokenUndecryptable)
+      return `⛔ İPTAL EDİLEMEDİ — İPTAL TOKEN'I ÇÖZÜLEMEDİ (${info.tokenOwner || '?'})`;
+    if (info.jobState === 'unknown')
+      return '⛔ İPTAL EDİLEMEDİ — işin AWX’teki şu anki durumu ÖLÇÜLEMEDİ';
+    return '⛔ İPTAL EDİLEMEDİ — iş AWX’te ÇALIŞMAYA DEVAM EDİYOR';
+  })();
   return cardShell(
     'attention',
     title,
     `${job.serverName} · ${job.jobName} · ${kindLabel(job.kind)} #${job.jobId} — ${Math.floor(elapsedMinutes || 0)} dakikadır ` +
       `${job.started ? 'çalışıyor' : 'kuyrukta'} (eşik ${cfg.thresholdMinutes} dk; son taramada aktifti). Portal iptal etmeye ` +
-      `çalıştı ama istek başarısız oldu${info.permanent ? ' (kalıcı ret; tekrar denenmeyecek)' : (" (" + (info.attempts || MAX_ATTEMPTS) + " deneme)")}.`,
+      `çalıştı ama istek başarısız oldu${info.permanent ? ' (kalıcı ret; tekrar denenmeyecek)' : ' (' + (info.attempts || MAX_ATTEMPTS) + ' deneme)'}.`,
     [
       ...jobFacts(job, elapsedMinutes, cfg),
       ...(info.awxStatus ? [{ title: 'AWX durumu (iptal anında)', value: info.awxStatus }] : []),
-      ...(() => { if (info.tokenStoreUnreadable) return [{ title: 'İptal kimliği', value: 'ÖLÇÜLEMEDİ — iptal token kaydı okunamadı; iptal denenmedi (servis kullanıcısına düşülmedi)' }]; if (info.via === 'cancel_token') return [
-              {
-                title: 'İptal kimliği',
-                value:
-                  info.tokenUndecryptable || info.tokenServerMismatch
-                    ? `İptal ${info.tokenOwner || '?'} token'ıyla DENENMEDİ (token kullanılamıyor)`
-                    : `İptal ${info.tokenOwner || '?'} token'ıyla denendi (kişisel iptal token'ı)`,
-              },
-            ]; return []; })(),
+      ...(() => {
+        if (info.tokenStoreUnreadable)
+          return [
+            {
+              title: 'İptal kimliği',
+              value:
+                'ÖLÇÜLEMEDİ — iptal token kaydı okunamadı; iptal denenmedi (servis kullanıcısına düşülmedi)',
+            },
+          ];
+        if (info.via === 'cancel_token')
+          return [
+            {
+              title: 'İptal kimliği',
+              value:
+                info.tokenUndecryptable || info.tokenServerMismatch
+                  ? `İptal ${info.tokenOwner || '?'} token'ıyla DENENMEDİ (token kullanılamıyor)`
+                  : `İptal ${info.tokenOwner || '?'} token'ıyla denendi (kişisel iptal token'ı)`,
+            },
+          ];
+        return [];
+      })(),
       { title: 'Sebep', value: info.reason || '—' },
       { title: 'Ne yapılmalı', value: what },
     ],
@@ -619,7 +699,7 @@ async function notifyTeams(webhookUrl, card, red) {
     await sendTeams(webhookUrl, card);
     return 'gonderildi';
   } catch (e) {
-    const m = red((e?.message) || String(e));
+    const m = red(e?.message || String(e));
     console.error('[LongJobCancel] Teams bildirimi gonderilemedi:', m);
     return `hata: ${m}`;
   }
@@ -628,8 +708,10 @@ async function notifyTeams(webhookUrl, card, red) {
 // ── Ana dongu ────────────────────────────────────────────────────────────────
 function decisionRank(e) {
   if (PROBLEM_DECISIONS.has(e.decision)) return 0;
-  if (['cancel_requested', 'would_cancel', 'already_terminal', 'cancel'].includes(e.decision)) return 1;
-  if (['below_threshold', 'queued_option_off', 'no_started', 'no_created'].includes(e.decision)) return 2;
+  if (['cancel_requested', 'would_cancel', 'already_terminal', 'cancel'].includes(e.decision))
+    return 1;
+  if (['below_threshold', 'queued_option_off', 'no_started', 'no_created'].includes(e.decision))
+    return 2;
   if (e.decision === 'not_listed') return 3;
   return 4;
 }
@@ -680,7 +762,10 @@ async function readJobStates(runner, keys, red) {
       const st = await runner.getJobStateOnServer(Number(sid), Number(jid), kind);
       if (st?.status) out.set(key, st);
     } catch (e) {
-      console.error(`[LongJobCancel] ${key} durumu okunamadi (kayit korunuyor):`, red((e?.message) || String(e)));
+      console.error(
+        `[LongJobCancel] ${key} durumu okunamadi (kayit korunuyor):`,
+        red(e?.message || String(e)),
+      );
     }
   }
   return { states: out, asked: batch.length };
@@ -696,24 +781,44 @@ async function scanHealthStep(cfg, servers, ctx) {
   const relevant = new Map();
   if (cfg.enabled) {
     for (const t of cfg.templates) {
-      relevant.set(`${t.serverId}:${normKind(t.kind)}`, { serverId: t.serverId, kind: normKind(t.kind) });
+      relevant.set(`${t.serverId}:${normKind(t.kind)}`, {
+        serverId: t.serverId,
+        kind: normKind(t.kind),
+      });
     }
   }
   for (const key of [..._scanHealth.keys()]) if (!relevant.has(key)) _scanHealth.delete(key);
   for (const [key, { serverId, kind }] of relevant) {
     const s = servers.find((x) => Number(x.serverId) === serverId);
-    const k = (s?.kinds?.[kind] ?? null);
-    const serverName = (s?.serverName) || `sunucu ${serverId}`;
+    const k = s?.kinds?.[kind] ?? null;
+    const serverName = s?.serverName || `sunucu ${serverId}`;
     const h = _scanHealth.get(key);
     if (k?.ok) {
       if (h?.alerted) {
         const msg =
           `${serverName} ${kindLabel(kind)} listesi yeniden taranabiliyor (${h.fails} başarısız taramadan sonra); ` +
           'otomatik iptal yeniden çalışıyor.';
-        console.warn(`[LongJobCancel] ${serverName} ${kind}: tarama duzeldi (${h.fails} basarisiz taramadan sonra)`);
-        const teams = await notifyTeams(ctx.webhookUrl, scanRecoveredCard({ ...h, serverName }), ctx.red);
-        ctx.doAudit('ok', { phase: 'scan', serverId, serverName, kind, recovered: true, fails: h.fails, since: h.since });
-        pushLog({ serverId, serverName, kind, outcome: 'scan_recovered', ok: true, message: msg, teams }, ctx.tickLog);
+        console.warn(
+          `[LongJobCancel] ${serverName} ${kind}: tarama duzeldi (${h.fails} basarisiz taramadan sonra)`,
+        );
+        const teams = await notifyTeams(
+          ctx.webhookUrl,
+          scanRecoveredCard({ ...h, serverName }),
+          ctx.red,
+        );
+        ctx.doAudit('ok', {
+          phase: 'scan',
+          serverId,
+          serverName,
+          kind,
+          recovered: true,
+          fails: h.fails,
+          since: h.since,
+        });
+        pushLog(
+          { serverId, serverName, kind, outcome: 'scan_recovered', ok: true, message: msg, teams },
+          ctx.tickLog,
+        );
       }
       _scanHealth.delete(key);
       continue;
@@ -721,9 +826,17 @@ async function scanHealthStep(cfg, servers, ctx) {
     const err = ctx.red(
       !s
         ? "Bu AWX sunucusu Portal'da tanımlı değil — izin listesindeki template'leri taranamıyor."
-        : (k?.error) || s.error || 'taranamadı',
+        : k?.error || s.error || 'taranamadı',
     );
-    const cur = h || { serverId, kind, serverName, fails: 0, since: iso(), alerted: false, lastError: null };
+    const cur = h || {
+      serverId,
+      kind,
+      serverName,
+      fails: 0,
+      since: iso(),
+      alerted: false,
+      lastError: null,
+    };
     cur.fails += 1;
     cur.lastError = err;
     cur.serverName = serverName;
@@ -734,10 +847,24 @@ async function scanHealthStep(cfg, servers, ctx) {
       const msg =
         `OTOMATİK İPTAL ÇALIŞMIYOR: ${serverName} ${kindLabel(kind)} listesi ${cur.fails} taramadır (${cur.since} tarihinden beri) ` +
         `okunamıyor — izin listesindeki işler eşiği aşsa da KESİLMEZ. Sebep: ${err}`;
-      console.error(`[LongJobCancel] ${serverName} ${kind}: ${cur.fails} taramadir taranamiyor - otomatik iptal CALISMIYOR:`, err);
+      console.error(
+        `[LongJobCancel] ${serverName} ${kind}: ${cur.fails} taramadir taranamiyor - otomatik iptal CALISMIYOR:`,
+        err,
+      );
       const teams = await notifyTeams(ctx.webhookUrl, scanFailCard(cur, cfg), ctx.red);
-      ctx.doAudit('fail', { phase: 'scan', serverId, serverName, kind, fails: cur.fails, since: cur.since, error: err });
-      pushLog({ serverId, serverName, kind, outcome: 'scan_failed', ok: false, message: msg, teams }, ctx.tickLog);
+      ctx.doAudit('fail', {
+        phase: 'scan',
+        serverId,
+        serverName,
+        kind,
+        fails: cur.fails,
+        since: cur.since,
+        error: err,
+      });
+      pushLog(
+        { serverId, serverName, kind, outcome: 'scan_failed', ok: false, message: msg, teams },
+        ctx.tickLog,
+      );
     }
   }
 }
@@ -776,7 +903,11 @@ async function _runCycle(scan, opts = {}) {
   const t0 = Date.now();
   const red = makeRedactor(runner);
   const cfg = await readConfig(db);
-  const jobs = (() => { if (Array.isArray(scan?.jobs)) return scan.jobs; if (Array.isArray(scan)) return scan; return []; })();
+  const jobs = (() => {
+    if (Array.isArray(scan?.jobs)) return scan.jobs;
+    if (Array.isArray(scan)) return scan;
+    return [];
+  })();
   const servers = Array.isArray(scan?.servers) ? scan.servers : null;
   // "Listede yok" sonucu YALNIZ o sunucu+tur HATASIZ ve KIRPILMADAN tarandiysa dikkate
   // alinir; o zaman bile isin durumu okunmadan "bitti" SAYILMAZ (ofset sayfa kaymasi).
@@ -784,7 +915,7 @@ async function _runCycle(scan, opts = {}) {
   const isComplete = (serverId, kind) => {
     if (!servers) return true;
     const s = servers.find((x) => Number(x.serverId) === Number(serverId));
-    return !!(s?.complete?.[normKind(kind)]);
+    return !!s?.complete?.[normKind(kind)];
   };
   const completeForKey = (key) => {
     const [sid, kind] = key.split(':');
@@ -828,7 +959,9 @@ async function _runCycle(scan, opts = {}) {
     if (rec.seenTicks < VERIFY_TICKS || rec.alarmed) return;
     rec.alarmed = true;
     const elapsed =
-      rec.job.ageMinutes != null ? rec.job.ageMinutes + (nowMs - Date.parse(rec.requestedAt)) / 60000 : null;
+      rec.job.ageMinutes != null
+        ? rec.job.ageMinutes + (nowMs - Date.parse(rec.requestedAt)) / 60000
+        : null;
     const msg = rec.alreadyTerminal
       ? `AWX iptal isteğine "zaten bitmiş" dedi (${rec.requestedAt}) ama iş ${rec.seenTicks} taramadır hâlâ ` +
         `'${cur.status || '?'}' — İPTAL EDİLMEDİ; iş AWX'te çalışmaya devam ediyor.`
@@ -839,7 +972,11 @@ async function _runCycle(scan, opts = {}) {
     );
     const teams = await notifyTeams(
       webhookUrl,
-      notStoppedCard(cur, elapsed, cfg, { requestedAt: rec.requestedAt, ticks: rec.seenTicks, alreadyTerminal: rec.alreadyTerminal }),
+      notStoppedCard(cur, elapsed, cfg, {
+        requestedAt: rec.requestedAt,
+        ticks: rec.seenTicks,
+        alreadyTerminal: rec.alreadyTerminal,
+      }),
       red,
     );
     doAudit('fail', {
@@ -850,7 +987,10 @@ async function _runCycle(scan, opts = {}) {
       awxSaidTerminal: !!rec.alreadyTerminal,
       message: msg,
     });
-    pushLog({ ...logFields(cur), outcome: 'still_running', ok: false, message: msg, teams }, tickLog);
+    pushLog(
+      { ...logFields(cur), outcome: 'still_running', ok: false, message: msg, teams },
+      tickLog,
+    );
   };
 
   // 1) IPTAL SONRASI DOGRULAMA + TEMIZLIK (onceki tick'lerin kayitlari)
@@ -894,7 +1034,8 @@ async function _runCycle(scan, opts = {}) {
         _done.delete(key);
         _failed.delete(key);
         _attempts.delete(key);
-        const shown = st.status === 'missing' ? "AWX'te bulunamadı (silinmiş)" : `AWX durumu '${st.status}'`;
+        const shown =
+          st.status === 'missing' ? "AWX'te bulunamadı (silinmiş)" : `AWX durumu '${st.status}'`;
         if (rec && !rec.alreadyTerminal) {
           const canceled = st.status === 'canceled';
           pushLog(
@@ -903,7 +1044,14 @@ async function _runCycle(scan, opts = {}) {
               outcome: canceled ? 'stopped' : 'finished',
               ok: true,
               awxStatus: st.status,
-              message: (() => { if (canceled) { if (rec.alarmed) return `İş sonunda durdu (${shown}; daha önce "durmadı" alarmı verilmişti).`; return `İptal doğrulandı: ${shown}.`; } return `İş iptalle değil kendiliğinden bitti (${shown}) — iptal isteğinin etkisi doğrulanamadı.`; })(),
+              message: (() => {
+                if (canceled) {
+                  if (rec.alarmed)
+                    return `İş sonunda durdu (${shown}; daha önce "durmadı" alarmı verilmişti).`;
+                  return `İptal doğrulandı: ${shown}.`;
+                }
+                return `İş iptalle değil kendiliğinden bitti (${shown}) — iptal isteğinin etkisi doğrulanamadı.`;
+              })(),
             },
             tickLog,
           );
@@ -941,7 +1089,9 @@ async function _runCycle(scan, opts = {}) {
     if (sigs) {
       if (_tokenSigSeen) {
         const ids = new Set([...sigs.keys(), ..._tokenSigSeen.keys()]);
-        for (const id of ids) if ((sigs.get(id) || null) !== (_tokenSigSeen.get(id) || null)) resetFailuresForServer(id);
+        for (const id of ids)
+          if ((sigs.get(id) || null) !== (_tokenSigSeen.get(id) || null))
+            resetFailuresForServer(id);
       }
       for (const key of _storeUnreadableKeys) {
         _failed.delete(key);
@@ -990,8 +1140,11 @@ async function _runCycle(scan, opts = {}) {
     }
     const d = shouldCancel(cfg, job, nowMs);
     if (!d.cancel) {
-      let reason =
-        (() => { if (d.decision === 'below_threshold') return `Eşik altında (${Math.floor(d.elapsedMinutes)} dk < ${cfg.thresholdMinutes} dk${d.basis === 'created' ? ', kuyruk süresi' : ''})`; return REASON_TEXT[d.decision] || d.reason; })();
+      let reason = (() => {
+        if (d.decision === 'below_threshold')
+          return `Eşik altında (${Math.floor(d.elapsedMinutes)} dk < ${cfg.thresholdMinutes} dk${d.basis === 'created' ? ', kuyruk süresi' : ''})`;
+        return REASON_TEXT[d.decision] || d.reason;
+      })();
       if (
         d.decision === 'not_listed' &&
         job.parentWorkflowJobId &&
@@ -1010,23 +1163,27 @@ async function _runCycle(scan, opts = {}) {
         ...entry,
         decision: 'cancel_failed',
         reason:
-          `İPTAL EDİLEMEDİ${f.httpStatus ? (" (AWX " + f.httpStatus + ")") : ''}: ${f.message}` +
+          `İPTAL EDİLEMEDİ${f.httpStatus ? ' (AWX ' + f.httpStatus + ')' : ''}: ${f.message}` +
           (f.hint ? ` — ${f.hint}` : '') +
           " — tekrar denenmiyor; iş son taramada AWX'te hâlâ aktif",
       });
       continue;
     }
-    const wfNote = normKind(job.kind) === 'workflow' ? ' (AWX workflow’un çalışan alt işlerini de keser)' : '';
+    const wfNote =
+      normKind(job.kind) === 'workflow' ? ' (AWX workflow’un çalışan alt işlerini de keser)' : '';
     if (dryRun) {
       // Kuru calistirma token'i COZMEZ; gercek taramada hangi kimlikle (ya da hic) denenecegini soyler.
       let authNote = '';
       try {
-        const da = await tokenStore.describeCancelAuth(db, job.serverId, { server: serverInfo(runner, job.serverId) });
+        const da = await tokenStore.describeCancelAuth(db, job.serverId, {
+          server: serverInfo(runner, job.serverId),
+        });
         if (da.state === 'token') authNote = ` — iptal ${da.owner} token'ıyla yapılır`;
         else if (da.state === 'mismatch') {
           authNote = ` — AMA iptal token'ı (${da.owner || '?'}) bu AWX adresi için kaydedilmedi: gerçek taramada iptal DENENMEZ`;
         } else if (da.state === 'unreadable') {
-          authNote = ' — AMA iptal token kaydı OKUNAMADI: gerçek taramada iptal DENENMEZ (ölçülemedi)';
+          authNote =
+            ' — AMA iptal token kaydı OKUNAMADI: gerçek taramada iptal DENENMEZ (ölçülemedi)';
         }
       } catch {
         authNote = '';
@@ -1051,24 +1208,49 @@ async function _runCycle(scan, opts = {}) {
       const r = await runner.cancelJobOnServer(
         job.serverId,
         job.jobId,
-        viaToken ? { kind: normKind(job.kind), authToken: auth.token, authOwner: auth.owner } : { kind: normKind(job.kind) },
+        viaToken
+          ? { kind: normKind(job.kind), authToken: auth.token, authOwner: auth.owner }
+          : { kind: normKind(job.kind) },
       );
       const via = viaToken ? { via: 'cancel_token', tokenOwner: auth.owner } : { via: 'service' };
       const viaNote = viaToken ? `; ${viaPhrase(auth.owner)}` : '';
       if (r?.alreadyTerminal) {
         // Yine de dogrulanir: is sonraki taramalarda hala aktif gorunurse alarm (vekil 405'i).
-        _done.set(key, { job: entry, requestedAt: iso(), seenTicks: 0, alarmed: false, alreadyTerminal: true });
-        const how = (() => { if (r.stateVerified) return `AWX durumu '${r.awxStatus}'`; return `AWX 405/409; işin durumu okunamadı${r.stateError ? (" (" + red(r.stateError) + ")") : ''} — sonraki taramalarda doğrulanacak`; })();
+        _done.set(key, {
+          job: entry,
+          requestedAt: iso(),
+          seenTicks: 0,
+          alarmed: false,
+          alreadyTerminal: true,
+        });
+        const how = (() => {
+          if (r.stateVerified) return `AWX durumu '${r.awxStatus}'`;
+          return `AWX 405/409; işin durumu okunamadı${r.stateError ? ' (' + red(r.stateError) + ')' : ''} — sonraki taramalarda doğrulanacak`;
+        })();
         entries.push({
           ...entry,
           decision: 'already_terminal',
           reason: `Zaten bitmiş (${how}) — iş kendisi bitmiş ya da başka bir Portal örneği iptal etmiş olabilir; alarm yok`,
         });
         results.push({ job, ok: true, skipped: 'zaten bitmis' });
-        pushLog({ ...logFields(job), outcome: 'already_terminal', ok: true, message: `AWX: iş zaten bitmiş (${how})` }, tickLog);
+        pushLog(
+          {
+            ...logFields(job),
+            outcome: 'already_terminal',
+            ok: true,
+            message: `AWX: iş zaten bitmiş (${how})`,
+          },
+          tickLog,
+        );
         continue;
       }
-      _done.set(key, { job: entry, requestedAt: iso(), seenTicks: 0, alarmed: false, alreadyTerminal: false });
+      _done.set(key, {
+        job: entry,
+        requestedAt: iso(),
+        seenTicks: 0,
+        alarmed: false,
+        alreadyTerminal: false,
+      });
       console.warn(
         `[LongJobCancel] ${job.serverName} ${kindLabel(job.kind)} #${job.jobId} (${job.jobName}) ${Math.floor(d.elapsedMinutes)} dk -> IPTAL ISTENDI (AWX kabul etti; sonraki taramada dogrulanacak)` +
           (viaToken ? ` - iptal token'i sahibi ${auth.owner}` : ''),
@@ -1083,7 +1265,9 @@ async function _runCycle(scan, opts = {}) {
         thresholdMinutes: cfg.thresholdMinutes,
         ...via,
         credential: viaToken ? viaText(auth.owner) : SERVICE_VIA_TEXT,
-        ...(normKind(job.kind) === 'workflow' ? { childJobsCanceledToo: true, note: WORKFLOW_CHILDREN_NOTE } : {}),
+        ...(normKind(job.kind) === 'workflow'
+          ? { childJobsCanceledToo: true, note: WORKFLOW_CHILDREN_NOTE }
+          : {}),
       });
       const teams = await notifyTeams(webhookUrl, teamsCard(job, d.elapsedMinutes, cfg, via), red);
       entries.push({
@@ -1093,7 +1277,14 @@ async function _runCycle(scan, opts = {}) {
       });
       results.push({ job, ok: true, elapsedMinutes: d.elapsedMinutes, ...via });
       pushLog(
-        { ...logFields(job), outcome: 'requested', ok: true, message: `İptal istendi (AWX 202)${wfNote}${viaNote}`, teams, ...via },
+        {
+          ...logFields(job),
+          outcome: 'requested',
+          ok: true,
+          message: `İptal istendi (AWX 202)${wfNote}${viaNote}`,
+          teams,
+          ...via,
+        },
         tickLog,
       );
     } catch (e) {
@@ -1105,27 +1296,35 @@ async function _runCycle(scan, opts = {}) {
       // cozulemeyen / adresi degismis token da kalici. Yeni token kaydedilince (ya da silinince)
       // yeniden denenir. Token KAYDI okunamadiysa iptal DENENMEDI: gecici (kayit okununca yeniden).
       const viaToken = !!(auth?.via === 'cancel_token');
-      const tokenUndecryptable = !!(e?.tokenUndecryptable);
-      const tokenServerMismatch = !!(e?.tokenServerMismatch);
-      const tokenStoreUnreadable = !!(e?.tokenStoreUnreadable);
-      const tokenInvalid = !!(e?.cancelTokenInvalid) || (viaToken && e?.status === 401);
-      const tokenOwner = (() => { if (viaToken) return auth.owner; if (tokenUndecryptable || tokenServerMismatch) return e.owner || null; return null; })();
-      const via =
-        (() => { if (viaToken || tokenUndecryptable || tokenServerMismatch) return { via: 'cancel_token', tokenOwner }; if (tokenStoreUnreadable) return { via: 'unknown', tokenOwner: null }; return { via: 'service' }; })();
-      const permanent = !!(e?.permanent) || tokenInvalid || tokenUndecryptable || tokenServerMismatch;
+      const tokenUndecryptable = !!e?.tokenUndecryptable;
+      const tokenServerMismatch = !!e?.tokenServerMismatch;
+      const tokenStoreUnreadable = !!e?.tokenStoreUnreadable;
+      const tokenInvalid = !!e?.cancelTokenInvalid || (viaToken && e?.status === 401);
+      const tokenOwner = (() => {
+        if (viaToken) return auth.owner;
+        if (tokenUndecryptable || tokenServerMismatch) return e.owner || null;
+        return null;
+      })();
+      const via = (() => {
+        if (viaToken || tokenUndecryptable || tokenServerMismatch)
+          return { via: 'cancel_token', tokenOwner };
+        if (tokenStoreUnreadable) return { via: 'unknown', tokenOwner: null };
+        return { via: 'service' };
+      })();
+      const permanent = !!e?.permanent || tokenInvalid || tokenUndecryptable || tokenServerMismatch;
       if (tokenStoreUnreadable) _storeUnreadableKeys.add(key);
       else _storeUnreadableKeys.delete(key);
       const exhausted = permanent || n + 1 >= MAX_ATTEMPTS;
-      const msg = red((e?.message) || String(e));
-      const httpStatus = (e?.status) || null;
+      const msg = red(e?.message || String(e));
+      const httpStatus = e?.status || null;
       const info = {
         reason: msg,
         permanent,
         httpStatus,
         attempts: n + 1,
-        jobState: (e?.jobState) || null,
-        awxStatus: (e?.awxStatus) || null,
-        portalUser: (e?.portalUser) || null,
+        jobState: e?.jobState || null,
+        awxStatus: e?.awxStatus || null,
+        portalUser: e?.portalUser || null,
         createdByPortal: typeof e?.createdByPortal === 'boolean' ? e.createdByPortal : null,
         tokenInvalid,
         tokenUndecryptable,
@@ -1136,19 +1335,27 @@ async function _runCycle(scan, opts = {}) {
       const hint = shortHint(info);
       if (tokenInvalid) {
         await tokenStore.markInvalid(db, job.serverId, {
-          tokenEnc: (auth?.entry?.tokenEnc ?? null),
+          tokenEnc: auth?.entry?.tokenEnc ?? null,
           httpStatus: 401,
           message: msg,
         });
       }
       if (exhausted) {
         _attempts.set(key, MAX_ATTEMPTS); // bir daha denenmesin
-        _failed.set(key, { job: entry, message: msg, permanent, httpStatus, jobState: info.jobState, hint, at: iso() });
+        _failed.set(key, {
+          job: entry,
+          message: msg,
+          permanent,
+          httpStatus,
+          jobState: info.jobState,
+          hint,
+          at: iso(),
+        });
       }
       console.error(
         `[LongJobCancel] ${job.serverName} ${kindLabel(job.kind)} #${job.jobId} IPTAL EDILEMEDI ` +
           `(deneme ${n + 1}/${MAX_ATTEMPTS}${permanent ? ', KALICI' : ''}; is durumu: ${info.jobState || 'son taramada aktif'}` +
-          `${via.via === 'cancel_token' ? ("; iptal token'i sahibi " + (tokenOwner || '?')) : ''}` +
+          `${via.via === 'cancel_token' ? "; iptal token'i sahibi " + (tokenOwner || '?') : ''}` +
           `${tokenInvalid ? '; IPTAL TOKENI GECERSIZ' : ''}${tokenUndecryptable ? '; IPTAL TOKENI COZULEMEDI' : ''}` +
           `${tokenServerMismatch ? '; IPTAL TOKENI BU AWX ADRESI ICIN KAYDEDILMEDI' : ''}` +
           `${tokenStoreUnreadable ? '; IPTAL TOKEN KAYDI OKUNAMADI, iptal denenmedi' : ''}):`,
@@ -1167,7 +1374,15 @@ async function _runCycle(scan, opts = {}) {
         jobState: info.jobState,
         createdByPortal: info.createdByPortal,
         ...via,
-        credential: (() => { if (tokenStoreUnreadable) return 'İptal denenmedi: iptal token kaydı okunamadı (kimlik ölçülemedi)'; if (tokenServerMismatch) return `İptal denenmedi: ${tokenOwner || '?'} token'ı bu AWX adresi için kaydedilmedi`; if (tokenUndecryptable) return `İptal denenmedi: ${tokenOwner || '?'} token'ı çözülemedi`; if (via.via === 'cancel_token') return `İptal ${tokenOwner || '?'} token'ıyla denendi`; return "İptal Portal'ın AWX servis kullanıcısıyla denendi"; })(),
+        credential: (() => {
+          if (tokenStoreUnreadable)
+            return 'İptal denenmedi: iptal token kaydı okunamadı (kimlik ölçülemedi)';
+          if (tokenServerMismatch)
+            return `İptal denenmedi: ${tokenOwner || '?'} token'ı bu AWX adresi için kaydedilmedi`;
+          if (tokenUndecryptable) return `İptal denenmedi: ${tokenOwner || '?'} token'ı çözülemedi`;
+          if (via.via === 'cancel_token') return `İptal ${tokenOwner || '?'} token'ıyla denendi`;
+          return "İptal Portal'ın AWX servis kullanıcısıyla denendi";
+        })(),
         ...(tokenInvalid ? { tokenInvalid: true } : {}),
         ...(tokenUndecryptable ? { tokenUndecryptable: true } : {}),
         ...(tokenServerMismatch ? { tokenServerMismatch: true } : {}),
@@ -1182,7 +1397,7 @@ async function _runCycle(scan, opts = {}) {
         ...entry,
         decision: 'cancel_failed',
         reason:
-          `İPTAL EDİLEMEDİ${httpStatus ? (" (AWX " + httpStatus + ")") : ''}: ${msg}` +
+          `İPTAL EDİLEMEDİ${httpStatus ? ' (AWX ' + httpStatus + ')' : ''}: ${msg}` +
           (hint ? ` — ${hint}` : '') +
           (exhausted ? ' — tekrar denenmiyor' : ` — tekrar denenecek (${n + 1}/${MAX_ATTEMPTS})`),
       });
@@ -1211,7 +1426,9 @@ async function _runCycle(scan, opts = {}) {
   entries.forEach((e) => {
     e.problem = PROBLEM_DECISIONS.has(e.decision);
   });
-  entries.sort((a, b) => decisionRank(a) - decisionRank(b) || (b.ageMinutes || 0) - (a.ageMinutes || 0));
+  entries.sort(
+    (a, b) => decisionRank(a) - decisionRank(b) || (b.ageMinutes || 0) - (a.ageMinutes || 0),
+  );
   const counts = {};
   for (const e of entries) counts[e.decision] = (counts[e.decision] || 0) + 1;
   const st = getConfigState();
@@ -1234,7 +1451,13 @@ async function _runCycle(scan, opts = {}) {
           kinds: Object.fromEntries(
             Object.entries(s.kinds || {}).map(([k, v]) => [
               k,
-              { ok: !!v.ok, error: v.error ? red(v.error) : null, count: v.count || 0, pages: v.pages || 0, truncated: !!v.truncated },
+              {
+                ok: !!v.ok,
+                error: v.error ? red(v.error) : null,
+                count: v.count || 0,
+                pages: v.pages || 0,
+                truncated: !!v.truncated,
+              },
             ]),
           ),
         }))
@@ -1289,15 +1512,28 @@ function recordSkippedTick(reason) {
  * BITMIYORSA hicbir is iptal edilmez — bu da SESSIZ bir ariza: tarama basina TEK Teams
  * karti + denetim 'fail' (phase 'watcher') + durum kaydi.
  */
-async function reportWatcherStuck({ startedAt, skips, intervalSeconds = 300, webhookUrl, audit, runner } = {}) {
+async function reportWatcherStuck({
+  startedAt,
+  skips,
+  intervalSeconds = 300,
+  webhookUrl,
+  audit,
+  runner,
+} = {}) {
   if (!startedAt || _stuckAlertFor === startedAt) return null;
   _stuckAlertFor = startedAt;
   const red = makeRedactor(runner);
   const msg =
     `Uzun süren iş taraması ${startedAt} tarihinden beri bitmedi; ${skips} tarama atlandı — ` +
     'bu sürede hiçbir iş iptal edilmiyor (OTOMATİK İPTAL ÇALIŞMIYOR).';
-  console.error(`[LongJobCancel] tarama bitmiyor (baslangic ${startedAt}, ${skips} tick atlandi) - otomatik iptal CALISMIYOR`);
-  const teams = await notifyTeams(webhookUrl, watcherStuckCard(startedAt, skips, intervalSeconds), red);
+  console.error(
+    `[LongJobCancel] tarama bitmiyor (baslangic ${startedAt}, ${skips} tick atlandi) - otomatik iptal CALISMIYOR`,
+  );
+  const teams = await notifyTeams(
+    webhookUrl,
+    watcherStuckCard(startedAt, skips, intervalSeconds),
+    red,
+  );
   try {
     if (audit) {
       audit('awx_long_job_cancel', {
@@ -1332,8 +1568,10 @@ function getStatus() {
   // Iptal token'lari: yalniz "tanimli / sahip / son dogrulama / GECERSIZ mi" (DEGER YOK).
   const tv = tokenStore.statusView();
   const nameOf = (id) => {
-    const s = Array.isArray(_lastTick?.servers) ? _lastTick.servers.find((x) => Number(x.serverId) === id) : null;
-    return (s?.serverName) || `sunucu ${id}`;
+    const s = Array.isArray(_lastTick?.servers)
+      ? _lastTick.servers.find((x) => Number(x.serverId) === id)
+      : null;
+    return s?.serverName || `sunucu ${id}`;
   };
   const cancelTokens = {
     measured: tv.measured,
@@ -1375,7 +1613,10 @@ const NO_ADMIN_MESSAGE =
 function withDeadline(p, ms, label) {
   let t = null;
   const limit = new Promise((_, reject) => {
-    t = setTimeout(() => reject(new Error(`${label || 'AWX'} ${Math.round(ms / 1000)} sn içinde yanıt vermedi`)), ms);
+    t = setTimeout(
+      () => reject(new Error(`${label || 'AWX'} ${Math.round(ms / 1000)} sn içinde yanıt vermedi`)),
+      ms,
+    );
     if (typeof t.unref === 'function') t.unref();
   });
   return Promise.race([Promise.resolve(p), limit]).finally(() => clearTimeout(t));
@@ -1398,7 +1639,10 @@ const tokenNoAdminMessage = (owner) =>
  * tanimliysa yetki o token'in SAHIBINE gore olculur (otomatik iptal o token'la yapilir).
  * Verilmezse eski davranis (servis kullanicisi).
  */
-async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEADLINE_MS, cancelAuth = null } = {}) {
+async function checkPermissions(
+  templates,
+  { runner, deadlineMs = PERMISSION_DEADLINE_MS, cancelAuth = null } = {},
+) {
   const red = makeRedactor(runner);
   const list = (Array.isArray(templates) ? templates : []).slice(0, PERMISSION_MAX_TEMPLATES);
   const authCache = new Map();
@@ -1419,7 +1663,12 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
   };
   return Promise.all(
     list.map(async (t) => {
-      const base = { serverId: t.serverId, templateId: t.templateId, kind: normKind(t.kind), name: t.name || '' };
+      const base = {
+        serverId: t.serverId,
+        templateId: t.templateId,
+        kind: normKind(t.kind),
+        name: t.name || '',
+      };
       const ar = await authFor(t.serverId);
       if (ar.e?.tokenStoreUnreadable) {
         // Token KAYDI okunamadi: iptalin hangi kimlikle yapilacagi bile OLCULEMEDI (servis
@@ -1431,8 +1680,8 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
           via: 'unknown',
           tokenOwner: null,
           message:
-            "Ölçülemedi: iptal token kaydı OKUNAMADI — iptalin hangi AWX kimliğiyle yapılacağı bilinmiyor (yetki VAR ya da YOK denemez): " +
-            red((ar.e?.message) || String(ar.e)),
+            'Ölçülemedi: iptal token kaydı OKUNAMADI — iptalin hangi AWX kimliğiyle yapılacağı bilinmiyor (yetki VAR ya da YOK denemez): ' +
+            red(ar.e?.message || String(ar.e)),
         };
       }
       if (ar.e) {
@@ -1444,25 +1693,29 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
           tokenScope: 'unknown',
           via: 'cancel_token',
           tokenOwner: ar.e.owner || null,
-          message: `Ölçülemedi (yetki VAR ya da YOK denemez): ${red((ar.e?.message) || String(ar.e))}`,
+          message: `Ölçülemedi (yetki VAR ya da YOK denemez): ${red(ar.e?.message || String(ar.e))}`,
         };
       }
       const auth = ar.a || { via: 'service' };
       const viaToken = auth.via === 'cancel_token';
-      const viaInfo = viaToken ? { via: 'cancel_token', tokenOwner: auth.owner || null } : { via: 'service', tokenOwner: null };
+      const viaInfo = viaToken
+        ? { via: 'cancel_token', tokenOwner: auth.owner || null }
+        : { via: 'service', tokenOwner: null };
       try {
         if (!runner || typeof runner.getTemplateCapabilitiesOnServer !== 'function') {
           throw new Error('yetki okuyucu yok');
         }
         const cap = await withDeadline(
           viaToken
-            ? runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind, { authToken: auth.token })
+            ? runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind, {
+                authToken: auth.token,
+              })
             : runner.getTemplateCapabilitiesOnServer(t.serverId, t.templateId, base.kind),
           deadlineMs,
           'AWX',
         );
         const edit = cap?.capabilities?.edit;
-        const name = base.name || (cap?.name) || '';
+        const name = base.name || cap?.name || '';
         const tokenScope = cap?.tokenScope === 'write' && !viaToken ? 'write' : 'unknown';
         if (edit === true) {
           return {
@@ -1471,10 +1724,22 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
             state: 'admin',
             tokenScope,
             ...viaInfo,
-            message: (() => { if (viaToken) return `Template Admin rolü var (iptal token'ının sahibi ${auth.owner || '?'}). Token kapsamı ÖLÇÜLEMEDİ ` +
-                "(kişisel token): token 'read' kapsamlıysa iptal yine 403 alır."; if (tokenScope === 'write') return "Template Admin rolü var; Portal token'ını kullanıcı/şifreyle kendisi alıyor (AWX varsayılanı 'write' " +
-                  "kapsam). Portal bu template'in işlerini iptal edebilmeli; kesin sonuç ilk iptal denemesinde görülür."; return "Template Admin rolü var. Token kapsamı ÖLÇÜLEMEDİ (statik ya da OAuth2 token): token 'read' kapsamlıysa " +
-                  'iptal yine 403 alır. Süperkullanıcı durumu da ölçülmedi.'; })(),
+            message: (() => {
+              if (viaToken)
+                return (
+                  `Template Admin rolü var (iptal token'ının sahibi ${auth.owner || '?'}). Token kapsamı ÖLÇÜLEMEDİ ` +
+                  "(kişisel token): token 'read' kapsamlıysa iptal yine 403 alır."
+                );
+              if (tokenScope === 'write')
+                return (
+                  "Template Admin rolü var; Portal token'ını kullanıcı/şifreyle kendisi alıyor (AWX varsayılanı 'write' " +
+                  "kapsam). Portal bu template'in işlerini iptal edebilmeli; kesin sonuç ilk iptal denemesinde görülür."
+                );
+              return (
+                "Template Admin rolü var. Token kapsamı ÖLÇÜLEMEDİ (statik ya da OAuth2 token): token 'read' kapsamlıysa " +
+                'iptal yine 403 alır. Süperkullanıcı durumu da ölçülmedi.'
+              );
+            })(),
           };
         }
         if (edit === false) {
@@ -1493,7 +1758,8 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
           state: 'unknown',
           tokenScope,
           ...viaInfo,
-          message: 'Ölçülemedi: AWX yanıtında user_capabilities.edit alanı yok (yetki VAR ya da YOK denemez).',
+          message:
+            'Ölçülemedi: AWX yanıtında user_capabilities.edit alanı yok (yetki VAR ya da YOK denemez).',
         };
       } catch (e) {
         const invalid = viaToken && e?.status === 401;
@@ -1504,7 +1770,7 @@ async function checkPermissions(templates, { runner, deadlineMs = PERMISSION_DEA
           ...viaInfo,
           message: invalid
             ? `Ölçülemedi: İPTAL TOKEN'I GEÇERSİZ (AWX 401; token sahibi ${auth.owner || '?'}) — Admin ekranından yeni token girin.`
-            : `Ölçülemedi (yetki VAR ya da YOK denemez): ${red((e?.message) || String(e))}`,
+            : `Ölçülemedi (yetki VAR ya da YOK denemez): ${red(e?.message || String(e))}`,
         };
       }
     }),
@@ -1517,7 +1783,8 @@ function permissionWarnings(perms) {
   const scopeUnk = (perms || []).filter((p) => p.state === 'admin' && p.tokenScope !== 'write');
   const out = [];
   const label = (p) =>
-    (p.name || `#${p.templateId}`) + (p.via === 'cancel_token' ? ` (iptal token'ı sahibi ${p.tokenOwner || '?'})` : '');
+    (p.name || `#${p.templateId}`) +
+    (p.via === 'cancel_token' ? ` (iptal token'ı sahibi ${p.tokenOwner || '?'})` : '');
   if (no.length) {
     out.push(
       `${no.length} template'te Portal BAŞKALARININ başlattığı işleri iptal EDEMEZ (AWX'te template Admin rolü yok): ` +
@@ -1539,13 +1806,21 @@ function permissionWarnings(perms) {
 /** `?t=1:42:job,2:7:workflow` -> template listesi (adlar yapilandirmadan). */
 function parseTemplateList(q, cfg) {
   const out = [];
-  for (const part of String(q || '').split(',').slice(0, PERMISSION_MAX_TEMPLATES)) {
+  for (const part of String(q || '')
+    .split(',')
+    .slice(0, PERMISSION_MAX_TEMPLATES)) {
     const [sid, tid, kind] = part.split(':');
     const serverId = Number(sid);
     const templateId = Number(tid);
-    if (!(Number.isInteger(serverId) && serverId > 0 && Number.isInteger(templateId) && templateId > 0)) continue;
+    if (!(
+      Number.isInteger(serverId) &&
+      serverId > 0 &&
+      Number.isInteger(templateId) &&
+      templateId > 0
+    ))
+      continue;
     const k = normKind(kind);
-    const known = ((cfg?.templates) || []).find(
+    const known = (cfg?.templates || []).find(
       (t) => t.serverId === serverId && t.templateId === templateId && t.kind === k,
     );
     out.push({ serverId, templateId, kind: k, name: known ? known.name : '' });
@@ -1569,16 +1844,18 @@ function registerRoutes(app, deps = {}) {
   };
   const watcherInfo = () => {
     try {
-      return (getWatcherInfo?.() ?? null);
+      return getWatcherInfo?.() ?? null;
     } catch {
       return null;
     }
   };
   const fail = (res, err, code = 503) =>
-    res.status(code).json({ ok: false, message: makeRedactor(safeRunner())((err?.message) || String(err)) });
+    res
+      .status(code)
+      .json({ ok: false, message: makeRedactor(safeRunner())(err?.message || String(err)) });
   const safeRunner = () => {
     try {
-      return (getRunner?.() ?? null);
+      return getRunner?.() ?? null;
     } catch {
       return null;
     }
@@ -1609,15 +1886,29 @@ function registerRoutes(app, deps = {}) {
     let permissions = [];
     let permissionsError = null;
     try {
-      permissions = await checkPermissions(cfg.templates, { runner: getRunner(), cancelAuth: cancelAuthOf });
+      permissions = await checkPermissions(cfg.templates, {
+        runner: getRunner(),
+        cancelAuth: cancelAuthOf,
+      });
     } catch (err) {
       permissionsError = genericRedact(err.message);
     }
-    res.json({ ok: true, config: cfg, permissions, permissionsError, warnings: permissionWarnings(permissions) });
+    res.json({
+      ok: true,
+      config: cfg,
+      permissions,
+      permissionsError,
+      warnings: permissionWarnings(permissions),
+    });
   });
 
   app.get('/api/ansible/longjob-cancel/status', requireAuth, requireAdmin, (_req, res) => {
-    res.json({ ok: true, ...getStatus(), watcher: watcherInfo(), teamsConfigured: teamsConfigured() });
+    res.json({
+      ok: true,
+      ...getStatus(),
+      watcher: watcherInfo(),
+      teamsConfigured: teamsConfigured(),
+    });
   });
 
   // KURU CALISTIRMA: ayni tarama + ayni karar mantigi; HICBIR iptal (/cancel/) istegi
@@ -1642,17 +1933,25 @@ function registerRoutes(app, deps = {}) {
     }
   });
 
-  app.get('/api/ansible/longjob-cancel/permissions', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const cfg = await readConfig(getDb());
-      const q = typeof req.query?.t === 'string' ? req.query.t : '';
-      const templates = q ? parseTemplateList(q, cfg) : cfg.templates;
-      const permissions = await checkPermissions(templates, { runner: getRunner(), cancelAuth: cancelAuthOf });
-      res.json({ ok: true, permissions, warnings: permissionWarnings(permissions) });
-    } catch (err) {
-      fail(res, err);
-    }
-  });
+  app.get(
+    '/api/ansible/longjob-cancel/permissions',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const cfg = await readConfig(getDb());
+        const q = typeof req.query?.t === 'string' ? req.query.t : '';
+        const templates = q ? parseTemplateList(q, cfg) : cfg.templates;
+        const permissions = await checkPermissions(templates, {
+          runner: getRunner(),
+          cancelAuth: cancelAuthOf,
+        });
+        res.json({ ok: true, permissions, warnings: permissionWarnings(permissions) });
+      } catch (err) {
+        fail(res, err);
+      }
+    },
+  );
 
   // Ekranin template listesi: job + workflow template'leri (sunucu basina ok/error).
   app.get('/api/ansible/longjob-cancel/templates', requireAuth, requireAdmin, async (_req, res) => {
@@ -1663,10 +1962,20 @@ function registerRoutes(app, deps = {}) {
       const out = await Promise.all(
         servers.map(async (s) => {
           try {
-            const templates = await withDeadline(runner.listCancelableTemplatesForServer(s), TEMPLATE_LIST_DEADLINE_MS, s.name);
+            const templates = await withDeadline(
+              runner.listCancelableTemplatesForServer(s),
+              TEMPLATE_LIST_DEADLINE_MS,
+              s.name,
+            );
             return { serverId: s.id, serverName: s.name, ok: true, templates };
           } catch (err) {
-            return { serverId: s.id, serverName: s.name, ok: false, error: red(err.message), templates: [] };
+            return {
+              serverId: s.id,
+              serverName: s.name,
+              ok: false,
+              error: red(err.message),
+              templates: [],
+            };
           }
         }),
       );
@@ -1682,13 +1991,15 @@ function registerRoutes(app, deps = {}) {
   // yazilir ('awx_long_job_cancel_token'). Govde anahtari `token`: genel mutasyon
   // denetimi (auditMutations) onu zaten [REDACTED] yazar; deger URL'de TASINMAZ.
   const reqUser = (req) => {
-    const u = (req?.session?.user || req?.user) || {};
+    const u = req?.session?.user || req?.user || {};
     return String(u.username || 'admin').slice(0, 150);
   };
   const serverOf = (id) => {
     const r = safeRunner();
     try {
-      return typeof r?.getServers === 'function' ? r.getServers().find((s) => Number(s.id) === Number(id)) || null : null;
+      return typeof r?.getServers === 'function'
+        ? r.getServers().find((s) => Number(s.id) === Number(id)) || null
+        : null;
     } catch {
       return null;
     }
@@ -1701,12 +2012,16 @@ function registerRoutes(app, deps = {}) {
     safeAudit(req, 'awx_long_job_cancel_token', { result, detail: JSON.stringify(detail) });
   const verifierFor = (sid) => (tok) => {
     const r = getRunner();
-    if (!r || typeof r.whoAmIWithTokenOnServer !== 'function') throw new Error('token doğrulayıcı yok');
+    if (!r || typeof r.whoAmIWithTokenOnServer !== 'function')
+      throw new Error('token doğrulayıcı yok');
     return withDeadline(r.whoAmIWithTokenOnServer(sid, tok), PERMISSION_DEADLINE_MS, 'AWX');
   };
-  const errCode = (err) => (Number.isInteger(err?.code) && err.code >= 400 && err.code < 600 ? err.code : 503);
+  const errCode = (err) =>
+    Number.isInteger(err?.code) && err.code >= 400 && err.code < 600 ? err.code : 503;
   const tokenView = async (srv) => {
-    const v = await tokenStore.publicView(getDb(), [{ id: srv.id, name: srv.name, url: srv.url, apiBase: srv.apiBase }]);
+    const v = await tokenStore.publicView(getDb(), [
+      { id: srv.id, name: srv.name, url: srv.url, apiBase: srv.apiBase },
+    ]);
     return v.servers.find((x) => x.serverId === Number(srv.id)) || null;
   };
 
@@ -1725,87 +2040,128 @@ function registerRoutes(app, deps = {}) {
     }
   });
 
-  app.put('/api/ansible/longjob-cancel/tokens/:serverId', requireAuth, requireAdmin, async (req, res) => {
-    const sid = parseSid(req);
-    const srv = sid == null ? null : serverOf(sid);
-    if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const candidate = typeof body.token === 'string' ? body.token : null;
-    try {
-      const out = await tokenStore.saveToken(getDb(), {
-        serverId: sid,
-        server: srv,
-        token: candidate,
-        by: reqUser(req),
-        verify: verifierFor(sid),
-      });
-      resetFailuresForServer(sid);
-      tokenAudit(req, 'ok', {
-        op: 'set',
-        serverId: sid,
-        serverName: srv.name,
-        owner: out.owner,
-        ownerIsSuperuser: out.ownerIsSuperuser,
-        ...(out.replacedOwner ? { replacedOwner: out.replacedOwner } : {}),
-      });
-      res.json({ ok: true, owner: out.owner, ownerIsSuperuser: out.ownerIsSuperuser, token: await tokenView(srv) });
-    } catch (err) {
-      const message = makeRedactor(safeRunner())(
-        tokenStore.redact((err?.message) || String(err), candidate ? [candidate.trim(), candidate] : []),
-      );
-      tokenAudit(req, 'fail', {
-        op: 'set',
-        serverId: sid,
-        serverName: srv.name,
-        reason: (err?.reason) || null,
-        httpStatus: (err?.httpStatus) || null,
-        error: message,
-      });
-      res.status(errCode(err)).json({ ok: false, reason: (err?.reason) || null, message });
-    }
-  });
+  app.put(
+    '/api/ansible/longjob-cancel/tokens/:serverId',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const sid = parseSid(req);
+      const srv = sid == null ? null : serverOf(sid);
+      if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const candidate = typeof body.token === 'string' ? body.token : null;
+      try {
+        const out = await tokenStore.saveToken(getDb(), {
+          serverId: sid,
+          server: srv,
+          token: candidate,
+          by: reqUser(req),
+          verify: verifierFor(sid),
+        });
+        resetFailuresForServer(sid);
+        tokenAudit(req, 'ok', {
+          op: 'set',
+          serverId: sid,
+          serverName: srv.name,
+          owner: out.owner,
+          ownerIsSuperuser: out.ownerIsSuperuser,
+          ...(out.replacedOwner ? { replacedOwner: out.replacedOwner } : {}),
+        });
+        res.json({
+          ok: true,
+          owner: out.owner,
+          ownerIsSuperuser: out.ownerIsSuperuser,
+          token: await tokenView(srv),
+        });
+      } catch (err) {
+        const message = makeRedactor(safeRunner())(
+          tokenStore.redact(
+            err?.message || String(err),
+            candidate ? [candidate.trim(), candidate] : [],
+          ),
+        );
+        tokenAudit(req, 'fail', {
+          op: 'set',
+          serverId: sid,
+          serverName: srv.name,
+          reason: err?.reason || null,
+          httpStatus: err?.httpStatus || null,
+          error: message,
+        });
+        res.status(errCode(err)).json({ ok: false, reason: err?.reason || null, message });
+      }
+    },
+  );
 
-  app.delete('/api/ansible/longjob-cancel/tokens/:serverId', requireAuth, requireAdmin, async (req, res) => {
-    const sid = parseSid(req);
-    if (sid == null) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu.' });
-    const srv = serverOf(sid);
-    const serverName = srv ? srv.name : `sunucu ${sid}`;
-    try {
-      const out = await tokenStore.deleteToken(getDb(), sid);
-      resetFailuresForServer(sid);
-      tokenAudit(req, 'ok', { op: 'delete', serverId: sid, serverName, owner: out.owner, deleted: out.deleted });
-      res.json({ ok: true, deleted: out.deleted });
-    } catch (err) {
-      const message = makeRedactor(safeRunner())((err?.message) || String(err));
-      tokenAudit(req, 'fail', { op: 'delete', serverId: sid, serverName, error: message });
-      res.status(errCode(err)).json({ ok: false, message });
-    }
-  });
+  app.delete(
+    '/api/ansible/longjob-cancel/tokens/:serverId',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const sid = parseSid(req);
+      if (sid == null) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu.' });
+      const srv = serverOf(sid);
+      const serverName = srv ? srv.name : `sunucu ${sid}`;
+      try {
+        const out = await tokenStore.deleteToken(getDb(), sid);
+        resetFailuresForServer(sid);
+        tokenAudit(req, 'ok', {
+          op: 'delete',
+          serverId: sid,
+          serverName,
+          owner: out.owner,
+          deleted: out.deleted,
+        });
+        res.json({ ok: true, deleted: out.deleted });
+      } catch (err) {
+        const message = makeRedactor(safeRunner())(err?.message || String(err));
+        tokenAudit(req, 'fail', { op: 'delete', serverId: sid, serverName, error: message });
+        res.status(errCode(err)).json({ ok: false, message });
+      }
+    },
+  );
 
-  app.post('/api/ansible/longjob-cancel/tokens/:serverId/verify', requireAuth, requireAdmin, async (req, res) => {
-    const sid = parseSid(req);
-    const srv = sid == null ? null : serverOf(sid);
-    if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
-    try {
-      const out = await tokenStore.verifyStored(getDb(), sid, { by: reqUser(req), verify: verifierFor(sid), server: srv });
-      const result = { ...out, message: out.message ? makeRedactor(safeRunner())(out.message) : null };
-      if (out.ok) resetFailuresForServer(sid);
-      tokenAudit(req, out.ok ? 'ok' : 'fail', {
-        op: 'verify',
-        serverId: sid,
-        serverName: srv.name,
-        owner: out.owner,
-        measured: out.measured,
-        httpStatus: out.httpStatus,
-        message: result.message,
-      });
-      res.json({ ok: true, result, token: await tokenView(srv) });
-    } catch (err) {
-      const message = makeRedactor(safeRunner())((err?.message) || String(err));
-      tokenAudit(req, 'fail', { op: 'verify', serverId: sid, serverName: srv.name, error: message });
-      res.status(errCode(err)).json({ ok: false, message });
-    }
-  });
+  app.post(
+    '/api/ansible/longjob-cancel/tokens/:serverId/verify',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const sid = parseSid(req);
+      const srv = sid == null ? null : serverOf(sid);
+      if (!srv) return res.status(404).json({ ok: false, message: 'AWX sunucusu bulunamadı.' });
+      try {
+        const out = await tokenStore.verifyStored(getDb(), sid, {
+          by: reqUser(req),
+          verify: verifierFor(sid),
+          server: srv,
+        });
+        const result = {
+          ...out,
+          message: out.message ? makeRedactor(safeRunner())(out.message) : null,
+        };
+        if (out.ok) resetFailuresForServer(sid);
+        tokenAudit(req, out.ok ? 'ok' : 'fail', {
+          op: 'verify',
+          serverId: sid,
+          serverName: srv.name,
+          owner: out.owner,
+          measured: out.measured,
+          httpStatus: out.httpStatus,
+          message: result.message,
+        });
+        res.json({ ok: true, result, token: await tokenView(srv) });
+      } catch (err) {
+        const message = makeRedactor(safeRunner())(err?.message || String(err));
+        tokenAudit(req, 'fail', {
+          op: 'verify',
+          serverId: sid,
+          serverName: srv.name,
+          error: message,
+        });
+        res.status(errCode(err)).json({ ok: false, message });
+      }
+    },
+  );
 }
 
 /**
@@ -1817,7 +2173,8 @@ function resetFailuresForServer(serverId) {
   const prefix = `${Number(serverId)}:`;
   for (const k of [..._failed.keys()]) if (k.startsWith(prefix)) _failed.delete(k);
   for (const k of [..._attempts.keys()]) if (k.startsWith(prefix)) _attempts.delete(k);
-  for (const k of [..._storeUnreadableKeys]) if (k.startsWith(prefix)) _storeUnreadableKeys.delete(k);
+  for (const k of [..._storeUnreadableKeys])
+    if (k.startsWith(prefix)) _storeUnreadableKeys.delete(k);
 }
 
 function _reset() {

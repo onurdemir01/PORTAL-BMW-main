@@ -8,13 +8,15 @@ import React from 'react';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { InformationCircleIcon } from '@heroicons/react/24/outline';
 
-export type SourceKey = 'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic' | 'yuktesti';
+export type SourceKey =
+  'console' | 'audit' | 'cis' | 'spa' | 'api' | 'inventory' | 'rvpstatic' | 'yuktesti';
 
 const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }> = {
   console: {
     job: 'nginx_console_fetch',
     what: 'sunuculardan alınan konfigürasyon dökümü (/sw/BMW_PORTAL/nginx_console/raw)',
-    refresh: 'Instances sekmesinden sunucu seçip “Seçilileri yenile”; tüm filo için AWX’te gece koşusu.',
+    refresh:
+      'Instances sekmesinden sunucu seçip “Seçilileri yenile”; tüm filo için AWX’te gece koşusu.',
   },
   audit: {
     job: 'nginx_audit',
@@ -55,7 +57,8 @@ const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }>
   yuktesti: {
     job: 'nginx_loadtest.yml (Portal’ın başlattığı koşular)',
     what: 'her koşunun /sw’deki sonuç dizini (nginx_loadtest/<koşu>: k6 istemci özeti, hedefin CPU kaydı ve access log satırları); Portal tablolarında adım adım değerlendirme',
-    refresh: 'Zamanlanmış tarama yok — yeni ölçüm için “Yeni koşu”. Sonuçlar iş bitince Portal tarafından okunur.',
+    refresh:
+      'Zamanlanmış tarama yok — yeni ölçüm için “Yeni koşu”. Sonuçlar iş bitince Portal tarafından okunur.',
   },
 };
 
@@ -65,17 +68,40 @@ const SOURCES: Record<SourceKey, { job: string; what: string; refresh: string }>
  *   - null   → "tarama kaydı yok" (uyarı METİN rengiyle; --status-warning ikon tonudur, 1.97:1 idi)
  *   - undefined → tarih hiç yazılmaz (sekmenin kendi özetinde zaten var)
  */
-export function SourceNote({ source, scanDate, extra }: { source: SourceKey; scanDate?: string | null; extra?: React.ReactNode }) {
+export function SourceNote({
+  source,
+  scanDate,
+  extra,
+}: {
+  source: SourceKey;
+  scanDate?: string | null;
+  extra?: React.ReactNode;
+}) {
   const s = SOURCES[source];
   return (
     <div
       className="flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px]"
-      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+      style={{
+        borderColor: 'var(--border-subtle)',
+        background: 'var(--bg-elevated)',
+        color: 'var(--text-muted)',
+      }}
     >
       <InformationCircleIcon className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
       <div>
-        <b style={{ color: 'var(--text-secondary)' }}>Kaynak:</b> <span className="font-mono">{s.job}</span> — {s.what}
-        {scanDate ? <> · <GuncellemeRozeti etiket="son tarama" tarih={scanDate} /></> : scanDate === null ? <> · <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span></> : null}
+        <b style={{ color: 'var(--text-secondary)' }}>Kaynak:</b>{' '}
+        <span className="font-mono">{s.job}</span> — {s.what}
+        {scanDate ? (
+          <>
+            {' '}
+            · <GuncellemeRozeti etiket="son tarama" tarih={scanDate} />
+          </>
+        ) : scanDate === null ? (
+          <>
+            {' '}
+            · <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span>
+          </>
+        ) : null}
         <span> · Tazelemek için: {s.refresh}</span>
         {extra ? <> · {extra}</> : null}
       </div>

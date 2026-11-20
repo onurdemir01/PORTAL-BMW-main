@@ -428,7 +428,10 @@ describe('WorkloadStep - discovery', () => {
       fireEvent.click(suzEtkin);
     });
     expect(screen.getByRole('button', { name: /replica 0 \(1\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Süz (1)' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Süz (1)' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   it('select-all only picks visible rows, never hidden or unscalable ones', async () => {
@@ -902,8 +905,11 @@ describe('WorkloadStep - hedef bazli secim', () => {
 
     const t = onSubmit.mock.calls[0][0].targets;
     expect(t.length === 2, `varsayilanda ${t.length} hedef — ikisi de dahil olmaliydi`).toBe(true);
-    expect(t.some((x: { cluster: string }) => x.cluster === 'c1') &&
-        t.some((x: { cluster: string }) => x.cluster === 'c2'), 'her iki cluster dahil degil',).toBe(true);
+    expect(
+      t.some((x: { cluster: string }) => x.cluster === 'c1') &&
+        t.some((x: { cluster: string }) => x.cluster === 'c2'),
+      'her iki cluster dahil degil',
+    ).toBe(true);
   });
 
   it('HB2 bir cluster HARIC tutulabiliyor', async () => {
@@ -933,7 +939,10 @@ describe('WorkloadStep - hedef bazli secim', () => {
     fireEvent.click(screen.getByText('Devam'));
 
     const k = onSubmit.mock.calls[0][0].clusterWorkloadKinds;
-    expect(!k.some((x: { cluster: string }) => x.cluster === 'c2'), 'haric tutulan cluster tip haritasinda hala var',).toBe(true);
+    expect(
+      !k.some((x: { cluster: string }) => x.cluster === 'c2'),
+      'haric tutulan cluster tip haritasinda hala var',
+    ).toBe(true);
   });
 
   it('HB4 sayac CARPIM degil GERCEK hedef sayisi gosteriyor', async () => {
@@ -957,7 +966,6 @@ describe('WorkloadStep - hedef bazli secim', () => {
     expect(screen.queryByRole('button', { name: 'c1' })).not.toBeInTheDocument();
   });
 });
-
 
 // ── PR-0: YOKLAMA RITMI ─────────────────────────────────────────────────────
 //
@@ -1228,7 +1236,7 @@ describe('WorkloadStep - kaynak temizligi (PR-G)', () => {
       fs.readFileSync('src/components/scalex/ScaleXPage.tsx', 'utf8'),
     );
     // NamespaceStep `onSubmit` blogu
-    const nsBlok = src.slice(src.indexOf('<NamespaceStep'), src.indexOf('{step === \'workloads\''));
+    const nsBlok = src.slice(src.indexOf('<NamespaceStep'), src.indexOf("{step === 'workloads'"));
     expect(nsBlok).toMatch(/setWorkloads\(\[\]\)/);
     expect(nsBlok).toMatch(/setWorkloadsFetchedAt\(null\)/);
     // ScopeStep `onSubmit` blogu

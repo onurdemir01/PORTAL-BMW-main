@@ -1341,7 +1341,8 @@ function initServerHub(app) {
     if (plan === confirmed)
       return res.status(400).json({
         ok: false,
-        message: 'Önce plan (plan: true) ya da onaylı uygulama (confirmed: true) gerekli — ikisi birden olmaz.',
+        message:
+          'Önce plan (plan: true) ya da onaylı uygulama (confirmed: true) gerekli — ikisi birden olmaz.',
       });
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
@@ -1385,7 +1386,9 @@ function initServerHub(app) {
         if (tj && confirmed) {
           const kilit = await surenIsKilidi(host, gen, jvm);
           if (kilit)
-            return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+            return res
+              .status(409)
+              .json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
         }
         const k = xmlKapatKapisi(tj ? _autoStart.uygulaJvm(h, tj) : tj, { host, jvm, gen });
         if (k) redler.push(k.message);

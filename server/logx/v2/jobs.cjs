@@ -62,10 +62,7 @@ function extractLogxResultFromArtifacts(rawArtifacts) {
   }
 
   // Common AWX set_stats shape: artifacts.data.logx_result
-  if (
-    artifacts.data?.logx_result &&
-    typeof artifacts.data.logx_result === 'object'
-  ) {
+  if (artifacts.data?.logx_result && typeof artifacts.data.logx_result === 'object') {
     return artifacts.data.logx_result;
   }
 
@@ -98,8 +95,7 @@ function summarizeArtifactKeys(rawArtifacts) {
   const dataKeys =
     artifacts.data && typeof artifacts.data === 'object' ? Object.keys(artifacts.data) : [];
   const statsDataKeys =
-    artifacts.ansible_stats?.data &&
-    typeof artifacts.ansible_stats.data === 'object'
+    artifacts.ansible_stats?.data && typeof artifacts.ansible_stats.data === 'object'
       ? Object.keys(artifacts.ansible_stats.data)
       : [];
 
@@ -157,11 +153,31 @@ function assertTemplateMatchesRegistry(tpl, serverId, templateId, expectedPlaybo
 // yaziyordu; tek koruma playbook karsilastirmasiydi ve o da fail-open'di (template
 // okunamazsa / kayitta playbook yolu bossa gecerdi). Alternatif sunucuda artik iki taraf
 // da OKUNMUS ve AYNI playbook dosyasi olmali; degilse is baslamaz ve neden soylenir.
-function assertAlternatifAyniIs(tpl, alternative, configuredServerId, templateId, expectedPlaybookPath, keyName) {
-  const beklenen = path.basename(String(expectedPlaybookPath || '')).trim().toLowerCase();
-  const gercek = tpl ? path.basename(String(tpl.playbook || '')).trim().toLowerCase() : '';
+function assertAlternatifAyniIs(
+  tpl,
+  alternative,
+  configuredServerId,
+  templateId,
+  expectedPlaybookPath,
+  keyName,
+) {
+  const beklenen = path
+    .basename(String(expectedPlaybookPath || ''))
+    .trim()
+    .toLowerCase();
+  const gercek = tpl
+    ? path
+        .basename(String(tpl.playbook || ''))
+        .trim()
+        .toLowerCase()
+    : '';
   if (beklenen && gercek && beklenen === gercek) return;
-  const neden = (() => { if (!beklenen) return `"${keyName}" kaydında playbook yolu boş`; if (!tpl) return `AWX ${alternative} üzerindeki template okunamadı`; if (!gercek) return `AWX ${alternative} üzerindeki template'in playbook alanı boş`; return `AWX ${alternative} üzerindeki template başka bir playbook koşuyor ('${gercek}', beklenen '${beklenen}')`; })();
+  const neden = (() => {
+    if (!beklenen) return `"${keyName}" kaydında playbook yolu boş`;
+    if (!tpl) return `AWX ${alternative} üzerindeki template okunamadı`;
+    if (!gercek) return `AWX ${alternative} üzerindeki template'in playbook alanı boş`;
+    return `AWX ${alternative} üzerindeki template başka bir playbook koşuyor ('${gercek}', beklenen '${beklenen}')`;
+  })();
   throw Object.assign(
     new Error(
       `Template #${templateId} kayıtlı AWX ${configuredServerId} üzerinde çalıştırılamadı; AWX ${alternative} üzerindeki ` +
@@ -304,7 +320,14 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
       );
       awxServerId = alternative;
       const tpl = await readTemplateSummary(awxServerId, templateId);
-      assertAlternatifAyniIs(tpl, alternative, configuredServerId, templateId, registryRow.playbookPath, keyName);
+      assertAlternatifAyniIs(
+        tpl,
+        alternative,
+        configuredServerId,
+        templateId,
+        registryRow.playbookPath,
+        keyName,
+      );
       assertTemplateMatchesRegistry(tpl, awxServerId, templateId, registryRow.playbookPath);
       assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, keyName);
       launch = await runner.launchJobOnServer(awxServerId, templateId, extraVars, limit, requester);

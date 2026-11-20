@@ -1,4 +1,4 @@
-import { safeJson } from "./http";
+import { safeJson } from './http';
 // src/api/dynatraceApi.ts — Dynatrace MANAGED MCP proxy API client
 //
 // Not: Kurumdaki sunucu dynatrace-managed-mcp — DQL/Grail yok; yetenekler:
@@ -63,16 +63,34 @@ export interface DtEntity {
 
 export const dynatraceApi = {
   health: (): Promise<DtHealth> => {
-    if (_healthCache && Date.now() - _healthCacheAt < HEALTH_TTL) return Promise.resolve(_healthCache);
-    return fetch(`${BASE}/health`).then(safeJson).then(d => {
-      _healthCache = d; _healthCacheAt = Date.now(); return d;
-    });
+    if (_healthCache && Date.now() - _healthCacheAt < HEALTH_TTL)
+      return Promise.resolve(_healthCache);
+    return fetch(`${BASE}/health`)
+      .then(safeJson)
+      .then((d) => {
+        _healthCache = d;
+        _healthCacheAt = Date.now();
+        return d;
+      });
   },
 
-  environments: (): Promise<{ ok: boolean; aliases?: string[]; defaultAlias?: string; text?: string; message?: string }> =>
-    fetch(`${BASE}/environments`).then(safeJson),
+  environments: (): Promise<{
+    ok: boolean;
+    aliases?: string[];
+    defaultAlias?: string;
+    text?: string;
+    message?: string;
+  }> => fetch(`${BASE}/environments`).then(safeJson),
 
-  problems: (opts: { env?: string; status?: string; host?: string; refresh?: boolean } = {}): Promise<{ ok: boolean; problems?: DtProblem[]; text?: string; source?: string; message?: string }> => {
+  problems: (
+    opts: { env?: string; status?: string; host?: string; refresh?: boolean } = {},
+  ): Promise<{
+    ok: boolean;
+    problems?: DtProblem[];
+    text?: string;
+    source?: string;
+    message?: string;
+  }> => {
     const qs = new URLSearchParams();
     if (opts.env) qs.set('env', opts.env);
     if (opts.status) qs.set('status', opts.status);
@@ -81,10 +99,26 @@ export const dynatraceApi = {
     return fetch(`${BASE}/problems?${qs}`).then(safeJson);
   },
 
-  problemDetails: (id: string, env?: string): Promise<{ ok: boolean; text?: string; message?: string }> =>
-    fetch(`${BASE}/problems/${encodeURIComponent(id)}${env ? `?env=${encodeURIComponent(env)}` : ''}`).then(safeJson),
+  problemDetails: (
+    id: string,
+    env?: string,
+  ): Promise<{ ok: boolean; text?: string; message?: string }> =>
+    fetch(
+      `${BASE}/problems/${encodeURIComponent(id)}${env ? `?env=${encodeURIComponent(env)}` : ''}`,
+    ).then(safeJson),
 
-  events: (opts: { env?: string; from?: string; to?: string; eventType?: string; host?: string; tag?: string; managementZone?: string; refresh?: boolean } = {}): Promise<{ ok: boolean; events?: DtEvent[]; text?: string; message?: string }> => {
+  events: (
+    opts: {
+      env?: string;
+      from?: string;
+      to?: string;
+      eventType?: string;
+      host?: string;
+      tag?: string;
+      managementZone?: string;
+      refresh?: boolean;
+    } = {},
+  ): Promise<{ ok: boolean; events?: DtEvent[]; text?: string; message?: string }> => {
     const qs = new URLSearchParams();
     if (opts.env) qs.set('env', opts.env);
     if (opts.from) qs.set('from', opts.from);
@@ -97,7 +131,20 @@ export const dynatraceApi = {
     return fetch(`${BASE}/events?${qs}`).then(safeJson);
   },
 
-  entities: (opts: { name?: string; host?: string; type?: string; tag?: string; managementZone?: string; env?: string }): Promise<{ ok: boolean; text?: string; entitySelector?: string; entities?: DtEntity[]; message?: string }> => {
+  entities: (opts: {
+    name?: string;
+    host?: string;
+    type?: string;
+    tag?: string;
+    managementZone?: string;
+    env?: string;
+  }): Promise<{
+    ok: boolean;
+    text?: string;
+    entitySelector?: string;
+    entities?: DtEntity[];
+    message?: string;
+  }> => {
     const qs = new URLSearchParams();
     if (opts.name) qs.set('name', opts.name);
     if (opts.host) qs.set('host', opts.host);
@@ -108,24 +155,43 @@ export const dynatraceApi = {
     return fetch(`${BASE}/entities?${qs}`).then(safeJson);
   },
 
-  entityDetails: (id: string, env?: string): Promise<{ ok: boolean; text?: string; message?: string }> =>
-    fetch(`${BASE}/entities/${encodeURIComponent(id)}${env ? `?env=${encodeURIComponent(env)}` : ''}`).then(safeJson),
+  entityDetails: (
+    id: string,
+    env?: string,
+  ): Promise<{ ok: boolean; text?: string; message?: string }> =>
+    fetch(
+      `${BASE}/entities/${encodeURIComponent(id)}${env ? `?env=${encodeURIComponent(env)}` : ''}`,
+    ).then(safeJson),
 
-  metrics: (opts: { search?: string; env?: string } = {}): Promise<{ ok: boolean; text?: string; message?: string }> => {
+  metrics: (
+    opts: { search?: string; env?: string } = {},
+  ): Promise<{ ok: boolean; text?: string; message?: string }> => {
     const qs = new URLSearchParams();
     if (opts.search) qs.set('search', opts.search);
     if (opts.env) qs.set('env', opts.env);
     return fetch(`${BASE}/metrics?${qs}`).then(safeJson);
   },
 
-  metricsQuery: (body: { metricSelector: string; from?: string; to?: string; entitySelector?: string; env?: string }): Promise<{ ok: boolean; text?: string; message?: string }> =>
+  metricsQuery: (body: {
+    metricSelector: string;
+    from?: string;
+    to?: string;
+    entitySelector?: string;
+    env?: string;
+  }): Promise<{ ok: boolean; text?: string; message?: string }> =>
     fetch(`${BASE}/metrics/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
-  logs: (body: { query?: string; from?: string; to?: string; limit?: number; env?: string }): Promise<{ ok: boolean; text?: string; message?: string }> =>
+  logs: (body: {
+    query?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    env?: string;
+  }): Promise<{ ok: boolean; text?: string; message?: string }> =>
     fetch(`${BASE}/logs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

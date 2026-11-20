@@ -71,12 +71,21 @@ const MAX_HEDEF = 8;
 // bekci node-sozlesme.test.js CHN11). Bilinmeyen kaynak -> grup olculemedi (fail-closed).
 //   envFrom  : kapta acik yok, envFrom kaynagi bu adi KESIN tanimliyor (referans)
 //   belirsiz : kapta acik yok, envFrom kaynagi okunamadi (olculemedi)
-const NODE_KAYNAKLARI = Object.freeze(['literal', 'secretRef', 'configMapRef', 'alanRef', 'envFrom', 'belirsiz', 'yok']);
+const NODE_KAYNAKLARI = Object.freeze([
+  'literal',
+  'secretRef',
+  'configMapRef',
+  'alanRef',
+  'envFrom',
+  'belirsiz',
+  'yok',
+]);
 const REFERANS_KAYNAKLARI = Object.freeze(['secretRef', 'configMapRef', 'alanRef', 'envFrom']);
 // ASLA degismeyen komsu degiskenler (kullanici 2026-11-02: "hep sabit kalacak"). Betikteki
 // YASAK_ENV_RE ile AYNI kaynak metin (CHN11). Portal bu adlari tasiyan NODEALLOW/NODEENV
 // satirini da kabul etmez (savunma derinligi: betik hatasi plana sizmasin).
-const YASAK_ENV_RE = /^(HTTPS?_PROXY|NO_PROXY|ADAPTER_ADDR|EVENT_API_URL|ADDRESS_API_URL_.*|CHAIN_ID.*)$/i;
+const YASAK_ENV_RE =
+  /^(HTTPS?_PROXY|NO_PROXY|ADAPTER_ADDR|EVENT_API_URL|ADDRESS_API_URL_.*|CHAIN_ID.*)$/i;
 
 // Bilete baglanmis acik talebin ust yas siniri (PS2): onay suresi + betik butcesi (30 dk) +
 // pay (60 dk). Asilip is sonucu okunamazsa talep OLCULEMEDI / TAKILDI kapanir (basari sayilmaz).
@@ -101,7 +110,10 @@ const OCO_ACIK_BEKLEME_DK = ONAY_DK;
  * @returns {number}
  */
 function ocoSonBaslamaMs({ basMs, sonMs, talepMs }) {
-  return Math.min(sonMs - OCO_SON_PAY_DK * 60000, Math.max(basMs, talepMs) + OCO_ACIK_BEKLEME_DK * 60000);
+  return Math.min(
+    sonMs - OCO_SON_PAY_DK * 60000,
+    Math.max(basMs, talepMs) + OCO_ACIK_BEKLEME_DK * 60000,
+  );
 }
 
 /**
@@ -115,8 +127,17 @@ function ocoPencereKarari({ basMs, sonMs, simdiMs, smartKapali }) {
   if (!Number.isFinite(basMs) || !Number.isFinite(sonMs) || !Number.isFinite(simdiMs)) {
     return { kod: 'gecersiz', sonBaslamaMs };
   }
-  const kod =
-    (() => { if (simdiMs > sonMs) return 'gecti'; if (sonMs - OCO_SON_PAY_DK * 60000 <= basMs) return 'kisa'; if (simdiMs > sonBaslamaMs) return 'son_pay'; if (basMs - simdiMs > OCO_UFUK_GUN * 86400000) return 'ufuk'; if (simdiMs < basMs) { if (smartKapali) return 'bekle_kapali'; return 'bekle'; } return 'acik'; })();
+  const kod = (() => {
+    if (simdiMs > sonMs) return 'gecti';
+    if (sonMs - OCO_SON_PAY_DK * 60000 <= basMs) return 'kisa';
+    if (simdiMs > sonBaslamaMs) return 'son_pay';
+    if (basMs - simdiMs > OCO_UFUK_GUN * 86400000) return 'ufuk';
+    if (simdiMs < basMs) {
+      if (smartKapali) return 'bekle_kapali';
+      return 'bekle';
+    }
+    return 'acik';
+  })();
   return { kod, sonBaslamaMs };
 }
 

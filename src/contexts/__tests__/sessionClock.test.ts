@@ -26,7 +26,10 @@ const DK = 60_000;
 // Ayni surecte iki "sekme": birinin gonderdigi digerine gider (BroadcastChannel gibi
 // gonderen KENDI mesajini almaz).
 function kanalCifti(): [SaatKanali, SaatKanali] {
-  const dinleyiciler: [Set<(m: SaatMesaji) => void>, Set<(m: SaatMesaji) => void>] = [new Set(), new Set()];
+  const dinleyiciler: [Set<(m: SaatMesaji) => void>, Set<(m: SaatMesaji) => void>] = [
+    new Set(),
+    new Set(),
+  ];
   const yap = (ben: 0 | 1): SaatKanali => ({
     gonder: (m) => dinleyiciler[ben === 0 ? 1 : 0].forEach((fn) => fn(structuredClone(m))),
     dinle: (fn) => {
@@ -47,7 +50,13 @@ function sunucu(baslangic: number) {
     if (u === '/api/auth/session/extend' && init?.method === 'POST') idle = now + 60 * DK;
     if (u.startsWith('/api/auth/session')) {
       return new Response(
-        JSON.stringify({ ok: true, serverNow: now, idleExpiresAt: idle, absoluteExpiresAt: abs, warnSeconds: 120 }),
+        JSON.stringify({
+          ok: true,
+          serverNow: now,
+          idleExpiresAt: idle,
+          absoluteExpiresAt: abs,
+          warnSeconds: 120,
+        }),
         { status: 200 },
       );
     }
@@ -103,7 +112,12 @@ describe('sessionClock', () => {
     const istek = vi.fn(async () => {
       const idle = now + 5 * DK;
       return new Response(
-        JSON.stringify({ ok: true, serverNow: now, idleExpiresAt: idle, absoluteExpiresAt: 12 * 60 * DK }),
+        JSON.stringify({
+          ok: true,
+          serverNow: now,
+          idleExpiresAt: idle,
+          absoluteExpiresAt: 12 * 60 * DK,
+        }),
         { status: 200 },
       );
     });
@@ -150,19 +164,28 @@ describe('sessionClock', () => {
 
   it('SC6 mutlak sinir once geliyorsa uzatilamaz', () => {
     const base = { surum: 1, bilinen: true, warnSeconds: 120, remember: false };
-    expect(uyariHesapla({ ...base, idleExpiresAt: 1000_000, absoluteExpiresAt: 2000_000 })).toEqual({
-      bitis: 1000_000,
-      uyariAni: 1000_000 - 120_000,
-      uzatilabilir: true,
-    });
-    expect(uyariHesapla({ ...base, idleExpiresAt: 2000_000, absoluteExpiresAt: 1500_000 }).uzatilabilir).toBe(false);
+    expect(uyariHesapla({ ...base, idleExpiresAt: 1000_000, absoluteExpiresAt: 2000_000 })).toEqual(
+      {
+        bitis: 1000_000,
+        uyariAni: 1000_000 - 120_000,
+        uzatilabilir: true,
+      },
+    );
+    expect(
+      uyariHesapla({ ...base, idleExpiresAt: 2000_000, absoluteExpiresAt: 1500_000 }).uzatilabilir,
+    ).toBe(false);
   });
 
   it('SC7 sunucu saati 10 dk ileriyse istemci saatine cevrilir', async () => {
     const istek = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ ok: true, serverNow: 10 * DK, idleExpiresAt: 70 * DK, absoluteExpiresAt: 100 * DK }),
+          JSON.stringify({
+            ok: true,
+            serverNow: 10 * DK,
+            idleExpiresAt: 70 * DK,
+            absoluteExpiresAt: 100 * DK,
+          }),
           { status: 200 },
         ),
     );
@@ -172,7 +195,14 @@ describe('sessionClock', () => {
   });
 
   it('SC8 bitis sebebi: bitis aninda/sonrasinda cikarilir, oncesinde cikarilmaz', () => {
-    const d = { surum: 1, bilinen: true, idleExpiresAt: 1_000_000, absoluteExpiresAt: 5_000_000, warnSeconds: 120, remember: false };
+    const d = {
+      surum: 1,
+      bilinen: true,
+      idleExpiresAt: 1_000_000,
+      absoluteExpiresAt: 5_000_000,
+      warnSeconds: 120,
+      remember: false,
+    };
     expect(bitisSebebi(d, 1_000_000)).toBe('idle');
     expect(bitisSebebi(d, 1_001_000)).toBe('idle');
     expect(bitisSebebi(d, 995_000)).toBe('idle'); // 5 sn pay: saat sapmasi
@@ -217,7 +247,12 @@ describe('sessionClock', () => {
     const istek = vi.fn(
       async () =>
         new Response(
-          JSON.stringify({ ok: true, serverNow, idleExpiresAt: 5_000_000, absoluteExpiresAt: 9_000_000 }),
+          JSON.stringify({
+            ok: true,
+            serverNow,
+            idleExpiresAt: 5_000_000,
+            absoluteExpiresAt: 9_000_000,
+          }),
           { status: 200 },
         ),
     );

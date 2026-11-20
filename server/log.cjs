@@ -63,7 +63,9 @@ function reportOnce(message, err) {
   try {
     // Orijinal stderr'e yazilir: sarmalayiciyi kullanmak sonsuz donguye girerdi.
     const rawMsg = err?.message || err;
-    process.stderr.write(`[log] dosya loglamasi devre disi: ${message}: ${kimlikMaskele(String(rawMsg))}\n`);
+    process.stderr.write(
+      `[log] dosya loglamasi devre disi: ${message}: ${kimlikMaskele(String(rawMsg))}\n`,
+    );
   } catch {
     /* stderr de yoksa yapacak bir sey yok */
   }

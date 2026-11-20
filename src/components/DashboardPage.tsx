@@ -197,7 +197,12 @@ function StatusRow({
   // varsayilani (icerik kadar genislik, ortali metin) eski satir gorunumunu bozmasin.
   if (onClick) {
     return (
-      <button type="button" className="flex items-start gap-2 py-2 cursor-pointer w-full text-left" onClick={onClick} style={cizgi}>
+      <button
+        type="button"
+        className="flex items-start gap-2 py-2 cursor-pointer w-full text-left"
+        onClick={onClick}
+        style={cizgi}
+      >
         {icerik}
       </button>
     );
@@ -283,12 +288,18 @@ const DashboardPage: React.FC = () => {
     if (dtHealth?.mcpConnected && canViewPage('Performance')) {
       dynatraceApi
         .problems()
-        .then((p) => { if (alive) setDtProblems(p.problems ?? []); })
+        .then((p) => {
+          if (alive) setDtProblems(p.problems ?? []);
+        })
         .catch(() => {});
     } else {
-      void Promise.resolve().then(() => { if (alive) setDtProblems([]); });
+      void Promise.resolve().then(() => {
+        if (alive) setDtProblems([]);
+      });
     }
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [dtHealth, canViewPage]);
 
   const visibleTools = OTHER_TOOLS.filter((l) => canViewPage(l.pageId));
@@ -315,16 +326,31 @@ const DashboardPage: React.FC = () => {
 
       {/* ── Application Hub aramasi (2026-11-08): uygulama adini yaz, birlesik gorunume git ── */}
       {canViewPage('AppHub') && (
-        <section className="card px-5 py-5 space-y-3" style={{ borderTop: '3px solid var(--ah-hue)' }} aria-label="Uygulama ara">
+        <section
+          className="card px-5 py-5 space-y-3"
+          style={{ borderTop: '3px solid var(--ah-hue)' }}
+          aria-label="Uygulama ara"
+        >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+            <h2
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.1rem',
+                fontWeight: 500,
+                color: 'var(--text-primary)',
+              }}
+            >
               Application <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
             </h2>
             <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
               Uygulamanız ne ve nerede olursa olsun tüm bilgilerine ulaşın
             </span>
           </div>
-          <AramaKutusu ilk="" buyuk={false} onSec={(s) => navigate(`/application-hub?tip=${s.tip}&ad=${encodeURIComponent(s.ad)}`)} />
+          <AramaKutusu
+            ilk=""
+            buyuk={false}
+            onSec={(s) => navigate(`/application-hub?tip=${s.tip}&ad=${encodeURIComponent(s.ad)}`)}
+          />
         </section>
       )}
 
@@ -694,7 +720,6 @@ const DashboardPage: React.FC = () => {
             );
           })}
         </div>
-
       </CardShell>
 
       <HelpModal

@@ -13,7 +13,15 @@ const { chunk } = require('../../util/sql-chunk.cjs');
 
 const DOWNLOAD_TTL_MINUTES = 15;
 
-async function issueDownloadToken({ requestId, username, sessionToken, stagedPath, filename, sizeBytes, isFallback }) {
+async function issueDownloadToken({
+  requestId,
+  username,
+  sessionToken,
+  stagedPath,
+  filename,
+  sizeBytes,
+  isFallback,
+}) {
   const token = crypto.randomBytes(32).toString('hex');
   // size_bytes BIGINT sutunudur; playbook set_stats ham/Jinja string (or. "0", bir dict
   // stringi) emitebilir — dogrudan insert edilirse MSSQL "nvarchar to bigint" hatasi verir
@@ -23,7 +31,17 @@ async function issueDownloadToken({ requestId, username, sessionToken, stagedPat
   await db.query(
     `INSERT INTO logx_v2_downloads (token, request_id, username, session_token, staged_path, filename, size_bytes, is_fallback, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, DATEADD(MINUTE, $9, GETUTCDATE()))`,
-    [token, requestId, username, sessionToken, stagedPath, filename, safeSize, isFallback ? 1 : 0, DOWNLOAD_TTL_MINUTES]
+    [
+      token,
+      requestId,
+      username,
+      sessionToken,
+      stagedPath,
+      filename,
+      safeSize,
+      isFallback ? 1 : 0,
+      DOWNLOAD_TTL_MINUTES,
+    ],
   );
   return { token, expiresInMinutes: DOWNLOAD_TTL_MINUTES };
 }
@@ -38,10 +56,15 @@ async function getDownloadByToken(token) {
 async function getLatestDownloadForRequest(requestId) {
   const { rows } = await db.query(
     `SELECT TOP 1 token, filename, size_bytes, expires_at FROM logx_v2_downloads WHERE request_id = $1 ORDER BY id DESC`,
-    [requestId]
+    [requestId],
   );
   return rows[0]
-    ? { token: rows[0].token, filename: rows[0].filename, sizeBytes: rows[0].size_bytes, expiresAt: rows[0].expires_at }
+    ? {
+        token: rows[0].token,
+        filename: rows[0].filename,
+        sizeBytes: rows[0].size_bytes,
+        expiresAt: rows[0].expires_at,
+      }
     : null;
 }
 
@@ -56,7 +79,7 @@ async function listDownloadsForRequest(requestId) {
     `SELECT token, filename, size_bytes, expires_at, staged_path, is_fallback
      FROM logx_v2_downloads
      WHERE request_id = $1 AND expires_at > GETUTCDATE() ORDER BY id DESC`,
-    [requestId]
+    [requestId],
   );
   const seen = new Set();
   const out = [];
@@ -65,7 +88,10 @@ async function listDownloadsForRequest(requestId) {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
-      token: r.token, filename: r.filename, sizeBytes: r.size_bytes, expiresAt: r.expires_at,
+      token: r.token,
+      filename: r.filename,
+      sizeBytes: r.size_bytes,
+      expiresAt: r.expires_at,
       // Arsiv PAYLASIMLI staging yerine kaynak host'un YEREL yedek dizinine dustuyse
       // portal onu goremeyebilir; indirme ekrani bunu onceden soylesin (eskiden kullanici
       // ancak indirmeye basinca 404 goruyordu).
@@ -80,7 +106,8 @@ async function listDownloadsForRequest(requestId) {
 // ikinci token uretilmesini onler.
 async function listTokenizedPaths(requestId) {
   const { rows } = await db.query(
-    `SELECT staged_path FROM logx_v2_downloads WHERE request_id = $1`, [requestId]
+    `SELECT staged_path FROM logx_v2_downloads WHERE request_id = $1`,
+    [requestId],
   );
   return new Set(rows.map((r) => r.staged_path).filter(Boolean));
 }
@@ -113,13 +140,15 @@ function uzakFallbackDiziniZorunlu() {
       dizin
         ? `LOGX_STAGING_FALLBACK_DIR mutlak bir yol olmali ('/' ile baslar); verilen: '${dizin}'.`
         : 'LogX yedek teslim dizini ayarli degil (LOGX_STAGING_FALLBACK_DIR). Admin > Sistem > ' +
-            'Ortam degiskenlerinden ya da .env\'den uzak hostta yazilabilir mutlak bir dizin verin.',
+            "Ortam degiskenlerinden ya da .env'den uzak hostta yazilabilir mutlak bir dizin verin.",
     ),
     { status: 503, code: 'logx_fallback_dir_unset' },
   );
 }
 function localFallbackDir() {
-  return process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback');
+  return (
+    process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback')
+  );
 }
 
 // GET /api/logx/v2/downloads/:token — requireAuth zaten uygulanmis olmali (index.cjs'de).
@@ -151,22 +180,42 @@ async function handleDownloadRoute(req, res) {
     // Teshis: dosya ne bildirilen yolda ne de portalin staging koklerinde bulunamadi. En sik
     // neden, playbook arsivi kaynak host'un YEREL diskine yaziyor (NFS'e cp yapmiyor) ya da
     // staging koku portal ile paylasilmiyor. Yolu yalnizca sunucu log'una yazariz.
-    console.warn(`[LogXv2] Indirme basarisiz — arsiv bulunamadi. staged_path="${row.staged_path}", ` +
-      `filename="${row.filename}", aranan kokler=[${stagingRoots().join(', ')}]. Playbook arsivi ` +
-      `PAYLASILAN NFS staging dizinine yazmali; kaynak host NFS'e erisemiyorsa portal host'una fetch edilmeli.`);
-    audit.log({ username: currentUsername, role: currentRole, action: 'v2_download', result: 'not_found',
-      detail: `filename=${row.filename} token_prefix=${token.slice(0, 8)}` }).catch(() => {});
+    console.warn(
+      `[LogXv2] Indirme basarisiz — arsiv bulunamadi. staged_path="${row.staged_path}", ` +
+        `filename="${row.filename}", aranan kokler=[${stagingRoots().join(', ')}]. Playbook arsivi ` +
+        `PAYLASILAN NFS staging dizinine yazmali; kaynak host NFS'e erisemiyorsa portal host'una fetch edilmeli.`,
+    );
+    audit
+      .log({
+        username: currentUsername,
+        role: currentRole,
+        action: 'v2_download',
+        result: 'not_found',
+        detail: `filename=${row.filename} token_prefix=${token.slice(0, 8)}`,
+      })
+      .catch(() => {});
     return res.status(404).json({
       ok: false,
-      message: 'Log arşivi portal sunucusunda bulunamadı. Genelde staging dizini (NFS) portal ile paylaşılmıyordur ya da temizlenmiştir. Lütfen tekrar deneyin veya yöneticinize staging mount\'unu kontrol ettirin.',
+      message:
+        "Log arşivi portal sunucusunda bulunamadı. Genelde staging dizini (NFS) portal ile paylaşılmıyordur ya da temizlenmiştir. Lütfen tekrar deneyin veya yöneticinize staging mount'unu kontrol ettirin.",
     });
   }
 
-  await db.query(`UPDATE logx_v2_downloads SET consumed_count = consumed_count + 1 WHERE token = $1`, [token]);
+  await db.query(
+    `UPDATE logx_v2_downloads SET consumed_count = consumed_count + 1 WHERE token = $1`,
+    [token],
+  );
   // Indirme TUKETIMI denetim kaydi (token issuance zaten finalizeIfNeeded'de loglaniyor; bu,
   // dosyanin gercekten kim tarafindan indirildigini hash-zincirli audit'e ekler).
-  audit.log({ username: currentUsername, role: currentRole, action: 'v2_download', result: 'ok',
-    detail: `filename=${row.filename} token_prefix=${token.slice(0, 8)}` }).catch(() => {});
+  audit
+    .log({
+      username: currentUsername,
+      role: currentRole,
+      action: 'v2_download',
+      result: 'ok',
+      detail: `filename=${row.filename} token_prefix=${token.slice(0, 8)}`,
+    })
+    .catch(() => {});
 
   res.download(servePath, row.filename, (err) => {
     if (err && !res.headersSent) {
@@ -225,14 +274,18 @@ function resolveStagedFile({ stagedPath, filename }) {
   for (const c of candidates) {
     try {
       if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
-    } catch { /* erisim hatasi → siradaki aday */ }
+    } catch {
+      /* erisim hatasi → siradaki aday */
+    }
   }
   return null;
 }
 
 async function deleteStagedFile(stagedPath) {
   if (!stagedPath || !isUnderStagingRoot(stagedPath)) return;
-  await fs.promises.unlink(stagedPath).catch(() => { /* zaten silinmis olabilir */ });
+  await fs.promises.unlink(stagedPath).catch(() => {
+    /* zaten silinmis olabilir */
+  });
 }
 
 // Suresi dolmus indirme token'larinin dosyalarini temizler (henuz bir request-expiry
@@ -245,7 +298,7 @@ async function cleanupExpiredDownloads() {
   // kaybolmaz — temizlik 5 dakikada bir kosuyor, bir sonraki tur devam eder.
   const { rows } = await db.query(
     `SELECT TOP (${CLEANUP_BATCH}) token, staged_path FROM logx_v2_downloads
-      WHERE expires_at < GETUTCDATE()`
+      WHERE expires_at < GETUTCDATE()`,
   );
   for (const row of rows) {
     await deleteStagedFile(row.staged_path);
@@ -262,15 +315,26 @@ async function cleanupExpiredDownloads() {
   const tokens = rows.map((r) => r.token);
   for (const parca of chunk(tokens)) {
     await db.query(
-      `DELETE FROM logx_v2_downloads WHERE token IN (${parca.map((_, i) => ("$" + (i + 1))).join(',')})`,
-      parca
+      `DELETE FROM logx_v2_downloads WHERE token IN (${parca.map((_, i) => '$' + (i + 1)).join(',')})`,
+      parca,
     );
   }
   return rows.length;
 }
 
 module.exports = {
-  issueDownloadToken, getDownloadByToken, getLatestDownloadForRequest, handleDownloadRoute,
-  deleteStagedFile, cleanupExpiredDownloads, resolveStagedFile, isUnderStagingRoot, stagingRoots,
-  listDownloadsForRequest, listTokenizedPaths, remoteFallbackDir, uzakFallbackDiziniZorunlu, localFallbackDir,
+  issueDownloadToken,
+  getDownloadByToken,
+  getLatestDownloadForRequest,
+  handleDownloadRoute,
+  deleteStagedFile,
+  cleanupExpiredDownloads,
+  resolveStagedFile,
+  isUnderStagingRoot,
+  stagingRoots,
+  listDownloadsForRequest,
+  listTokenizedPaths,
+  remoteFallbackDir,
+  uzakFallbackDiziniZorunlu,
+  localFallbackDir,
 };

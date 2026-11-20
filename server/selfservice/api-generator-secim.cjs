@@ -100,4 +100,14 @@ function etkinOverrides(detail, overrides) {
   return out;
 }
 
-module.exports = { PLAYBOOK_RE, ALAN, ISLEM_ALANI, ISLEMLER, KAYNAK, apiGeneratorMi, kodBaglama, kodTasarimciAlani, etkinOverrides };
+module.exports = {
+  PLAYBOOK_RE,
+  ALAN,
+  ISLEM_ALANI,
+  ISLEMLER,
+  KAYNAK,
+  apiGeneratorMi,
+  kodBaglama,
+  kodTasarimciAlani,
+  etkinOverrides,
+};

@@ -26,16 +26,39 @@ const KAYNAK = {
 const DEGERLER = { env: 'prod', site: '', channel: 'customers', op_selection: 'rate_limit_change' };
 const Z = '/das-a/a-channel/v0_rate_limit';
 const uc = (o: Record<string, unknown>) => ({
-  conf: 'ORT.CST.REST.A.V1', kok: false, baskaConf: false, sunucu: 12, ip: '50r/s', loc: '', ipFarkli: false,
-  locFarkli: false, ipZone: Z, locZone: '', etkiler: { ip: true, location: false }, ...o,
+  conf: 'ORT.CST.REST.A.V1',
+  kok: false,
+  baskaConf: false,
+  sunucu: 12,
+  ip: '50r/s',
+  loc: '',
+  ipFarkli: false,
+  locFarkli: false,
+  ipZone: Z,
+  locZone: '',
+  etkiler: { ip: true, location: false },
+  ...o,
 });
 const DETAY = {
-  conf: 'ORT.CST.REST.A.V1', kokYol: '/das-a/a-channel/v0', kume: 'customers', toplamSunucu: 12, taramaTarihi: '2026-10-22', zoneBilgisi: true,
-  zoneKirpildi: false, zonelar: { ip: [Z], location: [] }, mod: 'degisiklik' as const, etkilenen: 3,
+  conf: 'ORT.CST.REST.A.V1',
+  kokYol: '/das-a/a-channel/v0',
+  kume: 'customers',
+  toplamSunucu: 12,
+  taramaTarihi: '2026-10-22',
+  zoneBilgisi: true,
+  zoneKirpildi: false,
+  zonelar: { ip: [Z], location: [] },
+  mod: 'degisiklik' as const,
+  etkilenen: 3,
   uclar: [
     uc({ yol: '/das-a/a-channel/v0', kok: true }),
     uc({ yol: '/das-a/a-channel/v0/x', ip: '50r/s / 60r/s', ipFarkli: true, sunucu: 11 }),
-    uc({ yol: '/das-a/a-channel/v0/ping', ip: '', ipZone: '', etkiler: { ip: false, location: false } }),
+    uc({
+      yol: '/das-a/a-channel/v0/ping',
+      ip: '',
+      ipZone: '',
+      etkiler: { ip: false, location: false },
+    }),
     uc({ yol: '/gar/baska/v0', conf: 'GAR.BASKA.V1', baskaConf: true }),
   ],
 };
@@ -44,20 +67,39 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
   beforeEach(() => {
     api.choices.mockReset();
     api.choiceDetails.mockReset();
-    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'ORT.CST.REST.A.V1', label: 'ORT.CST.REST.A.V1  ·  örnek uç /das-a/a-channel/v0' }] });
+    api.choices.mockResolvedValue({
+      ok: true,
+      choices: [
+        { value: 'ORT.CST.REST.A.V1', label: 'ORT.CST.REST.A.V1  ·  örnek uç /das-a/a-channel/v0' },
+      ],
+    });
     api.choiceDetails.mockResolvedValue({ ok: true, detay: DETAY });
   });
 
   it('CD1 seçim yapılınca sağda birlikte etkilenecek uçlar', async () => {
-    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    render(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     const panel = await screen.findByTestId('secim-ayrinti');
-    await waitFor(() => expect(within(panel).getByText('Birlikte etkilenecek API uçları (3)')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(panel).getByText('Birlikte etkilenecek API uçları (3)')).toBeInTheDocument(),
+    );
     expect(within(panel).getByTestId('secim-ayrinti-zone').textContent).toContain(Z);
-    expect(within(panel).getByTestId('secim-ayrinti-kok').textContent).toBe('Kök API: /das-a/a-channel/v0');
+    expect(within(panel).getByTestId('secim-ayrinti-kok').textContent).toBe(
+      'Kök API: /das-a/a-channel/v0',
+    );
     const satirlar = within(panel).getAllByTestId('secim-ayrinti-uc');
     expect(satirlar).toHaveLength(4);
     expect(within(satirlar[0]).getByText('kök')).toBeInTheDocument();
-    expect(satirlar[1].textContent).toContain('IP 50r/s / 60r/s (sunucular arasında farklı) · 11/12 sunucu');
+    expect(satirlar[1].textContent).toContain(
+      'IP 50r/s / 60r/s (sunucular arasında farklı) · 11/12 sunucu',
+    );
     expect(satirlar[2].textContent).toContain('limit yok — etkilenmez');
     expect(within(satirlar[3]).getByText('başka konfigürasyon: GAR.BASKA.V1')).toBeInTheDocument();
     expect(panel.textContent).toContain('customers kümesi');
@@ -65,8 +107,24 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
   });
 
   it('CD2 zone bilgisi yoksa açıkça yazar', async () => {
-    api.choiceDetails.mockResolvedValue({ ok: true, detay: { ...DETAY, zoneBilgisi: false, zonelar: { ip: [], location: [] }, uclar: DETAY.uclar.slice(0, 3) } });
-    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    api.choiceDetails.mockResolvedValue({
+      ok: true,
+      detay: {
+        ...DETAY,
+        zoneBilgisi: false,
+        zonelar: { ip: [], location: [] },
+        uclar: DETAY.uclar.slice(0, 3),
+      },
+    });
+    render(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     const panel = await screen.findByTestId('secim-ayrinti');
     await waitFor(() => expect(panel.textContent).toContain('Envanter zone adını henüz tutmuyor'));
     expect(within(panel).queryByTestId('secim-ayrinti-zone')).toBeNull();
@@ -74,7 +132,15 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
 
   it('CD3 ayrıntı alınamazsa ölçülemedi der', async () => {
     api.choiceDetails.mockResolvedValue({ ok: false, message: 'veritabanı yanıt vermedi' });
-    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    render(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     const uyari = await screen.findByRole('alert');
     expect(uyari.textContent).toContain('ölçülemedi');
     expect(uyari.textContent).toContain('veritabanı yanıt vermedi');
@@ -82,25 +148,57 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
   });
 
   it('CD4 details yoksa / seçim yoksa çağrılmaz; çağrı parametreleri doğru', async () => {
-    const { rerender } = render(<DynamicChoiceSelect id="c" source={{ ...KAYNAK, details: false }} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    const { rerender } = render(
+      <DynamicChoiceSelect
+        id="c"
+        source={{ ...KAYNAK, details: false }}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     await waitFor(() => expect(api.choices).toHaveBeenCalled());
     expect(screen.queryByTestId('secim-ayrinti')).toBeNull();
-    rerender(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="" onChange={vi.fn()} />);
+    rerender(
+      <DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="" onChange={vi.fn()} />,
+    );
     await waitFor(() => expect(api.choices).toHaveBeenCalled());
     expect(screen.queryByTestId('secim-ayrinti')).toBeNull();
     expect(api.choiceDetails).not.toHaveBeenCalled();
-    rerender(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    rerender(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     await screen.findByTestId('secim-ayrinti');
     await waitFor(() =>
-      expect(api.choiceDetails).toHaveBeenCalledWith('nginx-api-gateway-confs', { env: 'prod', site: '', channel: 'customers' }, 'ORT.CST.REST.A.V1'),
+      expect(api.choiceDetails).toHaveBeenCalledWith(
+        'nginx-api-gateway-confs',
+        { env: 'prod', site: '', channel: 'customers' },
+        'ORT.CST.REST.A.V1',
+      ),
     );
   });
 
   it('CD5 okuma modunda "etkilenecek" denmez', async () => {
     api.choiceDetails.mockResolvedValue({ ok: true, detay: { ...DETAY, mod: 'bilgi' } });
-    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    render(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     const panel = await screen.findByTestId('secim-ayrinti');
-    await waitFor(() => expect(panel.textContent).toContain("Bu konfigürasyonun zone'larını paylaşan API uçları (3)"));
+    await waitFor(() =>
+      expect(panel.textContent).toContain("Bu konfigürasyonun zone'larını paylaşan API uçları (3)"),
+    );
     expect(panel.textContent).toContain('Okuma hiçbir şeyi değiştirmez');
     expect(panel.textContent).not.toContain('Birlikte etkilenecek');
   });
@@ -108,8 +206,22 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
   it('CD7 ad ve kök yol ALT ALTA, farklı renkte; seçili değer vurgulu, açık listede seçili satır işaretli', async () => {
     const UZUN = 'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0';
     const KOK = '/digital-onboarding-pb/digital-onboarding-pb/v0/';
-    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'GAR.A', label: 'GAR.A', alt: '/a/v0' }, { value: UZUN, label: UZUN, alt: KOK }] });
-    render(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value={UZUN} onChange={vi.fn()} />);
+    api.choices.mockResolvedValue({
+      ok: true,
+      choices: [
+        { value: 'GAR.A', label: 'GAR.A', alt: '/a/v0' },
+        { value: UZUN, label: UZUN, alt: KOK },
+      ],
+    });
+    render(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value={UZUN}
+        onChange={vi.fn()}
+      />,
+    );
     const secili = await screen.findByTestId('secim-secili');
     await waitFor(() => expect(screen.getByTestId('secim-secili-ad').textContent).toBe(UZUN));
     const alt = screen.getByTestId('secim-secili-alt');
@@ -131,17 +243,36 @@ describe('DynamicChoiceSelect + ChoiceDetailsPanel', () => {
     // Arama kök yolda da çalışır.
     const kutu = screen.getByRole('textbox');
     fireEvent.change(kutu, { target: { value: '/a/v0' } });
-    await waitFor(() => expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['GAR.A/a/v0']));
+    await waitFor(() =>
+      expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['GAR.A/a/v0']),
+    );
   });
 
   it('CD6 zorunlu alan boşken ya da değer listede yokken panel yok, ayrıntı istenmez', async () => {
     const { rerender } = render(
-      <DynamicChoiceSelect id="c" source={KAYNAK} values={{ ...DEGERLER, env: '' }} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />,
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={{ ...DEGERLER, env: '' }}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
     );
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByTestId('secim-ayrinti')).toBeNull();
-    api.choices.mockResolvedValue({ ok: true, choices: [{ value: 'BASKA.V1', label: 'BASKA.V1' }] });
-    rerender(<DynamicChoiceSelect id="c" source={KAYNAK} values={DEGERLER} value="ORT.CST.REST.A.V1" onChange={vi.fn()} />);
+    api.choices.mockResolvedValue({
+      ok: true,
+      choices: [{ value: 'BASKA.V1', label: 'BASKA.V1' }],
+    });
+    rerender(
+      <DynamicChoiceSelect
+        id="c"
+        source={KAYNAK}
+        values={DEGERLER}
+        value="ORT.CST.REST.A.V1"
+        onChange={vi.fn()}
+      />,
+    );
     await waitFor(() => expect(api.choices).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByTestId('secim-ayrinti')).toBeNull();

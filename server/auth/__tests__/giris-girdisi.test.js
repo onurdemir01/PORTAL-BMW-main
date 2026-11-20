@@ -34,11 +34,31 @@ const IYI = [
   ['KURUM\\ad', 'KURUM\\Ayse', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
   ['kurum\\ad kucuk', 'kurum\\ayse', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
   ['UPN', 'Ayse@Kurum.com.tr', 'ayse', { attr: 'userPrincipalName', value: 'ayse@kurum.com.tr' }],
-  ['noktali buyuk I (Turkce klavye)', '\u0130sci', 'isci', { attr: 'sAMAccountName', value: 'isci' }],
-  ['noktasiz kucuk i', 'hakan.\u0131sci', 'hakan.isci', { attr: 'sAMAccountName', value: 'hakan.isci' }],
-  ['eski toLowerCase ciktisi (i + U+0307)', 'i\u0307sci', 'isci', { attr: 'sAMAccountName', value: 'isci' }],
+  [
+    'noktali buyuk I (Turkce klavye)',
+    '\u0130sci',
+    'isci',
+    { attr: 'sAMAccountName', value: 'isci' },
+  ],
+  [
+    'noktasiz kucuk i',
+    'hakan.\u0131sci',
+    'hakan.isci',
+    { attr: 'sAMAccountName', value: 'hakan.isci' },
+  ],
+  [
+    'eski toLowerCase ciktisi (i + U+0307)',
+    'i\u0307sci',
+    'isci',
+    { attr: 'sAMAccountName', value: 'isci' },
+  ],
   ['NFD bicimi', 'jose\u0301', 'jos\u00e9', { attr: 'sAMAccountName', value: 'jos\u00e9' }],
-  ['bastaki BOM (yapistirma) kirpilir', '\ufeffayse', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
+  [
+    'bastaki BOM (yapistirma) kirpilir',
+    '\ufeffayse',
+    'ayse',
+    { attr: 'sAMAccountName', value: 'ayse' },
+  ],
   ['tire ve alt cizgi', 'a_b-c.d', 'a_b-c.d', { attr: 'sAMAccountName', value: 'a_b-c.d' }],
 ];
 
@@ -89,7 +109,9 @@ test('GG izinli alan adlari: liste verilmisse disindaki NetBIOS reddedilir, icin
     const r = normalizeLoginInput('BASKA\\a');
     assert.equal(r.code, 'alan_adi');
   });
-  ortam({ AUTH_ALLOWED_DOMAINS: undefined }, () => assert.equal(normalizeLoginInput('BASKA\\a').ok, true));
+  ortam({ AUTH_ALLOWED_DOMAINS: undefined }, () =>
+    assert.equal(normalizeLoginInput('BASKA\\a').ok, true),
+  );
 });
 
 test('GG izinli UPN sonekleri', () => {

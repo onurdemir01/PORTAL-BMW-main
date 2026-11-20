@@ -19,10 +19,10 @@
 //                      kopyalanabilir DEGILDI)
 //
 // `title` HER ZAMAN doludur: kirpilan ya da saran deger fare ustunde tam okunur.
-import React, { useState } from "react";
-import { ClipboardDocumentIcon, CheckIcon } from "@heroicons/react/24/outline";
+import React, { useState } from 'react';
+import { ClipboardDocumentIcon, CheckIcon } from '@heroicons/react/24/outline';
 
-type Wrap = "break" | "truncate";
+type Wrap = 'break' | 'truncate';
 
 interface Props {
   value: string;
@@ -32,18 +32,23 @@ interface Props {
   wrap?: Wrap;
   copyable?: boolean;
   /** Ton: `default` notr, `accent` mavi (envanter/etiket), `muted` daha soluk. */
-  tone?: "default" | "accent" | "muted";
+  tone?: 'default' | 'accent' | 'muted';
   className?: string;
 }
 
-const TONE: Record<NonNullable<Props["tone"]>, string> = {
-  default: "bg-[var(--bg-inset)] text-[var(--text-secondary)]",
-  accent:  "bg-[var(--accent-bg)] text-[var(--accent)]",
-  muted:   "bg-[var(--bg-elevated)] text-[var(--text-muted)]",
+const TONE: Record<NonNullable<Props['tone']>, string> = {
+  default: 'bg-[var(--bg-inset)] text-[var(--text-secondary)]',
+  accent: 'bg-[var(--accent-bg)] text-[var(--accent)]',
+  muted: 'bg-[var(--bg-elevated)] text-[var(--text-muted)]',
 };
 
 export function CodeChip({
-  value, label, wrap = "break", copyable = false, tone = "default", className = "",
+  value,
+  label,
+  wrap = 'break',
+  copyable = false,
+  tone = 'default',
+  className = '',
 }: Props) {
   const [copied, setCopied] = useState(false);
   const text = label ?? value;
@@ -51,7 +56,7 @@ export function CodeChip({
   // `min-w-0` KAP uzerinde de gerekli: chip bir flex cocuguysa kendisi de sisebilir.
   const base = `inline-flex items-center gap-1 min-w-0 max-w-full rounded px-2 py-0.5
                 text-[10px] font-mono align-middle ${TONE[tone]} ${className}`;
-  const textCls = wrap === "truncate" ? "truncate" : "break-all";
+  const textCls = wrap === 'truncate' ? 'truncate' : 'break-all';
 
   if (!copyable) {
     return (
@@ -67,17 +72,27 @@ export function CodeChip({
       title={`${value}\n(kopyalamak için tıklayın)`}
       onClick={() => {
         navigator.clipboard.writeText(value).then(
-          () => { setCopied(true); setTimeout(() => setCopied(false), 1500); },
-          () => { /* pano izni yoksa sessizce gec — deger `title`da zaten var */ },
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          },
+          () => {
+            /* pano izni yoksa sessizce gec — deger `title`da zaten var */
+          },
         );
       }}
       className={`${base} hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer`}
     >
       <span className={`min-w-0 ${textCls}`}>{text}</span>
-      {copied
-        ? <CheckIcon aria-hidden="true" className="w-3 h-3 flex-shrink-0 text-[var(--status-success)]" />
-        : <ClipboardDocumentIcon aria-hidden="true" className="w-3 h-3 flex-shrink-0 opacity-50" />}
-      <span className="sr-only">{copied ? "kopyalandı" : "panoya kopyala"}</span>
+      {copied ? (
+        <CheckIcon
+          aria-hidden="true"
+          className="w-3 h-3 flex-shrink-0 text-[var(--status-success)]"
+        />
+      ) : (
+        <ClipboardDocumentIcon aria-hidden="true" className="w-3 h-3 flex-shrink-0 opacity-50" />
+      )}
+      <span className="sr-only">{copied ? 'kopyalandı' : 'panoya kopyala'}</span>
     </button>
   );
 }

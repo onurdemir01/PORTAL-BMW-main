@@ -107,9 +107,10 @@ function computeBlastRadius({
 }) {
   const clusterCount = clusters.length;
   const appCount = apps.length;
-  const targets = Array.isArray(selectedTargets) && selectedTargets.length
-    ? selectedTargets.length
-    : clusterCount * appCount;
+  const targets =
+    Array.isArray(selectedTargets) && selectedTargets.length
+      ? selectedTargets.length
+      : clusterCount * appCount;
   const prod = isProdEnv(environment);
   // `dry_run` hicbir sey degistirmez; yazili onay istemek anlamsiz surtunme olurdu.
   const mutating = executionMode === 'apply';
@@ -448,8 +449,7 @@ async function buildRunExtraVars({
 
   const radius = computeBlastRadius({ clusters, apps, environment: env, action, executionMode });
 
-  const verifySeconds =
-    normalizeVerificationTimeout(verificationTimeout) ?? verifyTimeoutDefault();
+  const verifySeconds = normalizeVerificationTimeout(verificationTimeout) ?? verifyTimeoutDefault();
   const esikler = verifyThresholds(verifySeconds);
   return {
     // Katalog portal DB'sinden; playbook `scalex_clusters_override` yoksa kendi
@@ -662,7 +662,13 @@ function smartKarari(smart) {
   if (!smart || typeof smart !== 'object')
     return { smart: 'require', status: 'unknown', missing: [], blocked: null, skipRule: null };
   if (smart.mode === 'oco_only')
-    return { smart: 'skip', status: 'disabled_by_admin', missing: [], blocked: null, skipRule: null };
+    return {
+      smart: 'skip',
+      status: 'disabled_by_admin',
+      missing: [],
+      blocked: null,
+      skipRule: null,
+    };
   if (smart.adminSkip === true)
     return { smart: 'skip', status: 'admin_skip', missing: [], blocked: null, skipRule: null };
   if (smart.skipRule && smart.skipRule.field)
@@ -703,7 +709,15 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
   const adminEnabled = cfg.enabled !== false; // ayar yoksa ACIK — bkz. index.cjs
   const liste = Array.isArray(cfg.environments) ? cfg.environments : null;
   const ortamKapsamda = liste
-    ? liste.some((e) => String(e || '').trim().toLowerCase() === String(environment || '').trim().toLowerCase())
+    ? liste.some(
+        (e) =>
+          String(e || '')
+            .trim()
+            .toLowerCase() ===
+          String(environment || '')
+            .trim()
+            .toLowerCase(),
+      )
     : prod;
   const ocoUygulanir = adminEnabled && ortamKapsamda;
 
@@ -713,7 +727,13 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
 
   // SMART ortam kurali DEGISMEDI: yalnizca production.
   if (!prod) {
-    const oco = (() => { if (ocoUygulanir) { if (action === 'restore') return 'warn'; return 'require'; } return 'skip'; })();
+    const oco = (() => {
+      if (ocoUygulanir) {
+        if (action === 'restore') return 'warn';
+        return 'require';
+      }
+      return 'skip';
+    })();
     return {
       oco,
       smart: 'skip',
@@ -729,8 +749,14 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
   }
 
   const s = smartKarari(smart);
-  const oco =
-    (() => { if (action === 'restore') { if (ocoUygulanir) return 'warn'; return 'skip'; } if (ocoUygulanir) return 'require'; return 'skip'; })();
+  const oco = (() => {
+    if (action === 'restore') {
+      if (ocoUygulanir) return 'warn';
+      return 'skip';
+    }
+    if (ocoUygulanir) return 'require';
+    return 'skip';
+  })();
   return {
     oco,
     smart: s.smart,
@@ -751,8 +777,11 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
     // kadar KAPALI. SMART'li islem pencere acildiginda baslatilir.
     schedulable: oco === 'require' && s.smart === 'skip',
     blocked: s.blocked,
-    reason:
-      (() => { if (action === 'restore') return 'geri alma bir onarim islemidir'; if (ocoGateDisabled) return 'OCO kapisi admin tarafindan KAPATILMIS'; return null; })(),
+    reason: (() => {
+      if (action === 'restore') return 'geri alma bir onarim islemidir';
+      if (ocoGateDisabled) return 'OCO kapisi admin tarafindan KAPATILMIS';
+      return null;
+    })(),
   };
 }
 

@@ -61,11 +61,7 @@ test('CB1 kapsamdaki HICBIR ekran kendi CSV`sini uretmiyor', () => {
     const src = fs.readFileSync(p, 'utf8');
     if (/text\/csv/.test(src)) suclular.push(rel);
   }
-  assert.deepEqual(
-    suclular,
-    [],
-    `kendi CSV metnini ureten dosya(lar):\n${suclular.join('\n')}`,
-  );
+  assert.deepEqual(suclular, [], `kendi CSV metnini ureten dosya(lar):\n${suclular.join('\n')}`);
 });
 
 test('CB2 ayirici HICBIR YERDE sabitlenmemis (tercih islevsiz kalmasin)', () => {

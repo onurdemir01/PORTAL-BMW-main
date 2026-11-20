@@ -19,7 +19,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const RUNNER = path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh');
+const RUNNER = path.join(
+  ROOT,
+  'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
+);
 
 /**
  * `discover_state`i SAHTE bir `oc` ile calistirir ve hem uretilen satirlari hem de
@@ -35,7 +38,10 @@ function discoverState({ configMaps = [], workloads = {}, probeApps = [], appRaw
     const calls = path.join(tmp, 'calls');
     fs.writeFileSync(calls, '');
     // `configMaps`: her satir `ad|app|kind|prev|phase|created_at|created_by|job`
-    fs.writeFileSync(path.join(tmp, 'cms'), configMaps.join('\n') + (configMaps.length ? '\n' : ''));
+    fs.writeFileSync(
+      path.join(tmp, 'cms'),
+      configMaps.join('\n') + (configMaps.length ? '\n' : ''),
+    );
     // `probeApps`: her satir bir uygulama adi. DOSYADAN okunuyor cunku bash cift
     // tirnak icinde `\n` YORUMLAMAZ — liste tek satira yapisip yoklama hic kosmazdi.
     fs.writeFileSync(
@@ -45,7 +51,9 @@ function discoverState({ configMaps = [], workloads = {}, probeApps = [], appRaw
     // `workloads`: { app: 'spec|status|ready' } — yoksa tip bulunamaz.
     fs.writeFileSync(
       path.join(tmp, 'wl'),
-      Object.entries(workloads).map(([a, v]) => `${a}\t${v}`).join('\n') + '\n',
+      Object.entries(workloads)
+        .map(([a, v]) => `${a}\t${v}`)
+        .join('\n') + '\n',
     );
     fs.writeFileSync(
       path.join(bin, 'oc'),
@@ -78,7 +86,7 @@ function discoverState({ configMaps = [], workloads = {}, probeApps = [], appRaw
         'STATE_CM_PREFIX="scalex-state-"; STATE_CM_PREFIX_LEGACY="chaos-scale-state-"',
         `APPS_TEXT="${appRaw}"`,
         'LIVE_PROBE_TEXT="$(cat "$OC_PROBE")"',
-        "log() { printf '%s;%s;%s;%s;%s;%s;%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" \"$7\"; }",
+        'log() { printf \'%s;%s;%s;%s;%s;%s;%s\\n\' "$1" "$2" "$3" "$4" "$5" "$6" "$7"; }',
         'oc_get_jsonpath() { oc get "$1" "$2" -n "$NS" -o "jsonpath=$3" 2>/dev/null || true; }',
         'disc_val() { printf %s "${1:--}" | tr " " "_"; }',
         'kind_to_display() { printf %s "$1"; }',
@@ -169,7 +177,9 @@ test('LP4 yoklama listesi BOSSA hic `LIVE` satiri basilmiyor (ek `oc` maliyeti y
 
 test('LP5 yoklama uygulamasi basina TEK `oc get` (replica uclusu tek jsonpath)', () => {
   const r = discoverState({
-    configMaps: [], workloads: { app1: '1|1|1', app2: '2|2|2' }, probeApps: ['app1', 'app2'],
+    configMaps: [],
+    workloads: { app1: '1|1|1', app2: '2|2|2' },
+    probeApps: ['app1', 'app2'],
   });
   const probe = r.ocCalls.filter((c) => c.startsWith('get deploy '));
   assert.equal(probe.length, 2, `iki uygulama icin ${probe.length} jsonpath cagrisi yapildi`);
@@ -179,7 +189,10 @@ test('LP5 yoklama uygulamasi basina TEK `oc get` (replica uclusu tek jsonpath)',
 // dogru yazilip degisken hic gecirilmezse yoklama HIC kosmaz ve hicbir sey patlamaz.
 test('LP6 `scalex_live_probe_apps` playbook`tan betige gecuriliyor', () => {
   const task = fs.readFileSync(
-    path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/discovery/10_discover.yml'),
+    path.join(
+      ROOT,
+      'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/discovery/10_discover.yml',
+    ),
     'utf8',
   );
   assert.match(
@@ -188,7 +201,11 @@ test('LP6 `scalex_live_probe_apps` playbook`tan betige gecuriliyor', () => {
     'playbook degiskeni betige gecirmiyor — yoklama HIC kosmaz',
   );
   const index = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
-  assert.match(index, /scalex_live_probe_apps: liveProbe\.join\(','\)/, 'portal listeyi gondermiyor');
+  assert.match(
+    index,
+    /scalex_live_probe_apps: liveProbe\.join\(','\)/,
+    'portal listeyi gondermiyor',
+  );
 });
 
 // LP7 — ZINCIRIN SON HALKASI. Mutasyon turunda `liveStates`i `refreshDrift`e HIC

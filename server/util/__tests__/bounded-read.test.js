@@ -60,7 +60,9 @@ function istek(port, opts) {
 function sureSinirli(p, ms, etiket) {
   return Promise.race([
     p,
-    new Promise((_, r) => setTimeout(() => r(new Error(`${etiket}: ${ms} ms icinde SONUC GELMEDI`)), ms)),
+    new Promise((_, r) =>
+      setTimeout(() => r(new Error(`${etiket}: ${ms} ms icinde SONUC GELMEDI`)), ms),
+    ),
   ]);
 }
 
@@ -86,7 +88,11 @@ test('BR1 tavani asan govde REDDEDILIYOR ve promise ASILI KALMIYOR', async () =>
 test('BR2 tavan altindaki govde DOKUNULMADAN donuyor', async () => {
   const { srv, port } = await sahteSunucu(100 * 1024);
   try {
-    const metin = await sureSinirli(istek(port, { maxBytes: 1024 * 1024, label: 'test' }), 15000, 'BR2');
+    const metin = await sureSinirli(
+      istek(port, { maxBytes: 1024 * 1024, label: 'test' }),
+      15000,
+      'BR2',
+    );
     assert.equal(Buffer.byteLength(metin, 'utf8'), 100 * 1024);
   } finally {
     srv.close();
@@ -97,7 +103,10 @@ test('BR3 `readBodyLimited` .text() CAGIRMADAN sinirliyor', async () => {
   // `.text()` govdenin tamamini bellege alir; uzunluga SONRADAN bakmak
   // hicbir seyi kurtarmaz.
   const src = fs.readFileSync(path.join(__dirname, '..', 'bounded-read.cjs'), 'utf8');
-  const govde = src.slice(src.indexOf('async function readBodyLimited'), src.indexOf('function parseJsonLimited'));
+  const govde = src.slice(
+    src.indexOf('async function readBodyLimited'),
+    src.indexOf('function parseJsonLimited'),
+  );
   assert.ok(!/\.text\(\)/.test(govde), 'yardimci hala `.text()` kullaniyor');
 
   // Davranis: akis tavani asinca kesiliyor.
@@ -121,7 +130,10 @@ test('BR4 `parseJsonLimited` PARSE ETMEDEN once sinirliyor', () => {
   // `JSON.parse` metnin 3-6 kati nesne grafigi uretir; parse'tan SONRA kirpmak
   // bellegi kurtarmaz.
   const buyuk = JSON.stringify({ a: 'x'.repeat(2 * 1024 * 1024) });
-  assert.throws(() => parseJsonLimited(buyuk, { maxBytes: 64 * 1024, label: 'test' }), (e) => e.tooLarge === true);
+  assert.throws(
+    () => parseJsonLimited(buyuk, { maxBytes: 64 * 1024, label: 'test' }),
+    (e) => e.tooLarge === true,
+  );
   assert.deepEqual(parseJsonLimited('{"a":1}', { maxBytes: 1024, label: 'test' }), { a: 1 });
 
   // ── SIRAYI GERCEKTEN AYIRT ET ────────────────────────────────────────────
@@ -154,7 +166,11 @@ const oku = (p) => fs.readFileSync(path.join(__dirname, '..', '..', p), 'utf8');
 test('BR5 sinirsiz okuma yollari KAPANDI', () => {
   const hedefler = [
     ['logx/v2/ocp-health.cjs', /readResponseLimited\(/, /let data = '';[\s\S]{0,80}data \+= c/],
-    ['nobetci/index.cjs', /readResponseLimited\(/, /chunks\.push\(c\)\);[\s\S]{0,120}Buffer\.concat/],
+    [
+      'nobetci/index.cjs',
+      /readResponseLimited\(/,
+      /chunks\.push\(c\)\);[\s\S]{0,120}Buffer\.concat/,
+    ],
     ['ai/provider.cjs', /readResponseLimited\(/, /res\.on\('data', \(c\) => \{ data \+= c; \}\)/],
     ['smart/client.cjs', /readBodyLimited\(/, /await result\.body\.text\(\)/],
     ['splunk/client.cjs', /readBodyLimited\(/, /const text = await res\.text\(\)/],
@@ -180,14 +196,20 @@ test('BR6 MCP arac sonucu PARSE`TAN ONCE sinirlaniyor', () => {
 
 test('BR7 yardimci `end` beklemeden REDDEDIYOR (asili promise tuzagi)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'bounded-read.cjs'), 'utf8');
-  const govde = src.slice(src.indexOf('function readResponseLimited'), src.indexOf('async function readBodyLimited'));
+  const govde = src.slice(
+    src.indexOf('function readResponseLimited'),
+    src.indexOf('async function readBodyLimited'),
+  );
   // Red, `data` isleyicisinin ICINDE olmali; `end` isleyicisine ertelenmis
   // olmamali. `destroy()` sonrasi `end` GELMEZ.
   const dataIdx = govde.indexOf("response.on('data'");
   const endIdx = govde.indexOf("response.on('end'");
   const kesIdx = govde.indexOf('kes(tooLargeError');
   assert.ok(dataIdx > 0 && endIdx > dataIdx, 'isleyici sirasi beklenmedik');
-  assert.ok(kesIdx > dataIdx && kesIdx < endIdx, 'red `data` isleyicisinde DEGIL — promise asili kalabilir');
+  assert.ok(
+    kesIdx > dataIdx && kesIdx < endIdx,
+    'red `data` isleyicisinde DEGIL — promise asili kalabilir',
+  );
 });
 
 test('BR8 OCP baglanti helperi akan govdeyi sinirsiz biriktirmiyor', () => {

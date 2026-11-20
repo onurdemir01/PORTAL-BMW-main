@@ -7,7 +7,17 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import JvmParamDuzenle from './JvmParamDuzenle';
 import { YALNIZ_ENVANTER_ETIKETI } from '@/components/server_hub/jvmNesil';
-import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH, retireDurumu } from './ortak';
+import {
+  Bolum,
+  CalismaHap,
+  Hap,
+  JvmArglari,
+  KapasiteHucresi,
+  KaynakUyarisi,
+  TD,
+  TH,
+  retireDurumu,
+} from './ortak';
 import { OrtamOzeti, satirAnahtarlari } from './OrtamOzeti';
 
 const KAYNAK_AD: Record<string, string> = {
@@ -28,7 +38,8 @@ const KAYNAK_METNI: Record<string, string> = {
   CLI_STATUS: "JBoss CLI'dan server-state okundu.",
   PS_ABSENT: 'Sunucudaki süreç listesinde (ps) bu JVM için süreç yok.',
   UNMEASURED: 'Tarama çalışma durumunu ölçemedi (ör. süreç listesi okunamadı).',
-  ENVANTER: 'Server Hub taramasında bu JVM görülmedi; durum yalnız JBoss uygulama envanterinden (MWAppsInventory).',
+  ENVANTER:
+    'Server Hub taramasında bu JVM görülmedi; durum yalnız JBoss uygulama envanterinden (MWAppsInventory).',
 };
 
 /**
@@ -40,30 +51,57 @@ function DurumKaniti({ j }: { j: JbossSunucu['jvmler'][number] }) {
   const kaynak = j.durumKaynagi || null;
   const celiski = (j.uyumsuzluk || []).filter((x) => x.startsWith('durum:'));
   return (
-    <div className="text-[11px] rounded px-2.5 py-1.5 space-y-0.5" style={{ background: 'var(--bg-inset)', color: 'var(--text-secondary)' }} data-testid="durum-kaniti">
+    <div
+      className="text-[11px] rounded px-2.5 py-1.5 space-y-0.5"
+      style={{ background: 'var(--bg-inset)', color: 'var(--text-secondary)' }}
+      data-testid="durum-kaniti"
+    >
       <div>
-        <b>Durum nereden:</b> {kaynak ? KAYNAK_METNI[kaynak] || kaynak : 'Server Hub taraması (ölçüm yöntemi kayıtlı değil).'}
+        <b>Durum nereden:</b>{' '}
+        {kaynak
+          ? KAYNAK_METNI[kaynak] || kaynak
+          : 'Server Hub taraması (ölçüm yöntemi kayıtlı değil).'}
         {j.durum && j.durum !== 'unknown' ? ` server-state: ${j.durum}.` : ''}
-        {j.taramaTarihi ? ` Ölçüm: ${fmtDate(j.taramaTarihi)}${j.taze ? '' : ' (2 günden eski)'}.` : ''}
+        {j.taramaTarihi
+          ? ` Ölçüm: ${fmtDate(j.taramaTarihi)}${j.taze ? '' : ' (2 günden eski)'}.`
+          : ''}
       </div>
       {j.envanterDurumu && (
         <div>
           <b>Envanterde:</b> {j.envanterDurumu}
           {celiski.length ? (
-            <span style={{ color: 'var(--status-warning-text)' }}> — tarama ile çelişiyor ({celiski.map((c) => c.replace(/^durum: /, '')).join('; ')})</span>
+            <span style={{ color: 'var(--status-warning-text)' }}>
+              {' '}
+              — tarama ile çelişiyor ({celiski.map((c) => c.replace(/^durum: /, '')).join('; ')})
+            </span>
           ) : (
             ' (tarama ile aynı)'
           )}
         </div>
       )}
       <div style={{ color: 'var(--text-muted)' }}>
-        Elle doğrulamak için sunucuda: <code style={{ fontFamily: 'var(--font-mono)' }}>ps -ef | grep [j]boss | grep {j.ad}</code>
+        Elle doğrulamak için sunucuda:{' '}
+        <code style={{ fontFamily: 'var(--font-mono)' }}>ps -ef | grep [j]boss | grep {j.ad}</code>
       </div>
     </div>
   );
 }
 
-function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunamadi }: { s: JbossSunucu; acik: boolean; onToggle: () => void; uygulama: string; onYenile?: () => void; retirementOkunamadi?: boolean }) {
+function SunucuSatiri({
+  s,
+  acik,
+  onToggle,
+  uygulama,
+  onYenile,
+  retirementOkunamadi,
+}: {
+  s: JbossSunucu;
+  acik: boolean;
+  onToggle: () => void;
+  uygulama: string;
+  onYenile?: () => void;
+  retirementOkunamadi?: boolean;
+}) {
   const calisan = s.jvmler.filter((j) => j.calisiyor === true).length;
   const olculemeyen = s.jvmler.filter((j) => j.calisiyor == null).length;
   // RETIREMENT (2026-11-16): JVM hapiyla AYNI kural (retireDurumu). Retirement ile STOP edilmis / silinmis
@@ -78,7 +116,12 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
   const portlar = [...new Set(s.jvmler.flatMap((j) => j.portlar || []))];
   return (
     <>
-      <tr className="cursor-pointer hover:bg-[var(--bg-inset)]" style={{ borderTop: '1px solid var(--border-subtle)' }} onClick={onToggle} data-testid="sunucu-satiri">
+      <tr
+        className="cursor-pointer hover:bg-[var(--bg-inset)]"
+        style={{ borderTop: '1px solid var(--border-subtle)' }}
+        onClick={onToggle}
+        data-testid="sunucu-satiri"
+      >
         <td className={TD}>
           <button
             type="button"
@@ -90,7 +133,11 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
               onToggle();
             }}
           >
-            {acik ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+            {acik ? (
+              <ChevronDownIcon className="w-4 h-4" />
+            ) : (
+              <ChevronRightIcon className="w-4 h-4" />
+            )}
             <span style={{ fontFamily: 'var(--font-mono)' }}>{s.host}</span>
           </button>
           <div className="pl-5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -103,46 +150,79 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
         <td className={TD}>{s.ortam || '—'}</td>
         <td className={TD}>
           <div>{s.jbossSurum || '—'}</div>
-          {s.nesil && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>JBoss {s.nesil}</div>}
+          {s.nesil && (
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              JBoss {s.nesil}
+            </div>
+          )}
         </td>
         <td className={TD}>
           <div>{s.jre || '—'}</div>
-          {s.jdk && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.jdk}</div>}
+          {s.jdk && (
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              {s.jdk}
+            </div>
+          )}
         </td>
-        <td className={`${TD} tabular-nums whitespace-nowrap`}>{heapMetni(s) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+        <td className={`${TD} tabular-nums whitespace-nowrap`}>
+          {heapMetni(s) || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+        </td>
         <td className={TD}>
           {s.jvmler.length ? (
             <div className="space-y-0.5">
               <div className="flex flex-wrap gap-1">
                 {calisan > 0 && <Hap ton="iyi">{calisan} çalışıyor</Hap>}
                 {kapali > 0 && (
-                  <Hap ton="kritik" title={retirementOkunamadi ? 'Retirement kayıtları okunamadı: kapalı JVM Retirement ile durdurulmuş olabilir (bilinmiyor)' : undefined}>
+                  <Hap
+                    ton="kritik"
+                    title={
+                      retirementOkunamadi
+                        ? 'Retirement kayıtları okunamadı: kapalı JVM Retirement ile durdurulmuş olabilir (bilinmiyor)'
+                        : undefined
+                    }
+                  >
                     {kapali} kapalı
                   </Hap>
                 )}
                 {retire > 0 && (
-                  <Hap ton="notr" title="Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)">
+                  <Hap
+                    ton="notr"
+                    title="Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)"
+                  >
                     {retire} retire
                   </Hap>
                 )}
                 {celiski > 0 && (
-                  <Hap ton="kritik" title="Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor (JVM çalışıyor, auto-start açık ya da paket diskte)">
+                  <Hap
+                    ton="kritik"
+                    title="Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor (JVM çalışıyor, auto-start açık ya da paket diskte)"
+                  >
                     {celiski} Retirement çelişkisi
                   </Hap>
                 )}
                 {dogrulama > 0 && (
-                  <Hap ton="uyari" title="Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil, doğrulanamadı">
+                  <Hap
+                    ton="uyari"
+                    title="Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil, doğrulanamadı"
+                  >
                     {dogrulama} doğrulama bekliyor
                   </Hap>
                 )}
                 {olculemeyen > 0 && <Hap ton="notr">{olculemeyen} ölçülemedi</Hap>}
               </div>
               {portlar.length > 0 && (
-                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>port {portlar.slice(0, 6).join(', ')}{portlar.length > 6 ? '…' : ''}</div>
+                <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  port {portlar.slice(0, 6).join(', ')}
+                  {portlar.length > 6 ? '…' : ''}
+                </div>
               )}
             </div>
           ) : (
-            <span className="text-[12px]" style={{ color: 'var(--text-muted)' }} title="Bu sunucu Server Hub taramasında yok ya da taramadan düştü">
+            <span
+              className="text-[12px]"
+              style={{ color: 'var(--text-muted)' }}
+              title="Bu sunucu Server Hub taramasında yok ya da taramadan düştü"
+            >
               Server Hub'da yok
             </span>
           )}
@@ -154,12 +234,18 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
               {new Set(s.web.map((w) => w.host)).size > 3 ? '…' : ''}
             </div>
           ) : (
-            <span className="text-[12px]" style={{ color: 'var(--status-warning-text)' }} title={s.webUyari || undefined}>
+            <span
+              className="text-[12px]"
+              style={{ color: 'var(--status-warning-text)' }}
+              title={s.webUyari || undefined}
+            >
               bulunamadı
             </span>
           )}
         </td>
-        <td className={TD}><KapasiteHucresi k={s.kapasite} /></td>
+        <td className={TD}>
+          <KapasiteHucresi k={s.kapasite} />
+        </td>
       </tr>
       {acik && (
         <tr>
@@ -167,36 +253,95 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
             <div className="space-y-4">
               {s.jvmler.length === 0 && (
                 <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                  Bu sunucu için Server Hub JVM kaydı yok; JVM parametreleri ve çalışma durumu gösterilemiyor.
+                  Bu sunucu için Server Hub JVM kaydı yok; JVM parametreleri ve çalışma durumu
+                  gösterilemiyor.
                   {heapMetni(s) && ` Envanterdeki heap: ${heapMetni(s)}.`}
                 </p>
               )}
               {s.jvmler.map((j) => (
-                <div key={`${j.ad}-${j.nesil}`} className="rounded p-3 space-y-2" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+                <div
+                  key={`${j.ad}-${j.nesil}`}
+                  className="rounded p-3 space-y-2"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-[13px]" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{j.ad}</span>
+                    <span
+                      className="font-semibold text-[13px]"
+                      style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {j.ad}
+                    </span>
                     {j.yalnizEnvanter ? (
-                      <Hap ton="notr" title="Server Hub taramasında bu uygulamanın JVM'i bulunamadı; satır yalnız MWAppsInventory'den.">
+                      <Hap
+                        ton="notr"
+                        title="Server Hub taramasında bu uygulamanın JVM'i bulunamadı; satır yalnız MWAppsInventory'den."
+                      >
                         {YALNIZ_ENVANTER_ETIKETI}
                       </Hap>
                     ) : (
                       j.nesil && <Hap ton="bilgi">JBoss {j.nesil}</Hap>
                     )}
-                    {j.envanterUygulamasi && j.envanterUygulamasi.toLowerCase() !== j.ad.toLowerCase() && (
-                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        envanter: {j.envanterUygulamasi}
-                      </span>
-                    )}
-                    <CalismaHap calisiyor={j.calisiyor} retirement={j.retirement} retirementOkunamadi={retirementOkunamadi} />
-                    <Hap ton={j.autoStart === 'true' || j.autoStart === 'yes' ? 'iyi' : j.autoStart === 'unknown' ? 'notr' : 'uyari'}>
+                    {j.envanterUygulamasi &&
+                      j.envanterUygulamasi.toLowerCase() !== j.ad.toLowerCase() && (
+                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          envanter: {j.envanterUygulamasi}
+                        </span>
+                      )}
+                    <CalismaHap
+                      calisiyor={j.calisiyor}
+                      retirement={j.retirement}
+                      retirementOkunamadi={retirementOkunamadi}
+                    />
+                    <Hap
+                      ton={
+                        j.autoStart === 'true' || j.autoStart === 'yes'
+                          ? 'iyi'
+                          : j.autoStart === 'unknown'
+                            ? 'notr'
+                            : 'uyari'
+                      }
+                    >
                       auto-start: {j.autoStart}
                     </Hap>
-                    {j.grup && <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>grup {j.grup}</span>}
-                    {j.portlar.length > 0 && <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>port {j.portlar.join(', ')}</span>}
-                    {j.istek7g != null && <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>7 gün {fmtNumber(j.istek7g)} istek</span>}
-                    {!j.taze && <Hap ton="uyari" title="Server Hub taraması 2 günden eski">bayat tarama</Hap>}
-                    {j.taramaTarihi && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>tarama {fmtDate(j.taramaTarihi)}</span>}
-                    {j.domain && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>domain {j.domain}</span>}
+                    {j.grup && (
+                      <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                        grup {j.grup}
+                      </span>
+                    )}
+                    {j.portlar.length > 0 && (
+                      <span
+                        className="text-[12px] tabular-nums"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        port {j.portlar.join(', ')}
+                      </span>
+                    )}
+                    {j.istek7g != null && (
+                      <span
+                        className="text-[12px] tabular-nums"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        7 gün {fmtNumber(j.istek7g)} istek
+                      </span>
+                    )}
+                    {!j.taze && (
+                      <Hap ton="uyari" title="Server Hub taraması 2 günden eski">
+                        bayat tarama
+                      </Hap>
+                    )}
+                    {j.taramaTarihi && (
+                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        tarama {fmtDate(j.taramaTarihi)}
+                      </span>
+                    )}
+                    {j.domain && (
+                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        domain {j.domain}
+                      </span>
+                    )}
                     {j.nesil != null && (
                       <span className="ml-auto">
                         <JvmParamDuzenle
@@ -221,24 +366,41 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
                     }
                   />
                   {j.yapilandirilanJvmArgs && j.yapilandirilanJvmArgs !== j.jvmArgs && (
-                    <JvmArglari baslik="Yapılandırmadaki parametreler" args={j.yapilandirilanJvmArgs} bosMetin="—" />
+                    <JvmArglari
+                      baslik="Yapılandırmadaki parametreler"
+                      args={j.yapilandirilanJvmArgs}
+                      bosMetin="—"
+                    />
                   )}
                   {j.jvmArgFarki && !j.jvmArgFarki.startsWith('reason=') && (
-                    <div className="text-[12px] space-y-0.5" style={{ color: 'var(--status-warning-text)' }}>
-                      <p className="font-semibold">Çalışan JVM ile yapılandırma farklı (yeniden başlatmada değişecek):</p>
+                    <div
+                      className="text-[12px] space-y-0.5"
+                      style={{ color: 'var(--status-warning-text)' }}
+                    >
+                      <p className="font-semibold">
+                        Çalışan JVM ile yapılandırma farklı (yeniden başlatmada değişecek):
+                      </p>
                       <ul className="list-disc pl-5" style={{ fontFamily: 'var(--font-mono)' }}>
                         {j.jvmArgFarki
                           .split('; ')
                           .filter((x) => x && x !== 'partial')
                           .map((x) => (
-                            <li key={x} className="break-all">{x}</li>
+                            <li key={x} className="break-all">
+                              {x}
+                            </li>
                           ))}
                       </ul>
-                      {j.jvmArgFarki.startsWith('partial') && <p style={{ color: 'var(--text-muted)' }}>İfade içeren (${'{…}'}) seçenekler karşılaştırılmadı.</p>}
+                      {j.jvmArgFarki.startsWith('partial') && (
+                        <p style={{ color: 'var(--text-muted)' }}>
+                          İfade içeren (${'{…}'}) seçenekler karşılaştırılmadı.
+                        </p>
+                      )}
                     </div>
                   )}
                   {j.jvmArgFarki && j.jvmArgFarki.startsWith('reason=') && j.jvmArgs && (
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Yapılandırma ile karşılaştırılamadı ({j.jvmArgFarki.slice(7)}).</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      Yapılandırma ile karşılaştırılamadı ({j.jvmArgFarki.slice(7)}).
+                    </p>
                   )}
                 </div>
               ))}
@@ -256,13 +418,27 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
                     </thead>
                     <tbody>
                       {s.web.map((w, i) => (
-                        <tr key={`${w.host}-${w.serverName}-${i}`} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                          <td className="px-3 py-1.5" style={{ fontFamily: 'var(--font-mono)' }}>{w.host}</td>
+                        <tr
+                          key={`${w.host}-${w.serverName}-${i}`}
+                          style={{ borderTop: '1px solid var(--border-subtle)' }}
+                        >
+                          <td className="px-3 py-1.5" style={{ fontFamily: 'var(--font-mono)' }}>
+                            {w.host}
+                          </td>
                           <td className="px-3 py-1.5">{w.product || '—'}</td>
-                          <td className="px-3 py-1.5 break-all">{w.serverName || '—'}{w.port ? `:${w.port}` : ''}</td>
-                          <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>{w.kaynak || '—'}</td>
+                          <td className="px-3 py-1.5 break-all">
+                            {w.serverName || '—'}
+                            {w.port ? `:${w.port}` : ''}
+                          </td>
+                          <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>
+                            {w.kaynak || '—'}
+                          </td>
                           <td className="px-3 py-1.5 tabular-nums">
-                            {w.trafik?.durum === 'var' ? `${fmtNumber(w.trafik.req7 ?? 0)}${w.trafik.sampled ? ' (en az)' : ''}` : w.trafik?.durum === 'yok' ? 'trafik yok' : 'ölçülemedi'}
+                            {w.trafik?.durum === 'var'
+                              ? `${fmtNumber(w.trafik.req7 ?? 0)}${w.trafik.sampled ? ' (en az)' : ''}`
+                              : w.trafik?.durum === 'yok'
+                                ? 'trafik yok'
+                                : 'ölçülemedi'}
                           </td>
                         </tr>
                       ))}
@@ -272,7 +448,8 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
               )}
               {s.uygulamaYolu && (
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Uygulama yolu: <code style={{ fontFamily: 'var(--font-mono)' }}>{s.uygulamaYolu}</code>
+                  Uygulama yolu:{' '}
+                  <code style={{ fontFamily: 'var(--font-mono)' }}>{s.uygulamaYolu}</code>
                 </p>
               )}
             </div>
@@ -284,11 +461,20 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunama
 }
 
 export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?: () => void }) {
-  const tumAnahtarlar = useMemo(() => satirAnahtarlari(d.sunucular.map((s) => `${s.host}|${s.uygulama}`)), [d.sunucular]);
-  const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? tumAnahtarlar : []));
+  const tumAnahtarlar = useMemo(
+    () => satirAnahtarlari(d.sunucular.map((s) => `${s.host}|${s.uygulama}`)),
+    [d.sunucular],
+  );
+  const [acik, setAcik] = useState<Set<string>>(
+    () => new Set(d.sunucular.length <= 2 ? tumAnahtarlar : []),
+  );
   const [ortam, setOrtamHam] = useState('');
   // Retirement kayitlari okunamadi: kapali JVM'in retire edilip edilmedigi bilinmiyor (KaynakUyarisi + hap title).
-  const retOkunamadi = !!(d.kaynaklar && d.kaynaklar.retirement && d.kaynaklar.retirement.okunamadi);
+  const retOkunamadi = !!(
+    d.kaynaklar &&
+    d.kaynaklar.retirement &&
+    d.kaynaklar.retirement.okunamadi
+  );
   // SURUM SUZGECI (kullanici, 2026-11-16): ortam ozetindeki surume tiklamak tabloyu o ortam + o surume suzer.
   // Ortam degisince surum suzgeci kalkar. Surumsuz sunucu '—' (ozetle ayni anahtar).
   const [surum, setSurum] = useState('');
@@ -299,7 +485,11 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
   const { liste, anahtarlar } = useMemo(() => {
     const idx = d.sunucular
       .map((_, i) => i)
-      .filter((i) => (!ortam || (d.sunucular[i].ortam || '') === ortam) && (!surum || (d.sunucular[i].jbossSurum || '—') === surum));
+      .filter(
+        (i) =>
+          (!ortam || (d.sunucular[i].ortam || '') === ortam) &&
+          (!surum || (d.sunucular[i].jbossSurum || '—') === surum),
+      );
     return { liste: idx.map((i) => d.sunucular[i]), anahtarlar: idx.map((i) => tumAnahtarlar[i]) };
   }, [d.sunucular, ortam, surum, tumAnahtarlar]);
   const yuk = d.ozet.yuk;
@@ -349,14 +539,23 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
         aciklama="Satıra tıklayın: JVM parametreleri, auto-start, portlar ve web bağları açılır. Kapasite sunucunun toplam CPU / belleğidir, anlık kullanım değildir."
         sag={
           d.ozet.ortamlar.length > 1 ? (
-            <div role="group" aria-label="Ortam" className="inline-flex rounded border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+            <div
+              role="group"
+              aria-label="Ortam"
+              className="inline-flex rounded border overflow-hidden"
+              style={{ borderColor: 'var(--border)' }}
+            >
               {['', ...d.ozet.ortamlar].map((o) => (
                 <button
                   key={o || 'hepsi'}
                   aria-pressed={ortam === o}
                   onClick={() => setOrtam(o)}
                   className="px-2.5 py-1 text-[12px] focus-visible:outline focus-visible:outline-2"
-                  style={{ background: ortam === o ? 'var(--ah-hue-soft)' : 'var(--bg-surface)', color: 'var(--text-primary)', fontWeight: ortam === o ? 600 : 400 }}
+                  style={{
+                    background: ortam === o ? 'var(--ah-hue-soft)' : 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontWeight: ortam === o ? 600 : 400,
+                  }}
                 >
                   {o || 'Tümü'}
                 </button>
@@ -382,9 +581,17 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
             <tbody>
               {surum && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-2 text-[12px]" style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}>
-                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında JBoss sürümü <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular gösteriliyor ({liste.length}).{' '}
-                    <button type="button" className="underline" onClick={() => setSurum('')}>Sürüm süzgecini kaldır</button>
+                  <td
+                    colSpan={8}
+                    className="px-3 py-2 text-[12px]"
+                    style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}
+                  >
+                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında JBoss sürümü{' '}
+                    <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular
+                    gösteriliyor ({liste.length}).{' '}
+                    <button type="button" className="underline" onClick={() => setSurum('')}>
+                      Sürüm süzgecini kaldır
+                    </button>
                   </td>
                 </tr>
               )}
@@ -394,14 +601,27 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
                 // kapanmiyor"): ayni host + uygulama icin birden cok satir gelebiliyordu; ayni
                 // anahtar iki satiri birden acip kapatiyor, React satirlari karistiriyordu.
                 const k = anahtarlar[i];
-                return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} uygulama={d.ad} onYenile={onYenile} retirementOkunamadi={retOkunamadi} />;
+                return (
+                  <SunucuSatiri
+                    key={k}
+                    s={s}
+                    acik={acik.has(k)}
+                    onToggle={() => toggle(k)}
+                    uygulama={d.ad}
+                    onYenile={onYenile}
+                    retirementOkunamadi={retOkunamadi}
+                  />
+                );
               })}
             </tbody>
           </table>
         </div>
       </Bolum>
 
-      <Bolum baslik="Web sunucuları (Apache / IHS)" aciklama="Uygulamaya trafik ileten vhost'lar: Server Hub proxy hedefleri, AJP / mod_cluster ve sertifika envanterinden.">
+      <Bolum
+        baslik="Web sunucuları (Apache / IHS)"
+        aciklama="Uygulamaya trafik ileten vhost'lar: Server Hub proxy hedefleri, AJP / mod_cluster ve sertifika envanterinden."
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -414,14 +634,30 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
               </tr>
             </thead>
             <tbody>
-              {!d.webSunuculari.length && <TableEmptyRow colSpan={5} title="Web sunucusu eşlenemedi." description="2-tier uygulamalarda web katmanı uygulama sunucusunun kendisidir; 3-tier'da eşleme bulunamadıysa Server Hub taramasını kontrol edin." />}
+              {!d.webSunuculari.length && (
+                <TableEmptyRow
+                  colSpan={5}
+                  title="Web sunucusu eşlenemedi."
+                  description="2-tier uygulamalarda web katmanı uygulama sunucusunun kendisidir; 3-tier'da eşleme bulunamadıysa Server Hub taramasını kontrol edin."
+                />
+              )}
               {d.webSunuculari.map((w) => (
                 <tr key={w.host} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>{w.host}</td>
+                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {w.host}
+                  </td>
                   <td className={TD}>{w.urun || '—'}</td>
                   <td className={`${TD} text-[12px] break-all`}>{w.vhostlar.join(', ') || '—'}</td>
-                  <td className={`${TD} text-[12px]`} style={{ fontFamily: 'var(--font-mono)' }}>{w.uygulamaSunuculari.join(', ')}</td>
-                  <td className={`${TD} tabular-nums`}>{w.istek7g == null ? <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span> : fmtNumber(w.istek7g)}</td>
+                  <td className={`${TD} text-[12px]`} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {w.uygulamaSunuculari.join(', ')}
+                  </td>
+                  <td className={`${TD} tabular-nums`}>
+                    {w.istek7g == null ? (
+                      <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span>
+                    ) : (
+                      fmtNumber(w.istek7g)
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

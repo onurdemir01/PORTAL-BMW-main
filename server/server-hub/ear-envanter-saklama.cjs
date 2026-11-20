@@ -129,7 +129,11 @@ async function hamSaklama(n, { dizin = alim.earDizin(), simdi = Date.now() } = {
     const a = m ? null : AWX_DIZINI.exec(g.name);
     if (!m && !a) continue;
     // awx-<is>: kosusu yoksa (henuz alinmadi) NaN -> bilinmeyen, 7 gun korunur.
-    const id = (() => { if (m) return Number(m[1]); if (awxKosu.has(Number(a[1]))) return awxKosu.get(Number(a[1])); return Number.NaN; })();
+    const id = (() => {
+      if (m) return Number(m[1]);
+      if (awxKosu.has(Number(a[1]))) return awxKosu.get(Number(a[1]));
+      return Number.NaN;
+    })();
     if (korunan.has(id)) {
       sonuc.korunan += 1;
       continue;

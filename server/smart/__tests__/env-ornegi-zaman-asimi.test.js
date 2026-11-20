@@ -36,7 +36,11 @@ function yorum(index) {
 
 test('EE1 .env.example: Smart zaman asimi bos (sinirsiz), yorum kodla uyumlu', () => {
   const { deger, index } = satir();
-  assert.equal(deger, '', `sablon ${ANAHTAR}=${deger} - turetilen her kurulum ${deger} dk sinirla calisir`);
+  assert.equal(
+    deger,
+    '',
+    `sablon ${ANAHTAR}=${deger} - turetilen her kurulum ${deger} dk sinirla calisir`,
+  );
   const y = yorum(index);
   assert.doesNotMatch(y, /15 dakika kullanilir/i, 'yorum kodun eski varsayilanini anlatiyor');
   assert.match(y, /SINIRI YOK|sinirsiz/i, 'yorum bos degerin SINIRSIZ demek oldugunu soylemiyor');

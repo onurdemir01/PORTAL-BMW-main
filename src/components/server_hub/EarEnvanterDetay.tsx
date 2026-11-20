@@ -63,11 +63,21 @@ export function pencereAraligi(ust: number, adet: number): [number, number] {
 }
 
 /** JBoss'a bağlı olmayan EAR'ın dizin kullanımı: süreçler ve son yazma (tarayıcı sürüm 4). */
-export function DizinKullanimi({ k, taramaMs }: { k: EarKullanim | null | undefined; taramaMs: number }) {
+export function DizinKullanimi({
+  k,
+  taramaMs,
+}: {
+  k: EarKullanim | null | undefined;
+  taramaMs: number;
+}) {
   const d = kullanimDurumu(k, taramaMs);
   if (!k || !d) {
     return (
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="dizin-kullanimi">
+      <div
+        className="text-[11px]"
+        style={{ color: 'var(--text-muted)' }}
+        data-testid="dizin-kullanimi"
+      >
         Dizin kullanımı ölçülmedi (eski tarayıcı) — “kullanılmıyor” sayılmaz.
       </div>
     );
@@ -149,7 +159,9 @@ export function JbossEslesmesi({
             <div key={`${dp.kurulum}|${dp.ad}`} className="font-mono">
               {dp.ad} · {dp.tur === 'YONETILEN' ? 'yönetilen içerik' : dp.yol} ·{' '}
               {dp.yontem === 'YOL' ? 'yol eşleşti' : 'ad eşleşti'}
-              {dp.gruplar.length > 0 ? ` · ${dp.gruplar.map((g) => g.ad).join(', ')}` : ' · server-group yok'}
+              {dp.gruplar.length > 0
+                ? ` · ${dp.gruplar.map((g) => g.ad).join(', ')}`
+                : ' · server-group yok'}
             </div>
           ))}
         </div>

@@ -32,7 +32,15 @@ interface Props {
   children: React.ReactNode;
 }
 
-export default function AyarGrubu({ grup, acik, onAcKapat, ozet, uygulanma, baslikRef, children }: Props) {
+export default function AyarGrubu({
+  grup,
+  acik,
+  onAcKapat,
+  ozet,
+  uygulanma,
+  baslikRef,
+  children,
+}: Props) {
   const Ikon = grup.ikon;
   const icerikId = `sistem-grup-${grup.id}`;
   return (

@@ -55,9 +55,12 @@ export function ValuesCompare({
     if (r.errors?.length) setHata(r.errors.map((e) => `${e.stage}: ${e.message}`).join(' · '));
   };
 
-  useAsyncEffect(async (alive) => {
-    if (alive()) await getir(false);
-  }, [tenantKey, paths.join('|')]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await getir(false);
+    },
+    [tenantKey, paths.join('|')],
+  );
 
   const k = sonuc?.compare;
 
