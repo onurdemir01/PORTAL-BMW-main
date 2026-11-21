@@ -95,9 +95,9 @@ test('VAULT_KEYS: kullanicinin verdigi 7 anahtarin TAMAMI var ve PAROLA yok', ()
   const names = VAULT_KEYS.map((k) => k.key_name).sort();
   assert.deepEqual(names, [
     'svcac_das',
+    'svcac_dmz',
     'svcac_gar',
     'svcac_gohas',
-    'svcac_dmz',
     'svcac_gtek',
     'svcac_gtekdmz',
     'svcac_takasnet',

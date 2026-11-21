@@ -449,7 +449,7 @@
         {{ {'http_proxy': opsx_http_proxy, 'https_proxy': opsx_http_proxy, 'no_proxy': 'localhost,127.0.0.1'}
            if (opsx_http_proxy | default('', true) | string | trim | length) > 0 else {} }}
 
-    # Yalniz durum kodu yazilir: hata metni webhook adresini (sig=) tasiyabilir.
+    # Yalniz durum kodu yazilir: hata metni webhook adresinin imzali sorgu parametresini tasiyabilir.
     - name: "Teams bildirimi gonderilemediyse yaz"
       ansible.builtin.debug:
         msg: "Teams bildirimi gonderilemedi (HTTP {{ opsx_teams_sonuc.status | default('?') }})."
