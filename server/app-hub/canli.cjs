@@ -149,13 +149,15 @@ function sonucuCoz(raw) {
     return {
       cluster: String(r.cluster || ''),
       namespace: String(r.namespace || ''),
-      ok: r.ok !== false && c.bitti,
+      ok: r.ok !== false && c.bitti && c.hatalar.length === 0,
       hata: hata || null,
       ...c,
       podOzet: canliPodOzeti(c),
     };
   });
-  return { genel: (raw && raw.overall_status) || null, hedefler: sonuc };
+  const basarili = sonuc.filter((h) => h.ok).length;
+  const genel = sonuc.length === 0 ? (raw && raw.overall_status) || null : basarili === sonuc.length ? 'ok' : basarili > 0 ? 'partial' : 'failed';
+  return { genel, hedefler: sonuc };
 }
 
 function hedefAnahtarlari(hedefler) {
