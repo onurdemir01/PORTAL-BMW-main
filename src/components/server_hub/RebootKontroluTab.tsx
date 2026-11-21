@@ -20,6 +20,8 @@ import {
 } from '@heroicons/react/24/outline';
 import {
   rebootCheckApi,
+  type RcAlimDurumu,
+  type RcAlimIs,
   type RcKayit,
   type RcSunucuSonuc,
   type RcDegerlendirme,
@@ -885,6 +887,80 @@ function KomutKoprusu({ c }: { c: RcYonetici['komut'] }) {
   );
 }
 
+// AWX ALIMI (2026-11-21, kullanici: "job'i calistirdim ancak Reboot Kontrolu sayfasina hicbir sey gelmedi ...
+// Yenile butonu calismiyor"): AWX'te kosan isin neden alinmadigi ekranda yazar; Yenile AWX'i hemen tarar.
+const ALIM_NEDENI: Record<string, string> = {
+  portal_bilinen: 'Portal kaydında zaten var',
+  portal_gecmisi:
+    "Portal'dan başlatılmış (Portal iş geçmişinde var); yalnız Portal dışında koşan işler alınır",
+  gecmis_okunamadi: 'Portal iş geçmişi okunamadı; sonraki taramada yeniden denenir',
+  baska_sablon: 'Başka bir AWX şablonunun işi',
+  set_stats_yok:
+    "İşte reboot_check_result yok (iş sonuç yazmadan bitti ya da AWX'teki playbook eski)",
+  host_yok: 'Sonuçta geçerli sunucu adı yok',
+  zaten_alindi: 'Başka bir Portal süreci aldı',
+  hata: 'Alınırken hata',
+};
+function alimSatiri(x: RcAlimIs): string {
+  const faz = x.faz === 'once' ? 'önce' : x.faz === 'sonra' ? 'sonra' : '';
+  if (x.sonuc === 'alindi')
+    return `iş #${x.jobId}: kayıt #${x.kayitId}${faz ? ` (${faz})` : ''} olarak alındı`;
+  const neden = ALIM_NEDENI[x.neden || ''] || x.neden || 'bilinmeyen neden';
+  return `iş #${x.jobId}: alınmadı — ${neden}${x.mesaj ? `: ${x.mesaj}` : ''}`;
+}
+function AlimNotu({ a }: { a: RcAlimDurumu | null }) {
+  if (!a) return null;
+  const uyari = a.neden === 'template_yok' || !!a.hata;
+  const zaman = a.sonTarama ? fmtDateTime(a.sonTarama) : 'henüz taranmadı';
+  return (
+    <div
+      data-testid="rc-awx-alim"
+      className="px-3 py-2 border-b text-[11px] space-y-1"
+      style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+    >
+      {a.neden === 'template_yok' ? (
+        <div style={{ color: 'var(--status-warning)' }}>
+          AWX alımı kapalı: Admin › Playbook Kayıtları'nda reboot_check şablonu tanımlı değil ya da
+          kapalı. AWX'te koşan işler Portal'a gelmez.
+        </div>
+      ) : (
+        <div title="Portal yalnız bu AWX sunucusundaki bu şablonun işlerini görür; başka AWX'te ya da başka şablonla çalıştırılan iş gelmez.">
+          {a.tariyor && (
+            <span className="inline-flex items-center gap-1 mr-1">
+              <Doner /> taranıyor ·
+            </span>
+          )}
+          AWX'ten alım: {a.sablon?.sunucuAdi ? `${a.sablon.sunucuAdi} · ` : ''}şablon #
+          {a.sablon?.templateId ?? '—'} · son tarama {zaman}
+          {a.bulunan != null && ` · son ${a.geriGun} günde ${a.bulunan} biten iş`}
+        </div>
+      )}
+      {a.hata && <div style={{ color: 'var(--status-warning)' }}>AWX okunamadı: {a.hata}</div>}
+      {!uyari && a.isler.length === 0 && a.bulunan === 0 && (
+        <div style={{ color: 'var(--text-muted)' }}>
+          Bu şablonda son {a.geriGun} günde biten iş yok. İş başka bir AWX'te ya da başka bir
+          şablonla çalıştırıldıysa Portal onu görmez.
+        </div>
+      )}
+      {a.isler.slice(0, 5).map((x) => (
+        <div
+          key={x.jobId}
+          style={{
+            color:
+              x.sonuc === 'alindi'
+                ? 'var(--status-success)'
+                : x.sonuc === 'hata'
+                  ? 'var(--status-danger)'
+                  : 'var(--text-secondary)',
+          }}
+        >
+          {alimSatiri(x)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: boolean }) {
   const onceS = k.once.sonuc?.sunucular || {};
   const sonraS = k.sonra.sonuc?.sunucular || {};
@@ -1149,6 +1225,9 @@ export default function RebootKontroluTab() {
   const [busy, setBusy] = useState(false);
   const [onay, setOnay] = useState(false);
   const [bilinen, setBilinen] = useState<Set<string> | null>(null);
+  const [alim, setAlim] = useState<RcAlimDurumu | null>(null);
+  const [yenileniyor, setYenileniyor] = useState(false);
+  const [aciliyor, setAciliyor] = useState<number | null>(null);
   const gorunur = useSekmeGorunur();
   const seciliId = useRef<number | null>(null);
 
@@ -1161,22 +1240,79 @@ export default function RebootKontroluTab() {
       toast.error(e instanceof Error ? e.message : String(e));
     }
   }, []);
-  const ac = useCallback(async (id: number) => {
+  const ac = useCallback(async (id: number, sessiz = false) => {
+    // Sessiz tazeleme (koşan kaydın 5 sn yoklaması, Yenile) seçimi DEĞİŞTİRMEZ: kullanıcı bu arada başka kayda
+    // tıkladıysa yoklama onu geri alıp tıklamayı yutardı ("kayda ilk girdiğimizde tıklanmıyor", 2026-11-21).
+    if (sessiz && seciliId.current !== id) return;
+    const onceki = seciliId.current;
     seciliId.current = id;
+    // Kayıt okunurken (koşan fazda AWX sonucu da okunur) tıklama karşılıksız görünmesin.
+    if (!sessiz) setAciliyor(id);
+    let olmadi = false;
     try {
       const r = await rebootCheckApi.get(id);
       if (r.ok && r.kayit && seciliId.current === id) setSecili(r.kayit);
-      else if (!r.ok) toast.error(r.message || 'Kayıt alınamadı.');
+      else if (!r.ok) {
+        olmadi = true;
+        toast.error(r.message || 'Kayıt alınamadı.');
+      }
     } catch (e: unknown) {
+      olmadi = true;
       toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      // Açılamayan kayıt seçili sayılmaz: panel hâlâ önceki kaydı gösteriyor.
+      if (olmadi && !sessiz && seciliId.current === id) seciliId.current = onceki;
+      if (!sessiz) setAciliyor((x) => (x === id ? null : x));
     }
   }, []);
+  // Yenile: AWX'i hemen tarar (2 dk sınırı beklenmez), sonra kayıtları ve açık kaydı tazeler.
+  const yenile = useCallback(async () => {
+    setYenileniyor(true);
+    try {
+      // AWX taraması düşse de kayıtlar tazelenir.
+      try {
+        const a = await rebootCheckApi.awxAlim(true);
+        if (a.ok && a.durum) setAlim(a.durum);
+        else if (!a.ok) toast.error(a.message || 'AWX alımı okunamadı.');
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+      await yukle();
+      if (seciliId.current != null) await ac(seciliId.current, true);
+    } finally {
+      setYenileniyor(false);
+    }
+  }, [yukle, ac]);
   useAsyncEffect(
     async (alive) => {
       if (alive()) await yukle();
     },
     [yukle],
   );
+  useEffect(() => {
+    rebootCheckApi
+      .awxAlim()
+      .then((a) => {
+        if (a.ok && a.durum) setAlim(a.durum);
+      })
+      .catch(() => {});
+  }, []);
+  // Tarama sürüyorsa (sayfa açılışında liste ucu başlatır) bitince not ve kayıtlar tazelenir.
+  useEffect(() => {
+    if (!alim?.tariyor || !gorunur) return;
+    const t = window.setTimeout(() => {
+      rebootCheckApi
+        .awxAlim()
+        .then((a) => {
+          if (a.ok && a.durum) {
+            setAlim(a.durum);
+            if (!a.durum.tariyor) void yukle();
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [alim, gorunur, yukle]);
   useEffect(() => {
     // Yalniz sunucu adlari: tum filo degerlendirmesini (/overview) indirmez.
     serverHubApi
@@ -1190,7 +1326,7 @@ export default function RebootKontroluTab() {
   useEffect(() => {
     if (!secili || !/_kosuyor$/.test(secili.durum) || !gorunur) return;
     const t = window.setInterval(() => {
-      void ac(secili.id);
+      void ac(secili.id, true);
       void yukle();
     }, 5000);
     return () => window.clearInterval(t);
@@ -1356,13 +1492,18 @@ export default function RebootKontroluTab() {
             <span className="text-xs font-semibold">Kayıtlar</span>
             <button
               type="button"
-              onClick={yukle}
-              className="ml-auto text-xs inline-flex items-center gap-1"
+              onClick={() => void yenile()}
+              disabled={yenileniyor}
+              aria-busy={yenileniyor}
+              title="AWX'te biten reboot_check işlerini şimdi tarar ve kayıtları tazeler"
+              className="ml-auto text-xs inline-flex items-center gap-1 disabled:opacity-60"
               style={{ color: 'var(--accent)' }}
             >
-              <ArrowPathIcon className="w-3.5 h-3.5" /> Yenile
+              <ArrowPathIcon className={`w-3.5 h-3.5 ${yenileniyor ? 'animate-spin' : ''}`} />{' '}
+              {yenileniyor ? 'Yenileniyor…' : 'Yenile'}
             </button>
           </div>
+          <AlimNotu a={alim} />
           {kayitlar.length === 0 ? (
             <div className="p-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>
               Henüz kayıt yok.
@@ -1373,7 +1514,8 @@ export default function RebootKontroluTab() {
                 <li key={k.id}>
                   <button
                     type="button"
-                    onClick={() => ac(k.id)}
+                    onClick={() => void ac(k.id)}
+                    aria-busy={aciliyor === k.id}
                     className="w-full text-left px-3 py-2 border-b hover:bg-[var(--bg-elevated)]"
                     style={{
                       borderColor: 'var(--border-subtle)',
@@ -1384,6 +1526,11 @@ export default function RebootKontroluTab() {
                       <span className="text-xs font-semibold">#{k.id}</span>
                       <DurumRozeti durum={k.durum} />
                       <KaynakRozeti k={k} />
+                      {aciliyor === k.id && (
+                        <span className="ml-auto">
+                          <Doner />
+                        </span>
+                      )}
                     </div>
                     <div
                       className="text-[11px] font-mono truncate"
@@ -1405,7 +1552,15 @@ export default function RebootKontroluTab() {
           className="rounded-xl border p-4"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
         >
-          {secili ? (
+          {aciliyor != null && secili?.id !== aciliyor ? (
+            <div
+              data-testid="rc-kayit-yukleniyor"
+              className="text-[12px] flex items-center gap-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <Doner /> Kayıt #{aciliyor} yükleniyor…
+            </div>
+          ) : secili ? (
             <Ayrinti k={secili} onSonra={() => setOnay(true)} busy={busy} />
           ) : (
             <div

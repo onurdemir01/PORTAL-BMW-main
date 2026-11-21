@@ -204,7 +204,38 @@ export interface RcLaunch {
   disarida?: string[];
 }
 
+/** AWX'te (Portal dışında) koşan reboot_check işlerinin alımı: son tarama özeti (reboot-check-awx.cjs alimDurumu). */
+export interface RcAlimIs {
+  jobId: number;
+  sonuc: 'alindi' | 'atlandi' | 'hata';
+  /** atlandi: portal_bilinen | portal_gecmisi | gecmis_okunamadi | baska_sablon | set_stats_yok | host_yok | zaten_alindi */
+  neden?: string | null;
+  mesaj?: string;
+  kayitId?: number;
+  faz?: string | null;
+  awxDurum?: string | null;
+  zaman: string;
+}
+export interface RcAlimDurumu {
+  aralikSn: number;
+  geriGun: number;
+  sonTarama: string | null;
+  /** tarama şu an sürüyor (ekran bitince yeniden sorar) */
+  tariyor?: boolean;
+  /** sunucuAdi: taranan AWX (Portal yalnız bu AWX'teki bu şablonu görür) */
+  sablon: { templateId: number; serverId: number; sunucuAdi?: string | null } | null;
+  /** template_yok: Playbook Kayıtları'nda reboot_check tanımsız / kapalı */
+  neden: string | null;
+  hata: string | null;
+  /** son taramada şablonun pencere içinde biten iş sayısı (null = okunamadı / taranmadı) */
+  bulunan: number | null;
+  isler: RcAlimIs[];
+}
+
 export const rebootCheckApi = {
+  /** tara: 2 dk sınırını atlayıp AWX'i şimdi tarar ve bitmesini bekler (Yenile). */
+  awxAlim: (tara = false): Promise<{ ok: boolean; message?: string; durum?: RcAlimDurumu }> =>
+    fetch(`${BASE}/awx-alim${tara ? '?tara=1' : ''}`).then(safeJson),
   list: (): Promise<{ ok: boolean; message?: string; kayitlar?: RcKayit[] }> =>
     fetch(BASE).then(safeJson),
   get: (id: number): Promise<{ ok: boolean; message?: string; kayit?: RcKayit }> =>
