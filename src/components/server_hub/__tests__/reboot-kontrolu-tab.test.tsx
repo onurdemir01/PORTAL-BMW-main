@@ -97,10 +97,24 @@ const KD_KAYIT = {
 };
 let AKTIF: typeof KAYIT | typeof BOS_KAYIT | typeof OTO_KAYIT | typeof KD_KAYIT = KAYIT;
 
+const alimMock = vi.fn(async (_tara?: boolean): Promise<{ ok: boolean; durum?: unknown }> => ({ ok: true, durum: ALIM }));
+let getBekle: Promise<void> | null = null;
+// AWX alimi (2026-11-21): son tarama ozeti; varsayilan "alinan + Portal'dan baslatilmis" iki is.
+let ALIM: unknown = {
+  aralikSn: 120, geriGun: 7, sonTarama: '2026-11-21T09:00:00Z', sablon: { templateId: 77, serverId: 1, sunucuAdi: 'Maestro2' }, neden: null, hata: null, bulunan: 2,
+  isler: [
+    { jobId: 502, sonuc: 'atlandi', neden: 'portal_gecmisi', zaman: '2026-11-21T09:00:00Z' },
+    { jobId: 501, sonuc: 'alindi', kayitId: 3, faz: 'once', zaman: '2026-11-21T09:00:00Z' },
+  ],
+};
 vi.mock('@/api/rebootCheckApi', () => ({
   rebootCheckApi: {
+    awxAlim: (t?: boolean) => alimMock(t),
     list: vi.fn(async () => ({ ok: true, kayitlar: [AKTIF] })),
-    get: vi.fn(async () => ({ ok: true, kayit: AKTIF })),
+    get: vi.fn(async () => {
+      if (getBekle) await getBekle;
+      return { ok: true, kayit: AKTIF };
+    }),
     once: vi.fn(),
     sonra: (...a: unknown[]) => sonraMock(...(a as [])),
   },
@@ -119,6 +133,7 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 
 import RebootKontroluTab from '../RebootKontroluTab';
 import { serverHubApi } from '@/api/serverHubApi';
+import { rebootCheckApi } from '@/api/rebootCheckApi';
 
 describe('Reboot Kontrolü sekmesi', () => {
   it('RT1 kayıt açılır: önce ürünleri, sorunsuz/fark kaldı rozetleri, JVM satırı ve reboot doğrulaması görünür', async () => {
@@ -509,5 +524,104 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     // ürün tablosu da aynı önce kaynağından: GBX01'in CTG satırı "betik eski" demez, yalnız GBJ03'ün JBoss 8 satırı der
     expect(screen.getAllByText("reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı — AWX'teki betik eski (sürüm 3); güncel betikle yeniden çalıştırın")).toHaveLength(1);
     expect(screen.getByText('reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)')).toBeTruthy();
+  });
+});
+
+describe('Reboot Kontrolü sekmesi — AWX alımı, Yenile, yükleniyor (2026-11-21)', () => {
+  it('RT15 alım notu: şablon, son tarama, alınan iş ve alınmama nedeni görünür; şablon yoksa uyarı', async () => {
+    alimMock.mockClear();
+    const { unmount } = render(<RebootKontroluTab />);
+    const not = await screen.findByTestId('rc-awx-alim');
+    expect(not.textContent).toMatch(/Maestro2 · şablon #77/);
+    expect(not.textContent).toMatch(/son 7 günde 2 biten iş/);
+    expect(not.textContent).toMatch(/iş #501: kayıt #3 \(önce\) olarak alındı/);
+    expect(not.textContent).toMatch(/iş #502: alınmadı — Portal'dan başlatılmış/);
+    expect(alimMock).toHaveBeenCalledWith(undefined);
+    unmount();
+    const eski = ALIM;
+    ALIM = { aralikSn: 120, geriGun: 7, sonTarama: '2026-11-21T09:00:00Z', sablon: null, neden: 'template_yok', hata: null, bulunan: null, isler: [] };
+    render(<RebootKontroluTab />);
+    expect((await screen.findByTestId('rc-awx-alim')).textContent).toMatch(/reboot_check şablonu tanımlı değil/);
+    ALIM = eski;
+  });
+
+  it('RT16 Yenile AWX’i hemen taratır (tara=1), beklerken döner ve devre dışı; kayıtlar tazelenir', async () => {
+    alimMock.mockClear();
+    render(<RebootKontroluTab />);
+    await screen.findByTestId('rc-awx-alim');
+    const listeOnce = vi.mocked(rebootCheckApi.list).mock.calls.length;
+    let birak: () => void = () => {};
+    alimMock.mockImplementationOnce(async () => {
+      await new Promise<void>((r) => { birak = r; });
+      return { ok: true, durum: { ...(ALIM as object), isler: [{ jobId: 600, sonuc: 'atlandi', neden: 'set_stats_yok', zaman: 'x' }] } };
+    });
+    const dugme = screen.getByRole('button', { name: /Yenile/ });
+    fireEvent.click(dugme);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Yenileniyor/ })).toHaveProperty('disabled', true));
+    expect(alimMock).toHaveBeenLastCalledWith(true);
+    birak();
+    await waitFor(() => expect(screen.getByTestId('rc-awx-alim').textContent).toMatch(/iş #600: alınmadı — İşte reboot_check_result yok/));
+    await waitFor(() => expect(vi.mocked(rebootCheckApi.list).mock.calls.length).toBeGreaterThan(listeOnce));
+    expect(screen.getByRole('button', { name: /^.*Yenile$/ })).toHaveProperty('disabled', false);
+  });
+
+  it('RT17 kayda tıklanınca yüklenirken satırda döner ve ayrıntıda "yükleniyor" yazar', async () => {
+    AKTIF = KAYIT;
+    let birak: () => void = () => {};
+    getBekle = new Promise<void>((r) => { birak = r; });
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#3'));
+    expect((await screen.findByTestId('rc-kayit-yukleniyor')).textContent).toMatch(/Kayıt #3 yükleniyor/);
+    expect(screen.getByText('#3').closest('button')?.getAttribute('aria-busy')).toBe('true');
+    birak();
+    getBekle = null;
+    await screen.findByText('2 ürün kaydedildi');
+    expect(screen.queryByTestId('rc-kayit-yukleniyor')).toBeNull();
+    expect(screen.getByText('#3').closest('button')?.getAttribute('aria-busy')).toBe('false');
+  });
+
+  it('RT18 inceleme: Yenile AWX alımı düşse de kayıtları tazeler; tarama sürerken not "taranıyor" der', async () => {
+    alimMock.mockClear();
+    alimMock.mockImplementationOnce(async () => ({ ok: true, durum: { ...(ALIM as object), tariyor: true } }));
+    render(<RebootKontroluTab />);
+    expect((await screen.findByTestId('rc-awx-alim')).textContent).toMatch(/taranıyor/);
+    const listeOnce = vi.mocked(rebootCheckApi.list).mock.calls.length;
+    alimMock.mockImplementationOnce(async () => { throw new Error('AWX zaman asimi'); });
+    fireEvent.click(screen.getByRole('button', { name: /Yenile/ }));
+    await waitFor(() => expect(vi.mocked(rebootCheckApi.list).mock.calls.length).toBeGreaterThan(listeOnce));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Yenile/ })).toHaveProperty('disabled', false));
+  });
+
+  it('RT19 inceleme: koşan kaydın sessiz yoklaması, yeni tıklanan kaydı geri almaz', async () => {
+    const KOSAN = { ...KAYIT, id: 11, durum: 'sonra_kosuyor' };
+    const DIGER = { ...KAYIT, id: 12, durum: 'tamam', not: 'diger kayit' };
+    vi.mocked(rebootCheckApi.list).mockImplementation(async () => ({ ok: true, kayitlar: [KOSAN, DIGER] } as never));
+    let digerBirak: () => void = () => {};
+    vi.mocked(rebootCheckApi.get).mockImplementation(async (id: number) => {
+      if (id === 12) await new Promise<void>((r) => { digerBirak = r; });
+      return { ok: true, kayit: id === 11 ? KOSAN : DIGER } as never;
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<RebootKontroluTab />);
+      fireEvent.click(await screen.findByText('#11'));
+      await waitFor(() => expect(vi.mocked(rebootCheckApi.get)).toHaveBeenCalledWith(11));
+      fireEvent.click(screen.getByText('#12'));
+      // #12 yanıtı gelmeden 5 sn yoklaması çalışır: #11'i sessizce okumaya çalışmamalı, seçimi geri almamalı.
+      const getOnce = vi.mocked(rebootCheckApi.get).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(5200);
+      expect(vi.mocked(rebootCheckApi.get).mock.calls.slice(getOnce).some((c) => c[0] === 11)).toBe(false);
+      digerBirak();
+      await waitFor(() => expect(screen.getByText('#12').closest('button')?.getAttribute('aria-busy')).toBe('false'));
+      await waitFor(() => expect(screen.queryByTestId('rc-kayit-yukleniyor')).toBeNull());
+      expect(screen.getAllByText(/diger kayit/).length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+      vi.mocked(rebootCheckApi.list).mockImplementation(async () => ({ ok: true, kayitlar: [AKTIF] } as never));
+      vi.mocked(rebootCheckApi.get).mockImplementation(async () => {
+        if (getBekle) await getBekle;
+        return { ok: true, kayit: AKTIF } as never;
+      });
+    }
   });
 });
