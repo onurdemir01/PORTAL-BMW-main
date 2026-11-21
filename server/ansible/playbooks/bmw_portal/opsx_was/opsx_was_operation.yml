@@ -208,27 +208,38 @@
               {{ (({'RUNNING': 'running', 'STOPPED': 'stopped'})[opsx_was_host_result.after] | default(''))
                  if (opsx_was_host_result.result in ['OK', 'SKIP']) else '' }}
 
-        - name: --- [Task] Envanter yazimi (GBLABT02, tek satir UPDATE) ---
+        - name: --- [Task] Envanter yazimi (yazici sunucu, tek satir UPDATE) ---
           when: (opsx_was_inv_status | length) > 0
           block:
-            - name: --- [Task] tbmwans_pwd yoksa envanter yazilmaz ---
+            - name: --- [Task] Envanter yazimi on kosulu (parola + yazici + SQL sunucusu) ---
               ansible.builtin.set_fact:
-                opsx_was_inv_line: "WASAPP_UPDATE\tFAIL\ttbmwans_pwd tanimli degil (AWX credential); envanter guncellenmedi"
-              when: (tbmwans_pwd | default('') | string | length) == 0
+                opsx_was_inv_eksik: >-
+                  {{ ([] if (tbmwans_pwd | default('', true) | string | length) > 0 else ['tbmwans_pwd (AWX credential)'])
+                     + ([] if (portal_yazici_host | default('', true) | string | trim | length) > 0 else ['portal_yazici_host'])
+                     + ([] if (portal_envanter_sql_sunucusu | default('', true) | string | trim | length) > 0 else ['portal_envanter_sql_sunucusu']) }}
 
-            - name: --- [Task] GBLABT02 baglanan kullanicinin uid'i ---
+            - name: --- [Task] Envanter yazimi hazir mi ---
+              ansible.builtin.set_fact:
+                opsx_was_inv_hazir: "{{ (opsx_was_inv_eksik | length) == 0 }}"
+
+            - name: --- [Task] On kosul eksikse envanter yazilmaz (eksiklerin hepsi tek satirda) ---
+              ansible.builtin.set_fact:
+                opsx_was_inv_line: "WASAPP_UPDATE\tFAIL\t{{ opsx_was_inv_eksik | join(', ') }} tanimli degil (AWX template Variables / credential); envanter guncellenmedi"
+              when: not (opsx_was_inv_hazir | bool)
+
+            - name: --- [Task] Yazici sunucuya baglanan kullanicinin uid'i ---
               become: false
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               ansible.builtin.command:
                 cmd: id -u
               register: opsx_was_upd_me
               changed_when: false
               failed_when: false
-              when: (tbmwans_pwd | default('') | string | length) > 0
+              when: opsx_was_inv_hazir | bool
 
-            - name: --- [Task] GBLABT02 kosuya ozel rastgele betik adi (mktemp) ---
+            - name: --- [Task] Yazici sunucuda kosuya ozel rastgele betik adi (mktemp) ---
               become: false
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               ansible.builtin.tempfile:
                 state: file
                 path: /var/tmp
@@ -237,11 +248,11 @@
               register: opsx_was_upd_tmp
               changed_when: false
               failed_when: false
-              when: (tbmwans_pwd | default('') | string | length) > 0
+              when: opsx_was_inv_hazir | bool
 
-            - name: --- [Task] Envanter betigi GBLABT02'ye ---
+            - name: --- [Task] Envanter betigi yazici sunucuya ---
               become: false
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               ansible.builtin.copy:
                 src: files/update_wasapp_status.py
                 dest: "{{ opsx_was_upd_script }}"
@@ -249,21 +260,21 @@
               register: opsx_was_upd_copy
               changed_when: false
               ignore_errors: true
-              when: (tbmwans_pwd | default('') | string | length) > 0
+              when: opsx_was_inv_hazir | bool
 
             - name: --- [Task] Envanter betigi kopyasinin dogrulanmasi ---
               become: false
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               ansible.builtin.stat:
                 path: "{{ opsx_was_upd_script }}"
                 checksum_algorithm: sha1
                 get_checksum: true
               register: opsx_was_upd_stat
               failed_when: false
-              when: (tbmwans_pwd | default('') | string | length) > 0
+              when: opsx_was_inv_hazir | bool
 
             - name: --- [Task] dbo.WASAppsInventory tek satir UPDATE (parola yalniz stdin) ---
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               no_log: true
               ansible.builtin.command:
                 argv:
@@ -273,12 +284,13 @@
                   - "--app={{ was_server }}"
                   - "--status={{ opsx_was_inv_status }}"
                   - "--pwd-stdin"
+                  - "--sunucu={{ portal_envanter_sql_sunucusu | default('', true) }}"
                 stdin: "{{ tbmwans_pwd }}"
               register: opsx_was_upd
               changed_when: false
               failed_when: false
               when: >-
-                ((tbmwans_pwd | default('') | string | length) > 0)
+                (opsx_was_inv_hazir | bool)
                 and (opsx_was_upd_copy is not failed)
                 and ((hostvars['localhost'].opsx_was_upd_src_sha1 | default('') | length) > 0)
                 and ((opsx_was_upd_stat.stat.checksum | default('')) == (hostvars['localhost'].opsx_was_upd_src_sha1 | default('')))
@@ -292,7 +304,7 @@
                 opsx_was_inv_line: >-
                   {{ (opsx_was_upd.stdout_lines | default([]) | select('match', '^WASAPP_UPDATE\t') | list | last)
                      | default('WASAPP_UPDATE\tFAIL\tguncelleyici kosmadi ya da sonuc satiri yok (kopya dogrulanamadi ya da python3/pyodbc hatasi)') }}
-              when: (tbmwans_pwd | default('') | string | length) > 0
+              when: opsx_was_inv_hazir | bool
 
             - name: --- [Task] Envanter sonucu ---
               ansible.builtin.debug:
@@ -324,9 +336,9 @@
           failed_when: false
           when: (opsx_was_script | length) > 0
 
-        - name: --- [Task] GBLABT02 kosuya ozel betik silinir ---
+        - name: --- [Task] Yazici sunucuda kosuya ozel betik silinir ---
           become: false
-          delegate_to: GBLABT02
+          delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
           ansible.builtin.file:
             path: "{{ opsx_was_upd_script }}"
             state: absent

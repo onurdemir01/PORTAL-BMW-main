@@ -23,10 +23,10 @@
 #     - env, tenant, cluster_name
 #       terminal_host                     # opsiyonel
 #       api_url, credential_key           # opsiyonel (yoksa inventory'den — geriye uyum)
-#       username: uxmid                   # oc login kullanicisi; yoksa `ocp_username`
+#       username: svcac                   # oc login kullanicisi; yoksa `ocp_username`
 #       namespaces: [ns1, ns2]            # BU cluster'da taranacak namespace'ler
 #   ocp_namespaces: [ns1, ns2]            # opsiyonel GENEL liste (cluster'da yoksa)
-#   ocp_username: uxmid                   # portalin GENEL varsayilani (cluster'da yoksa)
+#   ocp_username: svcac                   # portalin GENEL varsayilani (cluster'da yoksa)
 #
 # ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
 # api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
@@ -56,7 +56,7 @@
     #
     # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
     # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
-    logx_playbook_revision: "c0190edb0c"
+    logx_playbook_revision: "50f172f942"
     logx_bastions: >-
       {{
         (terminal_hosts | default([]) | union([terminal_host | default('')]))

@@ -6,7 +6,7 @@
 // hedefte sunucu ayari ve log ayrisimi YAPILMAZ, yalniz genel CPU olculur. Bu test o satirlari kilitler:
 //   (a) Play 1: yt_extra_load_hosts / yt_cpu_target_extra_hosts yok; ilk assert'te yuk_hedef_host / yuk_yuk_host icin
 //       yt_re_nonprod_adi eslemesi YOK, ikisi icin de EDU + yt_re_prod_adi reddi VAR, hedef != yuk; yt_re_prod_adi
-//       Portal envOfHost'un PROD kalibiyla ayni ('^(GBRVP|GBNG[WX]A?P)').
+//       Portal envOfHost'un PROD kalibiyla ayni ('^([A-Z]{2}RVP|[A-Z]{2}NG[WX]A?P)'; onek bagimsiz, K17).
 //   (b) Play 2: nginx tespiti (on_kontrol.sh nginx) kopya kapisindan SONRA, sunucu ayari blogundan ONCE; sunucu ayari
 //       blogunun when'inde yt_hedef_nginx == '1'; kosuda belirsiz ('-') ve "ayar istendi ama nginx yok" fail'leri;
 //       on kontrolde ayar istendi ama nginx yoksa yt_hz_sonuc FAIL (Play 10 engeli).
@@ -63,7 +63,7 @@ test('NA10 (a) Play 1: ad kurali ve ek liste yok; EDU + uretim adi reddi, hedef 
   const p1 = playlar()[0];
   assert.match(
     p1,
-    /^ {4}yt_re_prod_adi: '\^\(GBRVP\|GBNG\[WX\]A\?P\)'$/m,
+    /^ {4}yt_re_prod_adi: '\^\(\[A-Z\]\{2\}RVP\|\[A-Z\]\{2\}NG\[WX\]A\?P\)'$/m,
     'uretim adi kalibi (Portal envOfHost PROD)',
   );
   const ilk = gorevler(p1).find((x) =>

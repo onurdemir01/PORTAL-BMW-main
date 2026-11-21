@@ -183,7 +183,7 @@ function startServer(cell, node) {
 function serverindex(sunucular) {
   const s = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<serverindex:ServerIndex xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmi:id="ServerIndex_1" hostName="gbwast01">',
+    '<serverindex:ServerIndex xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmi:id="ServerIndex_1" hostName="orwast01">',
   ];
   sunucular.forEach(([ad, tur], i) => {
     s.push(
@@ -540,10 +540,10 @@ test('S4 stop sonrasi JVM geri gelir (nodeagent) -> FAIL', { skip: SKIP }, () =>
 test('S5 id -un != was -> FAIL, hicbir WAS komutu kosmaz', { skip: SKIP }, () => {
   dunyada({}, (d) => {
     d.surec('C1', 'N1', 'app1');
-    const k = d.kos({ MODE: 'discover', FAKE_USER: 'uxmid' });
+    const k = d.kos({ MODE: 'discover', FAKE_USER: 'svcac' });
     assert.equal(k.status, 'FAIL');
     assert.equal(k.disc?.overall, 'olculemedi');
-    const s = d.kos(islem('stop', { FAKE_USER: 'uxmid' }));
+    const s = d.kos(islem('stop', { FAKE_USER: 'svcac' }));
     assert.equal(s.status, 'FAIL');
     assert.equal(s.before, '-');
     assert.deepEqual(

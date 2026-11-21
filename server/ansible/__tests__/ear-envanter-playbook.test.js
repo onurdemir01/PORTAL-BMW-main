@@ -2,7 +2,7 @@
 //
 // EP1 basliktaki extra_vars listesi playbook'ta kullanilanlarla AYNI (belgelenmemis girdi yok)
 // EP2 hedefte TEK gorev: `raw`, dzdo + was, kesin `timeout`, `no_log`, heredoc ACIK METIN (base64 yok)
-// EP3 yapisal: tarama play'inde yalniz raw + set_fact + GBLABT02'ye (throttle 6, no_log) copy;
+// EP3 yapisal: tarama play'inde yalniz raw + set_fact + yazici sunucuya (portal_yazici_host; throttle 6, no_log) copy;
 //     hedefe dosya yazan / betik kopyalayan gorev yok; girdi dogrulamasi + add_host; set_stats + fail
 // EP4 raw komutu kabukta: python yoksa @@EAR_PYTHON_YOK@@; varsa paket isaretleri (heredoc saglam)
 // EP5 GERCEK ansible-playbook: yerel hedefler, ulasilamayan host ULASILAMADI, /sw dosyalari,
@@ -17,6 +17,8 @@
 //     paketinden SONRA; alim ikisini de okur; set_stats ozeti degismez; kapaliyken blok YOK
 // EP10 FAZ W GERCEK ansible-playbook (ear_web_kontrol=true): web blogu ayni dosyada onceki bloklardan SONRA;
 //     alim webCoz okur, tarama paketi etkilenmez; kapaliyken blok YOK
+// EP11 portal_yazici_host (AWX template Variables) yoksa girdi dogrulamasi durur: hicbir sey taranmaz /
+//     yazilmaz (kurum sunucu adi playbook'ta varsayilan DEGIL, K17)
 'use strict';
 
 const { test } = require('node:test');
@@ -62,7 +64,9 @@ test('EP1 basliktaki extra_vars listesi kullanilanlarla ayni', () => {
       .map((m) => m[1]),
   );
   for (const s of baslik) for (const m of s.matchAll(/\/ (ear_[a-z_]+):/g)) belgeli.add(m[1]);
-  const kullanilan = new Set([...KOD.matchAll(/\b(hedefler|ear_[a-z_]+)\b/g)].map((m) => m[1]));
+  const kullanilan = new Set(
+    [...KOD.matchAll(/\b(hedefler|ear_[a-z_]+|portal_yazici_host)\b/g)].map((m) => m[1]),
+  );
   // Playbook'un kendi ic adlari ve yol parcalari (girdi degil):
   for (const ic of [
     'ear_envanter',
@@ -114,7 +118,7 @@ test('EP2 hedefte tek raw: dzdo + was, kesin timeout, no_log, heredoc acik metin
 });
 
 test(
-  "EP3 yapisal: tarama play'i yalniz raw + set_fact + GBLABT02 copy; girdi dogrulama, add_host, set_stats",
+  "EP3 yapisal: tarama play'i yalniz raw + set_fact + yazici sunucuya copy; girdi dogrulama, add_host, set_stats",
   { skip: !PYY && 'PyYAML bulunamadi' },
   () => {
     const plays = yamlOku();
@@ -217,10 +221,10 @@ test(
       copy['ansible.builtin.copy'].content,
       "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}{{ ear_web.stdout | default('') }}",
     );
-    assert.match(
+    assert.equal(
       String(copy.delegate_to),
-      /GBLABT02/,
-      "/sw'ye yazma hedefte degil GBLABT02'de olmali",
+      "{{ (ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true)) or 'yazici-sunucu-tanimsiz' }}",
+      "/sw'ye yazma hedefte degil yazici sunucuda (AWX portal_yazici_host; sabit ad yok) olmali",
     );
     assert.equal(copy.throttle, 6, 'sshd MaxSessions: en cok 6 eszamanli');
     assert.equal(copy.no_log, true);
@@ -339,7 +343,7 @@ test(
       inv,
       [
         `localhost ansible_connection=local ansible_python_interpreter=${py}`,
-        `GBLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
+        `ORLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
         `HOSTA ansible_connection=local ear_kokler=${kok}/hostA/vhosting:${kok}/hostA/vhosting8`,
         `HOSTB ansible_connection=local ear_kokler=${kok}/hostB/vhosting:${kok}/hostB/vhosting8`,
         "HOSTX ansible_host=192.0.2.1 ansible_connection=ssh ansible_ssh_common_args='-o ConnectTimeout=2'",
@@ -354,6 +358,7 @@ test(
       ear_parti_no: 2,
       ear_okuma_kullanicisi: '',
       ear_dizin: cikti,
+      portal_yazici_host: 'ORLABT02',
     };
     const r = spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, '-e', JSON.stringify(ev)], {
       encoding: 'utf8',
@@ -423,7 +428,7 @@ function limitOrtami(onEk, { localhostYok = false } = {}) {
     inv,
     [
       localhostYok ? '' : `localhost ansible_connection=local ansible_python_interpreter=${py}`,
-      `GBLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
+      `ORLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
       `HOSTA ansible_connection=local ${kokler('hostA')}`,
       `HOSTB ansible_connection=local ${kokler('hostB')}`,
       `hostc.ornek.local ansible_connection=local ${kokler('hostA')}`,
@@ -435,8 +440,11 @@ function limitOrtami(onEk, { localhostYok = false } = {}) {
   return { kok, inv, cikti: path.join(kok, 'sw', 'ear_envanter') };
 }
 
+// AWX template Variables'taki yazici sunucu (portal_yazici_host) varsayilan olarak verilir; ev ile ezilir
+// (undefined -> JSON'da yok -> tanimsiz).
 function oynat(inv, ek, ev) {
-  return spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, ...ek, '-e', JSON.stringify(ev)], {
+  const tum = JSON.stringify({ portal_yazici_host: 'ORLABT02', ...ev });
+  return spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, ...ek, '-e', tum], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -627,5 +635,31 @@ test(
     // Gecersiz Faz W girdisi ilk play'de durur.
     const r3 = oynat(inv, [], { ...ev, ear_kosu_no: 13, ear_web_hc: 'hc.html;id' });
     assert.notEqual(r3.status, 0, 'gecersiz ear_web_hc kabul edildi');
+  },
+);
+
+test(
+  'EP11 portal_yazici_host yoksa girdi dogrulamasi durur: hicbir sey taranmaz / yazilmaz',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    const { inv, cikti } = limitOrtami('ear-ep11-');
+    const ev = {
+      hedefler: ['hosta'],
+      ear_kosu_no: 11,
+      ear_parti_no: 1,
+      ear_okuma_kullanicisi: '',
+      ear_dizin: cikti,
+      portal_yazici_host: undefined,
+    };
+    const r = oynat(inv, [], ev);
+    assert.notEqual(r.status, 0, 'yazici sunucu yokken is basarili bitmemeli');
+    assert.match(r.stdout, /yazici sunucu \(AWX template Variables: portal_yazici_host\)/);
+    assert.equal(ozetOku(r), null, 'set_stats yayinlanmamali');
+    assert.ok(!fs.existsSync(cikti), "hicbir sey /sw'ye yazilmamali");
+    assert.ok(!/TASK \[--- \[Task\] Tara/.test(r.stdout), 'tarama gorevi calismamali');
+
+    // Gecerli yazici sunucuyla ayni girdi gecer (kapi yalniz eksik degeri reddeder).
+    const r2 = oynat(inv, [], { ...ev, portal_yazici_host: 'ORLABT02' });
+    assert.equal(r2.status, 0, `ansible-playbook kod ${r2.status}\n${r2.stdout.slice(-1500)}`);
   },
 );

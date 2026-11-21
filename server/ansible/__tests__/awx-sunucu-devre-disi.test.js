@@ -159,9 +159,9 @@ test('AD4 uyarilar', async () => {
     AWX_LOGX_SERVER_ID: '1',
     OPSX_AWX_SERVER_ID: '2',
     SCALEX_AWX_SERVER_ID: ' 1 ',
-    AWX_URL: 'https://MAESTRO.fwgaranti.com.tr/',
+    AWX_URL: 'https://MAESTRO.fwsirket.invalid/',
   };
-  const o = await bagimlilikOzeti(1, { db, env, sunucuUrl: 'https://maestro.fwgaranti.com.tr' });
+  const o = await bagimlilikOzeti(1, { db, env, sunucuUrl: 'https://maestro.fwsirket.invalid' });
   const k = Object.fromEntries(o.uyarilar.map((u) => [u.anahtar, u]));
   assert.deepEqual(k.ss.ornekler, ['Nginx - RVP Operations']);
   assert.deepEqual(k.kayit.ornekler, ['opsx_was_restart']);
@@ -171,7 +171,7 @@ test('AD4 uyarilar', async () => {
   assert.equal(o.kapatilabilir, true, 'uyari kapatmayi engellememeli');
 
   // #1 disi sunucuda sunucusuz kayit uyarisi yok; AWX_URL baska sunucudaysa uyari yok
-  const o2 = await bagimlilikOzeti(2, { db, env, sunucuUrl: 'https://maestro2.fwgaranti.com.tr' });
+  const o2 = await bagimlilikOzeti(2, { db, env, sunucuUrl: 'https://maestro2.fwsirket.invalid' });
   assert.equal(
     o2.uyarilar.some((u) => u.anahtar === 'kayit_bos'),
     false,

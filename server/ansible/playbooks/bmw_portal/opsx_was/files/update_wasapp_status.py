@@ -31,12 +31,14 @@ import sys
 
 try:
     import pyodbc
-except ImportError:  # GBLABT02'de kurulu; yoksa acik FAIL
+except ImportError:  # yazici sunucuda kurulu; yoksa acik FAIL
     pyodbc = None
 
+# SQL sunucusu ("ad,port") koda yazilmaz (repo public): --sunucu ile gelir (AWX sablon degiskeni
+# portal_envanter_sql_sunucusu, playbook argv'si).
 CONN_SABLON = (
     "DRIVER={ODBC Driver 18 for SQL Server};"
-    "SERVER=TBMWANSALS.fw.garanti.com.tr,1453;"
+    "SERVER=%s;"
     "DATABASE=TBMWANS;"
     "UID=TBMWANS_usr;"
     "PWD={%s};"
@@ -96,7 +98,7 @@ def _guncelle(a, parola):
     conn = None
     cur = None
     try:
-        conn = pyodbc.connect(CONN_SABLON % parola.replace("}", "}}"), autocommit=False)
+        conn = pyodbc.connect(CONN_SABLON % (a.sunucu, parola.replace("}", "}}")), autocommit=False)
         cur = conn.cursor()
         cur.execute(LOCK_SQL)
         cur.execute(NOCOUNT_SQL)
@@ -130,10 +132,14 @@ def main(argv=None):
     p.add_argument("--app", required=True)
     p.add_argument("--status", required=True)
     p.add_argument("--pwd-stdin", action="store_true", help="parolayi stdin'in ilk satirindan oku")
+    p.add_argument("--sunucu", default="", help="SQL sunucusu: ad,port (AWX portal_envanter_sql_sunucusu)")
     try:
         a = p.parse_args(argv)
     except SystemExit:
         satir("FAIL", "arguman hatasi (--host --app --status gerekli)")
+        return 2
+    if not re.match(r"^[A-Za-z0-9.-]+,\d{1,5}$", a.sunucu or ""):
+        satir("FAIL", "SQL sunucusu tanimli degil ya da gecersiz (--sunucu ad,port; AWX portal_envanter_sql_sunucusu); DB'ye baglanilmadi")
         return 2
     if not AD.match(a.host) or not AD.match(a.app):
         satir("FAIL", "gecersiz host/app (yalniz ^[A-Za-z0-9_.-]+$); DB'ye baglanilmadi")

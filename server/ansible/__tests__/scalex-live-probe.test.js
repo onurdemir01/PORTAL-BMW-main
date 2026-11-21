@@ -118,7 +118,7 @@ function discoverState({ configMaps = [], workloads = {}, probeApps = [], appRaw
   }
 }
 
-const CM = 'scalex-state-app1|app1|Deployment|2|scaled_down|2026-09-17|uxmid|1';
+const CM = 'scalex-state-app1|app1|Deployment|2|scaled_down|2026-09-17|svcac|1';
 
 test('LP1 yoklama listesindeki her uygulama icin bir `LIVE` satiri basiliyor', () => {
   const r = discoverState({

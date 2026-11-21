@@ -46,7 +46,7 @@ const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': 'db5cd71d90c09cbc55d46c3ab7c512d42fb2a3bcc6976d73dacd927e502033e8',
+  'README.md': '709ffd82ccccb4c9c6e9504dfb280282bc0cf3b395b4248a2d868cdfdb766217',
   'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
   'files/cpu_kaydedici.sh': '4986b83511035f2ffc989cac727b5cb2184114fd1abdc08a94c30106f5b5f32d',
   'files/durdur.sh': '087f8976083058175bceb4ee7a1fd9982d3072ca126f3ebd4bc96f0b627460cd',
@@ -57,7 +57,7 @@ const BEKLENEN = {
   'files/yuk_cpu_kaydedici.sh': '7579afa1198f7dacab79b7f3a61cc35bc604825e3bf4c07aed3b101ac5f7cfeb',
   'files/yuk_k6.js': 'fcaf5d1c5c4dd05a84696304aef6d8259ce90b52bcea02f773ae44902b99756b',
   'files/yuk_wrk.lua': 'a8244133543984dcba697e821de88506098e2c88ceae5c4314faf65057b8c00a',
-  'nginx_loadtest.yml': 'fe40fce6851a099a089705a20d3413f0e9fdc9794de65b6426946430cfb2f5bc',
+  'nginx_loadtest.yml': '99889907ec3d48cafae8b78ddc1e1c15c8777c333842f9313983bd8b603855bf',
 };
 
 function tumDosyalar(kok) {
@@ -233,7 +233,7 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
   const playlar = yml.split(/\n(?=- name: )/).filter((p) => /^ {2}hosts: /m.test(p));
   assert.equal(playlar.length, 10, 'play sayisi (test yanlis yere bakiyor olmasin)');
 
-  // (1) GBLABT02 erisilemezse localhost play'den DUSMEMELI ve kopya 'tamam' sayilmamali.
+  // (1) ORLABT02 erisilemezse localhost play'den DUSMEMELI ve kopya 'tamam' sayilmamali.
   const delegeli = playlar.filter((p) => /^\s+delegate_to: /m.test(p));
   assert.ok(delegeli.length >= 1, 'delegate_to iceren play yok (test yanlis yere bakiyor)');
   for (const p of delegeli) {
@@ -336,7 +336,7 @@ test('NA5 S8: delegate/unreachable, korumali yuk_islem, kaydedici KILL/bekleme, 
     const m = rx.exec(s);
     return m ? Object.keys(m.groups).filter((g) => m.groups[g] !== undefined) : null;
   };
-  const BAS = '== cpu_kaydedici: adim=R17 host=gbngxt33 master=100 worker=2 nproc=4 clk_tck=100\n';
+  const BAS = '== cpu_kaydedici: adim=R17 host=orngxt33 master=100 worker=2 nproc=4 clk_tck=100\n';
   const YUKU =
     '>>> 14:00:00 bos ornek tamam: YUKU SIMDI BASLATIN (yuk makinesinde ./kos.sh R17 ...)\n';
   const YARIS =

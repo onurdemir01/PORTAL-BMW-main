@@ -7,8 +7,8 @@
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
 # Required extra_vars (v2 - per-cluster bastion):
-#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
-#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
+#   terminal_host: ORAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [ORAOCP01, ORAOCP02] # optional; unique, sorted list of bastions
 #   ocp_targets:                          # COKLU HEDEF (namespace, app) ciftleri
 #     - namespace: reference-applications-prod
 #       app_name: parallel-composition-v3
@@ -23,12 +23,12 @@
 #   ocp_clusters:
 #     - env: lab
 #       tenant: ark
-#       cluster_name: gbocplab2
-#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#       cluster_name: orocplab2
+#       terminal_host: ORAOCP01          # optional; when absent the scalar terminal_host is used
 #       api_url: https://api...:6443     # portal (v3); yoksa inventory dosyasina duser
-#       credential_key: uxmid_gar        # vault degisken ADI (parola DEGIL)
-#       username: uxmid                  # oc login kullanicisi; yoksa `ocp_username`
-#   ocp_username: uxmid                  # portalin GENEL varsayilani (cluster'da yoksa)
+#       credential_key: svcac_gar        # vault degisken ADI (parola DEGIL)
+#       username: svcac                  # oc login kullanicisi; yoksa `ocp_username`
+#   ocp_username: svcac                  # portalin GENEL varsayilani (cluster'da yoksa)
 #
 # ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
 # api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
@@ -61,7 +61,7 @@
     #
     # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
     # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
-    logx_playbook_revision: "03659a404d"
+    logx_playbook_revision: "8d168fbd82"
     # `namespace` BIR JINJA GLOBAL'IDIR — degiskeniniz degil.
     #
     # Burada eskiden `namespace | default('')` yaziyordu. `namespace` extra_var olarak
@@ -237,7 +237,7 @@
       }}
     logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
     # inventory_hostname DAHIL: iki farkli bastion adi ayni makineye cozulurse (or.
-    # GBAOCP01 ve gbaocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
+    # ORAOCP01 ve oraocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
     remote_host_slug: "{{ inventory_hostname | lower | regex_replace('[^a-z0-9._-]', '-') }}"
     remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}"
     # Arsivler calisma dizininin YANINA yazilir: `archive` modulu kaynak dizinin ICINE

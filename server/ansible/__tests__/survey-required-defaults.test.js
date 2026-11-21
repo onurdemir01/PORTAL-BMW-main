@@ -50,8 +50,8 @@ test('SR1 eksik ZORUNLU alan template varsayilaniyla tamamlanir; parola $encrypt
     F('tbmwans_pwd', true, '$encrypted$', 'password'),
     F('target_hosts', false, ''),
   ]);
-  const out = await fn({}, 't', 42, { target_hosts: 'GBNGXP40' });
-  assert.deepEqual(out, { target_hosts: 'GBNGXP40', tbmwans_pwd: '$encrypted$' });
+  const out = await fn({}, 't', 42, { target_hosts: 'ORNGXP40' });
+  assert.deepEqual(out, { target_hosts: 'ORNGXP40', tbmwans_pwd: '$encrypted$' });
 });
 
 test('SR2 kullanicinin/isin gonderdigi deger ASLA ezilmez', async () => {

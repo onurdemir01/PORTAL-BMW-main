@@ -2,7 +2,7 @@
 // server/ansible/awx-sunucu-bagimlilik.cjs - bir AWX sunucusunu devre disi birakmadan once
 // bagimlilik ozeti (2026-10-26).
 //
-// Kullanici: "portalin eski maestro.fwgaranti.com.tr yani maestro 1'e olan baglantisini
+// Kullanici: "portalin eski maestro.fwsirket.invalid yani maestro 1'e olan baglantisini
 // kapatmak istiyorum ... Burasi cok sik guncellenen ortamlar degil ... 2-3 yilda bir." Seyrek
 // yapilan bir is oldugu icin tuzaklar unutulur; bu ozet onlari ekrana getirir:
 //

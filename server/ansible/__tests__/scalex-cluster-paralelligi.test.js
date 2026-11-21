@@ -115,7 +115,7 @@ function paralelKostur({
       _disc_runner_path: runnerYolu,
       discovery_async_seconds_effective: asyncSaniye,
       discovery_mode_effective: 'workloads',
-      username: 'uxmid',
+      username: 'svcac',
       pf_sifre: 'gizli',
       oc_namespace: 'ns1',
       oc_namespaces_effective: ['ns1'],

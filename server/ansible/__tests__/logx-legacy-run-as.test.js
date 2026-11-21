@@ -3,7 +3,7 @@
 // URETIM OLAYI 1 (2026-10-01): LogX Legacy transferi
 //   ESJBOT02:/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log
 // icin "Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi." dedi. Dosya ORADAYDI.
-// Arsivleme baglanan kullaniciyla (uxmid) kosuyordu; JBoss loglari `was`in ve 640. Kesif
+// Arsivleme baglanan kullaniciyla (svcac) kosuyordu; JBoss loglari `was`in ve 640. Kesif
 // dosyayi listeliyor, transferin `stat`'i `readable: false` donuyor -> belirti "dosya yok".
 //
 // ILK DUZELTME (play'in TAMAMI was) YANLISTI: yazma da `was`a gecti. Staging
@@ -109,7 +109,7 @@ test('kesif: kaynak sunucuda kosan play dzdo ile was kullanicisina gecer', () =>
     assert.equal(
       p.become,
       'true',
-      `"${p.ad}" become:${p.become} - JBoss dizinleri uxmid ile okunamaz`,
+      `"${p.ad}" become:${p.become} - JBoss dizinleri svcac ile okunamaz`,
     );
     assert.ok(/was/.test(String(p.becomeUser || '')), `"${p.ad}" become_user='${p.becomeUser}'`);
     assert.equal(p.becomeMethod, 'dzdo', `"${p.ad}" become_method='${p.becomeMethod}'`);
@@ -176,7 +176,7 @@ test('karari .failed alanina bakan gorev failed_when: false KULLANMAZ', () => {
 });
 
 test('was’a gecen gorevi olan her kaynak play pipelining kullanir', () => {
-  // Ayricaliksiz -> ayricaliksiz (uxmid -> was) gecisinde pipelining kapaliyken Ansible modul
+  // Ayricaliksiz -> ayricaliksiz (svcac -> was) gecisinde pipelining kapaliyken Ansible modul
   // gecici dosyasinin iznini setfacl/chown/chmod +a ile acmaya calisir; hicbiri tutmazsa
   // "Failed to set permissions on the temporary files" ile DUSER ve failed_when bunu yutmaz.
   // Ayni hata job 3339002'de 130 sunucuda yasandi; server_hub/crypto_hub emsali pipelining.
@@ -279,7 +279,7 @@ test('gecici dizin HER durumda SAHIBIYLE temizlenir (always: iki gorev)', () => 
 });
 
 // ── YORUMLAYICI YOKLAMASI: TEK `raw` ISTISNASI (2026-10-22) ─────────────────────────────────────────
-// Hakan Isci, e3faefa / 895aa4f (2026-10-21; README "Legacy Python interpreter uyumlulugu"): bazi
+// Gokce Iscen, e3faefa / 895aa4f (2026-10-21; README "Legacy Python interpreter uyumlulugu"): bazi
 // legacy JBoss sunucularinda Ansible platform-python 3.6'yi seciyor ve Python isteyen moduller (find,
 // stat, archive) MODULE FAILURE veriyor; ayni sunucuda python3.11 var. Uygun yorumlayiciyi bulan gorev
 // Python ISTEMEMELI - yani `raw` burada ZORUNLU (command / stat de Python ister). Bu bekci eskiden her

@@ -24,10 +24,10 @@ kaydedilir ("Yük makinesi CPU kaydı").
   yok, kaydedici yok, nginx logu yok); yalnız istemci ölçümü yapılır ve yük makinesindeki izin dosyası
   (`/etc/portal_yuktesti/serbest_aglar`) IP'yi kapsamalıdır.
 
-Sonuç dosyaları GBLABT02 üzerinden `/sw`'ye yazılır; Portal oradan okur, analiz eder ve kendi DB'sine yazar.
+Sonuç dosyaları ORLABT02 üzerinden `/sw`'ye yazılır; Portal oradan okur, analiz eder ve kendi DB'sine yazar.
 
 Yük araçları (k6 ve wrk) yük makinelerine **kurulmaz**. Admin, Portal'ın "Araçlar" panelinden bu playbook'u dördüncü
-kipte (`yuk_islem: araclar`) bir kez koşturur: bir derleme makinesinde (varsayılan GBLABT02) kurumsal vekil üzerinden
+kipte (`yuk_islem: araclar`) bir kez koşturur: bir derleme makinesinde (varsayılan ORLABT02) kurumsal vekil üzerinden
 resmî k6 arşivi indirilip doğrulanır, wrk 4.2.0 kaynağı indirilip derlenir ve ikisi `/sw`'de sürümlü bir araç seti
 dizinine yazılır ("Araç seti (/sw)"). Her ön kontrol ve koşu seçilen motorun ikilisini o dizinden www'nin koşu dizinine
 kopyalar, sha256'sını **yalnız Portal'ın verdiği değerle** doğrular, kopyadan çalıştırır ve iş sonunda siler.
@@ -141,7 +141,7 @@ aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
   hedefe maliyeti gerçek koşuda ölçülür (`ozet.ag_kesitler`). Hedef boşta tabanı hedef saatinde kurulur (ilk adımın saat
   farkı kestirimiyle; kestirim yoksa hedef tabanı verilmez).
 - **Boşta taban**: hedef kaydedicisinin ilk boş örnekleri (ilk adımdan önce, ≥ 5 sn) ayrı gösterilir. Hedef aynı zamanda
-  internet RP ise (ör. GBNGXT34) arayüz toplamı test dışı trafiği de içerir: NIC değeri − boşta taban ≈ test payı; test
+  internet RP ise (ör. ORNGXT34) arayüz toplamı test dışı trafiği de içerir: NIC değeri − boşta taban ≈ test payı; test
   trafiği satırı yalnız testi sayar.
 - Karışık sürüm: `ag_` öneki hiçbir eski Portal / karsilastir.py desenine uymaz (eski okuyucu yalnız SHA256SUMS özetini
   doğrular); eski playbook: dosya / JSON anahtarı yok → "ölçülmedi", kolon gizli, analiz birebir eskisi.
@@ -176,7 +176,7 @@ uyarı: ölçülen p95 ağı da içerir.
   dinlenme ölçülüp her dinlenme Anon'u ilk taban + 5 MB'ı aşmıyorsa; aksi "kaynağı belirsiz" (dinlenme yok, taban yok,
   bağlantı sayısı değişti (1000/2500/5000 rampası), Anon inmedi). Anon ≥ 5 MB artıp dinlenme ölçülmediyse "Belirgin artış
   yok" DEĞİL "dinlenme ölçülmedi"; taban / dinlenme ile son arasında worker kümesi değiştiyse (reload, yeniden doğuş) o
-  noktayla karşılaştırma yapılmaz. İnternet RP'de (GBNGXT34) bağlantı sayısı üretim bağlantılarını da içerir.
+  noktayla karşılaştırma yapılmaz. İnternet RP'de (ORNGXT34) bağlantı sayısı üretim bağlantılarını da içerir.
 - Brotli / gzip yüksek seviye (`brotli_comp_level` 9-11, `gzip_comp_level` 9) istek başına geçici Anon ayırır (brotli
   pencere + hash tabloları yanıt başına MB mertebesi); eşzamanlı sıkıştırılan yanıt sayısıyla artar ve glibc arenaları
   hemen geri vermeyebilir: dinlenmede kısmen iner. Seviye 4-6 ile aynı koşu Anon artışını karşılaştırmanın yoludur.
@@ -412,11 +412,11 @@ sonuç play'i Play 10):
 5. **yuk_hedef + yuk_makine** (serbestte yalnız yük makinesi): sonuç dosyaları (toplam ≤ 200 MiB) kontrol düğümüne
    `fetch` (düz). Sonuç dizini hedefte `<dizin>/R<id>`, yük makinesinde `<dizin>/sonuc/R<id>`
    (`groups['yuk_hedef']` kullanılmaz: serbestte grup yoktur, bkz. "Tuzaklar").
-6. **localhost** (`ignore_unreachable: true`): dosyalar GBLABT02 üzerinden
+6. **localhost** (`ignore_unreachable: true`): dosyalar ORLABT02 üzerinden
    `<yuk_cikti_kok>/<yuk_run_id>/`'ye kopyalanır, `SHA256SUMS` yazılır; `istemci_*.json` özetleri okunur;
-   kontrol düğümündeki geçici dizin silinir. GBLABT02'ye giden her görev `register` edilir ve hemen
+   kontrol düğümündeki geçici dizin silinir. ORLABT02'ye giden her görev `register` edilir ve hemen
    ardından `<kayıt> is unreachable` ise (döngülü dosya kopyasında öğeler de: `<kayıt>.results`'ta
-   `unreachable`) `fail` → `rescue` (`/sw kopyasi: GBLABT02 erisilemedi (...)`); kopya o zaman asla
+   `unreachable`) `fail` → `rescue` (`/sw kopyasi: ORLABT02 erisilemedi (...)`); kopya o zaman asla
    "tamam" sayılmaz (`sw_dizin: null`). Koşu başarısı serbestte yalnız yük makinesinden (kaydedici yok).
 7. **yuk_hedef + yuk_makine** (serbestte yalnız yük makinesi): `kosu`/`durdur` → `durdur.sh` (kalan süreçler; motor
    bağımsız); koşu dizini silinir (`on_kontrol`: her zaman; `durdur`: süreçler durduysa; `kosu`: süreçler durduysa VE
@@ -445,10 +445,10 @@ sonuç play'i Play 10):
    vekilsiz (`env -u ...`, `timeout -k 30 1800`, `TMPDIR=<dizin>/tmp`); iki ikilinin sha256'sı ve `fetch` ile kontrol
    düğümüne aktarım. `always`'te derleme dizini her yolda silinir.
 9. **localhost — araclar: /sw yayını** (`ignore_unreachable: true`; Play 6 yapısı): kontrol düğümündeki kopyalar
-   derlenenle aynı mı; GBLABT02 üzerinden (bağlanan kullanıcı) `<yuk_cikti_kok>/araclar/` dizini (yoksa `0755` ile
+   derlenenle aynı mı; ORLABT02 üzerinden (bağlanan kullanıcı) `<yuk_cikti_kok>/araclar/` dizini (yoksa `0755` ile
    oluşturulur, varsa moduna dokunulmaz; dizin değilse `araclar yolu dizin degil`, oluşturulamazsa `araclar dizini
-   olusturulamadi (GBLABT02, 0755): ...`), hedef `<id>/` zaten varsa DUR, `.<id>.yarim/` (0755) altına `k6`, `wrk` (0644), `SHA256SUMS`, `manifest.json`; `mv -T` ile son ada;
-   geri okuma (sha256, düzenli dosya, 0644). Her GBLABT02 görevinin hemen ardından `is unreachable` fail'i; `rescue`
+   olusturulamadi (ORLABT02, 0755): ...`), hedef `<id>/` zaten varsa DUR, `.<id>.yarim/` (0755) altına `k6`, `wrk` (0644), `SHA256SUMS`, `manifest.json`; `mv -T` ile son ada;
+   geri okuma (sha256, düzenli dosya, 0644). Her ORLABT02 görevinin hemen ardından `is unreachable` fail'i; `rescue`
    yarım dizini siler (erişilemezse kalır), `always` kontrol düğümü dizinini siler.
 10. **localhost — sonuç**: `set_stats nginx_loadtest_result` **her yolda** (girdi reddi, erişilemeyen
    host, betik hatası, derleme hatası dahil; derleme düşerse `rescue` en küçük FAIL sonucunu yazar),
@@ -458,8 +458,8 @@ sonuç play'i Play 10):
 **araclar kipi**: Play 1 → Play 8 → Play 9 → Play 10; Play 2-7'nin grubu yoktur ve atlanır. Koşu kiplerinde Play 8'in
 grubu yoktur, Play 9 atlanır.
 
-Her uzak play ve GBLABT02'ye delegate eden /sw play'leri `ignore_unreachable: true` ve
-`block`/`rescue` taşır: bir host (ya da GBLABT02) düşse de sonraki play'ler (durdurma, temizlik,
+Her uzak play ve ORLABT02'ye delegate eden /sw play'leri `ignore_unreachable: true` ve
+`block`/`rescue` taşır: bir host (ya da ORLABT02) düşse de sonraki play'ler (durdurma, temizlik,
 sonuç) koşar. Play 2, Play 3 ve Play 8'in ilk görevi (`getent`, become'suz) register edilir; host ssh ile
 erişilemezse hemen ardındaki `is unreachable` fail'i rescue'ya `erisilemedi (ssh): <ssh iletisi>` verir
 ve Play 10 `hedef <H>: erisilemedi (ssh): ...` / `yuk makinesi <Y>: erisilemedi (ssh): ...` / `derleme makinesi <D>:
@@ -476,8 +476,8 @@ hedefte aynı yük parametrelerini sunar (araç k6 / wrk, hız, süre, tekrar, �
 protokolü, HTTP/1.1'de bağlantı, hedef, yük makinesi, sıkıştırma ve seviyesi).
 
 - **Hedef** (`yuk_hedef_turu` `sunucu`): dbo.Inventory'de kayıtlı ve **tüm** kayıtları DEV / TEST / QA olan, üretim
-  işareti taşımayan, EDU olmayan, yük makinesinden farklı HER makine (örnek: GBJWLT01, Inventory ortamı Test, nginx
-  şimdilik, Apache ileride). Ad kalıbı (`GBNG[WX][A][DTQ]`) artık şart değildir. IP, hedefin Inventory IP'lerinden biri
+  işareti taşımayan, EDU olmayan, yük makinesinden farklı HER makine (örnek: ORJWLT01, Inventory ortamı Test, nginx
+  şimdilik, Apache ileride). Ad kalıbı (`ORNG[WX][A][DTQ]`) artık şart değildir. IP, hedefin Inventory IP'lerinden biri
   olmalı ve ön kontrolde VE koşu başında hedefte `www` ile yerel olduğu kanıtlanır (`ip_yerel 1`; aksi hâlde hiçbir yük
   gönderilmez). Birden çok makinede tanımlı (paylaşılan / VIP) IP'yi Portal elle girişte reddeder; listeden seçilen
   hedefte IP'nin sahiplerinden biri olması, bütün sahiplerin kurallardan geçmesi ve `ip_yerel` kanıtı şarttır.
@@ -487,8 +487,9 @@ protokolü, HTTP/1.1'de bağlantı, hedef, yük makinesi, sıkıştırma ve sevi
 - **Tavanlar** her Inventory hedefinde aynı (k6 5000 istek/sn ve 1000 VU, wrk 199 bağlantı, tavan 5000). 200 istek/sn /
   50 bağlantı tavanı YALNIZ hiçbir envanterde olmayan ham IP'ye (serbest: `NGINX_LOADTEST_SERBEST_AGLAR` + yük
   makinesindeki izin dosyası) kalır; o yol değişmedi.
-- **Playbook'un bağımsız denetimleri** (Portal'a güvenmez): EDU listesi (`yt_edu_hostlari`), üretim adı
-  (`yt_re_prod_adi`: `^(GBRVP|GBNG[WX]A?P)`; GBJWLT01 / GBJALT02'yi engellemeyen ucuz bir ret), hedef ≠ yük makinesi,
+- **Playbook'un bağımsız denetimleri** (Portal'a güvenmez): EDU listesi (`yt_edu_hostlari` = AWX template
+  Variables'taki `portal_edu_hostlari`), üretim adı (`yt_re_prod_adi`: `^([A-Z]{2}RVP|[A-Z]{2}NG[WX]A?P)`, iki harfli
+  kurum öneki kalıbın parçası değil; ORJWLT01 / ORJALT02'yi engellemeyen ucuz bir ret), hedef ≠ yük makinesi,
   bütün parametre sınırları, hedefte IP yerel kanıtı ve serbest yolda izin dosyası. Ortam (DEV/TEST/QA) playbook'ta
   ARTIK DENETLENMEZ: üretim güvenliği kararı Portal'ın dbo.Inventory kapısındadır (kullanıcı bunu kabul etti,
   2026-11-13). AWX'i doğrudan başlatabilen biri bu kapıyı aşabilir; asıl sınır yine AWX RBAC'tır ("Güvenlik").
@@ -547,7 +548,7 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_islem` | string | her kip | `on_kontrol` \| `kosu` \| `durdur` \| `araclar` |
 | `yuk_run_id` | string | her kip | `^[0-9]{1,10}$` (Portal koşu id'si; ADIM `R<id>`, koşu dizini `~www/.portal_yuktesti/<id>`; araclar: araç seti id'si, /sw dizini `<kök>/araclar/<id>`) |
 | `yuk_hedef_turu` | string | on_kontrol, kosu (durdurda yoksa `sunucu`) | `sunucu` \| `serbest` |
-| `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, EDU listesinde (`yt_edu_hostlari`: GBNGXT51) değil, üretim adı (`yt_re_prod_adi`: `^(GBRVP\|GBNG[WX]A?P)`) değil; 2026-11-13'ten beri ad kuralı ARANMAZ: ortamı (tüm dbo.Inventory kayıtları DEV/TEST/QA) Portal kanıtlar, nginx'i playbook tespit eder; serbest: `''` (dolu ise red) |
+| `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, EDU listesinde (`yt_edu_hostlari` = AWX `portal_edu_hostlari`) değil, üretim adı (`yt_re_prod_adi`: `^([A-Z]{2}RVP\|[A-Z]{2}NG[WX]A?P)`) değil; 2026-11-13'ten beri ad kuralı ARANMAZ: ortamı (tüm dbo.Inventory kayıtları DEV/TEST/QA) Portal kanıtlar, nginx'i playbook tespit eder; serbest: `''` (dolu ise red) |
 | `yuk_yuk_host` | string | on_kontrol, kosu, durdur | `^[A-Z0-9][A-Z0-9-]{1,30}$`, EDU değil, üretim adı değil, hedeften FARKLI (2026-11-13: ad kuralı ve `yt_extra_load_hosts` listesi kalktı; ortamı Portal dbo.Inventory'den kanıtlar, `www` ile SSH'ı ön kontrol kanıtlar). Bir makine bir koşuda yük makinesi, başka bir koşuda hedef olabilir |
 | `yuk_motor` | string | on_kontrol, kosu | `k6` \| `wrk` |
 | `yuk_hedef_ip` | string | on_kontrol, kosu | IPv4; 0/127/169.254/224+ değil; sunucuda hedefte yerel olduğu ön kontrolde ve koşu başında ölçülür |
@@ -582,7 +583,7 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_wrk_sha256` | string | on_kontrol, kosu | Etkin setin wrk sha256'sı (64 küçük hex; motor k6'da da denetlenir); durdurda `''` |
 | `yuk_ua_onek` | string | on_kontrol, kosu | `^[a-z][a-z0-9-]{2,30}$` (Portal: `portal-yuktesti`) |
 | `yuk_cikti_kok` | string | on_kontrol, kosu, araclar | `^/sw/BMW_PORTAL(_DEV)?/...`, `..` yok (Portal: `NGINX_LOADTEST_DIR`, varsayılan `/sw/BMW_PORTAL/nginx_loadtest`) |
-| `yuk_derleme_host` | string | araclar | `^[A-Z0-9][A-Z0-9-]{1,30}$` ve (playbook listesi `yt_derleme_hostlari`: GBLABT02, ya da ad kuralına göre DEV/TEST/QA nginx makinesi, EDU değil); Portal ayrıca `NGINX_LOADTEST_DERLEME_HOSTLARI` listesini ister |
+| `yuk_derleme_host` | string | araclar | `^[A-Z0-9][A-Z0-9-]{1,30}$` ve (playbook listesi `yt_derleme_hostlari`: ORLABT02, ya da ad kuralına göre DEV/TEST/QA nginx makinesi, EDU değil); Portal ayrıca `NGINX_LOADTEST_DERLEME_HOSTLARI` listesini ister |
 | `yuk_k6_surum` | string | araclar | `^v0[.](4[5-9]\|5[0-9])[.][0-9]{1,2}$` (Portal varsayılanı `v0.49.0`; 1.x desteklenmez) |
 | `yuk_wrk_surum` | string | araclar | tam `4.2.0` |
 | `yuk_k6_arsiv_sha256` | string | araclar | ZORUNLU 64 küçük hex (Portal `NGINX_LOADTEST_K6_ARSIV_SHA256`; boş kabul edilmez): resmî checksums satırı bununla aynı olmalı, arşiv `get_url checksum:` ve diskte yeniden sha256 ile doğrulanır |
@@ -661,7 +662,7 @@ yayın düşse de; ölçülemeyen alan `null`, `-` de `null`). `sw_dizin` YALNIZ
 Koşu kiplerinde `araclar: null`. araclar hata metinleri: `girdi reddedildi, hicbir sey yapilmadi: <ileti>`,
 `derleme makinesi <D>: erisilemedi (ssh): ...`, `derleme makinesi <D>: indirme basarisiz (k6 checksums | k6 arsivi |
 wrk kaynagi): <get_url iletisi>`, `derleme makinesi <D>: derleme: <SONUC mesajı>`, `derleme makinesi <D>: play
-tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten var: ...`, `GBLABT02 erisilemedi
+tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten var: ...`, `ORLABT02 erisilemedi
 (...)`, `/sw okuma dogrulamasi tutmadi: ...`).
 
 - `hedef_turu` / `motor`: geçerli girdinin yankısı (geçersiz ya da yoksa, ör. girdi reddi ya da eski Portal'ın
@@ -763,8 +764,8 @@ bozmasın), bağ türü `araclar`: `successful`/`failed` bitince bırakılır, `
 
 ### /sw düzeni
 
-`<yuk_cikti_kok>/<yuk_run_id>/` (GBLABT02 üzerinden, `nginx_console_fetch.yml` ile aynı yazar: bağlanan
-kullanıcı, `delegate_to: GBLABT02`, dizin 0777, dosya 0666; Portal aynı mount'u doğrudan okur):
+`<yuk_cikti_kok>/<yuk_run_id>/` (ORLABT02 üzerinden, `nginx_console_fetch.yml` ile aynı yazar: bağlanan
+kullanıcı, `delegate_to: ORLABT02`, dizin 0777, dosya 0666; Portal aynı mount'u doğrudan okur):
 
 - yük makinesinden: `istemci_<TUR>.json|csv`, `hatali_istemci_<TUR>.json|csv`, `zaman.csv`, `baslatilan.csv`
   (wrk'nin ara dosyaları `wrk_ara/` sonuç dizininin DIŞINDA kalır, toplanmaz, Play 7 siler)
@@ -908,7 +909,7 @@ Tarayıcılar çoğunlukla HTTP/2 kullanır; `yuk_protokol` `h2` seçilirse k6 h
 - Ön kontrol (`on_kontrol.sh yollar`): her ölçümde `protokol h1|h2` satırı. h2'de curl `--http2` (h1'de `--http1.1`,
   curl HTTP/2'siz ise bayraksız: bugünkü gibi); her zaman `curl_h2 1|0`. curl_h2 1: OZET'ten sonra `yollar_yanitli`,
   `yollar_h2`, `alpn_h2 1|0|-` (yollardan), `alpn_kaynak curl`. curl_h2 0 (ör. RHEL 7 curl'ü; AWX 3477866'da
-  GBNGXT34 böyle reddedilmişti): ARTIK RED YOK; yollar h1 yolu gibi bayraksız denenir (200 / sıkıştırma ölçümü
+  ORNGXT34 böyle reddedilmişti): ARTIK RED YOK; yollar h1 yolu gibi bayraksız denenir (200 / sıkıştırma ölçümü
   aynı), OZET'ten sonra `yollar_yanitli <n>`, `yollar_h2 -`, `alpn_h2 1|0|-`, `alpn_kaynak openssl`. ALPN TEK
   bağlantıda: `timeout <ZAMAN> openssl s_client -connect <HEDEF_IP>:443 -alpn h2,http/1.1` + SNI=1 `-servername
   <host>` / SNI=0 `-noservername` (k6 IP'ye SNI göndermez, aynı varsayılan sunucu seçilir; 1.1.1 öncesi openssl
@@ -938,8 +939,9 @@ Tarayıcılar çoğunlukla HTTP/2 kullanır; `yuk_protokol` `h2` seçilirse k6 h
 | Ayar | Değer |
 |---|---|
 | Playbook | `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (bu klasör `bmw_nginx` ile aynı AWX projesinde) |
-| Envanter | hedef/yük makinesi adlarını (kısa, büyük harf) ve GBLABT02'yi çözen envanter |
-| Credential | makine credential'ı (uxmid; dzdo → www). Ek credential yok (DB'ye yazılmaz) |
+| Envanter | hedef/yük makinesi adlarını (kısa, büyük harf) ve ORLABT02'yi çözen envanter |
+| Credential | makine credential'ı (svcac; dzdo → www). Ek credential yok (DB'ye yazılmaz) |
+| Variables (kurum değerleri) | `portal_yazici_host` (yazıcı sunucu: /sw kopyası, araç derleme) ve `portal_edu_hostlari` (EDU listesi, boş olabilir). Kurum sunucu adları repoya yazılmaz; tanımsızsa girdi kapısı düşer, hiçbir şey yapılmaz. Bkz. [docs/AWX-KOPYALAMA-HARITASI.md](../../../../../docs/AWX-KOPYALAMA-HARITASI.md) "Kurum değerleri" |
 | Variables — Prompt on launch | **AÇIK** (kapalıysa AWX extra_vars'ı sessizce yutar; Portal başlatmadan önce sınar) |
 | Limit — Prompt on launch | kapalı (Portal `limit` göndermez; hedef add_host ile) |
 | Execute / Admin rolü | **yalnız Portal servis hesabı**: extra_vars her değişkenden önce gelir (bkz. "Güvenlik"); şablonu AWX'te başlatabilen biri playbook kapılarını da ezebilir |
@@ -966,7 +968,7 @@ Düzen (kök = koşu sonuçlarıyla AYNI `yuk_cikti_kok`, Portal `NGINX_LOADTEST
 ```
 <kök>/araclar/                    yoksa Play 9 0755 ile oluşturur (varsa moduna dokunulmaz)
 <kök>/araclar/.<id>.yarim/        yalnız yayın sırasında; başarıda mv -T ile <id>/ olur, hatada silinir
-<kök>/araclar/<id>/               0755, sahibi AWX'in GBLABT02'ye bağlanan kullanıcısı
+<kök>/araclar/<id>/               0755, sahibi AWX'in ORLABT02'ye bağlanan kullanıcısı
     k6                            0644 (çalıştırılabilir DEĞİL: /sw'den doğrudan koşulmaz)
     wrk                           0644
     SHA256SUMS                    iki satır ("<sha>  k6", "<sha>  wrk"; sha256sum -c biçimi)
@@ -1011,14 +1013,14 @@ Düzen (kök = koşu sonuçlarıyla AYNI `yuk_cikti_kok`, Portal `NGINX_LOADTEST
   çalışmayabilir: ön kontrol `version`/`-v` yükleyici hatasını `arac calistirilamadi: glibc uyumsuz: makinede glibc
   2.28, arac GLIBC_2.34 istiyor` olarak bildirir ve Portal Araçlar paneli önceden uyarır. RHEL 8 bir DEV/TEST/QA nginx
   makinesi Portal `NGINX_LOADTEST_DERLEME_HOSTLARI` listesine eklenip orada hazırlanırsa ikili iki sürümde de çalışır.
-  GBLABT02'nin RHEL sürümünü ilk iş kaydeder.
+  ORLABT02'nin RHEL sürümünü ilk iş kaydeder.
 - **Vekil yalnız indirmede**: kurumsal vekil (Portal `NGINX_LOADTEST_ARAC_PROXY`; yalnız `http://<ad>:<port>`, kimlik
   bilgisi yok; `yok` = vekilsiz) YALNIZ Play 8'in üç `get_url` görevine görev düzeyi `environment` olarak gider.
   `arac_hazirla.sh` vekilsiz koşar (`env -u` + betik içinde `unset`); başka hiçbir görevde `environment` yoktur.
 - **TLS doğrulaması kapatılmaz**: `validate_certs: true`. Vekil TLS'i açıyorsa (kurum CA'sı) derleme makinesinin sistem
   güven deposunda olmalıdır; değilse iş `indirme basarisiz (...): ... CERTIFICATE_VERIFY_FAILED` ile düşer.
 - **Eski elle kurulumlar kullanılmaz**: yük makinelerinde elle kurulmuş k6
-  (`install -m 0755 k6 /home/www/bin/k6` ile) ve GBLABT02'deki eski wrk yerinde kalır, hiçbir iş onları çalıştırmaz. `yuk_k6_yolu` /
+  (`install -m 0755 k6 /home/www/bin/k6` ile) ve ORLABT02'deki eski wrk yerinde kalır, hiçbir iş onları çalıştırmaz. `yuk_k6_yolu` /
   `yuk_wrk_yolu` artık sabit işaret yolları taşır (`/yeni-playbook-gerekli/k6`, `/yeni-playbook-gerekli/wrk`): yeni
   Portal + eski playbook penceresinde eski ikili SESSİZCE kullanılmaz (fail-closed).
 - **Eski set dizinleri silinmez**: Portal etkin seti DB'den bilir; eski `<kök>/araclar/<id>/` dizinlerini Admin elle
@@ -1148,7 +1150,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   Kopyanın sha256'sı yalnız Portal'ın değeriyle karşılaştırılır (/sw'deki `SHA256SUMS` / `manifest.json`'a güvenilmez),
   sahip www ve 0700 denetlenir; doğrulanmayan kopya çalıştırılmadan silinir. Derleme betiği de koşu betikleri gibi sha1 /
   sahip / izin kapısından geçer. /sw'ye www yazmaz: ikililer kontrol düğümüne `fetch` edilir ve Play 6'nın kanıtlanmış
-  yoluyla (GBLABT02, bağlanan kullanıcı) yazılır.
+  yoluyla (ORLABT02, bağlanan kullanıcı) yazılır.
 - `nginx -T` estate komutuyla (`dzdo <nginx> -p /usr/nginx/ -c /usr/nginx/nginx.conf -e /web_log/error.log -T`,
   `nginx_console_dump.sh` ile aynı; dzdo reddederse dzdo'suz); çıktı yalnız geçici dosyada aranır, basılmaz.
 
@@ -1226,7 +1228,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   (`/bin/sh: setsid: command not found`; bash 5.1+ `/bin/sh: line 1: ...` basar, RHEL 7/8'in bash 4.x'i
   numarasız basar) desende yok: o durumda bekleme süresi dolar ve koşu yine `FAIL`
   (`kaydedici hazir olmadi: Timeout ...`); kanaryada `setsid`/`nohup`/`timeout` varlığı ayrıca görülür.
-- `delegate_to: GBLABT02` erişilemezse (sshd MaxSessions/MaxStartups, DNS, kapalı) görevi koşturan
+- `delegate_to: ORLABT02` erişilemezse (sshd MaxSessions/MaxStartups, DNS, kapalı) görevi koşturan
   inventory host'u (localhost) UNREACHABLE sayılır: `ignore_unreachable` yoksa Ansible onu play'den
   çıkarır, rescue/always koşmaz ve tek host'lu play bittiği için sonraki play'ler (temizlik, set_stats)
   atlanır. `ignore_unreachable` ile host kalır ama sonraki görevler de koşar; bu yüzden her delegate
@@ -1263,7 +1265,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   `objects.githubusercontent.com` / `codeload.github.com` gibi başka adlara yönlenir; vekil bunlara da izin vermelidir
   (yoksa 403 / 407 ile `indirme basarisiz (...)`).
 - **fetch + become iki kat aktarım**: become ile `fetch` dosyayı önce slurp ile okur (base64); iki ikili (toplam ~60 MB)
-  derleme makinesinden kontrol düğümüne bellekte iki kat yük olarak gelir, sonra GBLABT02'ye yazılır. Bilinçli bedel
+  derleme makinesinden kontrol düğümüne bellekte iki kat yük olarak gelir, sonra ORLABT02'ye yazılır. Bilinçli bedel
   (www'nin /sw'ye yazma izni bilinmiyor).
 - **`copy remote_src` /sw okunamıyorsa**: yük makinesinde /sw bağlı değilse ya da www okuyamıyorsa kopya düşer ve ön
   kontrol `arac kopyasi dogrulanamadi: kopya basarisiz: <ileti>` der (koşu başlamaz).
@@ -1298,13 +1300,13 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 - **Ön planda `curl` TERM'i bekletir**: bash trap'i ön plandaki komut bitene dek çalışmaz; durdur.sh 10 sn sonra KILL atar, temizlik
   atlanır. `curl` arka planda koşar, `wait` edilir.
 - **flock fd'si çocuklara geçer**: `curl` `9>&-` ile başlar; yoksa KILL'den sonra yetim kalan `curl` bitene dek kilit dolu kalırdı.
-- **NGINX Plus ikinci örnek açmaz**: aynı ikiliyle ayrı konf `[emerg] License file is required` ile düşer (AWX 3483307, GBNGXT33);
+- **NGINX Plus ikinci örnek açmaz**: aynı ikiliyle ayrı konf `[emerg] License file is required` ile düşer (AWX 3483307, ORNGXT33);
   `.br` çalışan nginx'e eklenen `127.0.0.1` bloğundan üretilir.
 - **`nginx -t` bind denemez, `-s reload` rc 0 döner**: dolu porttaki blok ikisinden de geçer, hata yalnız error log'a düşer; `uygula`
   porta bağlanarak doğrular. 20 sn'yi aşan reload bind olmuş olsa da aynı FAIL'i verir (güvenli: konf geri alınır; metin iki olasılığı da yazar).
 - **`.br` üretimi canlı worker'da** (ölçülmedi, koddan): ngx_brotli sıkıştırmayı worker'ın olay döngüsünde eşzamanlı yapar. `dosyalar`
   sırasında seviye 9-11'de büyük bir JS dosyası sıkıştırılırken aynı worker'daki diğer bağlantılar bekler. Hedef aynı zamanda üretim
-  trafiği alıyorsa (internet RP, GBNGXT34) etki gerçek bağlantılara değer: yüksek seviyeli brotli static koşusu trafiğin az olduğu saate
+  trafiği alıyorsa (internet RP, ORNGXT34) etki gerçek bağlantılara değer: yüksek seviyeli brotli static koşusu trafiğin az olduğu saate
   alınmalı. Betik bunun için UYARI vermez, seviyeyi de sınırlamaz.
 - **Brotli static koşuda taban Anon** (ölçülmedi, koddan): sıra `uygula` (reload) → `dosyalar` → `kanit` → kaydedici; `.br`'yi üreten
   worker'lar ölçülen worker'ların kendisidir ve "Bellek artışı nasıl okunur"daki gibi çalışma alanını hemen geri vermeyebilir. `.gz`
@@ -1394,7 +1396,7 @@ k6 / sunucu hedef (ilk kurulum):
 8. HTTP/2 (`yuk_protokol` h2, kip `ka`): h2 sunan bir TEST vhost'ta ön kontrol `alpn_h2 true`, h2 sunmayan birinde
    `HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor` engeli; 1 adımlık h2 koşusunda istemci CSV'sinde `protokol` h2,
    `protokol_uyumsuz` 0, `http2` ≈ istek sayısı; nginx logunda `connection_request` ile VU başına bağlantı modeli not edilir.
-   curl'ü HTTP/2'siz yük makinesinde (GBNGXT34: `curl --version`'da `HTTP2` yok) aynı iki vhost: `curl_h2 0`,
+   curl'ü HTTP/2'siz yük makinesinde (ORNGXT34: `curl --version`'da `HTTP2` yok) aynı iki vhost: `curl_h2 0`,
    `alpn_kaynak openssl`, `yollar_h2 -`, OZET bugünkü h1 ön kontrolüyle aynı; h2'li vhost'ta `alpn_h2 1` (engel yok),
    h2'siz vhost'ta `alpn_h2 0` ve openssl metinli engel; `openssl version` ve SNI=0 / SNI=1 ikisi de not edilir.
 
@@ -1431,7 +1433,7 @@ Araç seti (tur 4; ilk ön kontrolden önce):
 0. İki arşiv özeti "Arşiv özetlerini sabitleme"deki gibi bağımsız hesaplanıp Portal `.env`'ine yazıldı; özetsiz
    "Araçları hazırla" Portal'da 409 ile, bir özeti bilerek bozulmuş iş `indirme basarisiz (...): The checksum ...` ile
    düşer ve derleme makinesinde `~/.portal_yuktesti/arac_<id>` kalmaz.
-1. `araclar` işi (GBLABT02): set_stats `araclar` bölümünde `derleme_rhel`, `derleme_glibc`, `wrk_glibc_gerekli`,
+1. `araclar` işi (ORLABT02): set_stats `araclar` bölümünde `derleme_rhel`, `derleme_glibc`, `wrk_glibc_gerekli`,
    `wrk_openssl` (`OpenSSL 1.1.1...`), `wrk_luajit`, `k6_statik true`; `wrk_kutuphaneler`'de libssl / libcrypto yok;
    `/sw` dizini 0755, dosyalar 0644, `SHA256SUMS` dizinde `sha256sum -c SHA256SUMS` ile OK.
 2. Aynı iş vekilsiz (Portal `NGINX_LOADTEST_ARAC_PROXY=yok`) denenirse açık `indirme basarisiz (...)` iletisi.

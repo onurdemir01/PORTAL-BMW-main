@@ -23,7 +23,7 @@ function withTemplates(templates, fn, { servers = [{ id: 1, name: 'awx1' }] } = 
   });
 }
 
-const VARS = { ocp_clusters: [{ cluster_name: 'gbocpprod2' }], terminal_host: 'GBARKP52' };
+const VARS = { ocp_clusters: [{ cluster_name: 'orocpprod2' }], terminal_host: 'ORARKP52' };
 
 test('ask_variables=false + DOLU extra_vars → 409 ile reddedilir (proxy 5xx govdesini yutuyor)', async () => {
   await withTemplates(

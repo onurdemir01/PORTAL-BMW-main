@@ -106,7 +106,7 @@ function kostur({
     }));
     const vars = {
       target_matrix: matrix,
-      username: 'uxmid',
+      username: 'svcac',
       lp_sifre: 'gizli',
       oc_namespace: 'ns1',
       scalex_cluster_apps_effective: uygulamalar,

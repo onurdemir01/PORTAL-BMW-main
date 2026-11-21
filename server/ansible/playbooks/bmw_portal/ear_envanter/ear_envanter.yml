@@ -1,7 +1,7 @@
 ---
 # ear_envanter.yml — Portal > Server Hub > Uygulama Envanteri: /vhosting ve /vhosting8 altindaki
 # EAR/WAR uygulamalarini SALT OKUNUR tarar (teknoloji, surum, JSP/TLD/JAR sayilari, istenirse
-# ls -lrtiR benzeri agac). Sonuc host basina tek dosya olarak GBLABT02 uzerinden /sw'ye yazilir;
+# ls -lrtiR benzeri agac). Sonuc host basina tek dosya olarak ORLABT02 uzerinden /sw'ye yazilir;
 # Portal ayni mount'u okuyup DB'ye alir. Ayrinti: README.md.
 #
 # extra_vars (Portal gonderir):
@@ -26,6 +26,7 @@
 #   ear_web_hc:            "hc.html,hc.jsp"  (saglik kontrolu dosya adlari: "gercek istek" sayilmaz)
 #   ear_web_gun:           7     (log penceresi, gun) / ear_web_log_mb: 256 (log okuma butcesi) / ear_web_sure: 240
 #   requester:             kullanici adi (gunluk)
+#   portal_yazici_host:    /sw'ye yazan sunucu (AWX template Variables; kurum adi repoya yazilmaz, ZORUNLU)
 #
 # FAZ 2 (2026-11-06, istege bagli): ikinci `raw` files/deployment_oku.sh'i `bash -s` ile calistirir
 # (yalniz ps + JBoss CLI read-children-resources; salt okunur). Ciktisi ayni ham dosyaya tarama
@@ -52,7 +53,7 @@
 # TUZAK: Limit DOLUYKEN `hosts: localhost` play'leri atlanir (Ansible limit'i localhost'a da
 # uygular; `all` yazilsa bile). Portal kipinde Limit dolu olursa is hicbir sey taramadan
 # "successful" biter; Portal bu yuzden Limit alani dolu sablonla baslatmaz.
-# NEDEN GBLABT02: /sw mount orada; hedeflerde /sw yok. throttle 6: sshd MaxSessions (10).
+# NEDEN ORLABT02: /sw mount orada; hedeflerde /sw yok. throttle 6: sshd MaxSessions (10).
 # AWX template: Variables "prompt on launch" ACIK, Limit BOS ("prompt on launch" ACIK), Forks 50.
 
 - name: "--- [Play] Girdi, hedefler ve cikti dizini ---"
@@ -85,7 +86,9 @@
           - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
           - (ear_was_kokler | default('/opt/IBM/WebSphere/AppServer') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
-        fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
+          - ((ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true))) is string
+          - ((ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true))) is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$')
+        fail_msg: "Gecersiz girdi: hedefler / ear_kip / ear_kosu_no / ear_parti_no / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri / yazici sunucu (AWX template Variables: portal_yazici_host)"
 
     - name: "--- [Task] Hedefleri ekle ---"
       ansible.builtin.add_host:
@@ -94,12 +97,12 @@
       loop: "{{ hedefler }}"
       changed_when: false
 
-    - name: "--- [Task] Cikti dizini (GBLABT02) ---"
+    - name: "--- [Task] Cikti dizini (yazici sunucu) ---"
       ansible.builtin.file:
         path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/kosu-{{ ear_kosu_no }}/raw"
         state: directory
         mode: '0775'
-      delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+      delegate_to: "{{ (ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true)) or 'yazici-sunucu-tanimsiz' }}"
 
 # Portal kipinde localhost'ta tum gorevler atlanir; Limit kipinde run_once ile tek kez.
 - name: "--- [Play] Limit kipi: girdi ve cikti dizini ---"
@@ -119,16 +122,18 @@
           - (ear_web_kokler | default('/usr/IBMIHS') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
           - (ear_web_hc | default('hc.html,hc.jsp') | string) is match('^[A-Za-z0-9._-]{1,64}(,[A-Za-z0-9._-]{1,64}){0,19}$')
           - (ear_was_kokler | default('/opt/IBM/WebSphere/AppServer') | string) is match('^(/[A-Za-z0-9._/-]+)(:/[A-Za-z0-9._/-]+)*$')
-        fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri"
+          - ((ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true))) is string
+          - ((ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true))) is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$')
+        fail_msg: "Gecersiz girdi (Limit kipi): awx_job_id (AWX disinda elle ver) / ear_kip / ear_okuma_kullanicisi / ear_kokler / ear_dizin / Faz W girdileri / yazici sunucu (AWX template Variables: portal_yazici_host)"
       run_once: true
       when: hedefler is not defined
 
-    - name: "--- [Task] Cikti dizini (Limit kipi, GBLABT02) ---"
+    - name: "--- [Task] Cikti dizini (Limit kipi, yazici sunucu) ---"
       ansible.builtin.file:
         path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/awx-{{ awx_job_id }}/raw"
         state: directory
         mode: '0775'
-      delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+      delegate_to: "{{ (ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true)) or 'yazici-sunucu-tanimsiz' }}"
       run_once: true
       when: hedefler is not defined
 
@@ -220,12 +225,12 @@
           when:
             - ear_web_kontrol | default(false) | bool
             - ear_ozet.paket | bool
-        - name: "--- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---"
+        - name: "--- [Task] /sw'ye yaz (yazici sunucu uzerinden) ---"
           ansible.builtin.copy:
             content: "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}{{ ear_web.stdout | default('') }}"
             dest: "{{ ear_cikti_dosyasi }}"
             mode: '0644'
-          delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
+          delegate_to: "{{ (ear_yazici_host | default('', true)) or (portal_yazici_host | default('', true)) or 'yazici-sunucu-tanimsiz' }}"
           throttle: 6
           when: ear_ozet.paket | bool
           no_log: true

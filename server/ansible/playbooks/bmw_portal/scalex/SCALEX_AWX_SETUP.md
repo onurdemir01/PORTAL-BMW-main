@@ -83,7 +83,7 @@ ScaleX iki Job Template kullanmaktadır.
 | Project                      | `ANSIBLE_6203`                                     |
 | Playbook                     | `bmw_portal/scalex/scalex_app/main.yml`            |
 | Credential                   | `application_was_credentials`                      |
-| Vault Credential             | `uxmid_all_credentials_vault`                      |
+| Vault Credential             | `svcac_all_credentials_vault`                      |
 | Verbosity                    | `2`                                                |
 | Variables → Prompt on launch | **Açık**                                           |
 | Survey                       | **Açık**                                           |
@@ -100,7 +100,7 @@ ScaleX iki Job Template kullanmaktadır.
 | Project                      | `ANSIBLE_6203`                                |
 | Playbook                     | `bmw_portal/scalex/scalex_app/discovery.yml`  |
 | Credential                   | `application_was_credentials`                 |
-| Vault Credential             | `uxmid_all_credentials_vault`                 |
+| Vault Credential             | `svcac_all_credentials_vault`                 |
 | Verbosity                    | `0` (Normal)                                  |
 | Variables → Prompt on launch | **Açık**                                      |
 | Survey                       | **Açık**                                      |

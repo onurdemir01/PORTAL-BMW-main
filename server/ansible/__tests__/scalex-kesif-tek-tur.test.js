@@ -307,7 +307,7 @@ function ansibleKostur({
       _disc_runner_path: path.join(tmp, 'kopya.sh'),
       discovery_async_seconds_effective: '60',
       discovery_mode_effective: 'workloads',
-      username: 'uxmid',
+      username: 'svcac',
       pw: 'gizli',
       oc_namespace: 'ns1',
       oc_namespaces_effective: ['ns1'],

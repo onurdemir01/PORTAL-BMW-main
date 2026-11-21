@@ -19,7 +19,7 @@ Tasarım: 2026-10-02 (OpsX Legacy WAS tasarımı). Kullanıcı kararları:
 | Dosya | İş |
 |---|---|
 | `opsx_was_discover.yml` | Keşif (salt okunur). `target_hosts` (≤ 10) → `add_host` → was ile `bash` → `set_stats opsx_was_discover_result`. |
-| `opsx_was_operation.yml` | İşlem. Girdi kapısı (`assert`) → tek `add_host` → was ile `bash` → `set_stats opsx_was_op_result` → FAIL/OLCULEMEDI'de `fail`. OK/SKIP'te GBLABT02'de tek satırlık envanter yazımı. |
+| `opsx_was_operation.yml` | İşlem. Girdi kapısı (`assert`) → tek `add_host` → was ile `bash` → `set_stats opsx_was_op_result` → FAIL/OLCULEMEDI'de `fail`. OK/SKIP'te ORLABT02'de tek satırlık envanter yazımı. |
 | `files/opsx_was.sh` | Ölçüm + işlem betiği (`MODE=discover` ya da `MODE=op`). Tek sınıflandırıcı (`classify`). |
 | `files/update_wasapp_status.py` | `dbo.WASAppsInventory` tek satır `UPDATE ... WHERE host = ? AND app = ?`. |
 
@@ -282,8 +282,12 @@ sonlandırıldı"). Böylece Portal kilidi bıraktıktan sonra arka planda süre
 
 - Yalnız `result` OK/SKIP **ve** `after` ölçülmüş `RUNNING`/`STOPPED` iken; `running`/`stopped`.
   OLCULEMEDI, ASKIDA, COKLU_SUREC **yazılmaz**.
-- GBLABT02'ye `delegate_to`; betik kopyası aynı sha1/uid/izin kapısından geçer; komut play
-  become'unu (was) devralır (GBLABT02'deki diğer TBMWANS yükleyicileri gibi).
+- Yazıcı sunucuya (AWX template Variables `portal_yazici_host`) `delegate_to`; betik kopyası aynı
+  sha1/uid/izin kapısından geçer; komut play become'unu (was) devralır (yazıcı sunucudaki diğer TBMWANS
+  yükleyicileri gibi).
+- SQL sunucusu (`ad,port`) koda yazılmaz: AWX template Variables `portal_envanter_sql_sunucusu` →
+  betiğe `--sunucu`. `portal_yazici_host` ya da `portal_envanter_sql_sunucusu` tanımsızsa envanter
+  adımı FAIL yazılır ("tanimli degil"), işlem sonucu değişmez. Bkz. [docs/AWX-KOPYALAMA-HARITASI.md](../../../../../docs/AWX-KOPYALAMA-HARITASI.md) "Kurum değerleri".
 - Parola: AWX credential `tbmwans_pwd` → görevin **stdin**'i (`--pwd-stdin`), görev `no_log: true`.
   `environment:` kullanılmaz: Ansible ortam değerlerini become (dzdo) komut satırına yazar ve
   ps/dzdo denetim kaydında görünür. Sonuç satırı (`WASAPP_UPDATE\t<OK|NOROW|FAIL>\t<mesaj>`)
@@ -300,13 +304,14 @@ sonlandırıldı"). Böylece Portal kilidi bıraktıktan sonra arka planda süre
 | Ayar | `opsx_was_discover` | `opsx_was_operation` |
 |---|---|---|
 | Playbook | `bmw_portal/opsx_was/opsx_was_discover.yml` | `bmw_portal/opsx_was/opsx_was_operation.yml` |
-| Credential | makine credential'ı (uxmid, dzdo → was) | makine credential'ı + `tbmwans_pwd` veren custom credential |
+| Credential | makine credential'ı (svcac, dzdo → was) | makine credential'ı + `tbmwans_pwd` veren custom credential |
 | Extra variables prompt on launch | açık | açık |
 | Limit prompt | kapalı (Portal limit **göndermez**) | kapalı |
 | `allow_simultaneous` | açık olabilir (salt okunur) | **kapalı** |
 | Timeout | 900 sn (15 dk) | 1800 sn (30 dk; Portal kilit TTL'si bundan uzun) |
 | Forks | 10 (10 host tek turda) | varsayılan |
-| Envanter | WAS hostlarını ve GBLABT02'yi çözebilen envanter | aynı |
+| Envanter | WAS hostlarını ve yazıcı sunucuyu çözebilen envanter | aynı |
+| Variables (kurum değerleri) | yok | `portal_yazici_host`, `portal_envanter_sql_sunucusu` |
 
 Portal tarafı: `OPSX_WAS_DISCOVER_TEMPLATE_ID`, `OPSX_WAS_OPERATION_TEMPLATE_ID`.
 
@@ -344,7 +349,7 @@ Portal tarafı: `OPSX_WAS_DISCOVER_TEMPLATE_ID`, `OPSX_WAS_OPERATION_TEMPLATE_ID
 
 Bir prod dışı Linux WAS hostu, mümkünse küme üyesi olan:
 
-1. `uxmid → was` become ve pipelining keşif playbook'unda çalışıyor mu; `dzdo -l` ile /bin/sh
+1. `svcac → was` become ve pipelining keşif playbook'unda çalışıyor mu; `dzdo -l` ile /bin/sh
    kuralının tam metni.
 2. `setupCmdLine.sh` içindeki `WAS_CELL`/`WAS_NODE` ve `serverindex.xml` ayrıştırması; AppSrv01
    dışında profil adı var mı.
@@ -361,7 +366,7 @@ Bir prod dışı Linux WAS hostu, mümkünse küme üyesi olan:
 7. `WASAppsInventory.app` her zaman JVM adı mı; NOAPP ve `.ear` yedek adı oranı; env değerleri.
 8. AWX template ayarları (yukarıdaki tablo); envanterdeki host adı (kısa, büyük harf) AWX'te çözülüyor mu.
 9. AIX WAS host sayısı (v1 yalnız Linux).
-10. GBLABT02'de python3/pyodbc (was ile) ve `tbmwans_pwd` credential'ı; `command` modülünün
+10. ORLABT02'de python3/pyodbc (was ile) ve `tbmwans_pwd` credential'ı; `command` modülünün
     `stdin` parametresi become + pipelining ile parolayı iletiyor mu.
 11. 30 dk template zaman aşımı en kötü restart'a (stop 300 + pencereler + start 600) yetiyor mu.
 12. was kullanıcısı `${TMPDIR:-/tmp}` altında `mktemp -d` yapabiliyor mu (yapamazsa ölçüm/işlem

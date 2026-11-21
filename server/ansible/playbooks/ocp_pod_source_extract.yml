@@ -1,6 +1,6 @@
 ---
-# ocp_pod_source_extract.yml - GBAOCP01 uzerinde elle calistirilan asagidaki script'in
-# Ansible karsiligi. Bir OCP cluster'ina (orn. gbocptest1) login olup, apps listesindeki
+# ocp_pod_source_extract.yml - ORAOCP01 uzerinde elle calistirilan asagidaki script'in
+# Ansible karsiligi. Bir OCP cluster'ina (orn. orocptest1) login olup, apps listesindeki
 # her (namespace, application) ikilisi icin eslesen pod'u bulur ve pod'un icindeki source
 # klasorunu (varsayilan /opt/app-root/src/) yerel bir staging agacina "oc rsync" ile ceker:
 #
@@ -10,8 +10,8 @@
 #     pod_count=$(oc get pods -n $namespace --no-headers | awk '{print $1}' | grep $application | wc -l)
 #     ...
 #     pod=$(oc get pods -n $namespace --no-headers | awk '{print $1}' | grep -vE "*-deploy" | grep $application)
-#     mkdir -p /sw/WAS_IMAGES/Onur/glomo-nginx-dev/$application
-#     cd /sw/WAS_IMAGES/Onur/glomo-nginx-dev/$application
+#     mkdir -p /sw/WAS_IMAGES/<kullanici>/glomo-nginx-dev/$application
+#     cd /sw/WAS_IMAGES/<kullanici>/glomo-nginx-dev/$application
 #     oc project $namespace
 #     oc rsync $pod:/opt/app-root/src/ .
 #   done < apps.txt
@@ -26,9 +26,9 @@
 # Ornek calistirma (kontrol node'undan, apps.yml icinde apps listesiyle):
 #   ansible-playbook server/ansible/playbooks/ocp_pod_source_extract.yml \
 #     -i <inventory> \
-#     -e terminal_host=GBAOCP01 \
-#     -e ocp_url=https://api.gbocptest1.example.corp:6443 \
-#     -e ocp_username=onur.demir \
+#     -e terminal_host=ORAOCP01 \
+#     -e ocp_url=https://api.orocptest1.example.corp:6443 \
+#     -e ocp_username=deneme.kisi \
 #     -e ocp_password="$OCP_PASSWORD" \
 #     -e @apps.yml
 #
@@ -42,10 +42,10 @@
 # apps.txt'yi oldugu gibi kullanmak isterseniz "apps" yerine terminal_host uzerindeki
 # dosya yolunu "apps_file" ile verin (path/application/namespace sutunlu, boslukla ayrik,
 # orijinal script'in okudugu formatin ayni):
-#   -e apps_file=/sw/WAS_IMAGES/Onur/glomo-nginx-dev/apps.txt
+#   -e apps_file=/sw/WAS_IMAGES/<kullanici>/glomo-nginx-dev/apps.txt
 #
 # Gerekli extra_vars:
-#   terminal_host   : GBAOCP01 (varsayilan)
+#   terminal_host   : jump sunucusu (ZORUNLU; varsayilan yok)
 #   ocp_url         : OCP cluster API adresi (zorunlu)
 #   ocp_username    : Kendi OCP kullanici adiniz (zorunlu)
 #   ocp_password    : Kendi OCP sifreniz (zorunlu, no_log)
@@ -53,7 +53,7 @@
 #   apps_file       : terminal_host uzerinde apps.txt yolu    -- apps yerine kullanilabilir
 #
 # Opsiyonel extra_vars:
-#   dest_base_dir          : /sw/WAS_IMAGES/Onur/glomo-nginx-dev (varsayilan)
+#   dest_base_dir          : hedef kok dizin (ZORUNLU; kisiye ozel yol repoya yazilmaz)
 #   pod_source_path        : /opt/app-root/src/ (varsayilan)
 #   deploy_exclude_pattern : -deploy (varsayilan; pod adinda bu gecen pod'lar hedeften cikarilir)
 #   oc_binary              : /usr/local/bin/oc (varsayilan)
@@ -72,7 +72,8 @@
     - name: "Zorunlu degiskenleri dogrula"
       ansible.builtin.assert:
         that:
-          - terminal_host | default('GBAOCP01') | string | trim | length > 0
+          # Jump sunucusu verilmeli (kurum sunucu adi repoya yazilmaz; varsayilan YOK).
+          - terminal_host | default('') | string | trim | length > 0
           - ocp_url is defined
           - ocp_url | string | trim | length > 0
           - ocp_username is defined
@@ -80,8 +81,9 @@
           - ocp_password is defined
           - ocp_password | string | length > 0
           - (apps is defined and (apps | default([]) | length) > 0) or (apps_file is defined and apps_file | string | trim | length > 0)
+          - dest_base_dir | default('', true) | string | trim | length > 0
         fail_msg: >-
-          ocp_url, ocp_username, ocp_password zorunludur; ayrica "apps" listesi veya
+          ocp_url, ocp_username, ocp_password ve dest_base_dir zorunludur; ayrica "apps" listesi veya
           "apps_file" (terminal_host uzerindeki apps.txt yolu) verilmelidir.
       no_log: true
 
@@ -101,7 +103,7 @@
 
     - name: "Terminal host'u dinamik envantere ekle"
       ansible.builtin.add_host:
-        name: "{{ terminal_host | default('GBAOCP01') }}"
+        name: "{{ terminal_host }}"
         groups: ocp_source_extract_terminal
       changed_when: false
 
@@ -121,7 +123,6 @@
     # (daha yuksek onceliklidir), bu yuzden duz literal varsayilan yeterlidir: kullanici
     # "-e oc_binary=..." verirse bu deger burasini otomatik gecersiz kilar.
     oc_binary: /usr/local/bin/oc
-    dest_base_dir: /sw/WAS_IMAGES/Onur/glomo-nginx-dev
     pod_source_path: /opt/app-root/src/
     deploy_exclude_pattern: -deploy
     ocp_insecure_skip_tls_verify: true

@@ -350,11 +350,20 @@
           {{ (requester | default('')) or ((email | default('')).split('@')[0]) or 'Kullanıcı' }}
       changed_when: false
 
+    # SMTP sunucusu, gonderen ve vekil AWX sablon degiskenlerinden (smtp_host, mail_from, opsx_http_proxy):
+    # kurum adresleri repoya yazilmaz. Posta degiskenleri tanimsizsa e-posta GONDERILMEZ ve bu ayrica yazilir.
+    - name: "E-posta ayari yoksa uyar (smtp_host / mail_from AWX sablon degiskeni)"
+      ansible.builtin.debug:
+        msg: "Bilgilendirme e-postasi gonderilmedi: smtp_host / mail_from tanimli degil (AWX sablon degiskeni)."
+      when: >-
+        (email | default('') | trim | length) > 0
+        and ((smtp_host | default('') | trim | length) == 0 or (mail_from | default('') | trim | length) == 0)
+
     - name: "Bilgilendirme e-postası (isteği açan kişiye)"
       community.general.mail:
-        host: "{{ smtp_host | default('smtpappv1.fw.garanti.com.tr') }}"
+        host: "{{ smtp_host }}"
         port: "{{ smtp_port | default(25) }}"
-        from: "{{ mail_from | default('ansible@garanti.com.tr') }}"
+        from: "{{ mail_from }}"
         to: "{{ email }}"
         cc: "{{ mail_cc | default([]) }}"
         subject: "{{ mail_subject_prefix | default('Ansible Automation Report - Job :') }} Openshift Pod Delete/Restart (Portal OpsX)"
@@ -380,8 +389,20 @@
           <p>Toplam {{ rep_total }} · başarılı {{ rep_success }} · bulunamayan {{ rep_not_found }}<br>
           İşleminize ait Job Numarası: <strong>{{ job_id }}</strong></p>
           <p>İyi çalışmalar dileriz</p></body></html>
-      when: (email | default('') | trim | length) > 0
+      when: >-
+        (email | default('') | trim | length) > 0
+        and (smtp_host | default('') | trim | length) > 0
+        and (mail_from | default('') | trim | length) > 0
       failed_when: false
+
+    # Vekil (opsx_http_proxy) AWX Variables / teams_vars.yml'den; tanimsizsa kart vekilsiz denenir ve bu
+    # ayrica yazilir (bos http_proxy ortami EE'nin kendi vekilini de ezerdi, o yuzden ortam hic verilmez).
+    - name: "Teams vekili tanimsizsa yaz (opsx_http_proxy)"
+      ansible.builtin.debug:
+        msg: "Teams vekili tanimli degil (opsx_http_proxy, AWX template Variables / teams_vars.yml); kart vekilsiz gonderiliyor."
+      when:
+        - (opsx_teams_webhook_url | default('') | trim | length) > 0
+        - (opsx_http_proxy | default('', true) | string | trim | length) == 0
 
     # Teams karti YALNIZ webhook tanimliysa (public repoda gizli URL tutulmaz).
     - name: "Teams bildirimi (opsx_teams_webhook_url tanımlıysa)"
@@ -423,10 +444,18 @@
         status_code: [200, 202]
       when: (opsx_teams_webhook_url | default('') | trim | length) > 0
       failed_when: false
-      environment:
-        http_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
-        https_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
-        no_proxy: "localhost,127.0.0.1"
+      register: opsx_teams_sonuc
+      environment: >-
+        {{ {'http_proxy': opsx_http_proxy, 'https_proxy': opsx_http_proxy, 'no_proxy': 'localhost,127.0.0.1'}
+           if (opsx_http_proxy | default('', true) | string | trim | length) > 0 else {} }}
+
+    # Yalniz durum kodu yazilir: hata metni webhook adresini (sig=) tasiyabilir.
+    - name: "Teams bildirimi gonderilemediyse yaz"
+      ansible.builtin.debug:
+        msg: "Teams bildirimi gonderilemedi (HTTP {{ opsx_teams_sonuc.status | default('?') }})."
+      when:
+        - opsx_teams_sonuc is not skipped
+        - (opsx_teams_sonuc.status | default(0) | int) not in [200, 202]
 
     - name: "Hiçbir pod silinemediyse işi BAŞARISIZ yap"
       ansible.builtin.fail:

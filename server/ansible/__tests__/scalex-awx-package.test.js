@@ -615,7 +615,7 @@ ${printfSatirlari(API_RESOURCES_TABLO, '      ')}
           fi
           exit 1
         fi
-        printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n'
+        printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Gokce Iscen|31337\\n'
         printf 'chaos-scale-state-batch-worker|||2|scaled_down|2026-08-20T10:00:00Z|onur|29001\\n'
         printf 'alakasiz-cm|||||||\\n'
         exit 0 ;;
@@ -679,10 +679,10 @@ function runDiscovery(mode, apps = '') {
       PATH: `${dir}:${process.env.PATH}`,
       SCALEX_PHASE: 'discover',
       DISCOVERY_MODE: mode,
-      CLUSTER: 'gbocplab2',
-      JUMP_SERVER: 'gbjump1',
+      CLUSTER: 'orocplab2',
+      JUMP_SERVER: 'orjump1',
       API_URL: 'https://api.lab:6443',
-      OCP_USERNAME: 'uxmid',
+      OCP_USERNAME: 'svcac',
       OCP_PASSWORD: 'x',
       OCP_OC_PATHS: path.join(dir, 'oc'),
       NS: 'odeme-lab',
@@ -934,7 +934,7 @@ test('D1 kesif `workloads` ciktisi portalin ayristiricisindan GECIYOR', () => {
       platform: 'ark',
       environment: 'lab',
       catalog_source: 'portal',
-      clusters: ['gbocplab2'],
+      clusters: ['orocplab2'],
       failed_clusters: [],
       counts: { ok: items.length, warn: 0, fail: 0 },
       items,
@@ -987,7 +987,7 @@ test('D2 kesif `state` ciktisi ESKI ONEKLI kaydi da tasiyor', () => {
       overall_status: 'ok',
       mode: 'state',
       namespace: 'odeme-lab',
-      clusters: ['gbocplab2'],
+      clusters: ['orocplab2'],
       failed_clusters: [],
       counts: {},
       items,
@@ -1000,7 +1000,7 @@ test('D2 kesif `state` ciktisi ESKI ONEKLI kaydi da tasiyor', () => {
   assert.equal(yeni.previousReplicas, 3);
   assert.equal(
     yeni.createdBy,
-    'Hakan_Isci',
+    'Gokce_Iscen',
     'bosluklu `created_by` temizlenmemis — detail ayristirmasi bozulur',
   );
   assert.equal(yeni.jobId, '31337');
@@ -1223,7 +1223,7 @@ function discoveryWorkloads() {
       platform: 'ark',
       environment: 'lab',
       catalog_source: 'portal',
-      clusters: ['gbocplab2'],
+      clusters: ['orocplab2'],
       failed_clusters: [],
       counts: { ok: items.length, warn: 0, fail: 0 },
       items,
@@ -1592,10 +1592,10 @@ function runDiscoveryRaw(overrides) {
       PATH: `${dir}:${process.env.PATH}`,
       SCALEX_PHASE: 'discover',
       DISCOVERY_MODE: 'workloads',
-      CLUSTER: 'gbocplab2',
-      JUMP_SERVER: 'gbjump1',
+      CLUSTER: 'orocplab2',
+      JUMP_SERVER: 'orjump1',
       API_URL: 'https://api.lab:6443',
-      OCP_USERNAME: 'uxmid',
+      OCP_USERNAME: 'svcac',
       OCP_PASSWORD: 'x',
       OCP_OC_PATHS: path.join(dir, 'oc'),
       NS: 'odeme-lab',
@@ -1619,13 +1619,13 @@ test('T1 kesif her modda kendi suresini bildiriyor (TIMING satiri)', () => {
   for (const mode of ['workloads', 'state', 'health']) {
     const items = runDiscovery(mode, mode === 'health' ? 'odeme-api' : '');
     const parsed = result.extractDiscoveryResult({
-      scalex_discovery_result: { mode, items, clusters: ['gbocplab2'] },
+      scalex_discovery_result: { mode, items, clusters: ['orocplab2'] },
     });
     assert.ok(parsed, `${mode}: sonuc ayristirilamadi`);
     assert.equal(parsed.timing.length, 1, `${mode}: TIMING satiri sayisi`);
 
     const t = parsed.timing[0];
-    assert.equal(t.cluster, 'gbocplab2', `${mode}: cluster`);
+    assert.equal(t.cluster, 'orocplab2', `${mode}: cluster`);
     assert.equal(t.mode, mode, `${mode}: mod`);
     assert.equal(typeof t.elapsedMs, 'number', `${mode}: elapsed_ms sayi degil`);
     assert.equal(typeof t.setupMs, 'number', `${mode}: setup_ms sayi degil`);
@@ -1647,7 +1647,7 @@ test('T1b TIMING satiri INFO — sayaclara ve problems[]e karismaz', () => {
   assert.equal(t[0].status, 'INFO', 'TIMING statusu INFO olmali');
 
   const parsed = result.extractDiscoveryResult({
-    scalex_discovery_result: { mode: 'workloads', items, clusters: ['gbocplab2'] },
+    scalex_discovery_result: { mode: 'workloads', items, clusters: ['orocplab2'] },
   });
   assert.equal(
     parsed.problems.filter((p) => p.step === 'TIMING').length,
@@ -2288,8 +2288,8 @@ test('H5 ikinci namespace ilkinin durum kayitlarini KULLANMAZ', () => {
     nsList: 'ns-a,ns-b',
     mutate: (stub) =>
       stub.replace(
-        "        printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n'",
-        '        [ "$4" = ns-a ] && printf \'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n\'',
+        "        printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Gokce Iscen|31337\\n'",
+        '        [ "$4" = ns-a ] && printf \'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Gokce Iscen|31337\\n\'',
       ),
   });
   const odeme = (ns) =>

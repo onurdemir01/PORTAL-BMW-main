@@ -3,7 +3,7 @@
 // URETIM ARIZASI (AWX #3297277): `logx_ocp_app_discovery.yml` "Validate requested
 // cluster records" gorevinde dustu ve ekranda gorulen TEK sey buydu:
 //
-//   fatal: [GBAOCP01]: FAILED! => {"censored": "... 'no_log: true' was specified ..."}
+//   fatal: [ORAOCP01]: FAILED! => {"censored": "... 'no_log: true' was specified ..."}
 //   ...portal: "Otomasyon tarafinda beklenmeyen bir hata olustu."
 //
 // Iki mesaj da HICBIR SEY SOYLEMIYOR. Sebep tek bir eksik degiskendi (`resolved_password`

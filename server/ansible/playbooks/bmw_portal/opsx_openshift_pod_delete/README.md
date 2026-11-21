@@ -41,7 +41,9 @@ opsx_pod_delete_result:
 
 - Teams webhook URL'si depoda **yazılmaz** (`sig=` içerir). AWX tarafında
   `opsx_teams_webhook_url` extra var/credential olarak verilmezse Teams adımı atlanır.
-- Mail ayarları `../../bmw_openshift_jobs/global_variables/mail_vars.yml` varsa oradan,
-  yoksa play içindeki varsayılanlardan gelir.
+- Mail ayarları (`smtp_host`, `mail_from`) `../../bmw_openshift_jobs/global_variables/mail_vars.yml`'den
+  ya da AWX template Variables'tan gelir; play içinde kurum adresi varsayılanı YOKTUR (repo public). İkisinden
+  biri tanımsızsa e-posta gönderilmez ve iş çıktısına "gonderilmedi" satırı düşer.
+- Teams vekili `opsx_http_proxy` (AWX Variables / `teams_vars.yml`); tanımsızsa vekilsiz denenir.
 - Deployment/rollout'a dokunulmaz; sadece pod silinir, OpenShift yenisini ayağa kaldırır.
 - `--force` kullanılır (kaynak playbook ile aynı) — graceful termination beklenmez.

@@ -8,13 +8,13 @@ dosyalarına **www** kullanıcısıyla (dzdo) dokunulur.
 
 | Job | Playbook | Ne yapar |
 |---|---|---|
-| `nginx_console_fetch` | `nginx_console_fetch.yml` | `target_hosts` listesindeki sunucularda `files/nginx_console_dump.sh` (salt okunur): `nginx -t`, `conf.d`+`conf` ağacı (boyut/mtime/sha256), 512 KB altı dosya içerikleri, `ssl_certificate` kullanımları ve `openssl x509` ayrıntıları. Çıktı **GBLABT02 üzerinden** `<console_dir>/raw/<HOST>.txt` (nginx sunucularında /sw yok). |
+| `nginx_console_fetch` | `nginx_console_fetch.yml` | `target_hosts` listesindeki sunucularda `files/nginx_console_dump.sh` (salt okunur): `nginx -t`, `conf.d`+`conf` ağacı (boyut/mtime/sha256), 512 KB altı dosya içerikleri, `ssl_certificate` kullanımları ve `openssl x509` ayrıntıları. Çıktı **ORLABT02 üzerinden** `<console_dir>/raw/<HOST>.txt` (nginx sunucularında /sw yok). |
 | `nginx_console_push` | `nginx_console_push.yml` | Tek sunucu, tek dosya (`create`/`update`): `files/nginx_console_push.sh` — yol beyaz listesi (`/usr/nginx/conf.d/`, `/usr/nginx/conf/`), SPA deployment kilidi (`/vhosting/HYSUXSCRIPTS/nginx_deploy_lock.sh` varsa), yedek `conf.d/.console_backup/`, yaz, `nginx -t` (düşerse **geri alır**), `nginx -s reload`; ardından dokum yenilenir. Sonuç `set_stats nginx_console_push_result`. |
 
 Host seçimi `add_host` ile (AWX `limit` template'te prompt-on-launch açık değilse yok sayılır).
 `target_hosts` **verilmezse** fetch job'ı tüm nginx filosunu envanterden keşfeder — `nginx_audit`
 ve `nginx_metadata` ile aynı betik (`../../bmw_nginx/nginx_metadata/files/get_nginx_hosts.py`,
-`dbo.Inventory.nginx_version` dolu olanlar), GBLABT02'de `was` ile. Bu yüzden bu klasör AWX'te
+`dbo.Inventory.nginx_version` dolu olanlar), ORLABT02'de `was` ile. Bu yüzden bu klasör AWX'te
 `bmw_nginx` ile aynı projede (gar_bmt_ansible_scripts) durmalı.
 
 ## Sık tarama ve süre — nasıl hızlı kalır
@@ -44,9 +44,12 @@ Portal'daki "Yenile" yalnız seçili sunucuları gönderir; "Tüm filo" düğmes
 
 1. AWX'te iki job template (bu playbook'lar, extra vars prompt-on-launch açık).
 2. Admin › Playbook Kayıtları → `nginx_console_fetch` ve `nginx_console_push` satırlarına Template ID.
-3. `console_dir` (`/sw/BMW_PORTAL/nginx_console`) GBLABT02'de var olmalı, `raw/` altı Portal tarafından okunur
+3. `console_dir` (`/sw/BMW_PORTAL/nginx_console`) yazıcı sunucuda var olmalı, `raw/` altı Portal tarafından okunur
    (`NGINX_CONSOLE_DIR` env ile değiştirilebilir).
-4. Sayfa yalnız **Admin**; push ucu sunucu tarafında da Admin'e kapalı.
+4. Yazıcı sunucu iki şablonun **Variables** alanında: `portal_yazici_host: <sunucu>` (kurum sunucu adı repoya
+   yazılmaz). Tanımsızsa fetch'in ilk play'i açılmaz, push girdi kapısında durur. Bkz.
+   [docs/AWX-KOPYALAMA-HARITASI.md](../../../../../docs/AWX-KOPYALAMA-HARITASI.md) "Kurum değerleri".
+5. Sayfa yalnız **Admin**; push ucu sunucu tarafında da Admin'e kapalı.
 
 ## Güvenlik notları
 
@@ -88,8 +91,8 @@ Ekran: dosya panelinde **Geçmiş** (sürümler, fark, şu ankiyle, "bu sürüme
 
 ## Keşif play'i artık **arıza yalıtımlı** (2026-09-27)
 
-`nginx_console_fetch.yml` üç play: **(1)** GBLABT02'de hedef keşfi + `add_host`, **(2)** hedeflerde
-dökum, **(3)** localhost'ta toplayıcı (`set_stats`). Play 1 korumasızdı: GBLABT02 ulaşılamazsa ya da
+`nginx_console_fetch.yml` üç play: **(1)** ORLABT02'de hedef keşfi + `add_host`, **(2)** hedeflerde
+dökum, **(3)** localhost'ta toplayıcı (`set_stats`). Play 1 korumasızdı: ORLABT02 ulaşılamazsa ya da
 keşif düşerse (örn. `middleware_inventory` henüz koşmamış → 0 host → "Hedef yoksa DUR") Ansible
 **NO MORE HOSTS LEFT** ile toplayıcı play'i **atlıyor**, `set_stats` hiç yayınlanmıyordu. Portal iş
 sonucunu okuyamadığı için kullanıcıya ham AWX logundan başka bir şey gösteremiyordu — LogX'te
@@ -121,7 +124,7 @@ yüklü conf'taki kullanım / toplam referans. Eski dokumda `@@LOADED` yok → s
 ## SPA paket özetleri (`@@SPAPKG`; 2026-11-16)
 
 Kullanıcı: *"Glomo sunucularının her zaman ve her şartta eşit olduğunu bilmek istiyorum."* Aynı gün elle
-yapılan karşılaştırmada Glomo yeni PROD'da (GBNGXP40/41/48/49, GBNGXAP34/35) 230 uygulamanın 24'ü farklıydı.
+yapılan karşılaştırmada Glomo yeni PROD'da (ORNGXP40/41/48/49, ORNGXAP34/35) 230 uygulamanın 24'ü farklıydı.
 Sebepleri:
 - deployment'lar bazı sunucuları atlamış;
 - aynı sürüm numarasıyla farklı dosyalar vardı;
