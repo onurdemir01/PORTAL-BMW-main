@@ -1288,6 +1288,20 @@ async function ilerlet(r) {
 }
 
 function mount(router, { launch, HOST_RE, limit }) {
+  // AWX ALIMI DURUMU (2026-11-21): AWX'te kosan islerin neden alinip alinmadigi ekranda gorunur. ?tara=1 (Yenile)
+  // 2 dk sinirini atlar ve taramayi BEKLER; hata olursa durum yine doner (hata alaninda). '/reboot-check/:id'den ONCE.
+  router.get('/reboot-check/awx-alim', async (req, res) => {
+    const awx = require('./reboot-check-awx.cjs');
+    if (String(req.query?.tara || '') === '1') {
+      try {
+        await awx.awxIsleriniAl({ zorla: true });
+      } catch (e) {
+        console.warn('[RebootCheck] AWX isleri (Yenile):', e?.message);
+      }
+    }
+    res.json({ ok: true, durum: awx.alimDurumu() });
+  });
+
   router.get('/reboot-check', async (req, res) => {
     // AWX'te kosan isler (reboot-check-awx.cjs): poller 2 dk'da bir alir; liste acilinca da (ayni sinirla) bir tur
     // tetiklenir, BEKLENMEZ (liste yavaslamasin; alinan kayit bir sonraki yenilemede gorunur).
