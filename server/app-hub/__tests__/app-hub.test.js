@@ -844,17 +844,17 @@ test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina
       return {
         recordset: [
           {
-            cluster: 'gbocp4prod1',
+            cluster: 'orocp4prod1',
             namespace: 'account-management-ch-prod',
             application: 'account-mngt-app-v0',
           },
           {
-            cluster: 'gbocp4prod2',
+            cluster: 'orocp4prod2',
             namespace: 'baska-ns-prod',
             application: 'account-mngt-app-v0',
           },
           {
-            cluster: 'gbocp4dev1',
+            cluster: 'orocp4dev1',
             namespace: 'account-management-ch-dev',
             application: 'account-mngt-app-v0',
           },
@@ -881,7 +881,7 @@ test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina
       scan_date: new Date('2026-11-16T00:00:00Z'),
     },
     {
-      cluster: 'gbocp4prod2',
+      cluster: 'orocp4prod2',
       namespace: 'baska-ns-prod',
       req_total: '42',
       window_days: 7,

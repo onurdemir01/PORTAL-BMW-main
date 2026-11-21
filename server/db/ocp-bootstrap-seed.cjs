@@ -12,13 +12,7 @@
 
 const db = require('./index.cjs');
 const settings = require('./settings.cjs');
-const {
-  INVENTORY,
-  CLUSTER_JUMP_HOSTS,
-  TERMINAL_HOST_MAP,
-  VAULT_KEYS,
-  DEFAULT_OCP_USERNAME,
-} = require('./data/ocp-inventory-seed.cjs');
+const { ocpTohumu } = require('./data/ocp-inventory-seed.cjs');
 
 const SEED_FLAG = 'ocp_bootstrap_seed_v1';
 // AYRI isaret: cluster seed'i cok once calismis kurulumlarda da vault katalogu bir kez
@@ -36,7 +30,11 @@ function parseInventoryKey(key) {
 }
 
 // Seed edilecek cluster satirlarini uretir (DB'ye dokunmaz) — test edilebilir.
-function buildSeedRows(inventory = INVENTORY, jumpHosts = CLUSTER_JUMP_HOSTS) {
+function buildSeedRows(
+  inventory = ocpTohumu().INVENTORY,
+  jumpHosts = ocpTohumu().CLUSTER_JUMP_HOSTS,
+  varsayilanKullanici = ocpTohumu().DEFAULT_OCP_USERNAME,
+) {
   const rows = [];
   for (const [key, group] of Object.entries(inventory)) {
     const { tenant, env } = parseInventoryKey(key);
@@ -49,7 +47,7 @@ function buildSeedRows(inventory = INVENTORY, jumpHosts = CLUSTER_JUMP_HOSTS) {
         vault_credential_key: group.credentialKey || null,
         // `oc login --username=...`. Envanterdeki tum anahtarlar ayni servis hesabina ait;
         // farkli olan cluster'da admin satiri duzenler.
-        ocp_username: group.username || DEFAULT_OCP_USERNAME,
+        ocp_username: group.username || varsayilanKullanici || null,
         // Cluster'a ozel jump server yoksa NULL birakilir; calisma aninda
         // ocp_terminal_host_map(tenant, env) yedegi devreye girer.
         terminal_host: jumpHosts[clusterName] || null,
@@ -100,7 +98,7 @@ async function seedClusters(rows) {
   return { inserted, skipped, failed };
 }
 
-async function seedTerminalHostMap(map = TERMINAL_HOST_MAP) {
+async function seedTerminalHostMap(map = ocpTohumu().TERMINAL_HOST_MAP) {
   let inserted = 0;
   let skipped = 0;
   for (const [key, host] of Object.entries(map)) {
@@ -128,7 +126,7 @@ async function seedTerminalHostMap(map = TERMINAL_HOST_MAP) {
 
 // Vault anahtar katalogu — CLUSTER seed'inden BAGIMSIZ bir-kerelik seed.
 // Var olan anahtara dokunulmaz (admin'in duzenledigi aciklama korunur).
-async function seedVaultKeys(keys = VAULT_KEYS) {
+async function seedVaultKeys(keys = ocpTohumu().VAULT_KEYS) {
   let inserted = 0;
   let skipped = 0;
   let failed = 0;
@@ -170,7 +168,15 @@ async function seedVaultKeysOnce({ force = false } = {}) {
     if (flag) return { skipped: true, reason: 'already_seeded' };
   }
 
-  const result = await seedVaultKeys();
+  // Kurum ayarinda tohum yoksa isaret KONMAZ: ayar sonradan verilince ilk kurulum yine calissin.
+  const tohum = ocpTohumu();
+  if (!tohum.VAULT_KEYS.length) {
+    console.warn(
+      `[OcpSeed] vault tohumu yok (${tohum.hata || 'ocp.tohum.vaultAnahtarlari bos'}), atlandi.`,
+    );
+    return { skipped: true, reason: 'tohum_yok' };
+  }
+  const result = await seedVaultKeys(tohum.VAULT_KEYS);
   // Cluster seed'iyle AYNI kural: hicbiri yazilamadiysa (or. tablo henuz yok) isaret
   // atilmaz ki bir sonraki acilista tekrar denensin.
   if (result.inserted === 0 && result.skipped === 0 && result.failed > 0) {
@@ -214,9 +220,17 @@ async function seedOcpBootstrapOnce({ force = false } = {}) {
     if (flag) return { skipped: true, reason: 'already_seeded', vault };
   }
 
-  const rows = buildSeedRows();
+  const tohum = ocpTohumu();
+  const rows = buildSeedRows(tohum.INVENTORY, tohum.CLUSTER_JUMP_HOSTS, tohum.DEFAULT_OCP_USERNAME);
+  // Kurum ayarinda tohum yoksa isaret KONMAZ (ayar sonradan verilince ilk kurulum yine calissin).
+  if (!rows.length) {
+    console.warn(
+      `[OcpSeed] cluster tohumu yok (${tohum.hata || 'ocp.tohum.envanter bos'}), atlandi.`,
+    );
+    return { skipped: true, reason: 'tohum_yok', vault };
+  }
   const clusters = await seedClusters(rows);
-  const hostMap = await seedTerminalHostMap();
+  const hostMap = await seedTerminalHostMap(tohum.TERMINAL_HOST_MAP);
 
   const summary = {
     at: new Date().toISOString(),

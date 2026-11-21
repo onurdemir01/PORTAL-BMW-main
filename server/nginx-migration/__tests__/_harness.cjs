@@ -165,8 +165,8 @@ stub('inventory/mssql.cjs', { query: async () => ({ recordset: [] }), sql: {} })
 h.GROUPS = [
   {
     id: 'glomo',
-    newHosts: ['GBNGXP40'],
-    oldHosts: ['GBRVPP07', 'GBRVPP08'],
+    newHosts: ['ORNGXP40'],
+    oldHosts: ['ORRVPP07', 'ORRVPP08'],
     apps: [
       {
         namespace: 'digital-banking-ch-prod',
@@ -174,8 +174,8 @@ h.GROUPS = [
         status: 'ready',
         written: ['base_up'],
         paths: [
-          { service: 'GLOMO', location: '/base/', hosts: ['GBRVPP07'], newStatus: 'defined' },
-          { service: 'GLOMO', location: '/yeni/', hosts: ['GBRVPP07'], newStatus: 'missing' },
+          { service: 'GLOMO', location: '/base/', hosts: ['ORRVPP07'], newStatus: 'defined' },
+          { service: 'GLOMO', location: '/yeni/', hosts: ['ORRVPP07'], newStatus: 'missing' },
         ],
       },
     ],
@@ -185,8 +185,8 @@ h.GROUPS = [
   // denetim) bu grupla kosar.
   {
     id: 'other',
-    newHosts: ['GBNGXP44'],
-    oldHosts: ['GBRVPP01', 'GBRVPP02'],
+    newHosts: ['ORNGXP44'],
+    oldHosts: ['ORRVPP01', 'ORRVPP02'],
     apps: [
       {
         namespace: 'webforms-ch-prod',
@@ -194,8 +194,8 @@ h.GROUPS = [
         status: 'ready',
         written: ['base_up'],
         paths: [
-          { service: 'WEBFORMS', location: '/base/', hosts: ['GBRVPP01'], newStatus: 'defined' },
-          { service: 'WEBFORMS', location: '/yeni/', hosts: ['GBRVPP01'], newStatus: 'missing' },
+          { service: 'WEBFORMS', location: '/base/', hosts: ['ORRVPP01'], newStatus: 'defined' },
+          { service: 'WEBFORMS', location: '/yeni/', hosts: ['ORRVPP01'], newStatus: 'missing' },
         ],
       },
     ],

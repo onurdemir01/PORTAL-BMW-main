@@ -43,7 +43,7 @@ const TAMAM: IntranetSatir['kurulum'] = {
   durum: 'tamam',
   tam: 2,
   beklenen: 2,
-  sunucular: [SV('GBNGXP50'), SV('GBNGXP51')],
+  sunucular: [SV('ORNGXP50'), SV('ORNGXP51')],
   eksik: [],
   taranmayan: [],
   eslesme: 'kesin',
@@ -53,8 +53,8 @@ const R = (application: string, o: Partial<IntranetSatir> = {}): IntranetSatir =
   namespace: 'kart-prod',
   application,
   ag: 'intranet',
-  adresler: [`${application}-kart-prod.apps.fw.garanti.com.tr`],
-  clusters: ['gbocpp1', 'gbocpp2'],
+  adresler: [`${application}-kart-prod.apps.fw.sirket.invalid`],
+  clusters: ['orocpp1', 'orocpp2'],
   eskiCluster: [],
   kapsam: { durum: 'tam', var: 2, toplam: 2 },
   zayifKanit: false,
@@ -101,7 +101,7 @@ function rapor(o: Partial<IntranetRapor> = {}): IntranetRapor {
           beklenen: 0,
           sunucular: [],
           eksik: [],
-          taranmayan: ['GBNGXP50', 'GBNGXP51'],
+          taranmayan: ['ORNGXP50', 'ORNGXP51'],
           eslesme: '',
         },
       }),
@@ -113,9 +113,9 @@ function rapor(o: Partial<IntranetRapor> = {}): IntranetRapor {
           durum: 'kismi',
           tam: 1,
           beklenen: 2,
-          sunucular: [SV('GBNGXP50'), SV('GBNGXP51', 'MISSING_APP')],
-          eksik: ['GBNGXP51'],
-          taranmayan: ['GBNGXAP50'],
+          sunucular: [SV('ORNGXP50'), SV('ORNGXP51', 'MISSING_APP')],
+          eksik: ['ORNGXP51'],
+          taranmayan: ['ORNGXAP50'],
           eslesme: 'ek-prod',
         },
       }),
@@ -127,8 +127,8 @@ function rapor(o: Partial<IntranetRapor> = {}): IntranetRapor {
           durum: 'yok',
           tam: 0,
           beklenen: 2,
-          sunucular: [SV('GBNGXP50', 'YOK'), SV('GBNGXP51', 'YOK')],
-          eksik: ['GBNGXP50', 'GBNGXP51'],
+          sunucular: [SV('ORNGXP50', 'YOK'), SV('ORNGXP51', 'YOK')],
+          eksik: ['ORNGXP50', 'ORNGXP51'],
           taranmayan: [],
           eslesme: '',
         },
@@ -307,12 +307,12 @@ describe('Intranet SPA', () => {
     await screen.findByText('atil-ui');
     const satir = govdeSatirlari().find((r) => r.textContent?.includes('yarim-ui'))!;
     const dugme = within(satir).getByRole('button', {
-      name: /yarim-ui-kart-prod\.apps\.fw\.garanti\.com\.tr/,
+      name: /yarim-ui-kart-prod\.apps\.fw\.sirket\.invalid/,
     });
     fireEvent.click(dugme);
     expect(dugme.getAttribute('aria-expanded')).toBe('true');
     const metin = document.body.textContent || '';
-    expect(metin).toMatch(/gbocpp1, gbocpp2/);
+    expect(metin).toMatch(/orocpp1, orocpp2/);
     expect(metin).toMatch(/ölçülen cluster: 1\/2/);
     expect(metin).toMatch(/not: servis okunamadi: 403/);
     expect(metin).toMatch(/3 servis/);
@@ -322,7 +322,7 @@ describe('Intranet SPA', () => {
     mockRapor.mockResolvedValue(
       rapor({
         dynatraceOkunamadi: true,
-        sorunluCluster: [{ cluster: 'gbocpp2', durum: 'login', sebep: 'login basarisiz' }],
+        sorunluCluster: [{ cluster: 'orocpp2', durum: 'login', sebep: 'login basarisiz' }],
       }),
     );
     render(<IntranetSpaPage />);
@@ -330,7 +330,7 @@ describe('Intranet SPA', () => {
     expect(
       screen.getByText(/Dynatrace kullanım verisi \(BMW_Application_Usage\) okunamadı/),
     ).toBeTruthy();
-    expect(screen.getByText(/gbocpp2 \(login: login basarisiz\)/)).toBeTruthy();
+    expect(screen.getByText(/orocpp2 \(login: login basarisiz\)/)).toBeTruthy();
     const rows = intranetCsvSatirlari(rapor().rows!, (v) => v);
     const i = (k: (typeof INTRANET_CSV_BASLIK)[number]) => INTRANET_CSV_BASLIK.indexOf(k);
     const yarim = rows.find((r) => r[i('uygulama')] === 'yarim-ui')!;
@@ -341,17 +341,17 @@ describe('Intranet SPA', () => {
   });
 
   it('IU7 intranet sunucu kurulumu: sütun, kutu süzgeci, ayrıntı, bantlar, CSV', async () => {
-    mockRapor.mockResolvedValue(rapor({ taranmayanSunucu: ['GBNGXAP50'] }));
+    mockRapor.mockResolvedValue(rapor({ taranmayanSunucu: ['ORNGXAP50'] }));
     render(<IntranetSpaPage />);
     await screen.findByText('atil-ui');
     expect(satirMetni('aktif-ui')).toMatch(/tamamlandı 2\/2/);
     expect(satirMetni('yarim-ui')).toMatch(/kısmi 1\/2/);
-    expect(satirMetni('yarim-ui')).toMatch(/eksik: GBNGXP51/);
+    expect(satirMetni('yarim-ui')).toMatch(/eksik: ORNGXP51/);
     expect(satirMetni('olcumsuz-ui')).toMatch(/kurulu değil 0\/2/);
     expect(satirMetni('servissiz-ui')).toMatch(/ölçülemedi/);
     expect(satirMetni('servissiz-ui')).not.toMatch(/kurulu değil/);
     expect(
-      screen.getByText(/Son intranet dizin taramasında satırı olmayan sunucular: GBNGXAP50/),
+      screen.getByText(/Son intranet dizin taramasında satırı olmayan sunucular: ORNGXAP50/),
     ).toBeTruthy();
     const ozet = screen.getByTestId('intranet-ozet');
     const kutu = within(ozet).getByRole('button', { name: /kurulu değil/ });
@@ -372,8 +372,8 @@ describe('Intranet SPA', () => {
       within(govdeSatirlari()[0]).getByRole('button', { name: /yarim-ui-kart-prod/ }),
     );
     const metin = document.body.textContent || '';
-    expect(metin).toMatch(/GBNGXP51\s*Pendik\s*✓\s*✗\s*✗\s*uygulama dosyaları yok/);
-    expect(metin).toMatch(/son dizin taramasında yok \(ölçülemedi\): GBNGXAP50/);
+    expect(metin).toMatch(/ORNGXP51\s*Pendik\s*✓\s*✗\s*✗\s*uygulama dosyaları yok/);
+    expect(metin).toMatch(/son dizin taramasında yok \(ölçülemedi\): ORNGXAP50/);
     expect(metin).toMatch(/namespace “-prod” eksiz/);
     const i = (k: (typeof INTRANET_CSV_BASLIK)[number]) => INTRANET_CSV_BASLIK.indexOf(k);
     const csv = intranetCsvSatirlari(rapor().rows!, (v) => v);
@@ -384,7 +384,7 @@ describe('Intranet SPA', () => {
       yarim[i('beklenen_sunucu')],
       yarim[i('eksik_sunucular')],
       yarim[i('taranmayan_sunucular')],
-    ]).toEqual(['kısmi', '1', '2', 'GBNGXP51', 'GBNGXAP50']);
+    ]).toEqual(['kısmi', '1', '2', 'ORNGXP51', 'ORNGXAP50']);
     const olcsuz = csv.find((r) => r[i('uygulama')] === 'servissiz-ui')!;
     expect([olcsuz[i('intranet_kurulum')], olcsuz[i('kurulu_sunucu')]]).toEqual(['ölçülemedi', '']);
   });
@@ -402,7 +402,7 @@ describe('Intranet SPA', () => {
     mockRapor.mockResolvedValue(
       rapor({
         platformDisi: [
-          { platform: 'wyden', uygulama: 2, clusters: ['giocp3rdwyprod1'] },
+          { platform: 'wyden', uygulama: 2, clusters: ['oiocp3rdwyprod1'] },
           { platform: 'cluster-yok', uygulama: 1, clusters: [] },
         ],
       }),
@@ -411,7 +411,7 @@ describe('Intranet SPA', () => {
     await screen.findByText('atil-ui');
     expect(
       screen.getByText(
-        'ARK dışı cluster’lardaki intranet SPA’lar bu listeye girmez: wyden 2 (giocp3rdwyprod1) · cluster-yok 1 (cluster yok)',
+        'ARK dışı cluster’lardaki intranet SPA’lar bu listeye girmez: wyden 2 (oiocp3rdwyprod1) · cluster-yok 1 (cluster yok)',
       ),
     ).toBeTruthy();
     unmount();

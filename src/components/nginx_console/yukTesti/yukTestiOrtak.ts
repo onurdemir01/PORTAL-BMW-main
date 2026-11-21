@@ -1160,10 +1160,10 @@ export const TEST_TRAFIGI_IPUCU =
   'Yük makinesinin gözünden ölçüm fazının ortalaması: alınan (yanıtlar) / gönderilen (istekler); bayt × 8 ÷ süre. wrk gönderileni saymaz.';
 /** NIC ipucu: hedef internet RP ise arayuz toplami test disi trafigi icerir. */
 export const NIC_IPUCU =
-  'Arayüz sayacı (/proc/net/dev) bu makinenin TÜM trafiğini sayar: hedef aynı zamanda internet RP ise (ör. GBNGXT34) test dışı trafik de içerir; boşta taban (ilk adımdan önce) ile karşılaştırın.';
+  'Arayüz sayacı (/proc/net/dev) bu makinenin TÜM trafiğini sayar: hedef aynı zamanda internet RP ise (ör. ORNGXT34) test dışı trafik de içerir; boşta taban (ilk adımdan önce) ile karşılaştırın.';
 /** 2026-11-04 (inceleme B8): baglanti satiri ipucu; internet RP'de test disi baglantilar da sayilir. */
 export const BAGLANTI_IPUCU =
-  'hedef IP:443 ESTABLISHED bağlantı sayısı. Hedef aynı zamanda internet RP ise (ör. GBNGXT34) üretim bağlantıları da sayılır: sızıntı kuralının “bağlantı sabit” koşulu etkilenebilir.';
+  'hedef IP:443 ESTABLISHED bağlantı sayısı. Hedef aynı zamanda internet RP ise (ör. ORNGXT34) üretim bağlantıları da sayılır: sızıntı kuralının “bağlantı sabit” koşulu etkilenebilir.';
 /** Kosunun en yuksek test trafigi (alinan, bit/sn) ve hangi adimda; olcum yoksa null. */
 export function enYuksekTestTrafigi(adimlar: NlAdim[]): { bps: number; tur: string } | null {
   let en: { bps: number; tur: string } | null = null;

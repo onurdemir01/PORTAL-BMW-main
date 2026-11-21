@@ -33,7 +33,8 @@ const path = require('node:path');
 
 const ag = require('../api-generator-secim.cjs');
 const cs = require('../../ansible/choice-sources.cjs');
-const { apiGeneratorHosts, API_CLUSTERS } = require('../../../shared/nginxApiClusters.cjs');
+// Sunucular kurum ayarindan (nginx.apiKumeleri); kume kimligi paylasilan dosyada.
+const { apiGeneratorHosts, apiKumeleri } = require('../../audit/nginx-api-kumeleri.cjs');
 const surveyConditions = require('../../../shared/surveyConditions.cjs');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
@@ -324,28 +325,28 @@ test('AG7 AWX zorunlu + varsayilansiz alan kosulla gizlenmez; varsayilanliysa gi
 });
 
 test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve gruplar', () => {
-  assert.deepEqual(apiGeneratorHosts('dev'), ['GBNGWD01', 'GBNGWD02']);
-  assert.deepEqual(apiGeneratorHosts('TEST', 'ankara'), ['GBNGWT03', 'GBNGWT04']);
-  assert.deepEqual(apiGeneratorHosts('qa'), ['GBNGWQ01', 'GBNGWQ02']);
+  assert.deepEqual(apiGeneratorHosts('dev'), ['ORNGWD01', 'ORNGWD02']);
+  assert.deepEqual(apiGeneratorHosts('TEST', 'ankara'), ['ORNGWT03', 'ORNGWT04']);
+  assert.deepEqual(apiGeneratorHosts('qa'), ['ORNGWQ01', 'ORNGWQ02']);
   const prod = apiGeneratorHosts('prod');
   assert.equal(prod.length, 54);
   assert.deepEqual(apiGeneratorHosts('Production', 'Hepsi'), prod);
   assert.ok(
-    apiGeneratorHosts('prod', 'pendik').every((h) => /^GBNGWP/.test(h)) &&
+    apiGeneratorHosts('prod', 'pendik').every((h) => /^[A-Z]{2}NGWP/.test(h)) &&
       apiGeneratorHosts('prod', 'pendik').length === 32,
   );
   assert.ok(
-    apiGeneratorHosts('prod', 'ankara').every((h) => /^GBNGWAP/.test(h)) &&
+    apiGeneratorHosts('prod', 'ankara').every((h) => /^[A-Z]{2}NGWAP/.test(h)) &&
       apiGeneratorHosts('prod', 'ankara').length === 16,
   );
   assert.deepEqual(apiGeneratorHosts('prod', 'izmir'), []);
   assert.deepEqual(apiGeneratorHosts('uat'), []);
   const customers = apiGeneratorHosts('prod', '', 'Customers');
-  assert.deepEqual(customers, API_CLUSTERS.find((k) => k.key === 'customers').hosts);
+  assert.deepEqual(customers, apiKumeleri().find((k) => k.key === 'customers').hosts);
   assert.equal(customers.length, 12);
   assert.deepEqual(
     apiGeneratorHosts('prod', 'pendik', 'customers'),
-    customers.filter((h) => /^GBNGWP/.test(h)),
+    customers.filter((h) => /^ORNGWP/.test(h)),
   );
   assert.equal(
     apiGeneratorHosts('prod', '', 'bilinmeyen-kanal').length,
@@ -354,11 +355,11 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   );
   assert.deepEqual(
     apiGeneratorHosts('dev', '', 'customers'),
-    ['GBNGWD01', 'GBNGWD02'],
+    ['ORNGWD01', 'ORNGWD02'],
     'non-prod kanal ile daralmaz',
   );
 
-  const hosts = new Set(['GBNGWD01', 'GBNGWD02']);
+  const hosts = new Set(['ORNGWD01', 'ORNGWD02']);
   const satir = (host, conf, yol, ip, lc) => ({
     host,
     config_file: conf,
@@ -368,13 +369,13 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   });
   const out = cs.apiGatewayConfChoices(
     [
-      satir('GBNGWD01', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x/y', '50r/s', '300r/s'),
-      satir('GBNGWD01', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '50r/s', '300r/s'),
-      satir('GBNGWD02', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '100r/s', null),
-      satir('GBNGWD01', 'GAR.B.V1.conf', '/gar-b/v0/z', '', ''),
-      satir('GBNGWD01', 'mobil-servis.conf', '/mobil/v0', '10r/s', ''),
-      satir('GBNGWT03', 'ORT.TEST.ONLY.conf', '/t/v0', '1r/s', ''),
-      satir('gbngwd02', 'ort.kucuk.harf.conf', '/k/v0', '', ''),
+      satir('ORNGWD01', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x/y', '50r/s', '300r/s'),
+      satir('ORNGWD01', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '50r/s', '300r/s'),
+      satir('ORNGWD02', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '100r/s', null),
+      satir('ORNGWD01', 'GAR.B.V1.conf', '/gar-b/v0/z', '', ''),
+      satir('ORNGWD01', 'mobil-servis.conf', '/mobil/v0', '10r/s', ''),
+      satir('ORNGWT03', 'ORT.TEST.ONLY.conf', '/t/v0', '1r/s', ''),
+      satir('orngwd02', 'ort.kucuk.harf.conf', '/k/v0', '', ''),
     ],
     hosts,
   );
@@ -400,14 +401,14 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   const ornek = cs.apiGatewayConfChoices(
     [
       satir(
-        'GBNGWD01',
+        'ORNGWD01',
         'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf',
         '/digital-onboarding-pb/digital-onboarding-pb/v0/token',
         '',
         '',
       ),
       satir(
-        'GBNGWD01',
+        'ORNGWD01',
         'GAR.CST.REST.DIGITAL-ONBOARDING-PB_DIGITAL-ONBOARDING-PB-CH_V0.conf',
         '/digital-onboarding-pb/digital-onboarding-pb/v0/',
         '',
@@ -425,8 +426,8 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   );
   const adli = cs.apiGatewayConfChoices(
     [
-      satir('GBNGWD01', 'GAR.N.conf', '/n/v0', '1r/s', ''),
-      satir('GBNGWD01', 'GAR.N.conf', '@a', '', ''),
+      satir('ORNGWD01', 'GAR.N.conf', '/n/v0', '1r/s', ''),
+      satir('ORNGWD01', 'GAR.N.conf', '@a', '', ''),
     ],
     hosts,
   );
@@ -436,13 +437,13 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
     '@ad (named location) API ucu / kok sayilmamali',
   );
   const yolsuz = cs.apiGatewayConfChoices(
-    [satir('GBNGWD01', 'GAR.Y.conf', '@x', '', '')],
+    [satir('ORNGWD01', 'GAR.Y.conf', '@x', '', '')],
     hosts,
   )[0];
   assert.ok(yolsuz.label === 'GAR.Y' && !('alt' in yolsuz), 'yol yoksa yalniz ad');
   // '.conf' soneki NOKTALI atilir: "GAR.Xconf" adinin sonu kirpilmamali (2026-10-22 regresyonu: /.conf$/i).
   assert.equal(
-    cs.apiGatewayConfChoices([satir('GBNGWD01', 'GAR.Xconf', '/x/v0', '', '')], hosts)[0].value,
+    cs.apiGatewayConfChoices([satir('ORNGWD01', 'GAR.Xconf', '/x/v0', '', '')], hosts)[0].value,
     'GAR.Xconf',
   );
   for (const p of ['site', 'channel'])
@@ -450,7 +451,7 @@ test('AG8 kaynak: job sunuculari, izinli onekli konfigurasyon adlari, etiket ve 
   const load = String(cs.getSource('nginx-api-gateway-confs').load);
   assert.match(load, /apiGeneratorHosts\(env, site, channel\)/);
   assert.match(load, /MAX\(scan_date\)/);
-  assert.equal(new Set(API_CLUSTERS.flatMap((k) => k.hosts)).size, 54);
+  assert.equal(new Set(apiKumeleri().flatMap((k) => k.hosts)).size, 54);
 });
 
 test('AG10 Survey Tasarimcisi: chosen_api alani da kodla bagli; gercek resolveCustomSurveyExtraVars ile kosul / zorunluluk', () => {
@@ -604,8 +605,13 @@ test("AG9 (depo verilirse) host listeleri ve izinli domainler api_generator play
     if (k) kumeler[(ad = k[1])] = [];
     else if (h && ad) kumeler[ad].push(h[1]);
   }
-  assert.deepEqual(Object.keys(kumeler).sort(), API_CLUSTERS.map((k) => k.key).sort());
-  for (const k of API_CLUSTERS) assert.deepEqual(kumeler[k.key], k.hosts, `kume farkli: ${k.key}`);
+  assert.deepEqual(
+    Object.keys(kumeler).sort(),
+    apiKumeleri()
+      .map((k) => k.key)
+      .sort(),
+  );
+  for (const k of apiKumeleri()) assert.deepEqual(kumeler[k.key], k.hosts, `kume farkli: ${k.key}`);
 });
 
 // AG11-AG14 (2026-10-22). Kullanici: "secilen kok API'yle beraber etkilenecek diger children API'ler sagda
@@ -622,18 +628,18 @@ const zs = (host, conf, yol, ip, lc, iz, sz) => ({
 });
 
 test('AG11 ayrinti (SAF): zone bilgisiyle ayni zone u paylasan TUM uclar; kok; baska konfigurasyon; limitsiz uc etkilenmez', () => {
-  const hosts = new Set(['GBNGWP25', 'GBNGWP26']);
+  const hosts = new Set(['ORNGWP25', 'ORNGWP26']);
   const Z = '/das-a/a-channel/v0_rate_limit';
   const L = '/das-a/a-channel/v0_location_limit';
   const rows = [
-    zs('GBNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0', '50r/s', '300r/s', Z, L),
-    zs('GBNGWP26', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0', '60r/s', '300r/s', Z, L),
-    zs('GBNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '50r/s', '300r/s', Z, L),
-    zs('GBNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/ping', '', '', '', ''),
-    zs('GBNGWP25', 'ORT.CST.REST.A.V1.conf', '@custom_403_json', '', '', '', ''),
-    zs('GBNGWP25', 'GAR.BASKA.V1.conf', '/gar/baska/v0', '50r/s', '', Z, ''),
+    zs('ORNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0', '50r/s', '300r/s', Z, L),
+    zs('ORNGWP26', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0', '60r/s', '300r/s', Z, L),
+    zs('ORNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/x', '50r/s', '300r/s', Z, L),
+    zs('ORNGWP25', 'ORT.CST.REST.A.V1.conf', '/das-a/a-channel/v0/ping', '', '', '', ''),
+    zs('ORNGWP25', 'ORT.CST.REST.A.V1.conf', '@custom_403_json', '', '', '', ''),
+    zs('ORNGWP25', 'GAR.BASKA.V1.conf', '/gar/baska/v0', '50r/s', '', Z, ''),
     zs(
-      'GBNGWP25',
+      'ORNGWP25',
       'GAR.ILGISIZ.V1.conf',
       '/gar/ilgisiz/v0',
       '10r/s',
@@ -642,7 +648,7 @@ test('AG11 ayrinti (SAF): zone bilgisiyle ayni zone u paylasan TUM uclar; kok; b
       '',
     ),
     zs(
-      'GBNGWP01',
+      'ORNGWP01',
       'ORT.CST.REST.A.V1.conf',
       '/das-a/a-channel/v0/kume-disi',
       '50r/s',
@@ -650,7 +656,7 @@ test('AG11 ayrinti (SAF): zone bilgisiyle ayni zone u paylasan TUM uclar; kok; b
       '/kume-disi/v0_rate_limit',
       '',
     ),
-    zs('GBNGWP01', 'GAR.KUMEDISI.V1.conf', '/gar/kume-disi/v0', '50r/s', '', Z, ''),
+    zs('ORNGWP01', 'GAR.KUMEDISI.V1.conf', '/gar/kume-disi/v0', '50r/s', '', Z, ''),
   ];
   // Ayni satir iki sorgudan gelebilir (kendi konfigurasyonu + zone eslesmesi): bir kez sayilmali.
   const d = cs.apiGatewayConfDetay([...rows, rows[0]], hosts, 'ORT.CST.REST.A.V1', {
@@ -698,15 +704,15 @@ test('AG11 ayrinti (SAF): zone bilgisiyle ayni zone u paylasan TUM uclar; kok; b
 test('AG11c ayrinti (SAF): zone eslesmesi SUNUCU BAZINDA; @ad location un zone u sayilir ama uc olarak listelenmez', () => {
   // Inceleme 2026-10-22: konfigurasyonun OLMADIGI sunucuda job "bulunamadi" ile durur ve oradaki ortak zone'a dokunmaz;
   // playbook dosyadaki TUM limit_req satirlarini aldigi icin @ad location'in zone'u da degisir.
-  const hosts = new Set(['GBNGWP25', 'GBNGWP26']);
+  const hosts = new Set(['ORNGWP25', 'ORNGWP26']);
   const Z = '/a/v0_rate_limit';
   const rows = [
-    zs('GBNGWP25', 'GAR.A.conf', '/a/v0', '5r/s', '', Z, ''),
-    zs('GBNGWP26', 'GAR.C.conf', '/c/v0', '5r/s', '', Z, ''),
-    zs('GBNGWP25', 'GAR.AX.conf', '/a/v0/x', '5r/s', '', Z, ''),
-    zs('GBNGWP26', 'GAR.AX.conf', '/a/v0/x', '5r/s', '', Z, ''),
-    zs('GBNGWP25', 'GAR.A.conf', '@adli', '', '', '/adli_rate_limit', ''),
-    zs('GBNGWP25', 'GAR.B.conf', '/b/v0', '9r/s', '', '/adli_rate_limit', ''),
+    zs('ORNGWP25', 'GAR.A.conf', '/a/v0', '5r/s', '', Z, ''),
+    zs('ORNGWP26', 'GAR.C.conf', '/c/v0', '5r/s', '', Z, ''),
+    zs('ORNGWP25', 'GAR.AX.conf', '/a/v0/x', '5r/s', '', Z, ''),
+    zs('ORNGWP26', 'GAR.AX.conf', '/a/v0/x', '5r/s', '', Z, ''),
+    zs('ORNGWP25', 'GAR.A.conf', '@adli', '', '', '/adli_rate_limit', ''),
+    zs('ORNGWP25', 'GAR.B.conf', '/b/v0', '9r/s', '', '/adli_rate_limit', ''),
   ];
   const d = cs.apiGatewayConfDetay(rows, hosts, 'GAR.A', { zoneVar: true });
   assert.deepEqual(
@@ -728,11 +734,11 @@ test('AG11c ayrinti (SAF): zone eslesmesi SUNUCU BAZINDA; @ad location un zone u
 });
 
 test('AG11b ayrinti (SAF): zone bilgisi YOKSA (eski yukleyici / kolon yok) yalniz bu konfigurasyon, durust isaret', () => {
-  const hosts = new Set(['GBNGWD01']);
+  const hosts = new Set(['ORNGWD01']);
   const eski = [
-    zs('GBNGWD01', 'DAS.B.V1.conf', '/b/v0', '5r/s', '', null, null),
-    zs('GBNGWD01', 'DAS.B.V1.conf', '/b/v0/c', '', '', null, null),
-    zs('GBNGWD01', 'DAS.DIGER.V1.conf', '/d/v0', '5r/s', '', null, null),
+    zs('ORNGWD01', 'DAS.B.V1.conf', '/b/v0', '5r/s', '', null, null),
+    zs('ORNGWD01', 'DAS.B.V1.conf', '/b/v0/c', '', '', null, null),
+    zs('ORNGWD01', 'DAS.DIGER.V1.conf', '/d/v0', '5r/s', '', null, null),
   ];
   for (const zoneVar of [true, false]) {
     const d = cs.apiGatewayConfDetay(eski, hosts, 'DAS.B.V1', { zoneVar });
@@ -748,8 +754,8 @@ test('AG11b ayrinti (SAF): zone bilgisi YOKSA (eski yukleyici / kolon yok) yalni
   }
   const kokYok = cs.apiGatewayConfDetay(
     [
-      zs('GBNGWD01', 'GAR.K.conf', '/a/v0', '1r/s', '', '', ''),
-      zs('GBNGWD01', 'GAR.K.conf', '/b/v0', '1r/s', '', '', ''),
+      zs('ORNGWD01', 'GAR.K.conf', '/a/v0', '1r/s', '', '', ''),
+      zs('ORNGWD01', 'GAR.K.conf', '/b/v0', '1r/s', '', '', ''),
     ],
     hosts,
     'GAR.K',
@@ -761,8 +767,8 @@ test('AG11b ayrinti (SAF): zone bilgisi YOKSA (eski yukleyici / kolon yok) yalni
   );
   const onek = cs.apiGatewayConfDetay(
     [
-      zs('GBNGWD01', 'GAR.K.conf', '/a/v0', '1r/s', '', 'z', ''),
-      zs('GBNGWD01', 'GAR.K.conf', '/a/v01', '1r/s', '', 'z', ''),
+      zs('ORNGWD01', 'GAR.K.conf', '/a/v0', '1r/s', '', 'z', ''),
+      zs('ORNGWD01', 'GAR.K.conf', '/a/v01', '1r/s', '', 'z', ''),
     ],
     hosts,
     'GAR.K',
@@ -916,10 +922,10 @@ test('AG16 kok yol: once ZONE ADINDAN, yoksa ortak yol oneki; en kisa location c
   assert.equal(k(['/a/v0', '/b/v0'], []), '/a/v0', 'ortak onek yoksa en kisa');
   assert.equal(k([], []), '');
   // Liste etiketi ve panel AYNI kurali kullanir.
-  const hosts = new Set(['GBNGWD01']);
+  const hosts = new Set(['ORNGWD01']);
   const rows = [
-    zs('GBNGWD01', 'GAR.R.conf', '/r/v0/ab', '1r/s', '', '/r/v0_rate_limit', ''),
-    zs('GBNGWD01', 'GAR.R.conf', '/r/v0/abc/def', '1r/s', '', '/r/v0_rate_limit', ''),
+    zs('ORNGWD01', 'GAR.R.conf', '/r/v0/ab', '1r/s', '', '/r/v0_rate_limit', ''),
+    zs('ORNGWD01', 'GAR.R.conf', '/r/v0/abc/def', '1r/s', '', '/r/v0_rate_limit', ''),
   ];
   assert.equal(cs.apiGatewayConfChoices(rows, hosts)[0].alt, '/r/v0');
   const d = cs.apiGatewayConfDetay(rows, hosts, 'GAR.R', { zoneVar: true });
@@ -929,7 +935,7 @@ test('AG16 kok yol: once ZONE ADINDAN, yoksa ortak yol oneki; en kisa location c
     'kok API location i dosyada yoksa hicbir uc kok isaretlenmez',
   );
   const d2 = cs.apiGatewayConfDetay(
-    [...rows, zs('GBNGWD01', 'GAR.R.conf', '/r/v0', '1r/s', '', '/r/v0_rate_limit', '')],
+    [...rows, zs('ORNGWD01', 'GAR.R.conf', '/r/v0', '1r/s', '', '/r/v0_rate_limit', '')],
     hosts,
     'GAR.R',
     { zoneVar: true },
@@ -962,7 +968,7 @@ test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar
           return {
             recordset: [
               zs(
-                'GBNGWP25',
+                'ORNGWP25',
                 'GAR.A.conf',
                 '/a/v0',
                 '5r/s',
@@ -974,12 +980,12 @@ test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar
           };
         }
         if (/ip_zone IN/.test(metin))
-          return { recordset: [zs('GBNGWP25', 'GAR.B.conf', '/b/v0', '5r/s', '', Z, '')] };
+          return { recordset: [zs('ORNGWP25', 'GAR.B.conf', '/b/v0', '5r/s', '', Z, '')] };
         if (/SELECT host, config_file, api_location/.test(metin) && !/ IN \(/.test(metin)) {
           return {
             recordset: [
               zs(
-                'GBNGWP25',
+                'ORNGWP25',
                 'GAR.R.conf',
                 '/r/v0/ab',
                 '',

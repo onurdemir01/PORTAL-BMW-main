@@ -1545,7 +1545,7 @@ function ReadinessTab() {
           value={metin}
           onChange={(e) => setMetin(e.target.value)}
           rows={3}
-          placeholder="GBAPP01, GBAPP02 … (virgül, boşluk ya da satır ile ayırın; FQDN de olur)"
+          placeholder="SUNUCU01, SUNUCU02 … (virgül, boşluk ya da satır ile ayırın; FQDN de olur)"
           className="w-full px-2 py-1.5 text-xs font-mono border rounded-lg"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         />
@@ -2239,7 +2239,7 @@ function HostsTab({
   const [q, setQ] = useState('');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState('all');
-  // GBEVM*/GBPRV* genel envanterden ayri (kullanici, 2026-09-24): ozet ve varsayilan liste
+  // OREVM*/ORPRV* genel envanterden ayri (kullanici, 2026-09-24): ozet ve varsayilan liste
   // GENEL envanteri gosterir, bu sunucular kendi sekmelerinde listelenir.
   const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const [openHost, setOpenHost] = useState<string | null>(null);
@@ -2966,9 +2966,8 @@ function HostsTab({
             color: 'var(--text-secondary)',
           }}
         >
-          GBEVM* ve GBPRV* sunucuları <b>genel envanterden ayrı</b> tutulur: yukarıdaki özet ve
-          ortam kırılımı bunları saymaz. Taranırlar, bulguları ve “şimdi tara / düzelt” işlemleri
-          çalışır.
+          …EVM* ve …PRV* sunucuları <b>genel envanterden ayrı</b> tutulur: yukarıdaki özet ve ortam
+          kırılımı bunları saymaz. Taranırlar, bulguları ve “şimdi tara / düzelt” işlemleri çalışır.
         </div>
       )}
 
@@ -3030,7 +3029,7 @@ function HostsTab({
           {(
             [
               { id: 'genel', label: 'Genel envanter' },
-              { id: 'ozel', label: 'GBEVM / GBPRV' },
+              { id: 'ozel', label: '…EVM / …PRV' },
             ] as const
           ).map((c) => (
             <button
@@ -4368,15 +4367,15 @@ function bulguKolonlari(
     {
       anahtar: 'sinif',
       baslik: 'Sınıf',
-      aciklama: 'Genel envanter ya da GBEVM / GBPRV.',
+      aciklama: 'Genel envanter ya da …EVM / …PRV.',
       suzgec: 'secim',
       varsayilan: false,
       secenekler: [
         { deger: 'genel', etiket: 'genel envanter' },
-        { deger: 'ozel', etiket: 'GBEVM / GBPRV' },
+        { deger: 'ozel', etiket: '…EVM / …PRV' },
       ],
       deger: (f) => f.hostClass || 'genel',
-      hucre: (f) => ((f.hostClass || 'genel') === 'ozel' ? 'GBEVM / GBPRV' : 'genel'),
+      hucre: (f) => ((f.hostClass || 'genel') === 'ozel' ? '…EVM / …PRV' : 'genel'),
     },
     {
       anahtar: 'tarama',
@@ -4748,7 +4747,7 @@ export function FindingsTab({
             aria-label="envanter sınıfı"
           >
             <option value="genel">genel envanter</option>
-            <option value="ozel">GBEVM / GBPRV</option>
+            <option value="ozel">…EVM / …PRV</option>
             <option value="all">hepsi</option>
           </select>
           <select

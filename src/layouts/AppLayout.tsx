@@ -9,6 +9,7 @@
 import React, { Suspense, useContext, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Masthead from '@/components/layout/Masthead';
+import { KurumAyarUyarisi } from '@/components/layout/KurumAyarUyarisi';
 import PageNav from '@/components/layout/PageNav';
 import SessionTimeoutModal from '@/components/SessionTimeoutModal';
 import PageErrorBoundary from '@/components/common/PageErrorBoundary';
@@ -114,6 +115,7 @@ export default function AppLayout() {
             İçeriğe atla
           </a>
           <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
+          <KurumAyarUyarisi />
 
           <div className="flex flex-1 min-h-0 relative">
             {/* MENU ACILIP KAPANIRKEN HAFIF ANIMASYON (2026-10-15, kullanici: "sol menunun

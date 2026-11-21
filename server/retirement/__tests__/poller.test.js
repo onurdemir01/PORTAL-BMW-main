@@ -52,7 +52,7 @@ const GECE = new Date('2026-10-06T20:30:00Z');
 const hedef = (o = {}) => ({
   id: 7,
   record_id: 3,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   app_name: 'CRM',
   jboss_gen: 7,
   app_path: '/hysdeploy/CRM.ear',
@@ -65,7 +65,7 @@ const hedef = (o = {}) => ({
   last_job_id: 50,
   stop_izin_json: JSON.stringify({
     jobId: 50,
-    izinler: ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'],
+    izinler: ['onay:CRM|JBoss7|ORJBOP01', 'mv:/vhosting/CRM.ear'],
   }),
   ...o,
 });
@@ -94,10 +94,10 @@ test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
   assert.equal(r.kosan, 1);
   assert.equal(cagri.length, 1);
   assert.equal(cagri[0].kind, 'stop');
-  assert.equal(cagri[0].t.host, 'GBJBOP01');
+  assert.equal(cagri[0].t.host, 'ORJBOP01');
   assert.deepEqual(
     cagri[0].t.izinler,
-    ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'],
+    ['onay:CRM|JBoss7|ORJBOP01', 'mv:/vhosting/CRM.ear'],
     'zamanlanmis STOP onaylanan izin listesini betige tasimiyor',
   );
   // CLAIM LAUNCH'TAN ONCE: iki tick ust uste binerse ayni hedef iki kez baslatilmasin
@@ -167,7 +167,7 @@ test('RP16 izin listesi YOK / bozuk / baska on kontrol isinin ise zamanlanmis ST
   const durumlar = [
     { stop_izin_json: null },
     { stop_izin_json: '{bozuk' },
-    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|GBJBOP01'] }) },
+    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|ORJBOP01'] }) },
     { stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['mv:/x'] }) },
   ];
   for (const o of durumlar) {
@@ -494,7 +494,7 @@ const webSatir = (liste) => [
   { id: 7, record_id: 3, app_name: 'CRM', web_result_json: JSON.stringify(liste) },
 ];
 const vh = (o) => ({
-  host: 'GBJBOP12',
+  host: 'ORJBOP12',
   serverName: 'crm.fw',
   product: 'IHS',
   confFile: '/c',
@@ -570,12 +570,12 @@ test('RW4 tur sirasi: webSonucTick tick() icinde cagrilir', () => {
 const webHedef = (liste) => ({
   id: 9,
   record_id: 3,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   app_name: 'VO',
   web_result_json: JSON.stringify(liste),
 });
 const vhx = (o = {}) => ({
-  host: 'GBJBOAP11',
+  host: 'ORJBOAP11',
   serverName: 'vo.fw',
   product: 'IHS',
   confFile: 'mod-jk.conf',
@@ -592,8 +592,8 @@ test('RW5 ayni host/conf/ServerName listede iki kez ise TEK is baslar, liste tek
       [
         webHedef([
           vhx(),
-          vhx({ host: 'gbjboap11', serverName: 'VO.FW' }),
-          vhx({ host: 'GBJBOAP12' }),
+          vhx({ host: 'orjboap11', serverName: 'VO.FW' }),
+          vhx({ host: 'ORJBOAP12' }),
         ]),
       ],
     ],
@@ -609,7 +609,7 @@ test('RW5 ayni host/conf/ServerName listede iki kez ise TEK is baslar, liste tek
   );
   const r = await poller._webTick();
   poller.stopPoller();
-  assert.deepEqual(isler, ['GBJBOAP11', 'GBJBOAP12'], 'ayni vhost icin iki is baslatildi');
+  assert.deepEqual(isler, ['ORJBOAP11', 'ORJBOAP12'], 'ayni vhost icin iki is baslatildi');
   assert.equal(r.kosan, 2);
   const upd = yazilan.find((y) =>
     y.sql.startsWith('UPDATE retirement_targets SET web_result_json'),
@@ -659,9 +659,9 @@ test('RP12 TOPLU zamanlanmis STOP: ayni kayit + ayni an TEK is (tek SCC maili); 
     [
       'FROM retirement_targets t JOIN retirement_records r',
       [
-        hedef({ id: 7, host: 'GBJBOP01' }),
-        hedef({ id: 8, host: 'GBJBOP02' }),
-        hedef({ id: 9, record_id: 4, host: 'GBJBOP03' }),
+        hedef({ id: 7, host: 'ORJBOP01' }),
+        hedef({ id: 8, host: 'ORJBOP02' }),
+        hedef({ id: 9, record_id: 4, host: 'ORJBOP03' }),
       ],
     ],
   ]);
@@ -677,8 +677,8 @@ test('RP12 TOPLU zamanlanmis STOP: ayni kayit + ayni an TEK is (tek SCC maili); 
   assert.deepEqual(
     cagri[0].t.hedefler.map((h) => [h.targetId, h.host]),
     [
-      [7, 'GBJBOP01'],
-      [8, 'GBJBOP02'],
+      [7, 'ORJBOP01'],
+      [8, 'ORJBOP02'],
     ],
   );
   assert.equal(cagri[1].t.hedefler, undefined, 'tek hedefli is coklu bicimde gitti');
@@ -758,11 +758,11 @@ test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklem
       [
         satir({
           id: 21,
-          host: 'GBJBOT01',
+          host: 'ORJBOT01',
           hedef_delete_now_at: '2026-10-06T11:00:00Z',
           delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z'),
         }),
-        satir({ id: 22, host: 'GBJBOT02' }),
+        satir({ id: 22, host: 'ORJBOT02' }),
       ],
     ],
   ]);
@@ -774,7 +774,7 @@ test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklem
   const r = await poller._deleteTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 1);
-  assert.deepEqual(cagri, ['GBJBOT01'], 'isaretlenmemis hedef de silindi (toplu atlama)');
+  assert.deepEqual(cagri, ['ORJBOT01'], 'isaretlenmemis hedef de silindi (toplu atlama)');
   const kaynak = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'poller.cjs'),
     'utf8',

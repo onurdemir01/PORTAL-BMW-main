@@ -7,15 +7,19 @@
 // OCO numarasini elle girecegim. Tabloyu dolduran kisinin ismi GORUNMESIN."
 //
 // 2026-10-16: Set 6 tamamlandi; bazi uygulama sahipleri uygulamalarini Set 7'ye aldirdi. Kalan
-// tek calisma Set 7. Liste glomo-gecis-set7-talep.json'da; TEK SEFERLIK goc (spa_gecis_goc)
+// tek calisma Set 7. Liste kurum ayarinda (set7Talep); TEK SEFERLIK goc (spa_gecis_goc)
 // listedeki uygulamalari Set 7'ye tasir, girisler (kullanimda / katilimci / kontrol) korunur.
 // Ayrica "Kontrol" kolonu: herkes "Kontrol Ettim" der, yalniz an tutulur (kim ve aciklama YOK).
 //
-// KAYNAKLAR
-//   glomo-gecis-seed.json  Excel'den (Glomo-Nginx-Tasima-Takvimi.xlsx, 210 uygulama, Calisma 1-7).
-//                          Excel'in Turkce karakterleri bozuktu; yalniz namespace/uygulama/set/
-//                          location alindi (ekip ve yuk canli rapordan gelir).
-//   glomo-gecis-set7-talep.json  2026-10-16 Set 7'ye alinacak uygulamalar (bkz. gocUygula).
+// KAYNAKLAR (2026-11-21: gercek uygulama adlari repoda TUTULMAZ, K17; kurum ayari
+// `spaRapor.glomoGecis`, server/util/kurum-ayari.cjs; kurgusal bicimi deploy/kurum-ayari.ornek.json)
+//   seed       Excel'den (Glomo-Nginx-Tasima-Takvimi.xlsx, 210 uygulama, Calisma 1-7).
+//              Excel'in Turkce karakterleri bozuktu; yalniz namespace/uygulama/set/
+//              location alindi (ekip ve yuk canli rapordan gelir). Tabloya BIR KEZ yazilir
+//              (kaynak 'excel'); uretimde satirlar zaten tabloda.
+//   set7Talep  2026-10-16 Set 7'ye alinacak uygulamalar (bkz. gocUygula).
+//   Acilista bir kez okunur. Ayar yoksa seed BOS (tablodaki satirlar aynen okunur) ve goc devre
+//   disi; sebep Admin yanitinda (seed.hata / goc.hata), rapor ayakta kalir.
 //   loadReport()           canli ARK SPA raporu (Nginx_Config_Audit). Glomo servisinde olup
 //                          Excel'de OLMAYAN uygulama "eksik" sayilir ve Set 7'ye eklenir.
 //
@@ -35,7 +39,12 @@ const db = require('../db/index.cjs');
 
 const SETLER = [1, 2, 3, 4, 5, 6, 7];
 const EKSIK_SET = 7;
-const SEED = require('./glomo-gecis-seed.json');
+const GLOMO_AYARI = require('../util/kurum-ayari.cjs').bolum('spaRapor.glomoGecis');
+const SEED_HATA = Array.isArray(GLOMO_AYARI.deger?.seed)
+  ? null
+  : `kurum ayarinda spaRapor.glomoGecis.seed yok (${GLOMO_AYARI.hata || 'liste degil'}); Excel seed'i yazilmadi`;
+const SEED = SEED_HATA ? [] : GLOMO_AYARI.deger.seed;
+if (SEED_HATA) console.error(`[glomo-gecis] ${SEED_HATA}`);
 const SEED_BY_KEY = new Map(SEED.map((s) => [`${s.namespace}/${s.application}`, s]));
 const GLOMO = 'GLOMO';
 
@@ -50,16 +59,18 @@ const TARIH_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ZAMAN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 // SET 7 TALEBI (2026-10-16). Icerik kullanicinin gonderdigi listedir; DEGISTIRILMEZ.
-// Dosya okunamazsa (commit'e girmedi vb.) modul YINE yuklenir: bu require modul duzeyinde ve
-// spa-report/index.cjs'te ana raporun da onunde - patlarsa /api/spa-report altindaki BUTUN uclar
-// kalkar. Goc ve talepEslesmeyen devre disi kalir, hata loglanir ve Admin ekranda gorur.
+// Ayar yoksa modul YINE yuklenir: bu okuma modul duzeyinde ve spa-report/index.cjs'te ana raporun
+// da onunde - patlarsa /api/spa-report altindaki BUTUN uclar kalkar. Goc ve talepEslesmeyen devre
+// disi kalir, hata loglanir ve Admin ekranda gorur.
 let TALEP = { ad: 'set7-talep-2026-10-16', hedefSet: 7, uygulamalar: [] };
 let TALEP_HATA = null;
-try {
-  TALEP = require('./glomo-gecis-set7-talep.json');
-} catch (err) {
-  TALEP_HATA = `glomo-gecis-set7-talep.json okunamadi: ${err.message}`;
-  console.error(`[glomo-gecis] ${TALEP_HATA}`);
+{
+  const t = GLOMO_AYARI.deger?.set7Talep;
+  if (t && typeof t === 'object' && Array.isArray(t.uygulamalar)) TALEP = t;
+  else {
+    TALEP_HATA = `kurum ayarinda spaRapor.glomoGecis.set7Talep yok (${GLOMO_AYARI.hata || 'gecersiz'})`;
+    console.error(`[glomo-gecis] ${TALEP_HATA}`);
+  }
 }
 const TALEP_LISTE = (TALEP.uygulamalar || []).map((u) => ({
   namespace: T(u.namespace),
@@ -313,6 +324,8 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
     // Tek seferlik Set 7 gocunun durumu: uygulanamadiysa Set 6'dan tasinacak uygulamalar
     // "Tamamlanan" bolumunde kalir - Admin ekranda uyari gorur (sunucu logu tek iz degil).
     goc: { ad: TALEP.ad, uygulandi: _gocTamam, hata: _gocTamam ? null : _gocHata },
+    // Excel seed'i kurum ayarindan okunamadiysa (yeni kurulumda plan bos baslar): Admin gorur.
+    seed: { hata: SEED_HATA },
   };
 }
 
@@ -321,11 +334,12 @@ function mountGecis(router, { loadReport, sahipYukle }) {
     try {
       const p = await planYukle(loadReport, sahipYukle);
       const admin = isAdmin(req);
-      // talepEslesmeyen ve goc hatasi yalniz Admin'e (ekran da yalniz Admin'e gosterir).
+      // talepEslesmeyen, goc ve seed hatasi yalniz Admin'e (ekran da yalniz Admin'e gosterir).
       res.json({
         ...p,
         talepEslesmeyen: admin ? p.talepEslesmeyen : [],
         goc: admin ? p.goc : { ad: p.goc.ad, uygulandi: p.goc.uygulandi },
+        seed: admin ? p.seed : { hata: null },
         admin,
       });
     } catch (err) {

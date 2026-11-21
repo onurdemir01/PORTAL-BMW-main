@@ -154,10 +154,10 @@ const ayarlar = require('../ayarlar.cjs');
 // ── tarama fiksturleri (v2-guvenlik.test.js ile ayni bicim) ───────────────────────────────────
 const BUGUN = '2026-11-06';
 const NOW = Date.parse(`${BUGUN}T10:00:00Z`);
-const APP = 'GBCJAP01';
-const APP2 = 'GBCJAP02';
-const TEST_APP = 'GBCJAT01';
-const WEB = 'GBCJWP01';
+const APP = 'ORCJAP01';
+const APP2 = 'ORCJAP02';
+const TEST_APP = 'ORCJAT01';
+const WEB = 'ORCJWP01';
 const H3 = (host, ek = {}) => ({
   host,
   scan_date: BUGUN,
@@ -969,7 +969,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   const { earSonDurum } = require('../ear-hub-verisi.cjs');
   DB.earH = [
     {
-      host: 'gbcjap01',
+      host: 'orcjap01',
       kosu_id: 7,
       taranma_utc: new Date('2026-11-05T02:00:00Z'),
       durum: 'TAM',
@@ -984,7 +984,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
       }),
     },
     {
-      host: 'GBCJAP02',
+      host: 'ORCJAP02',
       kosu_id: 8,
       taranma_utc: '2026-11-04 01:00:00',
       durum: 'KISMI',
@@ -993,7 +993,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   ];
   DB.earU = [
     {
-      host: 'GBCJAP01',
+      host: 'ORCJAP01',
       kok: '/vhosting',
       jboss: '7',
       ad: 'A.ear',
@@ -1002,7 +1002,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
       xml_eslesme: JSON.stringify({ durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim: KULLANIM_RE8 }),
     },
     {
-      host: 'GBCJAP02',
+      host: 'ORCJAP02',
       kok: '/vhosting8',
       jboss: '8',
       ad: 'B.ear',
@@ -1023,7 +1023,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   const v = await earSonDurum();
   assert.equal(v.okunamadi, false);
   const [a, b] = v.hostlar;
-  assert.deepEqual([a.host, a.kosuId, a.taranma], ['GBCJAP01', 7, '2026-11-05T02:00:00.000Z']);
+  assert.deepEqual([a.host, a.kosuId, a.taranma], ['ORCJAP01', 7, '2026-11-05T02:00:00.000Z']);
   assert.deepEqual(a.kokGirdileri, {
     girdiler: [{ kok: '/vhosting', ad: 'X.bak', tip: 'F' }],
     kesilen: 1,
@@ -1444,7 +1444,7 @@ test('RE11 hiz: buyuk filo bir kez indekslenir; ozet kopya tasimaz, sayisi tam',
   const { ozetle } = require('../retire-etiket.cjs');
   const hosts = [];
   for (let i = 0; i < 2000; i++) {
-    const host = `GBXXAP${String(i).padStart(4, '0')}`;
+    const host = `ORXXAP${String(i).padStart(4, '0')}`;
     const env = ['PROD', 'TEST', 'QA', 'DEV'][i % 4];
     const jvms = Array.from({ length: 12 }, (_, k) => ({
       gen: 7,
@@ -1578,15 +1578,15 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
     ocp: {
       okunamadi: false,
       indeks: ocpIndeksi([
-        { cluster: 'gbocpprod1', namespace: 'pay-prod', application: 'pay' },
-        { cluster: 'gbocpprod1', namespace: 'batch-prod', application: 'batch' },
+        { cluster: 'orocpprod1', namespace: 'pay-prod', application: 'pay' },
+        { cluster: 'orocpprod1', namespace: 'batch-prod', application: 'batch' },
       ]),
     },
     kullanim: {
       okunamadi: false,
       indeks: olcumIndeksi([
         {
-          cluster: 'gbocpprod1',
+          cluster: 'orocpprod1',
           namespace: 'pay-prod',
           app: 'pay',
           scan_date: '2026-11-05',
@@ -1596,7 +1596,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
           measured: 1,
         },
         {
-          cluster: 'gbocpprod1',
+          cluster: 'orocpprod1',
           namespace: 'batch-prod',
           app: 'batch',
           scan_date: '2026-11-05',
@@ -1677,7 +1677,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   assert.deepEqual([ocp.length, ocp[0].severity], [1, 'info']);
   assert.match(
     ocp[0].text,
-    /pay-prod @ gbocpprod1 — Dynatrace 7 gün: 50 istek — JBoss kopyası boşta/,
+    /pay-prod @ orocpprod1 — Dynatrace 7 gün: 50 istek — JBoss kopyası boşta/,
   );
   const kal = bul(r, TEST_APP, 'ORTAM_KALINTISI');
   assert.equal(kal.length, 1);

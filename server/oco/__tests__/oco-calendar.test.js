@@ -32,7 +32,7 @@ const {
 const ORNEK = {
   OcoWfInstanceId: 23191882,
   Subject: 'Provenir Sunucularında IBMIHS Bulgu Upgrade Set 2',
-  Explanation: 'GBPRVAP16\r\nGBPRVP07',
+  Explanation: 'ORPRVAP16\r\nORPRVP07',
   OcoStatus: 5,
   OcoStatusText: 'Değişiklik Yönetimi Kontrol Onayı',
   ChangeImpactText: 'Minör',

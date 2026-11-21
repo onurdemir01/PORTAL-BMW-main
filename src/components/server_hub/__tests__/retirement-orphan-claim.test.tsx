@@ -12,7 +12,7 @@ import RetirementCanli, {
 const hedef = (status: RtTarget['status'], overrides: Partial<RtTarget> = {}): RtTarget => ({
   id: 7,
   recordId: 3,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   site: 'Pendik',
   env: 'PROD',
   appName: 'CRM',

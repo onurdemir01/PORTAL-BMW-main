@@ -1,6 +1,6 @@
 // server/retirement/__tests__/launch-req-null.test.js — RQ1 (uretim 2026-10-08).
 //
-// "GBSVCVOICEORDER @ GBJBOQ04: DELETE baslatilamadi — Cannot read properties of null (reading
+// "ORSVCVOICEORDER @ ORJBOQ04: DELETE baslatilamadi — Cannot read properties of null (reading
 // 'session')". Zamanlayici DELETE'i ve zamanlanmis STOP'u launch(null, ...) ile baslatir; launch()
 // `req.session` okuyordu ve zamanlayicinin baslattigi HER is dusuyordu. launch() ve onun cagirdigi
 // her yerde `req` null olabilir.

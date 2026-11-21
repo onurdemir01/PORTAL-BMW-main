@@ -3,7 +3,7 @@
 #
 # KULLANIM (kurumsal agda):
 #   powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost api.openai.com
-#   powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr -OutDir server\certs\mcp
+#   powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost dynatrace-mcp.apps-3rd-t.fw.sirket.invalid -OutDir server\certs\mcp
 #
 # CIKTILAR (OutDir altinda):
 #   certificate-0.pem/.cer  → leaf (sunucu sertifikasi)

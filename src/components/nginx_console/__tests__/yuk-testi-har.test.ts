@@ -30,7 +30,7 @@ import {
   type SenaryoSatiri,
 } from '../yukTesti/harSenaryo';
 
-const HOST = 'glomo-test.fw.garantibbva.com.tr';
+const HOST = 'glomo-test.fw.ornekbanka.invalid';
 const H = `https://${HOST}`;
 const SIRLAR = [
   'GIZLICEREZ',
@@ -146,10 +146,10 @@ function kenar() {
         k('/k/dizin/'),
         girdi(H),
         girdi(`${H}:443/k/port.css`, { mime: 'text/css' }),
-        girdi('HTTPS://GLOMO-TEST.FW.GARANTIBBVA.COM.TR/k/buyukharf.js'),
+        girdi('HTTPS://GLOMO-TEST.FW.ornekbanka.invalid/k/buyukharf.js'),
         girdi(`  ${H}/k/bosluk.js`),
         girdi(`https://kullanici@${HOST}:8443/k/kullanici.js`),
-        girdi('https://glomo-te\tst.fw.garantibbva.com.tr/k/sekme.js'),
+        girdi('https://glomo-te\tst.fw.ornekbanka.invalid/k/sekme.js'),
         k('/k/sorgu-bos.js?'),
         k('/k/parca.js#bolum'),
         k('//k/cift.js'),

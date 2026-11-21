@@ -60,13 +60,13 @@ function row(over = {}) {
     id: 1,
     env: 'test',
     tenant: 'ark',
-    cluster_name: 'gbocptest1',
+    cluster_name: 'orocptest1',
     namespace: 'ns1',
     app_name: 'app1',
     workload_kind: 'DeploymentConfig',
     previous_replicas: 1,
     phase: 'scaled_down',
-    stopped_by: 'uxmid',
+    stopped_by: 'svcac',
     stopped_at: null,
     stopped_by_groups: null,
     restore_attempts: 0,
@@ -82,7 +82,7 @@ function live(over = {}) {
   return {
     env: 'test',
     tenant: 'ark',
-    clusterName: 'gbocptest1',
+    clusterName: 'orocptest1',
     namespace: 'ns1',
     appName: 'app1',
     readyReplicas: 1,
@@ -94,7 +94,7 @@ const refresh = (liveStates) =>
   state.refreshDrift({
     env: 'test',
     tenant: 'ark',
-    scannedClusters: ['gbocptest1'],
+    scannedClusters: ['orocptest1'],
     clusterStates: [], // ConfigMap YOK
     liveStates,
   });

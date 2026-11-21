@@ -731,7 +731,7 @@ async function releaseLocksForJob(db, awxServerId, awxJobId, finishedIso = null)
 
 // BAYAT KESIF (LB cifti korumasi, 2026-10-02): kesif, bu uygulamadaki SON islem BITMEDEN
 // baslamissa olcumleri o islemden onceki (ya da islem ortasindaki) durumu gosterir. Ornek:
-// ALI GBWASP01'i durdurur, is biter, kilit duser; VELI'nin ALI'nin isinden ONCE aldigi kesif
+// ALI ORWASP01'i durdurur, is biter, kilit duser; VELI'nin ALI'nin isinden ONCE aldigi kesif
 // 01'i hala "calisiyor" gosterir ve 02'yi SON_CALISAN uyarisi olmadan durdurtur. Kural:
 // kesfin AWX baslangic zamani > uygulamanin son islem bitis zamani (iki zaman da AWX'ten).
 // Donus: '' (gecerli) ya da red sebebi.

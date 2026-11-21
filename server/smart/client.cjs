@@ -147,9 +147,18 @@ async function createTicket({ flowKey, username, domain, metadata, integrationKe
     );
   }
   const cfg = getConfig();
+  const loginDomain = domain || cfg.domain;
+  if (!loginDomain) {
+    throw Object.assign(
+      new Error(
+        "Smart login domain'i tanımlı değil (SMART_DOMAIN ya da kurum ayarı smart.domain); talep açılmadı.",
+      ),
+      { status: 503 },
+    );
+  }
   const body = {
     logonName: username,
-    domain: domain || cfg.domain,
+    domain: loginDomain,
     flowKey,
     metaAttachmentsData: {},
     metadataData: {

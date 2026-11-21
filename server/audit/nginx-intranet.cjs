@@ -17,7 +17,7 @@
 // ikisini birlestirmek, nerede mudahale gerektigini gizlerdi.
 //
 // ORTAM: intranet satirinda vhost olmadigi icin ortam DOSYA ADINDAN turetilemez;
-// SUNUCU ADINDAN turetilir (nginx-hosts.cjs envOfHost, GBNGXT51 -> EDU istisnasi dahil).
+// SUNUCU ADINDAN turetilir (nginx-hosts.cjs envOfHost, ORNGXT51 -> EDU istisnasi dahil).
 'use strict';
 
 const { envOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');

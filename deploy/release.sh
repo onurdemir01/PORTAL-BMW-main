@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy/release.sh — BMW Portal sunucu tarafi surum yukleme (gblabt02, kullanici: was).
+# deploy/release.sh — BMW Portal sunucu tarafi surum yukleme (orlabt02, kullanici: was).
 #
 # Akis (2026-09-17, KESINTISIZE YAKIN — bkz. deploy/stage-lib.sh):
 #   1. /vhosting8/bmw_portal/deploy/PORTAL-BMW-main.zip beklenir (once oraya kopyalayin)

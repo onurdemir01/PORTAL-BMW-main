@@ -62,11 +62,11 @@ async function getir() {
 
 test('WH1 3-tier GOJBAB03: sertifikada yok, Server Hub GOJBWP03 vhostu bulunur ve eslesmis sayilir', async () => {
   veri = {
-    apps: [{ app: 'gfysvc-d', host: 'GOJBAB03', env: 'DEV', domain: 'gtdmz.com.tr' }],
+    apps: [{ app: 'gfysvc-d', host: 'GOJBAB03', env: 'DEV', domain: 'odmz.invalid' }],
     vhosts: [
       {
         host: 'GOJBWP03',
-        server_name: 'gfysvc-d.gtdmz.com.tr',
+        server_name: 'gfysvc-d.odmz.invalid',
         aliases: '',
         listen: '*:443',
         conf_file: '/x/a.conf',
@@ -86,11 +86,11 @@ test('WH1 3-tier GOJBAB03: sertifikada yok, Server Hub GOJBWP03 vhostu bulunur v
 
 test('WH2 ad tutmuyor ama vhost JkMount hedefi uygulamanin JVM portu: AJP ile bulunur', async () => {
   veri = {
-    apps: [{ app: 'onur', host: 'GBCJAP01', env: 'PROD', domain: 'fw.garanti.com.tr' }],
+    apps: [{ app: 'onur', host: 'ORCJAP01', env: 'PROD', domain: 'fw.sirket.invalid' }],
     vhosts: [
       {
-        host: 'GBCJAP01',
-        server_name: 'cansu.fw.garanti.com.tr',
+        host: 'ORCJAP01',
+        server_name: 'cansu.fw.sirket.invalid',
         aliases: '',
         listen: '*:80',
         conf_file: '/c.conf',
@@ -98,12 +98,12 @@ test('WH2 ad tutmuyor ama vhost JkMount hedefi uygulamanin JVM portu: AJP ile bu
         proxy_targets: 'localhost:8159',
       },
     ],
-    jvms: [{ host: 'GBCJAP01', jvm: 'onur', ports: '', cfg_ports: '8159,8230' }],
+    jvms: [{ host: 'ORCJAP01', jvm: 'onur', ports: '', cfg_ports: '8159,8230' }],
   };
   const j = await getir();
   const r = j.rows[0];
   assert.equal(r.matched, true, r.how);
-  assert.equal(r.web[0].serverName, 'cansu.fw.garanti.com.tr');
+  assert.equal(r.web[0].serverName, 'cansu.fw.sirket.invalid');
   assert.equal(r.web[0].kaynak, 'ajp');
   assert.ok(
     j.matchSummary.some((m) => m.how === 'AJP/proxy hedefi = JVM portu'),
@@ -113,13 +113,13 @@ test('WH2 ad tutmuyor ama vhost JkMount hedefi uygulamanin JVM portu: AJP ile bu
 
 test('WH3 Server Hub okunamazsa sertifika eslemesi calisir ve sebep doner (olculemedi != yok)', async () => {
   veri = {
-    apps: [{ app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: 'gtdmz.com.tr' }],
+    apps: [{ app: 'crm', host: 'ORCRAP01', env: 'PROD', domain: 'odmz.invalid' }],
     certs: [
       {
-        host: 'GBCRWP01',
+        host: 'ORCRWP01',
         ip: '10.0.0.1',
         port: '443',
-        server_name: 'crm.gtdmz.com.tr',
+        server_name: 'crm.odmz.invalid',
         conf_file: '/c',
         product: 'IHS',
         env: 'PROD',
@@ -129,25 +129,25 @@ test('WH3 Server Hub okunamazsa sertifika eslemesi calisir ve sebep doner (olcul
   };
   const j = await getir();
   assert.equal(j.rows[0].matched, true);
-  assert.equal(j.rows[0].web[0].host, 'GBCRWP01');
+  assert.equal(j.rows[0].web[0].host, 'ORCRWP01');
   assert.match(String(j.hubHata), /vhost/);
 });
 
 // ── DNS -> LB VIP (2026-10-13): site bazli cozum ─────────────────────────────────────
 // DNS sunuculari ayardan (WEB_APP_DNS_SUNUCULARI; gercek adresler repoda degil). Testte belge araligi.
 process.env.WEB_APP_DNS_SUNUCULARI = JSON.stringify({
-  gtdmz: { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] },
+  dmz: { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] },
   fw: { Pendik: ['192.0.2.1'], Ankara: ['198.51.100.1'] },
 });
 const { dnsCozumle } = require('../web-app.cjs');
 
-test('WH4 bolge + site: gtdmz/fw icin kullanicinin verdigi DNS sunuculari; Ankara VIP Pendik ile karismaz; onbellek', async () => {
+test('WH4 bolge + site: dmz/fw icin kullanicinin verdigi DNS sunuculari; Ankara VIP Pendik ile karismaz; onbellek', async () => {
   const { dnsBolgeleri, dnsBolgesi } = require('../web-app.cjs');
-  assert.deepEqual(dnsBolgeleri().gtdmz, { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] });
+  assert.deepEqual(dnsBolgeleri().dmz, { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] });
   assert.deepEqual(dnsBolgeleri().fw, { Pendik: ['192.0.2.1'], Ankara: ['198.51.100.1'] });
-  assert.equal(dnsBolgesi('gtdmz.com.tr'), 'gtdmz');
-  assert.equal(dnsBolgesi('fw.garanti.com.tr'), 'fw');
-  assert.equal(dnsBolgesi('garantibbva.com.tr'), null);
+  assert.equal(dnsBolgesi('odmz.invalid'), 'dmz');
+  assert.equal(dnsBolgesi('fw.sirket.invalid'), 'fw');
+  assert.equal(dnsBolgesi('ornekbanka.invalid'), null);
   const cagri = [];
   const cozucu = async (ad, sunucular) => {
     cagri.push(`${ad}@${sunucular.join(',')}`);
@@ -155,18 +155,18 @@ test('WH4 bolge + site: gtdmz/fw icin kullanicinin verdigi DNS sunuculari; Ankar
   };
   const r = await dnsCozumle(
     [
-      { ad: 'App.GTDMZ.com.tr', bolge: 'gtdmz' },
-      { ad: 'x.fw.garanti.com.tr', bolge: 'fw' },
+      { ad: 'App.odmz.invalid', bolge: 'dmz' },
+      { ad: 'x.fw.sirket.invalid', bolge: 'fw' },
     ],
     { cozucu },
   );
-  assert.deepEqual(r.sonuc['gtdmz|app.gtdmz.com.tr'].Pendik.ips, ['VIP-192.0.2.22']);
-  assert.deepEqual(r.sonuc['gtdmz|app.gtdmz.com.tr'].Ankara.ips, ['VIP-198.51.100.22']);
-  assert.equal(r.sonuc['gtdmz|app.gtdmz.com.tr'].Ankara.dnsSunucusu, '198.51.100.22');
-  assert.deepEqual(r.sonuc['fw|x.fw.garanti.com.tr'].Pendik.ips, ['VIP-192.0.2.1']);
-  assert.deepEqual(r.sonuc['fw|x.fw.garanti.com.tr'].Ankara.ips, ['VIP-198.51.100.1']);
+  assert.deepEqual(r.sonuc['dmz|app.odmz.invalid'].Pendik.ips, ['VIP-192.0.2.22']);
+  assert.deepEqual(r.sonuc['dmz|app.odmz.invalid'].Ankara.ips, ['VIP-198.51.100.22']);
+  assert.equal(r.sonuc['dmz|app.odmz.invalid'].Ankara.dnsSunucusu, '198.51.100.22');
+  assert.deepEqual(r.sonuc['fw|x.fw.sirket.invalid'].Pendik.ips, ['VIP-192.0.2.1']);
+  assert.deepEqual(r.sonuc['fw|x.fw.sirket.invalid'].Ankara.ips, ['VIP-198.51.100.1']);
   assert.equal(cagri.length, 4);
-  await dnsCozumle([{ ad: 'app.gtdmz.com.tr', bolge: 'gtdmz' }], { cozucu });
+  await dnsCozumle([{ ad: 'app.odmz.invalid', bolge: 'dmz' }], { cozucu });
   assert.equal(cagri.length, 4, 'onbellek calismiyor');
 });
 
@@ -182,7 +182,7 @@ test('WH5 bolge bilinmiyorsa Portal cozucusu (varsayilan); site DNS ulasilamazsa
       { ad: 'y.example.com', bolge: null },
       { ad: '*.example.com', bolge: null },
       { ad: '10.1.2.3', bolge: null },
-      { ad: 'z.fw.garanti.com.tr', bolge: 'fw' },
+      { ad: 'z.fw.sirket.invalid', bolge: 'fw' },
     ],
     { cozucu },
   );
@@ -190,11 +190,11 @@ test('WH5 bolge bilinmiyorsa Portal cozucusu (varsayilan); site DNS ulasilamazsa
   assert.match(r.sonuc['-|*.example.com'].varsayilan.hata, /joker/);
   assert.deepEqual(r.sonuc['-|10.1.2.3'].varsayilan.ips, ['10.1.2.3']);
   assert.equal(
-    r.sonuc['fw|z.fw.garanti.com.tr'].Ankara.hata,
+    r.sonuc['fw|z.fw.sirket.invalid'].Ankara.hata,
     'zaman aşımı',
     'Ankara hatasi Pendik cevabiyla ortulmemeli',
   );
-  assert.deepEqual(r.sonuc['fw|z.fw.garanti.com.tr'].Pendik.ips, ['1.2.3.4']);
+  assert.deepEqual(r.sonuc['fw|z.fw.sirket.invalid'].Pendik.ips, ['1.2.3.4']);
   assert.ok(
     cagri.some(([a, s]) => a === 'y.example.com' && s === null),
     'bolgesiz ad Portal cozucusuna gitmedi',
@@ -204,24 +204,24 @@ test('WH5 bolge bilinmiyorsa Portal cozucusu (varsayilan); site DNS ulasilamazsa
 test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async () => {
   veri = {
     apps: [
-      { app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: 'gtdmz.com.tr' },
-      { app: 'crm', host: 'GBCRAAP01', env: 'PROD', domain: 'gtdmz.com.tr' },
+      { app: 'crm', host: 'ORCRAP01', env: 'PROD', domain: 'odmz.invalid' },
+      { app: 'crm', host: 'ORCRAAP01', env: 'PROD', domain: 'odmz.invalid' },
     ],
     certs: [
       {
-        host: 'GBCRWP01',
+        host: 'ORCRWP01',
         ip: '10.0.0.1',
         port: '443',
-        server_name: 'crm.gtdmz.com.tr',
+        server_name: 'crm.odmz.invalid',
         conf_file: '/c',
         product: 'IHS',
         env: 'PROD',
       },
       {
-        host: 'GBCRWAP01',
+        host: 'ORCRWAP01',
         ip: '20.0.0.1',
         port: '443',
-        server_name: 'crm.gtdmz.com.tr',
+        server_name: 'crm.odmz.invalid',
         conf_file: '/c',
         product: 'IHS',
         env: 'PROD',
@@ -230,9 +230,9 @@ test('WH6 web girdileri sitesini tasir (Ankara 7 harf, Pendik 6 harf)', async ()
   };
   const j = await getir();
   const site = Object.fromEntries(j.rows.flatMap((r) => r.web.map((w) => [w.host, w.site])));
-  assert.deepEqual(site, { GBCRWP01: 'Pendik', GBCRWAP01: 'Ankara' });
+  assert.deepEqual(site, { ORCRWP01: 'Pendik', ORCRWAP01: 'Ankara' });
   assert.ok(
-    j.rows.every((r) => r.dnsBolge === 'gtdmz'),
+    j.rows.every((r) => r.dnsBolge === 'dmz'),
     'satir DNS bolgesini tasimiyor',
   );
 });
@@ -251,15 +251,15 @@ const cert = (host, sn) => ({
 test('WH7 domain BOS: topoloji eslesme kanitindan (ayri host 3-tier, ayni host 2-tier, aday hostta vhost 3-tier, kanit yok bilinmiyor)', async () => {
   veri = {
     apps: [
-      { app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: '' },
-      { app: 'ikili', host: 'GBIKAP01', env: 'PROD', domain: null },
-      { app: 'adsiz', host: 'GBADAP01', env: 'PROD', domain: '' },
-      { app: 'yok', host: 'GBYKAP01', env: 'PROD', domain: '' },
+      { app: 'crm', host: 'ORCRAP01', env: 'PROD', domain: '' },
+      { app: 'ikili', host: 'ORIKAP01', env: 'PROD', domain: null },
+      { app: 'adsiz', host: 'ORADAP01', env: 'PROD', domain: '' },
+      { app: 'yok', host: 'ORYKAP01', env: 'PROD', domain: '' },
     ],
     certs: [
-      cert('GBCRWP01', 'crm.gtdmz.com.tr'),
-      cert('GBIKAP01', 'ikili.fw.garanti.com.tr'),
-      cert('GBADWP01', 'baska.gtdmz.com.tr'),
+      cert('ORCRWP01', 'crm.odmz.invalid'),
+      cert('ORIKAP01', 'ikili.fw.sirket.invalid'),
+      cert('ORADWP01', 'baska.odmz.invalid'),
     ],
   };
   const j = await getir();
@@ -275,25 +275,25 @@ test('WH7 domain BOS: topoloji eslesme kanitindan (ayri host 3-tier, ayni host 2
 test('WH8 DNS bolgesi vhost basina: server_name alani kazanir, yoksa uygulama domain i', async () => {
   veri = {
     apps: [
-      { app: 'crm', host: 'GBCRAP01', env: 'PROD', domain: '' },
-      { app: 'ters', host: 'GBTRAP01', env: 'PROD', domain: 'fw.garanti.com.tr' },
-      { app: 'dis', host: 'GBDSAP01', env: 'PROD', domain: 'gtdmz.com.tr' },
+      { app: 'crm', host: 'ORCRAP01', env: 'PROD', domain: '' },
+      { app: 'ters', host: 'ORTRAP01', env: 'PROD', domain: 'fw.sirket.invalid' },
+      { app: 'dis', host: 'ORDSAP01', env: 'PROD', domain: 'odmz.invalid' },
     ],
     certs: [
-      cert('GBCRWP01', 'crm.gtdmz.com.tr'),
-      cert('GBTRAP01', 'ters.gtdmz.com.tr'),
-      cert('GBDSWP01', 'dis.example.com'),
+      cert('ORCRWP01', 'crm.odmz.invalid'),
+      cert('ORTRAP01', 'ters.odmz.invalid'),
+      cert('ORDSWP01', 'dis.example.com'),
     ],
   };
   const j = await getir();
   const b = Object.fromEntries(j.rows.map((r) => [r.app, r.web.map((w) => w.dnsBolge)]));
   assert.deepEqual(
     b.crm,
-    ['gtdmz'],
-    'domain bos ama server_name gtdmz: bolge null kaliyordu (Ankara Ankara DNS ine sorulmuyordu)',
+    ['dmz'],
+    'domain bos ama server_name dmz: bolge null kaliyordu (Ankara Ankara DNS ine sorulmuyordu)',
   );
-  assert.deepEqual(b.ters, ['gtdmz'], 'adin kendi alani uygulama domain inden once gelmeli');
-  assert.deepEqual(b.dis, ['gtdmz'], 'alansiz ad uygulama domain ine dusmeli');
+  assert.deepEqual(b.ters, ['dmz'], 'adin kendi alani uygulama domain inden once gelmeli');
+  assert.deepEqual(b.dis, ['dmz'], 'alansiz ad uygulama domain ine dusmeli');
   assert.equal(
     j.rows.find((r) => r.app === 'crm').dnsBolge,
     null,
@@ -304,18 +304,18 @@ test('WH8 DNS bolgesi vhost basina: server_name alani kazanir, yoksa uygulama do
 test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster kaynagi, topoloji nedeni; eslesmeyende sebep', async () => {
   veri = {
     apps: [
-      { app: 'crm', host: 'DACRAAB01', env: 'PROD', domain: 'gtdmz.com.tr' },
-      { app: 'yalniz', host: 'GBYLAP01', env: 'PROD', domain: '' },
+      { app: 'crm', host: 'DACRAAB01', env: 'PROD', domain: 'odmz.invalid' },
+      { app: 'yalniz', host: 'ORYLAP01', env: 'PROD', domain: '' },
     ],
     certs: [
-      cert('DACRWAP01', 'crm.gtdmz.com.tr'),
-      cert('GBYLWP01', 'baska.gtdmz.com.tr'),
-      cert('GBYLWP01', 'diger.gtdmz.com.tr'),
+      cert('DACRWAP01', 'crm.odmz.invalid'),
+      cert('ORYLWP01', 'baska.odmz.invalid'),
+      cert('ORYLWP01', 'diger.odmz.invalid'),
     ],
     vhosts: [
       {
         host: 'DACRWAB02',
-        server_name: 'x.gtdmz.com.tr',
+        server_name: 'x.odmz.invalid',
         aliases: '',
         listen: '*:443',
         conf_file: '/m.conf',
@@ -327,7 +327,7 @@ test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster k
   const j = await getir();
   const crm = j.rows.find((r) => r.app === 'crm');
   assert.ok(Array.isArray(crm.nasil) && crm.nasil.length >= 3, JSON.stringify(crm.nasil));
-  assert.equal(crm.nasil[0], 'Topoloji 3-tier: envanterdeki domain gtdmz.com.tr');
+  assert.equal(crm.nasil[0], 'Topoloji 3-tier: envanterdeki domain odmz.invalid');
   assert.ok(
     crm.nasil.some(
       (s) =>
@@ -349,7 +349,7 @@ test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster k
   assert.ok(
     yal.nasil.some(
       (s) =>
-        s.includes('GBYLAP01 → GBYLWP01: 5. harf A→W') &&
+        s.includes('ORYLAP01 → ORYLWP01: 5. harf A→W') &&
         s.includes('2 vhost var ama hiçbirinin server_name\'i "yalniz" içermiyor'),
     ),
     JSON.stringify(yal.nasil),

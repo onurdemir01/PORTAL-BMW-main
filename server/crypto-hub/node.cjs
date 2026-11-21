@@ -26,7 +26,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { tenantOf } = require('../../shared/cryptoHubTenants.cjs');
+const { tenantOf } = require('./kiracilar.cjs');
 const N = require('../../shared/cryptoHubNodes.cjs');
 const SA = require('./smart-ayar.cjs');
 

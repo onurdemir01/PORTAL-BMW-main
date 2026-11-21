@@ -391,7 +391,7 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   const runner = require('../ansible/runner.cjs');
   // ZAMANLAYICI istek nesnesi VERMEZ (launch(null, ...)): DELETE ve zamanlanmis STOP. Eskiden oturum
   // null istekten okunuyordu; zamanlayicinin baslattigi HER is "Cannot read properties of null
-  // (reading 'session')" ile dusuyordu (uretim 2026-10-08, GBSVCVOICEORDER @ GBJBOQ04 DELETE).
+  // (reading 'session')" ile dusuyordu (uretim 2026-10-08, GBSVCVOICEORDER @ ORJBOQ04 DELETE).
   // YANLIS SABLON: Playbook Kayitlari'nda baska bir isin sablonu eslenmisse baslatilmaz (2026-10-08).
   await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(
     serverId,

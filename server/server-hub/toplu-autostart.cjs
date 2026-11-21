@@ -221,7 +221,7 @@ function adaylariTuret(a, opts = {}) {
   const dislananlar = [];
   const xmlAdaylar = [];
   for (const h of a?.hosts || []) {
-    // AYNI SUNUCUDA AYNI (gen, JVM adi) IKI KEZ (uretim 2026-11-14, GBSTPQ01/GBSTPMAINWEB): taramada iki
+    // AYNI SUNUCUDA AYNI (gen, JVM adi) IKI KEZ (uretim 2026-11-14, ORSTPQ01/ORSTPMAINWEB): taramada iki
     // kayit varsa hangisinin auto-start'i degisecek belirsizdir; ikisi de aday OLMAZ, nedeniyle disarida.
     const tekrar = new Map();
     for (const x of h.jvms || []) {
@@ -276,7 +276,7 @@ function adaylariTuret(a, opts = {}) {
         });
         continue;
       }
-      // DOMAIN KAPALI + KAPAT: host XML grubu (bayat / sema kapisi once ve mesaji aynen; ornek GBFSTT01).
+      // DOMAIN KAPALI + KAPAT: host XML grubu (bayat / sema kapisi once ve mesaji aynen; ornek ORFSTT01).
       if (j.domainKapali === true && action === 'jboss_autostart_off') {
         const sk = sunucuYazmaKapisi(a, h, h.host);
         if (sk) {

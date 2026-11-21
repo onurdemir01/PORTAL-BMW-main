@@ -78,10 +78,10 @@ const H = (host: string, o: Record<string, unknown> = {}) => ({
   ...o,
 });
 const HOSTS = [
-  H('GBCJAP01', { status: 'danger', counts: { danger: 2, warning: 0, info: 0 } }),
-  H('GBCJAP02'),
-  H('GBCJAT01'),
-  H('GBCJAP03', { fresh: false, scanDate: '2026-11-01' }),
+  H('ORCJAP01', { status: 'danger', counts: { danger: 2, warning: 0, info: 0 } }),
+  H('ORCJAP02'),
+  H('ORCJAT01'),
+  H('ORCJAP03', { fresh: false, scanDate: '2026-11-01' }),
 ];
 
 beforeEach(() => {
@@ -112,38 +112,38 @@ describe('Sunucular listesi (EarTablo)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
     expect(await screen.findByText(/3 \/ 4 sunucu/)).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText('sunucu ya da bulgu ara'), {
-      target: { value: 'GBCJAP0' },
+      target: { value: 'ORCJAP0' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Durum süz' }));
     fireEvent.click(await screen.findByLabelText('Durum: kritik'));
     fireEvent.click(screen.getByRole('button', { name: 'Uygula' }));
     expect(await screen.findByText(/1 \/ 4 sunucu/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Listedekileri tara/ }));
-    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAP01']));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['ORCJAP01']));
   });
 
   it('ST2 panel, Ayrıntı ve Şimdi tara', async () => {
     render(<ServerHubPage />);
-    const d = await screen.findByRole('button', { name: 'GBCJAP02 ayrıntısı' });
+    const d = await screen.findByRole('button', { name: 'ORCJAP02 ayrıntısı' });
     expect(m.retireEtiketleri).not.toHaveBeenCalled();
     fireEvent.click(d);
     const panel = await screen.findByTestId('panel-taklit');
-    expect(panel).toHaveTextContent('panel GBCJAP02 kendi okur');
+    expect(panel).toHaveTextContent('panel ORCJAP02 kendi okur');
     // Satır içi panelin "Yeniden tara"sı satırdaki tarama isteğini kullanır.
     fireEvent.click(within(panel).getByRole('button', { name: 'panel tara' }));
-    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAP02']));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['ORCJAP02']));
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
     fireEvent.click(d);
     expect(screen.queryByTestId('panel-taklit')).toBeNull();
-    const satir = screen.getByRole('button', { name: 'GBCJAT01 ayrıntısı' }).closest('tr')!;
-    const ac = () => screen.getByRole('button', { name: 'GBCJAT01 ayrıntısı' });
+    const satir = screen.getByRole('button', { name: 'ORCJAT01 ayrıntısı' }).closest('tr')!;
+    const ac = () => screen.getByRole('button', { name: 'ORCJAT01 ayrıntısı' });
     // Her düğme ayrı ölçülür: ikisi art arda satırı açıp kapatsa sonuç yine "kapalı" görünürdü.
     fireEvent.click(within(satir).getByRole('button', { name: /Şimdi tara/ }));
     expect(ac()).toHaveAttribute('aria-expanded', 'false');
-    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAT01']));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['ORCJAT01']));
     fireEvent.click(within(satir).getByRole('button', { name: 'Ayrıntı' }));
     expect(ac()).toHaveAttribute('aria-expanded', 'false');
-    await waitFor(() => expect(m.host.mock.calls.map((c) => c[0])).toContain('GBCJAT01'));
+    await waitFor(() => expect(m.host.mock.calls.map((c) => c[0])).toContain('ORCJAT01'));
   });
 
   it('ST3 ortak görünüm bu ekranın adıyla kaydedilir', async () => {
@@ -190,7 +190,7 @@ describe('Sunucular listesi (EarTablo)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
     fireEvent.click(screen.getByRole('button', { name: /^Bayat tarama/ }));
     expect(await screen.findByText(/1 \/ 4 sunucu/)).toBeInTheDocument();
-    expect(screen.getByText('GBCJAP03')).toBeInTheDocument();
+    expect(screen.getByText('ORCJAP03')).toBeInTheDocument();
     expect(
       screen.getAllByRole('columnheader').some((h) => (h.textContent || '').startsWith('Taze')),
     ).toBe(true);
@@ -209,7 +209,7 @@ describe('Sunucular listesi (EarTablo)', () => {
     m.host.mockResolvedValue({
       ok: true,
       host: {
-        host: 'GBCJAT01',
+        host: 'ORCJAT01',
         scanDate: '2026-11-07',
         products: ['JBOSS7'],
         cpuS: null,
@@ -223,16 +223,16 @@ describe('Sunucular listesi (EarTablo)', () => {
       },
     });
     render(<ServerHubPage />);
-    const satir = (await screen.findByRole('button', { name: 'GBCJAT01 ayrıntısı' })).closest(
+    const satir = (await screen.findByRole('button', { name: 'ORCJAT01 ayrıntısı' })).closest(
       'tr',
     )!;
     fireEvent.click(within(satir).getByRole('button', { name: 'Ayrıntı' }));
     const panel = await screen.findByTestId('panel-taklit');
-    expect(panel).toHaveTextContent('panel GBCJAT01 detaylı');
+    expect(panel).toHaveTextContent('panel ORCJAT01 detaylı');
     expect(screen.getByRole('button', { name: 'Özet' })).toBeInTheDocument();
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
     fireEvent.click(within(panel).getByRole('button', { name: 'panel tara' }));
-    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['GBCJAT01']));
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith(['ORCJAT01']));
     expect(m.host).toHaveBeenCalledTimes(1);
   });
 });

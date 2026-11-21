@@ -126,15 +126,15 @@ const VARSAYILAN: NlVarsayilanlar = {
   serbest: { hizlar: [50, 100, 200], maxvu: 50 },
   protokol: 'h1',
 };
-const VHOST = 'glomo-test.garantibbva.com.tr';
-// Gercek durum: GBJWLT01 (Inventory Test, nginx yok - son on kontrol), GBJALT02 (envanterde nginx yok, olculmedi), GBNGXT33 (nginx).
+const VHOST = 'glomo-test.ornekbanka.invalid';
+// Gercek durum: ORJWLT01 (Inventory Test, nginx yok - son on kontrol), ORJALT02 (envanterde nginx yok, olculmedi), ORNGXT33 (nginx).
 const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBJALT02',
+      host: 'ORJALT02',
       env: 'TEST',
-      ipler: ['10.151.166.150'],
+      ipler: ['10.250.166.150'],
       vhostlar: [],
       vhostVerisi: false,
       uygun: true,
@@ -145,9 +145,9 @@ const HEDEFLER = {
       nginxSonAt: null,
     },
     {
-      host: 'GBJWLT01',
+      host: 'ORJWLT01',
       env: 'TEST',
-      ipler: ['10.151.166.144', '10.151.166.145', '10.151.166.146', '10.151.166.147'],
+      ipler: ['10.250.166.144', '10.250.166.145', '10.250.166.146', '10.250.166.147'],
       vhostlar: [],
       vhostVerisi: false,
       uygun: true,
@@ -158,9 +158,9 @@ const HEDEFLER = {
       nginxSonAt: '2026-11-13T09:00:00Z',
     },
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       env: 'QA/TEST',
-      ipler: ['192.168.133.27'],
+      ipler: ['192.168.251.27'],
       vhostlar: [VHOST],
       vhostVerisi: true,
       uygun: true,
@@ -171,7 +171,7 @@ const HEDEFLER = {
       nginxSonAt: '2026-11-12T09:00:00Z',
     },
     {
-      host: 'GBNGXP40',
+      host: 'ORNGXP40',
       env: 'PROD',
       ipler: [],
       vhostlar: [],
@@ -186,7 +186,7 @@ const HEDEFLER = {
     },
   ],
   hedefSayisi: 3,
-  yukHostlari: [{ host: 'GBNGXT14', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT14', env: 'TEST', uygun: true, neden: null }],
   sinirlar: SINIR,
   varsayilan: VARSAYILAN,
   serbest: { acik: true, aglar: [] },
@@ -261,7 +261,7 @@ beforeEach(() => {
     _httpStatus: 409,
   });
   api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null }) =>
-    sinifOf(ip, o?.hedefHost || 'GBNGXT33'),
+    sinifOf(ip, o?.hedefHost || 'ORNGXT33'),
   );
 });
 
@@ -337,7 +337,7 @@ describe('TEK HEDEF — normallestirme (TH1)', () => {
       hedefler: [
         ...HEDEFLER.hedefler,
         {
-          host: 'GBESKI01',
+          host: 'ORESKI01',
           env: 'TEST',
           ipler: ['1.2.3.4'],
           vhostlar: [],
@@ -349,11 +349,11 @@ describe('TEK HEDEF — normallestirme (TH1)', () => {
     });
     expect(h.hedefSayisi).toBe(3);
     expect(h.hedefler.map((x) => x.host)).toEqual([
-      'GBJALT02',
-      'GBJWLT01',
-      'GBNGXT33',
-      'GBNGXP40',
-      'GBESKI01',
+      'ORJALT02',
+      'ORJWLT01',
+      'ORNGXT33',
+      'ORNGXP40',
+      'ORESKI01',
     ]);
     expect(h.hedefler[1]).toMatchObject({
       nginxSon: false,
@@ -507,34 +507,34 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     await formAc();
     expect(secenekler()).toEqual([
       '— IP’yi elle yazacağım —',
-      'GBJALT02 · TEST · 10.151.166.150 · nginx yok (envanter)',
-      'GBJWLT01 · TEST · 10.151.166.144, 10.151.166.145, 10.151.166.146 +1 · nginx yok',
-      'GBNGXT33 · QA/TEST · 192.168.133.27 · nginx',
-      'GBNGXP40 · PROD · nginx (envanter) — üretim',
+      'ORJALT02 · TEST · 10.250.166.150 · nginx yok (envanter)',
+      'ORJWLT01 · TEST · 10.250.166.144, 10.250.166.145, 10.250.166.146 +1 · nginx yok',
+      'ORNGXT33 · QA/TEST · 192.168.251.27 · nginx',
+      'ORNGXP40 · PROD · nginx (envanter) — üretim',
     ]);
     expect(screen.getByText('4 / 4 sunucu')).toBeInTheDocument();
     const ara = screen.getByRole('searchbox', { name: 'Hedef sunucu ara' });
-    fireEvent.change(ara, { target: { value: '10.151.166.144' } });
+    fireEvent.change(ara, { target: { value: '10.250.166.144' } });
     expect(secenekler()).toEqual([
       '— IP’yi elle yazacağım —',
-      'GBJWLT01 · TEST · 10.151.166.144, 10.151.166.145, 10.151.166.146 +1 · nginx yok',
+      'ORJWLT01 · TEST · 10.250.166.144, 10.250.166.145, 10.250.166.146 +1 · nginx yok',
     ]);
     expect(screen.getByText('1 / 4 sunucu')).toBeInTheDocument();
-    fireEvent.change(secici(), { target: { value: 'GBJWLT01' } });
+    fireEvent.change(secici(), { target: { value: 'ORJWLT01' } });
     fireEvent.change(ara, { target: { value: 'qa' } });
     // Secili host aramaya uymasa da listede kalir (secim gorunmez olmaz).
     expect(secenekler().map((x) => x.split(' · ')[0])).toEqual([
       '— IP’yi elle yazacağım —',
-      'GBJWLT01',
-      'GBNGXT33',
+      'ORJWLT01',
+      'ORNGXT33',
     ]);
-    fireEvent.change(ara, { target: { value: 'gbja' } });
+    fireEvent.change(ara, { target: { value: 'orja' } });
     expect(secenekler().map((x) => x.split(' · ')[0])).toEqual([
       '— IP’yi elle yazacağım —',
-      'GBJALT02',
-      'GBJWLT01',
+      'ORJALT02',
+      'ORJWLT01',
     ]);
-    expect(secici().value).toBe('GBJWLT01');
+    expect(secici().value).toBe('ORJWLT01');
   });
 
   it('TH4 son ön kontrol nginx bulamadıysa sunucu ayarı kapalı + not, gövdede yok; envanter notu; nginx hedefte not yok', async () => {
@@ -546,12 +546,12 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
         islem: 'on_kontrol',
         durum: 'RUNNING',
         hedefTuru: 'sunucu',
-        hedefHost: 'GBJWLT01',
+        hedefHost: 'ORJWLT01',
       }),
       adimlar: [],
     });
     await formAc();
-    fireEvent.change(secici(), { target: { value: 'GBNGXT33' } });
+    fireEvent.change(secici(), { target: { value: 'ORNGXT33' } });
     await waitFor(() => expect(kutu()).toBeEnabled());
     fireEvent.click(kutu());
     expect(kutu()).toBeChecked();
@@ -559,33 +559,33 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     expect(screen.queryByText(SRV_AYAR_ENVANTER_NOTU)).toBeNull();
     expect(
       await screen.findByText(
-        /^Sunucu hedefi: GBNGXT33 \(QA\/TEST\) — CPU kaydedici ve nginx logu ölçülür/,
+        /^Sunucu hedefi: ORNGXT33 \(QA\/TEST\) — CPU kaydedici ve nginx logu ölçülür/,
         {},
         { timeout: 3000 },
       ),
     ).toBeTruthy();
 
-    fireEvent.change(secici(), { target: { value: 'GBJALT02' } });
+    fireEvent.change(secici(), { target: { value: 'ORJALT02' } });
     expect(kutu()).toBeEnabled();
     expect(screen.getByText(SRV_AYAR_ENVANTER_NOTU)).toBeInTheDocument();
     expect(
       await screen.findByText(
-        /^Sunucu hedefi: GBJALT02 \(TEST\) — envanterde nginx görünmüyor: ön kontrol tespit eder/,
+        /^Sunucu hedefi: ORJALT02 \(TEST\) — envanterde nginx görünmüyor: ön kontrol tespit eder/,
         {},
         { timeout: 3000 },
       ),
     ).toBeTruthy();
 
-    fireEvent.change(secici(), { target: { value: 'GBJWLT01' } });
+    fireEvent.change(secici(), { target: { value: 'ORJWLT01' } });
     // Dort aday IP: IP elle secilir (aday dugmesi ya da yazarak).
-    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.151.166.144' } });
+    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.250.166.144' } });
     expect(kutu()).toBeDisabled();
     expect(kutu()).not.toBeChecked();
     expect(screen.getByText(SRV_AYAR_NGINX_YOK_NOTU)).toBeInTheDocument();
     expect(screen.queryByLabelText('Uygulama dizini')).toBeNull();
     expect(
       await screen.findByText(
-        /^Sunucu hedefi: GBJWLT01 \(TEST\) — son ön kontrol nginx bulamadı: genel CPU ve istemci metrikleri ölçülür/,
+        /^Sunucu hedefi: ORJWLT01 \(TEST\) — son ön kontrol nginx bulamadı: genel CPU ve istemci metrikleri ölçülür/,
         {},
         { timeout: 3000 },
       ),
@@ -613,8 +613,8 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     const g = api.onKontrol.mock.calls[0][0];
     expect([g.hedefHost, g.hedefIp, 'sunucuAyar' in g.parametreler]).toEqual([
-      'GBJWLT01',
-      '10.151.166.144',
+      'ORJWLT01',
+      '10.250.166.144',
       false,
     ]);
   });
@@ -630,10 +630,10 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
         islem: 'on_kontrol',
         durum: 'DONE',
         hedefTuru: 'sunucu',
-        hedefHost: 'GBJALT02',
-        hedefIp: '10.151.166.150',
+        hedefHost: 'ORJALT02',
+        hedefIp: '10.250.166.150',
         vhost: VHOST,
-        yukHost: 'GBNGXT14',
+        yukHost: 'ORNGXT14',
         motor: 'k6',
         parametreler: PARAM,
         on_kontrol_ozet: okHam,
@@ -642,7 +642,7 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
       }),
     });
     await formAc();
-    fireEvent.change(secici(), { target: { value: 'GBJALT02' } });
+    fireEvent.change(secici(), { target: { value: 'ORJALT02' } });
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), { timeout: 3000 });
     expect(kutu()).toBeEnabled();
     fireEvent.click(okDugmesi());
@@ -666,10 +666,10 @@ const okKosu = (onKontrol: Record<string, unknown> | null): NlKosuAyrinti =>
     islem: 'on_kontrol',
     durum: 'DONE',
     hedefTuru: 'sunucu',
-    hedefHost: 'GBJWLT01',
-    hedefIp: '10.151.166.144',
+    hedefHost: 'ORJWLT01',
+    hedefIp: '10.250.166.144',
     vhost: VHOST,
-    yukHost: 'GBNGXT14',
+    yukHost: 'ORNGXT14',
     motor: 'k6',
     parametreler: PARAM,
     on_kontrol_ozet: onKontrol,
@@ -759,10 +759,10 @@ describe('TEK HEDEF — panel, onay, ayrıntı (TH6-TH8)', () => {
         durum: 'DONE',
         gecerlilik: 'GECERLI',
         hedefTuru: 'sunucu',
-        hedefHost: 'GBJWLT01',
-        hedefIp: '10.151.166.144',
+        hedefHost: 'ORJWLT01',
+        hedefIp: '10.250.166.144',
         vhost: VHOST,
-        yukHost: 'GBNGXT14',
+        yukHost: 'ORNGXT14',
         motor: 'k6',
         parametreler: PARAM,
         createdAt: '2026-11-13T10:00:00Z',
@@ -814,10 +814,10 @@ describe('TEK HEDEF — panel, onay, ayrıntı (TH6-TH8)', () => {
       durum: 'DONE',
       gecerlilik: 'KISMI',
       hedefTuru: 'sunucu',
-      hedefHost: 'GBJWLT01',
-      hedefIp: '10.151.166.144',
+      hedefHost: 'ORJWLT01',
+      hedefIp: '10.250.166.144',
       vhost: VHOST,
-      yukHost: 'GBNGXT14',
+      yukHost: 'ORNGXT14',
       motor: 'k6',
       parametreler: PARAM,
       createdAt: '2026-11-13T10:00:00Z',

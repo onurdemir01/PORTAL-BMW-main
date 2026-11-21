@@ -1,6 +1,6 @@
 // server/nginx-migration/new-fleet-guard.cjs - "Eski tanimi kaldir" YENI filoyu silmesin.
 //
-// URETIM TUZAGI (2026-10-03): nginx_ops.yml'in GBLABT02 play'i ("Yeni PROD SPA sunuculari -
+// URETIM TUZAGI (2026-10-03): nginx_ops.yml'in ORLABT02 play'i ("Yeni PROD SPA sunuculari -
 // tasima isini tetikle") env=prod + action create/delete/update icin, new_fleet ACIKCA
 // 'false' / 'no' / '0' DEGILSE yeni PROD SPA filosu icin tasima isini (nginx_prod_migration)
 // HEMEN tetikler. Portal'in silme istegi new_fleet GONDERMIYORDU: "eski sunucudan kaldir"
@@ -46,7 +46,7 @@ const NEW_FLEET_BLOCK_MESSAGE =
   'Soru eklenirse ZORUNLU olmamalı ve varsayılanı boş ya da true olmalı: false varsayılanı, new_fleet göndermeyen diğer tüm prod nginx_ops işlerinde yeni filoyu atlatır.';
 // Playbook'un "kapali" saydigi degerler: nginx_ops.yml `(new_fleet | default('') | string | trim | lower) not in ['false','no','0']`.
 const NEW_FLEET_OFF_VALUES = ['false', 'no', '0'];
-// Sonra kontrolde new_fleet yok sayildiysa HER DURUMDA verilen uyari: GBLABT02 play'i
+// Sonra kontrolde new_fleet yok sayildiysa HER DURUMDA verilen uyari: ORLABT02 play'i
 // iptalden once ya da is bittiyse coktan tasima isini tetiklemis olabilir.
 const MIGRATION_JOB_WARNING =
   "Yeni filo taşıma işi TETİKLENMİŞ OLABİLİR - AWX'te 'Nginx - Production Migration' işlerini kontrol edin (yeni filodaki tanım da silinmiş olabilir).";

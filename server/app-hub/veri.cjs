@@ -341,8 +341,8 @@ async function jbossDetay(adHam) {
       const agir = agirlar[i];
       const d = sh.hostDetail(h, agir);
       for (const j of d.jvms || []) {
-        // Numarali / grup eslesmesi (2026-11-14, assess envanterEslestir): GBFACELIFTSUBE-T1 JVM'i
-        // envanter uygulamasi GBFACELIFTSUBE-T'ye eslendiyse invApp tasir; uygulama ona gore secilir.
+        // Numarali / grup eslesmesi (2026-11-14, assess envanterEslestir): ORFACELIFTSUBE-T1 JVM'i
+        // envanter uygulamasi ORFACELIFTSUBE-T'ye eslendiyse invApp tasir; uygulama ona gore secilir.
         if (U(tabanAd(j.name)) !== U(base) && !(j.invApp && U(tabanAd(j.invApp)) === U(base)))
           continue;
         const jvmSatiri = {

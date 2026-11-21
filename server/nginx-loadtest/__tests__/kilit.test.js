@@ -180,52 +180,52 @@ const AL = (db, keys, lockId, ek = {}) =>
   kl.acquireLocks(db, keys, { lockId, holder: 'onur', desc: 'test', ttlMin: 75, ...ek });
 
 test('YK1 anahtarlar ve sira', () => {
-  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'gbngxt33', yuk: ' GBNGXT34 ', kosu: true }), [
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'orngxt33', yuk: ' ORNGXT34 ', kosu: true }), [
     'G|global',
-    'T|GBNGXT33',
-    'L|GBNGXT34',
+    'T|ORNGXT33',
+    'L|ORNGXT34',
   ]);
-  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34' }), [
-    'T|GBNGXT33',
-    'L|GBNGXT34',
+  assert.deepEqual(kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34' }), [
+    'T|ORNGXT33',
+    'L|ORNGXT34',
   ]);
 });
 
 test('YK2 tumu ya da hicbiri: dolu anahtar alinan anahtarlari geri birakir', async () => {
   const db = kilitDb();
-  assert.equal((await AL(db, ['L|GBNGXT34'], 'baska')).ok, true);
+  assert.equal((await AL(db, ['L|ORNGXT34'], 'baska')).ok, true);
   const r = await AL(
     db,
-    kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true }),
+    kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true }),
     'ben',
   );
   assert.equal(r.ok, false);
-  assert.equal(r.busyKey, 'L|GBNGXT34');
+  assert.equal(r.busyKey, 'L|ORNGXT34');
   assert.equal(r.busy.lock_id, 'baska');
   assert.equal(db.satirlar.get('G|global').held, 0, 'G kilidi geri birakilmadi');
-  assert.equal(db.satirlar.get('T|GBNGXT33').held, 0, 'T kilidi geri birakilmadi');
-  assert.equal(db.satirlar.get('L|GBNGXT34').lock_id, 'baska');
+  assert.equal(db.satirlar.get('T|ORNGXT33').held, 0, 'T kilidi geri birakilmadi');
+  assert.equal(db.satirlar.get('L|ORNGXT34').lock_id, 'baska');
 });
 
 test('YK3 dolu kilit ikinci isi reddeder; yabanci lock_id birakamaz', async () => {
   const db = kilitDb();
-  const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34' });
+  const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34' });
   assert.equal((await AL(db, keys, 'a')).ok, true);
   assert.equal((await AL(db, keys, 'b')).ok, false);
   await kl.releaseLocks(db, keys, 'b');
-  assert.equal(db.satirlar.get('T|GBNGXT33').held, 1, 'baska kilit kimligi kilidi birakti');
+  assert.equal(db.satirlar.get('T|ORNGXT33').held, 1, 'baska kilit kimligi kilidi birakti');
   await kl.releaseLocks(db, keys, 'a');
   assert.equal((await AL(db, keys, 'b')).ok, true);
   assert.match(
     kl.doluKilitMesaji('G|global', { holder: 'ali', target_desc: 'yük testi X', awx_job_id: 9 }),
     /Başka bir yük testi koşuyor \(ali: yük testi X, AWX iş #9\)/,
   );
-  assert.match(kl.doluKilitMesaji('T|GBNGXT33', null), /GBNGXT33 üzerinde başka bir iş var/);
+  assert.match(kl.doluKilitMesaji('T|ORNGXT33', null), /ORNGXT33 üzerinde başka bir iş var/);
 });
 
 test('YK4 bayat kilit: bagli is terminalse devralinir; okunamazsa ya da surerse dolu kalir', async () => {
   const db = kilitDb();
-  const keys = ['T|GBNGXT33'];
+  const keys = ['T|ORNGXT33'];
   assert.equal((await AL(db, keys, 'eski')).ok, true);
   await kl.bindLocks(db, keys, 'eski', { awxServerId: 1, awxJobId: 50 });
   const sorulan = [];
@@ -251,8 +251,8 @@ test('YK4 bayat kilit: bagli is terminalse devralinir; okunamazsa ya da surerse 
     }),
   });
   assert.equal(bitti.ok, true);
-  assert.equal(db.satirlar.get('T|GBNGXT33').lock_id, 'yeni');
-  assert.equal(db.satirlar.get('T|GBNGXT33').last_op_finished_at, '2026-10-27T09:59:00.000Z');
+  assert.equal(db.satirlar.get('T|ORNGXT33').lock_id, 'yeni');
+  assert.equal(db.satirlar.get('T|ORNGXT33').last_op_finished_at, '2026-10-27T09:59:00.000Z');
   // Ise baglanmamis dolu kilit is sorgusuyla devralinamaz.
   const db2 = kilitDb();
   await AL(db2, keys, 'eski');
@@ -296,7 +296,7 @@ test('YK5 TTL dolan kilit devralinir; TTL sinirlari', async () => {
 
 test('YK6 ise baglama (bag turu ile), is bitince birakma, supurme listesi', async () => {
   const db = kilitDb();
-  const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true });
+  const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true });
   assert.equal((await AL(db, keys, 'k1')).ok, true);
   await kl.bindLocks(db, keys, 'k1', { awxServerId: 2, awxJobId: 77, bagTuru: 'kosu' });
   for (const k of keys)
@@ -315,13 +315,13 @@ test('YK6 ise baglama (bag turu ile), is bitince birakma, supurme listesi', asyn
     'is tekil listelenmedi',
   );
   // Ayni ise farkli bag turu (beklenmez) gelirse EN SIKI olani alinir.
-  db.satirlar.get('L|GBNGXT34').bag_turu = 'durdur';
+  db.satirlar.get('L|ORNGXT34').bag_turu = 'durdur';
   assert.equal(
     (await kl.bekleyenKilitIsleri(db))[0].bagTuru,
     'durdur',
     'supurme gevsek bag turunu secti',
   );
-  db.satirlar.get('L|GBNGXT34').bag_turu = 'kosu';
+  db.satirlar.get('L|ORNGXT34').bag_turu = 'kosu';
   assert.equal(await kl.releaseLocksForJob(db, 2, 76), 0);
   assert.equal(await kl.releaseLocksForJob(db, 2, 77, '2026-10-27T10:40:00Z'), 3);
   for (const k of keys) {
@@ -330,8 +330,8 @@ test('YK6 ise baglama (bag turu ile), is bitince birakma, supurme listesi', asyn
   }
   assert.deepEqual(await kl.bekleyenKilitIsleri(db), []);
   // Varsayilan bag turu NULL (on kontrol sutunu).
-  await AL(db, ['T|GBNGXT40'], 'k2');
-  await kl.bindLocks(db, ['T|GBNGXT40'], 'k2', { awxServerId: 2, awxJobId: 80 });
+  await AL(db, ['T|ORNGXT40'], 'k2');
+  await kl.bindLocks(db, ['T|ORNGXT40'], 'k2', { awxServerId: 2, awxJobId: 80 });
   assert.deepEqual(await kl.bekleyenKilitIsleri(db), [{ serverId: 2, jobId: 80, bagTuru: null }]);
 });
 
@@ -343,13 +343,13 @@ test('YK7 satir silinmez; deger SQL metnine gomulmez', async () => {
     .join('\n');
   assert.doesNotMatch(kod, /\bDELETE\b/i, 'kilit satiri siliniyor (TBMWANS: DELETE yok)');
   const db = kilitDb();
-  const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true });
+  const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true });
   await AL(db, keys, 'k1');
   await kl.bindLocks(db, keys, 'k1', { awxServerId: 2, awxJobId: 4321, bagTuru: 'kosu' });
   await kl.durdurIsineBagla(db, 'k1', { awxServerId: 2, awxJobId: 4322, uzatSn: 3333 });
   await kl.isinKilitleriniCoz(db, 2, 4322, 3333);
   for (const s of db.sorgular)
-    assert.doesNotMatch(s.q, /GBNGXT3|k1|onur|432[12]|3333/, `deger SQL metninde: ${s.q}`);
+    assert.doesNotMatch(s.q, /ORNGXT3|k1|onur|432[12]|3333/, `deger SQL metninde: ${s.q}`);
 });
 
 test('YK9 bagliIsKarari: bag turu x AWX durumu', () => {
@@ -393,16 +393,16 @@ test('YK10 bayat-kilit yolu kurala uyar: kosu iptali dolu kalir ve isten cozulur
   });
   const kur = async (bagTuru) => {
     const db = kilitDb();
-    const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true });
+    const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true });
     await AL(db, keys, 'eski');
     await kl.bindLocks(db, keys, 'eski', { awxServerId: 3, awxJobId: 900, bagTuru });
     return { db, keys };
   };
   // kosu + canceled: devralinmaz; TUM kilitler dolu kalir ama isten cozulur (TTL birakir).
   let { db, keys } = await kur('kosu');
-  let r = await AL(db, ['T|GBNGXT33'], 'yeni', { isJobTerminal: durum('canceled') });
+  let r = await AL(db, ['T|ORNGXT33'], 'yeni', { isJobTerminal: durum('canceled') });
   assert.equal(r.ok, false, 'iptal edilen kosunun kilidi devralindi (uzak k6 surebilir)');
-  assert.equal(r.busyKey, 'T|GBNGXT33');
+  assert.equal(r.busyKey, 'T|ORNGXT33');
   for (const k of keys) {
     const s = db.satirlar.get(k);
     assert.deepEqual(
@@ -413,7 +413,7 @@ test('YK10 bayat-kilit yolu kurala uyar: kosu iptali dolu kalir ve isten cozulur
   }
   // Cozulen kilit artik AWX'e sorulmaz; TTL dolunca (ise bagli degil) devralinir.
   let soruldu = 0;
-  r = await AL(db, ['T|GBNGXT33'], 'yeni', {
+  r = await AL(db, ['T|ORNGXT33'], 'yeni', {
     isJobTerminal: async () => {
       soruldu += 1;
       return { terminal: true, status: 'successful' };
@@ -422,37 +422,37 @@ test('YK10 bayat-kilit yolu kurala uyar: kosu iptali dolu kalir ve isten cozulur
   assert.deepEqual([r.ok, soruldu], [false, 0]);
   db.simdi += 76 * 60000;
   assert.equal(
-    (await AL(db, ['T|GBNGXT33'], 'yeni')).ok,
+    (await AL(db, ['T|ORNGXT33'], 'yeni')).ok,
     true,
     'TTL dolan cozulmus kilit devralinmadi',
   );
   // kosu + error de tutulur; kosu + failed birakilir.
   ({ db } = await kur('kosu'));
-  assert.equal((await AL(db, ['T|GBNGXT33'], 'yeni', { isJobTerminal: durum('error') })).ok, false);
+  assert.equal((await AL(db, ['T|ORNGXT33'], 'yeni', { isJobTerminal: durum('error') })).ok, false);
   ({ db } = await kur('kosu'));
-  assert.equal((await AL(db, ['T|GBNGXT33'], 'yeni', { isJobTerminal: durum('failed') })).ok, true);
+  assert.equal((await AL(db, ['T|ORNGXT33'], 'yeni', { isJobTerminal: durum('failed') })).ok, true);
   // durdur + failed tutulur (kalan surec olabilir); durdur + successful birakilir.
   ({ db } = await kur('durdur'));
   assert.equal(
-    (await AL(db, ['L|GBNGXT34'], 'yeni', { isJobTerminal: durum('failed') })).ok,
+    (await AL(db, ['L|ORNGXT34'], 'yeni', { isJobTerminal: durum('failed') })).ok,
     false,
   );
-  assert.equal(db.satirlar.get('L|GBNGXT34').awx_job_id, null);
+  assert.equal(db.satirlar.get('L|ORNGXT34').awx_job_id, null);
   ({ db } = await kur('durdur'));
   assert.equal(
-    (await AL(db, ['L|GBNGXT34'], 'yeni', { isJobTerminal: durum('successful') })).ok,
+    (await AL(db, ['L|ORNGXT34'], 'yeni', { isJobTerminal: durum('successful') })).ok,
     true,
   );
   // on_kontrol + canceled birakilir (on kontrol yuk uretmez).
   ({ db } = await kur('on_kontrol'));
   assert.equal(
-    (await AL(db, ['T|GBNGXT33'], 'yeni', { isJobTerminal: durum('canceled') })).ok,
+    (await AL(db, ['T|ORNGXT33'], 'yeni', { isJobTerminal: durum('canceled') })).ok,
     true,
   );
   // Durumu soylemeyen eski bicim (true) fail-closed: kosu kilidi tutulur.
   ({ db } = await kur('kosu'));
   assert.equal(
-    (await AL(db, ['T|GBNGXT33'], 'yeni', { isJobTerminal: async () => true })).ok,
+    (await AL(db, ['T|ORNGXT33'], 'yeni', { isJobTerminal: async () => true })).ok,
     false,
   );
 });
@@ -491,11 +491,11 @@ test('YK11 casLock: suresi dolmus kilit yalniz ise bagli degilse devralinir', as
 
 test('YK12 isinKilitleriniCoz: yalniz o isin dolu kilitleri, uzatma kisaltmaz', async () => {
   const db = kilitDb();
-  const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true });
+  const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true });
   await AL(db, keys, 'k1', { ttlMin: 75 });
   await kl.bindLocks(db, keys, 'k1', { awxServerId: 3, awxJobId: 900, bagTuru: 'kosu' });
-  await AL(db, ['T|GBNGXT40'], 'k2');
-  await kl.bindLocks(db, ['T|GBNGXT40'], 'k2', { awxServerId: 3, awxJobId: 901, bagTuru: 'kosu' });
+  await AL(db, ['T|ORNGXT40'], 'k2');
+  await kl.bindLocks(db, ['T|ORNGXT40'], 'k2', { awxServerId: 3, awxJobId: 901, bagTuru: 'kosu' });
   const ttlSonu = db.satirlar.get('G|global').locked_until;
   // Uzatmasiz: sure degismez.
   assert.equal(await kl.isinKilitleriniCoz(db, 3, 900), 3);
@@ -507,35 +507,35 @@ test('YK12 isinKilitleriniCoz: yalniz o isin dolu kilitleri, uzatma kisaltmaz', 
       k,
     );
   }
-  assert.equal(db.satirlar.get('T|GBNGXT40').awx_job_id, 901, 'baska isin kilidi cozuldu');
+  assert.equal(db.satirlar.get('T|ORNGXT40').awx_job_id, 901, 'baska isin kilidi cozuldu');
   // Uzatma: kalan TTL'den uzunsa ileri ceker, kisaysa DOKUNMAZ.
   assert.equal(await kl.isinKilitleriniCoz(db, 3, 901, 60), 1);
   assert.equal(
-    db.satirlar.get('T|GBNGXT40').locked_until,
+    db.satirlar.get('T|ORNGXT40').locked_until,
     db.simdi + 75 * 60000,
     'uzatma kilidi kisaltti',
   );
-  await AL(db, ['T|GBNGXT41'], 'k3');
-  await kl.bindLocks(db, ['T|GBNGXT41'], 'k3', { awxServerId: 3, awxJobId: 902, bagTuru: 'kosu' });
+  await AL(db, ['T|ORNGXT41'], 'k3');
+  await kl.bindLocks(db, ['T|ORNGXT41'], 'k3', { awxServerId: 3, awxJobId: 902, bagTuru: 'kosu' });
   await kl.isinKilitleriniCoz(db, 3, 902, 2700 + 180 + 3600);
   assert.equal(
-    db.satirlar.get('T|GBNGXT41').locked_until,
+    db.satirlar.get('T|ORNGXT41').locked_until,
     db.simdi + (2700 + 180 + 3600) * 1000,
     'kilit butce + pay kadar uzatilmadi',
   );
   // Birakilmis kilit cozulmez (held = 0).
-  await AL(db, ['T|GBNGXT42'], 'k4');
-  await kl.bindLocks(db, ['T|GBNGXT42'], 'k4', { awxServerId: 3, awxJobId: 903 });
-  await kl.releaseLocks(db, ['T|GBNGXT42'], 'k4');
+  await AL(db, ['T|ORNGXT42'], 'k4');
+  await kl.bindLocks(db, ['T|ORNGXT42'], 'k4', { awxServerId: 3, awxJobId: 903 });
+  await kl.releaseLocks(db, ['T|ORNGXT42'], 'k4');
   assert.equal(await kl.isinKilitleriniCoz(db, 3, 903), 0);
 });
 
 test('YK13 durdurIsineBagla: kosunun dolu kilitleri durdur isine baglanir, sure uzar', async () => {
   const db = kilitDb();
-  const keys = kl.kilitAnahtarlari({ hedef: 'GBNGXT33', yuk: 'GBNGXT34', kosu: true });
+  const keys = kl.kilitAnahtarlari({ hedef: 'ORNGXT33', yuk: 'ORNGXT34', kosu: true });
   await AL(db, keys, 'kosu-kilidi', { ttlMin: 75 });
   await kl.bindLocks(db, keys, 'kosu-kilidi', { awxServerId: 3, awxJobId: 900, bagTuru: 'kosu' });
-  await AL(db, ['T|GBNGXT40'], 'baska');
+  await AL(db, ['T|ORNGXT40'], 'baska');
   db.simdi += 70 * 60000; // kosu kilidinin 5 dk'si kaldi
   assert.equal(
     await kl.durdurIsineBagla(db, 'kosu-kilidi', {
@@ -555,7 +555,7 @@ test('YK13 durdurIsineBagla: kosunun dolu kilitleri durdur isine baglanir, sure 
     );
   }
   assert.equal(
-    db.satirlar.get('T|GBNGXT40').bag_turu ?? null,
+    db.satirlar.get('T|ORNGXT40').bag_turu ?? null,
     null,
     'baska kilit durdur isine baglandi',
   );
@@ -579,17 +579,17 @@ test('YK13 durdurIsineBagla: kosunun dolu kilitleri durdur isine baglanir, sure 
 test('YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP; gecersiz IP hata; dolu kilit mesaji', async () => {
   // Sunucu hedefi: tur 2 ile ayni (IP anahtara girmez).
   assert.deepEqual(
-    kl.kilitAnahtarlari({ hedef: 'GBNGXT33', hedefIp: '10.0.0.9', yuk: 'GBNGXT34', kosu: true }),
-    ['G|global', 'T|GBNGXT33', 'L|GBNGXT34'],
+    kl.kilitAnahtarlari({ hedef: 'ORNGXT33', hedefIp: '10.0.0.9', yuk: 'ORNGXT34', kosu: true }),
+    ['G|global', 'T|ORNGXT33', 'L|ORNGXT34'],
   );
   assert.deepEqual(
     kl.kilitAnahtarlari({
-      hedef: 'gbngxt33',
+      hedef: 'orngxt33',
       hedefIp: '10.0.0.9',
       hedefTuru: 'sunucu',
-      yuk: 'GBNGXT34',
+      yuk: 'ORNGXT34',
     }),
-    ['T|GBNGXT33', 'L|GBNGXT34'],
+    ['T|ORNGXT33', 'L|ORNGXT34'],
   );
   // Serbest hedef: on kontrolde DE G; T anahtari IP.
   assert.deepEqual(
@@ -597,19 +597,19 @@ test('YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP; gecersiz IP ha
       hedef: null,
       hedefIp: '10.20.30.40',
       hedefTuru: 'serbest',
-      yuk: 'gbngxt34',
+      yuk: 'orngxt34',
     }),
-    ['G|global', 'T|IP:10.20.30.40', 'L|GBNGXT34'],
+    ['G|global', 'T|IP:10.20.30.40', 'L|ORNGXT34'],
   );
   assert.deepEqual(
     kl.kilitAnahtarlari({
       hedef: null,
       hedefIp: '10.20.30.40',
       hedefTuru: 'serbest',
-      yuk: 'GBNGXT34',
+      yuk: 'ORNGXT34',
       kosu: true,
     }),
-    ['G|global', 'T|IP:10.20.30.40', 'L|GBNGXT34'],
+    ['G|global', 'T|IP:10.20.30.40', 'L|ORNGXT34'],
   );
   // Gecerli IPv4 yoksa anahtar URETILMEZ (sessiz T|NULL / T|IP: yok); taninmayan tur da hata.
   for (const ip of [
@@ -619,34 +619,34 @@ test('YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP; gecersiz IP ha
     '10.20.30',
     ' 10.20.30.40',
     '10.20.30.40/24',
-    'GBNGXT33',
+    'ORNGXT33',
     '10.20.30.256',
   ]) {
     assert.throws(
       () =>
         kl.kilitAnahtarlari({
-          hedef: 'GBNGXT33',
+          hedef: 'ORNGXT33',
           hedefIp: ip,
           hedefTuru: 'serbest',
-          yuk: 'GBNGXT34',
+          yuk: 'ORNGXT34',
         }),
       TypeError,
       String(ip),
     );
   }
   assert.throws(
-    () => kl.kilitAnahtarlari({ hedef: 'GBNGXT33', hedefTuru: 'lb', yuk: 'GBNGXT34' }),
+    () => kl.kilitAnahtarlari({ hedef: 'ORNGXT33', hedefTuru: 'lb', yuk: 'ORNGXT34' }),
     TypeError,
   );
   // Serbest anahtarlar ayni CAS ile alinir; ayni IP'ye ikinci is T|IP'de durur.
   const db = kilitDb();
-  const s1 = kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT34' });
+  const s1 = kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'ORNGXT34' });
   assert.equal((await AL(db, s1, 'a')).ok, true);
   db.satirlar.get('G|global').held = 0;
-  db.satirlar.get('L|GBNGXT34').held = 0;
+  db.satirlar.get('L|ORNGXT34').held = 0;
   const r = await AL(
     db,
-    kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'GBNGXT35' }),
+    kl.kilitAnahtarlari({ hedefIp: '10.20.30.40', hedefTuru: 'serbest', yuk: 'ORNGXT35' }),
     'b',
   );
   assert.deepEqual([r.ok, r.busyKey], [false, 'T|IP:10.20.30.40']);
@@ -656,25 +656,25 @@ test('YK14 tur 3 anahtarlari: serbest on kontrol de G alir, T|IP; gecersiz IP ha
   assert.equal(
     kl.doluKilitMesaji('T|IP:10.20.30.40', {
       holder: 'ali',
-      target_desc: 'ön kontrol 10.20.30.40 (serbest) <- GBNGXT34 (wrk)',
+      target_desc: 'ön kontrol 10.20.30.40 (serbest) <- ORNGXT34 (wrk)',
       awx_job_id: 9,
     }),
-    "10.20.30.40 IP'sine yönelik başka bir iş var (ali: ön kontrol 10.20.30.40 (serbest) <- GBNGXT34 (wrk), AWX iş #9). İş bitince kilit kendiliğinden bırakılır.",
+    "10.20.30.40 IP'sine yönelik başka bir iş var (ali: ön kontrol 10.20.30.40 (serbest) <- ORNGXT34 (wrk), AWX iş #9). İş bitince kilit kendiliğinden bırakılır.",
   );
   assert.equal(
     kl.doluKilitMesaji('G|global', {
       holder: 'ali',
-      target_desc: 'ön kontrol 10.20.30.40 (serbest) <- GBNGXT34',
+      target_desc: 'ön kontrol 10.20.30.40 (serbest) <- ORNGXT34',
     }),
-    'Başka bir yük testi koşuyor (ali: ön kontrol 10.20.30.40 (serbest) <- GBNGXT34). İş bitince kilit kendiliğinden bırakılır.',
+    'Başka bir yük testi koşuyor (ali: ön kontrol 10.20.30.40 (serbest) <- ORNGXT34). İş bitince kilit kendiliğinden bırakılır.',
   );
   assert.equal(
-    kl.doluKilitMesaji('T|GBNGXT33', null),
-    'GBNGXT33 üzerinde başka bir iş var. İş bitince kilit kendiliğinden bırakılır.',
+    kl.doluKilitMesaji('T|ORNGXT33', null),
+    'ORNGXT33 üzerinde başka bir iş var. İş bitince kilit kendiliğinden bırakılır.',
   );
   assert.equal(
-    kl.doluKilitMesaji('L|GBNGXT34', null),
-    'GBNGXT34 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.',
+    kl.doluKilitMesaji('L|ORNGXT34', null),
+    'ORNGXT34 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.',
   );
 });
 
@@ -712,10 +712,10 @@ test("YK15 kilit alma ortasinda istisna: acquireLocks firlatir; releaseLocks yal
   const keys = kl.kilitAnahtarlari({
     hedefIp: '10.20.30.40',
     hedefTuru: 'serbest',
-    yuk: 'GBNGXT34',
+    yuk: 'ORNGXT34',
   });
   // L baska bir isin; bu istek G'yi alir, T|IP satir garantisi gecici hata atar (deadlock kurbani).
-  assert.equal((await AL(db, ['L|GBNGXT34'], 'yabanci')).ok, true);
+  assert.equal((await AL(db, ['L|ORNGXT34'], 'yabanci')).ok, true);
   const asil = db.query;
   let atildi = false;
   db.query = async (sql, params = []) => {
@@ -735,7 +735,7 @@ test("YK15 kilit alma ortasinda istisna: acquireLocks firlatir; releaseLocks yal
   await kl.releaseLocks(db, keys, 'ben');
   assert.equal(db.satirlar.get('G|global').held, 0, 'bu istegin G kilidi birakilmadi');
   assert.deepEqual(
-    [db.satirlar.get('L|GBNGXT34').held, db.satirlar.get('L|GBNGXT34').lock_id],
+    [db.satirlar.get('L|ORNGXT34').held, db.satirlar.get('L|ORNGXT34').lock_id],
     [1, 'yabanci'],
     'yabanci kilit birakildi',
   );
@@ -770,23 +770,23 @@ test('YK16 tur 4 araclar: bagliIsKarari kosu sutunu, BAG_SIRASI 0, A|araclar dol
   assert.equal(
     kl.doluKilitMesaji('A|araclar', {
       holder: 'ali',
-      target_desc: 'araç hazırlama GBLABT02',
+      target_desc: 'araç hazırlama ORLABT02',
       awx_job_id: 77,
     }),
-    'Başka bir araç hazırlama işi sürüyor (ali: araç hazırlama GBLABT02, AWX iş #77). İş bitince kilit kendiliğinden bırakılır.',
+    'Başka bir araç hazırlama işi sürüyor (ali: araç hazırlama ORLABT02, AWX iş #77). İş bitince kilit kendiliğinden bırakılır.',
   );
   assert.equal(
     kl.doluKilitMesaji('A|araclar', null),
     'Başka bir araç hazırlama işi sürüyor. İş bitince kilit kendiliğinden bırakılır.',
   );
   assert.equal(
-    kl.doluKilitMesaji('L|GBLABT02', null),
-    'GBLABT02 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.',
+    kl.doluKilitMesaji('L|ORLABT02', null),
+    'ORLABT02 yük makinesi meşgul. İş bitince kilit kendiliğinden bırakılır.',
   );
   // Supurme: araclar'a bagli iki kilit tek is olarak, bag turu korunur.
   const db = kilitDb();
-  assert.equal((await AL(db, ['A|araclar', 'L|GBLABT02'], 'arac-1')).ok, true);
-  await kl.bindLocks(db, ['A|araclar', 'L|GBLABT02'], 'arac-1', {
+  assert.equal((await AL(db, ['A|araclar', 'L|ORLABT02'], 'arac-1')).ok, true);
+  await kl.bindLocks(db, ['A|araclar', 'L|ORLABT02'], 'arac-1', {
     awxServerId: 3,
     awxJobId: 501,
     bagTuru: 'araclar',

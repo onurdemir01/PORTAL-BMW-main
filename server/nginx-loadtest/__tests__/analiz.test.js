@@ -3098,7 +3098,7 @@ test('AN-KS karisik surum: eski Portal (6e33e5a) yeni dosyalari reddetmez, cikti
 // ---------------------------------------------------------------------------------------------
 /** yukCpuEkle ile uretilen yukcpu_* dosyalarini hedefcpu_* adina tasir (ayni sema). */
 function hedefCpuEkle(dosyalar, bosta, ek = {}) {
-  const y = yukCpuEkle(dosyalar, bosta, { host: 'GBJWLT01', ...ek });
+  const y = yukCpuEkle(dosyalar, bosta, { host: 'ORJWLT01', ...ek });
   const out = new Map();
   for (const [ad, v] of y) out.set(dosyalar.has(ad) ? ad : ad.replace(/^yukcpu_/, 'hedefcpu_'), v);
   return out;
@@ -3113,7 +3113,7 @@ test('AN-NX1 nginx olmayan sunucu hedefi: host CPU, DOYMA > %90, istek basina CP
   });
   assert.deepEqual(
     veri.hedefCpuKesitler.map((x) => [x.anahtar, x.bilgiVar]),
-    [['R130_GBJWLT01', true]],
+    [['R130_ORJWLT01', true]],
   );
   assert.deepEqual(veri.yukKesitler, []);
   const t = turla(a);
@@ -3145,7 +3145,7 @@ test('AN-NX1 nginx olmayan sunucu hedefi: host CPU, DOYMA > %90, istek basina CP
   assert.equal(a.ozet.hedef_cpu_host, undefined);
   assert.deepEqual(a.ozet.hedef_cpu_kesitler, [
     {
-      anahtar: 'R130_GBJWLT01',
+      anahtar: 'R130_ORJWLT01',
       ornek: veri.hedefCpuKesitler[0].ornekler.length,
       bilgi_var: true,
       nproc: 16,
@@ -3272,7 +3272,7 @@ test('AN-NX3 hedef CPU kaydi yok / bozuk: kosu uyarisi, adimlar olcumsuz, OKUNAM
       new Map([
         ...serbestDosyalari(d),
         [
-          'hedefcpu_R134_GBJWLT01.csv',
+          'hedefcpu_R134_ORJWLT01.csv',
           { icerik: '1800000000,1,0,0,1,0,0,0,0\n', py: false, portal: true, log: false },
         ],
       ]),

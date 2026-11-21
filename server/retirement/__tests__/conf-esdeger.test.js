@@ -1,6 +1,6 @@
 // server/retirement/__tests__/conf-esdeger.test.js — ayni dosya, iki yazim (2026-10-23).
 //
-// Retirement #27 (GBCEPPOSDASHBOARD): "Web sunucusu kolonundaki duplike satirlar niye duplike?" Her
+// Retirement #27 (ORCEPPOSDASHBOARD): "Web sunucusu kolonundaki duplike satirlar niye duplike?" Her
 // hedefte ayni vhost 4 satir (2 duz + 2 AJP). Sertifika envanteri (ihs.sh) conf_file'a yalniz dosya
 // adini yaziyor ('mod-jk.conf'), Server Hub mutlak yolu ('/usr/IBMIHS/conf/mod-jk.conf'); kesif ikisini
 // ayri saydi, web adimi ayni dosyaya IKI is acti.
@@ -45,23 +45,23 @@ const uc = (bas) => {
   return IDX.slice(i, IDX.indexOf('router.', i + 20));
 };
 
-const APP = 'GBCEPPOSDASHBOARD';
-const SN = 'gbcepposdashboard.fw.garantibbva.com.tr';
+const APP = 'ORCEPPOSDASHBOARD';
+const SN = 'orcepposdashboard.fw.ornekbanka.invalid';
 const MUTLAK = '/usr/IBMIHS/conf/mod-jk.conf';
 const inv = [
   {
     app: APP,
-    host: 'GBJBOAP13',
+    host: 'ORJBOAP13',
     env: 'Production',
-    domain: 'fw.garantibbva.com.tr',
+    domain: 'fw.ornekbanka.invalid',
     jboss_version: '7.4.8',
-    app_path: '/vhosting/GBCEPPOSDASHBOARD.ear',
+    app_path: '/vhosting/ORCEPPOSDASHBOARD.ear',
     status: 'running',
   },
 ];
 const cert = (conf, product = 'IHS', portlar = ['80', '443']) =>
   portlar.map((port) => ({
-    host: 'GBJBOAP13',
+    host: 'ORJBOAP13',
     ip: '10.0.0.13',
     port,
     server_name: SN,
@@ -69,10 +69,10 @@ const cert = (conf, product = 'IHS', portlar = ['80', '443']) =>
     product,
     env: '',
   }));
-const jvm = [{ host: 'GBJBOAP13', jvm: APP, gen: 7, ports: '', cfg_ports: '8109,8180' }];
+const jvm = [{ host: 'ORJBOAP13', jvm: APP, gen: 7, ports: '', cfg_ports: '8109,8180' }];
 const hub = (conf, { product = 'IHS', px = 'localhost:8109', portlar = ['80', '443'] } = {}) =>
   portlar.map((p) => ({
-    host: 'GBJBOAP13',
+    host: 'ORJBOAP13',
     server_name: SN,
     aliases: '',
     listen: `*:${p}`,
@@ -82,7 +82,7 @@ const hub = (conf, { product = 'IHS', px = 'localhost:8109', portlar = ['80', '4
   }));
 const web = (vhosts, certs = cert('mod-jk.conf')) =>
   buildTargets(APP, inv, certs, jvm, vhosts).targets[0].web;
-const g = (ek) => ({ host: 'GBJBOAP13', serverName: SN, product: 'IHS', ...ek });
+const g = (ek) => ({ host: 'ORJBOAP13', serverName: SN, product: 'IHS', ...ek });
 
 test('CE1 sertifika goreli + Server Hub mutlak ayni dosya: 2 satir, ad+ajp, mutlak yol, sira korunur', () => {
   const w = web(hub(MUTLAK));
@@ -116,7 +116,7 @@ test('CE3 /usr/IBMIHS/conf.d/X birlesmez', () => {
 test('CE4 web adimi: kosmamis goreli + mutlak -> TEK is, mutlak yol', () => {
   const t = webTekille([
     g({ confFile: 'mod-jk.conf', status: 'pending' }),
-    g({ host: 'gbjboap13', serverName: SN.toUpperCase(), confFile: MUTLAK, status: 'pending' }),
+    g({ host: 'orjboap13', serverName: SN.toUpperCase(), confFile: MUTLAK, status: 'pending' }),
   ]);
   assert.equal(t.atilan, 1);
   assert.deepEqual(
@@ -164,7 +164,7 @@ test('CE6 asil dosya AJP siz (~DYNAMIC), baska kokun dosyasi AJP li: goreli gird
 test('CE7 farkli ServerName ayni dosyada ayri kalir', () => {
   const t = webTekille([
     g({ confFile: 'mod-jk.conf', status: 'pending' }),
-    g({ serverName: 'baska.fw.garantibbva.com.tr', confFile: MUTLAK, status: 'pending' }),
+    g({ serverName: 'baska.fw.ornekbanka.invalid', confFile: MUTLAK, status: 'pending' }),
   ]);
   assert.equal(t.atilan, 0);
 });
@@ -294,7 +294,7 @@ test('CE16 eski kayit [ok j1, running j2] + baska bekleyen: zamanlayici ikisini 
   const ok = g({ confFile: 'mod-jk.conf', status: 'ok', jobId: 1 });
   const kosan = g({ confFile: MUTLAK, status: 'running', jobId: 2 });
   const baska = g({
-    serverName: 'baska.fw.garantibbva.com.tr',
+    serverName: 'baska.fw.ornekbanka.invalid',
     confFile: MUTLAK,
     status: 'pending',
   });
@@ -319,7 +319,7 @@ test('CE18 kosmamis bekleyen kopya + ayni dosyada ok: kopya duser (gereksiz ikin
 
 test('CE19 RHA ve urunsuz goreli girdinin yolu HIC yukseltilmez (is yanlis koke gitmez)', () => {
   const rha = g({ product: 'RHA', confFile: 'httpd.conf', status: 'pending' });
-  const urunsuz = g({ product: '', serverName: 'b.fw.garantibbva.com.tr', confFile: 'x.conf' });
+  const urunsuz = g({ product: '', serverName: 'b.fw.ornekbanka.invalid', confFile: 'x.conf' });
   assert.deepEqual(
     webTekille([rha, urunsuz]).liste.map((x) => x.confFile),
     ['httpd.conf', 'x.conf'],

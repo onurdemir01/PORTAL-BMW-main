@@ -1,5 +1,5 @@
 // src/components/server_hub/__tests__/jvm-nesil.test.tsx — "yalnız envanterde" etiketi (2026-11-14).
-// Üretim (GBJIST02): taramada JVM'i bulunamayan MWAppsInventory uygulaması gen 0 satır olarak geliyor ve
+// Üretim (ORJIST02): taramada JVM'i bulunamayan MWAppsInventory uygulaması gen 0 satır olarak geliyor ve
 // ekran "JBoss 0" yazıyordu.
 //   JN1 yardımcı: yalnız envanterdeki / gen 0 satır "yalnız envanterde"; 7 / 8 "JBoss 7/8"; bilinmeyen "JBoss ?"
 //   JN2 Application Hub JVM kartı: yalnız envanterdeki satırda etiket var, "JBoss 0" yok
@@ -42,8 +42,8 @@ describe('JVM nesil etiketi', () => {
 
   it('JN2 Application Hub: yalnız envanterdeki JVM kartında etiket var, "JBoss 0" yok', () => {
     const jvm = (o: Partial<JbossJvm>): JbossJvm => ({
-      host: 'GBJIST02',
-      ad: 'GBFACELIFTSUBE-T',
+      host: 'ORJIST02',
+      ad: 'ORFACELIFTSUBE-T',
       nesil: null,
       grup: null,
       calisiyor: true,
@@ -62,8 +62,8 @@ describe('JVM nesil etiketi', () => {
       ...o,
     });
     const s: JbossSunucu = {
-      host: 'GBJIST02',
-      uygulama: 'GBFACELIFTSUBE-T',
+      host: 'ORJIST02',
+      uygulama: 'ORFACELIFTSUBE-T',
       ortam: 'TEST',
       site: null,
       jbossSurum: 'EAP 7.4',
@@ -79,9 +79,9 @@ describe('JVM nesil etiketi', () => {
       jvmler: [
         jvm({ yalnizEnvanter: true, durumKaynagi: 'ENVANTER', envanterDurumu: 'running' }),
         jvm({
-          ad: 'GBFACELIFTSUBE-T1',
+          ad: 'ORFACELIFTSUBE-T1',
           nesil: 7,
-          envanterUygulamasi: 'GBFACELIFTSUBE-T',
+          envanterUygulamasi: 'ORFACELIFTSUBE-T',
           envanterEslesmesi: 'ad-sayi',
         }),
       ],
@@ -91,8 +91,8 @@ describe('JVM nesil etiketi', () => {
     } as JbossSunucu;
     const d = {
       tip: 'jboss',
-      ad: 'GBFACELIFTSUBE',
-      varyantlar: ['GBFACELIFTSUBE-T'],
+      ad: 'ORFACELIFTSUBE',
+      varyantlar: ['ORFACELIFTSUBE-T'],
       ozet: {
         sunucuSayisi: 1,
         ortamlar: ['TEST'],
@@ -112,7 +112,7 @@ describe('JVM nesil etiketi', () => {
     expect(screen.getAllByText('yalnız envanterde').length).toBe(1);
     expect(screen.queryByText(/JBoss 0\b/)).toBeNull();
     expect(screen.getAllByText('JBoss 7').length).toBeGreaterThan(0);
-    expect(screen.getByText('envanter: GBFACELIFTSUBE-T')).toBeTruthy();
+    expect(screen.getByText('envanter: ORFACELIFTSUBE-T')).toBeTruthy();
   });
 
   it('JN3 bekçi: JVM satırları nesli jvmNesilEtiketi ile basar', () => {

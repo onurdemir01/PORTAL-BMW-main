@@ -97,7 +97,7 @@ const ozet = (o: Partial<NginxUpsOzetResult> = {}): NginxUpsOzetResult => ({
   serversOlculdu: true,
   hosts: [
     host({
-      host: 'GBNGXP01',
+      host: 'ORNGXP01',
       ortam: 'PROD',
       upstream: 3,
       kullanilan: 2,
@@ -106,8 +106,8 @@ const ozet = (o: Partial<NginxUpsOzetResult> = {}): NginxUpsOzetResult => ({
       dogrudanLocation: 2,
       bagli: true,
     }),
-    host({ host: 'GBNGXT01', upstream: 2, kullanilmayan: 2 }),
-    host({ host: 'GBNGXT02', durum: 'fail' }),
+    host({ host: 'ORNGXT01', upstream: 2, kullanilmayan: 2 }),
+    host({ host: 'ORNGXT02', durum: 'fail' }),
   ],
   totals: {
     hosts: 3,
@@ -181,18 +181,18 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(o.textContent).toMatch(/5 upstream tanımı · 3 kullanılmıyor/);
     expect(o.textContent).toMatch(/2 location upstream’i atlayıp doğrudan adrese gidiyor/);
     const satir = (h: string) => screen.getByRole('button', { name: new RegExp(h) }).closest('tr')!;
-    expect(within(satir('GBNGXP01')).getByText('bağlı')).toBeTruthy();
-    expect(within(satir('GBNGXT01')).getByText('tanımlı, kullanılmıyor')).toBeTruthy();
-    expect(within(satir('GBNGXT02')).getByText('bağlı değil')).toBeTruthy();
-    expect(within(satir('GBNGXT02')).getByText('tarama: fail')).toBeTruthy();
+    expect(within(satir('ORNGXP01')).getByText('bağlı')).toBeTruthy();
+    expect(within(satir('ORNGXT01')).getByText('tanımlı, kullanılmıyor')).toBeTruthy();
+    expect(within(satir('ORNGXT02')).getByText('bağlı değil')).toBeTruthy();
+    expect(within(satir('ORNGXT02')).getByText('tarama: fail')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Upstream’e bağlı/ }));
-    expect(screen.getAllByRole('button', { name: /^GBNGX/ }).map((b) => b.textContent)).toEqual([
-      'GBNGXP01',
+    expect(screen.getAllByRole('button', { name: /^ORNGX/ }).map((b) => b.textContent)).toEqual([
+      'ORNGXP01',
     ]);
     fireEvent.click(screen.getByRole('button', { name: /Bağlı değil/ }));
-    expect(screen.getAllByRole('button', { name: /^GBNGX/ }).map((b) => b.textContent)).toEqual([
-      'GBNGXT01',
-      'GBNGXT02',
+    expect(screen.getAllByRole('button', { name: /^ORNGX/ }).map((b) => b.textContent)).toEqual([
+      'ORNGXT01',
+      'ORNGXT02',
     ]);
     fireEvent.change(screen.getByLabelText('Ortam'), { target: { value: 'PROD' } });
     expect(screen.getByText('Eşleşen sunucu yok.')).toBeTruthy();
@@ -201,16 +201,16 @@ describe('NginxUpstreamEnvanteri', () => {
     fireEvent.change(screen.getByLabelText('Upstream envanteri sunucu ara'), {
       target: { value: 't02' },
     });
-    expect(screen.getAllByRole('button', { name: /^GBNGX/ }).map((b) => b.textContent)).toEqual([
-      'GBNGXT02',
+    expect(screen.getAllByRole('button', { name: /^ORNGX/ }).map((b) => b.textContent)).toEqual([
+      'ORNGXT02',
     ]);
   });
 
   it('UU2 satır açılınca upstream ayrıntısı', async () => {
     render(<NginxUpstreamEnvanteri />);
-    fireEvent.click(await screen.findByRole('button', { name: /GBNGXP01/ }));
-    const d = await screen.findByTestId('ups-detay-GBNGXP01');
-    expect(api.sunucu).toHaveBeenCalledWith('GBNGXP01', false);
+    fireEvent.click(await screen.findByRole('button', { name: /ORNGXP01/ }));
+    const d = await screen.findByTestId('ups-detay-ORNGXP01');
+    expect(api.sunucu).toHaveBeenCalledWith('ORNGXP01', false);
     const satirlar = within(d).getAllByRole('row');
     expect(satirlar[1].textContent).toMatch(/glomo-prod.*glomo-upstreams\.conf/);
     expect(satirlar[1].textContent).toMatch(
@@ -237,8 +237,8 @@ describe('NginxUpstreamEnvanteri', () => {
     );
     render(<NginxUpstreamEnvanteri />);
     expect(await screen.findByText('Arka uç listeleri eksik')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /GBNGXP01/ }));
-    const d = await screen.findByTestId('ups-detay-GBNGXP01');
+    fireEvent.click(screen.getByRole('button', { name: /ORNGXP01/ }));
+    const d = await screen.findByTestId('ups-detay-ORNGXP01');
     expect(within(d).getByText(/glomo2\.apps\.example:443 backup/).textContent).toMatch(
       /tam liste değil/,
     );
@@ -252,7 +252,7 @@ describe('NginxUpstreamEnvanteri', () => {
       serversOlculdu: true,
       satirlar: [
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           upstream: 'glomo-prod',
           eslesen: ['glomo2.apps.example:443'],
           adEsler: false,
@@ -260,7 +260,7 @@ describe('NginxUpstreamEnvanteri', () => {
           kullaniliyor: true,
         },
         {
-          host: 'GBNGXP02',
+          host: 'ORNGXP02',
           upstream: 'glomo2-ups',
           eslesen: [],
           adEsler: true,
@@ -282,15 +282,15 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(api.ara).toHaveBeenCalledWith('glomo2', false);
     expect(screen.getByTestId('ups-arama-ozet').textContent).toMatch(/2 sunucu, 2 upstream/);
     const r = within(tablo).getAllByRole('row');
-    expect(r[1].textContent).toMatch(/GBNGXP01.*glomo-prod.*glomo2\.apps\.example:443.*evet/);
-    expect(r[2].textContent).toMatch(/GBNGXP02.*glomo2-ups.*upstream adı eşleşti.*kullanılmıyor/);
+    expect(r[1].textContent).toMatch(/ORNGXP01.*glomo-prod.*glomo2\.apps\.example:443.*evet/);
+    expect(r[2].textContent).toMatch(/ORNGXP02.*glomo2-ups.*upstream adı eşleşti.*kullanılmıyor/);
     expect(api.ozet).toHaveBeenLastCalledWith(false);
     fireEvent.click(screen.getByRole('button', { name: /Yenile/ }));
     await waitFor(() => expect(api.ozet).toHaveBeenLastCalledWith(true));
     // Yenile sonrasi acilan satir ve arama da onbellegi atlar (yeni taramayi gorsun)
-    fireEvent.click(screen.getByRole('button', { name: /GBNGXP01/ }));
-    await screen.findByTestId('ups-detay-GBNGXP01');
-    expect(api.sunucu).toHaveBeenLastCalledWith('GBNGXP01', true);
+    fireEvent.click(screen.getByRole('button', { name: /ORNGXP01/ }));
+    await screen.findByTestId('ups-detay-ORNGXP01');
+    expect(api.sunucu).toHaveBeenLastCalledWith('ORNGXP01', true);
     fireEvent.click(screen.getByRole('button', { name: 'Ara' }));
     await waitFor(() => expect(api.ara).toHaveBeenLastCalledWith('glomo2', true));
   });
@@ -304,7 +304,7 @@ describe('NginxUpstreamEnvanteri', () => {
 
   it('UU6 taranamayan, location dışı, değişken, kesik, sahibi bilinmeyen', async () => {
     const o = ozet();
-    o.hosts = [...o.hosts!, host({ host: 'GBNGXT09', durum: 'fail', olculmedi: true })];
+    o.hosts = [...o.hosts!, host({ host: 'ORNGXT09', durum: 'fail', olculmedi: true })];
     o.totals = { ...o.totals!, hosts: 4, bagliDegil: 2, olculmedi: 1, degiskenLocation: 3 };
     api.ozet.mockResolvedValue(o);
     api.sunucu.mockResolvedValue(
@@ -331,21 +331,21 @@ describe('NginxUpstreamEnvanteri', () => {
     expect((await screen.findByTestId('ups-ozet')).textContent).toMatch(
       /3 location değişken hedefe gidiyor/,
     );
-    const t09 = screen.getByRole('button', { name: /GBNGXT09/ }).closest('tr')!;
+    const t09 = screen.getByRole('button', { name: /ORNGXT09/ }).closest('tr')!;
     expect(within(t09).getByText('taranamadı')).toBeTruthy();
     expect(within(t09).queryByText('bağlı değil')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Taranamadı/ }));
-    expect(screen.getAllByRole('button', { name: /^GBNGX/ }).map((b) => b.textContent)).toEqual([
-      'GBNGXT09',
+    expect(screen.getAllByRole('button', { name: /^ORNGX/ }).map((b) => b.textContent)).toEqual([
+      'ORNGXT09',
     ]);
     fireEvent.click(screen.getByRole('button', { name: /Bağlı değil/ }));
-    expect(screen.getAllByRole('button', { name: /^GBNGX/ }).map((b) => b.textContent)).toEqual([
-      'GBNGXT01',
-      'GBNGXT02',
+    expect(screen.getAllByRole('button', { name: /^ORNGX/ }).map((b) => b.textContent)).toEqual([
+      'ORNGXT01',
+      'ORNGXT02',
     ]);
     fireEvent.click(screen.getByRole('button', { name: /Tümü/ }));
-    fireEvent.click(screen.getByRole('button', { name: /GBNGXP01/ }));
-    const d = await screen.findByTestId('ups-detay-GBNGXP01');
+    fireEvent.click(screen.getByRole('button', { name: /ORNGXP01/ }));
+    const d = await screen.findByTestId('ups-detay-ORNGXP01');
     expect(within(d).getByText(/\+5 satır daha \(kayıt sınırı\)/)).toBeTruthy();
     expect(within(d).getByText('(server bilinmiyor)')).toBeTruthy();
     expect(within(d).getByText('kullanılıyor (location dışı)')).toBeTruthy();
@@ -360,18 +360,18 @@ describe('NginxUpstreamEnvanteri', () => {
       eksikUpstream: 2,
       satirlar: [
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'glomo.example',
           upstream: 'glomo-prod',
           endpoint: 'glomo.apps.example:443',
         },
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'glomo.example',
           upstream: 'glomo-prod',
           endpoint: 'glomo2.apps.example:443',
         },
-        { host: 'GBNGXT01', serverName: 't.example', upstream: 'x', endpoint: '10.0.0.1:80' },
+        { host: 'ORNGXT01', serverName: 't.example', upstream: 'x', endpoint: '10.0.0.1:80' },
       ],
     });
     render(<NginxUpstreamEnvanteri />);
@@ -383,8 +383,8 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(ad).toBe('nginx_upstream_baglantilari');
     expect(baslik).toEqual(BAGLANTI_BASLIK);
     expect(bes(satir)).toEqual([
-      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443', 'olculmedi'],
-      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443', 'olculmedi'],
+      ['ORNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443', 'olculmedi'],
+      ['ORNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443', 'olculmedi'],
     ]);
     expect(api.liste).toHaveBeenCalledWith(false);
     const not = await screen.findByTestId('ups-indirme-notu');
@@ -398,7 +398,7 @@ describe('NginxUpstreamEnvanteri', () => {
     const o = ozet();
     o.hosts = [
       host({
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         ortam: 'PROD',
         upstream: 3,
         kullanilan: 2,
@@ -407,7 +407,7 @@ describe('NginxUpstreamEnvanteri', () => {
         http2Blok: 6,
       }),
       host({
-        host: 'GBNGXP02',
+        host: 'ORNGXP02',
         ortam: 'PROD',
         upstream: 1,
         kullanilan: 1,
@@ -415,7 +415,7 @@ describe('NginxUpstreamEnvanteri', () => {
         http2Acik: 0,
         http2Blok: 2,
       }),
-      host({ host: 'GBNGXT01', http2Acik: 1, http2Blok: 1 }),
+      host({ host: 'ORNGXT01', http2Acik: 1, http2Blok: 1 }),
     ];
     o.totals = {
       ...o.totals!,
@@ -433,35 +433,35 @@ describe('NginxUpstreamEnvanteri', () => {
       http2Olculdu: true,
       satirlar: [
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'a.example',
           upstream: 'u1',
           endpoint: 'x:443',
           http2: 'acik',
         },
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'b.example',
           upstream: 'u1',
           endpoint: 'x:443',
           http2: 'kapali',
         },
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'c.example',
           upstream: 'u2',
           endpoint: 'y:443',
           http2: 'kismen',
         },
         {
-          host: 'GBNGXP02',
+          host: 'ORNGXP02',
           serverName: 'd.example',
           upstream: 'u3',
           endpoint: 'z:443',
           http2: 'kapali',
         },
         {
-          host: 'GBNGXT01',
+          host: 'ORNGXT01',
           serverName: 't.example',
           upstream: 'u4',
           endpoint: 'q:80',
@@ -472,25 +472,25 @@ describe('NginxUpstreamEnvanteri', () => {
     render(<NginxUpstreamEnvanteri />);
     await screen.findByTestId('ups-ozet');
     expect(screen.getByRole('columnheader', { name: 'HTTP/2 (açık / blok)' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!.textContent).toMatch(
+    expect(screen.getByRole('button', { name: /ORNGXP01/ }).closest('tr')!.textContent).toMatch(
       /4 \/ 6$/,
     );
     const h2 = screen.getByRole('button', { name: /HTTP\/2 açık/ });
     expect(h2.textContent).toMatch(/2$/);
-    // bağlantı süzgeci + HTTP/2 birlikte: GBNGXP02 (h2 yok) ve GBNGXT01 (bağlı değil) düşer
+    // bağlantı süzgeci + HTTP/2 birlikte: ORNGXP02 (h2 yok) ve ORNGXT01 (bağlı değil) düşer
     fireEvent.click(screen.getByRole('button', { name: /Upstream’e bağlı/ }));
     fireEvent.click(h2);
     expect(h2.getAttribute('aria-pressed')).toBe('true');
-    expect(screen.queryByRole('button', { name: /GBNGXP02/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /GBNGXT01/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /GBNGXP01/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /ORNGXP02/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /ORNGXT01/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /ORNGXP01/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [ad, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
     expect(ad).toBe('nginx_upstream_http2_acik');
     expect(bes(satir)).toEqual([
-      ['GBNGXP01', 'a.example', 'u1', 'x:443', 'acik'],
-      ['GBNGXP01', 'c.example', 'u2', 'y:443', 'kismen'],
+      ['ORNGXP01', 'a.example', 'u1', 'x:443', 'acik'],
+      ['ORNGXP01', 'c.example', 'u2', 'y:443', 'kismen'],
     ]);
   });
 
@@ -502,7 +502,7 @@ describe('NginxUpstreamEnvanteri', () => {
       http2Olculdu: false,
       satirlar: [
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           serverName: 'a.example',
           upstream: 'u1',
           endpoint: 'x:443',
@@ -513,13 +513,13 @@ describe('NginxUpstreamEnvanteri', () => {
     render(<NginxUpstreamEnvanteri />);
     await screen.findByTestId('ups-ozet');
     expect(screen.queryByRole('button', { name: /HTTP\/2 açık/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!.textContent).toMatch(
+    expect(screen.getByRole('button', { name: /ORNGXP01/ }).closest('tr')!.textContent).toMatch(
       /—$/,
     );
     fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
-    expect(bes(satir)).toEqual([['GBNGXP01', 'a.example', 'u1', 'x:443', 'olculmedi']]);
+    expect(bes(satir)).toEqual([['ORNGXP01', 'a.example', 'u1', 'x:443', 'olculmedi']]);
     const not = await screen.findByTestId('ups-indirme-notu');
     expect(not.textContent).toMatch(/http2 kolonu boş: Son tarama HTTP\/2 durumunu içermiyor/);
   });
@@ -528,7 +528,7 @@ describe('NginxUpstreamEnvanteri', () => {
     const o = ozet();
     o.hosts = [
       host({
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         ortam: 'PROD',
         upstream: 1,
         kullanilan: 1,
@@ -539,7 +539,7 @@ describe('NginxUpstreamEnvanteri', () => {
         listenIp: ['*', '10.1.2.50', '10.9.9.9'],
         subnetDisi: ['10.9.9.9'],
       }),
-      host({ host: 'GBNGXT01', listenIp: [], subnet: null }),
+      host({ host: 'ORNGXT01', listenIp: [], subnet: null }),
     ];
     o.totals = { ...o.totals!, hosts: 2, agOlculdu: true, listenOlculdu: true };
     api.ozet.mockResolvedValue(o);
@@ -551,7 +551,7 @@ describe('NginxUpstreamEnvanteri', () => {
       agOlculdu: true,
       satirlar: [
         {
-          host: 'GBNGXP01',
+          host: 'ORNGXP01',
           hostIp: '10.1.2.10',
           domain: 'corp.example',
           subnet: '10.1.2.0/24',
@@ -568,7 +568,7 @@ describe('NginxUpstreamEnvanteri', () => {
     await screen.findByTestId('ups-ozet');
     for (const b of ['Listen IP', 'Domain', 'Subnet'])
       expect(screen.getByRole('columnheader', { name: b })).toBeTruthy();
-    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    const satir = screen.getByRole('button', { name: /ORNGXP01/ }).closest('tr')!;
     expect(within(satir).getByText('10.1.2.10')).toBeTruthy();
     expect(within(satir).getByText('corp.example')).toBeTruthy();
     expect(within(satir).getByText('10.1.2.0/24')).toBeTruthy();
@@ -580,8 +580,8 @@ describe('NginxUpstreamEnvanteri', () => {
     const ara = screen.getByRole('textbox', { name: 'Upstream envanteri sunucu ara' });
     for (const deger of ['10.9.9', 'corp.example', '10.1.2.0/24', '10.1.2.10']) {
       fireEvent.change(ara, { target: { value: deger } });
-      expect(screen.getByRole('button', { name: /GBNGXP01/ })).toBeTruthy();
-      expect(screen.queryByRole('button', { name: /GBNGXT01/ })).toBeNull();
+      expect(screen.getByRole('button', { name: /ORNGXP01/ })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /ORNGXT01/ })).toBeNull();
     }
     fireEvent.change(ara, { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
@@ -590,7 +590,7 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(baslik).toEqual(BAGLANTI_BASLIK);
     expect(rows).toEqual([
       [
-        'GBNGXP01',
+        'ORNGXP01',
         '10.1.2.10',
         'corp.example',
         '10.1.2.0/24',
@@ -614,7 +614,7 @@ describe('NginxUpstreamEnvanteri', () => {
       'listen_subnet_disi',
     ]);
     expect(orows[0].slice(0, 6)).toEqual([
-      'GBNGXP01',
+      'ORNGXP01',
       '10.1.2.10',
       'corp.example',
       '10.1.2.0/24',
@@ -638,7 +638,7 @@ describe('NginxUpstreamEnvanteri', () => {
     render(<NginxUpstreamEnvanteri />);
     const not = await screen.findByText(/Nginx Envanteri \(nginx_metadata\) okunamadı/);
     expect(not.textContent).toMatch(/listen değerleri okunamadı/);
-    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    const satir = screen.getByRole('button', { name: /ORNGXP01/ }).closest('tr')!;
     const hucre = within(satir).getAllByRole('cell');
     expect(hucre.slice(1, 4).map((c) => c.textContent)).toEqual(['—', '—', '—']);
     expect(screen.queryByTestId('ups-ag-bilinmeyen')).toBeNull();
@@ -651,7 +651,7 @@ describe('NginxUpstreamEnvanteri', () => {
     const o = ozet();
     o.hosts = [
       host({
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         bagli: true,
         subnet: '10.1.2.0/24',
         listenIp: ['*', '10.1.2.1', '10.1.2.2', '10.1.2.3', '10.9.9.9'],
@@ -662,7 +662,7 @@ describe('NginxUpstreamEnvanteri', () => {
     api.ozet.mockResolvedValue(o);
     render(<NginxUpstreamEnvanteri />);
     await screen.findByTestId('ups-ozet');
-    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    const satir = screen.getByRole('button', { name: /ORNGXP01/ }).closest('tr')!;
     expect(within(satir).getByText(/10\.9\.9\.9 · subnet dışı/)).toBeTruthy();
     expect(within(satir).getByText('+2')).toBeTruthy();
     expect(screen.getByTestId('ups-ag-bilinmeyen').textContent).toMatch(
@@ -673,7 +673,7 @@ describe('NginxUpstreamEnvanteri', () => {
   it('UU10 Envanter alt sekmesi; HTTP/2 sekmesi yok; Envanter Yenile aktarılır', async () => {
     const size = { totalGiB: 0, parsed: 0, unparsed: 0 };
     const sunucu: NginxInvHost = {
-      hostname: 'GBNGXP01',
+      hostname: 'ORNGXP01',
       fqdn: null,
       env: 'production',
       location: 'pendik',

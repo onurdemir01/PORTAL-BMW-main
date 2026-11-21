@@ -84,7 +84,7 @@ test('RL2: "tanimli ama uygulanmiyor" EKSIK sayilir', () => {
 test('RL3: rapor sunucu basina satir, Excel uyumlu', () => {
   const hosts = [
     {
-      host: 'GBNGXP40',
+      host: 'ORNGXP40',
       env: 'PROD',
       requestRate: '500r/s',
       serverRate: '5000r/s',
@@ -102,7 +102,7 @@ test('RL3: rapor sunucu basina satir, Excel uyumlu', () => {
   const csv = rl.toCsv(hosts, '2026-09-26');
   assert.equal(csv.charCodeAt(0), 0xfeff, 'BOM yoksa Excel Turkce karakteri bozar');
   assert.ok(csv.includes('Sunucu;Ortam'), 'TR Excel icin noktali virgul');
-  assert.ok(csv.includes('GBNGXP40;PROD;500r/s;5000r/s;200'));
+  assert.ok(csv.includes('ORNGXP40;PROD;500r/s;5000r/s;200'));
   assert.ok(csv.includes('\r\n'));
   // Ayrac iceren metin kacisli olmali - yoksa sutunlar kayar.
   const kacisli = rl.toCsv([{ ...hosts[0], farklar: ['a;b'] }], '2026-09-26');
@@ -234,7 +234,7 @@ test('RL7: nginx kurulu degil / calismiyor, "limit eksik" DEMEK degildir', () =>
   const csv = rl.toCsv(
     [
       {
-        host: 'GBNGXP99',
+        host: 'ORNGXP99',
         env: 'PROD',
         requestRate: null,
         serverRate: null,
@@ -315,39 +315,39 @@ test('RL8: siralama - sorunlu ustte, oranlar SAYISAL, olculemeyen sona', () => {
 
 test('RL9: ortam sunucu adindan OKUNUR (sayilardan onceki harf), uydurulmaz', () => {
   // Kullanici kurali (2026-09-26): "sunucunun sayilardan onceki ilk harf P ise Production,
-  // Q-T-D ise Non-Production". Onceki surum bir on-ek kalibiydi ve UYDURMAYDI: GBNGXAP32
-  // kalibi tutmuyor, GBNGXQ01 hic taninmiyordu; ikisi de "DIGER" dusuyordu - ekran, adindan
+  // Q-T-D ise Non-Production". Onceki surum bir on-ek kalibiydi ve UYDURMAYDI: ORNGXAP32
+  // kalibi tutmuyor, ORNGXQ01 hic taninmiyordu; ikisi de "DIGER" dusuyordu - ekran, adindan
   // ortami okunabilen sunucular icin "bilmiyorum" diyordu.
   for (const h of [
-    'GBNGXP40',
-    'GBNGXP41',
-    'GBNGXP44',
-    'GBNGXP58',
-    'GBNGXP50',
-    'GBNGXAP32',
-    'GBNGXAP34',
-    'GBRVPP07',
-    'GBRVPAP01',
+    'ORNGXP40',
+    'ORNGXP41',
+    'ORNGXP44',
+    'ORNGXP58',
+    'ORNGXP50',
+    'ORNGXAP32',
+    'ORNGXAP34',
+    'ORRVPP07',
+    'ORRVPAP01',
   ]) {
     assert.equal(rl.envOfHost(h), 'Production', `${h} Production olmali`);
   }
   for (const h of [
-    'GBNGXT33',
-    'GBNGXT34',
-    'GBNGXQ01',
-    'GBNGXQ50',
-    'GBNGXD01',
-    'GBNGXD50',
-    'GBLABT02',
+    'ORNGXT33',
+    'ORNGXT34',
+    'ORNGXQ01',
+    'ORNGXQ50',
+    'ORNGXD01',
+    'ORNGXD50',
+    'ORLABT02',
   ]) {
     assert.equal(rl.envOfHost(h), 'Non-Production', `${h} Non-Production olmali`);
   }
 
   // Kucuk harf ve bosluk gelse de ayni cevap.
-  assert.equal(rl.envOfHost(' gbngxap34 '), 'Production');
+  assert.equal(rl.envOfHost(' orngxap34 '), 'Production');
 
   // HICBIR SUNUCU "DIGER" diye dusmemeli - kalip tutmayan girdi bunun disinda.
-  assert.equal(rl.envOfHost('GBEVM01'), 'DIGER', 'M harfi ortam kuralinda yok');
+  assert.equal(rl.envOfHost('OREVM01'), 'DIGER', 'M harfi ortam kuralinda yok');
   assert.equal(rl.envOfHost('SAYISIZ'), 'DIGER');
   assert.equal(rl.envOfHost(''), 'DIGER');
   assert.equal(rl.envOfHost(null), 'DIGER');
@@ -360,7 +360,7 @@ test('RL9: ortam sunucu adindan OKUNUR (sayilardan onceki harf), uydurulmaz', ()
     .split(String.fromCharCode(10))
     .filter((l) => !l.trim().startsWith('//'))
     .join(String.fromCharCode(10));
-  assert.ok(!srvKod.includes('^GBNGX?P'), 'on-ek kalibi geri gelmis (GBNGXAP32 tutmuyordu)');
+  assert.ok(!srvKod.includes('^ORNGX?P'), 'on-ek kalibi geri gelmis (ORNGXAP32 tutmuyordu)');
   assert.match(srv, /ENV_HARF/, 'harf -> ortam eslemesi yok');
   // P/Q/T/D dordu birden tanimli olmali; biri eksikse o sunucular sessizce DIGER olur.
   for (const harf of ['P', 'Q', 'T', 'D']) {
@@ -448,7 +448,7 @@ test('RL10: bilerek KAPALI (include yorumlu) eksik DEGILDIR, ayri durumdur', () 
   const csv = rl.toCsv(
     [
       {
-        host: 'GBNGXP98',
+        host: 'ORNGXP98',
         env: 'Production',
         requestRate: null,
         serverRate: null,
@@ -538,8 +538,8 @@ test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () =
   try {
     const r = await kur(
       satirlar([
-        ['GBNGXP01', 'disabled', null],
-        ['GBNGXP02', 'disabled', null],
+        ['ORNGXP01', 'disabled', null],
+        ['ORNGXP02', 'disabled', null],
       ]),
     ).loadRateLimits();
     assert.equal(r.directivesMissing, false, 'tum filo kapaliyken "olculmedi" denildi');
@@ -558,24 +558,24 @@ test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () =
     // Karisik: biri acik ama zone yok (dosya kaybolmus) -> eksik; biri yok + sapma.
     const r2 = await kur(
       satirlar([
-        ['GBNGXP01', 'disabled', null],
-        ['GBNGXP03', 'enabled', null],
-        ['GBNGXP04', 'missing', false],
+        ['ORNGXP01', 'disabled', null],
+        ['ORNGXP03', 'enabled', null],
+        ['ORNGXP04', 'missing', false],
       ]),
     ).loadRateLimits();
     const d = Object.fromEntries(r2.hosts.map((h) => [h.host, h]));
-    assert.equal(d.GBNGXP01.durum, 'kapali');
-    assert.equal(d.GBNGXP03.durum, 'eksik');
-    assert.equal(d.GBNGXP04.durum, 'eksik');
-    assert.equal(d.GBNGXP04.mismatch, 1);
+    assert.equal(d.ORNGXP01.durum, 'kapali');
+    assert.equal(d.ORNGXP03.durum, 'eksik');
+    assert.equal(d.ORNGXP04.durum, 'eksik');
+    assert.equal(d.ORNGXP04.mismatch, 1);
     assert.equal(r2.summary.dosyaYuklenmemis, 2);
     assert.match(r2.kapaliMessage, /^1 sunucuda/);
 
     // Eski analizci degerleri (acik/kapali/yok) yeni degerlere cevrilir.
     const r3 = await kur(
       satirlar([
-        ['GBNGXP01', 'kapali', null],
-        ['GBNGXP02', 'kapali', null],
+        ['ORNGXP01', 'kapali', null],
+        ['ORNGXP02', 'kapali', null],
       ]),
     ).loadRateLimits();
     assert.deepEqual(
@@ -588,22 +588,22 @@ test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () =
     assert.equal(r3.directivesMissing, false);
     const r3b = await kur(
       satirlar([
-        ['GBNGXP03', 'acik', null],
-        ['GBNGXP04', 'yok', false],
+        ['ORNGXP03', 'acik', null],
+        ['ORNGXP04', 'yok', false],
       ]),
     ).loadRateLimits();
     const e = Object.fromEntries(r3b.hosts.map((h) => [h.host, h]));
-    assert.equal(e.GBNGXP03.rateLimitInclude, 'enabled');
-    assert.equal(e.GBNGXP04.rateLimitInclude, 'missing');
+    assert.equal(e.ORNGXP03.rateLimitInclude, 'enabled');
+    assert.equal(e.ORNGXP04.rateLimitInclude, 'missing');
     assert.ok(
-      e.GBNGXP04.eksikler[0].includes('include satırı yok'),
+      e.ORNGXP04.eksikler[0].includes('include satırı yok'),
       'eski "yok" degerinde sebep kayboldu',
     );
 
     // Sinyal yoksa (eski analiz) eski davranis: olculmedi.
     const r4 = await kur([
       {
-        host: 'GBNGXP05',
+        host: 'ORNGXP05',
         conf_file: '/usr/nginx/conf/x.conf',
         context: 'main',
         directive: 'limit_req_status',
@@ -655,7 +655,7 @@ test('RL12: literal IN, tarih listesi Hosts tablosundan, belirtec ayniyken Setti
       return {
         recordset: [
           {
-            host: 'GBNGXP01',
+            host: 'ORNGXP01',
             conf_file: '/usr/nginx/nginx.conf',
             context: 'http',
             directive: 'rate_limits_include',

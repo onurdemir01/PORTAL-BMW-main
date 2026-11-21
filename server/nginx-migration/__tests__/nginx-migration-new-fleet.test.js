@@ -2,7 +2,7 @@
 //
 // URETIM TUZAGI (2026-10-03): "Production Tasimalari > Eski tanimi kaldir" nginx_ops'u
 // action=delete, env=prod ile tetikliyordu ve new_fleet GONDERMIYORDU. nginx_ops.yml'in
-// GBLABT02 play'i new_fleet acikca 'false' degilse silmeyi YENI PROD SPA filosuna da
+// ORLABT02 play'i new_fleet acikca 'false' degilse silmeyi YENI PROD SPA filosuna da
 // goturur: tasinmis uygulamanin yeni filodaki tanimi da silinirdi (kesinti).
 //
 // Testler DAVRANISI olcer: gercek Express ucu + GERCEK runner.cjs (template ayarlari, survey,

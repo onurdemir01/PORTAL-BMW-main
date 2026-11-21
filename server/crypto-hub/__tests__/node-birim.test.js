@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const N = require('../../../shared/cryptoHubNodes.cjs');
 const NODE = require('../node.cjs');
 const H = require('./_node_harness.cjs');
-const { tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
+const { tenantOf } = require('../kiracilar.cjs');
 
 const okuma = (o) => ({ parsed: NODE.parseNodeLines(H.satirlar(o)), at: Date.now() });
 const coz = (b) => JSON.parse(Buffer.from(b, 'base64').toString('utf8'));

@@ -1,6 +1,6 @@
 # BMW Portal — Basit Kurulum (yerel gelistirme)
 
-> ⚠ **Bu dosya SADECE yerel gelistirme icindir.** VM/sunucuda (`gblabt02`) **ASLA**
+> ⚠ **Bu dosya SADECE yerel gelistirme icindir.** VM/sunucuda (`orlabt02`) **ASLA**
 > `npm run dev`, `npm run dev:all` veya `npm start` calistirmayin — bunlar iki-portlu
 > (vite :3000 + API :5055) gelistirme modunu acar, kurumsal nginx'in bekledigi tek-port
 > `:3000` production modelini DEGIL. Sunucuda daima [DEPLOYMENT.md](DEPLOYMENT.md)'deki

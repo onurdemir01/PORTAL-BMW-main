@@ -29,7 +29,7 @@ test('resolveTerminalHosts(): cluster kolonu dolu ise map fallback yerine kolon 
       const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
       assert.deepEqual(r, { hosts: { c1: 'jump01' }, missing: [] });
     },
-    { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: 'gbaocp01' },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: 'jump01' }], mapHost: 'oraocp01' },
   );
 });
 
@@ -37,9 +37,9 @@ test('resolveTerminalHosts(): kolon NULL ise tenant/env map fallback kullanilir'
   await withMock(
     async () => {
       const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1']);
-      assert.deepEqual(r, { hosts: { c1: 'gbaocp01' }, missing: [] });
+      assert.deepEqual(r, { hosts: { c1: 'oraocp01' }, missing: [] });
     },
-    { clusterRows: [{ cluster_name: 'c1', terminal_host: null }], mapHost: 'gbaocp01' },
+    { clusterRows: [{ cluster_name: 'c1', terminal_host: null }], mapHost: 'oraocp01' },
   );
 });
 
@@ -47,7 +47,7 @@ test('resolveTerminalHosts(): karisik — bir cluster kolonlu, digeri fallback, 
   await withMock(
     async () => {
       const r = await admin.resolveTerminalHosts('dev', 'ark', ['c1', 'c2', 'c3']);
-      assert.deepEqual(r.hosts, { c1: 'jump01', c2: 'gbaocp01', c3: 'gbaocp01' });
+      assert.deepEqual(r.hosts, { c1: 'jump01', c2: 'oraocp01', c3: 'oraocp01' });
       assert.deepEqual(r.missing, []);
     },
     {
@@ -56,7 +56,7 @@ test('resolveTerminalHosts(): karisik — bir cluster kolonlu, digeri fallback, 
         { cluster_name: 'c2', terminal_host: '' },
         // c3 satiri hic yok (agacta olmayan cluster) — yine fallback'e duser
       ],
-      mapHost: 'gbaocp01',
+      mapHost: 'oraocp01',
     },
   );
 });

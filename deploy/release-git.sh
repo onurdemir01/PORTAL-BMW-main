@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy/release-git.sh — BMW Portal sunucu tarafi surum yukleme, git tabanli
-# (gblabt02, kullanici: was). deploy/release.sh'in zip yerine git kullanan esdegeri.
+# (orlabt02, kullanici: was). deploy/release.sh'in zip yerine git kullanan esdegeri.
 #
 # Akis (2026-09-17, KESINTISIZE YAKIN — bkz. deploy/stage-lib.sh):
 #   1. APP_ROOT bir git deposu degilse REPO_URL'den klonlanir (ilk calistirma)

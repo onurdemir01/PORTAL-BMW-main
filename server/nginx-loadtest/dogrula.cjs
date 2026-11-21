@@ -11,10 +11,10 @@
 //     olarak gelir (testte sahte). Okunamayan kaynak "yok" SAYILMAZ: 424 envanter_okunamadi.
 //
 // ORTAM KURALI (TEK HEDEF MODELI, kullanici karari 2026-11-13; 2026-10-27 ad kurali sozlesmesinin yerine):
-// hedef ve yuk makinesi dbo.Inventory'deki HERHANGI bir makine olabilir; ad kurali (GBNG[WX]A?[DTQ]) ARANMAZ.
+// hedef ve yuk makinesi dbo.Inventory'deki HERHANGI bir makine olabilir; ad kurali (ORNG[WX]A?[DTQ]) ARANMAZ.
 // Kosul (hostOrtami): makinenin dbo.Inventory'de en az bir satiri var ve TUM satirlarin ortami
-// (envFromInventory) DEV/TEST/QA; adindan PROD / EDU okunmuyor (audit/nginx-hosts.cjs envOfHost: GBRVP,
-// GBNG[WX]A?P, GBNGXT51); hicbir kaynakta (dbo.nginx_inventory.env, Inventory satirlari, PROD RP listesi)
+// (envFromInventory) DEV/TEST/QA; adindan PROD / EDU okunmuyor (audit/nginx-hosts.cjs envOfHost: ORRVP,
+// ORNG[WX]A?P, ORNGXT51); hicbir kaynakta (dbo.nginx_inventory.env, Inventory satirlari, PROD RP listesi)
 // uretim isareti yok. Uretim guvenligi karari Portal'in bu dbo.Inventory kapisindadir; playbook yalniz EDU
 // listesi, uretim adi, hedef != yuk, parametre sinirlari, IP yerel kaniti ve serbest izin dosyasini denetler.
 // ratelimit.cjs'teki gevsek envOfHost ve FAIL-OPEN tierOfHost bilerek KULLANILMAZ.
@@ -185,7 +185,9 @@ const { varsayilanSira } = require('../util/siralama.cjs');
 // Kontrol karakteri (CR/LF dahil): baslik / log enjeksiyonunun yolu.
 const KONTROL_KARAKTERI = { test: (v) => hasControlChars(v) };
 
-const VARSAYILAN_YUK_HOSTLARI = Object.freeze(['GBNGXT34']);
+// Varsayilan yuk makineleri kurum ayarinda (`nginx.yukTesti.varsayilanYukSunuculari`, K17); tanimsizsa bos.
+const varsayilanYukHostlari = () =>
+  require('../util/kurum-ayari.cjs').sunucuListesi('nginx.yukTesti.varsayilanYukSunuculari').liste;
 // Tur 4: yuk araclari her on kontrol / kosuda /sw'deki arac setinden kosu dizinine kopyalanir.
 // yuk_k6_yolu / yuk_wrk_yolu artik SABIT isaret degeri tasir: yeni Portal + ESKI playbook penceresinde
 // eski playbook /home/www/bin ikilisini SESSIZCE kullanmasin (isaret yolu yoktur; on kontrol duser).
@@ -250,7 +252,7 @@ function gecerliIpv4(v) {
 }
 
 // Yuk makinesinin ulasacagi IP: geri donus (127/8) yuk makinesinin KENDISINE gider
-// (GBNGXT34 da bir nginx'tir), 0/8 / link-local / cok noktali yayin hedef degildir.
+// (ORNGXT34 da bir nginx'tir), 0/8 / link-local / cok noktali yayin hedef degildir.
 function kullanilabilirIp(v) {
   if (!gecerliIpv4(v)) return false;
   const [a, b] = v.split('.').map(Number);
@@ -862,9 +864,9 @@ function uretimIsareti(k) {
 /**
  * Bir makinenin ortami (TEK HEDEF MODELI, 2026-11-13; hedef, yuk makinesi ve IP sahipleri AYNI kural).
  * `k`: kaynaklariOku donusu (invTum: host -> dbo.Inventory env satirlari; nginx: nginx_inventory satiri).
- * Sira: ad bicimi -> addan PROD / EDU (envOfHost; GBRVP, GBNG[WX]A?P, GBNGXT51) -> dbo.Inventory satiri yok ->
+ * Sira: ad bicimi -> addan PROD / EDU (envOfHost; ORRVP, ORNG[WX]A?P, ORNGXT51) -> dbo.Inventory satiri yok ->
  * satirlardan biri DEV/TEST/QA degil (bos / taninmayan dahil) -> uretim isareti (nginx_inventory.env, her satir,
- * PROD RP listesi). Ad kurali (GBNG[WX]A?[DTQ]) GEREKMEZ. Ortam etiketi: ad DEV/TEST/QA soyluyorsa o (nginx-hosts.cjs:
+ * PROD RP listesi). Ad kurali (ORNG[WX]A?[DTQ]) GEREKMEZ. Ortam etiketi: ad DEV/TEST/QA soyluyorsa o (nginx-hosts.cjs:
  * kalip envanterden incedir), degilse satirlarin ortami (tekse kendisi, karisik DEV/TEST/QA ise sirali 'QA/TEST').
  * Donus: { ok:true, env, envler } | { ok:false, status, code, message, sebep, env } (sebep: ipSinifla mesajina
  * gomulen kisa metin). Kodlar: hedef_uretim, hedef_envanterde_yok (cagiran yuk makinesi icin eslestirir).
@@ -1253,7 +1255,7 @@ function onayMetniDogru(confirmText, beklenen) {
 /** Yuk makinesi izin listesi. Bos/tanimsiz -> varsayilan; gecersiz girdiler atilir (liste daralir). */
 function yukHostlari(env = process.env) {
   const ham = String(env.NGINX_LOADTEST_YUK_HOSTLARI ?? '').trim();
-  if (!ham) return [...VARSAYILAN_YUK_HOSTLARI];
+  if (!ham) return varsayilanYukHostlari();
   return [
     ...new Set(
       ham
@@ -1802,7 +1804,7 @@ function hucreIpleri(v) {
 }
 
 // dbo.Inventory host hucresi -> SQL'de kisa ad (ilk '.' oncesi, buyuk harf). FQDN ile kayitli satir
-// (gbx01.bmw.local) kisa adla (GBX01) ayni makinedir: ortam okumasi satirlarin HEPSINI gormeli. JS tarafi sahipAdi.
+// (orx01.bmw.local) kisa adla (ORX01) ayni makinedir: ortam okumasi satirlarin HEPSINI gormeli. JS tarafi sahipAdi.
 const INV_KISA_AD = "UPPER(LEFT(LTRIM(RTRIM(host)), CHARINDEX('.', LTRIM(RTRIM(host)) + '.') - 1))";
 
 /** Liste -> en cok `n` elemanli parcalar (inListesi 500 sinirini sessizce kesmesin). */
@@ -2026,7 +2028,7 @@ async function kaynaklariOku({
   }
 
   // hostlar verilmezse (/hedefler) aday = nginx envanterindeki her host + son iki taramada gorunen her host; tarama ve
-  // limit okumasi bunlardan hostOrtami'ndan GECENLERE yapilir (TEK HEDEF MODELI: ad kurali ARANMAZ; GBJWLT01 gibi
+  // limit okumasi bunlardan hostOrtami'ndan GECENLERE yapilir (TEK HEDEF MODELI: ad kurali ARANMAZ; ORJWLT01 gibi
   // kalip disi ama taranmis hedefin vhost / limit / listen verisi seciciye de gelir, kosuPlani ile ayni veri).
   let adayHostlar = null;
   if (!hostlar) {
@@ -2051,7 +2053,7 @@ async function kaynaklariOku({
       ...ipSahipleri.keys(),
     ]),
   ];
-  // Host basligi sahipleri (2026-11-16, GBJWLT01): server_name'i vhost'la eslesen hostlarin dbo.Inventory satirlari da okunur;
+  // Host basligi sahipleri (2026-11-16, ORJWLT01): server_name'i vhost'la eslesen hostlarin dbo.Inventory satirlari da okunur;
   // hostBasligiDegerlendir ad kalibi tutmayan sahibin ortamini hostOrtami ile (envanterden) bulur.
   const vhostSahipleri = Array.isArray(taramaAdlari)
     ? taramaAdlari
@@ -2283,7 +2285,7 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
   const adaylar = new Map();
   const nginxKolonu = urunKolonlari.some((u) => u.urun === 'NGINX');
   for (const x of satirlar) {
-    // FQDN satiri (gbx01.bmw.local) kisa adin adayidir (atilmaz; IP yolu ve ortam kurali da kisa adla calisir).
+    // FQDN satiri (orx01.bmw.local) kisa adin adayidir (atilmaz; IP yolu ve ortam kurali da kisa adla calisir).
     const h = sahipAdi(x?.host);
     if (!h) continue;
     if (!adaylar.has(h)) adaylar.set(h, { nginxEnvanter: nginxKolonu ? false : null, urunler: [] });
@@ -2509,7 +2511,7 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
     birlesim.add(h);
     if (r.guncel !== false) guncel.add(h);
   }
-  // Ad kalibi DEV/TEST/QA soyleyen host eski kuralla (ad + uretim isareti). Ad kalibi tutmayan host (GBJWLT01 gibi;
+  // Ad kalibi DEV/TEST/QA soyleyen host eski kuralla (ad + uretim isareti). Ad kalibi tutmayan host (ORJWLT01 gibi;
   // envOfHost BILINMIYOR) artik dogrudan "ortami bilinmeyen" SAYILMAZ: hedef kapisiyla ayni kural (hostOrtami,
   // dbo.Inventory'nin TUM satirlari DEV/TEST/QA ve uretim isareti yok). Envanterde yoksa yine engellenir (2026-11-16).
   const uretimMi = (h) => {

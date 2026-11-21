@@ -24,22 +24,22 @@ const row = (host, config_file, api_location, ip = null, srv = null) => ({
 
 test('YALNIZCA test ortamı — diğer ortamlar listeye girmez', () => {
   const { rows, hosts } = groupTestApis([
-    row('GBNGWT03', 'testapi.conf', '/t/v1'),
-    row('GBNGWD01', 'devapi.conf', '/d/v1'), // DEV
-    row('GBNGWP01', 'prodapi.conf', '/p/v1'), // PROD
-    row('GBNGWQ01', 'qaapi.conf', '/q/v1'), // QA
+    row('ORNGWT03', 'testapi.conf', '/t/v1'),
+    row('ORNGWD01', 'devapi.conf', '/d/v1'), // DEV
+    row('ORNGWP01', 'prodapi.conf', '/p/v1'), // PROD
+    row('ORNGWQ01', 'qaapi.conf', '/q/v1'), // QA
   ]);
   assert.deepEqual(
     rows.map((r) => r.configFile),
     ['testapi.conf'],
   );
-  assert.deepEqual(hosts, ['GBNGWT03']);
+  assert.deepEqual(hosts, ['ORNGWT03']);
 });
 
 test('tanınmayan sunucu adı listeye GİRMEZ (sessizce test sayılmaz)', () => {
   const { rows } = groupTestApis([
     row('kimbilir', 'x.conf', '/x'),
-    row('GBNGWT04', 'y.conf', '/y'),
+    row('ORNGWT04', 'y.conf', '/y'),
   ]);
   assert.deepEqual(
     rows.map((r) => r.configFile),
@@ -48,19 +48,19 @@ test('tanınmayan sunucu adı listeye GİRMEZ (sessizce test sayılmaz)', () => 
 });
 
 test('api adı dosya adından .conf çıkarılarak türer (playbook bunu bekler)', () => {
-  const { rows } = groupTestApis([row('GBNGWT03', 'musteri-api.conf', '/m/v1')]);
+  const { rows } = groupTestApis([row('ORNGWT03', 'musteri-api.conf', '/m/v1')]);
   assert.equal(rows[0].api, 'musteri-api');
   assert.equal(rows[0].configFile, 'musteri-api.conf');
 });
 
 test('aynı dosya birden çok sunucuda: hostlar toplanır, yollar TEKİLLEŞİR', () => {
   const { rows } = groupTestApis([
-    row('GBNGWT04', 'x.conf', '/a'),
-    row('GBNGWT03', 'x.conf', '/a'), // ayni yol, baska sunucu
-    row('GBNGWT03', 'x.conf', '/b'),
+    row('ORNGWT04', 'x.conf', '/a'),
+    row('ORNGWT03', 'x.conf', '/a'), // ayni yol, baska sunucu
+    row('ORNGWT03', 'x.conf', '/b'),
   ]);
   assert.equal(rows.length, 1);
-  assert.deepEqual(rows[0].hosts, ['GBNGWT03', 'GBNGWT04'], 'sirali ve tekil');
+  assert.deepEqual(rows[0].hosts, ['ORNGWT03', 'ORNGWT04'], 'sirali ve tekil');
   assert.deepEqual(
     rows[0].locations.map((l) => l.path),
     ['/a', '/b'],
@@ -70,8 +70,8 @@ test('aynı dosya birden çok sunucuda: hostlar toplanır, yollar TEKİLLEŞİR'
 
 test('rate limitler yolla birlikte taşınır', () => {
   const { rows } = groupTestApis([
-    row('GBNGWT03', 'x.conf', '/a', '50r/s', '300r/s'),
-    row('GBNGWT03', 'x.conf', '/b'),
+    row('ORNGWT03', 'x.conf', '/a', '50r/s', '300r/s'),
+    row('ORNGWT03', 'x.conf', '/b'),
   ]);
   const a = rows[0].locations.find((l) => l.path === '/a');
   const b = rows[0].locations.find((l) => l.path === '/b');
@@ -82,8 +82,8 @@ test('rate limitler yolla birlikte taşınır', () => {
 
 test('dosya adı boş satırlar atlanır, çökme olmaz', () => {
   const { rows } = groupTestApis([
-    row('GBNGWT03', '', '/bos'),
-    row('GBNGWT03', 'gecerli.conf', '/g'),
+    row('ORNGWT03', '', '/bos'),
+    row('ORNGWT03', 'gecerli.conf', '/g'),
   ]);
   assert.deepEqual(
     rows.map((r) => r.configFile),
@@ -98,8 +98,8 @@ test('boş girdi çökmez', () => {
 
 test('dosyalar ada göre sıralı döner (ekranda kararlı sıra)', () => {
   const { rows } = groupTestApis([
-    row('GBNGWT03', 'zeta.conf', '/z'),
-    row('GBNGWT03', 'alfa.conf', '/a'),
+    row('ORNGWT03', 'zeta.conf', '/z'),
+    row('ORNGWT03', 'alfa.conf', '/a'),
   ]);
   assert.deepEqual(
     rows.map((r) => r.configFile),

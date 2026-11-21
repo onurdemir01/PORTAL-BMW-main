@@ -10,7 +10,7 @@ const { extractOpsxDumpResult, extractOpsxJvmResult } = require('../index.cjs');
 const SAMPLE = {
   overall_status: 'ok',
   results: [
-    { host: 'GBJBOQ01', ok: true, staged_path: '/x/y.hprof', filename: 'y.hprof', size_bytes: 123 },
+    { host: 'ORJBOQ01', ok: true, staged_path: '/x/y.hprof', filename: 'y.hprof', size_bytes: 123 },
   ],
 };
 
@@ -43,7 +43,7 @@ test('opsx_dump_result nesne değilse (ör. string/number) yok sayılır', () =>
 // extractStatsKey() toleransini kullanir (bkz. yukarisi) — tek fark anahtar adi.
 const JVM_SAMPLE = {
   overall_status: 'ok',
-  results: [{ host: 'GBJBOQ01', pid: '1234', cmd: 'java -jar app.jar' }],
+  results: [{ host: 'ORJBOQ01', pid: '1234', cmd: 'java -jar app.jar' }],
 };
 
 test('artifacts.opsx_jvm_result (top-level) doğrudan okunur', () => {

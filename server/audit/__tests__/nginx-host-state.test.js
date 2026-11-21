@@ -58,11 +58,11 @@ test('HS3 eski sema: run_state kolonu yoksa is DUSMEZ', async () => {
     denenen += 1;
     // Ilk deneme yeni kolonlarla; eski semada SQL hatasi verir.
     if (text.includes('run_state')) throw new Error("Invalid column name 'run_state'.");
-    return { recordset: [{ host: 'gbngxp40', status: 'ok', status_msg: null }] };
+    return { recordset: [{ host: 'orngxp40', status: 'ok', status_msg: null }] };
   };
   const m = await hs.loadHostStates({ query, sql, scanDate: '2026-09-26' });
   assert.equal(denenen, 2, 'eski semaya geri donulmemis');
-  const h = m.get('GBNGXP40');
+  const h = m.get('ORNGXP40');
   assert.ok(h, 'host adi buyuk harfe normalize edilmeli');
   // Kolon yokken "calisiyor" da "calismiyor" da DEMEYIZ.
   assert.equal(h.durum, 'bilinmiyor');

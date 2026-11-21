@@ -31,7 +31,7 @@ const hucre = (state: 'active' | 'idle' | 'unknown', hosts = 1): NginxSpaEnvCell
     present: true,
     status: 'OK',
     locationPath: '/x/',
-    hosts: ['GBNGXT33'],
+    hosts: ['ORNGXT33'],
     dirs: [],
     traffic: {
       state,

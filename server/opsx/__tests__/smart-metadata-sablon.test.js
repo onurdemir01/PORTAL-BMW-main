@@ -53,18 +53,18 @@ async function kapiyiKos(metadataFields) {
         serverId: 1,
         templateId: 9,
         extraVars: {
-          application: 'GBCCSECURETRACKER',
+          application: 'ORCCSECURETRACKER',
           operation: 'restart',
           jboss_version: 'jboss8',
         },
-        limitValue: 'GBJBOP18',
+        limitValue: 'ORJBOP18',
         etiketler: [
           { alan: 'ortam', deger: ['Production'] },
-          { alan: 'sunucu', deger: ['GBJBOP18'] },
+          { alan: 'sunucu', deger: ['ORJBOP18'] },
         ],
         req: { session: { user: { username: 'onur', mail: 'o@x' } } },
         islemAdi: 'Legacy restart',
-        ozet: { uygulama: 'GBCCSECURETRACKER', sunucular: 'GBJBOP18', islem: 'restart' },
+        ozet: { uygulama: 'ORCCSECURETRACKER', sunucular: 'ORJBOP18', islem: 'restart' },
       })
       .catch(() => {});
   } finally {
@@ -80,7 +80,7 @@ const CTX = {
   email: 'o@x',
   templateName: 'OpsX: Legacy restart',
   templateId: 9,
-  extraVars: { application: 'GBCCSECURETRACKER', operation: 'restart', jboss_version: 'jboss8' },
+  extraVars: { application: 'ORCCSECURETRACKER', operation: 'restart', jboss_version: 'jboss8' },
 };
 
 test('SM1 sablon VARSA kullanilir: Smart alan adlari + {{extraVars.*}} + {{opsx.*}}', async () => {
@@ -92,9 +92,9 @@ test('SM1 sablon VARSA kullanilir: Smart alan adlari + {{extraVars.*}} + {{opsx.
   assert.deepEqual(
     md,
     {
-      ShortDefinition: 'OpsX JBoss restart - GBCCSECURETRACKER',
-      JRDESTAPPLICATION_1: 'GBCCSECURETRACKER',
-      SERVERSET_TechValue: 'GBJBOP18',
+      ShortDefinition: 'OpsX JBoss restart - ORCCSECURETRACKER',
+      JRDESTAPPLICATION_1: 'ORCCSECURETRACKER',
+      SERVERSET_TechValue: 'ORJBOP18',
     },
     'OpsX sablonu yok sayip sabit nesne gonderiyor',
   );
@@ -106,7 +106,7 @@ test('SM2 sablon BOSSA eski davranis (OpsX ozeti) - geri uyumluluk', async () =>
   // Legacy'de ozet.islem (restart) islemAdi'nin USTUNE yazilir - eski siralama korunur.
   assert.equal(md.islem, 'restart');
   assert.equal(md.platform, 'legacy');
-  assert.equal(md.uygulama, 'GBCCSECURETRACKER');
+  assert.equal(md.uygulama, 'ORCCSECURETRACKER');
   assert.equal(md.talepEden, 'onur');
 });
 

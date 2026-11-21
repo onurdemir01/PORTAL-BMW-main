@@ -35,8 +35,8 @@ doğrular).
 ### 2.1 Veritabanı
 
 ```bash
-# GBLABT02 üzerinde, was kullanıcısıyla
-sqlcmd -S TBMWANSALS.fw.garanti.com.tr,1453 -d TBMWANS -U TBMWANS_usr -i crypto_hub_schema.sql
+# ORLABT02 üzerinde, was kullanıcısıyla
+sqlcmd -S TBMWANSALS.fw.sirket.invalid,1453 -d TBMWANS -U TBMWANS_usr -i crypto_hub_schema.sql
 ```
 
 `files/crypto_hub_schema.sql` idempotenttir (`IF OBJECT_ID(...) IS NULL`); tekrar koşmak
@@ -64,7 +64,7 @@ Girilmemişse Portal 501 döner ve ekranda "Template ID girilmeli" yazar — ses
 
 ### 2.3 Sürüm listesi için bastion hazırlığı
 
-* **Wyden**: `gbaocp01` üzerinde `was` kullanıcısında `wyden` helm deposu ekli olmalı
+* **Wyden**: `oraocp01` üzerinde `was` kullanıcısında `wyden` helm deposu ekli olmalı
   (`helm repo list | grep wyden` → `https://repo.wyden.io/nexus/repository/wyden/`).
 * **Metaco**: chart deposu OCI'dir — güncel yol `metaco.azurecr.io/helm-next/harmonize`,
   yedek yol `helm-flat` (runbook'ta geçen eski yol). Tarama önce günceli dener, cevap
@@ -78,8 +78,8 @@ değişkendir; katalog yalnızca değişkenin **adını** taşır (`registry_cre
 
 | Uygulama | Kullanıcı | Vault değişkeni |
 |---|---|---|
-| Metaco | `client-garantibbva` | `metaco_registry_pwd` |
-| Wyden | `garantibbva` | `wyden_registry_pwd` |
+| Metaco | `client-ornekbanka` | `metaco_registry_pwd` |
+| Wyden | `ornekbanka` | `wyden_registry_pwd` |
 
 ```bash
 ansible-vault encrypt_string --name metaco_registry_pwd
@@ -225,7 +225,7 @@ Bu ayrım her katmanda korunur:
 
 ## 8. Yetkiler
 
-İşler **servis hesabıyla** koşar (varsayılan `uxmid`, kiracının `credential_key`'inden
+İşler **servis hesabıyla** koşar (varsayılan `svcac`, kiracının `credential_key`'inden
 parola). "Kim yaptı" bilgisi Portal'ın `ansible_job_history` kaydında durur.
 
 Servis hesabının ilgili namespace'te en az şu yetkileri olmalı:
@@ -237,7 +237,7 @@ Servis hesabının ilgili namespace'te en az şu yetkileri olmalı:
 | Pod silme | `delete` → `pods` |
 | Rollout / replika | `patch,update` → `deployments`, `statefulsets` (+ `statefulsets/scale`) |
 
-> 2026-09-26'da GAR test ortamında `uxmid` için `statefulsets` **list** yetkisi çıkmadı;
+> 2026-09-26'da GAR test ortamında `svcac` için `statefulsets` **list** yetkisi çıkmadı;
 > ekran hatayı gizlemeden gösteriyor ama bileşen listesi o türde eksik kalıyor.
 
 ---

@@ -225,7 +225,7 @@ test('S11: adres formati zorunlu, adres sayisi sinirli', () => {
 });
 
 test('S11: gecerli CC normalize edilir, bos deger bos kalir', () => {
-  assert.equal(launch.sanitizeMailCc(' a@x.com , b@y.com.tr '), 'a@x.com,b@y.com.tr');
+  assert.equal(launch.sanitizeMailCc(' a@x.com , b@y.invalid '), 'a@x.com,b@y.invalid');
   assert.equal(launch.sanitizeMailCc(''), '');
   assert.equal(launch.sanitizeMailCc(undefined), '');
 });

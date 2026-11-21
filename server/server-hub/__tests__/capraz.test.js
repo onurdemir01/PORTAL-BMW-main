@@ -107,13 +107,13 @@ const KAPALI = { running: false };
 const OCP = (rows) => ({ okunamadi: false, indeks: ocpIndeksi(rows) });
 const KUL = (rows) => ({ okunamadi: false, indeks: olcumIndeksi(rows) });
 const RET = (hedefler) => ({ okunamadi: false, hedefler });
-const ocpSatir = (application, namespace, cluster = 'gbocpprod1') => ({
+const ocpSatir = (application, namespace, cluster = 'orocpprod1') => ({
   cluster,
   namespace,
   application,
 });
 const kulSatir = (app, namespace, req, ek = {}) => ({
-  cluster: 'gbocpprod1',
+  cluster: 'orocpprod1',
   namespace,
   app,
   scan_date: '2026-11-05',
@@ -285,7 +285,7 @@ test('C3 kalinti: prod calismiyor ama non-prod kopya calisiyor', () => {
     hs,
     'LEGACY-T',
   ).kalinti;
-  assert.deepEqual(ko.ocpProd, [{ namespace: 'legacy-prod', cluster: 'gbocpprod1' }]);
+  assert.deepEqual(ko.ocpProd, [{ namespace: 'legacy-prod', cluster: 'orocpprod1' }]);
   assert.equal(
     jv(ac(hs), 'T1', hs, 'LEGACY-T').kalinti.ocpProd,
     null,
@@ -296,10 +296,10 @@ test('C3 kalinti: prod calismiyor ama non-prod kopya calisiyor', () => {
 test('C4 ocp: ayni ortam grubu, birebir normalize ad, Dynatrace ve aday kosullari', () => {
   const ocp = OCP([
     ocpSatir('pay', 'pay-prod'),
-    ocpSatir('pay', 'pay-prod', 'gbocpprod2'),
-    ocpSatir('pay', 'pay-test', 'gbocptest1'),
-    ocpSatir('Odeme_App', 'odeme-dev', 'gbocptest1'),
-    ocpSatir('pay-app', 'payapp-qa', 'gbocpqa1'),
+    ocpSatir('pay', 'pay-prod', 'orocpprod2'),
+    ocpSatir('pay', 'pay-test', 'orocptest1'),
+    ocpSatir('Odeme_App', 'odeme-dev', 'orocptest1'),
+    ocpSatir('pay-app', 'payapp-qa', 'orocpqa1'),
     ocpSatir('falcon', 'falcon-operator'),
   ]);
   const hs = [
@@ -310,15 +310,15 @@ test('C4 ocp: ayni ortam grubu, birebir normalize ad, Dynatrace ve aday kosullar
   ];
   const kullanim = KUL([
     kulSatir('pay', 'pay-prod', 120),
-    kulSatir('pay', 'pay-prod', 30, { cluster: 'gbocpprod2' }),
+    kulSatir('pay', 'pay-prod', 30, { cluster: 'orocpprod2' }),
   ]);
   const r = ac(hs, { capraz: { ocp, kullanim } });
   const p = jv(r, 'P1', hs, 'pay').ocp;
   assert.deepEqual(
     p.eslesme.map((x) => [x.namespace, x.cluster]),
     [
-      ['pay-prod', 'gbocpprod1'],
-      ['pay-prod', 'gbocpprod2'],
+      ['pay-prod', 'orocpprod1'],
+      ['pay-prod', 'orocpprod2'],
     ],
   );
   assert.deepEqual(
@@ -726,7 +726,7 @@ test('C9 hiz: 2000 sunucu / 24 bin JVM tek gecis indeksiyle 1,5 sn altinda', () 
     const ek = env === 'PROD' ? '' : `-${env[0]}`;
     hostlar.push(
       H(
-        `GBXXAP${String(i).padStart(4, '0')}`,
+        `ORXXAP${String(i).padStart(4, '0')}`,
         env,
         Array.from({ length: 12 }, (_, k) =>
           J(`app${(i * 7 + k) % 900}${ek}`, {
@@ -744,13 +744,13 @@ test('C9 hiz: 2000 sunucu / 24 bin JVM tek gecis indeksiyle 1,5 sn altinda', () 
     for (const e of ['prod', 'test', 'qa']) {
       ocpRows.push(
         ocpSatir(`app${a}`, `ns${a}-${e}`),
-        ocpSatir(`app${a}`, `ns${a}-${e}`, 'gbocpprod2'),
+        ocpSatir(`app${a}`, `ns${a}-${e}`, 'orocpprod2'),
       );
       kulRows.push(kulSatir(`app${a}`, `ns${a}-${e}`, a % 3));
     }
   const hedefler = Array.from({ length: 500 }, (_, i) =>
     hedef(
-      `GBXXAP${String(i * 4).padStart(4, '0')}`,
+      `ORXXAP${String(i * 4).padStart(4, '0')}`,
       `app${(i * 28) % 900}`,
       i % 2 ? 'stopped' : 'planned',
       { hedef: i },

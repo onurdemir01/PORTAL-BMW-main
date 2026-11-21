@@ -57,11 +57,11 @@ async function kos(metadataFields, varsayilan) {
         serverId: 1,
         templateId: 9,
         extraVars: { application: 'APP', operation: 'restart' },
-        limitValue: 'GBJBOP18',
+        limitValue: 'ORJBOP18',
         etiketler: [{ alan: 'ortam', deger: ['Production'] }],
         req: { session: { user: { username: 'onur' } } },
         islemAdi: 'Legacy restart',
-        ozet: { uygulama: 'APP', sunucular: 'GBJBOP18', islem: 'restart' },
+        ozet: { uygulama: 'APP', sunucular: 'ORJBOP18', islem: 'restart' },
       })
       .catch(() => {});
   } finally {

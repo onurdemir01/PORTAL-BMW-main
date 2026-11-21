@@ -19,7 +19,7 @@ const {
   selectionTree,
   isOpen,
   PRODUCTION_ENABLED,
-} = require('../../../shared/cryptoHubTenants.cjs');
+} = require('../kiracilar.cjs');
 const { cmpVersion } = require('../index.cjs');
 
 test('CH1: katalog kendi icinde tutarli', () => {
@@ -68,7 +68,7 @@ test('CH1: katalog kendi icinde tutarli', () => {
   assert.equal(new Set(pairs).size, pairs.length, 'ayni cluster+namespace iki kiracida tanimli');
 
   assert.equal(tenantOf('yok-boyle-bir-sey'), null);
-  assert.equal(tenantOf('metaco_das_prod').cluster, 'daocpprod1');
+  assert.equal(tenantOf('metaco_das_prod').cluster, 'odocpprod1');
 });
 
 test('CH2: Portal katalogu Ansible katalogu ile ayni', () => {

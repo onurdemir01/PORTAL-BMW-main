@@ -581,7 +581,7 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
 
     // isErisimKarari node dali yalniz node islerinde
     const RES = h.RES;
-    const { tenantOf, isOpen } = require('../../../shared/cryptoHubTenants.cjs');
+    const { tenantOf, isOpen } = require('../kiracilar.cjs');
     const N = require('../../../shared/cryptoHubNodes.cjs');
     const karar = (action, o = {}) =>
       RES.isErisimKarari({

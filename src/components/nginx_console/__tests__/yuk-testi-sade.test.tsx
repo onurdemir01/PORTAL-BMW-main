@@ -1,6 +1,6 @@
 // src/components/nginx_console/__tests__/yuk-testi-sade.test.tsx — Yük Testi sadeleştirme turu (2026-11-02).
 //
-// Kullanici geri bildirimi (R2, GBNGXT33, AWX 3474239): "girdiler ve ciktilar kafami karistirdi; cok parametre var, her
+// Kullanici geri bildirimi (R2, ORNGXT33, AWX 3474239): "girdiler ve ciktilar kafami karistirdi; cok parametre var, her
 // birinin etkisi ne; ciktida kac istek gitti, medyan, p95, p99 nasil gorulur". R2 gecersizdi: kosu sirasinda nginx
 // konfigurasyonu degisti ve iki kez reload oldu; ekran o adimlarda NEGATIF CPU-ms ve kapasite gosterdi.
 // SD1 Hazir ayarlar her sinir kumesinde (genel, serbest, daraltilmis hedef, dar sure) ve iki motorda sunucu kurallarindan
@@ -274,32 +274,32 @@ describe('Yük Testi sade — neden cümleleri (SD3, SD4)', () => {
       ['pencerede_ornek_yok', /^Ölçüm penceresinde CPU örneği yok/],
       ['arka_plan_yok(0_kabul)', /^Arka plan CPU’su ölçülemedi \(sıfır kabul edildi\)/],
       [
-        'arka_plan_yok:R2_gbngxt33(kosu_disi_bosluk_bulunamadi)',
-        /^Kayıt R2_gbngxt33: yük olmayan boş bir aralık bulunamadı/,
+        'arka_plan_yok:R2_orngxt33(kosu_disi_bosluk_bulunamadi)',
+        /^Kayıt R2_orngxt33: yük olmayan boş bir aralık bulunamadı/,
       ],
       ['arka_plan_az(20s)', /^Arka plan CPU’su yalnız 20 sn ölçüldü/],
       ['diger_trafik_%7', /test isteklerinin %7’i kadar/],
       ['perf_ek_yuku(kararda_kullanilmaz)', /^perf ölçümü açık/],
       [
-        'kayit:R2_gbngxt33:konf_degisti(kayit_sirasinda):0dc6843c88ef3f73->648462d7a1358dd1',
+        'kayit:R2_orngxt33:konf_degisti(kayit_sirasinda):0dc6843c88ef3f73->648462d7a1358dd1',
         /^Kayıt sırasında hedefin nginx konfigürasyonu değişti \(özet 0dc6843c → 648462d7\)/,
       ],
-      ['kayit:R2_gbngxt33:disk_%70:/web_log(>=65)', /^Hedefte \/web_log %70 dolu/],
+      ['kayit:R2_orngxt33:disk_%70:/web_log(>=65)', /^Hedefte \/web_log %70 dolu/],
       [
-        'kayit:R2_gbngxt33:konf_okunamadi:/etc/nginx(NGINX_KONF_DIZIN verin)',
+        'kayit:R2_orngxt33:konf_okunamadi:/etc/nginx(NGINX_KONF_DIZIN verin)',
         /^CPU kaydedicisi nginx konfigürasyonunu okuyamadı/,
       ],
       [
-        'kayit:R2_gbngxt33:okunabilir_log_yok:/web_log/*.log',
+        'kayit:R2_orngxt33:okunabilir_log_yok:/web_log/*.log',
         /^CPU kaydedicisi okunabilir bir nginx logu bulamadı/,
       ],
       [
-        'kayit:R2_gbngxt33:test_satiri_yok(yanlis_sunucu?_LOGDIR?_log_format_user-agent_iceriyor_mu?)',
+        'kayit:R2_orngxt33:test_satiri_yok(yanlis_sunucu?_LOGDIR?_log_format_user-agent_iceriyor_mu?)',
         /^Sunucu logunda hiç test isteği görülmedi/,
       ],
       [
-        'kesit_baska_adimin:R1_gbngxt33',
-        /^Sonuç dizininde başka bir koşunun kaydı var \(R1_gbngxt33\)/,
+        'kesit_baska_adimin:R1_orngxt33',
+        /^Sonuç dizininde başka bir koşunun kaydı var \(R1_orngxt33\)/,
       ],
       [
         'baska_adim_atlandi:R1_K_yeni_br_100_r1',
@@ -494,7 +494,7 @@ describe('Yük Testi sade — normalleştirme ve özet (SD5–SD7)', () => {
             t_son: 40,
             tur: 'a',
             faz: 'olcum',
-            kesit: 'R2_gbngxt33',
+            kesit: 'R2_orngxt33',
             worker_once: 8,
             worker_sonra: 8,
             kapanan_en_cok: 8,
@@ -523,7 +523,7 @@ describe('Yük Testi sade — normalleştirme ve özet (SD5–SD7)', () => {
           tSon: 40,
           tur: 'a',
           faz: 'olcum',
-          kesit: 'R2_gbngxt33',
+          kesit: 'R2_orngxt33',
           workerOnce: 8,
           workerSonra: 8,
           kapananEnCok: 8,
@@ -535,7 +535,7 @@ describe('Yük Testi sade — normalleştirme ve özet (SD5–SD7)', () => {
 });
 
 // ── Ekran testleri ──────────────────────────────────────────────────────────────────
-/** R2 (GBNGXT33, AWX 3474239) is ciktisindaki degerler; 100_r2 ve 250_r2 reload + konf_degisti ile gecersiz, eski
+/** R2 (ORNGXT33, AWX 3474239) is ciktisindaki degerler; 100_r2 ve 250_r2 reload + konf_degisti ile gecersiz, eski
  *  analizin yazdigi negatif CPU-ms / kapasite ile. */
 const R2_ADIMLAR = [
   {
@@ -667,16 +667,16 @@ const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       env: 'TEST',
-      ipler: ['192.168.133.27'],
-      vhostlar: ['glomo-test.garantibbva.com.tr'],
+      ipler: ['192.168.251.27'],
+      vhostlar: ['glomo-test.ornekbanka.invalid'],
       vhostVerisi: true,
       uygun: true,
       neden: null,
     },
   ],
-  yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: SINIR,
   varsayilan: VARSAYILAN,
   serbest: { acik: true, aglar: [] },
@@ -694,7 +694,7 @@ const SENARYO = {
   id: 3,
   ad: 'GLOMO',
   aciklama: null,
-  vhost: 'glomo-test.garantibbva.com.tr',
+  vhost: 'glomo-test.ornekbanka.invalid',
   senaryoTur: 'K',
   yolSayisi: 264,
   sha256: 'b'.repeat(64),
@@ -708,10 +708,10 @@ function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
     islem: 'kosu',
     etiket: null,
     adim: 'R2',
-    hedefHost: 'GBNGXT33',
-    hedefIp: '192.168.133.27',
-    vhost: 'glomo-test.garantibbva.com.tr',
-    yukHost: 'GBNGXT34',
+    hedefHost: 'ORNGXT33',
+    hedefIp: '192.168.251.27',
+    vhost: 'glomo-test.ornekbanka.invalid',
+    yukHost: 'ORNGXT34',
     senaryoId: 3,
     senaryoAd: 'GLOMO',
     durum: 'DONE',
@@ -752,7 +752,7 @@ function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
       nproc: 8,
       cpuTlsliPay: null,
       uyarilar: [
-        'kayit:R2_gbngxt33:konf_degisti(kayit_sirasinda):0dc6843c88ef3f73->648462d7a1358dd1',
+        'kayit:R2_orngxt33:konf_degisti(kayit_sirasinda):0dc6843c88ef3f73->648462d7a1358dd1',
       ],
       okumaHatasi: null,
     },
@@ -789,9 +789,9 @@ beforeEach(() => {
     ok: true,
     tur: 'sunucu',
     ip,
-    host: 'GBNGXT33',
+    host: 'ORNGXT33',
     env: 'TEST',
-    vhostlar: ['glomo-test.garantibbva.com.tr'],
+    vhostlar: ['glomo-test.ornekbanka.invalid'],
     vhostVerisi: true,
     hizSiniri: null,
     vuSiniri: null,
@@ -891,7 +891,7 @@ describe('Yük Testi sade — yeni koşu formu (SD8)', () => {
     );
     // Govde kanonik (protokol HER ZAMAN dolu, varsayilan h1 - h2_sozlesme.md 5.3): hedef secilip on kontrol istenir.
     fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
-      target: { value: 'GBNGXT33' },
+      target: { value: 'ORNGXT33' },
     });
     const ok = screen.getByRole('button', { name: /Ön kontrolü başlat/ });
     await waitFor(() => expect(ok).toBeEnabled(), { timeout: 3000 });
@@ -899,10 +899,10 @@ describe('Yük Testi sade — yeni koşu formu (SD8)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
       senaryoId: 3,
-      hedefHost: 'GBNGXT33',
-      hedefIp: '192.168.133.27',
-      vhost: 'glomo-test.garantibbva.com.tr',
-      yukHost: 'GBNGXT34',
+      hedefHost: 'ORNGXT33',
+      hedefIp: '192.168.251.27',
+      vhost: 'glomo-test.ornekbanka.invalid',
+      yukHost: 'ORNGXT34',
       sni: false,
       parametreler: {
         motor: 'k6',
@@ -978,7 +978,7 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
           t_son: T_RELOAD + 30,
           tur: 'R2_K_ka_identity_250_r2',
           faz: 'olcum',
-          kesit: 'R2_gbngxt33',
+          kesit: 'R2_orngxt33',
           worker_once: 8,
           worker_sonra: 8,
           kapanan_en_cok: 8,
@@ -991,7 +991,7 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
           t_son: T_ISINMA + 5,
           tur: 'R2_K_ka_identity_400_r1',
           faz: 'isinma',
-          kesit: 'R2_gbngxt33',
+          kesit: 'R2_orngxt33',
           worker_once: 8,
           worker_sonra: 8,
           kapanan_en_cok: 8,
@@ -1191,7 +1191,7 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
         t_son: T_RELOAD + 10,
         tur,
         faz,
-        kesit: 'R2_gbngxt33',
+        kesit: 'R2_orngxt33',
         worker_once: 8,
         worker_sonra: 8,
         kapanan_en_cok: 8,

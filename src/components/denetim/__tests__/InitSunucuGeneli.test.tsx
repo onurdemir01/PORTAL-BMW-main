@@ -6,7 +6,7 @@
 //   - "Sunucu geneli: appdomain.service" bolumu kok seciminin USTUNDE gorunur;
 //   - kok sekmesi degisince bolum AYNI kalir (sayilar, referans), kok tablosunda appdomain yok;
 //   - sunucu basina tek satir; iki kok farkliysa satirda bilgi notu; "Sadece farki olanlar";
-//   - GBEVM / GBPRV ayri secilir.
+//   - …EVM / …PRV (onek bagimsiz, K17) ayri secilir.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -77,17 +77,17 @@ const SG: InitSunucuGeneli = {
   files: [
     {
       ...blok([
-        satir('GBAPP01', 'ayni'),
-        satir('GBAPP02', 'ayni'),
-        satir('GBAPP03', 'farkli', {
+        satir('ORAPP01', 'ayni'),
+        satir('ORAPP02', 'ayni'),
+        satir('ORAPP03', 'farkli', {
           kokFarki: 'icerik',
           kaynak: 'vhosting',
           digerKaynak: 'vhosting8',
           digerHash: H('a'),
         }),
-        satir('GBAPP04', 'yok', { kokler: ['vhosting'], digerKaynak: null }),
+        satir('ORAPP04', 'yok', { kokler: ['vhosting'], digerKaynak: null }),
       ]),
-      special: blok([satir('GBEVM01', 'farkli')]),
+      special: blok([satir('OREVM01', 'farkli')]),
     },
   ],
   detailAvailable: true,
@@ -161,13 +161,13 @@ describe('Denetim > Init Scripts — sunucu geneli bölüm', () => {
     expect(screen.queryByText('start.sh')).toBeNull();
   });
 
-  it('sunucu başına tek satır, iki kök farkı notu, "Sadece farkı olanlar" ve GBEVM/GBPRV', async () => {
+  it('sunucu başına tek satır, iki kök farkı notu, "Sadece farkı olanlar" ve OREVM/ORPRV', async () => {
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=init'] });
     await screen.findByText('start.sh');
     const b = bolum();
-    expect(within(b).queryByText('GBAPP01')).toBeNull();
+    expect(within(b).queryByText('ORAPP01')).toBeNull();
     fireEvent.click(within(b).getByRole('button', { name: 'Sunucuları göster (4)' }));
-    for (const h of ['GBAPP01', 'GBAPP02', 'GBAPP03', 'GBAPP04']) {
+    for (const h of ['ORAPP01', 'ORAPP02', 'ORAPP03', 'ORAPP04']) {
       expect(within(b).getAllByText(h)).toHaveLength(1);
     }
     expect(
@@ -176,21 +176,21 @@ describe('Denetim > Init Scripts — sunucu geneli bölüm', () => {
     expect(within(b).getByText('referans: ekip sürümü (depo)')).toBeInTheDocument();
 
     fireEvent.click(within(b).getByLabelText('Sadece farkı olanlar'));
-    expect(within(b).queryByText('GBAPP01')).toBeNull();
-    expect(within(b).getByText('GBAPP03')).toBeInTheDocument();
-    expect(within(b).getByText('GBAPP04')).toBeInTheDocument();
+    expect(within(b).queryByText('ORAPP01')).toBeNull();
+    expect(within(b).getByText('ORAPP03')).toBeInTheDocument();
+    expect(within(b).getByText('ORAPP04')).toBeInTheDocument();
 
     fireEvent.change(within(b).getByLabelText('Sunucu geneli: sunucu ara'), {
       target: { value: 'app04' },
     });
-    expect(within(b).queryByText('GBAPP03')).toBeNull();
+    expect(within(b).queryByText('ORAPP03')).toBeNull();
 
-    fireEvent.click(within(b).getByRole('button', { name: 'GBEVM / GBPRV · 1' }));
+    fireEvent.click(within(b).getByRole('button', { name: '…EVM / …PRV · 1' }));
     fireEvent.change(within(b).getByLabelText('Sunucu geneli: sunucu ara'), {
       target: { value: '' },
     });
-    expect(within(b).getByText('GBEVM01')).toBeInTheDocument();
-    expect(within(b).queryByText('GBAPP04')).toBeNull();
+    expect(within(b).getByText('OREVM01')).toBeInTheDocument();
+    expect(within(b).queryByText('ORAPP04')).toBeNull();
   });
 
   it('geniş tablolar okunamadı (files boş + error): "hesaplandı" denmez, okunamadı denir', async () => {

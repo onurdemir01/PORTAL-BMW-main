@@ -1,6 +1,6 @@
 // server/nginx-migration/index.cjs - "Production Tasimalari > Tanim olustur".
 //
-// Eski GBRVP* sunucusundaki bir proxy_pass location'ini, YENI prod SPA sunucularinda
+// Eski ORRVP* sunucusundaki bir proxy_pass location'ini, YENI prod SPA sunucularinda
 // SPA tanimi olarak olusturan AWX job'ini tetikler. Arkasindaki playbook:
 //   gar_bmt_ansible_scripts/bmw_nginx/nginx_ops/nginx_prod_migration.yml
 // (nginx_ops'un `operations` rolu; non-prod SPA olusturma akisinin aynisi, hedef yeni
@@ -10,7 +10,7 @@
 // (eski sunucudaki context path), requester. Hedef sunuculari PLAYBOOK secer (GLOMO /
 // GLOMO-disi) - Portal host listesi gondermez; uc yerdeki liste birebir tutulur.
 //
-// SILME (kullanici, 2026-09-14): eski GBRVP* sunucusundaki location + (referanssiz kaldiysa)
+// SILME (kullanici, 2026-09-14): eski ORRVP* sunucusundaki location + (referanssiz kaldiysa)
 // upstream blogunu kaldirir. Yeni playbook YOK: mevcut nginx_ops (action=delete, env=prod)
 // akisi kullanilir - o akis prod'da ANINDA silmez, dogrular ve AWX'te 23:00 icin
 // zamanlar; gercek silmeyi nginx_scheduled_ops yapar (location + kullanilmayan upstream,
@@ -1018,7 +1018,7 @@ function initNginxMigration(app) {
         ok: false,
         code: 'eski_filo_kapali',
         message:
-          'GLOMO için eski filoya (GBRVPP07-10 / GBRVPAP03-06) hiçbir işte gidilmez (2026-10-20): eski sunucudan kaldırma işi başlatılmadı.',
+          'GLOMO için eski filoya (eski reverse proxy sunucuları) hiçbir işte gidilmez (2026-10-20): eski sunucudan kaldırma işi başlatılmadı.',
       });
     }
     const cfg = await readConfig();

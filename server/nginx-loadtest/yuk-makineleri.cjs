@@ -5,7 +5,7 @@
 //
 // KAYNAK SIRASI:
 //   - tabloda en az bir satir varsa liste ODUR ('portal')
-//   - tablo bossa eski davranis: NGINX_LOADTEST_YUK_HOSTLARI, o da yoksa GBNGXT34 ('ortam')
+//   - tablo bossa eski davranis: NGINX_LOADTEST_YUK_HOSTLARI, o da yoksa ORNGXT34 ('ortam')
 //   - ilk Portal degisikliginde o anki ortam listesi tabloya TASINIR (ekleme mevcut makineyi dusurmesin)
 //   - son makine cikarilamaz (tablo bosalip sessizce ortam listesine donmesin)
 //   - tablo OKUNAMAZSA kapali kalir (424): ortam listesine sessizce donmek Admin'in cikardigi makineyi geri acardi

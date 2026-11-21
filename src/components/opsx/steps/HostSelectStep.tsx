@@ -13,7 +13,7 @@
 // birini işaretleyince diğeri de işaretleniyordu ve ikisi görsel olarak aynıydı.
 // Kimlik artık `(host, majör)` çifti ve her satır JBoss rozetiyle geliyor.
 //
-// KİMLİK KURULUM DİZİNİDİR, ÜRÜN SÜRÜMÜ DEĞİL (2026-10-08, GBJBOP18): standart dışı bir
+// KİMLİK KURULUM DİZİNİDİR, ÜRÜN SÜRÜMÜ DEĞİL (2026-10-08, ORJBOP18): standart dışı bir
 // sunucuda /usr/jboss altına da JBoss 8 kurulmuş; iki satır da 8.x olduğu için (host, majör)
 // kimliği ikisini birleştiriyor, birine tıklamak ikisini seçiyordu. Satır anahtarı artık
 // (host, kurulum kolu): "7" = /usr/jboss, "8" = /usr/jboss8 (envanter app_path'inden).

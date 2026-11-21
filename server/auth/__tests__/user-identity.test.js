@@ -3,8 +3,8 @@
 // URETIM (2026-09-07): kullanici kendi actigi LogX isinde AWX extra_vars'inda
 // baska bir calisanin adresini gordu:
 //
-//   "requester_email": "onurdemir3@garantibbva.com.tr",
-//   "requester_name":  "Onur Demir"
+//   "requester_email": "denemekisi3@ornekbanka.invalid",
+//   "requester_name":  "Deneme Kisi"
 //
 // Ilk duzeltme `launchJob`e `{ username: row.username }` gecirdi ve kaynak tarayan
 // bekci (RA1) YESILE dondu — ama sorun DURUYORDU: `withRequesterVars` e-postayi
@@ -57,13 +57,13 @@ async function withStubs({ rows, ldapUser }, fn) {
 
 test("UI1 onbellekte e-posta VARSA LDAP'a HIC gidilmez (launch yolunda ag cagrisi yok)", async () => {
   await withStubs(
-    { rows: [{ display_name: 'Hakan İşçi', mail: 'hakan@ornek.com.tr' }] },
+    { rows: [{ display_name: 'Gökçe İşçen', mail: 'gokce@ornek.invalid' }] },
     async (users, calls) => {
-      const id = await users.getUserIdentity('hknisci');
+      const id = await users.getUserIdentity('gkiscen');
       assert.deepEqual(id, {
-        username: 'hknisci',
-        displayName: 'Hakan İşçi',
-        mail: 'hakan@ornek.com.tr',
+        username: 'gkiscen',
+        displayName: 'Gökçe İşçen',
+        mail: 'gokce@ornek.invalid',
       });
       assert.equal(calls(), 0, 'onbellek yeterliyken LDAP cagrildi — launch yolu yavaslar');
     },
@@ -76,12 +76,12 @@ test("UI2 onbellekte E-POSTA yoksa LDAP'a gidilir (asil duzeltilen dal)", async 
   // varsayilana dusuren davranisti.
   await withStubs(
     {
-      rows: [{ display_name: 'Hakan İşçi', mail: '' }],
-      ldapUser: { username: 'hknisci', displayName: 'Hakan İşçi', mail: 'hakan@ornek.com.tr' },
+      rows: [{ display_name: 'Gökçe İşçen', mail: '' }],
+      ldapUser: { username: 'gkiscen', displayName: 'Gökçe İşçen', mail: 'gokce@ornek.invalid' },
     },
     async (users, calls) => {
-      const id = await users.getUserIdentity('hknisci');
-      assert.equal(id.mail, 'hakan@ornek.com.tr', "e-posta LDAP'tan alinmadi");
+      const id = await users.getUserIdentity('gkiscen');
+      assert.equal(id.mail, 'gokce@ornek.invalid', "e-posta LDAP'tan alinmadi");
       assert.equal(calls(), 1, "LDAP'a gidilmedi");
     },
   );
@@ -132,17 +132,17 @@ test("UI5 SONUC: cozulen kimlik AWX extra_vars'ta GERCEK adresi uretiyor", async
   const { withRequesterVars } = runner;
   assert.ok(withRequesterVars, 'withRequesterVars test icin disa acilmamis');
 
-  const cozulen = { username: 'hknisci', displayName: 'Hakan İşçi', mail: 'hakan@ornek.com.tr' };
+  const cozulen = { username: 'gkiscen', displayName: 'Gökçe İşçen', mail: 'gokce@ornek.invalid' };
   const vars = withRequesterVars({ foo: 1 }, cozulen);
-  assert.equal(vars.requester_email, 'hakan@ornek.com.tr');
-  assert.equal(vars.requester_name, 'Hakan İşçi');
-  assert.equal(vars.requester_username, 'hknisci');
+  assert.equal(vars.requester_email, 'gokce@ornek.invalid');
+  assert.equal(vars.requester_name, 'Gökçe İşçen');
+  assert.equal(vars.requester_username, 'gkiscen');
   assert.equal(vars.requester_is_fallback, false, 'gercek kimlik varken varsayilana dusuldu');
 
   // KARSILASTIRMA: yalnizca kullanici adi gecirilirse (ilk, YARIM duzeltme)
   // e-posta VARSAYILANA duser — uretimde gorulen satir tam olarak budur.
-  const yarim = withRequesterVars({ foo: 1 }, { username: 'hknisci' });
-  assert.notEqual(yarim.requester_email, 'hakan@ornek.com.tr');
+  const yarim = withRequesterVars({ foo: 1 }, { username: 'gkiscen' });
+  assert.notEqual(yarim.requester_email, 'gokce@ornek.invalid');
   assert.equal(
     yarim.requester_is_fallback,
     true,

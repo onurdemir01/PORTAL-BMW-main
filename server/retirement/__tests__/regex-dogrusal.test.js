@@ -29,7 +29,7 @@ test('RT1 ADRES_RE: test() sonucu ayni, kotu girdide hizli', () => {
       'a@b..c',
       '.a@b.c',
       'a@b@c.d',
-      'ali.veli@sirket.com.tr',
+      'ali.veli@sirket.invalid',
       'a@b.c,d@e.f',
       'a <a@b.c>',
       '"a"@b.c',

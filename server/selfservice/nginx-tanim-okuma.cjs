@@ -9,7 +9,7 @@
 // tarihini yazar. Tarama hic yoksa "olculemedi", taramada bu ortam / servis icin satir yoksa
 // "tanim yok": ikisi ayri.
 //
-// PROD'da sunucu hangi filoda (nginx-migration MIGRATION_GROUPS) yazilir. GLOMO production'da eski
+// PROD'da sunucu hangi filoda (nginx-migration migrationGroups()) yazilir. GLOMO production'da eski
 // filoya hicbir iste gidilmez (2026-10-20): GLOMO prod okumasi yalniz YENI filo satirlarini
 // gosterir, eski filo satiri sayilir ama listelenmez.
 //
@@ -179,7 +179,7 @@ async function nginxTanimlari({ env, service, namespace, application }, deps = {
   if (!/^[A-Z0-9_-]{1,16}$/.test(E) || !/^[A-Z0-9_.-]{1,64}$/.test(S))
     return { ok: false, status: 400, message: 'Geçersiz ortam ya da servis.' };
   const { query, sql } = deps.mssql || require('../inventory/mssql.cjs');
-  const groups = deps.groups || require('../audit/nginx-migration.cjs').MIGRATION_GROUPS;
+  const groups = deps.groups || require('../audit/nginx-migration.cjs').migrationGroups();
   let okunan;
   try {
     okunan = await satirlariOku(query, sql, E, S);

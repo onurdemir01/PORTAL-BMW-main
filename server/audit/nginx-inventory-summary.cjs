@@ -69,7 +69,7 @@ function summarizeNginxInventory(recordset) {
   // ORTAM (2026-09-15 duzeltmesi): tablodaki env, nginx_metadata betiginin "*-PROD.conf
   // var mi" kuralindan geliyordu ve servis vhost'u olmayan prod sunuculari (intranet
   // SPA, yeni prod SPA, API gateway) non-production sayiyordu. Sunucu adi kalibi
-  // (nginx-hosts.cjs, GBNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
+  // (nginx-hosts.cjs, ORNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
   // degeri envRaw'da tutulur ve celisenler sayilir (envCorrected) - sessiz duzeltme yok.
   const { envOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
   const toBucket = (e) => {

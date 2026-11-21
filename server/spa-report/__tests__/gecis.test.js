@@ -3,11 +3,12 @@
 // Kullanici: Excel'deki takvim (Calisma 1-7) Portal'a; eksikler Calisma 7'ye; herkes "kullanimda mi"
 // + "katilacak kisi" girer, set tarihi / OCO / gecti / gecis tarihi yalniz Admin; tabloyu
 // dolduranin adi TUTULMAZ.
-// 2026-10-16: Set 6 bitti, talep listesi (glomo-gecis-set7-talep.json) TEK SEFERLIK gocle Set 7'ye
+// 2026-10-16: Set 6 bitti, talep listesi (kurum ayari spaRapor.glomoGecis.set7Talep) TEK SEFERLIK gocle Set 7'ye
 // tasinir, girisler korunur (GG5-GG6, GG8); herkes "Kontrol Ettim" der, kim TUTULMAZ (GG7).
 // Denetim (2026-10-16): sahte DB SIKI - bilinmeyen SQL / kosul / ifade HATA verir, goc toplu SQL'i
 // yapisiyla yorumlanir (XACT_ABORT, tablo on kontrolu BEGIN TRAN'dan ONCE, kilitli IF govdesi);
-// sema bekcisi (GG10), goc durumu + Admin'e ozel alanlar (GG11), talep dosyasi yoksa rapor ayakta (GG12).
+// sema bekcisi (GG10), goc durumu + Admin'e ozel alanlar (GG11), kurum ayarinda talep yoksa rapor ayakta (GG12), plan verisi
+// hic yoksa seed yazilmaz ve sebep yalniz Admin'e (GG13).
 'use strict';
 
 const { test } = require('node:test');
@@ -202,8 +203,10 @@ require.cache[Module._resolveFilename(DB_YOL, module)] = {
 };
 
 const gecis = require('../gecis.cjs');
-const SEED = require('../glomo-gecis-seed.json');
-const TALEP = require('../glomo-gecis-set7-talep.json');
+// Plan verisi kurum ayarinda (spaRapor.glomoGecis); testler kurgusal ornegi okur (run-tests.cjs
+// KURUM_AYAR_DOSYASI'ni ona baglar).
+const { seed: SEED, set7Talep: TALEP } = require('../../../deploy/kurum-ayari.ornek.json').spaRapor
+  .glomoGecis;
 
 // Canli rapor: Excel'deki ilk uygulama + Excel'de OLMAYAN bir Glomo uygulamasi + baska servis.
 const ilk = SEED[0];
@@ -281,13 +284,13 @@ function loglariTopla(t) {
 }
 const kullaniciAdiVar = (metin) => /(^|[^a-z_])ali([^a-z_]|$)/.test(metin);
 
-test("GG1 Excel 210 uygulama Set 1-7; Excel'de olmayan canli Glomo uygulamasi Set 7'ye eklenir, baska servis eklenmez", async () => {
+test("GG1 Excel uygulamalari Set 1-7; Excel'de olmayan canli Glomo uygulamasi Set 7'ye eklenir, baska servis eklenmez", async () => {
   const { s, base } = await sunucu();
   try {
     const { j } = await istek(base, '/gecis');
     assert.equal(j.ok, true);
     assert.equal(j.sets.length, 7);
-    assert.equal(j.apps.filter((a) => a.kaynak === 'excel').length, 210);
+    assert.equal(j.apps.filter((a) => a.kaynak === 'excel').length, SEED.length);
     const yeni = j.apps.find((a) => a.application === 'yeni-app-v0');
     assert.equal(yeni?.setNo, 7);
     assert.equal(yeni?.kaynak, 'portal');
@@ -1002,31 +1005,29 @@ test("GG11 Admin'e ozel alanlar: talepEslesmeyen ve goc hatasi User yanitinda yo
   }
 });
 
-test("GG12 talep dosyasi yoksa (commit'e girmedi) modul yine yuklenir, plan acilir, Admin goc hatasini gorur", async (t) => {
+// Kurum ayarini gecici bir dosyayla degistirip gecis.cjs'i TAZE yukler (veri acilista bir kez okunur).
+function tazeGecis(ayar) {
+  const dosya = path.join(
+    fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'glomo-')),
+    'kurum.json',
+  );
+  fs.writeFileSync(dosya, JSON.stringify(ayar));
+  const gecisYol = require.resolve('../gecis.cjs');
+  const eski = { g: require.cache[gecisYol], env: process.env.KURUM_AYAR_DOSYASI };
+  delete require.cache[gecisYol];
+  process.env.KURUM_AYAR_DOSYASI = dosya;
+  try {
+    return require('../gecis.cjs');
+  } finally {
+    process.env.KURUM_AYAR_DOSYASI = eski.env;
+    require.cache[gecisYol] = eski.g;
+  }
+}
+
+test('GG12 kurum ayarinda talep yoksa modul yine yuklenir, plan acilir, Admin goc hatasini gorur', async (t) => {
   gocOncesi();
   const hata = t.mock.method(console, 'error', () => {});
-  const gecisYol = require.resolve('../gecis.cjs');
-  const talepYol = require.resolve('../glomo-gecis-set7-talep.json');
-  const eski = { g: require.cache[gecisYol], t: require.cache[talepYol] };
-  delete require.cache[gecisYol];
-  delete require.cache[talepYol];
-  const orjLoad = Module._load;
-  Module._load = function yukle(istekAdi, ...rest) {
-    if (String(istekAdi).endsWith('glomo-gecis-set7-talep.json')) {
-      const e = new Error(`Cannot find module '${istekAdi}'`);
-      e.code = 'MODULE_NOT_FOUND';
-      throw e;
-    }
-    return orjLoad.call(this, istekAdi, ...rest);
-  };
-  let taze;
-  try {
-    taze = require('../gecis.cjs');
-  } finally {
-    Module._load = orjLoad;
-    require.cache[gecisYol] = eski.g;
-    require.cache[talepYol] = eski.t;
-  }
+  const taze = tazeGecis({ spaRapor: { glomoGecis: { seed: SEED } } });
   assert.ok(taze && taze !== gecis, 'taze modul yuklenemedi');
   rol = 'Admin';
   const { s, base } = await sunucu(taze);
@@ -1035,20 +1036,46 @@ test("GG12 talep dosyasi yoksa (commit'e girmedi) modul yine yuklenir, plan acil
     assert.equal(r.status, 200);
     assert.equal(r.j.ok, true);
     assert.equal(r.j.goc.uygulandi, false);
-    assert.match(String(r.j.goc.hata), /glomo-gecis-set7-talep\.json/);
+    assert.match(String(r.j.goc.hata), /spaRapor\.glomoGecis\.set7Talep yok/);
+    assert.equal(r.j.seed.hata, null, 'seed varken seed hatasi');
     assert.deepEqual(r.j.talepEslesmeyen, []);
     assert.equal(bulApp(r.j, A6).setNo, 6, 'talep yokken tasima yapildi');
     assert.ok(
-      hata.mock.calls.some((c) =>
-        String(c.arguments.join(' ')).includes('glomo-gecis-set7-talep.json'),
-      ),
-      'eksik talep dosyasi loglanmadi',
+      hata.mock.calls.some((c) => String(c.arguments.join(' ')).includes('set7Talep yok')),
+      'eksik talep loglanmadi',
     );
     assert.equal(
       sorgular.filter((q) => q.t.includes('spa_gecis_goc')).length,
       0,
       "talep yokken goc SQL'i kostu",
     );
+  } finally {
+    s.close();
+    rol = 'User';
+  }
+});
+
+test("GG13 kurum ayarinda plan verisi hic yoksa seed yazilmaz, plan acilir; sebep yalniz Admin'e", async (t) => {
+  gocOncesi();
+  apps.clear();
+  t.mock.method(console, 'error', () => {});
+  const taze = tazeGecis({ nginx: {} });
+  rol = 'Admin';
+  const { s, base } = await sunucu(taze);
+  try {
+    const r = await istek(base, '/gecis');
+    assert.equal(r.status, 200);
+    assert.equal(r.j.ok, true);
+    assert.match(String(r.j.seed.hata), /spaRapor\.glomoGecis\.seed yok/);
+    assert.equal(r.j.apps.filter((a) => a.kaynak === 'excel').length, 0, 'ornek veri seed edildi');
+    assert.equal(
+      sorgular.filter((q) => /INSERT INTO spa_gecis_app .*'excel'/.test(q.t)).length,
+      0,
+      'seed yokken excel satiri yazildi',
+    );
+    rol = 'User';
+    const u = await istek(base, '/gecis');
+    assert.equal(u.j.seed.hata, null, 'seed hatasi Admin disina sizdi');
   } finally {
     s.close();
     rol = 'User';

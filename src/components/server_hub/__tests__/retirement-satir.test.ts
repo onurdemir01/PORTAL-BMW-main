@@ -19,7 +19,7 @@ import { retirementAdimi } from '@/components/server_hub/retirementAdim';
 const hedef = (status: RtTargetStatus, o: Partial<RtTarget> = {}): RtTarget => ({
   id: 1,
   recordId: 1,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   site: 'Pendik',
   env: 'PROD',
   appName: 'CRM',
@@ -43,7 +43,7 @@ const hedef = (status: RtTargetStatus, o: Partial<RtTarget> = {}): RtTarget => (
   ...o,
 });
 const web = (status: string, o: Partial<RtWeb2> = {}): RtWeb2 => ({
-  host: 'GBJBWP01',
+  host: 'ORJBWP01',
   serverName: 'crm.bmw.de',
   product: 'IHS',
   confFile: 'mod-jk.conf',

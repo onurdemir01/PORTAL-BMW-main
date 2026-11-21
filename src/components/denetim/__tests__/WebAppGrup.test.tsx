@@ -23,7 +23,7 @@ const vh = (host: string, ip: string, site: string, ek: Record<string, unknown> 
   host,
   ip,
   port: '443',
-  serverName: 'crm.gtdmz.com.tr',
+  serverName: 'crm.odmz.invalid',
   confFile: '/c',
   product: 'IHS',
   site,
@@ -33,21 +33,21 @@ const satir = (appHost: string, ek: Partial<WebAppRow> = {}): WebAppRow => ({
   app: 'crm',
   appHost,
   env: 'Production',
-  domain: 'gtdmz.com.tr',
-  dnsBolge: 'gtdmz',
+  domain: 'odmz.invalid',
+  dnsBolge: 'dmz',
   tier: '3-tier',
   tierKaynak: 'domain',
   how: 'harf-dönüşümü + server_name (tam ad) + mod_cluster',
   matched: true,
   nasil: [
-    `Topoloji 3-tier: envanterdeki domain gtdmz.com.tr`,
-    `${appHost} → GBCRWP01: 5. harf A→W — server_name'de "crm" geçiyor`,
+    `Topoloji 3-tier: envanterdeki domain odmz.invalid`,
+    `${appHost} → ORCRWP01: 5. harf A→W — server_name'de "crm" geçiyor`,
   ],
   web: [
-    vh('GBCRWP01', '10.0.0.1', 'Pendik'),
-    vh('GBCRWP02', '10.0.0.2', 'Pendik', { kaynak: 'mc', mcBalancer: 'crm' }),
+    vh('ORCRWP01', '10.0.0.1', 'Pendik'),
+    vh('ORCRWP02', '10.0.0.2', 'Pendik', { kaynak: 'mc', mcBalancer: 'crm' }),
   ],
-  webHostCandidate: 'GBCRWP01',
+  webHostCandidate: 'ORCRWP01',
   vhostCountOnHost: 2,
   ...ek,
 });
@@ -74,38 +74,38 @@ describe('Web-App: uygulama başına tek satır', () => {
   });
 
   it('WG1 aynı uygulama + ortamın iki sunucusu tek satır; aynı web sunucuları bir kez', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAP02')]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01'), satir('ORCRAP02')]));
     render(<WebApp />);
     const satirlar = await screen.findAllByTestId('webapp-satir');
     expect(satirlar).toHaveLength(1);
     const tr = satirlar[0];
-    expect(within(tr).getAllByText('GBCRWP01')).toHaveLength(1);
-    expect(within(tr).getAllByText('GBCRWP02')).toHaveLength(1);
-    expect(within(tr).getAllByText('GBCRAP01').length).toBeGreaterThanOrEqual(1);
-    expect(within(tr).getAllByText('GBCRAP02').length).toBeGreaterThanOrEqual(1);
+    expect(within(tr).getAllByText('ORCRWP01')).toHaveLength(1);
+    expect(within(tr).getAllByText('ORCRWP02')).toHaveLength(1);
+    expect(within(tr).getAllByText('ORCRAP01').length).toBeGreaterThanOrEqual(1);
+    expect(within(tr).getAllByText('ORCRAP02').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/1 uygulama · 2 \/ 2 uygulama sunucusu/)).toBeInTheDocument();
   });
 
   it('WG2 eşleşme açıklaması satırda, her uygulama sunucusu için kendi cümleleriyle', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAP02')]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01'), satir('ORCRAP02')]));
     render(<WebApp />);
     const bloklar = await screen.findAllByTestId('webapp-nasil');
     expect(bloklar).toHaveLength(2);
     expect(
       within(bloklar[0]).getByText(
-        'GBCRAP01 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
+        'ORCRAP01 → ORCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
       ),
     ).toBeInTheDocument();
     expect(
       within(bloklar[1]).getByText(
-        'GBCRAP02 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
+        'ORCRAP02 → ORCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
       ),
     ).toBeInTheDocument();
     expect(within(bloklar[0]).getByText('eşleşti')).toBeInTheDocument();
   });
 
   it('WG3 aynı ad farklı ortam ayrı satır', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAQ01', { env: 'QA' })]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01'), satir('ORCRAQ01', { env: 'QA' })]));
     render(<WebApp />);
     expect(await screen.findAllByTestId('webapp-satir')).toHaveLength(2);
   });
@@ -115,15 +115,15 @@ describe('Web-App: uygulama başına tek satır', () => {
       domain: '',
       dnsBolge: null,
       tierKaynak: 'eşleşme',
-      web: [vh('DACRWAP01', '20.0.0.1', 'Ankara', { dnsBolge: 'gtdmz' })],
+      web: [vh('DACRWAP01', '20.0.0.1', 'Ankara', { dnsBolge: 'dmz' })],
     });
     mockWebApp.mockResolvedValue(veri([r]));
     mockDns.mockResolvedValue({
       ok: true,
       sonuc: {
-        'gtdmz|crm.gtdmz.com.tr': {
+        'dmz|crm.odmz.invalid': {
           Pendik: { ips: ['10.9.9.9'] },
-          Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '10.236.238.22' },
+          Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '198.51.100.22' },
         },
       },
     });
@@ -131,11 +131,11 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(await screen.findByText('20.9.9.9')).toBeInTheDocument();
     expect(screen.queryByText('10.9.9.9')).not.toBeInTheDocument();
     expect(screen.queryByText(/Ankara VIP'i farklı olabilir/)).not.toBeInTheDocument();
-    expect(mockDns).toHaveBeenCalledWith([{ ad: 'crm.gtdmz.com.tr', bolge: 'gtdmz' }]);
+    expect(mockDns).toHaveBeenCalledWith([{ ad: 'crm.odmz.invalid', bolge: 'dmz' }]);
   });
 
   it('WG5 topoloji rozeti domain yoksa kanıtı söyler', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01', { domain: '', tierKaynak: 'eşleşme' })]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01', { domain: '', tierKaynak: 'eşleşme' })]));
     render(<WebApp />);
     const tr = (await screen.findAllByTestId('webapp-satir'))[0];
     expect(within(tr).getByText('3-tier')).toHaveAttribute(
@@ -148,7 +148,7 @@ describe('Web-App: uygulama başına tek satır', () => {
   // en sonunda nasıl eşleştirildiğine dair bilgi kalsa"): özet kutusu YOK, yol satırda; Server Hub hatası
   // kutuyla birlikte kaybolmaz, tek başına uyarı olarak kalır.
   it('WG7 "Eşleşme yolları" özet kutusu yok; açıklama satırda; Server Hub hatası uyarı olarak kalır', async () => {
-    mockWebApp.mockResolvedValue({ ...veri([satir('GBCRAP01')]), hubHata: 'vhost: zaman aşımı' });
+    mockWebApp.mockResolvedValue({ ...veri([satir('ORCRAP01')]), hubHata: 'vhost: zaman aşımı' });
     render(<WebApp />);
     expect(await screen.findAllByTestId('webapp-nasil')).toHaveLength(1);
     expect(screen.queryByText(/Eşleşme yolları/)).not.toBeInTheDocument();
@@ -165,7 +165,7 @@ describe('Web-App: uygulama başına tek satır', () => {
   // duruyor"): Yenile sunucu önbelleğini atlar; yeni arama eskisini iptal eder, geç gelen eski cevap
   // yeni sonucu ezmez.
   it('WG8 Yenile fresh ile ister; arama ve ilk yükleme önbellekten', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01')]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01')]));
     render(<WebApp />);
     await screen.findAllByTestId('webapp-satir');
     expect(mockWebApp.mock.calls[0][3]).toMatchObject({ fresh: false });
@@ -177,14 +177,14 @@ describe('Web-App: uygulama başına tek satır', () => {
   it('WG9 geç gelen eski cevap yeni arama sonucunu ezmez; eski istek iptal edilir', async () => {
     let eskiCoz: (v: WebAppResult) => void = () => {};
     mockWebApp
-      .mockResolvedValueOnce(veri([satir('GBCRAP01')]))
+      .mockResolvedValueOnce(veri([satir('ORCRAP01')]))
       .mockImplementationOnce(
         () =>
           new Promise<WebAppResult>((ok) => {
             eskiCoz = ok;
           }),
       )
-      .mockResolvedValueOnce(veri([satir('GBYENI01', { app: 'yeni' })]));
+      .mockResolvedValueOnce(veri([satir('ORYENI01', { app: 'yeni' })]));
     render(<WebApp />);
     await screen.findAllByTestId('webapp-satir');
     const kutu = screen.getByPlaceholderText('uygulama ya da sunucu ara');
@@ -194,7 +194,7 @@ describe('Web-App: uygulama başına tek satır', () => {
     fireEvent.change(kutu, { target: { value: 'yeni' } });
     expect(await screen.findByText('yeni')).toBeInTheDocument();
     expect(eskiSinyal.aborted).toBe(true);
-    eskiCoz(veri([satir('GBESKI01', { app: 'eski' })]));
+    eskiCoz(veri([satir('ORESKI01', { app: 'eski' })]));
     await new Promise((ok) => setTimeout(ok, 20));
     expect(screen.queryByText('eski')).not.toBeInTheDocument();
     expect(screen.getByText('yeni')).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe('Web-App: uygulama başına tek satır', () => {
   // WG10 (2026-10-23, kullanıcı: "Web-App sayfasına bakıyorum şuan böyle boşluklar kalmış gözüküyor"): gerekçe
   // cümleleri açık basılınca 4-8 sunuculu uygulamada satır yüzlerce piksel uzuyordu (sütun ekranın sağında).
   it('WG10 gerekçe KAPALI gelir: sunucu başına tek satır özet, cümleler açılınca', async () => {
-    mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAP02')]));
+    mockWebApp.mockResolvedValue(veri([satir('ORCRAP01'), satir('ORCRAP02')]));
     render(<WebApp />);
     const bloklar = await screen.findAllByTestId('webapp-nasil');
     for (const b of bloklar) {
@@ -211,20 +211,20 @@ describe('Web-App: uygulama başına tek satır', () => {
       expect(b).not.toHaveAttribute('open');
     }
     const ozet = bloklar[0].querySelector('summary')!;
-    expect(within(ozet).getByText('GBCRAP01')).toBeInTheDocument();
+    expect(within(ozet).getByText('ORCRAP01')).toBeInTheDocument();
     expect(within(ozet).getByText('eşleşti')).toBeInTheDocument();
     expect(within(ozet).queryByText(/5\. harf A→W/)).not.toBeInTheDocument();
   });
 
   it('WG6 grupla: vhost tekil, bulan uygulama sunucuları birikir; eşleşmeyen sunucu da satırda', () => {
     const g = grupla([
-      satir('GBCRAP01'),
-      satir('GBCRAP02'),
-      satir('GBCRAP03', { matched: false, web: [], how: 'eşleşmedi' }),
+      satir('ORCRAP01'),
+      satir('ORCRAP02'),
+      satir('ORCRAP03', { matched: false, web: [], how: 'eşleşmedi' }),
     ]);
     expect(g).toHaveLength(1);
-    expect(g[0].satirlar.map((r) => r.appHost)).toEqual(['GBCRAP01', 'GBCRAP02', 'GBCRAP03']);
-    expect(g[0].web.map((w) => w.host)).toEqual(['GBCRWP01', 'GBCRWP02']);
-    expect(g[0].web[0].uygulamaSunuculari).toEqual(['GBCRAP01', 'GBCRAP02']);
+    expect(g[0].satirlar.map((r) => r.appHost)).toEqual(['ORCRAP01', 'ORCRAP02', 'ORCRAP03']);
+    expect(g[0].web.map((w) => w.host)).toEqual(['ORCRWP01', 'ORCRWP02']);
+    expect(g[0].web[0].uygulamaSunuculari).toEqual(['ORCRAP01', 'ORCRAP02']);
   });
 });

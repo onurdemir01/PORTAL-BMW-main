@@ -78,10 +78,10 @@ const KOSU_LISTE = {
   islem: 'kosu',
   etiket: 'T0 — F5 öncesi',
   adim: 'R17',
-  hedefHost: 'GBNGXT10',
+  hedefHost: 'ORNGXT10',
   hedefIp: '10.1.2.3',
-  vhost: 'glomo-test.fw.garantibbva.com.tr',
-  yukHost: 'GBNGXT34',
+  vhost: 'glomo-test.fw.ornekbanka.invalid',
+  yukHost: 'ORNGXT34',
   senaryoId: 3,
   senaryoAd: 'GLOMO 3 HAR',
   durum: 'RUNNING',
@@ -123,7 +123,7 @@ const SENARYO = {
   id: 3,
   ad: 'GLOMO 3 HAR',
   aciklama: null,
-  vhost: 'glomo-test.fw.garantibbva.com.tr',
+  vhost: 'glomo-test.fw.ornekbanka.invalid',
   senaryoTur: 'K',
   yolSayisi: 264,
   sha256: 'b'.repeat(64),
@@ -135,16 +135,16 @@ const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBNGXT10',
+      host: 'ORNGXT10',
       env: 'TEST',
       ipler: ['10.1.2.3', '10.1.2.4'],
-      vhostlar: ['glomo-test.fw.garantibbva.com.tr'],
+      vhostlar: ['glomo-test.fw.ornekbanka.invalid'],
       vhostVerisi: true,
       uygun: true,
       neden: null,
     },
     {
-      host: 'GBNGXP40',
+      host: 'ORNGXP40',
       env: 'PROD',
       ipler: ['10.9.9.9'],
       vhostlar: [],
@@ -154,7 +154,7 @@ const HEDEFLER = {
     },
     // Taranmis, ama yalniz `server_name _;` / joker / regex: adlandirilmis vhost yok.
     {
-      host: 'GBNGXT20',
+      host: 'ORNGXT20',
       env: 'TEST',
       ipler: ['10.2.2.2'],
       vhostlar: [],
@@ -164,7 +164,7 @@ const HEDEFLER = {
     },
     // Hic dokum yok (tarama verisi yok): vhost elle yazilir.
     {
-      host: 'GBNGXT21',
+      host: 'ORNGXT21',
       env: 'TEST',
       ipler: ['10.2.2.3'],
       vhostlar: [],
@@ -173,7 +173,7 @@ const HEDEFLER = {
       neden: null,
     },
   ],
-  yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: {
     maxHiz: 450,
     maxTekrar: 3,
@@ -215,7 +215,7 @@ const SUNUCU_SINIFI = (host: string, ip: string, o: Record<string, unknown> = {}
   ip,
   host,
   env: 'TEST',
-  vhostlar: ['glomo-test.fw.garantibbva.com.tr'],
+  vhostlar: ['glomo-test.fw.ornekbanka.invalid'],
   vhostVerisi: true,
   hizSiniri: null,
   vuSiniri: null,
@@ -444,23 +444,23 @@ describe('Yük Testi — başlatma onayı', () => {
     expect(dugme).toBeDisabled();
     // UV3: yapistirma sessizce engellenmez; ipucu girdinin erisilebilir aciklamasi, yanlis yazimda uyusmazlik metni de.
     expect(girdi).toHaveAccessibleDescription(/Yapıştırma kapalı/);
-    fireEvent.change(girdi, { target: { value: 'gbngxt10' } });
+    fireEvent.change(girdi, { target: { value: 'orngxt10' } });
     expect(dugme).toBeDisabled();
     expect(girdi).toHaveAccessibleDescription(/hedefle aynı değil/);
     expect(girdi).toHaveAccessibleDescription(/Yapıştırma kapalı/);
-    fireEvent.change(girdi, { target: { value: 'GBNGXT10 ' } });
+    fireEvent.change(girdi, { target: { value: 'ORNGXT10 ' } });
     expect(dugme).toBeDisabled();
     const yapistir = createEvent.paste(girdi);
     fireEvent(girdi, yapistir);
     expect(yapistir.defaultPrevented).toBe(true);
-    fireEvent.change(girdi, { target: { value: 'GBNGXT10' } });
+    fireEvent.change(girdi, { target: { value: 'ORNGXT10' } });
     expect(dugme).toBeEnabled();
     // Dogru yazimda uyusmazlik metni cizilmez: aria-describedby gorunmeyen id gostermez.
     for (const id of (girdi.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean))
       expect(document.getElementById(id)).not.toBeNull();
     expect(girdi).toHaveAccessibleDescription(/^Yapıştırma kapalı/);
     fireEvent.click(dugme);
-    expect(onOnay).toHaveBeenCalledWith({ confirmText: 'GBNGXT10', uyariOnay: false });
+    expect(onOnay).toHaveBeenCalledWith({ confirmText: 'ORNGXT10', uyariOnay: false });
     fireEvent.click(screen.getByRole('button', { name: 'İptal' }));
     expect(onKapat).toHaveBeenCalled();
   });
@@ -480,14 +480,14 @@ describe('Yük Testi — başlatma onayı', () => {
       />,
     );
     fireEvent.change(screen.getByLabelText(/hedef sunucunun adını yazın/), {
-      target: { value: 'GBNGXT10' },
+      target: { value: 'ORNGXT10' },
     });
     const dugme = screen.getByRole('button', { name: /Yük testini başlat/ });
     expect(dugme).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Uyarıları okudum/ }));
     expect(dugme).toBeEnabled();
     fireEvent.click(dugme);
-    expect(onOnay).toHaveBeenCalledWith({ confirmText: 'GBNGXT10', uyariOnay: true });
+    expect(onOnay).toHaveBeenCalledWith({ confirmText: 'ORNGXT10', uyariOnay: true });
   });
 });
 
@@ -526,8 +526,8 @@ describe('Yük Testi — yeni koşu akışı', () => {
 
     await yeniKosuAc();
     const hedefSecimi = hostSecici();
-    expect(within(hedefSecimi).getByRole('option', { name: /GBNGXP40/ })).toBeDisabled();
-    fireEvent.change(hedefSecimi, { target: { value: 'GBNGXT10' } });
+    expect(within(hedefSecimi).getByRole('option', { name: /ORNGXP40/ })).toBeDisabled();
+    fireEvent.change(hedefSecimi, { target: { value: 'ORNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.4' } });
     const baslatDugmesi = screen.getByRole('button', { name: /Koşuyu başlat/ });
     expect(baslatDugmesi).toBeDisabled();
@@ -540,10 +540,10 @@ describe('Yük Testi — yeni koşu akışı', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
       senaryoId: 3,
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       hedefIp: '10.1.2.4',
-      vhost: 'glomo-test.fw.garantibbva.com.tr',
-      yukHost: 'GBNGXT34',
+      vhost: 'glomo-test.fw.ornekbanka.invalid',
+      yukHost: 'ORNGXT34',
       sni: false,
       parametreler: { motor: 'k6', ...PARAM, protokol: 'h1' },
     });
@@ -555,14 +555,14 @@ describe('Yük Testi — yeni koşu akışı', () => {
 
     const pencere = await screen.findByRole('dialog');
     fireEvent.change(within(pencere).getByLabelText(/hedef sunucunun adını yazın/), {
-      target: { value: 'GBNGXT10' },
+      target: { value: 'ORNGXT10' },
     });
     fireEvent.click(within(pencere).getByRole('checkbox', { name: /Uyarıları okudum/ }));
     fireEvent.click(within(pencere).getByRole('button', { name: /Yük testini başlat/ }));
     await waitFor(() => expect(api.baslat).toHaveBeenCalledTimes(1));
     expect(api.baslat.mock.calls[0][0]).toEqual({
       onKontrolKosuId: 16,
-      confirmText: 'GBNGXT10',
+      confirmText: 'ORNGXT10',
       uyariOnay: true,
     });
     // Sunucu kendi uyarisini ekledi: pencere acik kalir, liste buyur, kutu yeniden isaretlenir.
@@ -591,7 +591,7 @@ describe('Yük Testi — yeni koşu akışı', () => {
       kosuDurum: 'DONE',
     });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
     await waitFor(
       () => expect(screen.getByRole('button', { name: /Ön kontrolü başlat/ })).toBeEnabled(),
@@ -608,18 +608,18 @@ describe('Yük Testi — yeni koşu akışı', () => {
 
   it('YT13 (D7) adlandırılmış server_name’i olmayan taranmış hedef: Host başlığı açık, yazılan ad notla, ön kontrol açık; döküm yoksa “elle yazın”', async () => {
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT20' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT20' } });
     // Tek aday IP otomatik; tur 2'nin "alan ve ön kontrol kapalı" kuralı D7 ile kalktı.
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('10.2.2.2');
     const vhost = screen.getByLabelText('Host başlığı (vhost)');
     expect(vhost).toBeEnabled();
     expect(vhost).not.toHaveAttribute('list');
     // Bos listede senaryonun vhost'u da onerilmez (listede yok): elle yazilir, not cikar.
-    fireEvent.change(vhost, { target: { value: 'glomo-test.fw.garantibbva.com.tr' } });
+    fireEvent.change(vhost, { target: { value: 'glomo-test.fw.ornekbanka.invalid' } });
     expect(screen.getByText(VHOST_LISTEDE_YOK_NOTU)).toBeTruthy();
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
     // Dokum hic yok (vhostVerisi false): "elle yazın" yardimi; liste bilinmedigi icin not YOK.
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT21' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT21' } });
     expect(screen.getByText('Bu hedef için server_name dökümü yok; adı elle yazın.')).toBeTruthy();
     expect(screen.queryByText(VHOST_LISTEDE_YOK_NOTU)).toBeNull();
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
@@ -994,7 +994,7 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
 
 describe('Yük Testi — senaryo (2026-10-27)', () => {
   it('YT19 HAR özetinde ";" parametresi atılan yol sayacı; gönderilen satırda ve özette oturum kimliği yok', async () => {
-    const H = 'https://glomo-test.fw.garantibbva.com.tr';
+    const H = 'https://glomo-test.fw.ornekbanka.invalid';
     const g = (url: string, mime = 'application/javascript') => ({
       startedDateTime: '2026-10-26T10:00:00Z',
       request: { method: 'GET', url },
@@ -1013,7 +1013,7 @@ describe('Yük Testi — senaryo (2026-10-27)', () => {
     render(<Senaryolar isAdmin />);
     fireEvent.click(await screen.findByRole('button', { name: /Yeni senaryo/ }));
     fireEvent.change(screen.getByLabelText('Vhost (HAR’daki host)'), {
-      target: { value: 'glomo-test.fw.garantibbva.com.tr' },
+      target: { value: 'glomo-test.fw.ornekbanka.invalid' },
     });
     fireEvent.change(screen.getByLabelText('HAR dosyası seç'), {
       target: { files: [new File([HAR], 'oturum.har', { type: 'application/json' })] },
@@ -1169,14 +1169,14 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     api.baslat.mockResolvedValue({ ok: true, kosuId: 18, jobId: 901, awxServerId: 1 });
     await yeniKosuAc();
     // Once bir host secilir, sonra "elle yazacağım"a donulur: eski host ne siniflandirmaya ne govdeye gider.
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.change(hostSecici(), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
     expect(
       await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE),
     ).toBeTruthy();
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.40', {
-      yukHost: 'GBNGXT34',
+      yukHost: 'ORNGXT34',
       hedefHost: null,
     });
     expect(
@@ -1184,7 +1184,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     ).toBeTruthy();
     expect(screen.getByText(SERBEST_VHOST_YARDIMI)).toBeTruthy();
     expect(screen.getByLabelText('Host başlığı (vhost)')).toHaveValue(
-      'glomo-test.fw.garantibbva.com.tr',
+      'glomo-test.fw.ornekbanka.invalid',
     );
     // Serbest varsayilanlari (kullanici alani degistirmedi) ve sinirlari.
     expect(screen.getByLabelText('Hızlar (istek/sn)')).toHaveValue('50 100 200');
@@ -1202,8 +1202,8 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       senaryoId: 3,
       hedefHost: null,
       hedefIp: '10.20.30.40',
-      vhost: 'glomo-test.fw.garantibbva.com.tr',
-      yukHost: 'GBNGXT34',
+      vhost: 'glomo-test.fw.ornekbanka.invalid',
+      yukHost: 'ORNGXT34',
       sni: false,
       parametreler: {
         motor: 'k6',
@@ -1249,7 +1249,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(within(pencere).getByText('Yapıştırma kapalı; IP birebir aynı olmalı.')).toBeTruthy();
     fireEvent.click(within(pencere).getByRole('checkbox', { name: /Uyarıları okudum/ }));
     // Host adi onay degildir (hedef sunucu yok).
-    fireEvent.change(girdi, { target: { value: 'GBNGXT10' } });
+    fireEvent.change(girdi, { target: { value: 'ORNGXT10' } });
     expect(dugme).toBeDisabled();
     expect(within(pencere).getByText('Yazılan IP hedefle aynı değil.')).toBeTruthy();
     const yapistir = createEvent.paste(girdi);
@@ -1271,30 +1271,30 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
   // Tek basina ~3.2 sn (varsayilan sinir 5 sn): tam takim paralel kosarken sinir asiliyordu (2026-11-12).
   it('YT21 host seçici: hedefHost sorguda ve gövdede, IP adaylardan; paylaşılan VIP elle yazılınca ip_belirsiz; uygun:false düğmeyi kapatır', async () => {
     const BELIRSIZ =
-      '10.1.2.4 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
+      '10.1.2.4 birden çok nginx sunucusunda tanımlı (ORNGXT10, ORNGXT11); hedef sunucuyu listeden seçin.';
     // B3'ten beri sunucu olculmus limit icin uygun:false DONMEZ; ekranin genel uygun:false yolu ornek bir nedenle sinanir.
     const KAPALI_NEDENI = 'Hedef bu koşu için kapalı (örnek sunucu nedeni).';
     api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null } = {}) => {
       // 10.1.2.4 paylasilan VIP: host secici yolunda (hedefHost) sunucu, elle yazilinca belirsiz.
       if (ip === '10.1.2.4')
-        return o.hedefHost === 'GBNGXT10'
-          ? SUNUCU_SINIFI('GBNGXT10', ip)
+        return o.hedefHost === 'ORNGXT10'
+          ? SUNUCU_SINIFI('ORNGXT10', ip)
           : { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 };
       if (ip === '10.3.3.3')
-        return SUNUCU_SINIFI('GBNGXT30', ip, {
+        return SUNUCU_SINIFI('ORNGXT30', ip, {
           uygun: false,
           neden: KAPALI_NEDENI,
           kod: 'hedef_kapali',
         });
       // Sunucunun diger uygun:false nedenleri (200): IP hostun aday listesinde degil; hedef kapisi (neden metni yoksa kod metni).
       if (ip === '10.3.3.4')
-        return SUNUCU_SINIFI('GBNGXT30', ip, {
+        return SUNUCU_SINIFI('ORNGXT30', ip, {
           uygun: false,
-          neden: "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9).",
+          neden: "10.3.3.4, ORNGXT30 için bilinen IP'lerden değil (10.3.3.9).",
           kod: 'ip_hedefte_yok',
         });
       if (ip === '10.3.3.5')
-        return SUNUCU_SINIFI('GBNGXT31', ip, { uygun: false, neden: null, kod: 'hedef_uretim' });
+        return SUNUCU_SINIFI('ORNGXT31', ip, { uygun: false, neden: null, kod: 'hedef_uretim' });
       return varsayilanSinif(ip);
     });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
@@ -1315,27 +1315,27 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       kosuDurum: 'DONE',
     });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     // Iki aday: IP otomatik secilmez; adaylardan biri tiklanir.
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.4' }));
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('10.1.2.4');
     expect(
       await screen.findByText(
-        /^Sunucu hedefi: GBNGXT10 \(TEST\) — CPU kaydedici ve nginx logu ölçülür/,
+        /^Sunucu hedefi: ORNGXT10 \(TEST\) — CPU kaydedici ve nginx logu ölçülür/,
         {},
         SINIF_BEKLE,
       ),
     ).toBeTruthy();
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', {
-      yukHost: 'GBNGXT34',
-      hedefHost: 'GBNGXT10',
+      yukHost: 'ORNGXT34',
+      hedefHost: 'ORNGXT10',
     });
     await waitFor(() => expect(okDugmesi()).toBeEnabled());
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toMatchObject({
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       hedefIp: '10.1.2.4',
     });
     await waitFor(() =>
@@ -1346,7 +1346,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('10.1.2.4');
     expect(await screen.findByText(BELIRSIZ, {}, SINIF_BEKLE)).toBeTruthy();
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', {
-      yukHost: 'GBNGXT34',
+      yukHost: 'ORNGXT34',
       hedefHost: null,
     });
     expect(okDugmesi()).toBeDisabled();
@@ -1359,7 +1359,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.'),
     ).toBeTruthy();
     for (const [ip2, metin] of [
-      ['10.3.3.4', "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9)."],
+      ['10.3.3.4', "10.3.3.4, ORNGXT30 için bilinen IP'lerden değil (10.3.3.9)."],
       ['10.3.3.5', 'üretim (PROD) sinyali var — yük testi yapılamaz'],
     ]) {
       fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: ip2 } });
@@ -1411,7 +1411,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       kosuDurum: 'DONE',
     });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
     gelismisAc();
     const sni = screen.getByRole('checkbox', { name: /SNI ile bağlan/ });
@@ -1533,8 +1533,8 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       '10.4.4.1': {
         code: 'ip_belirsiz',
         message:
-          '10.4.4.1 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.',
-        sahipler: [SAHIP('GBNGXT10', 'TEST'), SAHIP('GBNGXT11', 'TEST')],
+          '10.4.4.1 birden çok nginx sunucusunda tanımlı (ORNGXT10, ORNGXT11); hedef sunucuyu listeden seçin.',
+        sahipler: [SAHIP('ORNGXT10', 'TEST'), SAHIP('ORNGXT11', 'TEST')],
       },
       '10.4.4.2': {
         code: 'ip_sahibi_cozulemedi',
@@ -1549,8 +1549,8 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       },
       '10.4.4.4': {
         code: 'hedef_uretim',
-        message: '10.4.4.4, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
-        sahipler: [SAHIP('GBNGXP40', 'PROD')],
+        message: '10.4.4.4, ORNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
+        sahipler: [SAHIP('ORNGXP40', 'PROD')],
       },
     };
     api.ipSinifi.mockImplementation(async (ip: string) =>
@@ -1577,12 +1577,12 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     fireEvent.change(screen.getByLabelText('Tekrar'), { target: { value: '2' } });
     // host_uretim on kontrolde (sinif serbest): mesaj + ayni girdiyle dugme kapali; Host basligi degisince acilir.
     const HOST_URETIM =
-      'Host başlığı (glomo-test.fw.garantibbva.com.tr) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP40); bu adla yük testi yapılmaz.';
+      'Host başlığı (glomo-test.fw.ornekbanka.invalid) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (ORNGXP40); bu adla yük testi yapılmaz.';
     api.onKontrol.mockResolvedValueOnce({
       ok: false,
       code: 'host_uretim',
       message: HOST_URETIM,
-      sahipler: [SAHIP('GBNGXP40', 'PROD')],
+      sahipler: [SAHIP('ORNGXP40', 'PROD')],
       _httpStatus: 409,
     });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
@@ -1593,7 +1593,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByText(/^Bu girdiyle ön kontrol reddedildi/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Host başlığı (vhost)'), {
-      target: { value: 'glomo-test2.fw.garantibbva.com.tr' },
+      target: { value: 'glomo-test2.fw.ornekbanka.invalid' },
     });
     expect(okDugmesi()).toBeEnabled();
   });
@@ -1602,7 +1602,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
     api.kosu.mockResolvedValue({ ok: true, kosu: tamamOnKontrol(), adimlar: [] });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
     const vhost = screen.getByLabelText('Host başlığı (vhost)');
     // Oneriler sunucunun server_name'leri (datalist); senaryonun vhost'u listede oldugu icin onerilir.
@@ -1612,26 +1612,26 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       [...document.querySelectorAll('#yuk-vhost-oneriler option')].map((o) =>
         o.getAttribute('value'),
       ),
-    ).toEqual(['glomo-test.fw.garantibbva.com.tr']);
-    expect(vhost).toHaveValue('glomo-test.fw.garantibbva.com.tr');
+    ).toEqual(['glomo-test.fw.ornekbanka.invalid']);
+    expect(vhost).toHaveValue('glomo-test.fw.ornekbanka.invalid');
     expect(screen.queryByText(VHOST_LISTEDE_YOK_NOTU)).toBeNull();
     // UI4: gorunen satir (not > yardim) girdiye aria-describedby ile bagli; yalniz girdi (datalist degil).
     expect(vhost).toHaveAccessibleDescription('İstekler bu Host başlığıyla gider.');
-    fireEvent.change(vhost, { target: { value: 'joker-alt.fw.garantibbva.com.tr' } });
+    fireEvent.change(vhost, { target: { value: 'joker-alt.fw.ornekbanka.invalid' } });
     expect(screen.getByText(VHOST_LISTEDE_YOK_NOTU)).toBeTruthy();
     expect(vhost).toHaveAccessibleDescription(VHOST_LISTEDE_YOK_NOTU);
     expect(document.getElementById('yuk-vhost-oneriler')).not.toHaveAttribute('aria-describedby');
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
-    fireEvent.change(vhost, { target: { value: 'glomo-test.fw.garantibbva.com.tr' } });
+    fireEvent.change(vhost, { target: { value: 'glomo-test.fw.ornekbanka.invalid' } });
     expect(screen.queryByText(VHOST_LISTEDE_YOK_NOTU)).toBeNull();
     expect(vhost).toHaveAccessibleDescription('İstekler bu Host başlığıyla gider.');
-    fireEvent.change(vhost, { target: { value: 'joker-alt.fw.garantibbva.com.tr' } });
+    fireEvent.change(vhost, { target: { value: 'joker-alt.fw.ornekbanka.invalid' } });
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toMatchObject({
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       hedefIp: '10.1.2.3',
-      vhost: 'joker-alt.fw.garantibbva.com.tr',
+      vhost: 'joker-alt.fw.ornekbanka.invalid',
     });
   });
 });
@@ -1764,7 +1764,7 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Durdur' }));
     const pencere = await screen.findByRole('dialog');
     expect(pencere.textContent).toMatch(
-      /GBNGXT34 üzerindeki wrk’yi sonlandırır \(serbest hedefe bağlanılmaz; kaydedici yoktur\)/,
+      /ORNGXT34 üzerindeki wrk’yi sonlandırır \(serbest hedefe bağlanılmaz; kaydedici yoktur\)/,
     );
     expect(pencere.textContent).not.toMatch(/CPU kaydedicisini/);
     fireEvent.click(within(pencere).getByRole('button', { name: 'Durdur' }));
@@ -2027,7 +2027,7 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     ).toEqual([
       ['', 'Tüm hedefler'],
       ['10.20.30.40', '10.20.30.40'],
-      ['GBNGXT10', 'GBNGXT10'],
+      ['ORNGXT10', 'ORNGXT10'],
     ]);
     fireEvent.change(suzgec, { target: { value: '10.20.30.40' } });
     expect(screen.getByRole('button', { name: 'Koşu 41 ayrıntısı' })).toBeTruthy();
@@ -2038,7 +2038,7 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     const P1 =
       'Host başlığı (yok.test.local) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.';
     const P2 =
-      'Yük sunucusu (GBNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.';
+      'Yük sunucusu (ORNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.';
     // GET /kosular/:id (sunucu sekli): planUyarilari ayrica VE onKontrolUyarilari = plan uyarilari basta + degerlendirme.
     const k = kosuNormalle({
       ...KOSU_LISTE,
@@ -2134,8 +2134,8 @@ const hicYolDenenmemis = (
     motor: 'wrk',
     hedefHost: null,
     hedefIp: '10.20.30.66',
-    vhost: 'glomo-test.fw.garantibbva.com.tr',
-    yukHost: 'GBNGXT34',
+    vhost: 'glomo-test.fw.ornekbanka.invalid',
+    yukHost: 'ORNGXT34',
     createdAt: '2026-10-28T08:00:00Z',
     finishedAt: '2026-10-28T08:02:00Z',
     parametreler: { ...WRK_P, tavan_rps: 200, kip: 'ka' },
@@ -2174,10 +2174,10 @@ const IZIN_OLCULMEDI_ENGELLERI = [
   'ön kontrolde hiçbir yol denenmedi',
 ];
 const IZIN_BLOGU_KOSMADI = [
-  "yuk makinesi GBNGXT34: The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'getent_passwd'. 'dict object' has no attribute 'getent_passwd'\n\nThe error appears to be in '/runner/project/bmw_portal/nginx_loadtest/nginx_loadtest.yml': line 437,...",
-  'yuk makinesi GBNGXT34: Timeout (12s) waiting for privilege escalation prompt: ; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
-  'yuk makinesi GBNGXT34: betik/senaryo kopyasi dogrulanamadi (kopya ok, reddedilen on_kontrol.sh, senaryo sha256 esit, dizin sahibi/izni 1001/0700); hicbir sey calistirilmadi; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
-  'yuk makinesi GBNGXT34: play tamamlanmadi (erisilemedi ya da dustu); yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
+  "yuk makinesi ORNGXT34: The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'getent_passwd'. 'dict object' has no attribute 'getent_passwd'\n\nThe error appears to be in '/runner/project/bmw_portal/nginx_loadtest/nginx_loadtest.yml': line 437,...",
+  'yuk makinesi ORNGXT34: Timeout (12s) waiting for privilege escalation prompt: ; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
+  'yuk makinesi ORNGXT34: betik/senaryo kopyasi dogrulanamadi (kopya ok, reddedilen on_kontrol.sh, senaryo sha256 esit, dizin sahibi/izni 1001/0700); hicbir sey calistirilmadi; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
+  'yuk makinesi ORNGXT34: play tamamlanmadi (erisilemedi ya da dustu); yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
 ];
 const okSatirlari = () =>
   [...document.querySelectorAll('ul[aria-label="Ön kontrol maddeleri"] li')].map(
@@ -2254,7 +2254,7 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
           durum: 'FAILED',
           hedefTuru: 'sunucu',
           motor: 'k6',
-          hedefHost: 'GBNGXT10',
+          hedefHost: 'ORNGXT10',
           hedefIp: '10.1.2.3',
           onKontrol: ok,
           onKontrolEngelleri: [
@@ -2284,7 +2284,7 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
       expect(
         within(
           screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement,
-        ).getByText(/^Ön kontrol başarısız: yuk makinesi GBNGXT34: /),
+        ).getByText(/^Ön kontrol başarısız: yuk makinesi ORNGXT34: /),
       ).toBeTruthy();
       unmount();
     }
@@ -2308,7 +2308,7 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
     expect(screen.queryByText('Serbest hedef (10.20.30.0/24 izinli ağında)')).toBeNull();
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), { timeout: 4000 });
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.41', {
-      yukHost: 'GBNGXT34',
+      yukHost: 'ORNGXT34',
       hedefHost: null,
     });
     expect(screen.getByText('Serbest hedef (10.20.30.0/24 izinli ağında)')).toBeTruthy();
@@ -2317,7 +2317,7 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
 
   it('YT32 (UI2) sıra dışı yanıt: geç gelen bayat A yanıtı B’nin sonucunu ezmez, ekran “sınıflandırılıyor”da takılmaz', async () => {
     const BELIRSIZ =
-      '10.1.2.9 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
+      '10.1.2.9 birden çok nginx sunucusunda tanımlı (ORNGXT10, ORNGXT11); hedef sunucuyu listeden seçin.';
     api.ipSinifi.mockImplementation(async (ip: string) => {
       if (ip === '10.1.2.9') {
         await bekle(1500);
@@ -2330,7 +2330,7 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
     await bekle(600);
     // Bekci korlugu olmasin: A istegi (400 ms gecikmeli) gercekten ucusta, yaniti 1500 ms surer.
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.9', {
-      yukHost: 'GBNGXT34',
+      yukHost: 'ORNGXT34',
       hedefHost: null,
     });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
@@ -2405,8 +2405,8 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
 
 describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
   const AYAR = {
-    derlemeHostlari: ['GBLABT02'],
-    varsayilanDerlemeHost: 'GBLABT02',
+    derlemeHostlari: ['ORLABT02'],
+    varsayilanDerlemeHost: 'ORLABT02',
     k6Surum: 'v0.49.0',
     wrkSurum: '4.2.0',
     proxyTanimli: false,
@@ -2441,7 +2441,7 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
       },
     });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
     const kutu = screen
       .getByText('Yük araçları hazır değil')
@@ -2449,7 +2449,7 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
     expect(within(kutu).getByText(mesaj)).toBeTruthy();
     // Siniflandirma bitse de (form gecerli) dugme kapali kalir; neden arac kutusunu soyler.
     await waitFor(
-      () => expect(screen.getByText(/Sunucu hedefi: GBNGXT10/)).toBeTruthy(),
+      () => expect(screen.getByText(/Sunucu hedefi: ORNGXT10/)).toBeTruthy(),
       SINIF_BEKLE,
     );
     expect(okDugmesi()).toBeDisabled();
@@ -2472,7 +2472,7 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
     await yeniKosuAc();
     expect(screen.queryByText('Yük araçları hazır değil')).toBeNull();
     expect(screen.getByText('Araç seti #5: k6 v0.49.0 · wrk 4.2.0')).toBeTruthy();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
   });
@@ -2563,7 +2563,7 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
         wrkSurum: '4.2.0',
         k6Sha256: 'c'.repeat(64),
         wrkSha256: 'e'.repeat(64),
-        derlemeHost: 'GBLABT02',
+        derlemeHost: 'ORLABT02',
       },
       onKontrol: onKontrolNormalle({
         ...ON_KONTROL_UYARILI,
@@ -2586,7 +2586,7 @@ describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT5
       return s.tur === 'sunucu' ? { ...s, hizSiniri: 270, limitReq: 300, limitConn: 200 } : s;
     });
     await yeniKosuAc();
-    fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(hostSecici(), { target: { value: 'ORNGXT10' } });
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
     // Varsayilan hizlar 100 250 400: 400 > 300 -> uyari (sunucu metniyle ayni).
     const kutu = await screen.findByTestId('yuk-limit-uyarisi', undefined, SINIF_BEKLE);

@@ -73,7 +73,7 @@ const KAYNAK = '0123456789abcdef'.repeat(4);
 const SET = (o: Record<string, unknown> = {}) => ({
   id: 5,
   durum: 'DONE',
-  derlemeHost: 'GBLABT02',
+  derlemeHost: 'ORLABT02',
   k6Surum: 'v0.49.0',
   wrkSurum: '4.2.0',
   k6Sha256: K6,
@@ -102,8 +102,8 @@ const SET = (o: Record<string, unknown> = {}) => ({
   ...o,
 });
 const AYAR = (o: Record<string, unknown> = {}) => ({
-  derlemeHostlari: ['GBLABT02', 'GBNGXT51'],
-  varsayilanDerlemeHost: 'GBLABT02',
+  derlemeHostlari: ['ORLABT02', 'ORNGXT51'],
+  varsayilanDerlemeHost: 'ORLABT02',
   k6Surum: 'v0.49.0',
   wrkSurum: '4.2.0',
   proxyTanimli: true,
@@ -167,8 +167,8 @@ describe('Yük Testi — Araçlar görünümü', () => {
     const awx = within(kart).getByRole('link', { name: 'AWX iş #7001' });
     expect(awx).toHaveAttribute('target', '_blank');
     expect(awx).toHaveAttribute('rel', 'noreferrer');
-    expect(within(kart).getByText('GBLABT02').closest('dd')?.textContent).toBe(
-      'GBLABT02 · RHEL 8 · glibc 2.28',
+    expect(within(kart).getByText('ORLABT02').closest('dd')?.textContent).toBe(
+      'ORLABT02 · RHEL 8 · glibc 2.28',
     );
     expect(
       within(kart)
@@ -196,14 +196,14 @@ describe('Yük Testi — Araçlar görünümü', () => {
       });
     render(<Araclar isAdmin />);
     fireEvent.change(await screen.findByLabelText('Derleme makinesi'), {
-      target: { value: 'GBNGXT51' },
+      target: { value: 'ORNGXT51' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Araçları hazırla/ }));
     let pencere = await screen.findByRole('dialog');
     expect(within(pencere).getByText('Araçlar hazırlansın mı?')).toBeTruthy();
-    expect(within(pencere).getByText(hazirlamaMetni('GBNGXT51', 'v0.49.0', '4.2.0'))).toBeTruthy();
-    expect(hazirlamaMetni('GBNGXT51', 'v0.49.0', '4.2.0')).toBe(
-      'GBNGXT51 üzerinde, kurumsal vekil sunucu üzerinden k6 v0.49.0 sürüm arşivi ve wrk 4.2.0 kaynağı indirilir; ikisi de Portal’da sabitlenen sha256 özetleriyle doğrulanmadan hiçbir şey açılmaz ya da derlenmez. wrk derlenir (paketli OpenSSL ve LuaJIT; birkaç dakika sürer) ve ikisi /sw’de yeni bir dizine yazılır. Süren koşular etkilenmez; yeni set yalnız iş başarıyla bitince etkin olur.',
+    expect(within(pencere).getByText(hazirlamaMetni('ORNGXT51', 'v0.49.0', '4.2.0'))).toBeTruthy();
+    expect(hazirlamaMetni('ORNGXT51', 'v0.49.0', '4.2.0')).toBe(
+      'ORNGXT51 üzerinde, kurumsal vekil sunucu üzerinden k6 v0.49.0 sürüm arşivi ve wrk 4.2.0 kaynağı indirilir; ikisi de Portal’da sabitlenen sha256 özetleriyle doğrulanmadan hiçbir şey açılmaz ya da derlenmez. wrk derlenir (paketli OpenSSL ve LuaJIT; birkaç dakika sürer) ve ikisi /sw’de yeni bir dizine yazılır. Süren koşular etkilenmez; yeni set yalnız iş başarıyla bitince etkin olur.',
     );
     // Pencere sabit ozetleri gosterir (kesik + title).
     expect(within(pencere).getByText(`${KAYNAK.slice(0, 16)}…`)).toHaveAttribute('title', KAYNAK);
@@ -218,7 +218,7 @@ describe('Yük Testi — Araçlar görünümü', () => {
     pencere = await screen.findByRole('dialog');
     fireEvent.click(within(pencere).getByRole('button', { name: /Hazırla$/ }));
     await waitFor(() =>
-      expect(api.araclariHazirla).toHaveBeenCalledWith({ derlemeHost: 'GBNGXT51' }),
+      expect(api.araclariHazirla).toHaveBeenCalledWith({ derlemeHost: 'ORNGXT51' }),
     );
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith('Araç hazırlama işi AWX #7002 başlatıldı.'),
@@ -489,7 +489,7 @@ describe('Yük Testi — Araçlar görünümü', () => {
       'Henüz hazırlanmış bir araç seti yok. Araçlar hazırlanana dek ön kontrol ve koşu başlatılamaz.',
     );
     r.unmount();
-    const uzun = `derleme makinesi GBLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407 Proxy Authentication Required>`;
+    const uzun = `derleme makinesi ORLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407 Proxy Authentication Required>`;
     api.araclar.mockResolvedValue(
       araclarNormalle(
         yanit({
@@ -509,7 +509,7 @@ describe('Yük Testi — araç normalleştirme', () => {
     const snake = aracSetiNormalle({
       id: '9',
       durum: 'DONE',
-      derleme_host: 'GBLABT02',
+      derleme_host: 'ORLABT02',
       k6_surum: 'v0.49.0',
       wrk_surum: '4.2.0',
       k6_sha256: K6,
@@ -528,7 +528,7 @@ describe('Yük Testi — araç normalleştirme', () => {
     expect(snake).toMatchObject({
       id: 9,
       durum: 'DONE',
-      derlemeHost: 'GBLABT02',
+      derlemeHost: 'ORLABT02',
       k6Sha256: K6,
       wrkKaynakSha256: KAYNAK,
       ozetlerGuncel: true,
@@ -573,13 +573,13 @@ describe('Yük Testi — araç normalleştirme', () => {
       etkin: null,
       calisan: {},
       gecmis: [SET(), { id: null }, 'x'],
-      ayar: { derlemeHostlari: [], varsayilanDerlemeHost: 'GBLABT02' },
+      ayar: { derlemeHostlari: [], varsayilanDerlemeHost: 'ORLABT02' },
     });
     expect(a.calisan).toBeNull();
     expect(a.gecmis).toHaveLength(1);
     expect(a.ayar).toMatchObject({
-      derlemeHostlari: ['GBLABT02'],
-      varsayilanDerlemeHost: 'GBLABT02',
+      derlemeHostlari: ['ORLABT02'],
+      varsayilanDerlemeHost: 'ORLABT02',
       proxyTanimli: false,
       proxy: null,
       wrkSurum: '4.2.0',

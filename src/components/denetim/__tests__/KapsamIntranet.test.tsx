@@ -61,7 +61,7 @@ function satir(o: Partial<SpaCoverageRow> = {}): SpaCoverageRow {
     intranetMissing: [],
     intranetOnlyOnServerCount: 0,
     intranetOnlyOnServer: [],
-    intranetHosts: ['GBNGXP50', 'GBNGXP51'],
+    intranetHosts: ['ORNGXP50', 'ORNGXP51'],
     intranetCoverage: 20,
     intranetInNginx: 0,
     intranetInNginxList: [],
@@ -83,9 +83,9 @@ function satir(o: Partial<SpaCoverageRow> = {}): SpaCoverageRow {
         D('ad-uymaz', 'missing'),
         D('yok-ui', 'missing'),
         D('tek-ui', 'partial', [
-          { host: 'GBNGXP50', missing: ['hysdeploy', 'applications', 'conf'] },
+          { host: 'ORNGXP50', missing: ['hysdeploy', 'applications', 'conf'] },
         ]),
-        D('yarim-ui', 'partial', [{ host: 'GBNGXP51', missing: ['applications'] }]),
+        D('yarim-ui', 'partial', [{ host: 'ORNGXP51', missing: ['applications'] }]),
       ],
     },
     ...o,
@@ -150,7 +150,7 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     );
     for (const a of ['ad-uymaz', 'yok-ui', 'tek-ui', 'yarim-ui'])
       expect(screen.getAllByText(a).length).toBeGreaterThan(0);
-    expect(screen.getByText('GBNGXP51: applications yok')).toBeTruthy();
+    expect(screen.getByText('ORNGXP51: applications yok')).toBeTruthy();
     expect(
       screen.getByText(/2 hiç kurulmamış · 2 yarım \(taranan sunuculardan en az birinde eksik\)/),
     ).toBeTruthy();
@@ -204,7 +204,7 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
           kesifTarihi: null,
           dizinTarihi: null,
           dizinDurum: 'var',
-          taranmayanSunucu: ['GBNGXAP50'],
+          taranmayanSunucu: ['ORNGXAP50'],
           ortamsiz: 2,
         },
       }),
@@ -213,7 +213,7 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     expect(await screen.findByText(/Namespace’i ortam eki taşımayan 2 intranet SPA/)).toBeTruthy();
     // YALNIZ ARK (2026-11-11): ARK disi cluster notu yok.
     expect(screen.queryByText(/ARK dışı cluster/)).toBeNull();
-    expect(screen.getByText(/satırı olmayan sunucular: GBNGXAP50/)).toBeTruthy();
+    expect(screen.getByText(/satırı olmayan sunucular: ORNGXAP50/)).toBeTruthy();
   });
 });
 

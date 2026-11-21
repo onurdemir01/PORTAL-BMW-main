@@ -1305,7 +1305,7 @@ export default function RebootKontroluTab() {
             value={metin}
             onChange={(e) => setMetin(e.target.value)}
             rows={2}
-            placeholder="Sunucular (virgül, boşluk ya da satır): GBJBOP18, GBJBOAP18 …"
+            placeholder="Sunucular (virgül, boşluk ya da satır): ORJBOP18, ORJBOAP18 …"
             className="w-full px-3 py-2 text-xs font-mono border rounded-lg"
             style={inputStil}
           />

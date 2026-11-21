@@ -107,6 +107,8 @@ export interface GecisPlani {
   talepEslesmeyen?: { namespace: string; application: string }[];
   /** Tek seferlik Set 7 taşımasının durumu; `hata` yalnız Admin yanıtında. */
   goc?: { ad: string; uygulandi: boolean; hata?: string | null };
+  /** Excel seed'i kurum ayarindan okunamadiysa sebep (yalniz Admin; 2026-11-21). */
+  seed?: { hata: string | null };
 }
 
 /** Intranet SPA (2026-10-19): Gerçek SPA Keşfi'nin intranet SPA'sı + Dynatrace kullanımı + ekip beyanı.

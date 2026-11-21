@@ -311,7 +311,7 @@ function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak, katalog)
 
   // PLATFORM NAMESPACE'LERI KAPSAM DISI (kullanici, 2026-10-01): openshift-*, kube-*, default
   // altindaki route'lar konsol/oauth/monitoring gibi PLATFORM route'larudur, uygulama degil;
-  // uxmid'in orada servis yetkisi de yok ve "namespace okunamadi" diye yanlis yonlendiriyordu.
+  // svcac'in orada servis yetkisi de yok ve "namespace okunamadi" diye yanlis yonlendiriyordu.
   // Atlanir ama SAYILIR - sessizce dusurulmez.
   const platform = { routes: 0, namespaces: new Set() };
   const rows = (discovery || [])

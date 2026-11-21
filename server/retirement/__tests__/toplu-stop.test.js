@@ -22,13 +22,13 @@ const sat = (kod, m = 'x') => `RESULT\tstop\t${kod}\t${m}`;
 test('TS1 coklu iste hedef KENDI sunucusunun sonucunu alir (buyuk/kucuk harf duyarsiz)', () => {
   const art = {
     app_retirement_stop_results: {
-      GBJBOP10: { line: sat('OK'), plan_only: false },
-      gbjbop11: { line: sat('FAIL', 'hata'), plan_only: false },
+      ORJBOP10: { line: sat('OK'), plan_only: false },
+      orjbop11: { line: sat('FAIL', 'hata'), plan_only: false },
     },
-    app_retirement_stop_result: { host: 'gbjbop11', line: sat('FAIL', 'hata') },
+    app_retirement_stop_result: { host: 'orjbop11', line: sat('FAIL', 'hata') },
   };
-  const a = stopSonucu(art, 'gbjbop10', ex);
-  const b = stopSonucu(art, 'GBJBOP11', ex);
+  const a = stopSonucu(art, 'orjbop10', ex);
+  const b = stopSonucu(art, 'ORJBOP11', ex);
   assert.equal(a.coklu, true);
   assert.equal(
     stopKarari('failed', a).ok,
@@ -37,7 +37,7 @@ test('TS1 coklu iste hedef KENDI sunucusunun sonucunu alir (buyuk/kucuk harf duy
   );
   assert.equal(stopKarari('failed', b).ok, false);
   assert.equal(
-    stopSonucu(art, 'GBJBOP99', ex).sonuc,
+    stopSonucu(art, 'ORJBOP99', ex).sonuc,
     null,
     'listede olmayan hedefe baskasinin sonucu yazildi',
   );

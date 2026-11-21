@@ -16,8 +16,12 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const { createMcpClient } = require('../server/mcp/client.cjs');
 
-const url =
-  process.env.DT_MANAGED_MCP_URL || 'https://dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr/mcp';
+// Kurum adresi .env'de (koda yazilmaz).
+const url = String(process.env.DT_MANAGED_MCP_URL || '').trim();
+if (!url) {
+  console.error('DT_MANAGED_MCP_URL tanimli degil (.env).');
+  process.exit(2);
+}
 
 async function main() {
   let undiciOk = true;

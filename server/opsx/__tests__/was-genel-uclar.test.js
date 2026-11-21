@@ -158,7 +158,7 @@ const WAS_OP_YML = 'bmw_portal/opsx_was/opsx_was_operation.yml';
 const gecmisWas = (platform = 'was-operation') => ({
   username: 'ali',
   template_id: 102,
-  params: JSON.stringify({ platform, app: 'APPX', host: 'GBWASP01', server: 'APPX' }),
+  params: JSON.stringify({ platform, app: 'APPX', host: 'ORWASP01', server: 'APPX' }),
 });
 
 test('GU1a ss/job-status WAS isi: sahibine 200 ama cikti EKRANDA ve ARSIVDE maskeli', async () => {

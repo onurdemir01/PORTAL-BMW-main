@@ -14,7 +14,7 @@ const vh = (host: string, ip: string, site: string) => ({
   host,
   ip,
   port: '443',
-  serverName: 'crm.gtdmz.com.tr',
+  serverName: 'crm.odmz.invalid',
   confFile: '/c',
   product: 'IHS',
   site,
@@ -34,19 +34,19 @@ const DATA: WebAppResult = {
   rows: [
     {
       app: 'crm',
-      appHost: 'GBCRAP01',
+      appHost: 'ORCRAP01',
       env: 'PROD',
-      domain: 'gtdmz.com.tr',
-      dnsBolge: 'gtdmz',
+      domain: 'odmz.invalid',
+      dnsBolge: 'dmz',
       tier: '3-tier',
       how: 'harf-dönüşümü + server_name (tam ad)',
       matched: true,
       web: [
-        vh('GBCRWP01', '10.0.0.1', 'Pendik'),
-        vh('GBCRWP02', '10.0.0.2', 'Pendik'),
-        vh('GBCRWAP01', '20.0.0.1', 'Ankara'),
+        vh('ORCRWP01', '10.0.0.1', 'Pendik'),
+        vh('ORCRWP02', '10.0.0.2', 'Pendik'),
+        vh('ORCRWAP01', '20.0.0.1', 'Ankara'),
       ],
-      webHostCandidate: 'GBCRWP01',
+      webHostCandidate: 'ORCRWP01',
       vhostCountOnHost: 3,
     },
   ],
@@ -58,14 +58,14 @@ describe('Web-App DNS -> LB VIP', () => {
     mockDns.mockReset();
   });
 
-  it('gtdmz bolgesinde her uye kendi sitesinin VIPini ve havuz uye sayisini gosterir', async () => {
+  it('dmz bolgesinde her uye kendi sitesinin VIPini ve havuz uye sayisini gosterir', async () => {
     mockWebApp.mockResolvedValue(DATA);
     mockDns.mockResolvedValue({
       ok: true,
       sonuc: {
-        'gtdmz|crm.gtdmz.com.tr': {
-          Pendik: { ips: ['10.9.9.9'], dnsSunucusu: '10.230.238.22' },
-          Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '10.236.238.22' },
+        'dmz|crm.odmz.invalid': {
+          Pendik: { ips: ['10.9.9.9'], dnsSunucusu: '192.0.2.22' },
+          Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '198.51.100.22' },
         },
       },
     });
@@ -74,17 +74,17 @@ describe('Web-App DNS -> LB VIP', () => {
     expect(screen.getAllByText('20.9.9.9')).toHaveLength(1);
     expect(screen.getAllByText('VIP · 2 üye')).toHaveLength(2);
     expect(screen.getByText('VIP · 1 üye')).toBeInTheDocument();
-    expect(mockDns).toHaveBeenCalledWith([{ ad: 'crm.gtdmz.com.tr', bolge: 'gtdmz' }]);
+    expect(mockDns).toHaveBeenCalledWith([{ ad: 'crm.odmz.invalid', bolge: 'dmz' }]);
   });
 
   it('bolgesi bilinmeyen domain: Portal cozucusu + Ankara uyarisi; DNS sunucunun kendi IPsine cozuluyorsa LB yok', async () => {
     mockWebApp.mockResolvedValue({
       ...DATA,
-      rows: DATA.rows.map((r) => ({ ...r, domain: 'garantibbva.com.tr', dnsBolge: null })),
+      rows: DATA.rows.map((r) => ({ ...r, domain: 'ornekbanka.invalid', dnsBolge: null })),
     });
     mockDns.mockResolvedValue({
       ok: true,
-      sonuc: { '-|crm.gtdmz.com.tr': { varsayilan: { ips: ['10.0.0.1'] } } },
+      sonuc: { '-|crm.odmz.invalid': { varsayilan: { ips: ['10.0.0.1'] } } },
     });
     render(<WebApp />);
     expect(await screen.findByText(/Ankara VIP'i farklı olabilir/)).toBeInTheDocument();

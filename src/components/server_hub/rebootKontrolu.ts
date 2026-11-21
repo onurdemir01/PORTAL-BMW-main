@@ -184,7 +184,7 @@ export function onceNesilCevir(
 // v3 (2026-11-15 akşam, kullanıcı: "Nginx, apache, ihs ürünlerini hâlâ kapatmamışsın … Kapatıp, kontrol edilecek yaz"):
 // boş önce görüntüsünde web ürünleri (Nginx/RHA/IHS) artık KAPATILIR; CTG/JBoss/WAS korunur. BOOT'suz önce: betik planı
 // HATA yazar, hiçbir şey yapılmaz → hepsi korunur (sunucu kapiKorur 'bootsuz' ile BİREBİR).
-// v4 (2026-11-16, kullanıcı GBTDST01, seçim "Her yerde kapat"): boş önce görüntüsü HİÇBİR ürünü korumaz (prod dahil);
+// v4 (2026-11-16, kullanıcı ORTDST01, seçim "Her yerde kapat"): boş önce görüntüsü HİÇBİR ürünü korumaz (prod dahil);
 // reboot sonrası çalışan her ürün kapatılır ve "kontrol edilecek" der. Sunucu kapiKorur ve betik korunur() ile BİREBİR.
 export const BOS_KORUNAN: readonly string[] = [];
 export function kapatmaKorunan(once: unknown): Set<string> {

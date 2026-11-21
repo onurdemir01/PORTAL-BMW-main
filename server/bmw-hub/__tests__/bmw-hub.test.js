@@ -116,7 +116,7 @@ sahte(require.resolve('../../audit/index.cjs'), { auditMutations: () => (_q, _s,
 
 const { createRouter } = require('../index.cjs');
 
-let kimlik = { username: 'Onur', displayName: 'Onur Demir', role: 'Admin' };
+let kimlik = { username: 'Onur', displayName: 'Deneme Kisi', role: 'Admin' };
 function uygulama() {
   const app = express();
   app.use((req, _res, next) => {
@@ -147,7 +147,7 @@ function sifirla() {
   DB.notlar = [];
   DB.sorgular = [];
   DB.dusur = null;
-  kimlik = { username: 'Onur', displayName: 'Onur Demir', role: 'Admin' };
+  kimlik = { username: 'Onur', displayName: 'Deneme Kisi', role: 'Admin' };
 }
 
 test('BN1 tarih: iki bicim kabul, gecersiz gun reddedilir (sessizce tarihsiz kaydedilmez)', () => {
@@ -234,13 +234,13 @@ test('BN4 acan kisi oturumdan gelir; istemcinin gonderdigi acan alanlari yok say
     sonTarih: '20.11.2026',
   });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.is.acanAd, 'Onur Demir');
+  assert.equal(r.body.is.acanAd, 'Deneme Kisi');
   assert.equal(r.body.is.acanKullanici, 'onur', 'kullanici adi kucuk harfe cevrilmedi');
   assert.equal(r.body.is.sonTarih, '2026-11-20');
   assert.equal(r.body.is.durum, 'acik');
   assert.equal(DB.notlar.length, 1);
   assert.equal(DB.notlar[0].tur, 'olusturma');
-  assert.equal(DB.notlar[0].yazan_ad, 'Onur Demir');
+  assert.equal(DB.notlar[0].yazan_ad, 'Deneme Kisi');
 });
 
 test('BN5 dogrulama: bos baslik, taninmayan durum, uzun baslik kaydedilmez', async () => {

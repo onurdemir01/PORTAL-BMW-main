@@ -99,16 +99,16 @@ const veri = (): NginxInventoryResult => ({
   },
   other: { domain: [], subnet: [], nginxUser: [] },
   hosts: [
-    host({ hostname: 'GBNGXP01', envByName: 'PROD', disk_usr_nginx: '50G', disk_web_log: '1.5T' }),
+    host({ hostname: 'ORNGXP01', envByName: 'PROD', disk_usr_nginx: '50G', disk_web_log: '1.5T' }),
     host({
-      hostname: 'GBNGXAP01',
+      hostname: 'ORNGXAP01',
       envByName: 'PROD',
       location: 'ankara',
       disk_usr_nginx: '20G',
       disk_web_log: 'N/A',
     }),
     host({
-      hostname: 'GBNGXQ01',
+      hostname: 'ORNGXQ01',
       envByName: 'QA',
       env: 'non-production',
       nginx_version: '1.20.1',
@@ -116,7 +116,7 @@ const veri = (): NginxInventoryResult => ({
       disk_web_log: '100G',
     }),
     host({
-      hostname: 'GBNGXT01',
+      hostname: 'ORNGXT01',
       envByName: 'TEST',
       env: 'non-production',
       services: 'glomo,mobile',
@@ -178,7 +178,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     const rozet = within(kart).getByTitle('1.20.1: 1 sunucu — listele');
     expect(rozet.textContent).toBe('1.20.1: 1 sunucu%20');
     fireEvent.click(rozet);
-    expect(satirAdlari()).toEqual(['GBNGXQ01']);
+    expect(satirAdlari()).toEqual(['ORNGXQ01']);
     fireEvent.click(screen.getByRole('button', { name: 'Sürüm süzgecini kaldır' }));
     expect(satirAdlari()).toHaveLength(5);
   });
@@ -187,14 +187,14 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     render(<NginxEnvanteri />);
     const kart = (await screen.findAllByTestId('ortam-karti'))[0];
     fireEvent.click(within(kart).getByRole('button', { name: /^Sunucular/ }));
-    expect(satirAdlari()).toEqual(['GBNGXAP01', 'GBNGXP01']);
+    expect(satirAdlari()).toEqual(['ORNGXAP01', 'ORNGXP01']);
   });
 
   it('ET4 elle etiketli sunucu ve süzgeç', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
     fireEvent.click(screen.getByRole('button', { name: /Elle etiketli/ }));
-    expect(satirAdlari()).toEqual(['GBNGXT01']);
+    expect(satirAdlari()).toEqual(['ORNGXT01']);
     expect(screen.getByTitle('Elle etiket').textContent).toContain('mobile');
     expect(screen.getByText(/otomatik \+ elle/)).toBeTruthy();
   });
@@ -202,7 +202,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
   it('ET5 Admin etiketi kaydeder, liste tazelenir', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'GBNGXP01 etiketini düzenle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ORNGXP01 etiketini düzenle' }));
     const p = screen.getByTestId('etiket-penceresi');
     const kutu = within(p).getByPlaceholderText('glomo, mobile-api');
     expect((kutu as HTMLInputElement).value).toBe('glomo');
@@ -210,7 +210,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     expect(within(p).getByTestId('etiket-sonuc').textContent).toBe('glomomobile-api');
     fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }));
     await waitFor(() =>
-      expect(api.set).toHaveBeenCalledWith('GBNGXP01', {
+      expect(api.set).toHaveBeenCalledWith('ORNGXP01', {
         mod: 'degistir',
         etiketler: ['glomo', 'mobile-api'],
         not: undefined,
@@ -222,7 +222,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
   it('ET5b geçersiz etikette Kaydet kapalı', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'GBNGXP01 etiketini düzenle' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ORNGXP01 etiketini düzenle' }));
     fireEvent.change(screen.getByPlaceholderText('glomo, mobile-api'), {
       target: { value: 'too_many' },
     });
@@ -243,25 +243,25 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
     const satir = (ad: string) =>
       screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
-    const p01 = satir('GBNGXP01');
+    const p01 = satir('ORNGXP01');
     expect(within(p01).getByTestId('disk-usr-nginx').textContent).toBe('50 GiB');
     expect(within(p01).getByTestId('disk-web-log').textContent).toBe('1,5 TiB');
-    expect(within(satir('GBNGXQ01')).getByTestId('disk-usr-nginx').textContent).toBe('7,5 GiB');
-    const na = within(satir('GBNGXAP01')).getByTestId('disk-web-log').firstElementChild!;
+    expect(within(satir('ORNGXQ01')).getByTestId('disk-usr-nginx').textContent).toBe('7,5 GiB');
+    const na = within(satir('ORNGXAP01')).getByTestId('disk-web-log').firstElementChild!;
     expect(na.querySelector('[aria-hidden="true"]')!.textContent).toBe('—');
     expect(na.textContent).toContain('çözümlenemedi');
     expect(na.getAttribute('title')).toBe('/web_log: "N/A" çözümlenemedi');
     expect(
-      within(satir('GBNGXT01'))
+      within(satir('ORNGXT01'))
         .getByTestId('disk-usr-nginx')
         .firstElementChild!.getAttribute('title'),
     ).toBe('/usr/nginx: değer yok');
 
     // değeri olmayanlar ("—") iki yönde de en altta
     fireEvent.click(screen.getByRole('button', { name: /\/usr\/nginx/ }));
-    expect(satirAdlari()).toEqual(['GBNGXQ01', 'GBNGXAP01', 'GBNGXP01', 'GBNGXT01', 'XYZWEB01']);
+    expect(satirAdlari()).toEqual(['ORNGXQ01', 'ORNGXAP01', 'ORNGXP01', 'ORNGXT01', 'XYZWEB01']);
     fireEvent.click(screen.getByRole('button', { name: /\/usr\/nginx/ }));
-    expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXAP01', 'GBNGXQ01', 'GBNGXT01', 'XYZWEB01']);
+    expect(satirAdlari()).toEqual(['ORNGXP01', 'ORNGXAP01', 'ORNGXQ01', 'ORNGXT01', 'XYZWEB01']);
     expect(within(p01).getByTestId('bellek').textContent).toBe('16 GiB');
   });
 
@@ -306,7 +306,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     );
     d.hosts.push(
       host({
-        hostname: 'GBNGXT02',
+        hostname: 'ORNGXT02',
         envByName: 'TEST',
         env: 'non-production',
         nginx_version: null,
@@ -327,7 +327,7 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     expect(bilinmeyen[0].textContent).toBe('bilinmiyor: 2 sunucu%40');
     expect(within(kart).getByText(/3 sürüm/)).toBeTruthy();
     fireEvent.click(within(bilinmeyen[0]).getByRole('button'));
-    expect(satirAdlari()).toEqual(['GBNGXT02', 'XYZWEB01']);
+    expect(satirAdlari()).toEqual(['ORNGXT02', 'XYZWEB01']);
     expect(within(screen.getByTestId('surum-suzgeci')).getByTestId('surum-rozeti')).toBeTruthy();
     expect(
       within(screen.getAllByTestId('sunucu-satiri')[0]).getByTestId('disk-usr-nginx').textContent,
@@ -336,15 +336,15 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     // OS "(bilinmiyor)" yalnız OS'u boş sunucuyu getirir (nginx'i unknown olanı değil)
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     fireEvent.click(screen.getByTitle('(bilinmiyor): 1 sunucu — listele'));
-    expect(satirAdlari()).toEqual(['GBNGXT02']);
+    expect(satirAdlari()).toEqual(['ORNGXT02']);
     expect(screen.getByTestId('surum-suzgeci').textContent).toContain('OS:');
 
     // Sunucular satırındaki rozet o sürüme süzer
     fireEvent.click(screen.getByRole('button', { name: 'Sürüm süzgecini kaldır' }));
     const q01 = screen
       .getAllByTestId('sunucu-satiri')
-      .find((r) => r.textContent!.startsWith('GBNGXQ01'))!;
+      .find((r) => r.textContent!.startsWith('ORNGXQ01'))!;
     fireEvent.click(within(q01).getByTestId('surum-rozeti'));
-    expect(satirAdlari()).toEqual(['GBNGXQ01']);
+    expect(satirAdlari()).toEqual(['ORNGXQ01']);
   });
 });

@@ -218,7 +218,7 @@ export function TabAccessPanel({
                 <option value="group">LDAP grubu (CN ya da DN)</option>
               )}
               {principalTypes.includes('email') && (
-                <option value="email">E-posta (ad.soyad@garantibbva.com.tr)</option>
+                <option value="email">E-posta (ad.soyad@ornekbanka.invalid)</option>
               )}
             </select>
           </label>

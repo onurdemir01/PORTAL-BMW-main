@@ -26,7 +26,7 @@ const CONNECT_TIMEOUT_MS = Number(process.env.MCP_CONNECT_TIMEOUT_MS) || 10_000;
 // KRITIK DERS (kurum makinesindeki teshisten): global HTTPS_PROXY tanimliyken MCP
 // route'lari da proxy'ye gidiyordu ve kurumsal proxy ic adres CONNECT'ini kesiyordu
 // (ECONNRESET). Kurum ici MCP route'lari NO_PROXY ile proxy'den muaf tutulmalidir:
-//   NO_PROXY=localhost,127.0.0.1,.fw.garanti.com.tr,...
+//   NO_PROXY=localhost,127.0.0.1,.fw.sirket.invalid,...
 // Basit kurallar: tam eslesme, ".domain" / "domain" suffix eslesmesi, "*" = hepsi.
 function isNoProxyHost(hostname) {
   const raw = process.env.NO_PROXY || process.env.no_proxy || '';
@@ -274,6 +274,8 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
   // event-loop'u 100ms araliklarla mesgul etmeden bekler (kurumsal AI kod incelemesi,
   // review.md #8).
   async function getClient() {
+    // Adres ortam ayarindan gelir (kurum adresi koda yazilmaz); yoksa baglanti DENENMEZ, acik hata.
+    if (!String(url || '').trim()) throw new Error(`[MCP:${name}] adres yapilandirilmamis`);
     if (_client) return _client;
     if (_connecting) return _connecting;
 

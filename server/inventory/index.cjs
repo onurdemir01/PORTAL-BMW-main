@@ -1511,7 +1511,7 @@ function initInventory(app) {
       if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
 
       // UYGULANAN KOSUL GORUNUR OLSUN (kullanici, 2026-10-01: "envanterde sorgular bir
-      // sapitiyor... cluster name gbocpqa1 icerir OR cluster name gbocpqa2 icerir deyip
+      // sapitiyor... cluster name orocpqa1 icerir OR cluster name orocpqa2 icerir deyip
       // uyguladigimiz zaman sorgu adam akilli calismiyor").
       //
       // Gelismis filtre TEK BASINA calismiyor: arama kutusu, kolon basligi suzgecleri ve

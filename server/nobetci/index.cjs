@@ -64,12 +64,23 @@ function fetchNobetList() {
   return new Promise((resolve, reject) => {
     const teamId = (process.env.NOBETCI_TEAM_ID || '').trim();
     const teamType = (process.env.NOBETCI_TEAM_TYPE || 'AGILE').trim();
-    const baseGbnys = 'https://gbnys.fw.garanti.com.tr';
+    // Nobet servisinin taban adresi ORTAM AYARINDA (NOBETCI_API_TABAN; kurum adresi koda yazilmaz, K17).
+    const taban = String(process.env.NOBETCI_API_TABAN || '')
+      .trim()
+      .replace(/\/+$/, '');
 
     // T59: URL'i teamId/teamType env'dan olustur
     const apiUrl = teamId
-      ? `${baseGbnys}/api/nobetkayit/list/${teamId}/${teamType}`
-      : process.env.NOBETCI_API_URL || `${baseGbnys}/api/nobetkayit/homepage/currentlist`;
+      ? taban && `${taban}/api/nobetkayit/list/${teamId}/${teamType}`
+      : process.env.NOBETCI_API_URL || (taban && `${taban}/api/nobetkayit/homepage/currentlist`);
+    if (!apiUrl) {
+      reject(
+        new Error(
+          'Nöbetçi servisi yapılandırılmamış: NOBETCI_API_TABAN (ya da NOBETCI_API_URL) gerekli.',
+        ),
+      );
+      return;
+    }
 
     const hostOverride = (process.env.NOBETCI_API_HOST || '').trim();
     const parsed = new URL(apiUrl);

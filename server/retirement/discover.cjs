@@ -25,8 +25,8 @@ const U = (s) =>
     .trim()
     .toUpperCase();
 
-// Sunucu adi: <2 sirket><2 servis><tier A|W|X...><site A?><ortam P|T|Q|D><n>. Ornek: GBCJAP01 Pendik
-// (tier A, site harfi yok), GBCJAAP02 Ankara (fazladan A), GBNGXP40 Pendik, GBNGXAP34 Ankara
+// Sunucu adi: <2 sirket><2 servis><tier A|W|X...><site A?><ortam P|T|Q|D><n>. Ornek: ORCJAP01 Pendik
+// (tier A, site harfi yok), ORCJAAP02 Ankara (fazladan A), ORNGXP40 Pendik, ORNGXAP34 Ankara
 // (nginx_metadata kurali AP<n>$ yalniz tier'i A olmayan sunucularda dogru; burada genellestirildi).
 function siteOf(host) {
   const m = /^([A-Z]{5,})([A-Z])(\d+)$/.exec(U(host));
@@ -119,7 +119,7 @@ function genOf(jbossVersion) {
 // KURULUM KOLU = retirement betiklerinin GEN'i (OpsX kurulumKolu ile ayni kural). Betikler GEN'e gore
 // KURULUM DIZINI secer: 7 = /usr/jboss/AppServer + /vhosting, 8 = /usr/jboss8/AppServer + /vhosting8.
 // Envanter iki kurulumu app_path ile ayirir; kol oradan okunur, yoksa urun majoru. Standart disi
-// sunucuda /usr/jboss altinda JBoss 8 urunu kurulu olabilir (GBJBOP18): urun surumu kolu SOYLEMEZ.
+// sunucuda /usr/jboss altinda JBoss 8 urunu kurulu olabilir (ORJBOP18): urun surumu kolu SOYLEMEZ.
 function kolOf(appPath, jbossVersion) {
   const p = String(appPath || '')
     .trim()
@@ -206,7 +206,7 @@ function trafikSinifi(v) {
 //
 // ESLEME SIKI: server_name'in ya da bir alias'in ILK ETIKETI uygulama adina BIREBIR esit.
 // Sertifika yolundaki "iceriyor" / taban ad eslemesi burada YOK, cunku retirement bu
-// vhost'lari KAPATIYOR ve ayni sunucu cogu kez kardes ortamlari da barindiriyor (GBJBOT07:
+// vhost'lari KAPATIYOR ve ayni sunucu cogu kez kardes ortamlari da barindiriyor (ORJBOT07:
 // gbsvcvoiceorder-d VE -t). '-d' retire edilirken '-t'nin vhost'unu yakalamak, calisan bir
 // ortami kapatmak olurdu.
 function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
@@ -275,7 +275,7 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
 }
 
 // ── UCUNCU WEB KAYNAGI: AJP / PROXY HEDEFI (2026-10-12) ──────────────────────────────
-// Kullanici: "uygulamanin ismi onur ama Apache'de cansu.fw.garanti.com.tr diye tanim yapilmis olabilir.
+// Kullanici: "uygulamanin ismi onur ama Apache'de cansu.fw.sirket.invalid diye tanim yapilmis olabilir.
 // worker properties'te uygulamanin hangi AJP portu uzerinden hangi JVM'e gidecegi belirtiliyor; JBoss
 // sunucularinda hangi uygulamanin hangi AJP portundan dinledigini bulsan, gercek virtual host blogunu
 // kesfedemez miyiz?" Server Hub taramasi artik (a) JVM'in TANIMLI AJP/HTTP portlarini (cfg_ports, JVM
@@ -366,7 +366,7 @@ function webUyariMetni(web, host, hubVhostsByHost) {
 // ── DORDUNCU WEB KAYNAGI: MOD_CLUSTER BALANCER ADI (2026-10-13) ─────────────────────────
 // Kullanici: "IBM Apache'ler her zaman mod_jk + AJP ile JBoss 7'ye, Red Hat Apache'ler her zaman
 // mod_cluster + AJP ile JBoss 8'e baglanir. Red Hat Apache'lerde yalniz mod_cluster'a uygun balancer
-// ismi yazar; JBoss 8'ler kendini kendi Apache'sine advertise eder." Uretim konfigurasyonunda (gbjbop35)
+// ismi yazar; JBoss 8'ler kendini kendi Apache'sine advertise eder." Uretim konfigurasyonunda (orjbop35)
 // kalip tutarli: `<APP>.conf` icinde `ProxyPass / balancer://<app kucuk harf>/` - BALANCER ADI =
 // UYGULAMA ADI. Uyeler dinamik oldugu icin port eslesmesi YOK; esleme su uc sartla:
 //   1) balancer adi uygulama adiyla BIREBIR (alt cizgi varyantlari dahil, ortam eki dahil)

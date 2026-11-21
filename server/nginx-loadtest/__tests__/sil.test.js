@@ -240,7 +240,7 @@ sahte('../../db/index.cjs', {
       return {
         rows: D.kuyruklar
           .filter((x) => x.id === params[0])
-          .map((x) => ({ bekleme_dk: 5, onay_hedefi: 'GBNGXT33', hedef_turu: 'sunucu', ...x })),
+          .map((x) => ({ bekleme_dk: 5, onay_hedefi: 'ORNGXT33', hedef_turu: 'sunucu', ...x })),
       };
     if (q.includes('/*KQ:ogeListe*/'))
       return {
@@ -315,7 +315,7 @@ function kosuEkle(id, o = {}) {
     islem: 'kosu',
     durum: 'DONE',
     etiket: `E${id}`,
-    hedef_host: 'GBNGXT33',
+    hedef_host: 'ORNGXT33',
     hedef_ip: '10.0.0.9',
     hedef_turu: 'sunucu',
     created_by: 'onur',
@@ -630,7 +630,7 @@ test(
         id: 1,
         islem: 'kosu',
         etiket: '[K3] A1 temel',
-        hedefHost: 'GBNGXT33',
+        hedefHost: 'ORNGXT33',
         hedefIp: '10.0.0.9',
         hedefTuru: 'sunucu',
       },
@@ -651,14 +651,14 @@ test(
       toplu: true,
       sayi: 2,
       kosuIdleri: [2, 1],
-      kosular: ['#2 kosu 10.9.9.9', '#1 kosu GBNGXT33 [K3] A1 temel'],
+      kosular: ['#2 kosu 10.9.9.9', '#1 kosu ORNGXT33 [K3] A1 temel'],
     });
     // Tekli: tek hedef -> targetHost / targetIp dolu.
     assert.equal((await tekli(3)).statusCode, 200);
     const t = D.denetim.at(-1);
     assert.deepEqual(
       [t.targetHost, t.targetIp, JSON.parse(t.detail).toplu],
-      ['GBNGXT33', '10.0.0.9', false],
+      ['ORNGXT33', '10.0.0.9', false],
     );
     assert.deepEqual(D.adimlar, []);
   },

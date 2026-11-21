@@ -44,7 +44,7 @@ const SOURCES = {
       DIM('jboss_version', 'JBoss sürümü', { product: 'JBoss' }),
       // JBOSS 7 / 8 AYRI (kullanici, 2026-11-12): middleware_inventory artik jboss_version'in ana
       // surume gore ayrilmis kopyasini da yaziyor (jboss_version degismedi). Iki surum tasiyan sunucu
-      // (GBTOAQ01: '7.3.5 8.1.6.1') her iki kirilimda dogru sayilir. Kolon tabloda YOKSA (yeni sema
+      // (ORTOAQ01: '7.3.5 8.1.6.1') her iki kirilimda dogru sayilir. Kolon tabloda YOKSA (yeni sema
       // henuz yuklenmedi) boyut sessizce degil, AYRI bir notla dusurulur: bkz. mevcutBoyutlar.
       DIM('jboss7_version', 'JBoss 7 sürümü', { product: 'JBoss 7', istegeBagli: true }),
       DIM('jboss8_version', 'JBoss 8 sürümü', { product: 'JBoss 8', istegeBagli: true }),

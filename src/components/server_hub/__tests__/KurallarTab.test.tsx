@@ -266,8 +266,8 @@ describe('Server Hub › Kurallar & Limitler', () => {
 describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
   it('ayrıştırma, gösterge ve aşım', () => {
     expect(
-      sunucuAdlari('gbapp01, GBAPP02.fw.garanti.com.tr:8080\ngbapp01;  gbapp03 gbapp04:8080'),
-    ).toEqual(['GBAPP01', 'GBAPP02', 'GBAPP03', 'GBAPP04']);
+      sunucuAdlari('orapp01, ORAPP02.fw.sirket.invalid:8080\norapp01;  orapp03 orapp04:8080'),
+    ).toEqual(['ORAPP01', 'ORAPP02', 'ORAPP03', 'ORAPP04']);
     expect(limitAsildi({ enCok: null, tahmini: false }, 9999)).toBe(false);
     expect(limitAsildi({ enCok: 2, tahmini: false }, 3)).toBe(true);
     const { rerender } = render(<LimitNotu limit={{ enCok: 50, tahmini: false }} sayi={12} />);

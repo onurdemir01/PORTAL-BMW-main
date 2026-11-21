@@ -88,7 +88,7 @@ async function getNamespaces({ env, tenant, clusterNames }) {
 
   const sources = {};
   // Ad → hangi cluster'larda VAR. Coklu cluster seciminde onyuz bunu rozetle gosterir
-  // ("bu namespace yalnizca gbocpprod2'de") ve cluster suzgeci bunun uzerinden calisir.
+  // ("bu namespace yalnizca orocpprod2'de") ve cluster suzgeci bunun uzerinden calisir.
   const clusterMap = {};
   const addCluster = (name, cluster) => addClusterToMap(clusterMap, name, cluster);
 

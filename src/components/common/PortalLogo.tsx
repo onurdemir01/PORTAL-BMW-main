@@ -35,7 +35,7 @@ import React, { useEffect, useState } from 'react';
 // oldugu icin eski yol — `/api/branding/meta` sorgusu — devreye girer.
 declare global {
   interface Window {
-    __BMW_BOOT__?: { logoUrl?: string | null; theme?: string };
+    __BMW_BOOT__?: { logoUrl?: string | null; theme?: string; kurumAyarHatasi?: string | null };
   }
 }
 

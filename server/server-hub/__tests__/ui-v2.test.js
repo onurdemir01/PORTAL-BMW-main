@@ -479,8 +479,8 @@ test('D1-U04/U09 tarama sonucu: yazilamayan sunucu sayisi + sebep, NOT_ATTEMPTED
       hosts_excluded: 2,
       hosts_not_attempted: 1,
       excluded: [
-        { host: 'GBAPPT01', issue: 'FORMAT' },
-        { host: 'GBAPPT02', issue: 'CTRL_CHAR' },
+        { host: 'ORAPPT01', issue: 'FORMAT' },
+        { host: 'ORAPPT02', issue: 'CTRL_CHAR' },
       ],
     },
   });
@@ -488,7 +488,7 @@ test('D1-U04/U09 tarama sonucu: yazilamayan sunucu sayisi + sebep, NOT_ATTEMPTED
   assert.equal(r.sorun, true);
   assert.match(t, /2 sunucu yazılamadı/);
   assert.match(t, /FORMAT/);
-  assert.match(t, /GBAPPT02/);
+  assert.match(t, /ORAPPT02/);
   assert.match(t, /1 sunucu denenmedi/);
   assert.match(t, /NOT_ATTEMPTED/);
   assert.match(t, /7\/10/);
@@ -633,7 +633,7 @@ const { discover } = require('../../retirement/discover.cjs');
 const KESIF_ENVANTER = [
   {
     app: 'CRM',
-    host: 'GBCRAP01',
+    host: 'ORCRAP01',
     env: 'Production',
     domain: '',
     jboss_version: '7.4',
@@ -642,7 +642,7 @@ const KESIF_ENVANTER = [
   },
   {
     app: 'CRM-T',
-    host: 'GBCRAAT02',
+    host: 'ORCRAAT02',
     env: 'Test',
     domain: '',
     jboss_version: '8.0',
@@ -951,17 +951,17 @@ test("D1-U07 auto-start onay metni olculemeyende 'calisma durumu olculemedi' der
     runningKnown: false,
     runningSrc: 'UNMEASURED',
   };
-  const t = om('GBAPPT01', j, false);
+  const t = om('ORAPPT01', j, false);
   assert.match(t, /çalışma durumu ölçülemedi/);
   assert.match(t, /süreç görünmüyor/);
   assert.match(t, /Yalnız bu JVM etkilenir/, 'kapsam cumlesi kayip (SB5)');
-  assert.match(t, /GBAPPT01/);
+  assert.match(t, /ORAPPT01/);
   assert.match(t, /KAPATILACAK/);
-  const k = om('GBAPPT01', { ...j, runningKnown: true, runningSrc: 'PS_ABSENT' }, true);
+  const k = om('ORAPPT01', { ...j, runningKnown: true, runningSrc: 'PS_ABSENT' }, true);
   assert.ok(!/ölçülemedi/.test(k), 'olculmus JVM icin gereksiz uyari');
   assert.match(k, /AÇILACAK/);
   // T2-D2 (C3): sema bilinmiyorken sebep sema
-  const s = om('GBAPPT01', { ...j, runningSrc: null }, false, true);
+  const s = om('ORAPPT01', { ...j, runningSrc: null }, false, true);
   assert.match(s, /çalışma durumu ölçülemedi \(Server Hub şeması okunamadı\)/);
   assert.ok(!/süreç görünmüyor/.test(s), 'sema bilinmiyorken hidepid sebebi');
   // BAGLANTI (AST): onay metni yardimcidan ve sema bayragiyla. Onay 2026-11-08'den beri portal
@@ -1284,8 +1284,8 @@ function tamSema() {
   );
 }
 const gunOnce = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
-const APP = 'GBCJAP01';
-const WEB = 'GBCJWP01';
+const APP = 'ORCJAP01';
+const WEB = 'ORCJWP01';
 const SENARYO = {
   // EK-1/EK-2: son yukleme 5 gun once, v3 tarayici (scan_ver dolu)
   bayat: () => {
@@ -1981,7 +1981,7 @@ test('T2-D2 TRAFFIC_UNATTRIBUTED: unattributed[].kind ve .target ayrinti panelin
   const TUR = P.ATF_TUR;
   for (const k of ['PORT', 'HEDEF', 'EKSIK']) assert.ok(TUR && TUR[k], `${k} turu etiketsiz`);
   const hedefS = as({
-    host: 'GBCJWP01',
+    host: 'ORCJWP01',
     serverName: 'api.bmw.de',
     port: 8180,
     target: 'crm-vip.bmw.local:8180',
@@ -1992,12 +1992,12 @@ test('T2-D2 TRAFFIC_UNATTRIBUTED: unattributed[].kind ve .target ayrinti panelin
   assert.ok(
     hedefS.includes('crm-vip.bmw.local:8180') &&
       hedefS.includes(TUR.HEDEF) &&
-      hedefS.includes('GBCJWP01/api.bmw.de'),
+      hedefS.includes('ORCJWP01/api.bmw.de'),
     hedefS,
   );
   assert.ok(!hedefS.includes(':8180 (:8180)'), 'port iki kez');
   const portS = as({
-    host: 'GBCJWP01',
+    host: 'ORCJWP01',
     serverName: 'b',
     port: 8443,
     target: null,
@@ -2519,10 +2519,10 @@ test("T4-D1 unattributed[].reason ekranda: HEDEF genel etiket + nedenin etiketi;
   // her neden KENDI kok nedenini soyler; COZULEMEDI disindakiler "cozulemedi" demez
   const satir = (reason) =>
     as({
-      host: 'GBCJWP01',
+      host: 'ORCJWP01',
       serverName: 'api.bmw.de',
       port: 8180,
-      target: 'gbcjwp01.bmw.local:8180',
+      target: 'orcjwp01.bmw.local:8180',
       kind: 'HEDEF',
       reason,
       req7d: 5000,
@@ -2786,7 +2786,7 @@ test("T4-D4 auto-start satir dugmesi: UNAVAILABLE / sema okunamadi / bayat sunuc
     ).goster,
     true,
   );
-  // 2026-11-14 (uretim GBJIST02): "yalniz envanterde" satiri (gen 0, taramada JVM'i yok) tarama JVM'i
+  // 2026-11-14 (uretim ORJIST02): "yalniz envanterde" satiri (gen 0, taramada JVM'i yok) tarama JVM'i
   // degil; sunucu /jvm-autostart 400 doner (jvmAutoStartKapisi) - dugme YOK, sebep yazilir.
   const ye = ad({ source: 'envanter', cfgSrc: null }, taze);
   assert.equal(ye.goster, false, 'yalniz envanterdeki satira auto-start dugmesi gosterildi');

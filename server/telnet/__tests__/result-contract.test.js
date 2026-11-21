@@ -45,8 +45,8 @@ const SAMPLE = {
   counts: { total: '3', open: '1', closed: '1', error: '1' },
   targets: [
     {
-      cluster: 'gbocptest1',
-      bastion: 'GBARKAP82',
+      cluster: 'orocptest1',
+      bastion: 'ORARKAP82',
       namespace: 'ns-a',
       ip: '10.10.1.101',
       port: '8080',
@@ -55,8 +55,8 @@ const SAMPLE = {
       detail: '',
     },
     {
-      cluster: 'gbocptest2',
-      bastion: 'GBARKAP82',
+      cluster: 'orocptest2',
+      bastion: 'ORARKAP82',
       namespace: 'ns-a',
       ip: '10.10.1.101',
       port: '8080',
@@ -65,8 +65,8 @@ const SAMPLE = {
       detail: 'Connection refused',
     },
     {
-      cluster: 'gbocptest3',
-      bastion: 'GBARKAP83',
+      cluster: 'orocptest3',
+      bastion: 'ORARKAP83',
       namespace: 'ns-b',
       ip: '10.10.1.101',
       port: '8080',

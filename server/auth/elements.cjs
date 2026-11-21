@@ -160,7 +160,7 @@ function isStrict(el) {
 /**
  * KISI KURALINI SIKI TORUNLARA DA YAZAR (2026-10-01).
  *
- * URETIM: "Crypto Hub'a halen osmankoz@garantibbva.com.tr giremiyor." Admin ekraninda
+ * URETIM: "Crypto Hub'a halen ornekkisi@ornekbanka.invalid giremiyor." Admin ekraninda
  * `navgroup:cryptohub` ogesine UC kisi kurali girilmisti ve ekran onlari gosteriyordu -
  * ama kullanici 403 aliyordu.
  *

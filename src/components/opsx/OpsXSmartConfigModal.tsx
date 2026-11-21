@@ -55,8 +55,8 @@ const OPSX_ORNEK: Record<OpsxSmartPlatform, Record<string, string>> = {
     platform: 'legacy',
     uretimSebebi: 'ortam: Production',
     talepEden: 'ornek.kullanici',
-    uygulama: 'GBCCSECURETRACKER',
-    sunucular: 'GBJBOP18, GBJBOAP18',
+    uygulama: 'ORNEKUYGULAMA',
+    sunucular: 'ORJBOP18, ORJBOAP18',
   },
   was: {
     islem: 'WAS restart',

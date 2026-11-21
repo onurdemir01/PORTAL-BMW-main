@@ -11,7 +11,7 @@ import { render } from '@/test/test-utils';
 vi.mock('@/api/opsxApi', async (orijinal) => ({
   ...((await orijinal()) as object),
   opsxApi: {
-    getClusters: vi.fn(async () => ({ tree: { PROD: { ark: ['gbocpprod1'] } } })),
+    getClusters: vi.fn(async () => ({ tree: { PROD: { ark: ['orocpprod1'] } } })),
     getOcpNamespaces: vi.fn(async () => ({ namespaces: ['ns-a'] })),
     getOcpApps: vi.fn(async () => ({ apps: ['app-1', 'app-2'] })),
   },

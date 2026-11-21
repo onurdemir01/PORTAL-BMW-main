@@ -31,9 +31,9 @@ const sunucu = (r, h) => r.hosts.find((x) => x.host === h);
 const bul = (r, h, code) => sunucu(r, h).findings.filter((f) => f.code === code);
 const tumFix = (r) => r.hosts.flatMap((h) => h.findings.filter((f) => f.fix).map((f) => f.fix));
 
-// 3-tier adlar: GBCJAP01 (uygulama) -> 5. harf A->W -> GBCJWP01 (web). Ikisi de PROD/Pendik.
-const APP = 'GBCJAP01';
-const WEB = 'GBCJWP01';
+// 3-tier adlar: ORCJAP01 (uygulama) -> 5. harf A->W -> ORCJWP01 (web). Ikisi de PROD/Pendik.
+const APP = 'ORCJAP01';
+const WEB = 'ORCJWP01';
 
 const H3 = (host, ek = {}) => ({
   host,
@@ -172,7 +172,7 @@ test('D1-C04 tam v2 kaniti -> jboss_retire; ALIAS esleme -> fix null; eski satir
   assert.equal(fe[0].fix, null, 'eski satir (v2 kaniti yok) jboss_retire uretti');
 
   const ex = tamKanit();
-  ex.vhosts = [V3(WEB, 'portal.bmw.local', { proxy_targets: 'gbcjap01.bmw.local:8443' })];
+  ex.vhosts = [V3(WEB, 'portal.bmw.local', { proxy_targets: 'orcjap01.bmw.local:8443' })];
   ex.jvms = [J3(APP, 'oldapp', { cfg_ports: '8443', cfg_ports_src: 'CLI' })];
   const rx = A(ex);
   assert.equal(sunucu(rx, APP).jvms[0].mapping, 'EXACT_JVM');
@@ -246,7 +246,7 @@ test('D1-C03 aday web sunucusunda (webHostOf) vhost_trust=NONE -> UNVERIFIED, re
 });
 
 test("D1-C03b p1b_probe A: proxy eslesmesinde de webMatch hesaplanir; gateHosts webHostOf W'yi icerir -> UNVERIFIED", () => {
-  const X = 'GBGWXP01';
+  const X = 'ORGWXP01';
   const d = {
     hosts: [
       H3(APP, { products: 'JBOSS7' }),
@@ -255,7 +255,7 @@ test("D1-C03b p1b_probe A: proxy eslesmesinde de webMatch hesaplanir; gateHosts 
     ],
     jvms: [J3(APP, 'OLDAPP', { cfg_ports: '8080', cfg_ports_src: 'CLI' })],
     web: [W3(X, 'NGINX'), NONE3(WEB)],
-    vhosts: [V3(X, 'legacy.oldapp', { product: 'NGINX', proxy_targets: 'GBCJAP01:8080' })],
+    vhosts: [V3(X, 'legacy.oldapp', { product: 'NGINX', proxy_targets: 'ORCJAP01:8080' })],
   };
   const r = A(d);
   const j = sunucu(r, APP).jvms[0];
@@ -282,7 +282,7 @@ test("D1-C03c p1b_probe B: W'de VHOST yok + uygulama sunucusunda ad eslesen vhos
 });
 
 test('D1-C05 + D1-C21 runningKnown: UNMEASURED kapali DEGIL; BLIND+PS bilinen; NULL ve CLI_STATUS bilinen', () => {
-  const A2 = 'GBCJAP02';
+  const A2 = 'ORCJAP02';
   const d = {
     hosts: [
       H3(APP, { products: 'JBOSS7', proc_visibility: 'BLIND' }),
@@ -372,7 +372,7 @@ test('D1-C25 SYNTAX_FAIL v3: run_as=www + taze -> eylem; run_as=none -> null; ba
       detail: 'Syntax error on line 7 of /usr/IBMIHS/conf/x.conf: Invalid command Foo',
     });
   const kos = (web, scan_date = BUGUN) =>
-    bul(A({ hosts: [H3(WEB, { scan_date }), H3('GBZZAP09')], web: [web] }), WEB, 'SYNTAX_FAIL')[0];
+    bul(A({ hosts: [H3(WEB, { scan_date }), H3('ORZZAP09')], web: [web] }), WEB, 'SYNTAX_FAIL')[0];
   assert.equal(kos(satir('www')).fix.action, 'apache_comment_line');
   assert.equal(kos(satir('none')).fix, null, 'www ile kosmamis kontrol satir yorumlatiyor');
   const bayat = kos(satir('www'), gunOnce(5));
@@ -398,7 +398,7 @@ test('D1-C07 IP "unverified" atil SAYILMAZ (bulgu, ozet, satir sayaci)', () => {
 });
 
 test('D1-C08 INIT UNREADABLE: INIT_UNREADABLE (DIFF/MISSING degil), cogunluga girmez, uyumlu sayilmaz, hazirlik unknown', () => {
-  const hs = ['GBAAAP01', 'GBAAAP02', 'GBAAAP03', 'GBAAAP04', 'GBAAAP05'];
+  const hs = ['ORAAAP01', 'ORAAAP02', 'ORAAAP03', 'ORAAAP04', 'ORAAAP05'];
   const d = {
     hosts: hs.map((h) => H3(h)),
     init: [
@@ -485,14 +485,14 @@ test('D1-C09 + D1-C24 LoadIssues: run_at > loaded_at -> LOAD_EXCLUDED (tum eylem
       host: APP,
       scan_date: BUGUN,
       issue: 'HOST_DUPLICATE_SAME_MACHINE',
-      detail: 'inv=gbcjap01 inv=GBCJAP01.bmw.local',
+      detail: 'inv=orcjap01 inv=ORCJAP01.bmw.local',
       run_at: `${BUGUN}T14:00:00Z`,
     },
   ];
   const rs = A(s);
   assert.ok(!bul(rs, APP, 'LOAD_EXCLUDED').length, 'ayni makine dislama sayildi');
   assert.equal(bul(rs, APP, 'LOAD_DUPLICATE').length, 1);
-  assert.match(bul(rs, APP, 'LOAD_DUPLICATE')[0].text, /inv=gbcjap01/);
+  assert.match(bul(rs, APP, 'LOAD_DUPLICATE')[0].text, /inv=orcjap01/);
   assert.ok(bul(rs, APP, 'REBOOT_RISK')[0].fix);
 });
 
@@ -622,9 +622,9 @@ test('D1-C17 tazelik: web sunucusu 10 gun once -> RETIRE fix null "bayat kanit: 
 });
 
 test('D1-C18 LOAD_EXCLUDED ve 3 gun once taranmis sunucu: VHOST_IDLE/REBOOT_RISK/SYNTAX_FAIL kalir, hepsi fix null + "(bayat kanit: <tarih>)"', () => {
-  const S = 'GBCJAP05';
+  const S = 'ORCJAP05';
   const kur = (scan_date, loadIssues) => ({
-    hosts: [H3(S, { products: 'JBOSS7 IHS RHA', scan_date }), H3('GBZZAP09')],
+    hosts: [H3(S, { products: 'JBOSS7 IHS RHA', scan_date }), H3('ORZZAP09')],
     jvms: [
       J3(S, 'crm', {
         running: 1,
@@ -688,24 +688,24 @@ test('D1-C19 web katmani (S3): ayni env+site W2 NONE -> RETIRE fix null "web kat
     if (invEnv) d.invEnv = invEnv;
     return A(d);
   };
-  const r = kos('GBXXWP02');
+  const r = kos('ORXXWP02');
   const f = bul(r, APP, 'RETIRE_CANDIDATE');
   assert.equal(f.length, 1);
   assert.equal(f[0].fix, null, 'web katmaninda olculemeyen host varken retire onerildi');
-  assert.match(f[0].text, /web katmanında ölçülemeyen host var: GBXXWP02/);
+  assert.match(f[0].text, /web katmanında ölçülemeyen host var: ORXXWP02/);
   assert.equal(r.summary.jvm.retireBlockedByWebTier, 1);
   assert.deepEqual(
-    bul(kos('GBXXWAP02'), APP, 'RETIRE_CANDIDATE')[0].fix,
+    bul(kos('ORXXWAP02'), APP, 'RETIRE_CANDIDATE')[0].fix,
     RETIRE_FIX,
     'baska site engelledi',
   );
   assert.deepEqual(
-    bul(kos('GBXXWT02'), APP, 'RETIRE_CANDIDATE')[0].fix,
+    bul(kos('ORXXWT02'), APP, 'RETIRE_CANDIDATE')[0].fix,
     RETIRE_FIX,
     'baska ortam engelledi',
   );
   // envanterde web urunu olan ama TARANMAMIS ayni katman sunucusu da olculmemistir
-  const ri = kos(null, [{ host: 'GBYYWP03', env: 'PROD', invProducts: ['IHS'] }]);
+  const ri = kos(null, [{ host: 'ORYYWP03', env: 'PROD', invProducts: ['IHS'] }]);
   assert.equal(
     bul(ri, APP, 'RETIRE_CANDIDATE')[0].fix,
     null,
@@ -1076,7 +1076,7 @@ test("EK-3 durmus JVM + ayni sunucuya port belirten ACTIVE vhost (hicbir JVM'e a
   const d = tamKanit();
   d.vhosts.push(
     V3(WEB, 'payments.bmw.local', {
-      proxy_targets: 'gbcjap01.bmw.local:8443',
+      proxy_targets: 'orcjap01.bmw.local:8443',
       req_24h: 7,
       req_7d: 50,
       traffic_state: 'ACTIVE',
@@ -1093,7 +1093,7 @@ test("EK-3 durmus JVM + ayni sunucuya port belirten ACTIVE vhost (hicbir JVM'e a
   assert.ok(!KOD_ANLAMI.TRAFFIC_UNATTRIBUTED, 'hazirlik etkilenmemeli');
   // trafigi OLCULEMEYEN atfedilemeyen proxy de engeller
   d.vhosts[1] = V3(WEB, 'payments.bmw.local', {
-    proxy_targets: 'gbcjap01:8443',
+    proxy_targets: 'orcjap01:8443',
     req_24h: -1,
     req_7d: -1,
     hc_24h: -1,
@@ -1103,7 +1103,7 @@ test("EK-3 durmus JVM + ayni sunucuya port belirten ACTIVE vhost (hicbir JVM'e a
   assert.equal(bul(A(d), APP, 'RETIRE_CANDIDATE')[0].fix, null);
   // kontrol 1: port calisan bir JVM'e AITSE atfedilebilir -> retire korunur
   d.vhosts[1] = V3(WEB, 'payments.bmw.local', {
-    proxy_targets: 'gbcjap01:8443',
+    proxy_targets: 'orcjap01:8443',
     req_7d: 50,
     traffic_state: 'ACTIVE',
   });
@@ -1119,14 +1119,14 @@ test("EK-3 durmus JVM + ayni sunucuya port belirten ACTIVE vhost (hicbir JVM'e a
   assert.deepEqual(bul(A(d), APP, 'RETIRE_CANDIDATE')[0].fix, RETIRE_FIX);
   // kontrol 2: atfedilemeyen ama OLCULMUS 0 trafik engellemez
   d.jvms.pop();
-  d.vhosts[1] = V3(WEB, 'payments.bmw.local', { proxy_targets: 'gbcjap01:8443' });
+  d.vhosts[1] = V3(WEB, 'payments.bmw.local', { proxy_targets: 'orcjap01:8443' });
   assert.deepEqual(bul(A(d), APP, 'RETIRE_CANDIDATE')[0].fix, RETIRE_FIX);
   // JVM'in KENDI esli vhost'u (okunamayan) onun trafik durumunda degerlendirilir; ayni
   // sunucudaki portu bilinmeyen KARDES JVM ise TRAFFIC_UNATTRIBUTED alir.
   const k = tamKanit();
   k.vhosts = [
     V3(WEB, 'oldapp.bmw.local', {
-      proxy_targets: 'gbcjap01:8080',
+      proxy_targets: 'orcjap01:8080',
       req_24h: -1,
       req_7d: -1,
       hc_24h: -1,
@@ -1154,7 +1154,7 @@ test('EK-5 yalniz web_presence_unknown jetonu: WEB_PRESENCE_UNKNOWN, hazirlik ok
   assert.equal((KOD_ANLAMI.WEB_PRESENCE_UNKNOWN || {}).tip, 'unknown');
   assert.equal((KOD_ANLAMI.PRODUCT_NOT_SCANNED || {}).tip, 'unknown');
   const d = tamKanit();
-  d.hosts.push(H3('GBXXWP02', { scan_errors: 'web_presence_unknown:NGINX' }));
+  d.hosts.push(H3('ORXXWP02', { scan_errors: 'web_presence_unknown:NGINX' }));
   assert.equal(
     bul(A(d), APP, 'RETIRE_CANDIDATE')[0].fix,
     null,
@@ -1220,7 +1220,7 @@ test("C1 EK-3 IP hedefi data.ips ile sunucuya cozulur: atfedilemeyen port retire
   // IP iki sunucuda (VIP / kayan IP): hangisine gittigi bilinmez -> engel
   const ikiSahip = [
     { host: APP, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 },
-    { host: 'GBCJAP02', ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 0 },
+    { host: 'ORCJAP02', ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 0 },
   ];
   assert.equal(
     crmRetire(ek3Kur('10.1.2.3:8180', { ekJvm: [KOSAN_8180], ips: ikiSahip })).fix,
@@ -1284,9 +1284,9 @@ test('C1 EK-3 cozulemeyen hedef (balancer://, VIP, upstream adi): ayni katmanda 
     );
     return crmRetire(d);
   };
-  assert.deepEqual(katman('GBXXWAP05').fix, CRM_FIX, 'baska sitedeki web sunucusu engelledi');
+  assert.deepEqual(katman('ORXXWAP05').fix, CRM_FIX, 'baska sitedeki web sunucusu engelledi');
   assert.equal(
-    katman('GBXXWP05').fix,
+    katman('ORXXWP05').fix,
     null,
     'ayni katmandaki (PROD/Pendik) hedefi bilinmeyen proxy engellemedi',
   );
@@ -1297,23 +1297,23 @@ test('C1 EK-3 cozulemeyen hedef (balancer://, VIP, upstream adi): ayni katmanda 
 test('C4 kesik proxy_targets: kesik parca ayristirilmaz, vhost "hedefi eksik", web sunucusu EK-3 icin olculmemis', () => {
   const d = (hedef, vek) => {
     const x = ek3Kur(hedef, { vek });
-    x.hosts.push(H3('GBZZAP09'));
+    x.hosts.push(H3('ORZZAP09'));
     return x;
   };
   const sifir = { req_24h: 0, req_7d: 0, traffic_state: 'NO_RECENT_TRAFFIC' };
   // kontrol: kesik olmayan (cozulen) liste, olculmus 0 trafik -> retire korunur
   assert.deepEqual(
-    crmRetire(d('gbzzap09.bmw.local:80', sifir)).fix,
+    crmRetire(d('orzzap09.bmw.local:80', sifir)).fix,
     CRM_FIX,
     'kontrol: kesiksiz liste engelledi',
   );
   // B'nin tasma jetonu (loader TASMA_JETONU, README): son parca tam olarak '~TRUNC'; hic hedef
   // sigmazsa deger yalniz '~TRUNC'. Eski loader: ' ~' soneki (parca ortasindan kesik).
   for (const hedef of [
-    'gbzzap09.bmw.local:80,~TRUNC',
+    'orzzap09.bmw.local:80,~TRUNC',
     '~TRUNC',
-    'gbzzap09.bmw.local:80,gbcjap01.bmw.local:81 ~',
-    'gbzzap09.bmw.local:80 ~',
+    'orzzap09.bmw.local:80,orcjap01.bmw.local:81 ~',
+    'orzzap09.bmw.local:80 ~',
   ]) {
     const r = A(d(hedef, sifir));
     const f = bul(r, APP, 'RETIRE_CANDIDATE')[0];
@@ -1333,7 +1333,7 @@ test('C4 kesik proxy_targets: kesik parca ayristirilmaz, vhost "hedefi eksik", w
       `gosterim: ${v.proxyTargetsRaw}`,
     );
     assert.ok(
-      !v.proxyTargetsRaw.includes('gbcjap01.bmw.local:81'),
+      !v.proxyTargetsRaw.includes('orcjap01.bmw.local:81'),
       'kesik parcanin icerigi gosterildi',
     );
   }
@@ -1477,7 +1477,7 @@ test("T2-C1 cfg_ports=8180 (CLI) bilinen durmus JVM: cozulemeyen hedef ve kesik 
   };
   engel(cfgli('crm-vip.bmw.local:8180', { vek: okunamadi }), 'HEDEF', 'UNREADABLE');
   // (c) KESIK liste + OLCULMUS 0: EKSIK "her zaman" engeldir (kesilen kisim hic bilinmez)
-  engel(cfgli('gbzzap09.bmw.local:80,~TRUNC', { vek: sifir }), 'EKSIK', 'kesik+0');
+  engel(cfgli('orzzap09.bmw.local:80,~TRUNC', { vek: sifir }), 'EKSIK', 'kesik+0');
   // (d) adinda 'unix' gecen VIP unix soketi DEGIL; yalniz 'unix:' onekli parca yerel surectir
   engel(cfgli('unixgw-vip.bmw.local:8180'), 'HEDEF', 'unixgw-vip');
   // KONTROL: gercek unix soketi (5000 ACTIVE) engel uretmez
@@ -1559,7 +1559,7 @@ test("T3-C6 '~DYNAMIC' dinamik proxy HEDEF'tir (kesik degil): 5000 ACTIVE -> ret
     // trafigi OLCULEMEYEN dinamik proxy engeller
     engelli(kur('~DYNAMIC', { vek: OKUNAMADI }), `${ad} ~DYNAMIC okunamadi`);
     // cozulen (crm'e ait olmayan) hedefle birlikte; tarayici bicimi (jeton BASTA) ve tersi
-    for (const hedef of ['~DYNAMIC,gbcjap01.bmw.local:9000', 'gbcjap01.bmw.local:9000,~DYNAMIC']) {
+    for (const hedef of ['~DYNAMIC,orcjap01.bmw.local:9000', 'orcjap01.bmw.local:9000,~DYNAMIC']) {
       const k = engelli(kur(hedef), `${ad} karisik ${hedef}`).u;
       assert.ok(
         k.unattributed.some((x) => x.reason === 'DINAMIK'),
@@ -1576,7 +1576,7 @@ test("T3-C6 '~DYNAMIC' dinamik proxy HEDEF'tir (kesik degil): 5000 ACTIVE -> ret
       server_state: 'running',
       ports: '8280',
     });
-    const dx = kur('~DYNAMIC,gbcjap01.bmw.local:8280', { ekJvm: [KOSAN_8280] });
+    const dx = kur('~DYNAMIC,orcjap01.bmw.local:8280', { ekJvm: [KOSAN_8280] });
     const ex = engelli(dx, `${ad} dinamik + baska JVM'e EXACT esli`);
     const apiJ = sunucu(ex.r, APP).jvms.find((j) => j.name === 'api');
     assert.equal(
@@ -1592,10 +1592,10 @@ test("T3-C6 '~DYNAMIC' dinamik proxy HEDEF'tir (kesik degil): 5000 ACTIVE -> ret
   }
   // baska sitedeki (Ankara) web sunucusundaki dinamik proxy katman disidir (bilinen korluk)
   const d = ek3Kur('');
-  d.hosts.push(H3('GBXXWAP05', { products: 'IHS' }));
-  d.web.push(W3('GBXXWAP05'));
+  d.hosts.push(H3('ORXXWAP05', { products: 'IHS' }));
+  d.web.push(W3('ORXXWAP05'));
   d.vhosts.push(
-    V3('GBXXWAP05', 'api.bmw.de', {
+    V3('ORXXWAP05', 'api.bmw.de', {
       proxy_targets: '~DYNAMIC',
       req_7d: 5000,
       traffic_state: 'ACTIVE',
@@ -1606,7 +1606,7 @@ test("T3-C6 '~DYNAMIC' dinamik proxy HEDEF'tir (kesik degil): 5000 ACTIVE -> ret
 
 test("T3-C6b JVM'siz ya da taranmamis sunucuya cozulen hedef HEDEF'tir; olculmus ve hedef portu dinleyen vhost'u olan sunucu (RP -> WEB) yeniden sayar", () => {
   // ayri WEB (JVM'siz) uzerindeki 'localhost:8180': WEB'de 8180'i dinleyen vhost yok
-  for (const hedef of ['localhost:8180', '10.0.0.1:8443', 'gbcjwp01.bmw.local:8443']) {
+  for (const hedef of ['localhost:8180', '10.0.0.1:8443', 'orcjwp01.bmw.local:8443']) {
     const o = {
       ips: [
         { host: APP, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 },
@@ -1637,20 +1637,20 @@ test("T3-C6b JVM'siz ya da taranmamis sunucuya cozulen hedef HEDEF'tir; olculmus
   // envanterde olup TARANMAMIS sunucu (LB/RP)
   const tar = (hedef, o) => {
     const d = ek3Kur(hedef, o);
-    d.invEnv = [{ host: 'GBCJLB01', env: 'PROD', invProducts: [] }];
+    d.invEnv = [{ host: 'ORCJLB01', env: 'PROD', invProducts: [] }];
     return d;
   };
-  const t = engelli(tar('gbcjlb01.bmw.local:443'), 'taranmamis').u;
+  const t = engelli(tar('orcjlb01.bmw.local:443'), 'taranmamis').u;
   assert.deepEqual(
     t.unattributed.map((x) => [x.kind, x.reason, x.port]),
     [['HEDEF', 'TARANMAMIS', 443]],
   );
   assert.ok(normalize(t.text).includes('hedef sunucu taranmamış'), t.text);
-  assert.deepEqual(crmRetire(tar('gbcjlb01.bmw.local:443', { vek: SIFIR })).fix, CRM_FIX);
+  assert.deepEqual(crmRetire(tar('orcjlb01.bmw.local:443', { vek: SIFIR })).fix, CRM_FIX);
 
   // SONRAKI HOP: hedef sunucu (Ankara, katman disi) JVM'siz ama OLCULMUS ve hedef portu
   // dinleyen vhost'u var -> trafik orada yeniden sayilir, HEDEF degil.
-  const W2 = 'GBCJWAP05';
+  const W2 = 'ORCJWAP05';
   const hop = (w2web, listen, o = {}) => {
     const d = ek3Kur(`${W2.toLowerCase()}.bmw.local:8180`);
     const hRow = H3(W2, { products: 'IHS', ...(o.host || {}) });
@@ -1715,7 +1715,7 @@ test("T3-C6b JVM'siz ya da taranmamis sunucuya cozulen hedef HEDEF'tir; olculmus
       [['HEDEF', 'JVMSIZ', 'UNREADABLE']],
     );
   }
-  const tu = engelli(tar('gbcjlb01.bmw.local:443', { vek: OKUNAMADI }), 'taranmamis UNREADABLE').u;
+  const tu = engelli(tar('orcjlb01.bmw.local:443', { vek: OKUNAMADI }), 'taranmamis UNREADABLE').u;
   assert.deepEqual(
     tu.unattributed.map((x) => [x.kind, x.reason, x.trafficState]),
     [['HEDEF', 'TARANMAMIS', 'UNREADABLE']],
@@ -1727,7 +1727,7 @@ test("T3-C6b JVM'siz ya da taranmamis sunucuya cozulen hedef HEDEF'tir; olculmus
 test("T3-MS3 gateHosts: crm'in esli vhost'u BASKA sitedeki WEB2'de; WEB2'de hedefi bilinmeyen ACTIVE proxy -> retire yok (katman disi ama gateHost)", () => {
   // WEB2 PROD/Ankara: crm'in katmani (PROD/Pendik) DEGIL. crm WEB2'deki crm.bmw.de'ye proxy
   // hedefiyle (kendi IP'si:8180, cfg_ports CLI) EXACT_JVM esli; WEB2 bu yuzden gateHosts'ta.
-  const W2 = 'GBCJWAP05';
+  const W2 = 'ORCJWAP05';
   const kur = (ek) => ({
     hosts: [H3(APP, { products: 'JBOSS7' }), H3(W2, { products: 'IHS' })],
     jvms: [CFG_CRM],
@@ -1784,14 +1784,14 @@ test('C5 proxy_targets userinfo yapisal silinir: assess ciktisinda ve hostDetail
     web: [W3(WEB)],
     vhosts: [
       V3(WEB, 'a.bmw.local', { proxy_targets: 'u:p@h:8080' }),
-      V3(WEB, 'b.bmw.local', { proxy_targets: 'svc:S3cr@backend:8080, u2:p@ss@gbcjap01:8443' }),
+      V3(WEB, 'b.bmw.local', { proxy_targets: 'svc:S3cr@backend:8080, u2:p@ss@orcjap01:8443' }),
     ],
   });
   const vs = Object.fromEntries(sunucu(r, WEB).vhosts.map((v) => [v.serverName, v]));
   // assess KENDISI temizler (index.cjs'ten bagimsiz)
   assert.equal(vs['a.bmw.local'].proxyTargetsRaw, 'h:8080');
   assert.deepEqual(vs['a.bmw.local'].proxyTargets, [{ host: 'H', port: 8080 }]);
-  assert.equal(vs['b.bmw.local'].proxyTargetsRaw.replace(/ /g, ''), 'backend:8080,gbcjap01:8443');
+  assert.equal(vs['b.bmw.local'].proxyTargetsRaw.replace(/ /g, ''), 'backend:8080,orcjap01:8443');
   const json = JSON.stringify(hostDetail(sunucu(r, WEB)));
   for (const sir of ['p@', 'S3cr', 'u:p', 'ss@'])
     assert.ok(!json.includes(sir), `hostDetail yanitinda userinfo: ${sir}`);
@@ -1809,7 +1809,7 @@ test('C5 proxy_targets userinfo yapisal silinir: assess ciktisinda ve hostDetail
 // ── C2: envanterdeki web urunu taramada yok -> katmanda olculmemis ──────────────────
 
 test('C2 PRODUCT_NOT_SCANNED web urunu: katman kapisinda olculmus SAYILMAZ (dv_probe8) -> fix null, retireBlock WEB_TIER', () => {
-  const WEB2 = 'GBCJWP02';
+  const WEB2 = 'ORCJWP02';
   const kur = (web2Taranmis) => ({
     hosts: [
       H3(APP, { products: 'JBOSS7' }),
@@ -1837,7 +1837,7 @@ test('C2 PRODUCT_NOT_SCANNED web urunu: katman kapisinda olculmus SAYILMAZ (dv_p
     'Portal\'in "olculemedi" dedigi web sunucusu katman kapisinda olculmus sayildi',
   );
   assert.equal(f.retireBlock, 'WEB_TIER');
-  assert.match(f.text, /web katmanında ölçülemeyen host var: GBCJWP02/);
+  assert.match(f.text, /web katmanında ölçülemeyen host var: ORCJWP02/);
 });
 
 // ── C6: tazelikte latestScan sarti TEK BASINA ───────────────────────────────────────
@@ -2045,21 +2045,21 @@ test('D1-C15 hostDetail maskeli: note/detail/bulgu metni deseni, jvm_args BEYAZ 
   const t = buildTargets(
     'CRM',
     [
-      { app: 'CRM', host: 'GBCRAP01' },
-      { app: 'CRM', host: 'GBCRAP02' },
-      { app: 'CRM', host: 'GBCRAP03' },
+      { app: 'CRM', host: 'ORCRAP01' },
+      { app: 'CRM', host: 'ORCRAP02' },
+      { app: 'CRM', host: 'ORCRAP03' },
     ],
     [],
     [
-      { host: 'GBCRAP01', jvm: 'CRM', running: 0, auto_start: 'true', running_src: 'UNMEASURED' },
-      { host: 'GBCRAP02', jvm: 'CRM', running: 1, auto_start: 'true', running_src: 'PS' },
-      { host: 'GBCRAP03', jvm: 'CRM', running: 0, auto_start: 'true' },
+      { host: 'ORCRAP01', jvm: 'CRM', running: 0, auto_start: 'true', running_src: 'UNMEASURED' },
+      { host: 'ORCRAP02', jvm: 'CRM', running: 1, auto_start: 'true', running_src: 'PS' },
+      { host: 'ORCRAP03', jvm: 'CRM', running: 0, auto_start: 'true' },
     ],
   );
   const hub = Object.fromEntries(t.targets.map((x) => [x.host, x.hub]));
-  assert.equal(hub.GBCRAP01.runningKnown, false);
-  assert.equal(hub.GBCRAP02.runningKnown, true);
-  assert.equal(hub.GBCRAP03.runningKnown, true);
+  assert.equal(hub.ORCRAP01.runningKnown, false);
+  assert.equal(hub.ORCRAP02.runningKnown, true);
+  assert.equal(hub.ORCRAP03.runningKnown, true);
 });
 
 // ── P9: sys.columns tabanli kolon listeleri (sahte sorgu) ───────────────────────────
@@ -2434,7 +2434,7 @@ test('D1-C28 discover: running_src kolonu yokken sorgu dusmez (sys.columns), run
   const inv = [
     {
       app: 'CRM',
-      host: 'GBCRAP01',
+      host: 'ORCRAP01',
       env: 'Production',
       domain: '',
       jboss_version: '7.4',
@@ -2445,7 +2445,7 @@ test('D1-C28 discover: running_src kolonu yokken sorgu dusmez (sys.columns), run
   const satirlar = {
     Server_Hub_Jvms: [
       {
-        host: 'GBCRAP01',
+        host: 'ORCRAP01',
         jvm: 'CRM',
         running: 0,
         auto_start: 'true',
@@ -2686,7 +2686,7 @@ test('C3 discover: Server_Hub_Jvms kolon sorgusu duserse hubUnavailable=true ve 
   const inv = [
     {
       app: 'CRM',
-      host: 'GBCRAP01',
+      host: 'ORCRAP01',
       env: 'Production',
       domain: '',
       jboss_version: '7.4',
@@ -2697,7 +2697,7 @@ test('C3 discover: Server_Hub_Jvms kolon sorgusu duserse hubUnavailable=true ve 
   const satirlar = {
     Server_Hub_Jvms: [
       {
-        host: 'GBCRAP01',
+        host: 'ORCRAP01',
         jvm: 'CRM',
         running: 0,
         auto_start: 'true',

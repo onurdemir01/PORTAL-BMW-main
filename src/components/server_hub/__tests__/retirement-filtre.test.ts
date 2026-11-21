@@ -11,7 +11,7 @@ const kayit = (o: Partial<RtRecordRow>): RtRecordRow =>
     smartNo: '1',
     ocoNo: null,
     ownerEmail: null,
-    requestedBy: 'onur.demir',
+    requestedBy: 'deneme.kisi',
     status: 'open',
     envs: [],
     targets: 1,
@@ -24,7 +24,7 @@ const ROWS = [
     app: 'GFY_INTERNET_SERVICES',
     smartNo: '23392995',
     ocoNo: '23359160',
-    requestedBy: 'onur.demir',
+    requestedBy: 'deneme.kisi',
     status: 'stopping',
     envs: [
       { env: 'PROD', toplam: 2, durdurulan: 0, silinen: 0, uygulamalar: ['GFY_INTERNET_SERVICES'] },

@@ -34,7 +34,7 @@ const STDOUT = [
   'TASK [Kimlik dosyasi bulundu mu] ***',
   'ok: [localhost]',
   'TASK [Login and list namespace pods in parallel] ***',
-  'ok: [gbaocp01]',
+  'ok: [oraocp01]',
 ].join('\n');
 
 test('AP1 GERCEK adim ciktidan okunur (kronometreden degil)', () => {

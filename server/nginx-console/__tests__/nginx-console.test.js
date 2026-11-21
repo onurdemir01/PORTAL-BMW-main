@@ -16,7 +16,7 @@ const ROOT = path.join(__dirname, '..', '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const SAMPLE = [
-  '@@HOST GBNGXP40',
+  '@@HOST ORNGXP40',
   '@@TIME 2026-09-19T10:00:00Z',
   '@@PREFIX /usr/nginx',
   '@@NGINX_T ok',
@@ -29,30 +29,30 @@ const SAMPLE = [
   '@@END',
   '@@FILE /usr/nginx/conf.d/GLOMO-PROD.conf aaa111 181',
   'server {',
-  '  server_name glomo.garanti.com.tr;',
+  '  server_name glomo.sirket.invalid;',
   '  ssl_certificate certs/glomo.crt;',
   '}',
   '@@END',
   '@@FILE /usr/nginx/conf.d/application-confs/glomo-x-y.conf bbb222 20',
   'proxy_pass http://x;',
   '@@END',
-  '@@CERTUSE /usr/nginx/conf.d/GLOMO-PROD.conf\tglomo.garanti.com.tr\t/usr/nginx/certs/glomo.crt\t/usr/nginx/certs/glomo.key\tpresent',
+  '@@CERTUSE /usr/nginx/conf.d/GLOMO-PROD.conf\tglomo.sirket.invalid\t/usr/nginx/certs/glomo.crt\t/usr/nginx/certs/glomo.key\tpresent',
   '@@CERT /usr/nginx/certs/glomo.crt',
   'exists=1',
   'sha256=deadbeef',
   'size=1200',
   'mtime=2026-01-01 00:00:00',
-  'subject=CN=glomo.garanti.com.tr, O=GT',
-  'issuer=CN=Garanti Internal CA, O=GT',
+  'subject=CN=glomo.sirket.invalid, O=ORNEK',
+  'issuer=CN=Kurum Internal CA, O=ORNEK',
   'serial=01AB',
   'notBefore=Jan  1 00:00:00 2026 GMT',
   'notAfter=Oct 19 00:00:00 2026 GMT',
   'fingerprint=AA:BB:CC',
   'sigalg=sha256WithRSAEncryption',
   'keybits=2048',
-  'san=glomo.garanti.com.tr,www.glomo.garanti.com.tr',
+  'san=glomo.sirket.invalid,www.glomo.sirket.invalid',
   'chain=2',
-  'chain2=CN=Garanti Internal CA, O=GT',
+  'chain2=CN=Kurum Internal CA, O=ORNEK',
   '@@END',
   '@@CERT /usr/nginx/certs/missing.crt',
   'exists=0',
@@ -61,7 +61,7 @@ const SAMPLE = [
 
 test('NH1 parseDump: baslik, nginx -t, agac, dosya icerigi, sertifika kullanimi ve alanlari', () => {
   const d = parseDump(SAMPLE);
-  assert.equal(d.host, 'GBNGXP40');
+  assert.equal(d.host, 'ORNGXP40');
   assert.equal(d.nginxT.status, 'ok');
   assert.match(d.nginxT.output, /syntax is ok/);
   assert.equal(d.tree.length, 3);
@@ -71,12 +71,12 @@ test('NH1 parseDump: baslik, nginx -t, agac, dosya icerigi, sertifika kullanimi 
   assert.equal(d.certUses.length, 1);
   assert.equal(d.certUses[0].keyState, 'present');
   const c = d.certs.get('/usr/nginx/certs/glomo.crt');
-  assert.equal(c.cn, 'glomo.garanti.com.tr');
-  assert.equal(c.issuerCn, 'Garanti Internal CA');
+  assert.equal(c.cn, 'glomo.sirket.invalid');
+  assert.equal(c.issuerCn, 'Kurum Internal CA');
   assert.equal(c.notAfter, '2026-10-19T00:00:00.000Z');
-  assert.deepEqual(c.san, ['glomo.garanti.com.tr', 'www.glomo.garanti.com.tr']);
+  assert.deepEqual(c.san, ['glomo.sirket.invalid', 'www.glomo.sirket.invalid']);
   assert.equal(c.chain, 2);
-  assert.deepEqual(c.chainSubjects, ['CN=Garanti Internal CA, O=GT']);
+  assert.deepEqual(c.chainSubjects, ['CN=Kurum Internal CA, O=ORNEK']);
   assert.equal(c.selfSigned, false);
   assert.equal(d.certs.get('/usr/nginx/certs/missing.crt').exists, false);
 });
@@ -98,31 +98,31 @@ test('NH2 buildTree: prefix altinda ic ice dizinler, dosyalar sirali', () => {
 
 test('NH3 aggregateCerts: ayni parmak izi iki sunucuda TEK satir; hostCount/useCount; en yakin bitis once', () => {
   const d1 = parseDump(SAMPLE);
-  const d2 = parseDump(SAMPLE.replace('@@HOST GBNGXP40', '@@HOST GBNGXP41'));
+  const d2 = parseDump(SAMPLE.replace('@@HOST ORNGXP40', '@@HOST ORNGXP41'));
   const now = Date.parse('2026-09-19T00:00:00Z');
   const list = aggregateCerts([d1, d2], now);
-  const glomo = list.find((c) => c.cn === 'glomo.garanti.com.tr');
+  const glomo = list.find((c) => c.cn === 'glomo.sirket.invalid');
   assert.ok(glomo);
   assert.equal(glomo.hostCount, 2);
   assert.equal(glomo.useCount, 2);
   assert.equal(glomo.daysLeft, 30);
   assert.deepEqual(
     glomo.hosts.map((h) => h.host),
-    ['GBNGXP40', 'GBNGXP41'],
+    ['ORNGXP40', 'ORNGXP41'],
   );
-  assert.equal(glomo.hosts[0].uses[0].serverName, 'glomo.garanti.com.tr');
+  assert.equal(glomo.hosts[0].uses[0].serverName, 'glomo.sirket.invalid');
   // eksik dosya host basina ayri (parmak izi yok)
   assert.equal(list.filter((c) => !c.exists).length, 2);
   // siralama: daysLeft null'lar sona
-  assert.equal(list[0].cn, 'glomo.garanti.com.tr');
+  assert.equal(list[0].cn, 'glomo.sirket.invalid');
 });
 
 test('NH4 daysLeft / cnOf', () => {
   assert.equal(daysLeft('2026-09-21T00:00:00.000Z', Date.parse('2026-09-19T00:00:00Z')), 2);
   assert.equal(daysLeft('2026-09-17T00:00:00.000Z', Date.parse('2026-09-19T00:00:00Z')), -2);
   assert.equal(daysLeft(null), null);
-  assert.equal(cnOf('C=TR, O=GT, CN=a.b.c'), 'a.b.c');
-  assert.equal(cnOf('CN = x.y, O=GT'), 'x.y');
+  assert.equal(cnOf('C=TR, O=ORNEK, CN=a.b.c'), 'a.b.c');
+  assert.equal(cnOf('CN = x.y, O=ORNEK'), 'x.y');
   assert.equal(cnOf(''), null);
 });
 
@@ -132,7 +132,7 @@ test('NH5 yol beyaz listesi ve sunucu adi', () => {
   assert.ok(!ALLOWED_PATH_RE.test('/usr/nginx/nginx.conf'));
   assert.ok(!ALLOWED_PATH_RE.test('/etc/passwd'));
   assert.ok(!ALLOWED_PATH_RE.test('/usr/nginx/conf.dx/a.conf'));
-  assert.ok(HOST_RE.test('GBNGXP40') && !HOST_RE.test('a b') && !HOST_RE.test('../x'));
+  assert.ok(HOST_RE.test('ORNGXP40') && !HOST_RE.test('a b') && !HOST_RE.test('../x'));
 });
 
 test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route, modul init', () => {
@@ -204,13 +204,31 @@ test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma,
     'server/ansible/playbooks/bmw_portal/nginx_console/files/nginx_console_dump.sh',
   );
   assert.match(dump, /\*\.key\|\*\.pem_key\|\*private\*\) continue/);
-  // playbook'lar: add_host ile hedef (AWX limit'e guvenilmez), www ile dzdo, GBLABT02 uzerinden /sw
+  // playbook'lar: add_host ile hedef (AWX limit'e guvenilmez), www ile dzdo, yazici sunucu uzerinden /sw.
+  // Yazici sunucu AWX template Variables'tan (portal_yazici_host); playbook'ta sabit kurum adi yok (K17).
   for (const f of ['nginx_console_fetch.yml', 'nginx_console_push.yml']) {
     const y = read('server/ansible/playbooks/bmw_portal/nginx_console/' + f);
     assert.match(y, /ansible\.builtin\.add_host/);
     assert.match(y, /become_user: www/);
-    assert.match(y, /delegate_to: GBLABT02/);
+    assert.match(
+      y,
+      /delegate_to: "\{\{ portal_yazici_host \| default\('yazici-sunucu-tanimsiz', true\) \}\}"/,
+    );
+    assert.doesNotMatch(y, /(delegate_to|hosts):\s*[A-Z]{2}[A-Z]+[0-9]{2}\b/, 'sabit sunucu adi');
   }
+  const fetch = read('server/ansible/playbooks/bmw_portal/nginx_console/nginx_console_fetch.yml');
+  assert.match(
+    fetch,
+    /^ {2}hosts: "\{\{ portal_yazici_host \| default\('yazici-sunucu-tanimsiz', true\) \}\}"$/m,
+  );
+  assert.doesNotMatch(fetch, /hostvars\['/, "kesif hatasi hostvars[portal_yazici_host]'tan okunur");
+  const push = read('server/ansible/playbooks/bmw_portal/nginx_console/nginx_console_push.yml');
+  // Bos / null da reddedilir (null 'None' olup gecmesin): default('', true) + is string.
+  assert.match(push, /- portal_yazici_host \| default\('', true\) is string\n/);
+  assert.match(
+    push,
+    /- \(portal_yazici_host \| default\('', true\) \| string \| trim \| length\) > 0/,
+  );
 });
 
 // ── Gecmis (Git benzeri, 2026-09-19) ──────────────────────────────────────────────────
@@ -305,7 +323,7 @@ test("NH11 gecmis tablolari + indeksler seed'de; publish niyeti + ingest kaynak 
 const { buildSpaDiscovery } = require('../spa-discovery.cjs');
 
 const D = (o) => ({
-  cluster: 'gbocpprod1',
+  cluster: 'orocpprod1',
   namespace: 'sube-prod',
   route: 'r',
   host: 'h.apps',
@@ -332,7 +350,7 @@ const GS_DISC = [
 ];
 const GS_INV = [
   {
-    cluster_name: 'gbocpprod1',
+    cluster_name: 'orocpprod1',
     namespace_name: 'sube-prod',
     route_name: 'r1',
     route_address: 'a.apps',
@@ -412,7 +430,7 @@ const { normalize: gsNorm } = require('../../util/guard-text.cjs');
 
 const GS_RUNS = [
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     durum: 'ok',
     routes: 4,
     svc_kip: 'namespace',
@@ -423,7 +441,7 @@ const GS_RUNS = [
     scan_date: '2026-10-01',
   },
   {
-    cluster: 'giocp3rdprod1',
+    cluster: 'oiocp3rdprod1',
     durum: 'login',
     routes: null,
     svc_kip: '',
@@ -434,7 +452,7 @@ const GS_RUNS = [
     scan_date: '2026-10-01',
   },
   {
-    cluster: 'gbocpqa1',
+    cluster: 'orocpqa1',
     durum: 'hata',
     routes: null,
     svc_kip: '',
@@ -453,7 +471,7 @@ const GS_DISC2 = [
   })),
   // Dun taranmis, bugun taranamamis cluster: verisi DURUR ama ESKI diye isaretlenir.
   D({
-    cluster: 'gbocpqa1',
+    cluster: 'orocpqa1',
     route: 'q1',
     workload: 'qa-portal',
     is_spa: 1,
@@ -462,7 +480,7 @@ const GS_DISC2 = [
     match_by: 'ad',
   }),
   D({
-    cluster: 'gbocpqa1',
+    cluster: 'orocpqa1',
     route: 'q2',
     workload: '',
     workload_kind: '',
@@ -470,7 +488,7 @@ const GS_DISC2 = [
     scan_date: '2026-09-30',
   }),
   // Durum kaydi OLMAYAN cluster (yukleyicinin eski surumu).
-  D({ cluster: 'daocpprod1', route: 'z1', workload: 'z', is_spa: 0, scan_date: '2026-10-01' }),
+  D({ cluster: 'odocpprod1', route: 'z1', workload: 'z', is_spa: 0, scan_date: '2026-10-01' }),
 ];
 const GS2 = () => buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE, GS_RUNS);
 
@@ -478,9 +496,9 @@ test('GS7 TARANAMAYAN cluster "SPA yok" diye gorunmez; sebebi kapsamda yazar', (
   const k = GS2().coverage;
   assert.equal(k.measured, true);
   const by = Object.fromEntries(k.clusters.map((c) => [c.cluster, c]));
-  assert.equal(by.giocp3rdprod1.status, 'login');
-  assert.equal(by.giocp3rdprod1.noData, true, 'verisi olmayan cluster isaretlenmiyor');
-  assert.match(by.giocp3rdprod1.reason, /Login failed/);
+  assert.equal(by.oiocp3rdprod1.status, 'login');
+  assert.equal(by.oiocp3rdprod1.noData, true, 'verisi olmayan cluster isaretlenmiyor');
+  assert.match(by.oiocp3rdprod1.reason, /Login failed/);
   assert.equal(k.failed, 2, 'login + hata taranamayan sayilmali');
   assert.equal(
     k.clusters[0].status === 'login' || k.clusters[0].status === 'hata',
@@ -491,17 +509,17 @@ test('GS7 TARANAMAYAN cluster "SPA yok" diye gorunmez; sebebi kapsamda yazar', (
 
 test('GS8 bugun taranamayan cluster DUNKU verisini korur ama ESKI diye isaretlenir', () => {
   const r = GS2();
-  const q = r.rows.filter((x) => x.cluster === 'gbocpqa1');
+  const q = r.rows.filter((x) => x.cluster === 'orocpqa1');
   assert.equal(q.length, 2, 'taranamayan cluster in onceki verisi kayboldu');
   assert.equal(q[0].scanDate, '2026-09-30');
   const k = Object.fromEntries(r.coverage.clusters.map((c) => [c.cluster, c]));
-  assert.equal(k.gbocpqa1.stale, true, 'eski veri ESKI diye isaretlenmiyor');
-  assert.equal(k.gbocpqa1.dataDate, '2026-09-30');
+  assert.equal(k.orocpqa1.stale, true, 'eski veri ESKI diye isaretlenmiyor');
+  assert.equal(k.orocpqa1.dataDate, '2026-09-30');
 });
 
 test('GS9 durum kaydi olmayan cluster "ok" diye BOYANMAZ', () => {
   const k = Object.fromEntries(GS2().coverage.clusters.map((c) => [c.cluster, c]));
-  assert.equal(k.daocpprod1.status, 'bilinmiyor');
+  assert.equal(k.odocpprod1.status, 'bilinmiyor');
   // Durum tablosu hic yoksa kapsam OLCULMEMISTIR - "0 taranamayan" demek yalan olurdu.
   assert.equal(buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE, []).coverage.measured, false);
   assert.equal(buildSpaDiscovery(GS_DISC2, GS_INV, GS_USE).coverage.measured, false);
@@ -589,7 +607,7 @@ test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc v
   const runs = [
     ...GS_RUNS,
     {
-      cluster: 'gbocpdrcprod1',
+      cluster: 'orocpdrcprod1',
       durum: 'ok',
       routes: 1,
       svc_kip: 'namespace',
@@ -600,7 +618,7 @@ test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc v
       scan_date: '2026-09-30',
     },
     {
-      cluster: 'gbocpprod2',
+      cluster: 'orocpprod2',
       durum: 'erisilemedi',
       routes: null,
       svc_kip: '',
@@ -614,7 +632,7 @@ test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc v
   const disc = [
     ...GS_DISC2,
     D({
-      cluster: 'gbocpdrcprod1',
+      cluster: 'orocpdrcprod1',
       route: 'x1',
       workload: 'x',
       is_spa: 1,
@@ -622,7 +640,7 @@ test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc v
       scan_date: '2026-09-30',
     }),
     D({
-      cluster: 'gbocpprod2',
+      cluster: 'orocpprod2',
       route: 'y1',
       workload: 'y',
       is_spa: 1,
@@ -632,19 +650,19 @@ test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc v
   ];
   const k = buildSpaDiscovery(disc, GS_INV, GS_USE, runs).coverage;
   const by = Object.fromEntries(k.clusters.map((c) => [c.cluster, c]));
-  assert.equal(by.gbocpdrcprod1.bucket, 'onceki', 'kosuya girmeyen cluster yanlis kovada');
-  assert.equal(by.gbocpdrcprod1.notInLastRun, true);
+  assert.equal(by.orocpdrcprod1.bucket, 'onceki', 'kosuya girmeyen cluster yanlis kovada');
+  assert.equal(by.orocpdrcprod1.notInLastRun, true);
   assert.doesNotMatch(
-    by.gbocpdrcprod1.reason,
+    by.orocpdrcprod1.reason,
     /erişilememiş|erisilememis/,
     'hedeflenmeyen cluster icin erisim tahmini yapiliyor',
   );
   assert.equal(
-    by.gbocpprod2.bucket,
+    by.orocpprod2.bucket,
     'taranamadi',
     "yukleyicinin 'erisilemedi' kaydi taranamadi sayilmiyor",
   );
-  assert.equal(by.gbocpprod2.stale, true);
+  assert.equal(by.orocpprod2.stale, true);
   assert.equal(k.older, 1);
   assert.equal(k.failed, 3, 'login + hata + erisilemedi');
   // AYRIK KOVALAR: her cluster tek sayida.
@@ -656,7 +674,7 @@ test('GS15 basarisiz son kosu VERI YAZMAZ: ayni gunun satirlari da ESKI sayilir'
   // Dusmanca dogrulama: ilk (hatali) kosuyla ayni gun yeniden kosulup login dusen cluster in
   // satirlari tarih esit oldugu icin "guncel" gorunuyordu.
   const runs = [
-    { cluster: 'gbocpprod1', durum: 'login', sebep: 'Login failed', scan_date: '2026-10-01' },
+    { cluster: 'orocpprod1', durum: 'login', sebep: 'Login failed', scan_date: '2026-10-01' },
   ];
   const disc = [D({ route: 'z', workload: 'z', scan_date: '2026-10-01' })];
   const c = buildSpaDiscovery(disc, GS_INV, GS_USE, runs).coverage.clusters[0];
@@ -666,7 +684,7 @@ test('GS15 basarisiz son kosu VERI YAZMAZ: ayni gunun satirlari da ESKI sayilir'
     [D({ route: 'z', workload: 'z', scan_date: '2026-10-02' })],
     GS_INV,
     GS_USE,
-    [{ cluster: 'gbocpprod1', durum: 'ok', scan_date: '2026-10-01' }],
+    [{ cluster: 'orocpprod1', durum: 'ok', scan_date: '2026-10-01' }],
   ).coverage.clusters[0];
   assert.equal(c2.bucket, 'bilinmiyor', 'durum kaydindan yeni veri tam tarama sayiliyor');
   assert.match(c2.reason, /yarım kalmış olabilir/);
@@ -702,7 +720,7 @@ test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirila
 
 // ── IKINCI DOGRULAMA TURU (GS18..GS21) ───────────────────────────────────────────────
 test('GS18 route u SIFIRA inen ok cluster in eski satirlari GOSTERILMEZ', () => {
-  const runs = [{ cluster: 'gbocpprod1', durum: 'ok', routes: 0, scan_date: '2026-10-02' }];
+  const runs = [{ cluster: 'orocpprod1', durum: 'ok', routes: 0, scan_date: '2026-10-02' }];
   const disc = [
     D({ route: 'eski', workload: 'eski-app', is_spa: 1, signal: 'image', scan_date: '2026-10-01' }),
   ];
@@ -750,20 +768,20 @@ const { uygulamalar: gsUyg, platformNamespace } = require('../spa-discovery.cjs'
 test('GS22 ayni uygulama iki cluster da iki route la TEK satir; adresler ve cluster lar birlesik', () => {
   const disc = [
     D({
-      cluster: 'gbocpprod1',
+      cluster: 'orocpprod1',
       route: 'web',
       host: 'web-p1.apps',
       workload: 'web-ui',
       is_spa: 1,
       signal: 'image',
     }),
-    D({ cluster: 'gbocpprod2', route: 'web', host: 'web-p2.apps', workload: 'web-ui', is_spa: 0 }),
+    D({ cluster: 'orocpprod2', route: 'web', host: 'web-p2.apps', workload: 'web-ui', is_spa: 0 }),
   ];
   const r = buildSpaDiscovery(disc, GS_INV, GS_USE, []);
   const a = r.apps.filter((x) => x.application === 'web-ui');
   assert.equal(a.length, 1, 'ayni uygulama birden cok satira bolunmus');
   assert.deepEqual(a[0].hosts, ['web-p1.apps', 'web-p2.apps']);
-  assert.deepEqual(a[0].clusters, ['gbocpprod1', 'gbocpprod2']);
+  assert.deepEqual(a[0].clusters, ['orocpprod1', 'orocpprod2']);
   assert.equal(a[0].spa, 'evet', 'bir route da bile nginx varsa uygulama SPA');
   assert.equal(r.appSummary.apps, r.apps.length);
 });
@@ -862,7 +880,7 @@ test('GS25 istek DORT durumlu; envanter "kismen" route sayisiyla', () => {
   ];
   const inv = [
     {
-      cluster_name: 'gbocpprod1',
+      cluster_name: 'orocpprod1',
       namespace_name: 'sube-prod',
       route_name: 'k1',
       route_address: 'k1.apps',

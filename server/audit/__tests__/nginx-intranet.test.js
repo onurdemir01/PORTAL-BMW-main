@@ -29,14 +29,14 @@ const row = (host, ns, app, hys, appd, conf) => ({
   status: hys && appd && conf ? 'OK' : 'PARTIAL',
 });
 
-test('ortam SUNUCU ADINDAN turer, GBNGXT51 EDU istisnasi korunur', () => {
+test('ortam SUNUCU ADINDAN turer, ORNGXT51 EDU istisnasi korunur', () => {
   const idx = indexIntranetRows([
-    row('GBNGXD50', 'ns-dev', 'a', 1, 1, 1),
-    row('GBNGXT50', 'ns-test', 'b', 1, 1, 1),
-    row('GBNGXT51', 'ns-edu', 'c', 1, 1, 1),
-    row('GBNGXQ50', 'ns-qa', 'd', 1, 1, 1),
-    row('GBNGXP50', 'ns-prod', 'e', 1, 1, 1),
-    row('GBNGXAP51', 'ns-prod', 'f', 1, 1, 1),
+    row('ORNGXD50', 'ns-dev', 'a', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'b', 1, 1, 1),
+    row('ORNGXT51', 'ns-edu', 'c', 1, 1, 1),
+    row('ORNGXQ50', 'ns-qa', 'd', 1, 1, 1),
+    row('ORNGXP50', 'ns-prod', 'e', 1, 1, 1),
+    row('ORNGXAP51', 'ns-prod', 'f', 1, 1, 1),
   ]);
   assert.deepEqual([...idx.keys()].sort(), ['DEV', 'EDU', 'PROD', 'QA', 'TEST']);
   // Iki prod sunucusu AYNI ortam kovasina duser.
@@ -44,20 +44,20 @@ test('ortam SUNUCU ADINDAN turer, GBNGXT51 EDU istisnasi korunur', () => {
 });
 
 test('intranet OLMAYAN host satiri sayilmaz', () => {
-  // GBNGXT34 internete acik bir test sunucusu. Dizinleri intranet kapsamina katmak
+  // ORNGXT34 internete acik bir test sunucusu. Dizinleri intranet kapsamina katmak
   // orani oldugundan iyi gosterirdi.
   const idx = indexIntranetRows([
-    row('GBNGXT34', 'ns-test', 'sizinti', 1, 1, 1),
-    row('GBNGXT50', 'ns-test', 'gercek', 1, 1, 1),
+    row('ORNGXT34', 'ns-test', 'sizinti', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'gercek', 1, 1, 1),
   ]);
   assert.deepEqual([...idx.get('TEST').keys()], ['gercek']);
 });
 
 test('tam / yarim / yok UC AYRI kovada durur', () => {
   const idx = indexIntranetRows([
-    row('GBNGXT50', 'ns-test', 'tam-app', 1, 1, 1),
-    row('GBNGXT50', 'ns-test', 'confsuz', 1, 1, 0),
-    row('GBNGXT50', 'ns-test', 'dosyasiz', 1, 0, 1),
+    row('ORNGXT50', 'ns-test', 'tam-app', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'confsuz', 1, 1, 0),
+    row('ORNGXT50', 'ns-test', 'dosyasiz', 1, 0, 1),
   ]);
   const c = coverageForEnv(['tam-app', 'confsuz', 'dosyasiz', 'hic-yok'], idx.get('TEST'));
 
@@ -69,15 +69,15 @@ test('tam / yarim / yok UC AYRI kovada durur', () => {
 
   // Eksik olanin NE oldugu ekranda yazacak kadar acik durmali.
   const confsuz = c.partial.find((p) => p.app === 'confsuz');
-  assert.deepEqual(confsuz.hosts, [{ host: 'GBNGXT50', missing: ['conf'] }]);
+  assert.deepEqual(confsuz.hosts, [{ host: 'ORNGXT50', missing: ['conf'] }]);
   const dosyasiz = c.partial.find((p) => p.app === 'dosyasiz');
-  assert.deepEqual(dosyasiz.hosts, [{ host: 'GBNGXT50', missing: ['applications'] }]);
+  assert.deepEqual(dosyasiz.hosts, [{ host: 'ORNGXT50', missing: ['applications'] }]);
 });
 
 test('kapsam orani YALNIZCA tam kurulumlar uzerinden hesaplanir', () => {
   const idx = indexIntranetRows([
-    row('GBNGXT50', 'ns-test', 'a', 1, 1, 1),
-    row('GBNGXT50', 'ns-test', 'b', 1, 1, 0), // yarim
+    row('ORNGXT50', 'ns-test', 'a', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'b', 1, 1, 0), // yarim
   ]);
   const c = coverageForEnv(['a', 'b'], idx.get('TEST'));
   // Yarim kurulumu kapsandi saysaydik %100 gorurduk.
@@ -88,8 +88,8 @@ test('ayni ortamdaki BIR sunucuda tam kurulum varsa uygulama tamdir', () => {
   // Prod'da dort intranet sunucusu var ve birbirinin aynasi degil. Birinde tam kurulum
   // varsa uygulama calisir; hangisinde eksik oldugu 'hosts' icinde durur.
   const idx = indexIntranetRows([
-    row('GBNGXP50', 'ns-prod', 'a', 1, 1, 1),
-    row('GBNGXP51', 'ns-prod', 'a', 1, 0, 0),
+    row('ORNGXP50', 'ns-prod', 'a', 1, 1, 1),
+    row('ORNGXP51', 'ns-prod', 'a', 1, 0, 0),
   ]);
   const c = coverageForEnv(['a'], idx.get('PROD'));
   assert.equal(c.fullCount, 1);
@@ -107,8 +107,8 @@ test('hicbir satir yoksa kapsam OLCULEMEZ - "%0" degil null', () => {
 
 test('sunucuda olup OpenShift intranet listesinde olmayan uygulama BILGI olarak durur', () => {
   const idx = indexIntranetRows([
-    row('GBNGXT50', 'ns-test', 'beklenen', 1, 1, 1),
-    row('GBNGXT50', 'ns-test', 'retire-olmus', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'beklenen', 1, 1, 1),
+    row('ORNGXT50', 'ns-test', 'retire-olmus', 1, 1, 1),
   ]);
   const c = coverageForEnv(['beklenen'], idx.get('TEST'));
   assert.equal(c.fullCount, 1);
@@ -118,7 +118,7 @@ test('sunucuda olup OpenShift intranet listesinde olmayan uygulama BILGI olarak 
 });
 
 test('buyuk/kucuk harf farki ayni uygulamayi ikiye bolmez', () => {
-  const idx = indexIntranetRows([row('GBNGXT50', 'ns-test', 'Sube-Portali', 1, 1, 1)]);
+  const idx = indexIntranetRows([row('ORNGXT50', 'ns-test', 'Sube-Portali', 1, 1, 1)]);
   const c = coverageForEnv(['sube-portali'], idx.get('TEST'));
   assert.equal(c.fullCount, 1);
   // Ekranda OpenShift'teki degil, SUNUCUDAKI yazim gosterilir (gercek olan o).

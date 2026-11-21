@@ -108,22 +108,22 @@ import { YukTestiTab } from '../YukTestiTab';
 import GeceKuyrugu from '../yukTesti/GeceKuyrugu';
 import Senaryolar from '../yukTesti/Senaryolar';
 
-const VHOST = 'glomo-test.garantibbva.com.tr';
+const VHOST = 'glomo-test.ornekbanka.invalid';
 const DIZIN = '/usr/nginx/applications/glomo';
 const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       env: 'TEST',
-      ipler: ['192.168.133.27'],
+      ipler: ['192.168.251.27'],
       vhostlar: [VHOST],
       vhostVerisi: true,
       uygun: true,
       neden: null,
     },
   ],
-  yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: SINIR,
   varsayilan: VARSAYILAN,
   serbest: { acik: true, aglar: [] },
@@ -151,10 +151,10 @@ const SENARYO = {
 };
 const GOVDE: NlKuyrukGovde = {
   senaryoId: 3,
-  hedefHost: 'GBNGXT33',
-  hedefIp: '192.168.133.27',
+  hedefHost: 'ORNGXT33',
+  hedefIp: '192.168.251.27',
   vhost: VHOST,
-  yukHost: 'GBNGXT34',
+  yukHost: 'ORNGXT34',
   sni: true,
   parametreler: {
     motor: 'k6',
@@ -176,7 +176,7 @@ const taslakOge = (yerelId: string, etiket: string): TaslakOge => ({
   etiket,
   govde: GOVDE,
   onKontrolKosuId: 77,
-  hedef: 'GBNGXT33',
+  hedef: 'ORNGXT33',
   ozet: 'o',
   butceSn: 300,
 });
@@ -189,7 +189,7 @@ function kuyruk(o: Partial<NlKuyruk> = {}): NlKuyruk {
     beklemeDk: 5,
     baslangicAt: '2026-11-03T21:00:00Z',
     enGecBitis: null,
-    onayHedefi: 'GBNGXT33',
+    onayHedefi: 'ORNGXT33',
     hedefTuru: 'sunucu',
     onaylananTurler: [],
     createdBy: 'onur',
@@ -258,7 +258,7 @@ beforeEach(() => {
     ok: true,
     tur: 'sunucu',
     ip,
-    host: 'GBNGXT33',
+    host: 'ORNGXT33',
     env: 'TEST',
     vhostlar: [VHOST],
     vhostVerisi: true,
@@ -664,10 +664,10 @@ describe('Yük Testi — kayıtlı test', () => {
     const f = formGovdeden(bos, GOVDE);
     expect(f).toMatchObject({
       senaryoId: '3',
-      hedefHost: 'GBNGXT33',
+      hedefHost: 'ORNGXT33',
       hedefIp: GOVDE.hedefIp,
       vhost: VHOST,
-      yukHost: 'GBNGXT34',
+      yukHost: 'ORNGXT34',
       sni: true,
       motor: 'k6',
       hizlar: '45 90',
@@ -940,7 +940,7 @@ describe('Yük Testi — toplu ekleme', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
     fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
-      target: { value: 'GBNGXT33' },
+      target: { value: 'ORNGXT33' },
     });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: GOVDE.hedefIp } });
     fireEvent.click(
@@ -965,7 +965,7 @@ describe('Yük Testi — toplu ekleme', () => {
     expect(kayit).toHaveLength(30);
     expect(kayit[0]).toMatchObject({
       etiket: 'HTTP/2 · Brotli 6 · static açık',
-      hedef: 'GBNGXT33',
+      hedef: 'ORNGXT33',
       onKontrolKosuId: null,
     });
     expect(kayit[0].ozet).toMatch(/sunucu ayarı: HTTP\/2 açık · brotli 6 · static/);
@@ -982,7 +982,7 @@ describe('Yük Testi — toplu ekleme', () => {
       motor: 'k6' as const,
       hedefTuru: 'sunucu' as const,
       srvAyarli: true,
-      hedef: 'GBNGXT33',
+      hedef: 'ORNGXT33',
       taslakSayisi: 0,
       onEkle: ekle,
     };

@@ -33,14 +33,14 @@ function sharedCjsDevShim() {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
 
-  // Ters-proxy (ör. bmwv2.fw.garanti.com.tr, HTTPS) arkasında dev çalıştırıldığında Vite'ın
+  // Ters-proxy (ör. bmwv2.fw.sirket.invalid, HTTPS) arkasında dev çalıştırıldığında Vite'ın
   // HMR WebSocket'i tarayıcıya YANLIŞ host/port/protokol verir → `wss://.../` bağlanamaz.
   // Bu değerler .env.local'dan set edilerek HMR'ın proxy üzerinden bağlanması sağlanır.
   // (Prod'da dev sunucusu KULLANILMAZ — `npm run build` + statik servis; bkz. docs.)
-  //   VITE_HMR_HOST      = tarayıcının göreceği host (ör. bmwv2.fw.garanti.com.tr)
+  //   VITE_HMR_HOST      = tarayıcının göreceği host (ör. bmwv2.fw.sirket.invalid)
   //   VITE_HMR_PROTOCOL  = wss | ws  (HTTPS proxy arkasında wss)
   //   VITE_HMR_CLIENT_PORT = tarayıcının bağlanacağı port (ör. 443 — proxy portu)
-  //   VITE_ALLOWED_HOSTS = virgülle ayrılmış izinli host'lar (ör. bmwv2.fw.garanti.com.tr)
+  //   VITE_ALLOWED_HOSTS = virgülle ayrılmış izinli host'lar (ör. bmwv2.fw.sirket.invalid)
   const hmrHost = env.VITE_HMR_HOST || '';
   const hmr = hmrHost
     ? {

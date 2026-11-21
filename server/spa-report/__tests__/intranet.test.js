@@ -67,8 +67,8 @@ const A = (application, o = {}) => ({
   istek: 'var',
   reqShown: 120,
   usage: { scanDate: '2026-10-18', windowDays: 35, services: 2 },
-  hosts: [`${application}-kart-prod.apps.fw.garanti.com.tr`],
-  clusters: ['gbocpprod1', 'gbocpprod2'],
+  hosts: [`${application}-kart-prod.apps.fw.sirket.invalid`],
+  clusters: ['orocpprod1', 'orocpprod2'],
   staleClusters: [],
   kapsamDurum: 'tam',
   kapsamVar: 2,
@@ -92,7 +92,7 @@ const DZ = (host, ns, app, o = {}) => ({
   scan_date: '2026-10-18',
   ...o,
 });
-const PROD_INTRA = ['GBNGXAP50', 'GBNGXP50', 'GBNGXP51', 'GBNGXT50'];
+const PROD_INTRA = ['ORNGXAP50', 'ORNGXP50', 'ORNGXP51', 'ORNGXT50'];
 const satir = (out, app) => out.rows.find((r) => r.application === app);
 
 test('IS1 yalniz SPA ve intranet / karisik ag', () => {
@@ -148,7 +148,7 @@ test('IS2 Dynatrace bes durum aynen; sayi yalniz olculduyse', () => {
   });
   assert.equal(satir(out, 'none1').dynatrace, null);
   assert.equal(out.dynatraceTarihi, '2026-10-18');
-  assert.deepEqual(satir(out, 'var1').adresler, ['var1-kart-prod.apps.fw.garanti.com.tr']);
+  assert.deepEqual(satir(out, 'var1').adresler, ['var1-kart-prod.apps.fw.sirket.invalid']);
   assert.equal(satir(out, 'var1').env, 'PROD');
 });
 
@@ -157,7 +157,7 @@ const D = (cluster, ns, workload, termination, o = {}) => ({
   cluster,
   namespace: ns,
   route: workload,
-  host: `${workload}-${ns}.apps.fw.garanti.com.tr`,
+  host: `${workload}-${ns}.apps.fw.sirket.invalid`,
   termination,
   workload_kind: 'Deployment',
   workload,
@@ -182,30 +182,30 @@ const Uu = (cluster, ns, app, req, o = {}) => ({
   ...o,
 });
 const RUNS = [
-  { cluster: 'gbocpprod1', durum: 'ok', routes: 5, scan_date: '2026-10-18' },
-  { cluster: 'gbocpprod2', durum: 'ok', routes: 5, scan_date: '2026-10-18' },
+  { cluster: 'orocpprod1', durum: 'ok', routes: 5, scan_date: '2026-10-18' },
+  { cluster: 'orocpprod2', durum: 'ok', routes: 5, scan_date: '2026-10-18' },
 ];
 
 test('IS3 gercek kesif hesabi uzerinden: cluster toplami, servis-yok, olculemeyen cluster, tablo dustu', () => {
   const disc = [
-    D('gbocpprod1', 'kart-prod', 'aktif-ui', 'reencrypt'),
-    D('gbocpprod2', 'kart-prod', 'aktif-ui', 'reencrypt'),
-    D('gbocpprod1', 'kart-prod', 'sessiz-ui', 'reencrypt'),
-    D('gbocpprod2', 'kart-prod', 'sessiz-ui', 'reencrypt'),
-    D('gbocpprod1', 'kart-prod', 'yarim-ui', 'reencrypt'),
-    D('gbocpprod2', 'kart-prod', 'yarim-ui', 'reencrypt'),
-    D('gbocpprod1', 'kart-prod', 'servissiz-ui', 'reencrypt'),
-    D('gbocpprod1', 'kart-prod', 'dis-ui', 'passthrough'),
-    D('gbocpprod1', 'kart-prod', 'api', 'reencrypt', { is_spa: 0, signal: '' }),
+    D('orocpprod1', 'kart-prod', 'aktif-ui', 'reencrypt'),
+    D('orocpprod2', 'kart-prod', 'aktif-ui', 'reencrypt'),
+    D('orocpprod1', 'kart-prod', 'sessiz-ui', 'reencrypt'),
+    D('orocpprod2', 'kart-prod', 'sessiz-ui', 'reencrypt'),
+    D('orocpprod1', 'kart-prod', 'yarim-ui', 'reencrypt'),
+    D('orocpprod2', 'kart-prod', 'yarim-ui', 'reencrypt'),
+    D('orocpprod1', 'kart-prod', 'servissiz-ui', 'reencrypt'),
+    D('orocpprod1', 'kart-prod', 'dis-ui', 'passthrough'),
+    D('orocpprod1', 'kart-prod', 'api', 'reencrypt', { is_spa: 0, signal: '' }),
   ];
   const usage = [
-    Uu('gbocpprod1', 'kart-prod', 'aktif-ui', 7),
-    Uu('gbocpprod2', 'kart-prod', 'aktif-ui', 5),
-    Uu('gbocpprod1', 'kart-prod', 'sessiz-ui', 0),
-    Uu('gbocpprod2', 'kart-prod', 'sessiz-ui', 0),
-    Uu('gbocpprod1', 'kart-prod', 'yarim-ui', 0),
-    Uu('gbocpprod2', 'kart-prod', 'yarim-ui', 0, { measured: 0, note: 'servis okunamadi: 403' }),
-    Uu('gbocpprod1', 'kart-prod', 'servissiz-ui', 0, { services_total: 0 }),
+    Uu('orocpprod1', 'kart-prod', 'aktif-ui', 7),
+    Uu('orocpprod2', 'kart-prod', 'aktif-ui', 5),
+    Uu('orocpprod1', 'kart-prod', 'sessiz-ui', 0),
+    Uu('orocpprod2', 'kart-prod', 'sessiz-ui', 0),
+    Uu('orocpprod1', 'kart-prod', 'yarim-ui', 0),
+    Uu('orocpprod2', 'kart-prod', 'yarim-ui', 0, { measured: 0, note: 'servis okunamadi: 403' }),
+    Uu('orocpprod1', 'kart-prod', 'servissiz-ui', 0, { services_total: 0 }),
   ];
   const kes = buildSpaDiscovery(disc, [], usage, RUNS, { tablolar: {} }, null);
   const out = kur(kes.apps, { coverage: kes.coverage });
@@ -258,7 +258,7 @@ test('IS5 degerlendirme olcumu ve beyani yan yana okur', () => {
       A('teyit', { istek: 'yok', reqShown: 0 }),
       A('cel'),
       A('sy', { istek: 'servis-yok', reqShown: 0 }),
-      A('zayif', { weakEvidence: true, staleClusters: ['gbocpprod2'] }),
+      A('zayif', { weakEvidence: true, staleClusters: ['orocpprod2'] }),
       A('kullaniyor', { istek: 'yok', reqShown: 0 }),
     ],
     {
@@ -297,15 +297,15 @@ test('IS6 ortam ozeti, siralama, sorunlu cluster', () => {
       beyanlar: new Map([['kart-prod/p2', { inUse: 'no' }]]),
       coverage: {
         clusters: [
-          { cluster: 'gbocpprod1', status: 'ok', bucket: 'guncel', stale: false, reason: '' },
+          { cluster: 'orocpprod1', status: 'ok', bucket: 'guncel', stale: false, reason: '' },
           {
-            cluster: 'gbocpprod2',
+            cluster: 'orocpprod2',
             status: 'login',
             bucket: 'taranamadi',
             stale: true,
             reason: 'login basarisiz',
           },
-          { cluster: 'gbocptest1', status: 'ok', bucket: 'onceki', stale: true, reason: '' },
+          { cluster: 'orocptest1', status: 'ok', bucket: 'onceki', stale: true, reason: '' },
         ],
       },
     },
@@ -331,7 +331,7 @@ test('IS6 ortam ozeti, siralama, sorunlu cluster', () => {
   );
   assert.deepEqual(
     out.sorunluCluster.map((c) => c.cluster),
-    ['gbocpprod2', 'gbocptest1'],
+    ['orocpprod2', 'orocptest1'],
   );
 });
 
@@ -562,59 +562,59 @@ test('IS11 kurulum: kendi ortaminin taranan sunucularina gore tamam / kismi / yo
     {
       hosts: PROD_INTRA,
       dirRows: [
-        DZ('GBNGXP50', 'kart-prod', 'tam-ui'),
-        DZ('GBNGXP51', 'kart-prod', 'tam-ui'),
-        DZ('GBNGXP50', 'kart-prod', 'yarim-ui'),
-        DZ('GBNGXP51', 'kart-prod', 'yarim-ui', { app_deployed: 0, status: 'MISSING_APP' }),
-        DZ('GBNGXP51', 'kart-prod', 'tek-ui'),
+        DZ('ORNGXP50', 'kart-prod', 'tam-ui'),
+        DZ('ORNGXP51', 'kart-prod', 'tam-ui'),
+        DZ('ORNGXP50', 'kart-prod', 'yarim-ui'),
+        DZ('ORNGXP51', 'kart-prod', 'yarim-ui', { app_deployed: 0, status: 'MISSING_APP' }),
+        DZ('ORNGXP51', 'kart-prod', 'tek-ui'),
         // baska ortamin sunucusu: PROD uygulamasinin kurulumuna SAYILMAZ
-        DZ('GBNGXT50', 'kart-prod', 'yok-ui'),
+        DZ('ORNGXT50', 'kart-prod', 'yok-ui'),
         // '-prod' eksiz dizin ns'i
-        DZ('GBNGXP50', 'kart', 'ek-ui'),
-        DZ('GBNGXP51', 'kart', 'ek-ui'),
-        DZ('GBNGXT50', 'kart-test', 'test-ui'),
+        DZ('ORNGXP50', 'kart', 'ek-ui'),
+        DZ('ORNGXP51', 'kart', 'ek-ui'),
+        DZ('ORNGXT50', 'kart-test', 'test-ui'),
       ],
     },
   );
   const k = (app) => satir(out, app).kurulum;
-  // GBNGXAP50 o gun taranmadi: eksik SAYILMAZ, ayrica listelenir
+  // ORNGXAP50 o gun taranmadi: eksik SAYILMAZ, ayrica listelenir
   assert.deepEqual(
     [k('tam-ui').durum, k('tam-ui').tam, k('tam-ui').beklenen, k('tam-ui').taranmayan],
-    ['tamam', 2, 2, ['GBNGXAP50']],
+    ['tamam', 2, 2, ['ORNGXAP50']],
   );
   assert.deepEqual(
     [k('yarim-ui').durum, k('yarim-ui').tam, k('yarim-ui').eksik],
-    ['kismi', 1, ['GBNGXP51']],
+    ['kismi', 1, ['ORNGXP51']],
   );
-  assert.equal(k('yarim-ui').sunucular.find((x) => x.host === 'GBNGXP51').status, 'MISSING_APP');
-  assert.deepEqual([k('tek-ui').durum, k('tek-ui').eksik], ['kismi', ['GBNGXP50']]);
-  assert.equal(k('tek-ui').sunucular.find((x) => x.host === 'GBNGXP50').status, 'YOK');
+  assert.equal(k('yarim-ui').sunucular.find((x) => x.host === 'ORNGXP51').status, 'MISSING_APP');
+  assert.deepEqual([k('tek-ui').durum, k('tek-ui').eksik], ['kismi', ['ORNGXP50']]);
+  assert.equal(k('tek-ui').sunucular.find((x) => x.host === 'ORNGXP50').status, 'YOK');
   assert.equal(k('yok-ui').durum, 'yok', 'TEST sunucusundaki dizin PROD uygulamasina sayildi');
   assert.deepEqual([k('ek-ui').durum, k('ek-ui').eslesme], ['tamam', 'ek-prod']);
   assert.deepEqual([k('test-ui').durum, k('test-ui').beklenen], ['tamam', 1]);
   assert.equal(k('tam-ui').eslesme, 'kesin');
-  assert.deepEqual(out.taranmayanSunucu, ['GBNGXAP50']);
+  assert.deepEqual(out.taranmayanSunucu, ['ORNGXAP50']);
   assert.equal(out.dizinTarihi, '2026-10-18');
 });
 
 test('IS11b namespace fallback her sunucuda ayri uygulanir; kesin eslesme onceliklidir', () => {
   const out = kur([A('gecis-ui')], {
-    hosts: ['GBNGXP50', 'GBNGXP51'],
+    hosts: ['ORNGXP50', 'ORNGXP51'],
     dirRows: [
-      DZ('GBNGXP50', 'kart-prod', 'gecis-ui'),
-      DZ('GBNGXP50', 'kart', 'gecis-ui', { app_deployed: 0, status: 'MISSING_APP' }),
-      DZ('GBNGXP51', 'kart', 'gecis-ui'),
+      DZ('ORNGXP50', 'kart-prod', 'gecis-ui'),
+      DZ('ORNGXP50', 'kart', 'gecis-ui', { app_deployed: 0, status: 'MISSING_APP' }),
+      DZ('ORNGXP51', 'kart', 'gecis-ui'),
     ],
   });
   const k = satir(out, 'gecis-ui').kurulum;
   assert.deepEqual([k.durum, k.tam, k.beklenen, k.eslesme], ['tamam', 2, 2, 'ek-prod']);
   assert.equal(
-    k.sunucular.find((s) => s.host === 'GBNGXP50').status,
+    k.sunucular.find((s) => s.host === 'ORNGXP50').status,
     'OK',
     'ayni sunucuda fallback kesin kaydi ezdi',
   );
   assert.equal(
-    k.sunucular.find((s) => s.host === 'GBNGXP51').status,
+    k.sunucular.find((s) => s.host === 'ORNGXP51').status,
     'OK',
     'baska sunucudaki kesin kayit fallback eslesmesini bastirdi',
   );
@@ -630,17 +630,17 @@ test('IS12 kurulum olculemedi / sunucu-yok; ortam ozeti', () => {
   );
   assert.deepEqual(dus.taranmayanSunucu, PROD_INTRA);
   // ortamin hicbir intranet sunucusu taranmadi (yalniz TEST taranmis)
-  const tarama = kur(apps, { hosts: PROD_INTRA, dirRows: [DZ('GBNGXT50', 'kart-test', 'z-ui')] });
+  const tarama = kur(apps, { hosts: PROD_INTRA, dirRows: [DZ('ORNGXT50', 'kart-test', 'z-ui')] });
   assert.equal(satir(tarama, 'a-ui').kurulum.durum, 'olculemedi');
   assert.equal(satir(tarama, 'x-ui').kurulum.durum, 'sunucu-yok');
   const out = kur([A('t1'), A('t2'), A('k1'), A('y1'), A('y2')], {
-    hosts: ['GBNGXP50', 'GBNGXP51'],
+    hosts: ['ORNGXP50', 'ORNGXP51'],
     dirRows: [
-      DZ('GBNGXP50', 'kart-prod', 't1'),
-      DZ('GBNGXP51', 'kart-prod', 't1'),
-      DZ('GBNGXP50', 'kart-prod', 't2'),
-      DZ('GBNGXP51', 'kart-prod', 't2'),
-      DZ('GBNGXP50', 'kart-prod', 'k1'),
+      DZ('ORNGXP50', 'kart-prod', 't1'),
+      DZ('ORNGXP51', 'kart-prod', 't1'),
+      DZ('ORNGXP50', 'kart-prod', 't2'),
+      DZ('ORNGXP51', 'kart-prod', 't2'),
+      DZ('ORNGXP50', 'kart-prod', 'k1'),
     ],
   });
   const p = out.envs.find((e) => e.env === 'PROD');
@@ -648,7 +648,7 @@ test('IS12 kurulum olculemedi / sunucu-yok; ortam ozeti', () => {
   // dizin okunamadi: beklenen sunucularin HEPSI taranmayan (olculemedi), "eksik" degil
   assert.deepEqual(
     [satir(dus, 'a-ui').kurulum.taranmayan, satir(dus, 'a-ui').kurulum.eksik],
-    [['GBNGXAP50', 'GBNGXP50', 'GBNGXP51'], []],
+    [['ORNGXAP50', 'ORNGXP50', 'ORNGXP51'], []],
   );
 });
 
@@ -663,7 +663,7 @@ test('IS13 yukleyici dizin tablosunu intranet sunuculariyla okur; sorgu duserse 
       if (String(q).includes('FROM dbo.Nginx_Intranet_Audit')) {
         if (dizinDussun) throw new Error('Invalid object name');
         return {
-          recordset: [DZ('GBNGXP50', 'kart-prod', 'z-ui'), DZ('GBNGXP51', 'kart-prod', 'z-ui')],
+          recordset: [DZ('ORNGXP50', 'kart-prod', 'z-ui'), DZ('ORNGXP51', 'kart-prod', 'z-ui')],
         };
       }
       return { recordset: [] };
@@ -683,11 +683,11 @@ test('IS13 yukleyici dizin tablosunu intranet sunuculariyla okur; sorgu duserse 
   const r = await loadIntranet(true, deps);
   const q = sorguBul(sorgular);
   assert.ok(
-    q.params.some((p) => p.value === 'GBNGXAP51') && q.params.some((p) => p.value === 'GBNGXD50'),
+    q.params.some((p) => p.value === 'ORNGXAP51') && q.params.some((p) => p.value === 'ORNGXD50'),
     'intranet sunuculari sorguda yok',
   );
   assert.ok(
-    !q.params.some((p) => p.value === 'GBNGXP40'),
+    !q.params.some((p) => p.value === 'ORNGXP40'),
     'internet sunucusu intranet kurulumuna girdi',
   );
   assert.equal(r.dizinDurum, 'var');

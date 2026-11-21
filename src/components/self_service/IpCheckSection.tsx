@@ -113,7 +113,7 @@ export default function IpCheckSection() {
             rows={6}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder={'10.1.2.3\nGBAPPP01\nGBAPPP02'}
+            placeholder={'10.1.2.3\nORAPPP01\nORAPPP02'}
           />
         </Field>
 

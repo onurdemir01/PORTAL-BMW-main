@@ -4,7 +4,7 @@
 // Liste Portal'da tutulur; yalnız Admin ekler / çıkarır. Eklenen makine sunucuda aynı kapıdan geçer (TEK HEDEF MODELI
 // 2026-11-13: dbo.Inventory'de kayıtlı, tüm kayıtları DEV/TEST/QA, üretim işaretsiz, EDU değil; ad kuralı aranmaz); her
 // koşu bunu yeniden ölçer, www ile SSH'ı ön kontrol kanıtlar. Liste boşken
-// NGINX_LOADTEST_YUK_HOSTLARI (yoksa GBNGXT34) geçerlidir; ilk değişiklik o listeyi Portal'a taşır.
+// NGINX_LOADTEST_YUK_HOSTLARI (yoksa ORNGXT34) geçerlidir; ilk değişiklik o listeyi Portal'a taşır.
 import React, { useCallback, useState } from 'react';
 import { ArrowPathIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlHedefler, type NlYukHost } from '@/api/nginxLoadtestApi';
@@ -20,7 +20,7 @@ import { hataMetni } from './yukTestiOrtak';
 export const YUK_MAKINESI_ACIKLAMASI =
   'Yük bu makinelerden üretilir. Eklenen makine dbo.Inventory’de kayıtlı, tüm kayıtları DEV / TEST / QA, üretim işaretsiz ve EDU olmayan bir makine olmalı; ad kuralı aranmaz. Her ön kontrol ve koşu bunu yeniden denetler; www ile SSH’ı ön kontrol kanıtlar. Mümkünse reverse proxy olmayan bir makine seçin (ölçüm daha temiz).';
 export const ORTAM_KAYNAGI_METNI =
-  'Liste şu an Portal ortam değişkeninden (NGINX_LOADTEST_YUK_HOSTLARI, yoksa varsayılan GBNGXT34) geliyor. İlk ekleme ya da çıkarma bu listeyi Portal’a taşır; sonrasında ortam değişkeni okunmaz.';
+  'Liste şu an Portal ortam değişkeninden (NGINX_LOADTEST_YUK_HOSTLARI, yoksa kurum ayarındaki varsayılan) geliyor. İlk ekleme ya da çıkarma bu listeyi Portal’a taşır; sonrasında ortam değişkeni okunmaz.';
 
 const DEV_TEST_QA = new Set(['DEV', 'TEST', 'QA']);
 
@@ -239,7 +239,7 @@ export default function YukMakineleri({ isAdmin }: { isAdmin: boolean }) {
               list="yuk-makinesi-adaylari"
               value={host}
               onChange={(e) => setHost(e.target.value)}
-              placeholder="GBNGXT33"
+              placeholder="ORNGXT33"
               className={`${GIRDI} font-mono uppercase`}
               style={girdiStili()}
               autoComplete="off"

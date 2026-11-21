@@ -1,6 +1,6 @@
 // src/components/server_hub/topluSiniflama.ts — Toplu Auto-Start / Toplu Restart başarısızlık kategorileri (2026-11-15).
 //
-// Kullanıcı (GBBFAA01 "host controller'a baglanilamadi ... Connection refused :9990"): başarısız / düşen öğeler
+// Kullanıcı (ORBFAA01 "host controller'a baglanilamadi ... Connection refused :9990"): başarısız / düşen öğeler
 // nedenine göre kümelensin; her küme için "ne yapılır" tek satır yazsın, tablo kümeye göre süzülebilsin.
 //
 // SAF FONKSİYON: kategori yalnız öğenin durumundan ve neden / sonuç metninden çıkar. Desenler GERÇEK mesajlardan

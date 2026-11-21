@@ -107,8 +107,8 @@ beforeEach(() => {
     tableMissing: false,
     latestScan: '2026-11-11',
     findings: [
-      bulgu('GBAPP01', 'REBOOT_RISK', 'app1 auto-start kapalı'),
-      bulgu('GBAPP02', 'STOPPED_AUTOSTART_ON', 'app2 kapalı'),
+      bulgu('ORAPP01', 'REBOOT_RISK', 'app1 auto-start kapalı'),
+      bulgu('ORAPP02', 'STOPPED_AUTOSTART_ON', 'app2 kapalı'),
     ],
   });
   m.kurallar.mockResolvedValue(KURALLAR);
@@ -173,7 +173,7 @@ describe('Bulgular kodları', () => {
   });
   it('KR5 non-prod tavanı işareti prod ortamındaki ETKİN seviyeyi yazar (Admin uyarı -> kritik ise kritik)', async () => {
     const np = {
-      ...bulgu('GBAPT01', 'SYNTAX_UNVERIFIED', 'np1'),
+      ...bulgu('ORAPT01', 'SYNTAX_UNVERIFIED', 'np1'),
       env: 'TEST',
       envGroup: 'Non-Production',
       severity: 'warning' as const,
@@ -186,10 +186,10 @@ describe('Bulgular kodları', () => {
       findings: [
         { ...np, defaultSeverity: 'warning' as const, prodSeverity: 'danger' as const },
         // eski rapor satiri (prodSeverity yok): varsayilana duser
-        { ...np, host: 'GBAPT02', text: 'np2', defaultSeverity: 'danger' as const },
+        { ...np, host: 'ORAPT02', text: 'np2', defaultSeverity: 'danger' as const },
         {
           ...np,
-          host: 'GBAPT03',
+          host: 'ORAPT03',
           text: 'np3',
           severity: 'info' as const,
           defaultSeverity: 'warning' as const,

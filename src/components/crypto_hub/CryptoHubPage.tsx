@@ -508,8 +508,8 @@ export function valuesSecenekleri(
 }
 
 /** Bir arsiv surumunde KARSILASTIRILACAK dosyalarin tam yollari.
- *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/garanti_values.yaml");
- *  surum kokundeki tek dosya ("1.5.19/garanti_values.yaml") eski duzendir ve bir
+ *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/ornek_values.yaml");
+ *  surum kokundeki tek dosya ("1.5.19/ornek_values.yaml") eski duzendir ve bir
  *  cluster'i temsil etmez. Ikisini ayni tabloda karsilastirmak, "cluster'lar ayrisiyor"
  *  diye okunacak bir fark uretirdi; bu yuzden alt dizindeki dosya VARSA yalniz onlar alinir. */
 export function karsilastirmaYollari(a: { dir: string; values: { file: string }[] }): string[] {

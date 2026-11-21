@@ -67,7 +67,7 @@ const NS_SATIR = [
   },
 ];
 const A = (namespace, application, o = {}) => ({
-  cluster: 'gbocpprod1',
+  cluster: 'orocpprod1',
   namespace,
   application,
   owner_group_name: null,
@@ -267,7 +267,7 @@ test('AO10 Intranet SPA: owners verilince uygulama sahibi + ekipKaynak, verilmez
     application,
     spa: 'evet',
     ag: 'intranet',
-    clusters: ['gbocpprod1'],
+    clusters: ['orocpprod1'],
     hosts: [],
     staleClusters: [],
   });
@@ -510,14 +510,14 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
 
 test('AO16 ARK_DISI satiri namespace yedegi gibi okunur; ayni ns/app ARK satiri kazanir', () => {
   const disi = A('muh-prod', 'app', {
-    cluster: 'gbocpdev9',
+    cluster: 'orocpdev9',
     owner_group_name: 'GT-NS-PROD',
     kaynak: 'NAMESPACE',
     lookup_status: 'ARK_DISI',
     lookup_message: 'ARK disi cluster: uygulama duzeyi sahip aranmaz',
   });
   const ark = A('muh-prod', 'app', {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     owner_group_name: 'GERCEK',
     kaynak: 'SI51_AGILE',
   });
@@ -534,7 +534,7 @@ test('AO16 ARK_DISI satiri namespace yedegi gibi okunur; ayni ns/app ARK satiri 
     [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']],
   );
   const yok = A('sahipsiz-prod', 'app', {
-    cluster: 'gbocpdev9',
+    cluster: 'orocpdev9',
     kaynak: 'YOK',
     lookup_status: 'ARK_DISI',
   });

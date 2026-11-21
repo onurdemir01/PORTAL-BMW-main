@@ -1,4 +1,4 @@
-// server/nginx-loadtest/__tests__/r2-gercek.test.js -- ilk gercek kosu R2 (GBNGXT33, AWX 3474239) sayilariyla
+// server/nginx-loadtest/__tests__/r2-gercek.test.js -- ilk gercek kosu R2 (ORNGXT33, AWX 3474239) sayilariyla
 // uctan uca: kos.sh / cpu_kaydedici.sh dosyalari -> sonuc.cjs -> analiz.cjs -> poller.analizNormalle -> DB satiri
 // -> index adimApi -> gorunum.sonucOzeti (GET /kosular/:id'nin dondurdugu adimlar + sonucOzeti).
 //
@@ -131,7 +131,7 @@ const RELOAD = [yerel('14:52:51') + 91, yerel('14:59:00') + 91];
 const TIK = { 100: [10, 2], 250: [12, 3], 400: [14, 4] };
 
 function r2Dosyalari() {
-  const k = new Kurgu('R2', { t0: yerel('14:49:46') - 90, host: 'gbngxt33' });
+  const k = new Kurgu('R2', { t0: yerel('14:49:46') - 90, host: 'orngxt33' });
   for (const g of GERCEK) {
     k.t = yerel(g.bas);
     k.rps = g.hiz;
@@ -168,7 +168,7 @@ function r2Dosyalari() {
   });
   const out = new Map(dosyalar);
   for (const [ad, f] of dosyalar) {
-    if (ad === 'sunucu_R2_gbngxt33.csv') {
+    if (ad === 'sunucu_R2_orngxt33.csv') {
       // Reload: worker PID kumesi degisir, eski worker'lar 3 sn "shutting down" kalir, cikinca toplam sayac duser.
       const satirlar = f.icerik.split('\n').map((s, i) => {
         if (i === 0 || !s) return s;
@@ -181,7 +181,7 @@ function r2Dosyalari() {
         return p.join(',');
       });
       out.set(ad, { ...f, icerik: satirlar.join('\n') });
-    } else if (ad === 'bilgi_R2_gbngxt33.txt') {
+    } else if (ad === 'bilgi_R2_orngxt33.txt') {
       out.set(ad, {
         ...f,
         icerik: f.icerik
@@ -295,12 +295,12 @@ test('RG2 gercek R2 kosu ozeti; arayuz fikstur dosyasi bu ciktiyla ayni', async 
   assert.deepEqual(
     ozet.reloadlar.map((r) => [r.t, r.tur, r.faz, r.etkilenenTurlar, r.kesit]),
     [
-      [RELOAD[0], 'R2_K_ka_identity_100_r2', 'olcum', ['R2_K_ka_identity_100_r2'], 'R2_gbngxt33'],
-      [RELOAD[1], 'R2_K_ka_identity_250_r2', 'olcum', ['R2_K_ka_identity_250_r2'], 'R2_gbngxt33'],
+      [RELOAD[0], 'R2_K_ka_identity_100_r2', 'olcum', ['R2_K_ka_identity_100_r2'], 'R2_orngxt33'],
+      [RELOAD[1], 'R2_K_ka_identity_250_r2', 'olcum', ['R2_K_ka_identity_250_r2'], 'R2_orngxt33'],
     ],
   );
   assert.ok(
-    n.uyarilar.includes(`kayit:R2_gbngxt33:konf_degisti(kayit_sirasinda):${KONF_BAS}->${KONF_BIT}`),
+    n.uyarilar.includes(`kayit:R2_orngxt33:konf_degisti(kayit_sirasinda):${KONF_BAS}->${KONF_BIT}`),
   );
   const fikstur =
     JSON.stringify(
@@ -325,7 +325,7 @@ test('RG2 gercek R2 kosu ozeti; arayuz fikstur dosyasi bu ciktiyla ayni', async 
 // RG3: R2'nin ilk iki adimi (14:49:46, 14:52:51; 30 sn isinma + 120 sn olcum + 30 sn bosluk), sentetik tek reload.
 // `ani`: worker PID kumesinin degistigi ilk ornek; `sure`: eski worker'larin 'shutting down' kaldigi saniye.
 async function tasanReload(ad, ani, sure) {
-  const k = new Kurgu(ad, { t0: yerel(GERCEK[0].bas) - 90, host: 'gbngxt33' });
+  const k = new Kurgu(ad, { t0: yerel(GERCEK[0].bas) - 90, host: 'orngxt33' });
   for (const g of GERCEK.slice(0, 2)) {
     k.t = yerel(g.bas);
     k.rps = 100;
@@ -356,7 +356,7 @@ async function tasanReload(ad, ani, sure) {
     });
   }
   const out = new Map(k.dosyalar({}));
-  const csv = `sunucu_${ad}_gbngxt33.csv`;
+  const csv = `sunucu_${ad}_orngxt33.csv`;
   const f = out.get(csv);
   out.set(csv, {
     ...f,

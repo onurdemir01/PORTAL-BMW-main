@@ -139,7 +139,7 @@ function Dosya({ f }: { f: InitSunucuGeneliFile }) {
             {(
               [
                 { id: 'genel', label: 'Genel envanter', n: f.sayilar.hosts },
-                { id: 'ozel', label: 'GBEVM / GBPRV', n: f.special.sayilar.hosts },
+                { id: 'ozel', label: '…EVM / …PRV', n: f.special.sayilar.hosts },
               ] as const
             ).map((c) => (
               <button

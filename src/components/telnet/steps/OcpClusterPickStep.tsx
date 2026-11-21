@@ -1,6 +1,6 @@
 // src/components/telnet/steps/OcpClusterPickStep.tsx — OpsX'in OcpClusterPickStep.tsx'iyle
 // AYNI UX (bkz. src/components/opsx/steps/OcpClusterPickStep.tsx): tenant/env grubundaki
-// GERÇEK cluster'lardan (ör. ark_prod → gbocpprod1, gbocpprod2, gbocpprod4) hedeflenecek
+// GERÇEK cluster'lardan (ör. ark_prod → orocpprod1, orocpprod2, orocpprod4) hedeflenecek
 // TEK birinin YA DA grubun TAMAMININ seçimi.
 //
 // OpsX'TEN FARKI: Telnet OCP'nin playbook'u (ocp_telnet_control.yml) AWX `limit`e HİÇ

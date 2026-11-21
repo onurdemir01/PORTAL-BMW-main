@@ -30,7 +30,7 @@ const POD = (name: string, status = 'Running') => ({
   status,
   restarts: '0',
   age: '1h',
-  cluster: 'gbocpprod1',
+  cluster: 'orocpprod1',
   namespace: 'kart-prod',
 });
 const PODLAR = [
@@ -42,7 +42,7 @@ const PODLAR = [
 
 beforeEach(() => {
   for (const f of Object.values(api)) f.mockReset();
-  api.getClusters.mockResolvedValue({ tree: { PROD: { ark: ['gbocpprod1'] } } });
+  api.getClusters.mockResolvedValue({ tree: { PROD: { ark: ['orocpprod1'] } } });
   api.getOcpNamespaces.mockResolvedValue({ namespaces: ['kart-batch-prod'] });
   api.getOcpApps.mockResolvedValue({ apps: [] });
   api.getOcpOperations.mockResolvedValue({

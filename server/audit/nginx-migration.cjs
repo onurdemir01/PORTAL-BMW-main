@@ -1,4 +1,4 @@
-// server/audit/nginx-migration.cjs - Nginx SPA > "Production Tasimalari": eski GBRVP* sunucularinin
+// server/audit/nginx-migration.cjs - Nginx SPA > "Production Tasimalari": eski ORRVP* sunucularinin
 // proxy_pass hedefleri, yeni GBNGXP4x/5x sunucularinda DIZIN olarak var mi?
 //
 // SORU (kullanici, 2026-09-14): eski sunuculardaki location'larda tanimli proxy_pass
@@ -18,8 +18,8 @@
 //                                            sunucuda kosar - bmw_nginx/nginx_config_audit)
 //
 // proxy_pass YAZIM BICIMLERI (kullanici, 2026-09-14) - dordu de gecerli:
-//   proxy_pass https://<app>-<ns>.apps.fw.garanti.com.tr     (FQDN)
-//   proxy_pass https://<app>-<ns>.apps.fw.garanti.com.tr/    (FQDN, yol)
+//   proxy_pass https://<app>-<ns>.apps.fw.sirket.invalid     (FQDN)
+//   proxy_pass https://<app>-<ns>.apps.fw.sirket.invalid/    (FQDN, yol)
 //   proxy_pass https://<app>-<ns>                             (upstream blogu adi)
 //   proxy_pass https://<app>-<ns>/                            (upstream blogu adi, yol)
 // Tarayici sema/yol/portu attigi icin DB'de iki bicim kalir: FQDN ya da CIPLAK AD.
@@ -53,30 +53,24 @@
 // Kuralin kendisi ve gerekcesi: server/audit/spa-pattern.cjs.
 const { SPA_RE, isSpaApp, isSpaLabel, labelOf } = require('./spa-pattern.cjs');
 
-/** Sabit tasima gruplari (kullanici verdi, 2026-09-14). */
-const MIGRATION_GROUPS = [
-  {
-    id: 'glomo',
-    label: 'Glomo',
-    oldHosts: [
-      'GBRVPP07',
-      'GBRVPP08',
-      'GBRVPP09',
-      'GBRVPP10',
-      'GBRVPAP03',
-      'GBRVPAP04',
-      'GBRVPAP05',
-      'GBRVPAP06',
-    ],
-    newHosts: ['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34', 'GBNGXAP35'],
-  },
-  {
-    id: 'other',
-    label: 'Openbanking / Saklama / Webforms vb.',
-    oldHosts: ['GBRVPP01', 'GBRVPP02', 'GBRVPAP01', 'GBRVPAP02'],
-    newHosts: ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33'],
-  },
-];
+// Tasima gruplari (kullanici verdi, 2026-09-14). Kimlik ve etiket burada; sunucu listeleri kurum ayarinda
+// (`nginx.gocGruplari.<id>.eski | yeni`, server/util/kurum-ayari.cjs; sunucu adlari koda yazilmaz, K17).
+// Her cagrida ayardan okunur: ayar dosyasi degisince yeniden baslatma gerekmez. Ayar yoksa listeler bos.
+const GOC_GRUP_TANIMLARI = Object.freeze([
+  Object.freeze({ id: 'glomo', label: 'Glomo' }),
+  Object.freeze({ id: 'other', label: 'Openbanking / Saklama / Webforms vb.' }),
+]);
+
+/** @returns {{ id: string, label: string, oldHosts: string[], newHosts: string[] }[]} */
+function migrationGroups() {
+  const { sunucuListesi } = require('../util/kurum-ayari.cjs');
+  return GOC_GRUP_TANIMLARI.map((t) => ({
+    id: t.id,
+    label: t.label,
+    oldHosts: sunucuListesi(`nginx.gocGruplari.${t.id}.eski`).liste,
+    newHosts: sunucuListesi(`nginx.gocGruplari.${t.id}.yeni`).liste,
+  }));
+}
 
 const H = (h) =>
   String(h || '')
@@ -213,10 +207,10 @@ function buildResolverMaps(routeRows, ocpRows) {
  *                     kullanici ilerlemeyi location uzerinden takip ediyor)
  */
 // YUK ALIYOR MU (2026-09-27, kullanici): "yuk alip almama gostergesini Production
-// Tasimalari sayfasina da ekler misin? yuk alimini GBRVPP07-08-09-10 sunucularindan
+// Tasimalari sayfasina da ekler misin? yuk alimini ORRVPP07-08-09-10 sunucularindan
 // kontrol etmelisin."
 //
-// NEDEN ESKI SUNUCULAR: trafik su an ORADAN geciyor (Pendik yuku halen GBRVP*'lerde).
+// NEDEN ESKI SUNUCULAR: trafik su an ORADAN geciyor (Pendik yuku halen ORRVP*'lerde).
 // Yeni sunuculara bakmak yanlis cevap verirdi - oralarda tanim yeni olustugu icin log
 // bos ya da cok kisa, "yuk yok" gibi gorunurdu. Olcum, isin GERCEKTEN aktigi yerden
 // alinir. Kaynak dbo.Nginx_Spa_Traffic (bmw_nginx/nginx_config_audit/files/
@@ -611,7 +605,7 @@ function buildMigration({
   trafficRows,
   oldIncludeRows = [],
   auditLocRows = [],
-  groups = MIGRATION_GROUPS,
+  groups = migrationGroups(),
 }) {
   const { routeByAddress, routeByLabel, ocpByLabel } = buildResolverMaps(routeRows, ocpRows);
   // yeni sunuculardaki location tanimlari: "SERVICE|location" -> Set(host)
@@ -1075,15 +1069,16 @@ function buildMigration({
  */
 async function loadMigration({ query, sql, hasProxyColumns }) {
   const { loadNamespaceOwners, ownersForApp } = require('./ns-owners.cjs');
-  const oldHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.oldHosts))];
-  const newHosts = [...new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts))];
+  const gruplar = migrationGroups();
+  const oldHosts = [...new Set(gruplar.flatMap((g) => g.oldHosts))];
+  const newHosts = [...new Set(gruplar.flatMap((g) => g.newHosts))];
   const inList = (prefix, arr) => ({
     sqlText: arr.map((_, i) => `@${prefix}${i}`).join(', '),
     params: arr.map((h, i) => ({ name: `${prefix}${i}`, type: sql.NVarChar(64), value: h })),
   });
   const oldIn = inList('o', oldHosts);
   const newIn = inList('n', newHosts);
-  const arkIn = inList('k', require('./ocp-platforms.cjs').PLATFORM_CLUSTERS.ark);
+  const arkIn = inList('k', require('./ocp-platforms.cjs').platformKumeleri().ark || []);
 
   // kind/target_url kolonlari DDL ile geldi. Yoksa config-proxy kaynagi kullanilamaz; ancak
   // nginx-T ve dizin kaynaklari bagimsizdir, onlarin tamamini erken donusle gizleme.
@@ -1246,7 +1241,7 @@ module.exports = {
   deriveFromName,
   isSpaApp,
   isSpaLabel,
-  MIGRATION_GROUPS,
+  migrationGroups,
   SPA_RE,
   _hostOf: hostOf,
   // Yuk olcumu ortak kurali (denetim.cjs + spa-report/index.cjs + bu dosya).

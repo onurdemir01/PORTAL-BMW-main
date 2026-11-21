@@ -452,7 +452,7 @@ function kosuSatiri(id, o = {}) {
     senaryo_id: 1,
     islem: 'kosu',
     etiket: `E${id}`,
-    hedef_host: 'GBNGXT33',
+    hedef_host: 'ORNGXT33',
     hedef_ip: '10.0.0.9',
     vhost: 'v',
     durum: 'DONE',

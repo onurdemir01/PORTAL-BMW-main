@@ -72,7 +72,7 @@ async function durum(yol, govde) {
 }
 const SORGULAR = [
   ['/ip-check', { ips: ['10.0.0.1'] }],
-  ['/server-ip-check', { servers: ['GBJBOP07'] }],
+  ['/server-ip-check', { servers: ['ORJBOP07'] }],
   ['/openshift-check', { query: 'kart' }],
 ];
 

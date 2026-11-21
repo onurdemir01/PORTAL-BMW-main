@@ -50,7 +50,7 @@ async function readRolesDetailed() {
 //
 // Asimetri vardi: `getRoleOverride` okurken `username.toLowerCase()` kullaniyordu ama
 // `setRoleOverride`/`removeRoleOverride` KULLANICININ YAZDIGI bicimi kaydediyordu. Veritabani
-// harf duyarli bir collation kullaniyorsa "OsmanKoz" diye kaydedilen satir "osmankoz" ile
+// harf duyarli bir collation kullaniyorsa "OrnekKisi" diye kaydedilen satir "ornekkisi" ile
 // ARANINCA BULUNMAZ; kullanici rolunu sessizce kaybeder. Oturumdaki kullanici adi zaten
 // normalizeUsername ile kucuk harfe cevriliyor - yazma tarafi da ayni sozlesmeye uyar.
 async function setRoleOverride(

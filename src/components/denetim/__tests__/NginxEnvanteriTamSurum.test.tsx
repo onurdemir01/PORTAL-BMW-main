@@ -58,38 +58,38 @@ const host = (o: Partial<NginxInvHost>): NginxInvHost => ({
 });
 const size = { totalGiB: 0, parsed: 0, unparsed: 0 };
 const HOSTS = [
-  host({ hostname: 'GBNGXP01', nginx_version: 'nginx/1.25.3 (nginx-plus-r31-p1)' }),
-  host({ hostname: 'GBNGXP02', nginx_version: '1.25.3 (nginx-plus-r31-p1)', location: 'ankara' }),
-  host({ hostname: 'GBNGXP03', nginx_version: 'nginx-plus-r36-p4', os: 'RHEL 9.4' }),
-  host({ hostname: 'GBNGXP04', nginx_version: '1.24.0' }),
+  host({ hostname: 'ORNGXP01', nginx_version: 'nginx/1.25.3 (nginx-plus-r31-p1)' }),
+  host({ hostname: 'ORNGXP02', nginx_version: '1.25.3 (nginx-plus-r31-p1)', location: 'ankara' }),
+  host({ hostname: 'ORNGXP03', nginx_version: 'nginx-plus-r36-p4', os: 'RHEL 9.4' }),
+  host({ hostname: 'ORNGXP04', nginx_version: '1.24.0' }),
   host({
-    hostname: 'GBNGXQ01',
+    hostname: 'ORNGXQ01',
     envByName: 'QA',
     env: 'non-production',
     nginx_version: 'nginx/1.26.3',
   }),
-  host({ hostname: 'GBNGXQ02', envByName: 'QA', env: 'non-production', nginx_version: '1.26.3' }),
+  host({ hostname: 'ORNGXQ02', envByName: 'QA', env: 'non-production', nginx_version: '1.26.3' }),
   host({
-    hostname: 'GBNGXQ03',
+    hostname: 'ORNGXQ03',
     envByName: 'QA',
     env: 'non-production',
     nginx_version: '1.25.1 (nginx-plus-r30)',
   }),
   host({
-    hostname: 'GBNGXQ04',
+    hostname: 'ORNGXQ04',
     envByName: 'QA',
     env: 'non-production',
     nginx_version: 'nginx/1.29.3 (nginx-plus-r35)',
   }),
   host({
-    hostname: 'GBNGXQ05',
+    hostname: 'ORNGXQ05',
     envByName: 'QA',
     env: 'non-production',
     nginx_version: 'nginx-plus-r35-p1',
   }),
-  host({ hostname: 'GBNGXQ06', envByName: 'QA', env: 'non-production', nginx_version: '1.20.1' }),
-  host({ hostname: 'GBNGXQ07', envByName: 'QA', env: 'non-production', nginx_version: '1.22.1' }),
-  host({ hostname: 'GBNGXQ08', envByName: 'QA', env: 'non-production', nginx_version: 'unknown' }),
+  host({ hostname: 'ORNGXQ06', envByName: 'QA', env: 'non-production', nginx_version: '1.20.1' }),
+  host({ hostname: 'ORNGXQ07', envByName: 'QA', env: 'non-production', nginx_version: '1.22.1' }),
+  host({ hostname: 'ORNGXQ08', envByName: 'QA', env: 'non-production', nginx_version: 'unknown' }),
 ];
 const dagilim = (vs: (string | null)[]) => {
   const m = new Map<string, number>();
@@ -113,7 +113,7 @@ const veri = (): NginxInventoryResult => ({
   },
   byEnv: [],
   byService: [
-    { service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['GBNGXP01', 'GBNGXP03'] },
+    { service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['ORNGXP01', 'ORNGXP03'] },
   ],
   versions: {
     nginx: dagilim(HOSTS.map((h) => h.nginx_version)),
@@ -250,7 +250,7 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
       'RHEL 9.4',
     ]);
     fireEvent.click(dugme);
-    expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
+    expect(satirAdlari()).toEqual(['ORNGXP01', 'ORNGXP02']);
     expect(
       within(screen.getByTestId('surum-suzgeci')).getByTestId('plus-etiketi').textContent,
     ).toBe('Plus R31 p1');
@@ -325,7 +325,7 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     expect(within(plusSatir).getByTestId('plus-etiketi').textContent).toBe('Plus R36 p4');
     const iki = within(kart).getByTitle('1.26.3: 2 sunucu — listele (ham: nginx/1.26.3)');
     fireEvent.click(iki);
-    expect(satirAdlari()).toEqual(['GBNGXQ01', 'GBNGXQ02']);
+    expect(satirAdlari()).toEqual(['ORNGXQ01', 'ORNGXQ02']);
   });
 
   it('TS5 Sunucular: sürüm hücresi tam metin, Plus etiketi görünür, ham değer title', async () => {
@@ -333,15 +333,15 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
     const satir = (ad: string) =>
       screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
-    const r = within(satir('GBNGXP01')).getByTestId('surum-rozeti');
+    const r = within(satir('ORNGXP01')).getByTestId('surum-rozeti');
     expect(r.textContent).toBe('1.25.3 Plus R31 p1');
     expect(within(r).getByTestId('plus-etiketi').textContent).toBe('Plus R31 p1');
     expect(r.getAttribute('title')).toContain('nginx/1.25.3 (nginx-plus-r31-p1)');
-    expect(within(satir('GBNGXP03')).getByTestId('surum-rozeti').textContent).toBe('Plus R36 p4');
-    expect(within(satir('GBNGXP04')).getByTestId('surum-rozeti').textContent).toBe('1.24.0');
+    expect(within(satir('ORNGXP03')).getByTestId('surum-rozeti').textContent).toBe('Plus R36 p4');
+    expect(within(satir('ORNGXP04')).getByTestId('surum-rozeti').textContent).toBe('1.24.0');
     // satır rozeti aynı sürümün iki yazımını birlikte süzer
     fireEvent.click(r);
-    expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
+    expect(satirAdlari()).toEqual(['ORNGXP01', 'ORNGXP02']);
   });
 
   it("TS6 Service'ler: sürüm rozetinde Plus etiketi görünür", async () => {
@@ -366,11 +366,11 @@ describe('NginxEnvanteri — tam sürüm gösterimi', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
     const ara = screen.getByPlaceholderText(/sürüm ara/);
     fireEvent.change(ara, { target: { value: 'Plus R31' } });
-    expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
+    expect(satirAdlari()).toEqual(['ORNGXP01', 'ORNGXP02']);
     fireEvent.change(ara, { target: { value: 'R36 p4' } });
-    expect(satirAdlari()).toEqual(['GBNGXP03']);
+    expect(satirAdlari()).toEqual(['ORNGXP03']);
     fireEvent.change(ara, { target: { value: 'plus-r31' } });
-    expect(satirAdlari()).toEqual(['GBNGXP01', 'GBNGXP02']);
+    expect(satirAdlari()).toEqual(['ORNGXP01', 'ORNGXP02']);
   });
 
   it('TS8 Sürümler: tek sürümlü aile başlığı sayıyı/yüzdeyi tekrar yazmaz, çok sürümlü yazar', async () => {

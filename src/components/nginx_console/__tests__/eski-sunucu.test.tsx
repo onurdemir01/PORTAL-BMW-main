@@ -33,10 +33,10 @@ const ADAYLAR = {
   sinirlar: { maksHost: 50, maksSatir: 20000, parca: 5000 },
   adaylar: [
     {
-      host: 'GBOLU001',
+      host: 'OROLU001',
       sonGorulme: '2026-10-01T00:00:00.000Z',
       sonTarama: '2026-10-01',
-      dosyalar: ['GBOLU001.txt', 'GBOLU001.summary.json'],
+      dosyalar: ['OROLU001.txt', 'OROLU001.summary.json'],
       tbmwans: { 'dbo.Nginx_Audit_Hosts': 30 },
       portal: { nginx_hub_file_history: 12 },
       toplamSatir: 42,
@@ -58,7 +58,7 @@ describe('Nginx Hub eski sunucular', () => {
       inventoryError: null,
       eskiGizli: {
         sayi: 2,
-        hostlar: ['GBOLU001', 'GBOLU002'],
+        hostlar: ['OROLU001', 'OROLU002'],
         gun: 14,
         gosteriliyor: false,
         olculemedi: false,
@@ -78,9 +78,9 @@ describe('Nginx Hub eski sunucular', () => {
             kalanVar: false,
             hosts: [
               {
-                host: 'GBOLU001',
+                host: 'OROLU001',
                 silinenSatir: { 'dbo.Nginx_Audit_Hosts': 30 },
-                dosyalar: ['GBOLU001.txt'],
+                dosyalar: ['OROLU001.txt'],
                 hatalar: [],
                 tamam: true,
               },
@@ -100,7 +100,7 @@ describe('Nginx Hub eski sunucular', () => {
     expect(not.textContent).toContain(
       '2 eski sunucu gizlendi (envanterde yok, 14+ gündür taranmadı)',
     );
-    expect(not.textContent).toContain('GBOLU001, GBOLU002');
+    expect(not.textContent).toContain('OROLU001, OROLU002');
   });
 
   it('EN2 not: gizlenen yoksa ya da ölçülemediyse not yok', async () => {
@@ -131,8 +131,8 @@ describe('Nginx Hub eski sunucular', () => {
   it('EN4 Admin temizliği: liste, İptal istek atmaz, SIL yazılmadan Sil kapalı, onayla POST + sonuç', async () => {
     render(<NginxConsolePage />, { initialEntries: ['/nginx-console?tab=instances'] });
     fireEvent.click(await screen.findByTestId('nc-eski-listele'));
-    expect(await screen.findByText('GBOLU001')).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('GBOLU001 seç'));
+    expect(await screen.findByText('OROLU001')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('OROLU001 seç'));
     fireEvent.click(screen.getByTestId('nc-eski-sil'));
     expect(await screen.findByText(/kalıcı olarak silinecek/)).toBeTruthy();
     const onayla = screen.getByTestId('nc-eski-onayla') as HTMLButtonElement;
@@ -154,13 +154,13 @@ describe('Nginx Hub eski sunucular', () => {
     expect(sonuc.textContent).toContain('42 satır silindi');
     const post = cagrilar.find((c) => c.url.endsWith('/eski-sunucular/temizle'));
     expect(post?.init?.method).toBe('POST');
-    expect(JSON.parse(String(post?.init?.body))).toEqual({ hosts: ['GBOLU001'], onay: 'SIL' });
+    expect(JSON.parse(String(post?.init?.body))).toEqual({ hosts: ['OROLU001'], onay: 'SIL' });
   });
 
   it('EN4b Türkçe Caps Lock "SİL" de onaylar; ipucu görünür', async () => {
     render(<NginxConsolePage />, { initialEntries: ['/nginx-console?tab=instances'] });
     fireEvent.click(await screen.findByTestId('nc-eski-listele'));
-    fireEvent.click(await screen.findByLabelText('GBOLU001 seç'));
+    fireEvent.click(await screen.findByLabelText('OROLU001 seç'));
     fireEvent.click(screen.getByTestId('nc-eski-sil'));
     expect(await screen.findByText(/de kabul edilir/)).toBeTruthy();
     fireEvent.change(screen.getByTestId('nc-eski-onay-metni'), { target: { value: 'SİL' } });
@@ -172,15 +172,15 @@ describe('Nginx Hub eski sunucular', () => {
       'fetch',
       vi.fn((u: string) =>
         String(u).includes('/spa-discovery')
-          ? yanit({ ok: true, apps: [], eskiGizli: { sayi: 1, hostlar: ['GBOLU009'], gun: 14 } })
+          ? yanit({ ok: true, apps: [], eskiGizli: { sayi: 1, hostlar: ['OROLU009'], gun: 14 } })
           : yanit({ ok: true }),
       ),
     );
     await nginxConsoleApi.spaDiscovery();
-    expect(eskiGizliBirlesik(['spaKesif'])).toMatchObject({ sayi: 1, hostlar: ['GBOLU009'] });
+    expect(eskiGizliBirlesik(['spaKesif'])).toMatchObject({ sayi: 1, hostlar: ['OROLU009'] });
     render(<NginxConsolePage />, { initialEntries: ['/nginx-console?tab=spadiscovery'] });
     const not = await screen.findByTestId('nc-eski-notu');
-    expect(not.textContent).toContain('GBOLU009');
+    expect(not.textContent).toContain('OROLU009');
   });
 
   it('EN5 Admin olmayan temizlik panelini görmez', async () => {

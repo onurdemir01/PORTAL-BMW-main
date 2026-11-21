@@ -442,7 +442,7 @@ test('SC17 kapi KAPALIYKEN denetim kaydi GERCEKTEN yazilir (davranissal)', async
       serverId: 1,
       templateId: 9,
       extraVars: {},
-      limitValue: 'GBJBOSSPROD01',
+      limitValue: 'ORJBOSSPROD01',
       // URETIM etiketi: kapi tetiklenmeli, aksi halde test hicbir sey olcmez
       etiketler: [{ alan: 'ortam', deger: 'prod' }],
       req: { session: { user: { username: 'onurd' } } },

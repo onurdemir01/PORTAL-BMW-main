@@ -52,8 +52,8 @@ const BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 function veri(grup: 'other' | 'glomo' = 'other'): NginxMigrationResult {
   const G =
     grup === 'glomo'
-      ? { id: 'glomo', label: 'GLOMO', svc: 'GLOMO', eski: 'GBRVPP07', yeni: 'GBNGXP40' }
-      : { id: 'other', label: 'WEBFORMS', svc: 'WEBFORMS', eski: 'GBRVPP01', yeni: 'GBNGXP44' };
+      ? { id: 'glomo', label: 'GLOMO', svc: 'GLOMO', eski: 'ORRVPP07', yeni: 'ORNGXP40' }
+      : { id: 'other', label: 'WEBFORMS', svc: 'WEBFORMS', eski: 'ORRVPP01', yeni: 'ORNGXP44' };
   return {
     ok: true,
     proxyReady: true,
@@ -263,7 +263,7 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
     api.remove.mockResolvedValue({
       ok: true,
       job: { id: null },
-      oldHosts: ['GBRVPP07'],
+      oldHosts: ['ORRVPP07'],
       scheduled: true,
       newFleetGuard: { via: 'prompt', postCheck: 'olculemedi' },
     });

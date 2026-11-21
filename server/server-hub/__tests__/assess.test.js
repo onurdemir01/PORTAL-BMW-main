@@ -260,7 +260,7 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
   ]);
   // kesik liste (C4): '~' iceren parca (yarim hedef ya da ~TRUNC jetonu) hedef SAYILMAZ
   const { hedefListesi } = require('../assess.cjs');
-  assert.deepEqual(hedefListesi('a.bmw.de:80,gbcja ~'), {
+  assert.deepEqual(hedefListesi('a.bmw.de:80,orcja ~'), {
     parcalar: ['a.bmw.de:80'],
     eksik: true,
     dinamik: false,
@@ -547,10 +547,10 @@ test('SH10: flattenFindings tum sunuculari tek listede, en agirdan hafife', () =
 
 test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiyorsa envanter kazanir, CLI'da olmayan uygulama envanterden eklenir, celiski bulgusu", () => {
   const d = {
-    hosts: [{ host: 'GBCJAP01', scan_date: D, products: 'JBOSS7' }],
+    hosts: [{ host: 'ORCJAP01', scan_date: D, products: 'JBOSS7' }],
     jvms: [
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         gen: 7,
         jvm: 'crm',
         grp: 'g',
@@ -560,7 +560,7 @@ test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiy
         ports: '8080',
       },
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         gen: 7,
         jvm: 'odeme',
         grp: 'g',
@@ -572,7 +572,7 @@ test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiy
     ],
     mwApps: [
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         app: 'crm',
         env: 'Production',
         status: 'running',
@@ -580,7 +580,7 @@ test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiy
         autostarts: 'true true',
       },
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         app: 'odeme',
         env: 'Production',
         status: 'stopped',
@@ -588,7 +588,7 @@ test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiy
         autostarts: 'false',
       },
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         app: 'batch',
         env: 'Production',
         status: 'stopped',
@@ -596,7 +596,7 @@ test("SH11: JVM gercegi dbo.MWAppsInventory ile birlesir - CLI auto-start bilmiy
         autostarts: 'false',
       },
     ],
-    invEnv: [{ host: 'GBCJAP01', env: 'Production' }],
+    invEnv: [{ host: 'ORCJAP01', env: 'Production' }],
   };
   const h = assess(d).hosts[0];
   const crm = h.jvms.find((j) => j.name === 'crm');
@@ -624,13 +624,13 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
   const path = require('node:path');
   const d = {
     hosts: [
-      { host: 'GBCJAP01', scan_date: D, products: 'JBOSS7' },
-      { host: 'GBCJAT01', scan_date: D, products: 'JBOSS7' },
+      { host: 'ORCJAP01', scan_date: D, products: 'JBOSS7' },
+      { host: 'ORCJAT01', scan_date: D, products: 'JBOSS7' },
       { host: 'XX99', scan_date: D, products: 'NONE' },
     ],
     jvms: [
       {
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         gen: 7,
         jvm: 'crm',
         grp: 'g',
@@ -641,13 +641,13 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
       },
     ],
     invEnv: [
-      { host: 'GBCJAP01', env: 'Production' },
-      { host: 'GBCJAT01', env: 'Test' },
+      { host: 'ORCJAP01', env: 'Production' },
+      { host: 'ORCJAT01', env: 'Test' },
     ],
   };
   const r = assess(d);
-  assert.equal(r.hosts.find((h) => h.host === 'GBCJAP01').envGroup, 'Production');
-  assert.equal(r.hosts.find((h) => h.host === 'GBCJAT01').envGroup, 'Non-Production');
+  assert.equal(r.hosts.find((h) => h.host === 'ORCJAP01').envGroup, 'Production');
+  assert.equal(r.hosts.find((h) => h.host === 'ORCJAT01').envGroup, 'Non-Production');
   assert.equal(
     r.hosts.find((h) => h.host === 'XX99').envGroup,
     'Bilinmiyor',
@@ -685,23 +685,23 @@ test('SH12: ortam kirilimi (Production / Non-Production) ve kart -> bulgu gecisi
   );
 });
 
-// SH13 (2026-09-24, kullanici): GBEVM* / GBPRV* genel envanterden AYRI. Bu sunucular filo
+// SH13 (2026-09-24, kullanici): OREVM* / ORPRV* genel envanterden AYRI. Bu sunucular filo
 // ortalamasini bozuyordu; taranmaya devam ederler, bulgulari durur, ama ozet ve ortam
 // kirilimi onlari SAYMAZ ve ekranda ayri listelenirler.
-test('SH13: GBEVM/GBPRV genel envanterden ayri - ozete girmez, bulgusu ve sunucusu durur', () => {
+test('SH13: OREVM/ORPRV genel envanterden ayri - ozete girmez, bulgusu ve sunucusu durur', () => {
   const d = base();
-  d.hosts.push({ host: 'GBEVM01', scan_date: D, products: 'RHA', wall_s: 1, cpu_s: 0.2 });
-  d.hosts.push({ host: 'GBPRV77', scan_date: D, products: 'NGINX', wall_s: 1, cpu_s: 0.2 });
-  d.ips.push({ host: 'GBEVM01', ip: '10.9.9.9', iface: 'eth0', used_by: 'none', is_primary: 0 });
+  d.hosts.push({ host: 'OREVM01', scan_date: D, products: 'RHA', wall_s: 1, cpu_s: 0.2 });
+  d.hosts.push({ host: 'ORPRV77', scan_date: D, products: 'NGINX', wall_s: 1, cpu_s: 0.2 });
+  d.ips.push({ host: 'OREVM01', ip: '10.9.9.9', iface: 'eth0', used_by: 'none', is_primary: 0 });
   const r = assess(d);
 
   const genelSayisi = r.hosts.filter((h) => h.hostClass !== 'ozel').length;
   assert.equal(r.summary.hosts.total, genelSayisi, 'ozet yalniz genel envanteri saymali');
   assert.equal(r.summary.special.hosts, 2);
-  assert.deepEqual(r.summary.special.byPrefix, { GBEVM: 1, GBPRV: 1 });
+  assert.deepEqual(r.summary.special.byPrefix, { EVM: 1, PRV: 1 });
 
   // sunucular listede DURUR (ayrinti/tarama calissin diye), sinifi isaretli
-  const ozel = r.hosts.find((h) => h.host === 'GBEVM01');
+  const ozel = r.hosts.find((h) => h.host === 'OREVM01');
   assert.equal(ozel.hostClass, 'ozel');
   assert.ok(
     ozel.findings.some((f) => f.code === 'IP_UNUSED'),
@@ -754,22 +754,22 @@ test('SH10: nginx sozdizimi OLCULEMEDI ile HATALI ayri raporlanir', () => {
 // NEDEN: bu ekranin butun sayilari TARANAN sunuculardan hesaplanir. Erisilemeyen sunucu
 // hicbir bulgu uretmez - kapsama gorunmezse "sorun yok" ile "bakamadik" ayni okunur.
 const KP_INV = [
-  { host: 'GBAPP01', env: 'PROD', invProducts: ['JBOSS', 'NGINX'] },
-  { host: 'GBAPP02', env: 'PROD', invProducts: ['JBOSS'] },
-  { host: 'GBWEB01', env: 'PROD', invProducts: ['RHA'] },
-  { host: 'GBWEB02', env: 'PROD', invProducts: ['IHS'] },
+  { host: 'ORAPP01', env: 'PROD', invProducts: ['JBOSS', 'NGINX'] },
+  { host: 'ORAPP02', env: 'PROD', invProducts: ['JBOSS'] },
+  { host: 'ORWEB01', env: 'PROD', invProducts: ['RHA'] },
+  { host: 'ORWEB02', env: 'PROD', invProducts: ['IHS'] },
 ];
 const KP_DATA = {
   hosts: [
-    { host: 'GBAPP01', scan_date: '2026-10-01', products: 'JBOSS7 NGINX' },
-    { host: 'GBWEB01', scan_date: '2026-10-01', products: 'RHA' },
-    { host: 'GBEKSTRA', scan_date: '2026-10-01', products: 'NGINX' },
+    { host: 'ORAPP01', scan_date: '2026-10-01', products: 'JBOSS7 NGINX' },
+    { host: 'ORWEB01', scan_date: '2026-10-01', products: 'RHA' },
+    { host: 'OREKSTRA', scan_date: '2026-10-01', products: 'NGINX' },
   ],
   init: [],
   jboss: [],
   jvms: [
     {
-      host: 'GBAPP01',
+      host: 'ORAPP01',
       gen: 7,
       jvm: 'app1',
       running: 1,
@@ -779,16 +779,16 @@ const KP_DATA = {
     },
   ],
   web: [
-    { host: 'GBAPP01', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
-    { host: 'GBWEB01', product: 'RHA', running: 1, syntax: 'OK', detail: '' },
-    { host: 'GBEKSTRA', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+    { host: 'ORAPP01', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
+    { host: 'ORWEB01', product: 'RHA', running: 1, syntax: 'OK', detail: '' },
+    { host: 'OREKSTRA', product: 'NGINX', running: 1, syntax: 'OK', detail: '' },
   ],
   vhosts: [],
   ips: [],
   sshd: [],
   mwApps: [
     {
-      host: 'GBAPP01',
+      host: 'ORAPP01',
       app: 'app1',
       env: 'PROD',
       status: 'running',
@@ -796,7 +796,7 @@ const KP_DATA = {
       autostarts: 'true',
     },
     {
-      host: 'GBAPP02',
+      host: 'ORAPP02',
       app: 'app2',
       env: 'PROD',
       status: 'running',
@@ -820,7 +820,7 @@ test('KP2 JBOSS kapsamasi JVM VERISI GELDI MI diye bakar ("urun kurulu" yetmez)'
   const c = assess(KP_DATA).summary.scanCoverage;
   assert.equal(c.products.JBOSS.inventory, 2);
   assert.equal(c.products.JBOSS.scanned, 1, 'JVM verisi gelmeyen sunucu "cekildi" sayilmis');
-  assert.deepEqual(c.products.JBOSS.missingHosts, ['GBAPP02'], 'erisilemeyen host listelenmiyor');
+  assert.deepEqual(c.products.JBOSS.missingHosts, ['ORAPP02'], 'erisilemeyen host listelenmiyor');
 });
 
 test('KP3 RHA / IHS / NGINX ayri ayri sayiliyor', () => {
@@ -855,16 +855,16 @@ test('KP4b JVM veri cekilen envanteri ASAMAZ: fazlasi ve envanter disi ayri sayi
   const d = {
     ...KP_DATA,
     jvms: [
-      jvm('GBAPP01', 'app1'),
-      jvm('GBAPP01', 'app1b'),
-      jvm('GBAPP01', 'app1c'),
-      jvm('GBEKSTRA', 'x1'),
-      jvm('GBEKSTRA', 'x2'),
+      jvm('ORAPP01', 'app1'),
+      jvm('ORAPP01', 'app1b'),
+      jvm('ORAPP01', 'app1c'),
+      jvm('OREKSTRA', 'x1'),
+      jvm('OREKSTRA', 'x2'),
     ],
   };
   const c = assess(d).summary.scanCoverage.jvm;
   assert.equal(c.inventory, 4);
-  assert.equal(c.scanned, 1, 'GBAPP01 envanterde 1 JVM: fazlasi veri cekilen sayilmamali');
+  assert.equal(c.scanned, 1, 'ORAPP01 envanterde 1 JVM: fazlasi veri cekilen sayilmamali');
   assert.ok(c.scanned <= c.inventory, 'kapsama %100u asti');
   assert.equal(c.scannedOverInventory, 2, 'envanterden fazla bulunan JVM sayilmiyor');
   assert.equal(
@@ -945,27 +945,27 @@ const { rebootReadiness, KOD_ANLAMI } = require('../reboot-readiness.cjs');
 
 const AH_HOSTS = [
   {
-    host: 'GBAPP01',
+    host: 'ORAPP01',
     scanDate: '2026-10-01',
     findings: [{ code: 'SYNTAX_FAIL', area: 'web', text: 'nginx -t FAIL' }],
   },
   {
-    host: 'GBAPP02',
+    host: 'ORAPP02',
     scanDate: '2026-10-01',
     findings: [{ code: 'REBOOT_RISK', area: 'jvm', text: 'kosuyor, auto-start kapali' }],
   },
   {
-    host: 'GBAPP03',
+    host: 'ORAPP03',
     scanDate: '2026-10-01',
     findings: [{ code: 'STOPPED_AUTOSTART_ON', area: 'jvm', text: 'kapali, auto-start acik' }],
   },
   {
-    host: 'GBAPP04',
+    host: 'ORAPP04',
     scanDate: '2026-10-01',
     findings: [{ code: 'SYNTAX_UNKNOWN', area: 'web', text: 'yetki' }],
   },
   {
-    host: 'GBAPP05',
+    host: 'ORAPP05',
     scanDate: '2026-10-01',
     findings: [{ code: 'VHOST_IDLE', area: 'web', text: 'atil vhost' }],
   },
@@ -973,13 +973,13 @@ const AH_HOSTS = [
 const AH = () =>
   rebootReadiness(
     AH_HOSTS,
-    ['gbapp01', 'GBAPP02', 'gbapp03', 'gbapp04', 'gbapp05', 'GBYOK99'],
+    ['orapp01', 'ORAPP02', 'orapp03', 'orapp04', 'orapp05', 'ORYOK99'],
     '2026-10-01',
   );
 
 test('AH1 TARANMAMIS sunucu "hazir" SAYILMAZ (en pahali yanlis)', () => {
   const r = AH();
-  const yok = r.rows.find((x) => x.host === 'GBYOK99');
+  const yok = r.rows.find((x) => x.host === 'ORYOK99');
   assert.equal(yok.verdict, 'notScanned', 'taranmamis sunucu baska bir kovaya girmis');
   assert.equal(r.summary.ok, 1, 'taranmamis sunucu "hazir" sayilmis');
   assert.equal(r.summary.notScanned, 1);
@@ -989,8 +989,8 @@ test('AH1 TARANMAMIS sunucu "hazir" SAYILMAZ (en pahali yanlis)', () => {
 test('AH2 ACILISI ENGELLEYEN bulgular "blocked" (sozdizimi / auto-start kapali)', () => {
   const r = AH();
   const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
-  assert.equal(by.GBAPP01.verdict, 'blocked', 'sozdizimi hatasi acilisi engellemiyor sayilmis');
-  assert.equal(by.GBAPP02.verdict, 'blocked', 'auto-start kapali kosan JVM engel sayilmamis');
+  assert.equal(by.ORAPP01.verdict, 'blocked', 'sozdizimi hatasi acilisi engellemiyor sayilmis');
+  assert.equal(by.ORAPP02.verdict, 'blocked', 'auto-start kapali kosan JVM engel sayilmamis');
   assert.equal(r.summary.blocked, 2);
 });
 
@@ -998,8 +998,8 @@ test('AH3 OLCULEMEYEN, RISKTEN DAHA AGIR siralanir', () => {
   // Bilmedigimiz bir seyi, bildigimiz bir surprizden daha masum gostermek yanlis olurdu.
   const r = AH();
   const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
-  assert.equal(by.GBAPP04.verdict, 'unknown');
-  assert.equal(by.GBAPP03.verdict, 'risk');
+  assert.equal(by.ORAPP04.verdict, 'unknown');
+  assert.equal(by.ORAPP03.verdict, 'risk');
   const sira = r.rows.map((x) => x.verdict);
   assert.ok(sira.indexOf('unknown') < sira.indexOf('risk'), 'olculemeyen riskin altina dusmus');
   assert.ok(sira.indexOf('blocked') < sira.indexOf('unknown'), 'engel en uste gelmemis');
@@ -1008,8 +1008,8 @@ test('AH3 OLCULEMEYEN, RISKTEN DAHA AGIR siralanir', () => {
 test('AH4 ILGISIZ bulgular ozete GIRMEZ (atil vhost acilisi etkilemez)', () => {
   const r = AH();
   const by = Object.fromEntries(r.rows.map((x) => [x.host, x]));
-  assert.equal(by.GBAPP05.verdict, 'ok', 'acilisla ilgisiz bulgu sunucuyu kirmizi yapmis');
-  assert.equal(by.GBAPP05.reasons.length, 0);
+  assert.equal(by.ORAPP05.verdict, 'ok', 'acilisla ilgisiz bulgu sunucuyu kirmizi yapmis');
+  assert.equal(by.ORAPP05.reasons.length, 0);
   assert.ok(!KOD_ANLAMI.VHOST_IDLE, 'ilgisiz kod haritaya girmis');
   assert.ok(!KOD_ANLAMI.SSH_SESSIONS_NEAR, 'ilgisiz kod haritaya girmis');
 });
@@ -1019,7 +1019,7 @@ test('AH5 sebepler sunucu adlariyla toplanir; uc SALT OKUNUR', () => {
   const sf = r.topReasons.find((t) => t.code === 'SYNTAX_FAIL');
   assert.ok(sf, 'sebep listesi uretilmiyor');
   assert.equal(sf.hostCount, 1);
-  assert.deepEqual(sf.hosts, ['GBAPP01']);
+  assert.deepEqual(sf.hosts, ['ORAPP01']);
   // Engeller once gelmeli: ozet okunurken ilk goze carpan sey en agir olani olsun.
   assert.equal(r.topReasons[0].tip, 'blocker');
   const idx = require('node:fs').readFileSync(

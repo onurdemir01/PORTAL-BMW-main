@@ -2,7 +2,7 @@
 //
 // topluRestartBaslat (server/opsx/index.cjs): tek JVM restart'i, POST /api/opsx/run ile AYNI fonksiyonlar
 // (legacyIstegiHazirla + opsxIsiBaslat). Kilitlenen kurallar:
-//   OB1 test ortami: limit = host + GBLABT02, server_config_map tek JVM / kurulum kolu, jboss_version, is gecmisi +
+//   OB1 test ortami: limit = host + ORLABT02, server_config_map tek JVM / kurulum kolu, jboss_version, is gecmisi +
 //       'opsx_operation' denetimi, istegi yapan onaylayan admin
 //   OB2 URETIM HIC BASLATILMAZ: envanter ortami prod / bos, sunucu adi prod -> 409 code 'uretim', launch YOK
 //       (Smart onay kapisi toplu yurutmede calisamaz; kapi atlanmaz, yol acilmaz)
@@ -127,7 +127,7 @@ beforeEach(() => {
   });
 });
 
-test('OB1 test ortami: tek JVM, limit host + GBLABT02, kurulum kolu, gecmis + denetim', async () => {
+test('OB1 test ortami: tek JVM, limit host + ORLABT02, kurulum kolu, gecmis + denetim', async () => {
   const r = await O.topluRestartBaslat({
     req: istek(),
     application: 'crm',
@@ -137,7 +137,7 @@ test('OB1 test ortami: tek JVM, limit host + GBLABT02, kurulum kolu, gecmis + de
   });
   assert.deepEqual(
     [r.jobId, r.awxServerId, r.templateId, r.limit],
-    [4242, 3, 77, 'APP01,GBLABT02'],
+    [4242, 3, 77, 'APP01,ORLABT02'],
   );
   assert.equal(S.launches.length, 1);
   const l = S.launches[0];
@@ -147,7 +147,7 @@ test('OB1 test ortami: tek JVM, limit host + GBLABT02, kurulum kolu, gecmis + de
     jboss_version: 'jboss8',
     server_config_map: { APP01: [{ name: 'crm', jbossMajor: '8' }] },
   });
-  assert.equal(l.limit, 'APP01,GBLABT02');
+  assert.equal(l.limit, 'APP01,ORLABT02');
   assert.equal(l.user, 'mehmet');
   assert.equal(S.history.length, 1);
   assert.equal(S.audits.length, 1);
@@ -168,16 +168,16 @@ test('OB2 uretim hic baslatilmaz: envanter prod, bos ortam, prod sunucu adi', as
     O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
     (e) => e.code === 'uretim' && /ortamı bilinmiyor/.test(e.message),
   );
-  S.inv = [satir('GBJBPROD01', 'TEST', '/vhosting8/crm.ear')];
+  S.inv = [satir('ORJBPROD01', 'TEST', '/vhosting8/crm.ear')];
   await assert.rejects(
     O.topluRestartBaslat({
       req: istek(),
       application: 'crm',
-      host: 'GBJBPROD01',
+      host: 'ORJBPROD01',
       gen: 8,
       jvm: 'crm',
     }),
-    (e) => e.code === 'uretim' && /sunucu=GBJBPROD01/.test(e.message),
+    (e) => e.code === 'uretim' && /sunucu=ORJBPROD01/.test(e.message),
   );
   assert.equal(S.launches.length, 0);
   assert.equal(S.audits.length, 0);
@@ -205,13 +205,13 @@ test('OB3 sablon Limit kabul etmiyor / olculemiyor: launch YOK', async () => {
 });
 
 test('OB4 metadatahub standalone: envantere gidilmeden reddedilir', async () => {
-  for (const h of ['GBABAT01', 'gbabap02', 'GBABAT01X']) {
+  for (const h of ['ORABAT01', 'orabap02', 'ORABAT01X']) {
     await assert.rejects(
       O.topluRestartBaslat({ req: istek(), application: 'crm', host: h, gen: 8, jvm: 'crm' }),
       (e) => e.code === 'standalone',
     );
   }
-  assert.equal(O.metadatahubHostMu('GBABAX01'), false);
+  assert.equal(O.metadatahubHostMu('ORABAX01'), false);
   assert.equal(S.poolSorgu, 0);
   assert.equal(S.launches.length, 0);
 });
@@ -261,12 +261,12 @@ test("OB6 kaynak bekcisi: route ayni fonksiyonlar; prod kapisi route'ta launch't
 });
 
 test('OB7 ad kurali: envanter TEST ama ad prod (ortam harfi P) -> uretim, launch YOK', async () => {
-  S.inv = [satir('GBJBOP18', 'TEST', '/vhosting8/crm.ear')];
+  S.inv = [satir('ORJBOP18', 'TEST', '/vhosting8/crm.ear')];
   await assert.rejects(
     O.topluRestartBaslat({
       req: istek(),
       application: 'crm',
-      host: 'GBJBOP18',
+      host: 'ORJBOP18',
       gen: 8,
       jvm: 'crm',
     }),
@@ -274,7 +274,7 @@ test('OB7 ad kurali: envanter TEST ama ad prod (ortam harfi P) -> uretim, launch
   );
   assert.equal(S.launches.length, 0);
   assert.equal(O.adKuraliProdMu('gojbwp03.dom.local'), true);
-  for (const h of ['GBJBOT18', 'GBJBOD01', 'APP01', 'GOJBAQ03'])
+  for (const h of ['ORJBOT18', 'ORJBOD01', 'APP01', 'GOJBAQ03'])
     assert.equal(O.adKuraliProdMu(h), false, h);
 });
 

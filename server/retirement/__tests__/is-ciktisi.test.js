@@ -31,10 +31,10 @@ const dilim = (src, bas, son) => {
   return src.slice(i, j);
 };
 
-const IZIN = ['onay:A|JBoss8|GBJBOT01', 'mv:/vhosting8/A.ear'];
+const IZIN = ['onay:A|JBoss8|ORJBOT01', 'mv:/vhosting8/A.ear'];
 const WEB = [
   {
-    host: 'GBWEB01',
+    host: 'ORWEB01',
     serverName: 'a.x.com',
     product: 'IHS',
     confFile: 'a.conf',
@@ -46,7 +46,7 @@ const WEB = [
     bitti: '2026-10-21T10:03:00Z',
   },
   {
-    host: 'GBWEB02',
+    host: 'ORWEB02',
     serverName: 'b.x.com',
     product: 'NGINX',
     confFile: 'b.conf',
@@ -55,7 +55,7 @@ const WEB = [
     message: 'elle',
   },
   {
-    host: 'GBWEB03',
+    host: 'ORWEB03',
     serverName: 'c.x.com',
     product: 'IHS',
     confFile: 'c.conf',
@@ -67,7 +67,7 @@ const WEB = [
 const hedef = (o = {}) => ({
   id: 9,
   record_id: 5,
-  host: 'GBJBOT01',
+  host: 'ORJBOT01',
   app_name: 'A',
   jboss_gen: 8,
   status: 'stopped',
@@ -89,13 +89,13 @@ const gs = (jobId, sunucu, planOnly, o = {}) => ({
   template_id: o.template_id ?? 77,
   template_name:
     o.template_name ??
-    (planOnly ? 'Retirement: plan A @ GBJBOT01' : 'Retirement: STOP A @ GBJBOT01'),
+    (planOnly ? 'Retirement: plan A @ ORJBOT01' : 'Retirement: STOP A @ ORJBOT01'),
   username: o.username ?? 'onur',
   started_at: new Date('2026-10-21T09:00:00Z'),
   // Retirement launch'inin yazdigi bicim: sunucu + uygulama + JBoss surumu (index.cjs extraVars).
   params: JSON.stringify(
     o.params ?? {
-      target_host: o.host ?? 'GBJBOT01',
+      target_host: o.host ?? 'ORJBOT01',
       application: o.app ?? 'A',
       jboss_gen: o.gen ?? '8',
       plan_only: planOnly,
@@ -237,7 +237,7 @@ test('RC1 baska kaydin hedefi 409 hedef_yok ve AWX HIC cagrilmaz; istemcinin job
 
 test('RC2 sunucu kayittan / TEK gecmis satirindan; belirsizse ya da playbook / template tutmazsa cikti OKUNMAZ', async () => {
   // (a) ayni numara baska sunucuda BASKA hedefin isi: hedef sunucusu params'ta degil -> karismaz.
-  const a = kur({ gecmis: [...STANDART_GECMIS, gs(500, 2, false, { host: 'GBJBOT77' })] });
+  const a = kur({ gecmis: [...STANDART_GECMIS, gs(500, 2, false, { host: 'ORJBOT77' })] });
   const ra = await a.istek({ adim: 'stop' });
   assert.equal(ra.statusCode, 200, JSON.stringify(ra.body));
   assert.deepEqual(a.cagri.durum, [[1, 500]]);
@@ -513,7 +513,7 @@ test('RC9 hedefIsleri: kaynak alanlar, pipeline sirasi, durum, kaynak ve sunucu 
   const gecmis = [
     ...STANDART_GECMIS,
     gs(700, 2, false, {
-      template_name: 'Retirement: DELETE A @ GBJBOT01',
+      template_name: 'Retirement: DELETE A @ ORJBOT01',
       username: 'Portal (zamanlanmis)',
     }),
   ];
@@ -568,7 +568,7 @@ test('RC9 hedefIsleri: kaynak alanlar, pipeline sirasi, durum, kaynak ve sunucu 
   assert.equal(
     d({ status: 'rolling_back', rollback_job_id: 800 }, [
       ...STANDART_GECMIS,
-      gs(800, 1, false, { template_name: 'Retirement: GERI AL A @ GBJBOT01' }),
+      gs(800, 1, false, { template_name: 'Retirement: GERI AL A @ ORJBOT01' }),
     ]).find((x) => x.adim === 'rollback').durum,
     'suruyor',
   );
@@ -615,8 +615,8 @@ test('RC10 KANITLANAMAYAN is listeye konmaz: gecmis yok ve kod degismezi yok -> 
   // vhost plani / trafik isleri (ayni numara) aileye girmez
   const f = M.hedefIsleri(hedef({ status: 'stopping', last_job_id: 555 }), [
     gs(555, 1, true, {
-      template_name: 'Retirement: vhost plani a.x.com @ GBWEB01',
-      params: { target_host: 'GBJBOT01', plan_only: true },
+      template_name: 'Retirement: vhost plani a.x.com @ ORWEB01',
+      params: { target_host: 'ORJBOT01', plan_only: true },
     }),
   ]);
   assert.equal(f.awxIsleriEksik, true, 'vhost plani isi on kontrol sayildi');
@@ -655,7 +655,7 @@ test("RC15 gecmis baglamasi host + uygulama + JBoss surumu: ayni host'taki baska
   // Hedefin kendi STOP satiri yok; ayni host'ta BASKA uygulamanin (B) ve BASKA surumun (7) satiri var.
   const yabanci = [
     gs(400, 1, true),
-    gs(500, 2, false, { app: 'B', template_name: 'Retirement: STOP B @ GBJBOT01' }),
+    gs(500, 2, false, { app: 'B', template_name: 'Retirement: STOP B @ ORJBOT01' }),
     gs(500, 3, false, { gen: '7' }),
   ];
   const k = kur({ gecmis: yabanci });
@@ -668,8 +668,8 @@ test("RC15 gecmis baglamasi host + uygulama + JBoss surumu: ayni host'taki baska
   const toplu = gs(500, 1, false, {
     params: {
       rt_hedefler: [
-        { host: 'GBJBOT99', application: 'A', jboss_gen: '8' },
-        { host: 'gbjbot01', application: 'a', jboss_gen: '8' },
+        { host: 'ORJBOT99', application: 'A', jboss_gen: '8' },
+        { host: 'orjbot01', application: 'a', jboss_gen: '8' },
       ],
       smart_no: '1',
       plan_only: false,
@@ -682,7 +682,7 @@ test("RC15 gecmis baglamasi host + uygulama + JBoss surumu: ayni host'taki baska
   const eksik = kur({
     gecmis: [
       gs(400, 1, true),
-      gs(500, 1, false, { params: { target_host: 'GBJBOT01', plan_only: false } }),
+      gs(500, 1, false, { params: { target_host: 'ORJBOT01', plan_only: false } }),
     ],
   });
   assert.equal((await eksik.istek({ adim: 'stop' })).body.code, 'is_yok');
@@ -775,7 +775,7 @@ test('RC17 maske: ek anahtarlar, tirnakli / kacisli / bosluklu degerler, Basic v
     'All assertions passed',
     'bypass: yes',
     'passed=3',
-    'GBJBOT01 : ok=3 changed=0 unreachable=0 failed=1',
+    'ORJBOT01 : ok=3 changed=0 unreachable=0 failed=1',
     'msg: Token expired',
     'url: https://awx.test/api/v2/',
   ])
@@ -816,8 +816,8 @@ test("RC19 onayli GERI AL isi gecmisten sunucuya baglanir; 'canceled' terminal (
   const t = hedef({ status: 'rolling_back', rollback_job_id: 800 });
   const gecmis = [
     ...STANDART_GECMIS,
-    gs(800, 2, false, { template_name: 'Retirement: GERI AL A @ GBJBOT01' }),
-    gs(801, 2, true, { template_name: 'Retirement: geri alma ön kontrolü A @ GBJBOT01' }),
+    gs(800, 2, false, { template_name: 'Retirement: GERI AL A @ ORJBOT01' }),
+    gs(801, 2, true, { template_name: 'Retirement: geri alma ön kontrolü A @ ORJBOT01' }),
   ];
   const k = kur({
     t,

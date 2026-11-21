@@ -3,8 +3,8 @@
 //
 // NEDEN İKİ SEVİYE (env + oc_cluster): gerçek üretim playbook'ları (bmw_openshift_jobs/
 // application_rollout.yaml) hedefi `hosts: "{{ oc_cluster }}_{{ env }}"` ile çözüyor — bu
-// grup, o tenant/ortama ait TÜM gerçek cluster'ları (ör. ark_prod → gbocpprod1, gbocpprod2,
-// gbocpprod4, ...) kapsıyor. Yani tek tek cluster_name seçimi YOK artık — LogX'teki üçüncü
+// grup, o tenant/ortama ait TÜM gerçek cluster'ları (ör. ark_prod → orocpprod1, orocpprod2,
+// orocpprod4, ...) kapsıyor. Yani tek tek cluster_name seçimi YOK artık — LogX'teki üçüncü
 // kademe (cluster checkbox listesi) burada bilinçli olarak KALDIRILDI.
 //
 // NAMESPACE: kullanıcı biliyorsa serbest yazar; bilmiyorsa Openshift_Inventory'den (günlük

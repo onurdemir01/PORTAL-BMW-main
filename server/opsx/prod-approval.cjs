@@ -14,7 +14,7 @@
 // Onay sonrasi isi MEVCUT Smart poller'i oynatiyor (`server/smart/poller.cjs` ->
 // runner.performSsLaunch). O yol genel bir AWX launch'idir ve `resolvedLaunchOptions`
 // icindeki `limit`'i launch payload'ina yayar - Legacy OpsX'in `--limit`'i (host listesi +
-// GBLABT02) onay sonrasi replay'de KAYBOLMAZ. Dogrulandi; bu yuzden poller'a ya da
+// ORLABT02) onay sonrasi replay'de KAYBOLMAZ. Dogrulandi; bu yuzden poller'a ya da
 // performSsLaunch'a OpsX bilgisi KONMUYOR (ScaleX'in bilincli olarak kacindigi sey).
 //
 // ── GECICI BLOGUN YERINI ALDI ────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@
 const URETIM_DISI_RE = /(non[-_ ]?prod|pre[-_ ]?prod|prod[-_ ]?(test|like|sim)|sandbox)/i;
 
 // "prod" KELIME ICINDE DE aranir, sinir sarti YOKTUR: gercek cluster adlarinda isaret
-// ayiricisiz gomulu geliyor (`giocpank3rdwyprod1` - uretimdeki Wyden prod cluster'i).
+// ayiricisiz gomulu geliyor (`oiocpank3rdwyprod1` - uretimdeki Wyden prod cluster'i).
 // Sinir sartli bir desen bunu kacirir ve kapi fail-open olurdu.
 const URETIM_GOMULU_RE = /(prod|production|canli|canlı)/i;
 

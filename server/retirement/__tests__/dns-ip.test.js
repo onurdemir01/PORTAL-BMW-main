@@ -13,17 +13,17 @@ const REC = {
   lbReuse: false,
   targets: [
     {
-      host: 'GBJBOP10',
+      host: 'ORJBOP10',
       appName: 'RECON',
       web: [
-        { host: 'GBNGXP10', serverName: 'recon.fw.garanti.com.tr', port: '443' },
-        { host: 'GBNGXP10', serverName: 'recon.fw.garanti.com.tr', port: '80' },
+        { host: 'ORNGXP10', serverName: 'recon.fw.sirket.invalid', port: '443' },
+        { host: 'ORNGXP10', serverName: 'recon.fw.sirket.invalid', port: '80' },
       ],
     },
     {
-      host: 'GBJBOP11',
+      host: 'ORJBOP11',
       appName: 'RECON',
-      web: [{ host: 'GBNGXP11', serverName: 'recon2.fw.garanti.com.tr', port: '443' }],
+      web: [{ host: 'ORNGXP11', serverName: 'recon2.fw.sirket.invalid', port: '443' }],
     },
   ],
 };
@@ -35,18 +35,18 @@ const V = (host, sn, listen, aliases = '') => ({
   conf_file: `/c/${sn}.conf`,
 });
 const VHOST = [
-  V('GBNGXP10', 'recon.fw.garanti.com.tr', '10.1.1.5:443', 'recon-eski.fw.garanti.com.tr'),
-  V('GBNGXP10', 'recon.fw.garanti.com.tr', '10.1.1.5:80'),
-  V('GBNGXP11', 'recon2.fw.garanti.com.tr', '10.2.2.7:443'),
-  V('GBNGXP11', 'baska.fw.garanti.com.tr', '10.2.2.7:443'),
-  V('GBNGXP12', 'diger.fw.garanti.com.tr', '10.9.9.9:443', 'recon-eski.fw.garanti.com.tr'),
+  V('ORNGXP10', 'recon.fw.sirket.invalid', '10.1.1.5:443', 'recon-eski.fw.sirket.invalid'),
+  V('ORNGXP10', 'recon.fw.sirket.invalid', '10.1.1.5:80'),
+  V('ORNGXP11', 'recon2.fw.sirket.invalid', '10.2.2.7:443'),
+  V('ORNGXP11', 'baska.fw.sirket.invalid', '10.2.2.7:443'),
+  V('ORNGXP12', 'diger.fw.sirket.invalid', '10.9.9.9:443', 'recon-eski.fw.sirket.invalid'),
 ];
 const COZ = {
-  'recon.fw.garanti.com.tr': { ips: ['10.50.0.1'] },
-  'recon2.fw.garanti.com.tr': { ips: ['10.50.0.2'] },
-  'recon-eski.fw.garanti.com.tr': { ips: ['10.50.0.1'] },
+  'recon.fw.sirket.invalid': { ips: ['10.50.0.1'] },
+  'recon2.fw.sirket.invalid': { ips: ['10.50.0.2'] },
+  'recon-eski.fw.sirket.invalid': { ips: ['10.50.0.1'] },
 };
-const taranan = new Set(['GBNGXP10', 'GBNGXP11', 'GBNGXP12']);
+const taranan = new Set(['ORNGXP10', 'ORNGXP11', 'ORNGXP12']);
 
 test('DI1 kendi :80/:443 bloklari paylasim SAYILMAZ -> vhost IP iade; baska vhost dinliyorsa iade EDILMEZ', () => {
   const o = dnsIpOzeti(REC, { vhostRows: VHOST, cozum: COZ, taranan });
@@ -54,18 +54,18 @@ test('DI1 kendi :80/:443 bloklari paylasim SAYILMAZ -> vhost IP iade; baska vhos
   assert.equal(a.durum, 'iade');
   const b = o.vhostIp.find((x) => x.ip === '10.2.2.7');
   assert.equal(b.durum, 'iade_edilmez', 'baska vhost dinledigi halde IP iade ediliyor');
-  assert.deepEqual(b.digerleri, ['baska.fw.garanti.com.tr']);
+  assert.deepEqual(b.digerleri, ['baska.fw.sirket.invalid']);
 });
 
 test('DI2 DNS adlari ServerName + ServerAlias; baska vhost ayni adi kullaniyorsa SILINMEMELI', () => {
   const o = dnsIpOzeti(REC, { vhostRows: VHOST, cozum: COZ, taranan });
   assert.deepEqual(
     o.dns.map((d) => d.ad),
-    ['recon-eski.fw.garanti.com.tr', 'recon.fw.garanti.com.tr', 'recon2.fw.garanti.com.tr'],
+    ['recon-eski.fw.sirket.invalid', 'recon.fw.sirket.invalid', 'recon2.fw.sirket.invalid'],
   );
-  const eski = o.dns.find((d) => d.ad === 'recon-eski.fw.garanti.com.tr');
+  const eski = o.dns.find((d) => d.ad === 'recon-eski.fw.sirket.invalid');
   assert.equal(eski.durum, 'silinmemeli');
-  assert.equal(o.dns.find((d) => d.ad === 'recon.fw.garanti.com.tr').durum, 'silinecek');
+  assert.equal(o.dns.find((d) => d.ad === 'recon.fw.sirket.invalid').durum, 'silinecek');
   // Silinmemesi gereken DNS'in cozuldugu VIP de iade EDILMEZ
   assert.equal(o.vip.find((x) => x.ip === '10.50.0.1').durum, 'iade_edilmez');
   assert.equal(o.vip.find((x) => x.ip === '10.50.0.2').durum, 'iade');
@@ -74,21 +74,21 @@ test('DI2 DNS adlari ServerName + ServerAlias; baska vhost ayni adi kullaniyorsa
 test('DI3 OLCULEMEDI != iade: web sunucusu taranmadiysa IP paylasimi bilinmez; DNS cozulemediyse VIP "yok" degil', () => {
   const o = dnsIpOzeti(REC, {
     vhostRows: VHOST,
-    cozum: { 'recon.fw.garanti.com.tr': { hata: 'zaman asimi' } },
-    taranan: new Set(['GBNGXP11']),
+    cozum: { 'recon.fw.sirket.invalid': { hata: 'zaman asimi' } },
+    taranan: new Set(['ORNGXP11']),
   });
   assert.equal(o.vhostIp.find((x) => x.ip === '10.1.1.5').durum, 'olculemedi');
-  const d = o.dns.find((x) => x.ad === 'recon.fw.garanti.com.tr');
+  const d = o.dns.find((x) => x.ad === 'recon.fw.sirket.invalid');
   assert.equal(d.vip, null);
   assert.equal(d.cozumHata, 'zaman asimi');
 });
 
 test("DI4 belirli IP'ye bagli olmayan vhost (*:443) iade edilecek IP uretmez", () => {
   const rec = {
-    targets: [{ host: 'A', appName: 'X', web: [{ host: 'W', serverName: 'x.fw.garanti.com.tr' }] }],
+    targets: [{ host: 'A', appName: 'X', web: [{ host: 'W', serverName: 'x.fw.sirket.invalid' }] }],
   };
   const o = dnsIpOzeti(rec, {
-    vhostRows: [V('W', 'x.fw.garanti.com.tr', '*:443')],
+    vhostRows: [V('W', 'x.fw.sirket.invalid', '*:443')],
     taranan: new Set(['W']),
   });
   assert.deepEqual(
@@ -110,14 +110,14 @@ test('DI5 DNS turu TAHMIN EDILMEZ; secilince Smart akisi; dnsReuse/lbReuse "kala
     cozum: COZ,
     taranan,
     turler: {
-      'recon.fw.garanti.com.tr': 'internet',
-      'recon2.fw.garanti.com.tr': 'intranet',
+      'recon.fw.sirket.invalid': 'internet',
+      'recon2.fw.sirket.invalid': 'intranet',
       x: 'uydurma',
     },
   });
-  assert.equal(o.dns.find((d) => d.ad === 'recon.fw.garanti.com.tr').smartAkisi, '349792_Delete');
+  assert.equal(o.dns.find((d) => d.ad === 'recon.fw.sirket.invalid').smartAkisi, '349792_Delete');
   assert.equal(
-    o.dns.find((d) => d.ad === 'recon2.fw.garanti.com.tr').smartAkisi,
+    o.dns.find((d) => d.ad === 'recon2.fw.sirket.invalid').smartAkisi,
     '2523535_Delete_6',
   );
   o = dnsIpOzeti(
@@ -130,8 +130,8 @@ test('DI5 DNS turu TAHMIN EDILMEZ; secilince Smart akisi; dnsReuse/lbReuse "kala
 
 test("DI6 sertifika envanteri de paylasim kaniti: ayni IP'de baska server_name varsa iade EDILMEZ", () => {
   const o = dnsIpOzeti(REC, {
-    vhostRows: VHOST.filter((v) => v.server_name !== 'baska.fw.garanti.com.tr'),
-    certRows: [{ host: 'GBNGXP11', ip: '10.2.2.7', server_name: 'sertifikali.fw.garanti.com.tr' }],
+    vhostRows: VHOST.filter((v) => v.server_name !== 'baska.fw.sirket.invalid'),
+    certRows: [{ host: 'ORNGXP11', ip: '10.2.2.7', server_name: 'sertifikali.fw.sirket.invalid' }],
     cozum: COZ,
     taranan,
   });

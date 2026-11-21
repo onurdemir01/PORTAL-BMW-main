@@ -50,8 +50,8 @@ function ev(p, ek = {}) {
   return dg.ekstraDegiskenler({
     islem: 'kosu',
     kosuId: 17,
-    hedefHost: 'GBNGXT33',
-    yukHost: 'GBNGXT34',
+    hedefHost: 'ORNGXT33',
+    yukHost: 'ORNGXT34',
     hedefIp: '10.0.0.5',
     vhost: 'app.test.local',
     senaryo: SENARYO,
@@ -245,7 +245,7 @@ async function oku(ad, dosyalar) {
 const STD = () => standart('R17').dosyalar();
 function kanitli(satirlar, adim = 'R17') {
   const m = new Map(STD());
-  m.set(`hazirlik_${adim}_gbngxt33.txt`, kanitDosyasi(satirlar));
+  m.set(`hazirlik_${adim}_orngxt33.txt`, kanitDosyasi(satirlar));
   return m;
 }
 let sira = 0;
@@ -277,10 +277,10 @@ test('SA5 sonuc.cjs: hazirlik dosyasi taninir, CRLF ve = bicimi, uyari satirlari
   );
   assert.equal(veri.hazirliklar.length, 1);
   const { anahtar, dosya, bilgi } = veri.hazirliklar[0];
-  assert.deepEqual([anahtar, dosya], ['R17_gbngxt33', 'hazirlik_R17_gbngxt33.txt']);
+  assert.deepEqual([anahtar, dosya], ['R17_orngxt33', 'hazirlik_R17_orngxt33.txt']);
   assert.deepEqual([bilgi.http2, bilgi.ae, bilgi.dizin], ['acik', 'br', '/a=b']);
   assert.deepEqual(bilgi.uyarilar, ['baska dosyada gzip_comp_level var', 'ikinci']);
-  assert.ok(veri.dosyalar.some((d) => d.ad === 'hazirlik_R17_gbngxt33.txt'));
+  assert.ok(veri.dosyalar.some((d) => d.ad === 'hazirlik_R17_orngxt33.txt'));
   assert.deepEqual((await oku('sa5b', STD())).hazirliklar, []);
 });
 
@@ -311,7 +311,7 @@ test('SA6 analiz: uyumlu kanit gecerliligi degistirmez; ayarsiz kosu BIREBIR esk
     dosya_seviye: 6,
     disk_kanit: 'ok',
     uyarilar: [],
-    dosya: 'hazirlik_R17_gbngxt33.txt',
+    dosya: 'hazirlik_R17_orngxt33.txt',
   });
   // Deger yazimi: 1 / 0 da kanittir.
   const b = await analiz(

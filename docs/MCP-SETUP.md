@@ -18,13 +18,13 @@ npm install        # undici paketi MCP TLS/proxy desteği için gerekli
 
 ```bash
 # ── MCP Sunucuları ──
-DT_MANAGED_MCP_URL=https://dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr/mcp
+DT_MANAGED_MCP_URL=https://dynatrace-mcp.apps-3rd-t.fw.sirket.invalid/mcp
 
-INSTANA_MCP_URL=https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp
+INSTANA_MCP_URL=https://instana-mcp.apps-3rd-t.fw.sirket.invalid/mcp
 INSTANA_API_TOKEN_NONPROD=
-INSTANA_BASE_URL_NONPROD=https://nonprod-gt.instana.apps.gbocpinstest2.fw.garanti.com.tr
+INSTANA_BASE_URL_NONPROD=https://nonprod-gt.instana.apps.orocpinstest2.fw.sirket.invalid
 INSTANA_API_TOKEN_PROD=
-INSTANA_BASE_URL_PROD=https://prod-gt.instana.apps.gbocpinsprod2.fw.garanti.com.tr
+INSTANA_BASE_URL_PROD=https://prod-gt.instana.apps.orocpinsprod2.fw.sirket.invalid
 
 # TLS — SEÇENEK A (hızlı, geçici): sertifika doğrulamasını kapat
 MCP_TLS_INSECURE=1
@@ -80,6 +80,6 @@ sebebi (`fetch failed → <asıl hata> [KOD]`) gösterir.
 
 ## Portal içinde çoklu ortam
 
-- **Dynatrace:** `?env=<alias>` query paramı (ConfigMap alias'ları, ör. `garanti-managed-test`).
+- **Dynatrace:** `?env=<alias>` query paramı (ConfigMap alias'ları, ör. `kurum-managed-test`).
 - **Instana:** `?env=nonprod|prod` — ortam seçimi her istekte `instana-api-token` +
   `instana-base-url` header'larıyla yapılır (yukarıdaki env değişkenlerinden).

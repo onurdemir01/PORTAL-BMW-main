@@ -74,7 +74,7 @@ const UCLAR = [
   ['POST', '/api/nginx-migration/create', CREATE],
   ['PUT', '/api/nginx-migration/tracking', TRACK],
   ['PUT', '/api/nginx-migration/tracking/bulk', { items: [TRACK] }],
-  ['POST', '/api/nginx-migration/rescan', { hosts: ['GBNGXP40'] }],
+  ['POST', '/api/nginx-migration/rescan', { hosts: ['ORNGXP40'] }],
   ['PUT', '/api/nginx-migration/config', { awxServerId: 1, templateId: 10, deleteTemplateId: 20 }],
   ['GET', '/api/nginx-migration/tracking'],
   ['GET', `/api/nginx-migration/job-status/${h.JOB_ID}`],

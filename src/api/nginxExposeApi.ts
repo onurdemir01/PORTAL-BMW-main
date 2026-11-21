@@ -1,6 +1,6 @@
 // src/api/nginxExposeApi.ts — "API'yi internete aç".
 //
-// Test ortamındaki bir API tanımını, internete açık sunucuya (varsayılan GBNGXT07)
+// Test ortamındaki bir API tanımını, internete açık sunucuya (varsayılan ORNGXT07)
 // kopyalayan AWX job'ını tetikler. Arkasındaki playbook:
 //   gar_bmt_ansible_scripts/bmw_nginx/api_expose/api_expose.yml
 import { safeJson } from './http';

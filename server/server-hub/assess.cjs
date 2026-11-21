@@ -74,7 +74,7 @@ function jbKalinti(b) {
   return /JBoss dizini GORULEMEDI/.test(n) && /giremiyor \(izin\)/.test(n);
 }
 
-/** JBoss DOMAIN KAPALI mi (2026-11-15, uretim: GBBFAA01 toplu auto-start "Connection refused :9990").
+/** JBoss DOMAIN KAPALI mi (2026-11-15, uretim: ORBFAA01 toplu auto-start "Connection refused :9990").
  *  Tarayici (server_hub_scan.sh) yalniz PROC_VIS=FULL iken ps'te host controller gormezse CLI'yi hic
  *  acmaz ve notu "host controller calismiyor, CLI acilmadi" yazar; JVM satirlari host XML'den gelir
  *  (auto-start XML degeri, hepsi durmus). BLIND'da host controller gorunmeyebilir: CLI yine denenir,
@@ -184,12 +184,13 @@ const MAPPING_SIRASI = ['ALIAS', 'PROXY_HOST_ONLY', 'WEB_APP', 'EXACT_JVM'];
 const WEB_URUN = new Set(['IHS', 'RHA', 'NGINX']);
 
 /**
- * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): GBEVM* ve GBPRV* filo
+ * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): OREVM* ve ORPRV* filo
  * ortalamalarini bozuyor (farkli kurulum, farkli omur). Taranmaya devam ederler ve
  * bulgulari durur; yalnizca OZET/ORTAM kirilimi ve varsayilan liste GENEL envanteri
  * gosterir, bunlar AYRI listelenir. Ayni ayrim Denetim > Init Scripts icin de gecerli.
  */
-const SPECIAL_HOST_RE = /^(GBEVM|GBPRV)/i;
+// Genel envanter disi sunucu sinifi: iki harfli kurum oneki + EVM / PRV (onek koda yazilmaz, K17).
+const SPECIAL_HOST_RE = /^[A-Z]{2}(?:EVM|PRV)/i;
 const hostClassOf = (host) => (SPECIAL_HOST_RE.test(String(host || '').trim()) ? 'ozel' : 'genel');
 const L = (s) =>
   String(s || '')
@@ -330,9 +331,9 @@ function erisimNedeni(ham) {
     : 'hata bir dosyaya erişimden kaynaklanıyor (yetki ya da eksik dosya)';
 }
 
-// ── ENVANTER UYGULAMASI <-> TARAMA JVM'I (2026-11-14, uretim GBJIST02) ──────────────────────────
-// dbo.MWAppsInventory uygulama basina satir tutar (GBFACELIFTSUBE-T); JBoss 7 domain kurulumunda
-// tarama JVM'leri numarali gelir (GBFACELIFTSUBE-T1 / -T2). Yalniz BIREBIR ad eslesmesi yapildiginda
+// ── ENVANTER UYGULAMASI <-> TARAMA JVM'I (2026-11-14, uretim ORJIST02) ──────────────────────────
+// dbo.MWAppsInventory uygulama basina satir tutar (ORFACELIFTSUBE-T); JBoss 7 domain kurulumunda
+// tarama JVM'leri numarali gelir (ORFACELIFTSUBE-T1 / -T2). Yalniz BIREBIR ad eslesmesi yapildiginda
 // uygulama "taramada yok" sayilip gen 0 bir hayalet JVM satiri uretiliyordu ("JBoss 0"); satir
 // bulgulara, sayaclara, Kopya Durumu'na ve Uygulama 360'a siziyordu.
 // ESLEME SIRASI (sunucu basina):
@@ -2623,7 +2624,7 @@ function assess(data, opts = {}) {
   hosts.sort((a, b) => SEV[b.status] - SEV[a.status] || a.host.localeCompare(b.host));
 
   // ── Ozet ───────────────────────────────────────────────────────────────────────
-  // Ozet ve ortam kirilimi GENEL envanter uzerinden hesaplanir; GBEVM*/GBPRV* ayri blokta
+  // Ozet ve ortam kirilimi GENEL envanter uzerinden hesaplanir; OREVM*/ORPRV* ayri blokta
   // (kullanici, 2026-09-24). `hosts` yine HEPSINI tasir - ekran sinifa gore suzer, sunucu
   // ayrinti sayfasi ve "simdi tara" ozel sunucularda da calisir.
   const special = hosts.filter((h) => h.hostClass === 'ozel');
@@ -2808,15 +2809,16 @@ function assess(data, opts = {}) {
       return a;
     }, {}),
     scan: { avgCpuS: null, maxCpuS: null, maxCpuHost: null },
-    // Genel envanter DISI sunucular (GBEVM*/GBPRV*) - ayri listelenir, ozete karismaz
+    // Genel envanter DISI sunucular (OREVM*/ORPRV*) - ayri listelenir, ozete karismaz
     special: {
       hosts: special.length,
       danger: special.filter((h) => h.status === 'danger').length,
       warning: special.filter((h) => h.status === 'warning').length,
       info: special.filter((h) => h.status === 'info').length,
       ok: special.filter((h) => h.status === 'ok').length,
-      byPrefix: ['GBEVM', 'GBPRV'].reduce((a, pfx) => {
-        a[pfx] = special.filter((h) => U(h.host).startsWith(pfx)).length;
+      // Anahtar sinif adi (EVM / PRV); kurum oneki yazilmaz (K17).
+      byPrefix: ['EVM', 'PRV'].reduce((a, sinif) => {
+        a[sinif] = special.filter((h) => U(h.host).slice(2).startsWith(sinif)).length;
         return a;
       }, {}),
       jvms: special.reduce((a, h) => a + h.jvms.filter((j) => !yalnizEnvanter(j)).length, 0),

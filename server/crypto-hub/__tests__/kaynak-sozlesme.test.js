@@ -31,7 +31,7 @@ const ansibleVar = () => fs.existsSync(path.join(CH, 'crypto_hub_ops.yml'));
 
 const IDX = oku(__dirname, '..', 'index.cjs');
 const { OPS, NODE_OPS, kaynakExtraVars } = require('../index.cjs');
-const { CRYPTO_TENANTS } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS } = require('../kiracilar.cjs');
 
 /** Yorum satirlarini atar (# ile baslayan). */
 const kodsuz = (s) =>

@@ -385,7 +385,7 @@ const YeniKaynak: React.FC<{ yenile: () => Promise<void> }> = ({ yenile }) => {
           <div className="relative">
             <input
               className={inputCls}
-              placeholder="uygulama adı (ör. GBCEPPOSDASHBOARD)"
+              placeholder="uygulama adı (ör. ORNEKUYGULAMA)"
               value={anahtar}
               onChange={(e) => setAnahtar(e.target.value)}
               list="logx-erisim-legacy"

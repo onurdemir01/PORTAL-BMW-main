@@ -164,5 +164,5 @@ ve "onay geldi, pencere bekleniyor" izi. Kolon eksikse OCO'lu talep 503 alir, OC
 - `server/data/logx-legacy-snapshot.json` — Envanter DB'si KESIKKEN kullanilan dosya
   fallback'i; DB'ye tasimak amacini bozar.
 - LogX staging dizinleri (`/sw/BMW_PORTAL/logs/*`) — TTL ile temizlenen runtime artefakti.
-- Crypto Hub `garanti_values.yaml` ve benzeri values dosyalarinin ICERIGI — parola
+- Crypto Hub `ornek_values.yaml` ve benzeri values dosyalarinin ICERIGI — parola
   barindirabiliyor; yalnizca dosya adi/boyutu/tarihi tutulur (bkz. `Crypto_Hub_Archives`).

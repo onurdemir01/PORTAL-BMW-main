@@ -48,7 +48,7 @@ test('YA1 SPA sorgulari ARK cluster suzgecli', () => {
 test('YA2 platform sabit ark; ARK disi not ekranda yok', () => {
   const den = oku('server/audit/denetim.cjs');
   assert.ok(
-    !/PLATFORM_CLUSTERS\[String\(req\.query\.platform/.test(den),
+    !/platformKumeleri\(\)\[String\(req\.query\.platform/.test(den),
     '?platform= hala okunuyor',
   );
   assert.equal((den.match(/const platform = 'ark';/g) || []).length, 4);

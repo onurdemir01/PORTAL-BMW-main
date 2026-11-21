@@ -21,8 +21,8 @@ const { _CIS_ADMIN_DISI_OKUMA } = require('../../nginx-cis/index.cjs');
 /** Admin olmayana ACIK olmasi gereken salt okunur uclar (ornek yollar). */
 const ACIK = [
   '/hosts',
-  '/tree/GBNGXP40',
-  '/file/GBNGXP40',
+  '/tree/ORNGXP40',
+  '/file/ORNGXP40',
   '/compare',
   '/certs',
   '/drift',
@@ -31,7 +31,7 @@ const ACIK = [
   '/ratelimit',
   '/ratelimit.csv',
   '/changes',
-  '/history/GBNGXP40',
+  '/history/ORNGXP40',
   '/blob/abc123',
   '/spa-discovery',
   '/spa-discovery/rp',
@@ -63,7 +63,7 @@ test('AK1 Admin her uca gecer', () => {
   for (const [method, path] of [
     ['GET', '/hosts'],
     ['POST', '/push'],
-    ['GET', '/file/GBNGXP40'],
+    ['GET', '/file/ORNGXP40'],
   ])
     assert.equal(kos(k, { rol: 'Admin', method, path }).gecti, true, path);
 });
@@ -147,7 +147,7 @@ test('AK7 CIS: skor ve sunucu ayrintisi okunur; istisna, kabul edilen deger ve y
     hazir: () => true,
   });
   assert.equal(kos(k, { rol: 'User', path: '/overview' }).gecti, true);
-  assert.equal(kos(k, { rol: 'User', path: '/host/GBNGXP40' }).gecti, true);
+  assert.equal(kos(k, { rol: 'User', path: '/host/ORNGXP40' }).gecti, true);
   for (const [method, path] of [
     ['PUT', '/exceptions'],
     ['DELETE', '/exceptions/5'],

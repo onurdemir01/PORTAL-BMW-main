@@ -21,7 +21,7 @@ const yanit = (govde: unknown, status = 200) =>
     }),
   );
 
-const HOSTS = ['GBNGXAP34', 'GBNGXP40', 'GBNGXP41'];
+const HOSTS = ['ORNGXAP34', 'ORNGXP40', 'ORNGXP41'];
 const sunucu = (
   host: string,
   durum: 'olculdu' | 'bayat' = 'olculdu',
@@ -76,14 +76,14 @@ const farkliGrup: NcPaketGrup = {
           icerik: 'aaaaaaaaaaaa',
           config: 'b7d870101bd9',
           dosya: 973,
-          hosts: ['GBNGXP40', 'GBNGXP41'],
+          hosts: ['ORNGXP40', 'ORNGXP41'],
         },
         {
           version: '0.0.11-1-prod',
           icerik: 'cccccccccccc',
           config: 'b7d870101bd9',
           dosya: 953,
-          hosts: ['GBNGXAP34'],
+          hosts: ['ORNGXAP34'],
         },
       ],
       cogunluk: {
@@ -91,9 +91,9 @@ const farkliGrup: NcPaketGrup = {
         icerik: 'aaaaaaaaaaaa',
         config: 'b7d870101bd9',
         dosya: 973,
-        hosts: ['GBNGXP40', 'GBNGXP41'],
+        hosts: ['ORNGXP40', 'ORNGXP41'],
       },
-      sunucular: [hucre('GBNGXAP34', 'cccccccccccc'), hucre('GBNGXP40'), hucre('GBNGXP41')],
+      sunucular: [hucre('ORNGXAP34', 'cccccccccccc'), hucre('ORNGXP40'), hucre('ORNGXP41')],
     },
   ],
   ayni: [{ key: 'ns/app-a', version: '1.0.0-1-prod' }],
@@ -129,8 +129,8 @@ describe('Tutarlılık › Paketler', () => {
     expect(screen.getByText('fund-coach-app-v0')).toBeTruthy();
     const key = 'ges-pension-fund-ch-prod/fund-coach-app-v0';
     expect(screen.getByTestId(`paket-fark-${key}`).textContent).toBe('dosyalar');
-    expect(screen.getByTestId(`paket-hucre-${key}-GBNGXAP34`).getAttribute('data-sapma')).toBe('1');
-    expect(screen.getByTestId(`paket-hucre-${key}-GBNGXP40`).getAttribute('data-sapma')).toBe('0');
+    expect(screen.getByTestId(`paket-hucre-${key}-ORNGXAP34`).getAttribute('data-sapma')).toBe('1');
+    expect(screen.getByTestId(`paket-hucre-${key}-ORNGXP40`).getAttribute('data-sapma')).toBe('0');
     expect(driftCagrildi).toBe(false);
   });
 
@@ -144,9 +144,9 @@ describe('Tutarlılık › Paketler', () => {
           hukum: 'olculemedi',
           apps: [],
           sunucular: [
-            sunucu('GBNGXAP34', 'bayat', 'son ölçüm 5 saat önce (en çok 3 saat)'),
-            sunucu('GBNGXP40'),
-            sunucu('GBNGXP41'),
+            sunucu('ORNGXAP34', 'bayat', 'son ölçüm 5 saat önce (en çok 3 saat)'),
+            sunucu('ORNGXP40'),
+            sunucu('ORNGXP41'),
           ],
           sayac: {
             uygulama: 1,
@@ -163,7 +163,7 @@ describe('Tutarlılık › Paketler', () => {
     };
     render(<DriftTab onOpen={() => {}} />);
     expect(await screen.findByTestId('paket-hukum-glomo')).toHaveTextContent('ÖLÇÜLEMEDİ');
-    expect(screen.getByText(/GBNGXAP34: son ölçüm 5 saat önce/)).toBeTruthy();
+    expect(screen.getByText(/ORNGXAP34: son ölçüm 5 saat önce/)).toBeTruthy();
     expect(screen.getByTestId('paket-hukum-glomo').textContent).toBe('ÖLÇÜLEMEDİ');
     expect(screen.getByText(/2\/3 sunucu ölçüldü/)).toBeTruthy();
   });
@@ -213,11 +213,11 @@ describe('Tutarlılık › Paketler', () => {
               ...farkliGrup.apps[0],
               durum: 'olculemedi',
               fark: [],
-              okunamayan: ['GBNGXAP34'],
+              okunamayan: ['ORNGXAP34'],
               sunucular: [
-                { host: 'GBNGXAP34', okunamadi: true, version: null },
-                { ...hucre('GBNGXP40'), bayatSikistirma: 0 },
-                { ...hucre('GBNGXP41'), bayatSikistirma: 2 },
+                { host: 'ORNGXAP34', okunamadi: true, version: null },
+                { ...hucre('ORNGXP40'), bayatSikistirma: 0 },
+                { ...hucre('ORNGXP41'), bayatSikistirma: 2 },
               ],
             },
           ],
@@ -226,8 +226,8 @@ describe('Tutarlılık › Paketler', () => {
     };
     render(<DriftTab onOpen={() => {}} />);
     expect((await screen.findByTestId('paket-hukum-glomo')).textContent).toBe('ÖLÇÜLEMEDİ');
-    expect(screen.getByTestId(`paket-hucre-${key}-GBNGXAP34`).textContent).toBe('OKUNAMADI');
-    expect(screen.getByTestId(`paket-hucre-${key}-GBNGXP41`).textContent).toContain(
+    expect(screen.getByTestId(`paket-hucre-${key}-ORNGXAP34`).textContent).toBe('OKUNAMADI');
+    expect(screen.getByTestId(`paket-hucre-${key}-ORNGXP41`).textContent).toContain(
       '2 bayat .gz/.br',
     );
     expect(screen.getByText('1 okunamadı')).toBeTruthy();

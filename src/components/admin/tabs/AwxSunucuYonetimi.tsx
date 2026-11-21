@@ -1,7 +1,7 @@
 // src/components/admin/tabs/AwxSunucuYonetimi.tsx — Admin > Ansible: AWX sunucularını
 // etkinleştir / devre dışı bırak (2026-10-26).
 //
-// Kullanıcı: "portalın eski maestro.fwgaranti.com.tr yani maestro 1'e olan bağlantısını
+// Kullanıcı: "portalın eski maestro.fwsirket.invalid yani maestro 1'e olan bağlantısını
 // kapatmak istiyorum ... Ansible info'da bunu kaldıramıyorum ... 2-3 yılda bir." Seyrek
 // yapılan bir iş: tuzaklar (yarım kalan OCO zamanlaması, kilit, LogX kaydı, eski AWX_URL)
 // unutulur. Bu yüzden kapatmadan ÖNCE bağımlılık özeti gösterilir; sunucu, bitmesi

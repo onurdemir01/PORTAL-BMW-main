@@ -45,7 +45,7 @@ test('legacy.transfer(): uzak yedek dizini ayarli degilse ya da goreliyse HICBIR
     discovery_result_json: JSON.stringify({
       overall_status: 'success',
       hosts: [
-        { host: 'GBJBOT22', status: 'ok', files: [{ path: '/vhosting8/APP-T.ear/logs/a.log' }] },
+        { host: 'ORJBOT22', status: 'ok', files: [{ path: '/vhosting8/APP-T.ear/logs/a.log' }] },
       ],
     }),
   };
@@ -55,7 +55,7 @@ test('legacy.transfer(): uzak yedek dizini ayarli degilse ya da goreliyse HICBIR
     return { id: 1 };
   });
   t.mock.method(require('../requests.cjs'), 'updateRequest', async () => null);
-  const secim = [{ host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/a.log' }];
+  const secim = [{ host: 'ORJBOT22', path: '/vhosting8/APP-T.ear/logs/a.log' }];
   for (const [deger, ileti] of [
     [undefined, /ayarli degil \(LOGX_STAGING_FALLBACK_DIR\)/],
     ['   ', /ayarli degil/],
@@ -106,7 +106,7 @@ test('legacy.transfer(): keşif sonucuyla eşleşmeyen bir path reddedilir, Hİ�
     overall_status: 'success',
     hosts: [
       {
-        host: 'GBJBOT22',
+        host: 'ORJBOT22',
         status: 'ok',
         files: [{ path: '/vhosting8/APP-T.ear/logs/SystemOut.log' }],
       },
@@ -118,11 +118,11 @@ test('legacy.transfer(): keşif sonucuyla eşleşmeyen bir path reddedilir, Hİ�
   };
 
   await assert.rejects(
-    () => legacy.transfer(requestRow, [{ host: 'GBJBOT22', path: '/etc/passwd' }]),
+    () => legacy.transfer(requestRow, [{ host: 'ORJBOT22', path: '/etc/passwd' }]),
     (err) => {
       assert.equal(err.status, 400);
       assert.equal(err.code, 'toctou_mismatch');
-      assert.deepEqual(err.invalid, [{ host: 'GBJBOT22', path: '/etc/passwd' }]);
+      assert.deepEqual(err.invalid, [{ host: 'ORJBOT22', path: '/etc/passwd' }]);
       return true;
     },
   );
@@ -150,7 +150,7 @@ test('legacy.transfer(): keşif sonucuyla BİREBİR eşleşen path kabul edilir 
     overall_status: 'success',
     hosts: [
       {
-        host: 'GBJBOT22',
+        host: 'ORJBOT22',
         status: 'ok',
         files: [{ path: '/vhosting8/APP-T.ear/logs/SystemOut.log' }],
       },
@@ -169,14 +169,14 @@ test('legacy.transfer(): keşif sonucuyla BİREBİR eşleşen path kabul edilir 
   t.mock.method(require('../requests.cjs'), 'updateRequest', async () => null);
 
   const job = await legacy.transfer(requestRow, [
-    { host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/SystemOut.log' },
+    { host: 'ORJBOT22', path: '/vhosting8/APP-T.ear/logs/SystemOut.log' },
   ]);
 
   assert.equal(job.id, 42);
   assert.equal(capturedArgs.requestId, 'req-3');
   assert.equal(capturedArgs.jobType, 'legacy_transfer');
   assert.deepEqual(capturedArgs.extraVars.selected_files, [
-    { host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/SystemOut.log' },
+    { host: 'ORJBOT22', path: '/vhosting8/APP-T.ear/logs/SystemOut.log' },
   ]);
   assert.match(
     capturedArgs.extraVars.archive_name,
@@ -201,7 +201,7 @@ test("restrictions.isAllowed(): Admin her zaman izinli, DB'ye hiç sorulmaz", as
 
 test('restrictions.isAllowed(): kısıtlama satırı YOKSA varsayılan olarak herkese açık', async (t) => {
   t.mock.method(db, 'query', async () => ({ rows: [] }));
-  const allowed = await restrictions.isAllowed('legacy_app', 'GBCEPPOSDASHBOARD', {
+  const allowed = await restrictions.isAllowed('legacy_app', 'ORCEPPOSDASHBOARD', {
     username: 'user1',
     role: 'User',
   });
@@ -253,9 +253,9 @@ test('admin.resolveEnvLabel(): -T sonekli klasör TEST olarak etiketlenir (Envan
     { suffix: '-D', env_label: 'DEV' },
     { suffix: '', env_label: 'PROD' },
   ];
-  assert.equal(await admin.resolveEnvLabel('GBCEPPOSDASHBOARD-T.ear', suffixRows), 'TEST');
-  assert.equal(await admin.resolveEnvLabel('GBCEPPOSDASHBOARD-D.ear', suffixRows), 'DEV');
-  assert.equal(await admin.resolveEnvLabel('GBCEPPOSDASHBOARD.ear', suffixRows), 'PROD');
+  assert.equal(await admin.resolveEnvLabel('ORCEPPOSDASHBOARD-T.ear', suffixRows), 'TEST');
+  assert.equal(await admin.resolveEnvLabel('ORCEPPOSDASHBOARD-D.ear', suffixRows), 'DEV');
+  assert.equal(await admin.resolveEnvLabel('ORCEPPOSDASHBOARD.ear', suffixRows), 'PROD');
 });
 
 test("admin.resolveEnvLabel(): eşleşen son-ek yoksa PROD'a düşer", async () => {
@@ -413,8 +413,8 @@ test("legacy.searchApps(): Envanter DB erişilemezse son bilinen snapshot'a otom
   fs.writeFileSync(
     snapshotPath,
     JSON.stringify({
-      apps: ['GBCEPPOSDASHBOARD', 'GBSVCCOMPASS'],
-      appHosts: { GBCEPPOSDASHBOARD: ['GBJBOT22'] },
+      apps: ['ORCEPPOSDASHBOARD', 'ORSVCCOMPASS'],
+      appHosts: { ORCEPPOSDASHBOARD: ['ORJBOT22'] },
       generatedAt: new Date().toISOString(),
     }),
   );
@@ -426,7 +426,7 @@ test("legacy.searchApps(): Envanter DB erişilemezse son bilinen snapshot'a otom
   try {
     const result = await legacy.searchApps('COMPASS');
     assert.equal(result.fallbackMode, true);
-    assert.deepEqual(result.apps, ['GBSVCCOMPASS']);
+    assert.deepEqual(result.apps, ['ORSVCCOMPASS']);
   } finally {
     if (hadExisting) fs.writeFileSync(snapshotPath, backup);
     else fs.rmSync(snapshotPath, { force: true });
@@ -457,12 +457,12 @@ test('ocp.selectClusters(): hicbir jump server cozulemezse job hic launch edilme
   }));
   const requestRow = { request_id: 'r1' };
   await assert.rejects(
-    () => ocp.selectClusters(requestRow, 'dev', 'ark', ['gbocptest1']),
+    () => ocp.selectClusters(requestRow, 'dev', 'ark', ['orocptest1']),
     (err) => {
       assert.equal(err.status, 400);
       assert.match(
         err.message,
-        /gbocptest1/,
+        /orocptest1/,
         "hangi cluster(lar)in bastion'siz oldugu mesajda gecmeli",
       );
       return true;
@@ -578,7 +578,7 @@ test('legacy.transfer(): 0 byte dosya reddedilir, HICBIR job launch edilmez', as
     overall_status: 'success',
     hosts: [
       {
-        host: 'GBJBOT22',
+        host: 'ORJBOT22',
         status: 'ok',
         files: [
           { path: '/vhosting8/APP-T.ear/logs/bos.log', size: 0 },
@@ -595,7 +595,7 @@ test('legacy.transfer(): 0 byte dosya reddedilir, HICBIR job launch edilmez', as
   await assert.rejects(
     () =>
       legacy.transfer(requestRow, [
-        { host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/bos.log' },
+        { host: 'ORJBOT22', path: '/vhosting8/APP-T.ear/logs/bos.log' },
       ]),
     (err) => {
       assert.equal(err.status, 400);
@@ -620,7 +620,7 @@ test('legacy.transfer(): boyutu BILINMEYEN dosya engellenmez (eski kesif ciktisi
   const discoveryResult = {
     overall_status: 'success',
     hosts: [
-      { host: 'GBJBOT22', status: 'ok', files: [{ path: '/vhosting/APP.ear/logs/eski.log' }] },
+      { host: 'ORJBOT22', status: 'ok', files: [{ path: '/vhosting/APP.ear/logs/eski.log' }] },
     ],
   };
   const requestRow = {
@@ -629,7 +629,7 @@ test('legacy.transfer(): boyutu BILINMEYEN dosya engellenmez (eski kesif ciktisi
   };
 
   await legacy.transfer(requestRow, [
-    { host: 'GBJBOT22', path: '/vhosting/APP.ear/logs/eski.log' },
+    { host: 'ORJBOT22', path: '/vhosting/APP.ear/logs/eski.log' },
   ]);
   assert.equal(launched, 1, 'boyutu bilinmeyen dosya haksiz yere engellendi');
 });

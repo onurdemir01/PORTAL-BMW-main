@@ -5,7 +5,7 @@
 // 1) `limit` GONDERILMEZ. Cluster alt kumesi denendi ve kaldirildi (2026-08-12): secilen
 //    adlar AWX'in `limit` alanina konuluyordu ama AWX, template'te Limit icin "Prompt on
 //    launch" KAPALI oldugu icin alani SESSIZCE yok sayiyordu — portal
-//    `limit: "gbocpankqa2"` gonderdi, is yine ark_qa'nin DORT host'unda kostu (job 3217901).
+//    `limit: "orocpankqa2"` gonderdi, is yine ark_qa'nin DORT host'unda kostu (job 3217901).
 //    Ayrica dogru kisit zaten cluster ADI degil, o cluster'larin jump server'i olurdu.
 //    Ozelligi "belki calisir" umuduyla geri koymaya karsi bekci.
 //

@@ -214,7 +214,7 @@ export default function OcpRuntimeSettings() {
           id={`${alanId}-kullanici`}
           value={cfg.defaultOcpUsername}
           onChange={(e) => patch({ defaultOcpUsername: e.target.value })}
-          placeholder="uxmid"
+          placeholder="svcac"
           className="w-full px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
         />
         {/* Bu alan olmadığında playbook `username` değerini yalnızca AWX'teki

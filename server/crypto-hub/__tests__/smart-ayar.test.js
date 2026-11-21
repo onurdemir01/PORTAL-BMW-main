@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const H = require('./_node_harness.cjs');
-const { CRYPTO_TENANTS, tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf } = require('../kiracilar.cjs');
 
 const { K, GOVDE, T, G_EVM, G_BTC, SIR } = H;
 const TOKEN = 'CRYPTO+TOKEN/abc123=';
@@ -322,7 +322,7 @@ test('SA8 production kiracida enabled:false Smart yolunda kalir (resolver birimi
       'prod anahtari gecti',
     );
     assert.equal(
-      K0({ production: false, key: 'x', cluster: 'giocpank3rdwyprod1' }, kapali),
+      K0({ production: false, key: 'x', cluster: 'oiocpank3rdwyprod1' }, kapali),
       false,
       'prod cluster gecti',
     );

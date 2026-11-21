@@ -850,7 +850,7 @@ function Big({ n, of, label }: { n: number; of?: number; label?: string }) {
 }
 
 /** Ortam icindeki CLUSTER BASINA route/SPA kirilimi (kullanici, 2026-10-08:
- *  "GBOCP Prod 1'de bu kadar route var, bunlarin su kadari SPA route'u, yuzdesi de budur").
+ *  "OROCP Prod 1'de bu kadar route var, bunlarin su kadari SPA route'u, yuzdesi de budur").
  *
  *  NEDEN GEREKLI: ortam toplami "hangi cluster'da eksik" sorusunu cevaplamiyor - ARK'in
  *  prod'u dort cluster ve bir uygulama uclusunde olup birinde olmayabilir.
@@ -1369,8 +1369,8 @@ export default function NginxSpaSummary({
                           />
                           <Where>
                             Uygulamanın paketi,{' '}
-                            {env === 'PROD' ? 'yeni GBNGX prod' : 'internete açık'} sunucuların en
-                            az birinde duruyor: <b>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</b> ve{' '}
+                            {env === 'PROD' ? 'yeni …NGX prod' : 'internete açık'} sunucuların en az
+                            birinde duruyor: <b>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</b> ve{' '}
                             <b>/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</b> dizinlerinin
                             ikisi de var.
                           </Where>
@@ -1405,7 +1405,7 @@ export default function NginxSpaSummary({
                           <Where>
                             {env === 'PROD' ? (
                               <>
-                                Nginx, isteği bu uygulamaya yönlendirecek tanımı taşıyor: eski GBRVP
+                                Nginx, isteği bu uygulamaya yönlendirecek tanımı taşıyor: eski …RVP
                                 sunucusundaki <b>/usr/nginx/conf.d/&lt;SERVİS&gt;-PROD.conf</b>{' '}
                                 dosyasında{' '}
                                 <b>
@@ -1475,7 +1475,7 @@ export default function NginxSpaSummary({
                               className="text-[11px] font-semibold uppercase tracking-wide mb-0.5"
                               style={{ color: 'var(--text-muted)' }}
                             >
-                              Yeni GBNGX sunucularına taşınma hazırlığı{' '}
+                              Yeni …NGX sunucularına taşınma hazırlığı{' '}
                               <span className="normal-case font-normal">
                                 — <b>ayrı bir liste</b>
                               </span>
@@ -1488,7 +1488,7 @@ export default function NginxSpaSummary({
                               <b>
                                 OpenShift’te internete açık {fmtNumber(c.internetTotal)} uygulamayı
                               </b>{' '}
-                              anlatır. Buradaki sayılar ise farklı bir listeden gelir: eski GBRVP
+                              anlatır. Buradaki sayılar ise farklı bir listeden gelir: eski …RVP
                               sunucularının <b>proxy_pass</b> satırlarından çözülen{' '}
                               <b>{fmtNumber(prodNew.apps)} (namespace, uygulama) çifti</b> — route
                               kaydı olmayanlar da dâhildir ve bir uygulama iki ayrı namespace’te
@@ -1502,7 +1502,7 @@ export default function NginxSpaSummary({
                                   onClick={() =>
                                     setOpen({
                                       title: 'PROD · yeni sunuculara deploy olmamış SPA’lar',
-                                      subtitle: `${fmtNumber(prodNew.apps - prodNew.ready)} uygulama · eski GBRVP* sunucusunda proxy ile sunuluyor, yeni GBNGXP* sunucularının hepsinde hysdeploy + applications dizini yok`,
+                                      subtitle: `${fmtNumber(prodNew.apps - prodNew.ready)} uygulama · eski …RVP* sunucusunda proxy ile sunuluyor, yeni …NGXP* sunucularının hepsinde hysdeploy + applications dizini yok`,
                                       rows: rowsFromMigration(mig?.groups || []),
                                     })
                                   }
@@ -1519,7 +1519,7 @@ export default function NginxSpaSummary({
                                   />
                                 </ClickCell>
                                 <Where>
-                                  Sayım evreni: eski GBRVP sunucularının proxy_pass listesi (
+                                  Sayım evreni: eski …RVP sunucularının proxy_pass listesi (
                                   {fmtNumber(prodNew.apps)} çift, route kaydı olmayanlar dâhil).
                                   “Hazır”, taşımadan sonra hiçbir yeni sunucuda 404 alınmayacağı
                                   anlamına gelir.
@@ -1773,7 +1773,7 @@ export default function NginxSpaSummary({
         OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım
         uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> =
         internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A),{' '}
-        <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının
+        <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski …RVP* sunucularının
         proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” =
         tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar).{' '}
         {cov.intranetKaynak === 'intranet-spa' ? (

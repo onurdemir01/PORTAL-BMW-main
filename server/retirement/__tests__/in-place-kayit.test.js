@@ -121,28 +121,28 @@ test('IK2 kayit acilirken kesfin in-place isareti hedefe yazilir ([8] / [7] / []
   const h = (o) => ({
     site: 'Pendik',
     env: 'TEST',
-    appName: 'GBPOSWEBAPI-T',
-    appPath: '/vhosting/GBPOSWEBAPI.ear',
+    appName: 'ORPOSWEBAPI-T',
+    appPath: '/vhosting/ORPOSWEBAPI.ear',
     web: [],
     ...o,
   });
   durum.kesif = {
     targets: [
-      h({ host: 'GBJEXP05', gen: 7, inPlace: true, digerSurumler: [8] }),
+      h({ host: 'ORJEXP05', gen: 7, inPlace: true, digerSurumler: [8] }),
       h({
-        host: 'GBJEXP05',
+        host: 'ORJEXP05',
         gen: 8,
-        appPath: '/vhosting8/GBPOSWEBAPI.ear',
+        appPath: '/vhosting8/ORPOSWEBAPI.ear',
         inPlace: true,
         digerSurumler: [7],
       }),
-      h({ host: 'GBJEXP06', gen: 8 }),
-      h({ host: 'GBJEXP07', gen: null, inPlace: true, digerSurumler: [0, 8] }),
+      h({ host: 'ORJEXP06', gen: 8 }),
+      h({ host: 'ORJEXP07', gen: null, inPlace: true, digerSurumler: [0, 8] }),
     ],
     summary: { bySite: { Pendik: 4, Ankara: 0 } },
   };
   durum.sorgular = [];
-  const r = await cagir('post', '/', { body: { app: 'GBPOSWEBAPI', smartNo: '123456' } });
+  const r = await cagir('post', '/', { body: { app: 'ORPOSWEBAPI', smartNo: '123456' } });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const ins = durum.sorgular.filter((x) => /^INSERT INTO retirement_targets/.test(x.sql));
   assert.equal(ins.length, 4);
@@ -160,20 +160,20 @@ test('IK2 kayit acilirken kesfin in-place isareti hedefe yazilir ([8] / [7] / []
   );
   assert.match(
     olay.params[3],
-    /IN-PLACE: GBPOSWEBAPI-T @ GBJEXP05 \(JBoss 7; aynı sunucuda diğer kurulum: JBoss 8\)/,
+    /IN-PLACE: ORPOSWEBAPI-T @ ORJEXP05 \(JBoss 7; aynı sunucuda diğer kurulum: JBoss 8\)/,
   );
   assert.ok(
-    !/GBJEXP06/.test(olay.params[3].split('IN-PLACE')[1]),
+    !/ORJEXP06/.test(olay.params[3].split('IN-PLACE')[1]),
     'tek kurulumlu hedef in-place sayildi',
   );
 });
 
 test('IK5 cok sayida in-place hedefte olay metni yarida kalmaz: ilk 5 hedef + "+N hedef daha" (1000 karakter siniri)', async () => {
   const h = (i) => ({
-    host: `GBJEXP${String(i).padStart(2, '0')}`,
+    host: `ORJEXP${String(i).padStart(2, '0')}`,
     site: 'Pendik',
     env: 'TEST',
-    appName: 'GBCORPORATEBANKINGSERVICE-T',
+    appName: 'ORCORPORATEBANKINGSERVICE-T',
     gen: 7,
     appPath: '/vhosting/X.ear',
     web: [],
@@ -186,7 +186,7 @@ test('IK5 cok sayida in-place hedefte olay metni yarida kalmaz: ilk 5 hedef + "+
   };
   durum.sorgular = [];
   const r = await cagir('post', '/', {
-    body: { app: 'GBCORPORATEBANKINGSERVICE', smartNo: '123456', ocoNo: '' },
+    body: { app: 'ORCORPORATEBANKINGSERVICE', smartNo: '123456', ocoNo: '' },
   });
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
   const olay = durum.sorgular.find(
@@ -195,10 +195,10 @@ test('IK5 cok sayida in-place hedefte olay metni yarida kalmaz: ilk 5 hedef + "+
   assert.ok(olay.length <= 1000, `olay ${olay.length} karakter`);
   assert.match(
     olay,
-    /GBJEXP05 \(JBoss 7; aynı sunucuda diğer kurulum: JBoss 8\) \+3 hedef daha/,
+    /ORJEXP05 \(JBoss 7; aynı sunucuda diğer kurulum: JBoss 8\) \+3 hedef daha/,
     'kalan in-place hedef sayisi yazilmadi (metin kesildi)',
   );
-  assert.ok(!/GBJEXP06/.test(olay));
+  assert.ok(!/ORJEXP06/.test(olay));
 });
 
 test('IK3 hedef satiri inPlace / digerSurumler: [] false, [8] true, NULL ve bozuk = null (BILINMIYOR); awxIsleri tek gecmis sorgusuyla', async () => {
