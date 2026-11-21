@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "31ecb2de60134463ccf9e8430ffcfc8f7745824d",
+  "kaynak": "4903bcddb55b7019cea440fdeb84dd8684266da1",
   "dosyaSayisi": 1690,
   "dosyalar": {
     ".dockerignore": "d4179f686ae64896773bc12cab7898c719d851d6",
@@ -904,7 +904,7 @@
     "server/server-hub/__tests__/mask-unicode-diff.test.js": "fe99b8384839a0eb4d52c480fc191a821f305945",
     "server/server-hub/__tests__/notlar.test.js": "0587f4dbd05ee8a8aafd4b5cabcf6421d55540f1",
     "server/server-hub/__tests__/onbellek-hiz.test.js": "9802d8af3ca795b52799d0ebb210e6e39de89c59",
-    "server/server-hub/__tests__/reboot-check-awx.test.js": "410afc4351fbfa398cfd209f5c281d5778970938",
+    "server/server-hub/__tests__/reboot-check-awx.test.js": "0f972f35d47274421b12f3013cb5e2daa76875af",
     "server/server-hub/__tests__/reboot-check.test.js": "7a1fcc927f469366f1d0a569799da6d5ed8c0318",
     "server/server-hub/__tests__/reboot-rapor.test.js": "aa360688a7fdc2af5a408d2dd1df0cfd0f475af7",
     "server/server-hub/__tests__/regex-dogrusal.test.js": "6ba19f098bc9efb02a06179bbcf01c1842a788ed",
@@ -951,7 +951,7 @@
     "server/server-hub/mask.cjs": "a14083a8cf14ab8de2311a492cf803eef9fe160e",
     "server/server-hub/notlar-uclar.cjs": "b0368275097c7b5432308e5a5fa7ff5a929ba505",
     "server/server-hub/notlar.cjs": "2c198fa7f140f12c59ab43b43290f337cfe8c29c",
-    "server/server-hub/reboot-check-awx.cjs": "fb26b9f445dd5cbb8ff660cc74d2f79b30a57e6f",
+    "server/server-hub/reboot-check-awx.cjs": "1539af38f247027a04f7496e66ad995f80714a54",
     "server/server-hub/reboot-check.cjs": "98222812c0daebff6fcd42b323371bf11776df2c",
     "server/server-hub/reboot-rapor.cjs": "011d190e694eaeafcd54257db30f1dfeaf31ee1e",
     "server/server-hub/reboot-readiness.cjs": "3841830ce782ff858533396d8465e3e27f680205",
