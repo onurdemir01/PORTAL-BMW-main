@@ -17,9 +17,21 @@
 //                      Sonra durum sonra_kosuyor yazilir; ilerlet() sonucu okur (Portal kaydiyla AYNI kod yolu).
 //   * Alinan "once" kaydindan Portal'da "Reboot sonrasi kontrol et ve duzelt" de calisir (iki yol birlikte).
 //
+// SUNUCUDA SAKLI ONCE (2026-11-21, kullanici: "Portal'siz ve workflow'suz once / sonra ... rapor Portal'a gelip
+// sanki Portal'dan tetiklenmis gibi incelensin"): playbook once fazinda goruntuyu sunucuya da yazar, rc_once'suz
+// sonra fazi onu okur ve sonucuna once_goruntu olarak koyar. Tek basina sonra isi once eslesen AWX once kaydina
+// baglanir; eslesme yoksa once goruntusu rc_once'tan, o da yoksa sonucun once_goruntu satirlarindan kurulur.
+//
 // Ayni is iki kez alinmaz: ekleme / baglama kosulu UPDLOCK + HOLDLOCK ile ayni is numarasini arar (iki Portal
 // sureci). Alinmayacagi kesinlesen is _bakildi'da tutulur (her turda AWX'ten yeniden okunmasin). AWX okunamazsa
 // hicbir sey yazilmaz; sonraki tur yeniden dener (OKUNAMADI != BASARISIZ).
+//
+// ALIM DURUMU (2026-11-21, kullanici: "job'i calistirdim ancak Reboot Kontrolu sayfasina hicbir sey gelmedi ...
+// Yenile butonu calismiyor"): alim sessizdi; is neden alinmadiysa (sablon tanimsiz, baska sablon, Portal'dan
+// baslatilmis, set_stats yok, AWX okunamadi) yalniz sunucu logunda kaliyordu ve Yenile AWX'i 2 dk siniri yuzunden
+// hic taramiyordu. Son taramanin ozeti (zaman, sablon, hata, is basina sonuc + neden) bellekte tutulur, ekrana
+// GET /reboot-check/awx-alim ile gider; ?tara=1 siniri atlayip taramayi BEKLER (Yenile). Ayni anda tek tarama:
+// suren tarama varken gelen cagri ayni sozu bekler.
 'use strict';
 
 const { varsayilanSira } = require('../util/siralama.cjs');
@@ -36,7 +48,48 @@ const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 let _sonTarama = 0;
 let _timer = null;
 let _ticking = false;
+let _suren = null;
+let _zorlaSirada = null;
 const _bakildi = new Set();
+const IS_SINIR = 30;
+const _durum = {
+  sonTarama: null,
+  sablon: null,
+  neden: null,
+  hata: null,
+  bulunan: null,
+  isler: new Map(),
+};
+
+/** Is basina son sonuc (ekran icin): en yeni IS_SINIR is tutulur. */
+function isKaydet(jobId, sonuc) {
+  _durum.isler.delete(Number(jobId));
+  _durum.isler.set(Number(jobId), {
+    jobId: Number(jobId),
+    ...sonuc,
+    zaman: new Date().toISOString(),
+  });
+  while (_durum.isler.size > IS_SINIR) {
+    const enEski = Math.min(..._durum.isler.keys());
+    _durum.isler.delete(enEski);
+  }
+}
+
+/** Son taramanin ozeti (kopya): ekran "neden gelmedi" sorusunu buradan yanitlar. */
+function alimDurumu() {
+  return {
+    aralikSn: ARALIK_MS / 1000,
+    geriGun: GERI_GUN,
+    sonTarama: _durum.sonTarama,
+    // Tarama suruyor: ekran bitince yeniden sorar (sayfa acilisinda liste ucu taramayi baslatir, beklemez).
+    tariyor: !!_suren,
+    sablon: _durum.sablon ? { ..._durum.sablon } : null,
+    neden: _durum.neden,
+    hata: _durum.hata,
+    bulunan: _durum.bulunan,
+    isler: [..._durum.isler.values()].sort((a, b) => b.jobId - a.jobId).map((x) => ({ ...x })),
+  };
+}
 
 const db = () => require('../db/index.cjs');
 const runner = () => require('../ansible/runner.cjs');
@@ -50,10 +103,13 @@ const maskele = (s) => {
   }
 };
 
-/** Playbook Kayitlari satiri -> { templateId, serverId } ya da null (tanimsiz / kapali). */
+/**
+ * Playbook Kayitlari satiri -> { templateId, serverId } ya da null (tanimsiz / kapali). Kayit OKUNAMAZSA
+ * firlatir (2026-11-21 inceleme): eskiden null donup ekranda "sablon tanimsiz" yaziyordu; okuma hatasi ayri.
+ */
 async function sablonBul() {
   const reg = require('../ansible/playbook-registry.cjs');
-  const row = await reg.getByKey(rc().REGISTRY_KEY).catch(() => null);
+  const row = await reg.getByKey(rc().REGISTRY_KEY);
   if (!row || row.enabled === false) return null;
   const templateId = Number(reg.getEffectiveTemplateId(row)) || 0;
   if (!templateId) return null;
@@ -85,6 +141,21 @@ function rcOnceOf(ham) {
   const out = {};
   for (const [h, satirlar] of Object.entries(v)) {
     if (HOST_RE.test(h) && Array.isArray(satirlar)) out[h] = satirlar.map((l) => String(l));
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Sonra sonucunun sunucuda sakli once goruntusu (playbook once_goruntu, once_kaynak 'sunucu') -> { SUNUCU: satirlar }
+ * ya da null. Yalniz BOOT satiri olan (Portal goruntuTamam kurali) sunucu alinir.
+ */
+function sakliOnceOf(sunucular) {
+  const out = {};
+  for (const [h, r] of Object.entries(
+    sunucular && typeof sunucular === 'object' ? sunucular : {},
+  )) {
+    const g = r && Array.isArray(r.once_goruntu) ? r.once_goruntu.map((l) => String(l)) : [];
+    if (HOST_RE.test(h) && g.some((l) => l.startsWith('BOOT|'))) out[h] = g;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -204,10 +275,9 @@ async function portalIsiMi(s, jobId) {
 
 /** "AWX'ten alindi" notu: kim baslatti, hangi workflow, hangi is (ekranda ve raporda gorunur). */
 function notMetni(st, jobId) {
-  return M(
-    `AWX'ten alındı: iş #${jobId}${st.workflowJobId ? ', workflow #' + st.workflowJobId : ''}${st.launchedBy ? ', başlatan ' + st.launchedBy : ''}`,
-    500,
-  );
+  const workflow = st.workflowJobId ? ', workflow #' + st.workflowJobId : '';
+  const baslatan = st.launchedBy ? ', başlatan ' + st.launchedBy : '';
+  return M(`AWX'ten alındı: iş #${jobId}${workflow}${baslatan}`, 500);
 }
 
 /**
@@ -270,22 +340,26 @@ async function isiAl(s, jobId) {
       if (r.rows?.[0] && Number(r.rows[0].n) === 1) id = es.id;
     }
     if (id == null) {
-      const rcOnce = rcOnceOf(st.extraVarsHam);
+      const rcOnceEv = rcOnceOf(st.extraVarsHam);
+      const rcOnce = rcOnceEv || sakliOnceOf(sonuc.sunucular);
       const onceJson = rcOnce
         ? JSON.stringify({
             faz: 'once',
-            kaynak: 'rc_once',
+            kaynak: rcOnceEv ? 'rc_once' : 'sunucu',
             sunucular: Object.fromEntries(
               Object.entries(rcOnce).map(([h, g]) => [h, { goruntu_ok: true, goruntu: g }]),
             ),
           })
         : null;
       const hostlar = [...new Set([...hedef, ...Object.keys(rcOnce || {})])].sort(varsayilanSira);
+      let onceKaynagi = 'yok';
+      if (rcOnceEv) onceKaynagi = 'rc_once';
+      else if (rcOnce) onceKaynagi = 'sunucu';
       const ozet = {
         once: {
           alinan: Object.keys(rcOnce || {}).length,
           toplam: hostlar.length,
-          job: rcOnce ? 'rc_once' : 'yok',
+          job: onceKaynagi,
           once_bos: [],
         },
       };
@@ -327,14 +401,68 @@ async function isiAl(s, jobId) {
 
 /** En cok ARALIK_MS'de bir: sablonun son GERI_GUN gunde biten isleri, eskiden yeniye (once once'ler alinsin). */
 async function awxIsleriniAl({ simdi = Date.now(), zorla = false } = {}) {
+  // Suren tarama varsa ikinci tarama ayni anda baslamaz. Zorla (Yenile) cagri suren taramaya KATILMAZ: o tarama
+  // AWX'i Yenile'den once listelemis olabilir (az once biten is onda yok). Bitince BIR yeni tarama kuyruga girer;
+  // kuyruktaki varken gelen zorla cagri ona katilir (2026-11-21 inceleme).
+  if (_suren) {
+    if (!zorla) return _suren;
+    if (!_zorlaSirada) {
+      _zorlaSirada = _suren
+        .catch(() => {})
+        .then(() => {
+          _zorlaSirada = null;
+          return awxIsleriniAl({ zorla: true });
+        });
+    }
+    return _zorlaSirada;
+  }
   if (!zorla && simdi - _sonTarama < ARALIK_MS) return null;
   _sonTarama = simdi;
-  const s = await sablonBul();
-  if (!s) return { atlandi: 'template_yok' };
-  const isler = await runner().listTemplateJobsOnServer(s.serverId, s.templateId, {
-    finishedAfter: new Date(simdi - GERI_GUN * 86400000).toISOString(),
-    pageSize: SAYFA,
+  _suren = tara(simdi).finally(() => {
+    _suren = null;
   });
+  return _suren;
+}
+
+async function tara(simdi) {
+  _durum.sonTarama = new Date(simdi).toISOString();
+  _durum.hata = null;
+  _durum.neden = null;
+  _durum.bulunan = null;
+  _durum.sablon = null;
+  let s;
+  try {
+    s = await sablonBul();
+  } catch (e) {
+    _durum.hata = maskele(e?.message) || 'Playbook Kayıtları okunamadı';
+    throw e;
+  }
+  // AWX sunucusunun adi da yazilir: is BASKA bir AWX'te (or. Maestro3) kosturulduysa Portal onu hic gormez;
+  // ekran hangi AWX'in tarandigini soylemezse bu fark edilmez (2026-11-21 sahada boyle oldu).
+  let sunucuAdi = null;
+  if (s) {
+    try {
+      sunucuAdi = runner().getServerById(s.serverId)?.name || null;
+    } catch {
+      sunucuAdi = null;
+    }
+  }
+  _durum.sablon = s ? { ...s, sunucuAdi } : null;
+  if (!s) {
+    _durum.neden = 'template_yok';
+    return { atlandi: 'template_yok' };
+  }
+  let isler;
+  try {
+    isler = await runner().listTemplateJobsOnServer(s.serverId, s.templateId, {
+      finishedAfter: new Date(simdi - GERI_GUN * 86400000).toISOString(),
+      pageSize: SAYFA,
+    });
+  } catch (e) {
+    _durum.hata = maskele(e?.message) || 'AWX okunamadı';
+    throw e;
+  }
+  _durum.bulunan = isler.length;
   const yeni = isler
     .filter((j) => !_bakildi.has(`${s.serverId}:${j.id}`))
     .sort((a, b) => a.id - b.id);
@@ -345,8 +473,21 @@ async function awxIsleriniAl({ simdi = Date.now(), zorla = false } = {}) {
     try {
       const r = await isiAl(s, j.id);
       if (r.alindi) alinan.push(r.alindi);
+      isKaydet(
+        j.id,
+        r.alindi
+          ? { sonuc: 'alindi', kayitId: r.alindi, faz: r.faz || null, awxDurum: j.status || null }
+          : { sonuc: 'atlandi', neden: r.atlandi || null, awxDurum: j.status || null },
+      );
     } catch (e) {
-      console.warn(`[RebootCheck] AWX isi ${j.id} alinamadi:`, maskele(e?.message));
+      const mesaj = maskele(e?.message);
+      isKaydet(j.id, {
+        sonuc: 'hata',
+        neden: 'hata',
+        mesaj: M(mesaj, 300),
+        awxDurum: j.status || null,
+      });
+      console.warn(`[RebootCheck] AWX isi ${j.id} alinamadi:`, mesaj);
     }
   }
   return { alinan };
@@ -377,13 +518,25 @@ module.exports = {
   sablonBul,
   hostlarOf,
   rcOnceOf,
+  sakliOnceOf,
   eslesenKayit,
   portalIsiMi,
   isiAl,
   awxIsleriniAl,
+  alimDurumu,
   startPoller,
   _sifirlaForTest: () => {
     _sonTarama = 0;
+    _suren = null;
+    _zorlaSirada = null;
     _bakildi.clear();
+    Object.assign(_durum, {
+      sonTarama: null,
+      sablon: null,
+      neden: null,
+      hata: null,
+      bulunan: null,
+    });
+    _durum.isler.clear();
   },
 };
