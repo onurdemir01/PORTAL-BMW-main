@@ -63,6 +63,8 @@ function sahteOcKur() {
       'case "$1" in',
       '  login) : > "$KUBECONFIG"; [ -n "${APP_HUB_FAKE_SLEEP:-}" ] && sleep "$APP_HUB_FAKE_SLEEP"; exit 0 ;;',
       '  get)',
+      '    if [ "${APP_HUB_FAKE_TIMEOUT_KIND:-}" = "$2" ]; then echo "command timed out" >&2; exit 124; fi',
+      '    if [ "${APP_HUB_FAKE_FAIL_KIND:-}" = "$2" ]; then echo "Error from server (Forbidden): $2 is forbidden" >&2; exit 1; fi',
       '    case "$2" in',
       '      deployment) cat "$D/dep.txt" ;;',
       '      rollouts.argoproj.io) echo "error: the server doesn\'t have a resource type \\"rollouts\\"" >&2; exit 1 ;;',
@@ -140,6 +142,18 @@ test('AH3 betik: gecersiz namespace / ad / kubeconfig -> ERR, oc HIC cagrilmaz',
 test('AH3b betik: graceful TERM yolunda kosuya ozel kubeconfig temizlenir', { skip: !bashVar && 'bash/timeout yok' }, () => {
   const r = betikKos({ APP_HUB_FAKE_SLEEP: '2' }, true);
   assert.notEqual(r.status, 0, 'sure siniri betigi durdurmadi');
+});
+
+test('AH3c betik: workload, pod ve HPA okuma hatasi ERR + nonzero olur', { skip: !bashVar && 'bash/awk yok' }, () => {
+  for (const [kind, mesaj] of Object.entries({ deployment: 'deployment okunamadi', pods: 'pod listesi okunamadi', hpa: 'hpa okunamadi' })) {
+    const r = betikKos({ APP_HUB_FAKE_FAIL_KIND: kind });
+    assert.notEqual(r.status, 0, `${kind} hatasi basarili cikti:\n${r.stdout}`);
+    assert.match(r.stdout, new RegExp(`^ERR\\t${mesaj}`, 'm'), r.stdout);
+    assert.match(r.stdout, /^END\t/m, 'kismi veri END ile sinirlanmadi');
+  }
+  const timeout = betikKos({ APP_HUB_FAKE_TIMEOUT_KIND: 'pods' });
+  assert.notEqual(timeout.status, 0, `pod timeout basarili cikti:\n${timeout.stdout}`);
+  assert.match(timeout.stdout, /^ERR\tpod listesi okunamadi: command timed out/m);
 });
 
 test('AH4 betik kaynagi: oc yalniz login ve get ile cagrilir (metin bekcisi)', () => {
@@ -298,6 +312,9 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
   assert.match(s.hedefler[1].hata, /login dustu · oc login basarisiz/);
   const yarim = C.sonucuCoz({ results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['OBJ\tDeployment\tx\t1\t1\t1\t1'] }] });
   assert.equal(yarim.hedefler[0].ok, false, 'END gelmeyen (kesilen) cikti tamam sayildi');
+  const errYutma = C.sonucuCoz({ overall_status: 'ok', results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['ERR\tforbidden', 'END\t0\t0'] }] });
+  assert.equal(errYutma.hedefler[0].ok, false, 'ERR satiri basarili hedef sayildi');
+  assert.equal(errYutma.genel, 'failed', 'ERR satiri genel basari arkasinda gizlendi');
   assert.equal(C.statsOku({ ansible_stats: { data: { app_hub_ocp_result: { a: 1 } } } }).a, 1);
 });
 
