@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   CameraIcon,
+  ChevronRightIcon,
   WrenchScrewdriverIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -65,6 +66,15 @@ import {
 // v4 (2026-11-16, kullanıcı seçimi "Her yerde kapat"): boş önce görüntüsünde çalışan HER ürün kapatılır (prod dahil).
 const ONCE_BOS_METNI =
   'Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda çalışan her ürünü (Nginx/Apache/IHS/CTG/JBoss/WAS, prod dahil) kapatır; kapatılan her ürün kontrol edilecek.';
+// 2026-11-22 (kullanıcı: "büyük sorun varmış gibi gözüküyor, korkutuyor"): önce görüntüsünde boş sunucular kart
+// kart sarı uyarı yerine 1. bölümün EN ALTINDA tek, kapalı, gri bir grupta toplanır; uyarı onay penceresinde kalır.
+// İnceleme: not duruma göre — reboot sonrası kontrol koştuysa geçmiş zaman, "yeniden alın" denmez. Kaydın TÜM
+// sunucuları boşsa (görüntü büyük olasılıkla uygulamalar kapalıyken alındı) grup açık ve uyarı renginde kalır.
+function onceBosGrupNotu(sonraOldu: boolean): string {
+  return sonraOldu
+    ? 'Bu sunucularda reboot öncesi izlenen ürün (Nginx/Apache/IHS/CTG/JBoss/WAS) çalışmıyordu. Reboot sonrası kontrol, burada çalışır bulduğu her ürünü (prod dahil) kapattı; sonuç aşağıda, 2. bölümde.'
+    : 'Bu sunucularda reboot öncesi izlenen ürün (Nginx/Apache/IHS/CTG/JBoss/WAS) çalışmıyordu; bu tek başına bir hata değil. Reboot sonrası kontrol, burada çalışır bulduğu her ürünü (prod dahil) kapatıp reboot öncesi haline döndürür ve "Kontrol gerekli" diye işaretler. Uygulamalar aslında açık olmalıysa (ör. görüntü bakım sırasında alındıysa) reboot sonrası kontrolden önce görüntüyü yeniden alın.';
+}
 /** Kaydın önce görüntüsü boş (BOOT var, izlenen satır yok) sunucuları. */
 function bosOnceSunuculari(k: RcKayit): string[] {
   const s = k.once.sonuc?.sunucular || {};
@@ -991,6 +1001,11 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
   const eskiEtiket = [
     ...new Set(eskiHosts.map((h) => betikEtkisi(onceTamamGoruntu(onceS[h]), sonraS[h]).etiket)),
   ];
+  // Önce görüntüsü boş sunucular ayrı grupta, en altta (görüntü alınırken gruplanmaz: kartlar "alınıyor" der).
+  const onceBosHosts = k.durum === 'once_kosuyor' ? [] : bosOnceSunuculari(k);
+  const onceKartHosts = k.hosts.filter((h) => !onceBosHosts.includes(h));
+  const hepsiBos = onceBosHosts.length > 1 && onceKartHosts.length === 0;
+  const sonraOldu = !!k.sonra.at || k.durum === 'sonra_kosuyor';
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -1050,79 +1065,115 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
         <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
           1 · Reboot öncesi görüntü {k.once.at ? `(${fmtDateTime(k.once.at)})` : ''}
         </div>
-        <div
-          className="grid gap-1.5"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(18rem, 1fr))' }}
-        >
-          {k.hosts.map((h) => {
-            const r = onceS[h];
-            const g = goruntuAyristir(r?.goruntu);
-            const oz = onceOzeti(g);
-            const alindi = !!r?.goruntu_ok && g.bicimTamam;
-            const bos = alindi && onceBos(g);
-            return (
-              <details
-                key={h}
-                open={bos || undefined}
-                className="rounded-lg border px-3 py-2"
-                style={{ borderColor: bos ? 'var(--status-warning)' : 'var(--border-subtle)' }}
-              >
-                <summary className="cursor-pointer flex items-center gap-2 text-sm">
-                  <span className="font-mono font-semibold">{h}</span>
-                  {k.durum === 'once_kosuyor' ? (
-                    <Rozet ton="info">
-                      <span className="inline-flex items-center gap-1">
-                        <Doner /> alınıyor
+        {onceKartHosts.length > 0 && (
+          <div
+            className="grid gap-1.5"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(18rem, 1fr))' }}
+          >
+            {onceKartHosts.map((h) => {
+              const r = onceS[h];
+              const g = goruntuAyristir(r?.goruntu);
+              const oz = onceOzeti(g);
+              const alindi = !!r?.goruntu_ok && g.bicimTamam;
+              return (
+                <details
+                  key={h}
+                  className="rounded-lg border px-3 py-2"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
+                  <summary className="cursor-pointer flex items-center gap-2 text-sm">
+                    <span className="font-mono font-semibold">{h}</span>
+                    {k.durum === 'once_kosuyor' ? (
+                      <Rozet ton="info">
+                        <span className="inline-flex items-center gap-1">
+                          <Doner /> alınıyor
+                        </span>
+                      </Rozet>
+                    ) : alindi ? (
+                      <Rozet ton="ok">{`${oz.length} ürün kaydedildi`}</Rozet>
+                    ) : r?.goruntu_ok ? (
+                      // BOOT satiri yok = gorutuyu ESKI playbook (patch-snapshot.sh) aldi. Yeni kayitta
+                      // gorunuyorsa AWX projesindeki reboot_check.yml guncel degildir (2026-10-09, job 3391026).
+                      <span title="Görüntüyü eski playbook aldı (patch-snapshot.sh). AWX projesindeki reboot_check.yml ve scripts/reboot_goruntu.sh güncel değil — ZIP'i uygulayıp projeyi Sync edin, sonra yeniden alın.">
+                        <Rozet ton="warning">eski playbook — AWX güncel değil</Rozet>
                       </span>
-                    </Rozet>
-                  ) : bos ? (
-                    <Rozet ton="warning">izlenen ürün yok</Rozet>
-                  ) : alindi ? (
-                    <Rozet ton="ok">{`${oz.length} ürün kaydedildi`}</Rozet>
-                  ) : r?.goruntu_ok ? (
-                    // BOOT satiri yok = gorutuyu ESKI playbook (patch-snapshot.sh) aldi. Yeni kayitta
-                    // gorunuyorsa AWX projesindeki reboot_check.yml guncel degildir (2026-10-09, job 3391026).
-                    <span title="Görüntüyü eski playbook aldı (patch-snapshot.sh). AWX projesindeki reboot_check.yml ve scripts/reboot_goruntu.sh güncel değil — ZIP'i uygulayıp projeyi Sync edin, sonra yeniden alın.">
-                      <Rozet ton="warning">eski playbook — AWX güncel değil</Rozet>
-                    </span>
-                  ) : (
-                    <Rozet ton="danger">alınamadı</Rozet>
-                  )}
-                </summary>
-                {bos ? (
-                  <div
-                    className="mt-1 flex items-start gap-1 text-[12px]"
-                    style={{ color: 'var(--status-warning)' }}
-                  >
-                    <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />{' '}
-                    <span>{ONCE_BOS_METNI}</span>
-                  </div>
-                ) : alindi && oz.length > 0 ? (
-                  <ul className="mt-1 text-[12px] space-y-0.5">
-                    {oz.map((o) => (
-                      <li key={o.urun}>
-                        {o.ad}
-                        {o.jvm !== null ? (
-                          <span style={{ color: 'var(--text-muted)' }}> · {o.jvm} JVM</span>
-                        ) : null}
-                        {o.urunSatiriYok && (
-                          <span style={{ color: 'var(--status-warning)' }}>
-                            {' '}
-                            · ürün satırı yok (JVM'inden çalışıyor sayılır)
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : r?.goruntu_hata ? (
-                  <div className="mt-1 text-[11px]" style={{ color: 'var(--status-danger)' }}>
-                    {r.goruntu_hata}
-                  </div>
-                ) : null}
-              </details>
-            );
-          })}
-        </div>
+                    ) : (
+                      <Rozet ton="danger">alınamadı</Rozet>
+                    )}
+                  </summary>
+                  {alindi && oz.length > 0 ? (
+                    <ul className="mt-1 text-[12px] space-y-0.5">
+                      {oz.map((o) => (
+                        <li key={o.urun}>
+                          {o.ad}
+                          {o.jvm !== null ? (
+                            <span style={{ color: 'var(--text-muted)' }}> · {o.jvm} JVM</span>
+                          ) : null}
+                          {o.urunSatiriYok && (
+                            <span style={{ color: 'var(--status-warning)' }}>
+                              {' '}
+                              · ürün satırı yok (JVM'inden çalışıyor sayılır)
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : r?.goruntu_hata ? (
+                    <div className="mt-1 text-[11px]" style={{ color: 'var(--status-danger)' }}>
+                      {r.goruntu_hata}
+                    </div>
+                  ) : null}
+                </details>
+              );
+            })}
+          </div>
+        )}
+        {onceBosHosts.length > 0 && (
+          <details
+            data-testid="rc-once-bos-grup"
+            open={hepsiBos || undefined}
+            className="group rounded-lg border px-3 py-2"
+            style={{ borderColor: hepsiBos ? 'var(--status-warning)' : 'var(--border)' }}
+          >
+            <summary
+              className="cursor-pointer flex items-center gap-2 text-sm"
+              style={{ color: hepsiBos ? 'var(--status-warning)' : 'var(--text-muted)' }}
+            >
+              <ChevronRightIcon
+                className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                aria-hidden
+              />
+              <span>Reboot öncesi çalışan izlenen ürünü olmayan sunucular</span>
+              <Rozet ton={hepsiBos ? 'warning' : 'muted'}>{onceBosHosts.length}</Rozet>
+            </summary>
+            {hepsiBos ? (
+              <div
+                className="mt-1 flex items-start gap-1 text-[12px]"
+                style={{ color: 'var(--status-warning)' }}
+              >
+                <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" />{' '}
+                <span>
+                  Kayıttaki sunucuların hiçbirinde izlenen ürün çalışmıyordu. {ONCE_BOS_METNI}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-1 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                {onceBosGrupNotu(sonraOldu)}
+              </div>
+            )}
+            <div className="mt-1.5 flex flex-wrap gap-1.5 font-mono text-[12px]">
+              {onceBosHosts.map((h) => (
+                <span
+                  key={h}
+                  className="rounded border px-1.5 py-0.5"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  {h}
+                </span>
+              ))}
+            </div>
+          </details>
+        )}
       </section>
 
       <section className="space-y-1.5">

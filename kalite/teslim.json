@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "698d122f3fe8faae7a2567c7fc940c8111b9790a",
+  "kaynak": "9aabe2158f35f59236e07f815f98e2f2574cb159",
   "dosyaSayisi": 1615,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -1463,7 +1463,7 @@
     "src/components/server_hub/KopyaDurumuTab.tsx": "d81eeafac88961b53590b628da98dfd46644956e",
     "src/components/server_hub/KurallarTab.tsx": "8703e5ccfaebe7c649ebadb3911f8d3a64957947",
     "src/components/server_hub/NotYonetimi.tsx": "23eb64f1718132b9b4d4a2a88c7edc80af072725",
-    "src/components/server_hub/RebootKontroluTab.tsx": "bf1c5be0d952a06d683a48d42ba890bdfca737cc",
+    "src/components/server_hub/RebootKontroluTab.tsx": "f50d7ae5d68960e436683a8e18ef949ce8c5fc5d",
     "src/components/server_hub/RetireEtiketleri.tsx": "a8e91db486db9dc63f95a018f5f4a71f1cf29c3b",
     "src/components/server_hub/RetirementAkis.tsx": "0d4bf2d871093cdcce6d5e4321f0ad22d1d716b6",
     "src/components/server_hub/RetirementAnaliziSekmesi.tsx": "c7fe156445b8b5b14389a3eba2bf8bb6ea23ec19",
@@ -1502,7 +1502,7 @@
     "src/components/server_hub/__tests__/kod-rehberi.test.tsx": "b9142bfd40762f8ec9aa47d1fe3f7c914b2cf028",
     "src/components/server_hub/__tests__/kopya-durumu-tab.test.tsx": "f00f167ad1875bec63363b17c8448d25d60ca7c2",
     "src/components/server_hub/__tests__/not-yonetimi.test.tsx": "c03c00cc7f2655db18807ec2f38453d932e4f845",
-    "src/components/server_hub/__tests__/reboot-kontrolu-tab.test.tsx": "097434954e19a27b54f607b2b1ade6fc531b7214",
+    "src/components/server_hub/__tests__/reboot-kontrolu-tab.test.tsx": "c0ef56064a9d3567b05e550f4b7ec1cff0fea384",
     "src/components/server_hub/__tests__/reboot-kontrolu.test.ts": "46a02582009fed5ae3234301e6357ce9c6ca8a47",
     "src/components/server_hub/__tests__/retire-arayuz.test.tsx": "778d16a5091b7d966342a001064a6df80fd890c6",
     "src/components/server_hub/__tests__/retirement-adim.test.ts": "62552cca00eb680a2cf7503c0eba25d6df07d2f2",
