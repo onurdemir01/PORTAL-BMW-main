@@ -3,3 +3,4 @@
 npx lint-staged
 node scripts/bicim-kapisi.cjs
 node scripts/sir-tarama.cjs --staged
+node scripts/ic-ad-bekcisi.cjs --staged

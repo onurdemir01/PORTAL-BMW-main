@@ -5,6 +5,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ## [Unreleased]
 
 ### Added
+- K17 kurum iç adı (`scripts/ic-ad-bekcisi.cjs`; commit öncesi, commit mesajı, push öncesi, CI tüm ağaç + aralıktaki mesajlar): kurum önekli sunucu adı ve kalıbı, `.com.tr` alan adı (kaçışlı biçim dahil), kurum adı (sözcük özetleri) ve bilinen kurum iç ağı adresi (ağ özetleri) repoya giremez; ad ya da ağ listesi repoda değil, bulunan değer yazdırılmaz (testi `server/__tests__/ic-ad-bekcisi.test.js`, mutasyonla sınandı).
+- Kurum ayarı `KURUM_AYAR_DOSYASI` (`server/util/kurum-ayari.cjs`, biçimi `deploy/kurum-ayari.ornek.json`): nginx filosu, göç grupları, API kümeleri, RVP, OCP kümeleri ve tohumu, Crypto Hub kiracı altyapısı, OpsX ve self servis kurum değerleri koddan çıktı. Dosya yok ya da bozuksa ilgili bölüm boş döner ve ekranda uyarı çıkar; örnek değere düşülmez.
+- Playbook kurum değerleri AWX template Variables'ta (`portal_yazici_host`, `portal_envanter_sql_sunucusu`, `portal_edu_hostlari`; pod silme postası `mail_vars.yml`): varsayılan yok, tanımsızsa iş açıkça durur ve sonuç yine yayınlanır (`docs/AWX-KOPYALAMA-HARITASI.md` "Kurum değerleri"; gerçek Ansible bekçisi `server/ansible/__tests__/kurum-degiskenleri-kosum.test.js`, core 2.21 ve 2.16).
 - K16 `main` geçmişi (`scripts/gecmis-denetim.cjs`, CI `verify`): `main`'e giden her first-parent commit birleşmiş bir PR'dan gelmeli, konu satırı 8–120 karakter; `commit-msg` kancası konu kuralını aynı yerden okur (bekçi GD1-GD5).
 - K15 kurum kural profili: "Portal Kurumsal" her dilde `kalite/kurumsal-sonar.json` `profil`den kurulur (kurumsal iş #52 bulguları + Sonar way bug / zafiyet / hotspot); K15 inceleme kaydı uygulamaz, inceleme bekleyen hotspot mutlak 0 (bekçi KK14). K13 / K15 kapısında kod kokusu mutlak (0).
 - ESLint'te kurumun Sonar kuralları (`eslint-plugin-sonarjs`, `KURUM_JS` / `KURUM_TS`); kurumsal iş #52'nin 1597 kod kokusu ve HTML yorum bulgusu kapandı (bekçi KK13: kurumun HTML "yorumlanmış kod" sezgisi).
@@ -40,6 +43,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Ölü kod: `src/utils/url.ts`, `src/utils/safeUrl.ts` (Linkler sayfası 2026-10-02'de kalktı; sunucu kapısı duruyor) ve `server/opsx/ocp-target.cjs` (2026-08-11'den beri çağrılmıyordu). Mutasyon kapısında `url.ts` hedefinin yerini app-hub sahiplik doğrulaması aldı.
 
 ### Changed
+- Repodaki kurum sunucu, alan ve kişi adları kurgusal karşılıklarına çevrildi (ad kuralı korunur: önek `OR`, alan adları `*.invalid`); ScaleX yedek kataloğu repoda yalnız kurgusal biçim (`openshift_inventory_scalex.ornek.yaml`), gerçeği AWX'te.
+- Ad kalıpları önek bağımsız (`^[A-Z]{2}NG…`, `^([A-Z]{2}RVP|[A-Z]{2}NG[WX]A?P)`): kod ve playbook kurum önekini bilmez.
+- Kurum adı repodan çıktı: Crypto Hub values yolu ve dosya adı (`resValuesPath`, `valuesDosyasi`) ve Smart login domain'i (`smart.domain`, `SMART_DOMAIN` önce gelir; ikisi de yoksa talep açılmaz) kurum ayarında; ekran metinleri nötr; LICENSE telif satırı `BMW Portal`. Depo sahibinin adı testlerde kurgusal.
+- Glomo geçiş planının Excel verisi (210 uygulama) ve Set 7 talep listesi kurum ayarında (`spaRapor.glomoGecis`); repoda kurgusal örnek. Ayar yoksa plan tablodaki satırlarla açılır, sebep yalnız Admin'e (GG12, GG13).
+- Gerçek iç ağ adresleri (DNS, LB, test makineleri) testlerde ve ekran metninde kurgusal ağlara çevrildi; Web Uygulaması DNS açıklaması artık `WEB_APP_DNS_SUNUCULARI` ayarına dayanır.
 - `server/auth/guvenlik-basliklari.cjs`: Tam `Content-Security-Policy`, `Permissions-Policy` ve production varsayılan `Strict-Transport-Security` (`includeSubDomains`) eklendi.
 - `server/auth/oturum-cerezi.cjs` & `server/auth/index.cjs`: `COOKIE_SECURE` env desteği bağlandı.
 - `server/log.cjs` & `server/service.cjs`: `Bearer`/`Basic`, `JWT`, `Cookie`/`Set-Cookie`, hassas sorgu/JSON alanları loglarda maskelendi; `sessionOrIpKey` kimlik spoofing'ine karşı doğrulamalı hale getirildi.
