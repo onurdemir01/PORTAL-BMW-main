@@ -340,8 +340,15 @@ Portal tarafı: `OPSX_WAS_DISCOVER_TEMPLATE_ID`, `OPSX_WAS_OPERATION_TEMPLATE_ID
   "Listede var ama erişilemiyor" durumu sahte `ls` ile her platformda (D15), gerçek `r--` izinleriyle
   yalnız izin semantiği olan ortamda (G5; Windows'ta ya da root'ta **ATLANDI** yazar, yeşil
   saymaz) ölçülür.
-- Portal: `server/ansible/__tests__/opsx-was-playbook.test.cjs`,
-  `server/ansible/__tests__/opsx-was-script.test.cjs` (iki depo aynası: `OPSX_WAS_ANSIBLE_DEPO`).
+- Portal: `server/ansible/__tests__/opsx-was-playbook.test.js`,
+  `server/ansible/__tests__/opsx-was-script.test.js` (iki depo aynası: `OPSX_WAS_ANSIBLE_DEPO`) ve
+  `server/ansible/__tests__/opsx-was-gercek-kosum.test.js`: iki playbook **gerçek** `ansible-playbook` ile,
+  sahte betik ve yerel hedefle koşar (core 2.16 ve 2.21).
+- **W5'in körlüğü (2026-11-21):** Ansible'sız Jinja2 `'\t'`'yi sekmeye çevirir, Ansible çevirmez (ters
+  bölüyü çiftler). `>-` blok içindeki `split('\t')` bu yüzden üretimde sekmeye bölmüyordu: her başarılı
+  işlem OLCULEMEDI bitti, envanter hiç yazılmadı, keşif her hostu "ölçülemedi" saydı. Sekme artık çift
+  tırnaklı bir değişkende (`opsx_was_sekme: "\t"`). Genel kural Portal'da `playbook-jinja-traps.test.js`
+  TUZAK 5. Karar zinciri sınanacaksa Ansible ile koşturulmalı.
 - Her bekçi mutasyonla doğrulanır (mutasyon yalnız kopyada; ortam değişkenleri `OPSX_WAS_SH`,
   `OPSX_WAS_OP_YML`, `OPSX_WAS_DISC_YML`, `OPSX_WAS_UPD`, `OPSX_WAS_README`).
 

@@ -24,6 +24,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - `sonar-project.properties`, `.editorconfig`, `SECURITY.md`, `CONTRIBUTING.md`, `docs/STANDARTLAR.md` ve `docs/adr/0001..0003`.
 - İstemci URL doğrulama birim testleri (`src/utils/__tests__/url.test.ts`).
 
+### Fixed (OpsX WAS sonuc satiri, 2026-11-21)
+- OpsX WAS: `>-` blok içindeki `split('\t')` sekmeye bölmüyordu (Ansible Jinja ifadesindeki ters bölüyü çiftler). Her başarılı restart/stop/start OLCULEMEDI ile bitiyor, AWX işi FAILED oluyor, `dbo.WASAppsInventory` hiç güncellenmiyordu; keşif de her hostu "ölçülemedi" sayıyordu. Sekme çift tırnaklı değişkende (`opsx_was_sekme`). Aynı tuzak OpsX Legacy dump'ta (`split('\n')[-1]`, çok satırlı çıktıda yanlış dosya adı) da düzeldi. Gerçek `ansible-playbook` bekçisi `opsx-was-gercek-kosum.test.js` (düzeltme öncesi 4/4 kırmızı) ve genel metin kuralı `playbook-jinja-traps.test.js` TUZAK 5.
+
 ### Fixed (kurumsal Jenkins, 2026-11-18)
 - Kurumsal sınıflandırmada görünen bulgular (K15'in ilk koşusu: 8 bug, 28 zafiyet, `scripts/` ve test yardımcılarında) kodda düzeltildi; bastırma ya da dışlama yok:
   - geri izlemeli düzenli ifadeler doğrusal yazıldı; eski ve yeni sonuçlar 1675 repo metninde ve kötü girdilerde aynı (S8786);

@@ -56,6 +56,7 @@
   become: false
 
   vars:
+    opsx_satir_sonu: "\n"
     dump_type: "{{ dump_type | default('heapdump') }}"
     application: "{{ application | default('') }}"
     # Jboss7 -> /vhosting/dumpdir, Jboss8 -> /vhosting8/dumpdir (kullanicinin verdigi
@@ -194,7 +195,7 @@
     - name: "Dump dosyasını paylaşılan staging dizinine kopyala"
       ansible.builtin.shell: |
         set -eu
-        FILE="{{ (dump_item.stdout | trim).split('\n')[-1].split('|')[1] }}"
+        FILE="{{ (dump_item.stdout | trim).split(opsx_satir_sonu)[-1].split('|')[1] }}"
         cp "{{ local_dir_for_item }}/${FILE}" "{{ staging_dir }}/${FILE}"
         # Portal sunucusu (Node.js, "was" DEGIL) bu dosyayi indirme aninda okuyabilmeli —
         # kaynak "was" sahipliginde olsa da cp SONRASI kopya artik normal kullanicinin.

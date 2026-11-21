@@ -79,6 +79,7 @@
   ignore_unreachable: true
   vars:
     ansible_pipelining: true
+    opsx_was_sekme: "\t"
     opsx_was_op_budget_s: 1500
     opsx_was_script: "{{ opsx_was_tmp.path | default('') }}"
     opsx_was_upd_script: "{{ opsx_was_upd_tmp.path | default('') }}"
@@ -166,7 +167,7 @@
         - name: --- [Task] Sonuc turu ---
           ansible.builtin.set_fact:
             opsx_was_kind: >-
-              {{ 'line' if (((opsx_was_rline.split('\t') | length) >= 6) and (opsx_was_rline.split('\t')[2] in ['OK', 'SKIP', 'FAIL', 'OLCULEMEDI']))
+              {{ 'line' if (((opsx_was_rline.split(opsx_was_sekme) | length) >= 6) and (opsx_was_rline.split(opsx_was_sekme)[2] in ['OK', 'SKIP', 'FAIL', 'OLCULEMEDI']))
                  else ('ran' if ((opsx_was_run is defined) and (opsx_was_run is not skipped))
                  else ('unreach' if ((opsx_was_me.unreachable | default(false)) or (opsx_was_tmp.unreachable | default(false)) or (opsx_was_copy.unreachable | default(false)) or (opsx_was_stat.unreachable | default(false)))
                  else 'gate')) }}
@@ -303,7 +304,7 @@
               ansible.builtin.set_fact:
                 opsx_was_inv_line: >-
                   {{ (opsx_was_upd.stdout_lines | default([]) | select('match', '^WASAPP_UPDATE\t') | list | last)
-                     | default('WASAPP_UPDATE\tFAIL\tguncelleyici kosmadi ya da sonuc satiri yok (kopya dogrulanamadi ya da python3/pyodbc hatasi)') }}
+                     | default('WASAPP_UPDATE' ~ opsx_was_sekme ~ 'FAIL' ~ opsx_was_sekme ~ 'guncelleyici kosmadi ya da sonuc satiri yok (kopya dogrulanamadi ya da python3/pyodbc hatasi)') }}
               when: opsx_was_inv_hazir | bool
 
             - name: --- [Task] Envanter sonucu ---
@@ -315,9 +316,9 @@
             opsx_was_host_result: >-
               {{ opsx_was_host_result | combine({'steps': opsx_was_host_result.steps + [
                    {'step': 'envanter',
-                    'status': (({'OK': 'OK', 'NOROW': 'SKIP'})[(opsx_was_inv_line | default('')).split('\t')[1] | default('')] | default('FAIL'))
+                    'status': (({'OK': 'OK', 'NOROW': 'SKIP'})[(opsx_was_inv_line | default('')).split(opsx_was_sekme)[1] | default('')] | default('FAIL'))
                               if (opsx_was_inv_status | length) > 0 else 'SKIP',
-                    'msg': ((opsx_was_inv_line | default('')).split('\t')[2] | default('') | string | truncate(300))
+                    'msg': ((opsx_was_inv_line | default('')).split(opsx_was_sekme)[2] | default('') | string | truncate(300))
                            if (opsx_was_inv_status | length) > 0
                            else ('envanter yazilmadi: sonuc ' ~ opsx_was_host_result.result ~ ', son durum ' ~ opsx_was_host_result.after ~ ' (yalniz OK/SKIP ve olculmus RUNNING/STOPPED yazilir)')}]}) }}
 
@@ -366,8 +367,9 @@
                    'before': '-',
                    'after': '-',
                    'steps': [{'step': opsx_was_fb_step, 'status': opsx_was_fb_result, 'msg': opsx_was_fb_msg}],
-                   'line': 'RESULT\t' ~ opsx_was_op ~ '\t' ~ opsx_was_fb_result ~ '\t-\t-\t' ~ opsx_was_fb_msg} }}
+                   'line': 'RESULT' ~ opsx_was_sonuc_sekme ~ opsx_was_op ~ opsx_was_sonuc_sekme ~ opsx_was_fb_result ~ opsx_was_sonuc_sekme ~ '-' ~ opsx_was_sonuc_sekme ~ '-' ~ opsx_was_sonuc_sekme ~ opsx_was_fb_msg} }}
       vars:
+        opsx_was_sonuc_sekme: "\t"
         opsx_was_hr: "{{ {} if (opsx_was_input_err is defined) else (hostvars[opsx_was_target | default('')].opsx_was_host_result | default({})) }}"
         opsx_was_resc: "{{ '' if (opsx_was_input_err is defined) else (hostvars[opsx_was_target | default('')].opsx_was_rescue | default('') | string) }}"
         opsx_was_op: "{{ operation | default('') | string | truncate(20) }}"

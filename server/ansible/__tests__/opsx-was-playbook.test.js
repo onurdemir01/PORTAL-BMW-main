@@ -18,9 +18,9 @@
 //     portal_envanter_sql_sunucusu); playbook'ta / betikte kurum adi yok (K17). OW13 betigin
 //     --sunucu kapisini GERCEKTEN kosturur (DB'ye baglanmadan).
 //
-// DAVRANIS burada OLCULMEZ (metin bekcisi): betik davranisi opsx-was-script.test.js'te,
-// playbook karar zincirinin Jinja2 ile kosulmasi Ansible deposunda
-// bmw_nginx/tests/check_opsx_was.py (W5) icinde. Gercek Ansible/AWX: README "Kanarya".
+// DAVRANIS burada OLCULMEZ (metin bekcisi): betik davranisi opsx-was-script.test.js'te, playbook'larin
+// GERCEK ansible-playbook ile kosulmasi opsx-was-gercek-kosum.test.js'te (Ansible deposundaki W5 Jinja2'yi
+// Ansible'siz kosturur ve ters bolu ciftlemesini goremez; README "Bekciler"). Gercek AWX: README "Kanarya".
 //
 // OPSX_WAS_DIR: mutasyon kopyasi icin dizin (verilmezse depodaki ayna).
 // OPSX_WAS_ANSIBLE_DEPO: Ansible deposu koku verilirse iki kopyanin BAYT BAYT ayni oldugu
