@@ -608,12 +608,27 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     AKTIF = BOS_KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#4'));
+    // 2026-11-22: boş önce sunucusu kart kart sarı uyarı DEĞİL; 1. bölümün en altında tek, kapalı, gri grup
+    const grup = await screen.findByTestId('rc-once-bos-grup');
+    expect((grup as HTMLDetailsElement).open).toBe(false);
+    expect(grup.style.borderColor).toBe('var(--border)');
+    expect(within(grup).getByText('GBBOS01')).toBeTruthy();
     expect(
-      await screen.findByText(
-        /Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/,
-      ),
+      within(grup).getByText(/Reboot öncesi çalışan izlenen ürünü olmayan sunucular/).parentElement
+        ?.textContent,
+    ).toMatch(/1$/);
+    // reboot sonrası kontrol koştu: geçmiş zaman, "yeniden alın" denmez
+    expect(
+      within(grup).getByText(/çalışır bulduğu her ürünü \(prod dahil\) kapattı; sonuç aşağıda/),
     ).toBeTruthy();
-    expect(screen.getByText('izlenen ürün yok')).toBeTruthy();
+    expect(within(grup).queryByText(/yeniden alın|bu tek başına bir hata değil/)).toBeNull();
+    expect(within(grup).queryByText(/zaten kapalıyken mi alındı/)).toBeNull();
+    // grup, önce kartlarından SONRA gelir; boş sunucunun ayrıca kartı yok
+    const kart = screen.getByText('GBJBOP18', { selector: 'summary span' });
+    expect(kart.compareDocumentPosition(grup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText('GBBOS01', { selector: 'summary span' })).toBeNull();
+    expect(screen.queryByText('izlenen ürün yok')).toBeNull();
+    expect(screen.queryByText(/Önce görüntüsünde izlenen ürün yok/)).toBeNull();
     expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(5); // liste + ayrinti basligi + sunucu karti + ozet kutusu + filtre dugmesi
     // OTOMASYON OZETI + FILTRE (2026-11-15): sayilar sunucu; komut kosmayan sunucu "dokunmadi", filtre listeyi daraltir.
     // 2026-11-17: uzun tanım paragrafı kaldırıldı ("uzun paragrafları kaldır")
@@ -710,12 +725,17 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     expect(uyari.parentElement?.textContent).toMatch(
       /Otomasyonun kapattığı her ürün sonuçta kontrol edilecek/,
     );
-    // önce kartı + onay penceresindeki boş-önce uyarısı
+    // 2026-11-22: tam uyarı yalnız onay penceresinde (önce bölümünde gri grup notu)
     expect(
       screen.getAllByText(
         /çalışan her ürünü \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS, prod dahil\) kapatır; kapatılan her ürün kontrol edilecek/,
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(
+        /Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/CTG, JBoss ve WAS'a dokunmaz/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Onayla ve başlat' }));
     await waitFor(() => expect(sonraMock).toHaveBeenCalledWith(4));
@@ -1327,5 +1347,70 @@ describe('Reboot Kontrolü sekmesi — AWX alımı, Yenile, yükleniyor (2026-11
         return { ok: true, kayit: AKTIF } as never;
       });
     }
+  });
+});
+
+describe('Reboot Kontrolü sekmesi — boş önce grubu (2026-11-22)', () => {
+  it('RT20 grup duruma göre: sonra öncesi gelecek zaman + yeniden al; hepsi boşsa açık uyarı; görüntü alınırken gruplanmaz', async () => {
+    const kayit = (id: number, durum: string, sunucular: Record<string, unknown>) =>
+      ({
+        ...BOS_KAYIT,
+        id,
+        durum,
+        hosts: Object.keys(sunucular),
+        once: { ...BOS_KAYIT.once, sonuc: { faz: 'once', sunucular } },
+        sonra: { jobId: null, serverId: null, at: null, sonuc: null },
+        ozet: null,
+      }) as never;
+    const BOS = { goruntu_ok: true, goruntu: ['BOOT|z1||'] };
+    // A) karışık kayıt (2 boş + 1 dolu), reboot sonrası kontrol henüz koşmadı: kapalı, gri, gelecek zaman + yeniden al
+    AKTIF = kayit(20, 'once_hazir', {
+      GBBOS01: BOS,
+      GBBOS03: BOS,
+      GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+    });
+    let r = render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#20'));
+    let grup = await screen.findByTestId('rc-once-bos-grup');
+    expect((grup as HTMLDetailsElement).open).toBe(false);
+    expect(
+      within(grup).getByText(/kapatıp reboot öncesi haline döndürür ve "Kontrol gerekli" diye/),
+    ).toBeTruthy();
+    expect(
+      within(grup).getByText(/reboot sonrası kontrolden önce görüntüyü yeniden alın/),
+    ).toBeTruthy();
+    expect(within(grup).queryByText(/"kontrol edilecek"/)).toBeNull();
+    r.unmount();
+    // B) kayıttaki TÜM sunucular boş: kart ızgarası yok, grup açık ve uyarı renginde, tam uyarı metni
+    AKTIF = kayit(21, 'once_hazir', { GBBOS01: BOS, GBBOS03: BOS });
+    r = render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#21'));
+    grup = await screen.findByTestId('rc-once-bos-grup');
+    expect((grup as HTMLDetailsElement).open).toBe(true);
+    expect(grup.style.borderColor).toBe('var(--status-warning)');
+    expect(
+      within(grup).getByText(
+        /Kayıttaki sunucuların hiçbirinde izlenen ürün çalışmıyordu\. Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/,
+      ),
+    ).toBeTruthy();
+    expect(within(grup).getByText('GBBOS01')).toBeTruthy();
+    expect(within(grup).getByText('GBBOS03')).toBeTruthy();
+    expect(screen.queryByText('GBBOS01', { selector: 'summary span' })).toBeNull();
+    expect(screen.queryByText('GBBOS03', { selector: 'summary span' })).toBeNull();
+    r.unmount();
+    // C) tek sunuculu boş kayıt "hepsi boş" uyarısına girmez (tek sunucu ayırt edici değil)
+    AKTIF = kayit(22, 'once_hazir', { GBBOS01: BOS });
+    r = render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#22'));
+    grup = await screen.findByTestId('rc-once-bos-grup');
+    expect((grup as HTMLDetailsElement).open).toBe(false);
+    r.unmount();
+    // D) önce koşarken: grup yok, her sunucunun kendi "alınıyor" kartı var
+    AKTIF = kayit(23, 'once_kosuyor', { GBBOS01: BOS, GBBOS03: BOS });
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#23'));
+    expect(await screen.findByText('GBBOS03', { selector: 'summary span' })).toBeTruthy();
+    expect(screen.queryByTestId('rc-once-bos-grup')).toBeNull();
+    AKTIF = KAYIT;
   });
 });
