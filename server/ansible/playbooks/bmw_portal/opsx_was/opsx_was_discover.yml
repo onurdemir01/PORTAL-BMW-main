@@ -64,6 +64,7 @@
   become_user: was
   ignore_unreachable: true
   vars:
+    opsx_was_sekme: "\t"
     ansible_pipelining: true
     opsx_was_disc_deadline_s: 300
     opsx_was_script: "{{ opsx_was_tmp.path | default('') }}"
@@ -139,7 +140,7 @@
         - name: --- [Task] Sonuc turu ---
           ansible.builtin.set_fact:
             opsx_was_kind: >-
-              {{ 'line' if (((opsx_was_dline | length) > 0) and ((opsx_was_rline.split('\t') | length) >= 6) and (opsx_was_rline.split('\t')[2] in ['OK', 'FAIL', 'OLCULEMEDI']))
+              {{ 'line' if (((opsx_was_dline | length) > 0) and ((opsx_was_rline.split(opsx_was_sekme) | length) >= 6) and (opsx_was_rline.split(opsx_was_sekme)[2] in ['OK', 'FAIL', 'OLCULEMEDI']))
                  else ('ran' if ((opsx_was_run is defined) and (opsx_was_run is not skipped))
                  else ('unreach' if ((opsx_was_me.unreachable | default(false)) or (opsx_was_tmp.unreachable | default(false)) or (opsx_was_copy.unreachable | default(false)) or (opsx_was_stat.unreachable | default(false)))
                  else 'gate')) }}
@@ -167,8 +168,8 @@
           ansible.builtin.set_fact:
             opsx_was_disc_host:
               host: "{{ inventory_hostname }}"
-              overall: "{{ 'ok' if ((opsx_was_kind == 'line') and ((opsx_was_disc_data.overall | default('')) == 'ok') and (opsx_was_rline.split('\t')[2] == 'OK')) else 'olculemedi' }}"
-              reason: "{{ ((opsx_was_disc_data.reason | default('') | string) ~ ((' (' ~ opsx_was_rline.split('\t')[5] ~ ')') if ((opsx_was_rline.split('\t')[2] | default('')) != 'OK') else '')) | trim | truncate(400) if opsx_was_kind == 'line' else opsx_was_fbmsg }}"
+              overall: "{{ 'ok' if ((opsx_was_kind == 'line') and ((opsx_was_disc_data.overall | default('')) == 'ok') and (opsx_was_rline.split(opsx_was_sekme)[2] == 'OK')) else 'olculemedi' }}"
+              reason: "{{ ((opsx_was_disc_data.reason | default('') | string) ~ ((' (' ~ opsx_was_rline.split(opsx_was_sekme)[5] ~ ')') if ((opsx_was_rline.split(opsx_was_sekme)[2] | default('')) != 'OK') else '')) | trim | truncate(400) if opsx_was_kind == 'line' else opsx_was_fbmsg }}"
               profiles: "{{ (opsx_was_disc_data.profiles | default([])) if opsx_was_kind == 'line' else [] }}"
 
       rescue:

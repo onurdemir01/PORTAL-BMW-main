@@ -21,6 +21,14 @@
 //   Bu tuzak LogX'te ZATEN belgelenmisti (logx_ocp_discover_fetch.yml) ve Telnet'te
 //   AYNEN tekrarlandi — bu yuzden artik mekanik olarak yakalaniyor.
 //
+// TUZAK 5 · JINJA DIZGISINDE `'\t'` / `'\n'` — SEKME DEGIL IKI KARAKTER (2026-11-21)
+//   Ansible, Jinja ifadesindeki ters boluyu CIFTLER: cift tirnakli YAML skalerinin DISINDA (blok `>-` / `|`,
+//   duz ya da tek tirnakli skaler) `split('\t')` iki karakterlik `\t` metnine boler. opsx_was'ta her basarili
+//   islem OLCULEMEDI oldu, envanter hic yazilmadi; Ansible'siz Jinja2 ile kosan bekci gormedi (orada sekme
+//   gercekti). Regex baglaminda (`match`, `search`, `regex_*`, `select('match', ...)`) dogru calisir: Python
+//   `re` kaciyi kendisi cozer. Cozum: cift tirnakli degisken (`opsx_was_sekme: "\t"`). Davranis testi:
+//   opsx-was-gercek-kosum.test.js.
+//
 // TUZAK 2 · `no_log` ALTINDA KAYBOLAN SEBEP — uretimde iki kez yasandi (job 3218662,
 //   3218799): login gorevi `no_log: true` oldugu icin hata "censored" gorunuyor, sebep
 //   HICBIR YERDE yazmiyordu. Kural: parola tasiyan gorev AYRI olmali.
@@ -404,4 +412,93 @@ test('TUZAK 4 `default` muafiyeti KOR DEGIL: bir tek ciplak basvuru yeter', () =
   assert.equal(DEFAULTLI(hepsiKorumali, 'yol'), true, 'her basvuru korumali — muafiyet gecerli');
   assert.equal(DEFAULTLI(biriCiplak, 'yol'), false, 'TEK ciplak basvuru muafiyeti DUSURMELI');
   assert.equal(DEFAULTLI(hicYok, 'yol'), false, 'hic basvuru yoksa muafiyet URETILMEZ');
+});
+
+// ── TUZAK 5 ────────────────────────────────────────────────────────────────
+// Satir satir YAML skaler stili (bagimliliksiz): blok skaler (`key: >-` / `key: |`) girintisi bitene dek
+// BLOK; deger `"` ile basliyorsa CIFT TIRNAK (kapanana dek); digerleri duz / tek tirnak. Cift tirnakta YAML
+// `\t`yi gercek sekmeye cevirir, Ansible'a sekme ulasir: guvenli.
+const REGEX_ONCESI =
+  /(?:\b(?:match|search|regex_search|regex_replace|regex_findall)\(\s*|(?:select|reject)\(\s*['"](?:match|search|regex)['"]\s*,\s*)$/;
+const KACISLI_DIZGI =
+  /'(?:[^'\\\n]|\\.)*\\[tnr](?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*\\[tnr](?:[^"\\\n]|\\.)*"/g;
+
+function skalerParcalari(src) {
+  const satirlar = src.split('\n');
+  const parcalar = []; // { stil, satir (1'den), metin }
+  let i = 0;
+  while (i < satirlar.length) {
+    const l = satirlar[i];
+    if (/^\s*#/.test(l)) {
+      i += 1;
+      continue;
+    }
+    const blok = /^(\s*)(?:- )?(?:[^\s:#][^:#]*):\s*[>|][-+0-9]*\s*(?:#.*)?$/.exec(l);
+    if (blok) {
+      const girinti = blok[1].length;
+      const govde = [];
+      let j = i + 1;
+      while (
+        j < satirlar.length &&
+        (satirlar[j].trim() === '' || satirlar[j].search(/\S/) > girinti)
+      ) {
+        govde.push(satirlar[j]);
+        j += 1;
+      }
+      parcalar.push({ stil: 'blok', satir: i + 2, metin: govde.join('\n') });
+      i = j;
+      continue;
+    }
+    const deger = /^\s*(?:- )?(?:(?:[^\s:#'"][^:#]*):\s+)?(.*)$/.exec(l)[1];
+    parcalar.push({ stil: deger.startsWith('"') ? 'cift' : 'duz', satir: i + 1, metin: l });
+    i += 1;
+  }
+  return parcalar;
+}
+
+/** Kaynak -> [{ satir, dizgi }]: cift tirnak DISINDA, Jinja bolgesinde, regex baglami DISINDA kacisli dizgi. */
+function kacisliDizgiler(src) {
+  const out = [];
+  for (const p of skalerParcalari(src)) {
+    if (p.stil === 'cift') continue;
+    for (const b of p.metin.matchAll(/\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/g)) {
+      for (const m of b[0].matchAll(KACISLI_DIZGI)) {
+        if (REGEX_ONCESI.test(b[0].slice(Math.max(0, m.index - 40), m.index))) continue;
+        const satir = p.satir + p.metin.slice(0, b.index + m.index).split('\n').length - 1;
+        out.push({ satir, dizgi: m[0] });
+      }
+    }
+  }
+  return out;
+}
+
+test("TUZAK 5: cift tirnak disinda Jinja dizgisinde '\\t' / '\\n' yok (regex haric)", () => {
+  const ihlal = [];
+  for (const f of FILES)
+    for (const k of kacisliDizgiler(read(f))) ihlal.push(`${baseName(f)}:${k.satir} ${k.dizgi}`);
+  assert.deepEqual(
+    ihlal,
+    [],
+    'sekme / satir sonu cift tirnakli bir degiskende olmali (ornek: x_sekme: "\\t")',
+  );
+});
+
+test('TUZAK 5 bekcisi KOR DEGIL: sentetik ihlalleri yakalar, guvenli bicimleri gecer', () => {
+  const ihlal = (yaml) => kacisliDizgiler(yaml).map((k) => k.satir);
+  // Ihlaller
+  assert.deepEqual(ihlal("x:\n  a: >-\n    {{ s.split('\\t') | length }}\n"), [3]);
+  assert.deepEqual(ihlal("a: |\n  {{ (s | trim).split('\\n')[-1] }}\n"), [2]);
+  assert.deepEqual(ihlal(`a: '{{ s.split("\\t") }}'\n`), [1], 'tek tirnakli YAML');
+  assert.deepEqual(ihlal("a: {{ s ~ '\\t' }}\n"), [1], 'duz skaler');
+  assert.deepEqual(ihlal("a: >-\n  {{ x\n     ~ 'R\\t' }}\n"), [3], 'cok satirli ifade');
+  // Guvenli bicimler
+  assert.deepEqual(ihlal(`a: "{{ s.split('\\t') }}"\n`), [], 'cift tirnak: YAML sekmeye cevirir');
+  assert.deepEqual(ihlal("a: >-\n  {{ l | select('match', '^R\\t') | list }}\n"), [], 'regex');
+  assert.deepEqual(
+    ihlal("a: >-\n  {{ s | regex_replace('[\\r\\n]+', ' ') }}\n"),
+    [],
+    'regex_replace',
+  );
+  assert.deepEqual(ihlal("shell: |\n  printf 'a\\tb\\n'\n"), [], 'Jinja disi kabuk metni');
+  assert.deepEqual(ihlal("# {{ s.split('\\t') }}\n"), [], 'yorum');
 });
