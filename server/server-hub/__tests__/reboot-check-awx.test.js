@@ -18,6 +18,8 @@
 //   RA6  sunucu adi yazimi korunur (kucuk harfli target_hosts: once_hazir, once_hata DEGIL); eslestirme harf duyarsiz
 //   RA7  liste satiri kaynak / awxWorkflowId tasir; Portal kaydinda kaynak null
 //   RA8  rcOnceOf: yalniz JSON, rc_once sozluk, satir dizisi; bozuk / YAML / dizi -> null
+//   RA13 sunucuda sakli once (2026-11-21, Portal'siz + workflow'suz): eslesen once kaydi ve rc_once yoksa once
+//        goruntusu sonra sonucunun once_goruntu satirlarindan kurulur (BOOT'suz alinmaz) ve Portal kuraliyla sonuclanir
 //   RA12 alim durumu (2026-11-21, "job'i calistirdim, sayfaya hicbir sey gelmedi; Yenile calismiyor"): son tarama,
 //        sablon, biten is sayisi, is basina sonuc + neden (Portal'dan baslatilmis, set_stats yok, baska sablon, hata);
 //        sablon yoksa neden; AWX okunamazsa hata; suren tarama varken ikinci cagri AYNI sozu bekler (cift tarama yok);
@@ -819,4 +821,32 @@ test('RA12 alim durumu: neden, hata, tek tarama, uc', async () => {
   o = await cevap({ tara: '1' });
   assert.equal(liste, 1, 'tara=1: 2 dk dolmadan da tarar');
   assert.equal(o.durum.bulunan, 0);
+});
+
+test('RA13 eslesmeyen sonra: rc_once yoksa sunucudaki sakli once (once_goruntu) kullanilir', async () => {
+  const sonra = SONRA_SONUC(['E', 'F']);
+  sonra.sunucular.E.once_kaynak = 'sunucu';
+  sonra.sunucular.E.once_goruntu = BOOT('E');
+  sonra.sunucular.F.once_kaynak = 'sunucu';
+  sonra.sunucular.F.once_goruntu = ['URUN|NGINX||'];
+  sonra.sunucular.F.once_var = false;
+  awxKur({
+    901: { artifacts: { reboot_check_result: sonra }, extraVarsHam: '{"rc_faz":"sonra"}' },
+  });
+  await awx.awxIsleriniAl({ zorla: true });
+  const k = db.satirlar.find((r) => r.sonra_job_id === 901);
+  assert.ok(k, 'kayit acildi');
+  const once = JSON.parse(k.once_json);
+  assert.equal(once.kaynak, 'sunucu');
+  assert.deepEqual(
+    rc.onceGirdisi(once.sunucular),
+    { E: BOOT('E') },
+    "BOOT'suz sakli goruntu alinmaz",
+  );
+  assert.doesNotMatch(k.notes, /bulunamadı/);
+  assert.equal(JSON.parse(k.ozet_json).once.job, 'sunucu');
+  assert.deepEqual(
+    awx.sakliOnceOf({ X: { once_goruntu: ['URUN|A||'] }, 'kotu ad': { once_goruntu: BOOT('x') } }),
+    null,
+  );
 });

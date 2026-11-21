@@ -17,6 +17,11 @@
 //                      Sonra durum sonra_kosuyor yazilir; ilerlet() sonucu okur (Portal kaydiyla AYNI kod yolu).
 //   * Alinan "once" kaydindan Portal'da "Reboot sonrasi kontrol et ve duzelt" de calisir (iki yol birlikte).
 //
+// SUNUCUDA SAKLI ONCE (2026-11-21, kullanici: "Portal'siz ve workflow'suz once / sonra ... rapor Portal'a gelip
+// sanki Portal'dan tetiklenmis gibi incelensin"): playbook once fazinda goruntuyu sunucuya da yazar, rc_once'suz
+// sonra fazi onu okur ve sonucuna once_goruntu olarak koyar. Tek basina sonra isi once eslesen AWX once kaydina
+// baglanir; eslesme yoksa once goruntusu rc_once'tan, o da yoksa sonucun once_goruntu satirlarindan kurulur.
+//
 // Ayni is iki kez alinmaz: ekleme / baglama kosulu UPDLOCK + HOLDLOCK ile ayni is numarasini arar (iki Portal
 // sureci). Alinmayacagi kesinlesen is _bakildi'da tutulur (her turda AWX'ten yeniden okunmasin). AWX okunamazsa
 // hicbir sey yazilmaz; sonraki tur yeniden dener (OKUNAMADI != BASARISIZ).
@@ -136,6 +141,21 @@ function rcOnceOf(ham) {
   const out = {};
   for (const [h, satirlar] of Object.entries(v)) {
     if (HOST_RE.test(h) && Array.isArray(satirlar)) out[h] = satirlar.map((l) => String(l));
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Sonra sonucunun sunucuda sakli once goruntusu (playbook once_goruntu, once_kaynak 'sunucu') -> { SUNUCU: satirlar }
+ * ya da null. Yalniz BOOT satiri olan (Portal goruntuTamam kurali) sunucu alinir.
+ */
+function sakliOnceOf(sunucular) {
+  const out = {};
+  for (const [h, r] of Object.entries(
+    sunucular && typeof sunucular === 'object' ? sunucular : {},
+  )) {
+    const g = r && Array.isArray(r.once_goruntu) ? r.once_goruntu.map((l) => String(l)) : [];
+    if (HOST_RE.test(h) && g.some((l) => l.startsWith('BOOT|'))) out[h] = g;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -323,11 +343,12 @@ async function isiAl(s, jobId) {
       if (r.rows && r.rows[0] && Number(r.rows[0].n) === 1) id = es.id;
     }
     if (id == null) {
-      const rcOnce = rcOnceOf(st.extraVarsHam);
+      const rcOnceEv = rcOnceOf(st.extraVarsHam);
+      const rcOnce = rcOnceEv || sakliOnceOf(sonuc.sunucular);
       const onceJson = rcOnce
         ? JSON.stringify({
             faz: 'once',
-            kaynak: 'rc_once',
+            kaynak: rcOnceEv ? 'rc_once' : 'sunucu',
             sunucular: Object.fromEntries(
               Object.entries(rcOnce).map(([h, g]) => [h, { goruntu_ok: true, goruntu: g }]),
             ),
@@ -338,7 +359,7 @@ async function isiAl(s, jobId) {
         once: {
           alinan: Object.keys(rcOnce || {}).length,
           toplam: hostlar.length,
-          job: rcOnce ? 'rc_once' : 'yok',
+          job: rcOnceEv ? 'rc_once' : rcOnce ? 'sunucu' : 'yok',
           once_bos: [],
         },
       };
@@ -497,6 +518,7 @@ module.exports = {
   sablonBul,
   hostlarOf,
   rcOnceOf,
+  sakliOnceOf,
   eslesenKayit,
   portalIsiMi,
   isiAl,
