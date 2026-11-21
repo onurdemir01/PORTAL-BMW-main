@@ -39,10 +39,13 @@ const kumeler = (v) =>
     .map((c) => String(c).trim().toLowerCase())
     .filter((c) => KUME.test(c));
 
-let _onbellek = { anahtar: null, platform: {}, ortam: {}, ters: new Map() };
+// Onbellek ayar nesnesinin KIMLIGINE bagli (kurumAyari dosya degisince yeni nesne verir): WeakMap,
+// eski ayar nesnesi birakilinca girdisi de gider.
+const _onbellek = new WeakMap();
 function ocpAyari() {
   const { veri } = kurumAyari();
-  if (_onbellek.anahtar === veri) return _onbellek;
+  const hazir = _onbellek.get(veri);
+  if (hazir) return hazir;
   const ocp = veri?.ocp && typeof veri.ocp === 'object' ? veri.ocp : {};
   const platform = {};
   for (const [p, liste] of Object.entries(ocp.platformKumeleri || {})) platform[p] = kumeler(liste);
@@ -55,8 +58,9 @@ function ocpAyari() {
   // cluster -> platform (ters indeks)
   const ters = new Map();
   for (const [p, liste] of Object.entries(platform)) for (const c of liste) ters.set(c, p);
-  _onbellek = { anahtar: veri, platform, ortam, ters };
-  return _onbellek;
+  const sonuc = { platform, ortam, ters };
+  _onbellek.set(veri, sonuc);
+  return sonuc;
 }
 
 /** @returns {Record<string, string[]>} platform -> cluster listesi */

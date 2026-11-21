@@ -20,6 +20,7 @@ const KURUM_JS = {
   'sonarjs/no-invariant-returns': 'error', // S3516
   'sonarjs/no-unused-collection': 'error', // S4030
   'sonarjs/no-unused-vars': 'error', // S1481
+  'sonarjs/no-extra-arguments': 'error', // S930 (bug; Sonar way, K13 #318'de yakaladi)
   'prefer-object-has-own': 'error', // S6653
   'prefer-promise-reject-errors': 'error', // S6671
   'no-unneeded-ternary': 'error', // S6644
@@ -35,6 +36,7 @@ const KURUM_JS_TIPLI = {
 };
 const KURUM_TS = {
   'sonarjs/no-unenclosed-multiline-block': 'error', // S2681
+  'sonarjs/no-extra-arguments': 'error', // S930
   'sonarjs/no-misleading-array-reverse': 'error', // S4043
   'sonarjs/no-inverted-boolean-check': 'error', // S1940
   'sonarjs/no-alphabetical-sort': 'error', // S2871 (bug)

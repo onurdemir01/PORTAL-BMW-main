@@ -67,7 +67,7 @@ function fetchNobetList() {
     // Nobet servisinin taban adresi ORTAM AYARINDA (NOBETCI_API_TABAN; kurum adresi koda yazilmaz, K17).
     const taban = String(process.env.NOBETCI_API_TABAN || '')
       .trim()
-      .replace(/\/+$/, '');
+      .replace(/(?<!\/)\/+$/, ''); // dogrusal: egik cizgi dizisi bastan bir kez tutulur (S8786)
 
     // T59: URL'i teamId/teamType env'dan olustur
     const apiUrl = teamId

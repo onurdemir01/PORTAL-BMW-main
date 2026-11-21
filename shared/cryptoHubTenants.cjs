@@ -105,14 +105,14 @@ const ALTYAPI_ALANLARI = Object.freeze([
   'resValuesPath',
   'valuesDosyasi',
 ]);
-/** @type {(key: string) => ({ bastion?: string, cluster?: string, apiUrl?: string, resValuesPath?: string, valuesDosyasi?: string } | null)} */
-let altyapiCozucu = () => null;
+/** @type {((key: string) => ({ bastion?: string, cluster?: string, apiUrl?: string, resValuesPath?: string, valuesDosyasi?: string } | null)) | null} */
+let altyapiCozucu = null;
 /** Sunucu tarafi kurum ayari okuyucusunu baglar: (key) => {bastion, cluster, apiUrl} | null. */
 function altyapiCozucuBagla(fn) {
   if (typeof fn === 'function') altyapiCozucu = fn;
 }
 function altyapi(key) {
-  const k = altyapiCozucu(key);
+  const k = altyapiCozucu ? altyapiCozucu(key) : null;
   return k && typeof k === 'object' ? k : {};
 }
 function kiraci(tanim) {
