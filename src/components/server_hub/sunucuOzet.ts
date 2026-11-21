@@ -44,7 +44,8 @@ export const autostartUyumsuz = (
 ) =>
   !yalnizEnvanterMi(j) &&
   j.runningKnown !== false &&
-  ((j.running && j.autoStart === 'false') || (!j.running && j.autoStart === 'true' && j.domainKapali !== true));
+  ((j.running && j.autoStart === 'false') ||
+    (!j.running && j.autoStart === 'true' && j.domainKapali !== true));
 
 export function ozetKartlari(d: ShHostDetail, etiketler: ShRetireEtiketHer[] | null): OzetKarti[] {
   const kritik = d.findings.filter((f) => f.severity === 'danger').length;

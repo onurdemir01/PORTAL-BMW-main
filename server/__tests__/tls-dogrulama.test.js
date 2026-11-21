@@ -18,6 +18,8 @@
 //   TD12 MCP guvensiz kipi hesaplanir (kaynakta sabit false yok) ve kurumsal CA varken yok sayilir
 'use strict';
 
+const { esnek } = require('./fixtures/kod-deseni.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -375,7 +377,9 @@ test('TD7 sunucuAdi: IP`ye baglanip gercek ada gore dogrular; yanlis ad reddedil
   const src = fs.readFileSync(path.join(ROOT, 'server/nobetci/index.cjs'), 'utf8');
   assert.match(
     src,
-    /tlsSecenekleri\("nobetci", parsed, \{ sunucuAdi: hostOverride \? parsed\.hostname : undefined \}\)/,
+    esnek(
+      /tlsSecenekleri\("nobetci", parsed, \{ sunucuAdi: hostOverride \? parsed\.hostname : undefined \}\)/,
+    ),
   );
 });
 

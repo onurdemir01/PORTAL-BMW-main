@@ -242,15 +242,13 @@ async function eslesenKayit(s, st, hedef, jobId) {
       let alinan = null;
       try {
         const o = JSON.parse(r.once_json || 'null');
-        alinan =
-          o && o.sunucular
-            ? buyuk(Object.keys(o.sunucular).filter((h) => (o.sunucular[h] || {}).goruntu_ok))
-            : null;
+        alinan = o?.sunucular
+          ? buyuk(Object.keys(o.sunucular).filter((h) => o.sunucular[h]?.goruntu_ok))
+          : null;
       } catch {
         alinan = null;
       }
-      if (!alinan || alinan.size !== rcK.size || ![...rcK].every((h) => alinan.has(h)))
-        return false;
+      if (alinan?.size !== rcK.size || ![...rcK].every((h) => alinan.has(h))) return false;
     }
     return true;
   };
@@ -268,7 +266,7 @@ async function portalIsiMi(s, jobId) {
       `SELECT TOP 1 1 AS var FROM ansible_job_history WHERE job_id = $1 AND (awx_server_id = $2 OR ($2 = 0 AND awx_server_id IS NULL))`,
       [Number(jobId), s.serverId],
     );
-    return !!(rows && rows.length);
+    return !!rows?.length;
   } catch {
     // Okunamadiysa ALINMAZ (yanlis "AWX" kaydi acmaktan iyidir); sonraki turda yeniden denenir.
     return null;
@@ -277,10 +275,9 @@ async function portalIsiMi(s, jobId) {
 
 /** "AWX'ten alindi" notu: kim baslatti, hangi workflow, hangi is (ekranda ve raporda gorunur). */
 function notMetni(st, jobId) {
-  return M(
-    `AWX'ten alındı: iş #${jobId}${st.workflowJobId ? `, workflow #${st.workflowJobId}` : ''}${st.launchedBy ? `, başlatan ${st.launchedBy}` : ''}`,
-    500,
-  );
+  const workflow = st.workflowJobId ? ', workflow #' + st.workflowJobId : '';
+  const baslatan = st.launchedBy ? ', başlatan ' + st.launchedBy : '';
+  return M(`AWX'ten alındı: iş #${jobId}${workflow}${baslatan}`, 500);
 }
 
 /**
@@ -294,7 +291,7 @@ async function isiAl(s, jobId) {
       WHERE (once_server_id = $1 AND once_job_id = $2) OR (sonra_server_id = $1 AND sonra_job_id = $2)`,
     [s.serverId, jobId],
   );
-  if (bilinen.rows && bilinen.rows.length) {
+  if (bilinen.rows?.length) {
     _bakildi.add(anahtar);
     return { atlandi: 'portal_bilinen' };
   }
@@ -312,7 +309,7 @@ async function isiAl(s, jobId) {
   }
   const { extractStatsKey } = require('../opsx/index.cjs');
   const sonuc = st.artifacts ? extractStatsKey(st.artifacts, STATS_ANAHTARI) : null;
-  const faz = String((sonuc && sonuc.faz) || '').toLowerCase();
+  const faz = String(sonuc?.faz || '').toLowerCase();
   if (!sonuc || typeof sonuc !== 'object' || !['once', 'sonra'].includes(faz)) {
     _bakildi.add(anahtar);
     return { atlandi: 'set_stats_yok' };
@@ -331,7 +328,7 @@ async function isiAl(s, jobId) {
       [JSON.stringify(hedef), notMetni(st, jobId), baslatan, Number(jobId), s.serverId, wf],
       { tekrar: false },
     );
-    id = r.rows && r.rows[0] ? r.rows[0].id : null;
+    id = r.rows?.[0] ? r.rows[0].id : null;
   } else {
     const es = await eslesenKayit(s, st, hedef, jobId);
     if (es) {
@@ -340,7 +337,7 @@ async function isiAl(s, jobId) {
         [Number(jobId), s.serverId, JSON.stringify(hedef), es.id],
         { tekrar: false },
       );
-      if (r.rows && r.rows[0] && Number(r.rows[0].n) === 1) id = es.id;
+      if (r.rows?.[0] && Number(r.rows[0].n) === 1) id = es.id;
     }
     if (id == null) {
       const rcOnceEv = rcOnceOf(st.extraVarsHam);
@@ -355,11 +352,14 @@ async function isiAl(s, jobId) {
           })
         : null;
       const hostlar = [...new Set([...hedef, ...Object.keys(rcOnce || {})])].sort(varsayilanSira);
+      let onceKaynagi = 'yok';
+      if (rcOnceEv) onceKaynagi = 'rc_once';
+      else if (rcOnce) onceKaynagi = 'sunucu';
       const ozet = {
         once: {
           alinan: Object.keys(rcOnce || {}).length,
           toplam: hostlar.length,
-          job: rcOnceEv ? 'rc_once' : rcOnce ? 'sunucu' : 'yok',
+          job: onceKaynagi,
           once_bos: [],
         },
       };
@@ -378,7 +378,7 @@ async function isiAl(s, jobId) {
         ],
         { tekrar: false },
       );
-      id = r.rows && r.rows[0] ? r.rows[0].id : null;
+      id = r.rows?.[0] ? r.rows[0].id : null;
     }
   }
   _bakildi.add(anahtar);
@@ -390,7 +390,7 @@ async function isiAl(s, jobId) {
   } catch (e) {
     console.warn(
       `[RebootCheck] AWX isi ${jobId} (kayit ${id}) sonucu okunamadi, sonraki okumada:`,
-      maskele(e && e.message),
+      maskele(e?.message),
     );
   }
   console.log(
@@ -434,7 +434,7 @@ async function tara(simdi) {
   try {
     s = await sablonBul();
   } catch (e) {
-    _durum.hata = maskele(e && e.message) || 'Playbook Kayıtları okunamadı';
+    _durum.hata = maskele(e?.message) || 'Playbook Kayıtları okunamadı';
     throw e;
   }
   // AWX sunucusunun adi da yazilir: is BASKA bir AWX'te (or. Maestro3) kosturulduysa Portal onu hic gormez;
@@ -442,7 +442,7 @@ async function tara(simdi) {
   let sunucuAdi = null;
   if (s) {
     try {
-      sunucuAdi = (runner().getServerById(s.serverId) || {}).name || null;
+      sunucuAdi = runner().getServerById(s.serverId)?.name || null;
     } catch {
       sunucuAdi = null;
     }
@@ -459,7 +459,7 @@ async function tara(simdi) {
       pageSize: SAYFA,
     });
   } catch (e) {
-    _durum.hata = maskele(e && e.message) || 'AWX okunamadı';
+    _durum.hata = maskele(e?.message) || 'AWX okunamadı';
     throw e;
   }
   _durum.bulunan = isler.length;
@@ -480,7 +480,7 @@ async function tara(simdi) {
           : { sonuc: 'atlandi', neden: r.atlandi || null, awxDurum: j.status || null },
       );
     } catch (e) {
-      const mesaj = maskele(e && e.message);
+      const mesaj = maskele(e?.message);
       isKaydet(j.id, {
         sonuc: 'hata',
         neden: 'hata',
@@ -499,7 +499,7 @@ function startPoller() {
     if (_ticking) return;
     _ticking = true;
     awxIsleriniAl()
-      .catch((e) => console.warn('[RebootCheck] AWX isleri:', maskele(e && e.message)))
+      .catch((e) => console.warn('[RebootCheck] AWX isleri:', maskele(e?.message)))
       .finally(() => {
         _ticking = false;
       });

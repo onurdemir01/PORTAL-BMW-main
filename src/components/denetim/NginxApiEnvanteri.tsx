@@ -32,7 +32,6 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
-
 type View = 'ortam' | 'sunucu' | 'konfig' | 'apibazli' | 'internet';
 
 export function NginxApiEnvanteri() {
@@ -112,8 +111,7 @@ export function NginxApiEnvanteri() {
     });
   }, [data, q, onlyProblem]);
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -340,7 +338,13 @@ export function NginxApiEnvanteri() {
               {data.byHost.map((r) => (
                 <tr key={r.host}>
                   <Td className="font-mono">{r.host}</Td>
-                  <Td title={(r.serverNames || []).length ? `server_name: ${r.serverNames.join(', ')}` : 'nginx_audit (nginx -T) verisi yok — servis vhost dosyasından okunur'}>
+                  <Td
+                    title={
+                      (r.serverNames || []).length
+                        ? `server_name: ${r.serverNames.join(', ')}`
+                        : 'nginx_audit (nginx -T) verisi yok — servis vhost dosyasından okunur'
+                    }
+                  >
                     {(r.services || []).length ? (
                       <span className="inline-flex flex-wrap gap-1">
                         {r.services.map((sv) => {
@@ -350,7 +354,11 @@ export function NginxApiEnvanteri() {
                               key={sv}
                               className="px-1.5 py-0.5 rounded border text-[10px] font-mono"
                               title={elle ? 'Elle etiket (Nginx Hub › Envanter)' : undefined}
-                              style={{ borderColor: elle ? 'var(--accent-light)' : 'var(--border-subtle)', background: elle ? 'var(--accent-bg)' : 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                              style={{
+                                borderColor: elle ? 'var(--accent-light)' : 'var(--border-subtle)',
+                                background: elle ? 'var(--accent-bg)' : 'var(--bg-elevated)',
+                                color: 'var(--text-primary)',
+                              }}
                             >
                               {sv}
                             </span>

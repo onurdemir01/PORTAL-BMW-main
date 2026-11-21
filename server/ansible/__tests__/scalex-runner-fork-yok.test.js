@@ -15,6 +15,7 @@
 //   N5  tekil cekimler AYNI ANDA (iz ic ice)
 //   N6  durum birlestirme `awk`i duserse durum bilgisi KAYBOLMAZ
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -51,7 +52,7 @@ test('N1a disc_emit_kind satir dongusunde alt kabuk/boru yok', () => {
     .split('\n')
     .filter((l) => !/^\s*#/.test(l))
     .join('\n');
-  assert.doesNotMatch(dongu, /\$\((?!\()/, 'dongude $( ... ) var');
+  assert.doesNotMatch(dongu, esnek(/\$\((?!\()/), 'dongude $( ... ) var');
   assert.doesNotMatch(dongu, /`/, 'dongude ters tirnak var');
   // Dongunun cagirdigi yardimcilar da surec acmamali.
   for (const f of [
@@ -67,7 +68,11 @@ test('N1a disc_emit_kind satir dongusunde alt kabuk/boru yok', () => {
       .split('\n')
       .filter((l) => !/^\s*#/.test(l))
       .join('\n');
-    assert.doesNotMatch(fg, /\$\((?!\()|`|\|\s*(tr|sed|cut|grep|awk)\b/, `${f} surec aciyor`);
+    assert.doesNotMatch(
+      fg,
+      esnek(/\$\((?!\()|`|\|\s*(tr|sed|cut|grep|awk)\b/),
+      `${f} surec aciyor`,
+    );
   }
 });
 

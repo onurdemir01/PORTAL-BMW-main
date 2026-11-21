@@ -50,9 +50,13 @@ function satiriCevir(r) {
     clusterName: r.cluster_name,
     // `null` (hic taranmadi) ile `''` (tarandi, bos) AYRI. `String.split` bos
     // string'te `['']` dondurdugu icin acikca ayirmak SART.
-    kinds: kindsCsv === null || kindsCsv === undefined
-      ? null
-      : String(kindsCsv).split(',').map((k) => k.trim()).filter(Boolean),
+    kinds:
+      kindsCsv === null || kindsCsv === undefined
+        ? null
+        : String(kindsCsv)
+            .split(',')
+            .map((k) => k.trim())
+            .filter(Boolean),
     rbac: (() => {
       if (!r.rbac_json) return null;
       try {
@@ -171,9 +175,21 @@ async function kindsPerCluster({ env, tenant, clusterNames }) {
  * kalir: "okunamadi" bilgisi ekranda gorunmeli, ama o satir kesfi
  * hizlandirmak icin KULLANILMAMALI.
  */
-async function save({ env, tenant, clusterName, kinds, rbac, resourcesReadable, scannedBy, awxJobId }) {
+async function save({
+  env,
+  tenant,
+  clusterName,
+  kinds,
+  rbac,
+  resourcesReadable,
+  scannedBy,
+  awxJobId,
+}) {
   const okunabilir = resourcesReadable !== false;
-  const kindsCsv = (() => { if (okunabilir) return (Array.isArray(kinds) ? kinds : []).slice(0, MAX_KINDS).join(','); return null; })();
+  const kindsCsv = (() => {
+    if (okunabilir) return (Array.isArray(kinds) ? kinds : []).slice(0, MAX_KINDS).join(',');
+    return null;
+  })();
   const params = [
     String(env),
     String(tenant),

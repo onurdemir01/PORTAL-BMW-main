@@ -58,7 +58,7 @@ Hepsi `origin/main` 6312fb81 (4 Kasım 2026) üzerinde ölçüldü.
 | Tarayıcı taraması   | 136 ölçüm                                                                                    | `docs/UI-TARAMA.md`                                                                  |
 | Mutasyon turu       | 253 commit mesajında                                                                         | `git log -i --grep mutasyon`                                                         |
 | Onay katmanı        | 5 modül × 4 kapı                                                                             | `server/ansible/change-gates.cjs`, `smart-gate.cjs`, `server/opsx/prod-approval.cjs` |
-| ScaleX              | 59 Ansible görevi (varsayılan yürütme yolu)                                                  | `server/ansible/bmw_portal/scalex/scalex_app/`                                       |
+| ScaleX              | 59 Ansible görevi (varsayılan yürütme yolu)                                                  | `server/ansible/playbooks/bmw_portal/scalex/scalex_app/`                                       |
 | Yük Testi           | 5000 istek/sn üst sınır, en çok 16 koşu karşılaştırma, k6 + wrk, 318 test                    | `server/nginx-loadtest/dogrula.cjs`, `coklu.cjs`                                     |
 | Uygulama sahibi     | CMDB → ARK → namespace, 5 ekranda kaynağıyla                                                 | commit e75d43ba                                                                      |
 | Admin › Sistem      | 87 ayar, 22'si anında geçerli, 17 grup                                                       | `server/db/env-overrides.cjs`, `src/components/admin/tabs/sistem/gruplar.ts`         |

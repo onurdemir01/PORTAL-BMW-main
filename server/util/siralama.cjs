@@ -18,4 +18,15 @@ function varsayilanSira(a, b) {
   return x > y ? 1 : 0;
 }
 
-module.exports = { varsayilanSira };
+/**
+ * `<` / `>` ile karsilastirir; String()'e CEVIRMEZ (metinde varsayilanSira ile ayni, sayida sayisal).
+ * Ikisi de dogru degilse (esit ya da karsilastirilamaz: NaN, undefined) 0: zincirde (`a || b`) sonraki
+ * olcute gecilir.
+ */
+function kucukBuyuk(a, b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+module.exports = { varsayilanSira, kucukBuyuk };

@@ -31,7 +31,11 @@ test('DS1 daraltilmis kesif katalogu BESLEMEZ (49 uygulamayi silmez)', () => {
   // Kullanici 1 uygulama sectiyse kesif yalnizca onu dondurur; bunu katalog
   // yazimi saymak kalan 49'u SILERDI. Kosul bu yuzden `kapsam.full`.
   const g = norm(blok('const kapsam = DISCOVERY_SCOPE_CACHE.get', 'finished: !!status.finished'));
-  assert.match(g, /kapsam && kapsam\.full/, 'katalog yazimi `full` kosuluna bagli DEGIL');
+  assert.match(
+    g,
+    /kapsam && kapsam\.full|kapsam\?\.full/,
+    'katalog yazimi `full` kosuluna bagli DEGIL',
+  );
   assert.match(g, /ocpCache\.putApps/, 'katalog hic beslenmiyor');
   // Kosul `putApps` cagrisindan ONCE olmali; sonra olsaydi hic ates almazdi.
   assert.ok(

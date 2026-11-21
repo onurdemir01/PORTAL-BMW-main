@@ -62,14 +62,22 @@ export function BagsizKullanim({
   if (!k || !d)
     return (
       <span className="ml-2" data-testid="bagsiz-kullanim">
-        <DurumRozeti metin="kullanım ölçülmedi" ton="uyari" title="Eski tarayıcı: dizin kullanımı ölçülmedi" />
+        <DurumRozeti
+          metin="kullanım ölçülmedi"
+          ton="uyari"
+          title="Eski tarayıcı: dizin kullanımı ölçülmedi"
+        />
       </span>
     );
   return (
     <span className="ml-2" data-testid="bagsiz-kullanim">
       <DurumRozeti metin={d.etiket} ton={d.ton === 'bilgi' ? 'notr' : d.ton} title={d.aciklama} />
-      {k.surecler.length > 0 && <span className="ml-2">{k.surecler.slice(0, 3).map(surecMetni).join(', ')}</span>}
-      {k.son_yazma != null && <span className="ml-2">son yazma {fmtDateTime(k.son_yazma * 1000)}</span>}
+      {k.surecler.length > 0 && (
+        <span className="ml-2">{k.surecler.slice(0, 3).map(surecMetni).join(', ')}</span>
+      )}
+      {k.son_yazma != null && (
+        <span className="ml-2">son yazma {fmtDateTime(k.son_yazma * 1000)}</span>
+      )}
     </span>
   );
 }
@@ -183,7 +191,8 @@ export default function SunucuPaneli({
   const kodGoster = useKodGorunur();
   const kodAdi = useKodAdi();
   // Dogrulama adimi basligi: bulgu kodu ya da "R1 · ad"; kodlar kapaliyken okunur ad.
-  const adimBasligi = (b: string) => (kodGoster ? b : /^R\d+ · /.test(b) ? b.replace(/^R\d+ · /, '') : kodAdi(b));
+  const adimBasligi = (b: string) =>
+    kodGoster ? b : /^R\d+ · /.test(b) ? b.replace(/^R\d+ · /, '') : kodAdi(b);
   const [yuklenen, setD] = useState<ShHostDetail | null>(null);
   const [hata, setHata] = useState('');
   const [tazele, setTazele] = useState(0);
@@ -247,7 +256,12 @@ export default function SunucuPaneli({
   return (
     <div className="space-y-2" data-testid="sunucu-paneli">
       {/* OZET KARTLARI: her kart kendi bolumunu acar ve oraya kaydirir. */}
-      <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label="Özet" data-testid="ozet-kartlari">
+      <div
+        className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+        role="group"
+        aria-label="Özet"
+        data-testid="ozet-kartlari"
+      >
         {kartlarOzet.map((k) => (
           <button
             key={k.id}
@@ -280,12 +294,22 @@ export default function SunucuPaneli({
               </button>
             )}
             {adimlar.length > 0 && (
-              <button type="button" className={BTN} style={btnStil()} onClick={() => bolumeGit('dogrulama')}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                onClick={() => bolumeGit('dogrulama')}
+              >
                 Elle kontrol et ({fmtNumber(adimlar.length)} adım)
               </button>
             )}
             {etiketler.length > 0 && (
-              <button type="button" className={BTN} style={btnStil()} onClick={() => bolumeGit('etiketler')}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                onClick={() => bolumeGit('etiketler')}
+              >
                 Retirement etiketleri ({fmtNumber(etiketler.length)})
               </button>
             )}
@@ -364,7 +388,11 @@ export default function SunucuPaneli({
         })}
       </Bolum>
 
-      <Bolum baslik={`Uygulamalar (${jvmSayisiMetni(kartlar.map((k) => k.jvm))})`} {...bolumProps('uygulamalar')} testId="bolum-uygulamalar">
+      <Bolum
+        baslik={`Uygulamalar (${jvmSayisiMetni(kartlar.map((k) => k.jvm))})`}
+        {...bolumProps('uygulamalar')}
+        testId="bolum-uygulamalar"
+      >
         <div style={{ color: 'var(--text-muted)' }}>
           kaynak: JVM ve web — {kaynak}; EAR —{' '}
           {d.ear?.taranma
@@ -382,62 +410,72 @@ export default function SunucuPaneli({
             {/* ILK SATIR: rozetler (JVM · EAR · web · trafik); ayrinti tiklayinca. */}
             <div className="flex flex-wrap items-center gap-1.5">
               <b className="font-mono text-[11px] mr-1">{j.name}</b>
-              <span style={{ color: 'var(--text-muted)' }} data-testid="jvm-nesil">{jvmNesilEtiketi(j)}</span>
+              <span style={{ color: 'var(--text-muted)' }} data-testid="jvm-nesil">
+                {jvmNesilEtiketi(j)}
+              </span>
               {zincirRozetleri(d, j, earlar.length, katman).map((r) => (
                 <DurumRozeti key={r.metin} {...r} />
               ))}
               {j.tier && <span style={{ color: 'var(--text-muted)' }}>tier {j.tier}</span>}
             </div>
             <details>
-              <summary className="cursor-pointer text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              <summary
+                className="cursor-pointer text-[11px]"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 ayrıntı: EAR, deployment, web
               </summary>
               <div className="mt-1 space-y-1">
-            <div>
-              <span style={{ color: 'var(--text-muted)' }}>EAR: </span>
-              {earlar.length === 0
-                ? d.ear?.durum === 'VAR'
-                  ? 'domain.xml / host.xml bu JVM’e EAR bağlamıyor'
-                  : 'Uygulama Envanteri verisi yok'
-                : earlar
-                    .map((u) => `${u.kok}/${u.ad} (${u.warSayisi ?? '?'} WAR, ${u.durum})`)
-                    .join(' · ')}
-            </div>
-            {(() => {
-              const dm = deploymentMetni(d, j);
-              const renk = {
-                kotu: 'var(--status-danger-text)',
-                uyari: 'var(--status-warning-text)',
-                notr: 'var(--text-muted)',
-                bilgi: 'var(--text-primary)',
-              }[dm.ton];
-              return (
-                <div data-testid="deployment-satiri">
-                  <span style={{ color: 'var(--text-muted)' }}>Deployment (JBoss CLI): </span>
-                  <span style={{ color: renk }}>{dm.metin}</span>
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>EAR: </span>
+                  {earlar.length === 0
+                    ? d.ear?.durum === 'VAR'
+                      ? 'domain.xml / host.xml bu JVM’e EAR bağlamıyor'
+                      : 'Uygulama Envanteri verisi yok'
+                    : earlar
+                        .map((u) => `${u.kok}/${u.ad} (${u.warSayisi ?? '?'} WAR, ${u.durum})`)
+                        .join(' · ')}
                 </div>
-              );
-            })()}
-            <div>
-              <span style={{ color: 'var(--text-muted)' }}>
-                Web (
-                {katman === 'ayni-sunucu'
-                  ? 'aynı sunucu'
-                  : katman === 'ayri-web'
-                    ? 'ayrı web sunucusu'
-                    : 'eşlenemedi'}
-                ):{' '}
-              </span>
-              {(j.vhosts || []).length === 0
-                ? 'web katmanında eşleşen vhost yok — trafik bilinmiyor'
-                : (j.vhosts || []).map((v) => (
-                    <span key={`${v.host}|${v.serverName}`} className="font-mono text-[11px] mr-3">
-                      {v.host === d.host ? '' : `${v.host}/`}
-                      {v.serverName || '?'} → <b>{v.trafficState || '?'}</b>
-                      {v.req7d != null && v.req7d >= 0 ? ` (${fmtNumber(v.req7d)} / 7 gün)` : ''}
-                    </span>
-                  ))}
-            </div>
+                {(() => {
+                  const dm = deploymentMetni(d, j);
+                  const renk = {
+                    kotu: 'var(--status-danger-text)',
+                    uyari: 'var(--status-warning-text)',
+                    notr: 'var(--text-muted)',
+                    bilgi: 'var(--text-primary)',
+                  }[dm.ton];
+                  return (
+                    <div data-testid="deployment-satiri">
+                      <span style={{ color: 'var(--text-muted)' }}>Deployment (JBoss CLI): </span>
+                      <span style={{ color: renk }}>{dm.metin}</span>
+                    </div>
+                  );
+                })()}
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Web (
+                    {katman === 'ayni-sunucu'
+                      ? 'aynı sunucu'
+                      : katman === 'ayri-web'
+                        ? 'ayrı web sunucusu'
+                        : 'eşlenemedi'}
+                    ):{' '}
+                  </span>
+                  {(j.vhosts || []).length === 0
+                    ? 'web katmanında eşleşen vhost yok — trafik bilinmiyor'
+                    : (j.vhosts || []).map((v) => (
+                        <span
+                          key={`${v.host}|${v.serverName}`}
+                          className="font-mono text-[11px] mr-3"
+                        >
+                          {v.host === d.host ? '' : `${v.host}/`}
+                          {v.serverName || '?'} → <b>{v.trafficState || '?'}</b>
+                          {v.req7d != null && v.req7d >= 0
+                            ? ` (${fmtNumber(v.req7d)} / 7 gün)`
+                            : ''}
+                        </span>
+                      ))}
+                </div>
               </div>
             </details>
           </div>
@@ -466,7 +504,11 @@ export default function SunucuPaneli({
         )}
       </Bolum>
 
-      <Bolum baslik={`Bulgular (${bulgular.length})`} {...bolumProps('bulgular')} testId="bolum-bulgular">
+      <Bolum
+        baslik={`Bulgular (${bulgular.length})`}
+        {...bolumProps('bulgular')}
+        testId="bolum-bulgular"
+      >
         {bulgular.length === 0 && <div>Bulgu yok.</div>}
         {bulgular.map((f, i) => (
           <details
@@ -497,7 +539,11 @@ export default function SunucuPaneli({
         ))}
       </Bolum>
 
-      <Bolum baslik={`Retirement etiketleri (${etiketler.length})`} {...bolumProps('etiketler')} testId="bolum-etiketler">
+      <Bolum
+        baslik={`Retirement etiketleri (${etiketler.length})`}
+        {...bolumProps('etiketler')}
+        testId="bolum-etiketler"
+      >
         {!retire && <div style={{ color: 'var(--text-muted)' }}>Etiketler yükleniyor…</div>}
         {retire && etiketler.length === 0 && <div>Bu sunucuda retirement etiketi yok.</div>}
         {etiketler.map((e) => (
@@ -511,7 +557,11 @@ export default function SunucuPaneli({
         ))}
       </Bolum>
 
-      <Bolum baslik={`Doğrulama adımları (${adimlar.length})`} {...bolumProps('dogrulama')} testId="bolum-dogrulama">
+      <Bolum
+        baslik={`Doğrulama adımları (${adimlar.length})`}
+        {...bolumProps('dogrulama')}
+        testId="bolum-dogrulama"
+      >
         {adimlar.length === 0 && <div>Elle kontrol gerektiren bulgu yok.</div>}
         {adimlar.map((a) => (
           <div key={a.baslik} className="space-y-1">

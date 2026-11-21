@@ -38,17 +38,19 @@ export default function NginxAccessTab() {
       emptyText="Henüz kimseye açılmamış — Nginx Hub'ı yalnız yöneticiler görüyor."
       intro={
         <>
-          Nginx Hub <b>yalnız yöneticilere</b> açıktır ve sekmeleri de <b>varsayılan olarak kapalıdır</b>.
-          Buradan bir <b>kullanıcıya</b> ya da bir <b>LDAP (AD) grubuna</b> sayfayı ve <b>seçtiğiniz sekmeleri</b> açarsınız;
-          seçilmeyen sekme hem menüde görünmez hem de verisi sunucu tarafında kapalıdır (403).
-          Örneğin yalnız <code className="px-1 rounded bg-[var(--bg-elevated)]">CIS</code>,{' '}
+          Nginx Hub <b>yalnız yöneticilere</b> açıktır ve sekmeleri de{' '}
+          <b>varsayılan olarak kapalıdır</b>. Buradan bir <b>kullanıcıya</b> ya da bir{' '}
+          <b>LDAP (AD) grubuna</b> sayfayı ve <b>seçtiğiniz sekmeleri</b> açarsınız; seçilmeyen
+          sekme hem menüde görünmez hem de verisi sunucu tarafında kapalıdır (403). Örneğin yalnız{' '}
+          <code className="px-1 rounded bg-[var(--bg-elevated)]">CIS</code>,{' '}
           <code className="px-1 rounded bg-[var(--bg-elevated)]">SPA</code>,{' '}
           <code className="px-1 rounded bg-[var(--bg-elevated)]">API Envanteri</code>,{' '}
           <code className="px-1 rounded bg-[var(--bg-elevated)]">Envanter</code> ve{' '}
-          <code className="px-1 rounded bg-[var(--bg-elevated)]">Audit</code> seçilirse kişi diğer sekmeleri hiç görmez.
-          Kaydı <b>kaldırmak</b> kişinin Nginx Hub erişimini tamamen kapatır. Grup için CN adı ya da tam DN girilebilir;
-          eşleşme oturumdaki <code className="px-1 rounded bg-[var(--bg-elevated)]">memberOf</code> listesine göre yapılır
-          ve değişiklik anında yayılır.
+          <code className="px-1 rounded bg-[var(--bg-elevated)]">Audit</code> seçilirse kişi diğer
+          sekmeleri hiç görmez. Kaydı <b>kaldırmak</b> kişinin Nginx Hub erişimini tamamen kapatır.
+          Grup için CN adı ya da tam DN girilebilir; eşleşme oturumdaki{' '}
+          <code className="px-1 rounded bg-[var(--bg-elevated)]">memberOf</code> listesine göre
+          yapılır ve değişiklik anında yayılır.
         </>
       }
     />

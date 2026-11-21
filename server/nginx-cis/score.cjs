@@ -10,9 +10,12 @@
 // Skor = gecen / (gecen + kalan) * 100, yalniz "scored" ve skora giren maddeler uzerinden.
 'use strict';
 
-const { ITEMS, BY_ID, normVal, sameVal, cmpItemId } = require('./catalog.cjs');
+const { ITEMS, sameVal, cmpItemId } = require('./catalog.cjs');
 
-const U = (s) => String(s || '').trim().toUpperCase();
+const U = (s) =>
+  String(s || '')
+    .trim()
+    .toUpperCase();
 
 /**
  * results: [{host, item_id, status, observed, detail}]
@@ -50,11 +53,19 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
   const byHost = new Map();
   for (const h of hosts) {
     byHost.set(U(h.host), {
-      host: U(h.host), nginxVersion: h.nginx_version || null, tState: h.t_state || null, msg: h.msg || null,
+      host: U(h.host),
+      nginxVersion: h.nginx_version || null,
+      tState: h.t_state || null,
+      msg: h.msg || null,
       scanDate: h.scan_date ? String(h.scan_date).slice(0, 10) : null,
       // scannedAt: taramanin gercek ani (ISO, UTC) - ekranda saat:dakika ile gosterilir.
       scannedAt: h.scanned_at ? new Date(h.scanned_at).toISOString() : null,
-      items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0,
+      items: [],
+      score: null,
+      passed: 0,
+      failed: 0,
+      excepted: 0,
+      skipped: 0,
     });
   }
   const resByHost = new Map();
@@ -63,53 +74,121 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     if (!resByHost.has(H)) resByHost.set(H, new Map());
     resByHost.get(H).set(String(r.item_id), r);
   }
-  for (const H of resByHost.keys()) if (!byHost.has(H)) byHost.set(H, { host: H, nginxVersion: null, tState: null, msg: null, scanDate: null, scannedAt: null, items: [], score: null, passed: 0, failed: 0, excepted: 0, skipped: 0 });
+  for (const H of resByHost.keys())
+    if (!byHost.has(H))
+      byHost.set(H, {
+        host: H,
+        nginxVersion: null,
+        tState: null,
+        msg: null,
+        scanDate: null,
+        scannedAt: null,
+        items: [],
+        score: null,
+        passed: 0,
+        failed: 0,
+        excepted: 0,
+        skipped: 0,
+      });
 
   for (const h of byHost.values()) {
     const rs = resByHost.get(h.host) || new Map();
     for (const item of ITEMS) {
       const r = rs.get(item.id);
-      const exNote = (() => { if (excHostAll.has(h.host)) return excHostAll.get(h.host); if (excHost.has(`${h.host}|${item.id}`)) return excHost.get(`${h.host}|${item.id}`); if (excGlobal.has(item.id)) return excGlobal.get(item.id); return null; })();
-      const exScope = (() => { if (excHostAll.has(h.host)) return 'hostAll'; if (excHost.has(`${h.host}|${item.id}`)) return 'host'; if (excGlobal.has(item.id)) return 'global'; return null; })();
+      const exNote = (() => {
+        if (excHostAll.has(h.host)) return excHostAll.get(h.host);
+        if (excHost.has(`${h.host}|${item.id}`)) return excHost.get(`${h.host}|${item.id}`);
+        if (excGlobal.has(item.id)) return excGlobal.get(item.id);
+        return null;
+      })();
+      const exScope = (() => {
+        if (excHostAll.has(h.host)) return 'hostAll';
+        if (excHost.has(`${h.host}|${item.id}`)) return 'host';
+        if (excGlobal.has(item.id)) return 'global';
+        return null;
+      })();
       const o = ovr.get(item.id) || null;
-      const observed = (() => { if (r) { if (r.observed == null) return ''; return String(r.observed); } return ''; })();
-      let status; let source;
+      const observed = (() => {
+        if (r) {
+          if (r.observed == null) return '';
+          return String(r.observed);
+        }
+        return '';
+      })();
+      let status;
+      let source;
       // ISTISNA HER SEYDEN ONCE (2026-09-22): madde istisnaya alindiysa tarama verisi olmasa da
       // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
       if (exScope) {
         status = 'EXCEPTED';
-        source = (() => { if (exScope === 'hostAll') return 'istisna (sunucu komple)'; if (exScope === 'host') return 'istisna (bu sunucu)'; return 'istisna (tüm filo)'; })();
+        source = (() => {
+          if (exScope === 'hostAll') return 'istisna (sunucu komple)';
+          if (exScope === 'host') return 'istisna (bu sunucu)';
+          return 'istisna (tüm filo)';
+        })();
+      } else if (!r) {
+        status = 'NODATA';
+        source = 'tarama yok';
+      } else if (o) {
+        status = o.values.some((v) => sameVal(observed, v)) ? 'PASS' : 'FAIL';
+        source =
+          o.values.length > 1
+            ? `kurum referansı (${o.values.length} kabul edilen değer)`
+            : 'kurum referansı';
+      } else {
+        status = U(r.status) || 'NODATA';
+        source = 'CIS';
       }
-      else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
-      else if (o) { status = o.values.some((v) => sameVal(observed, v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
-      else { status = U(r.status) || 'NODATA'; source = 'CIS'; }
 
       // KURUM REFERANSI OLAN MADDE SKORA GIRER (2026-09-22): CIS'te "manuel" (scored:false)
       // isaretli maddeler olculebilir degildi; kurum kendi beklenen degerini tanimladiginda
       // madde OLCULEBILIR hale gelir. Aksi halde referans ekleyen kullanici skorun hic
       // kipirdamadigini goruyor ve "referansin gectigini yazmiyor" diyordu.
       const measurable = item.scored || !!o;
-      const counts = measurable && status !== 'EXCEPTED' && status !== 'NA' && status !== 'MANUAL' && status !== 'NODATA';
+      const counts =
+        measurable &&
+        status !== 'EXCEPTED' &&
+        status !== 'NA' &&
+        status !== 'MANUAL' &&
+        status !== 'NODATA';
       if (status === 'EXCEPTED') h.excepted += 1;
       else if (!counts) h.skipped += 1;
       else if (status === 'PASS') h.passed += 1;
       else h.failed += 1;
 
       h.items.push({
-        id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored,
-        rationale: item.rationale || null, check: item.check || null,
-        status, source, observed, detail: r ? r.detail || '' : '', measurable,
-        expected: o ? expectedText(item.id) : item.expects, expectedSource: (() => { if (o) return 'kurum'; if (item.expects) return 'CIS'; return null; })(),
-        exceptionNote: exNote, counts, fix: item.fix,
+        id: item.id,
+        title: item.title,
+        section: item.section,
+        level: item.level,
+        scored: item.scored,
+        rationale: item.rationale || null,
+        check: item.check || null,
+        status,
+        source,
+        observed,
+        detail: r ? r.detail || '' : '',
+        measurable,
+        expected: o ? expectedText(item.id) : item.expects,
+        expectedSource: (() => {
+          if (o) return 'kurum';
+          if (item.expects) return 'CIS';
+          return null;
+        })(),
+        exceptionNote: exNote,
+        counts,
+        fix: item.fix,
       });
     }
     h.exceptedHost = excHostAll.has(h.host);
-    h.exceptionNote = h.exceptedHost ? (excHostAll.get(h.host) || '') : null;
+    h.exceptionNote = h.exceptedHost ? excHostAll.get(h.host) || '' : null;
     const tot = h.passed + h.failed;
     h.score = tot > 0 ? Math.round((h.passed / tot) * 100) : null;
   }
 
-  const list = [...byHost.values()].sort((a, b) => (a.score ?? 101) - (b.score ?? 101) || a.host.localeCompare(b.host));
+  const list = [...byHost.values()].sort(
+    (a, b) => (a.score ?? 101) - (b.score ?? 101) || a.host.localeCompare(b.host),
+  );
   // madde bazinda filo ozeti: kac sunucuda gecti/kaldi/istisna
   const perItem = ITEMS.map((item) => {
     const cells = list.map((h) => h.items.find((x) => x.id === item.id)).filter(Boolean);
@@ -132,12 +211,40 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
       .map(([value, hs]) => ({ value, count: hs.length, hosts: hs.slice(0, 20) }))
       .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
       .slice(0, 25);
-    return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix, observedValues,
-      rationale: item.rationale || null, check: item.check || null,
-      hosts: cells.map((c, i) => ({ host: list[i].host, status: c.status, observed: c.observed, detail: c.detail, exceptionNote: c.exceptionNote })),
-      expected: expectedText(item.id) ?? item.expects, expectedSource: (() => { if (ovr.has(item.id)) return 'kurum'; if (item.expects) return 'CIS'; return null; })(),
-      expectedValues: (() => { if (ovr.has(item.id)) return ovr.get(item.id).values; if (item.expects) return [item.expects]; return []; })(),
-      exception: excGlobal.has(item.id) ? { scope: 'global', note: excGlobal.get(item.id) } : null };
+    return {
+      id: item.id,
+      title: item.title,
+      section: item.section,
+      level: item.level,
+      scored: item.scored,
+      pass,
+      fail,
+      excepted: exc,
+      other,
+      fix: item.fix,
+      observedValues,
+      rationale: item.rationale || null,
+      check: item.check || null,
+      hosts: cells.map((c, i) => ({
+        host: list[i].host,
+        status: c.status,
+        observed: c.observed,
+        detail: c.detail,
+        exceptionNote: c.exceptionNote,
+      })),
+      expected: expectedText(item.id) ?? item.expects,
+      expectedSource: (() => {
+        if (ovr.has(item.id)) return 'kurum';
+        if (item.expects) return 'CIS';
+        return null;
+      })(),
+      expectedValues: (() => {
+        if (ovr.has(item.id)) return ovr.get(item.id).values;
+        if (item.expects) return [item.expects];
+        return [];
+      })(),
+      exception: excGlobal.has(item.id) ? { scope: 'global', note: excGlobal.get(item.id) } : null,
+    };
   }).sort((a, b) => cmpItemId(a.id, b.id));
 
   const scored = list.filter((h) => h.score != null);
@@ -147,8 +254,13 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     // olduklari gorunur - sessizce kaybolmasinlar.
     exceptedHosts: list.filter((h) => h.exceptedHost).length,
     scanDate: list.reduce((a, h) => (h.scanDate && (!a || h.scanDate > a) ? h.scanDate : a), null),
-    scannedAt: list.reduce((a, h) => (h.scannedAt && (!a || h.scannedAt > a) ? h.scannedAt : a), null),
-    avgScore: scored.length ? Math.round(scored.reduce((a, h) => a + h.score, 0) / scored.length) : null,
+    scannedAt: list.reduce(
+      (a, h) => (h.scannedAt && (!a || h.scannedAt > a) ? h.scannedAt : a),
+      null,
+    ),
+    avgScore: scored.length
+      ? Math.round(scored.reduce((a, h) => a + h.score, 0) / scored.length)
+      : null,
     under80: scored.filter((h) => h.score < 80).length,
     perfect: scored.filter((h) => h.score === 100).length,
     failCells: list.reduce((a, h) => a + h.failed, 0),

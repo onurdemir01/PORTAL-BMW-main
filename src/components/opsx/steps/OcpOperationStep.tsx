@@ -2,9 +2,23 @@
 // yapılacağı. Seçenekler sunucudan gelir (/api/opsx/ocp/operations) — şu an SADECE
 // restart aktif, diğerleri (thread dump/heap dump/tcpdump) görünür ama tıklanamaz
 // placeholder'lar; playbook desteği eklendiğinde sunucu tarafında enabled:true yapılır.
-import React, { useEffect, useState } from "react";
-import { ArrowPathIcon, DocumentMagnifyingGlassIcon, CircleStackIcon, SignalIcon, TrashIcon } from "@heroicons/react/24/outline";
-import { OCP_POD_ISLEMLERI, OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpOperation, type OpsxOcpOperationDef, type OpsxOcpPair } from "@/api/opsxApi";
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowPathIcon,
+  DocumentMagnifyingGlassIcon,
+  CircleStackIcon,
+  SignalIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline';
+import {
+  OCP_POD_ISLEMLERI,
+  OCP_TUM_PODLAR,
+  ocpCiftEtiketi,
+  opsxApi,
+  type OpsxOcpOperation,
+  type OpsxOcpOperationDef,
+  type OpsxOcpPair,
+} from '@/api/opsxApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -44,16 +58,25 @@ const OcpOperationStep: React.FC<{
   const tumPodlar = pairs.some((p) => p.application === OCP_TUM_PODLAR);
 
   if (loading) return <LoadingLogo compact />;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
 
   return (
     <div className="space-y-4">
       <div>
         <p className="text-sm text-[var(--text-secondary)]">Hangi işlemi yapmak istiyorsunuz?</p>
         <div className="mt-1 text-xs text-[var(--text-muted)]">
-          Cluster: <span className="font-mono text-[var(--text-primary)]">{tenant} / {env}</span>
-          {" · "}
-          {pairs.length} işlem: <span className="font-mono">{pairs.map(ocpCiftEtiketi).join(", ")}</span>
+          Cluster:{' '}
+          <span className="font-mono text-[var(--text-primary)]">
+            {tenant} / {env}
+          </span>
+          {' · '}
+          {pairs.length} işlem:{' '}
+          <span className="font-mono">{pairs.map(ocpCiftEtiketi).join(', ')}</span>
         </div>
       </div>
 
@@ -89,10 +112,10 @@ const OcpOperationStep: React.FC<{
                 yalnizUygulama
                   ? "“Tüm pod'lar” seçiminde yalnız pod silme ve thread/heap dump yapılabilir; restart için uygulama seçin."
                   : op.needsApproval
-                  ? op.approvalMessage || 'Production işlemi: Smart onayından geçer.'
-                  : !op.enabled
-                    ? "Bu işlem henüz kullanıma açık değil."
-                    : undefined
+                    ? op.approvalMessage || 'Production işlemi: Smart onayından geçer.'
+                    : !op.enabled
+                      ? 'Bu işlem henüz kullanıma açık değil.'
+                      : undefined
               }
               className="w-full flex items-center gap-3 px-4 py-3 border border-[var(--border)] rounded-xl text-left hover:border-[var(--accent)] hover:shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none disabled:hover:border-[var(--border)]"
             >
@@ -100,16 +123,16 @@ const OcpOperationStep: React.FC<{
               <div className="flex-1">
                 <span className="text-sm font-medium text-[var(--text-primary)]">{op.label}</span>
                 {yalnizUygulama ? (
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">“Tüm pod'lar” seçiminde kullanılamaz — uygulama seçin</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                    “Tüm pod'lar” seçiminde kullanılamaz — uygulama seçin
+                  </p>
                 ) : op.needsApproval ? (
                   <p className="text-xs text-[var(--status-warning)] mt-0.5">
                     Smart onayı gerekir
                     {op.approvalReason ? ` (${op.approvalReason})` : ''}
                   </p>
                 ) : (
-                  !op.enabled && (
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">Yakında</p>
-                  )
+                  !op.enabled && <p className="text-xs text-[var(--text-muted)] mt-0.5">Yakında</p>
                 )}
               </div>
             </button>

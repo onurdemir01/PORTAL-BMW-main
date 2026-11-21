@@ -216,7 +216,10 @@ export default function InventoryGapsTab() {
               {gorunen.map((r) => {
                 const yas = gunFarki(r.firstSeen);
                 return (
-                  <tr key={`${r.kind}:${r.app}:${r.name}`} className="hover:bg-[var(--bg-elevated)]">
+                  <tr
+                    key={`${r.kind}:${r.app}:${r.name}`}
+                    className="hover:bg-[var(--bg-elevated)]"
+                  >
                     <td className="px-3 py-2 font-mono">{r.name}</td>
                     <td className="px-3 py-2 text-[var(--text-muted)]">
                       {r.kind === 'app' ? 'uygulama' : 'sunucu'}

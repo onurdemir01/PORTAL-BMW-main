@@ -162,8 +162,7 @@ export function NodeDegisiklikModal({
       ? METIN.oco.acikOnaysiz
       : METIN.oco.acikSmart;
   const bekle = okunuyor || !grup || grup.okumaBekleniyor;
-  const bilesenOf = (dep: string) =>
-    grup?.deploymentlar.find((d) => d.ad === dep)?.bilesen || dep;
+  const bilesenOf = (dep: string) => grup?.deploymentlar.find((d) => d.ad === dep)?.bilesen || dep;
   const secilebilir = grup ? secilebilirler(grup) : [];
   const secim = bilesenSecim ?? secilebilir.map((d) => d.ad);
   const secimAnahtari = secim.join('\n');
@@ -233,8 +232,15 @@ export function NodeDegisiklikModal({
       } else setOcoHata(r.message || METIN.oco.dogrulanamadi);
     } catch (e: unknown) {
       if (sira !== ocoSira.current) return;
-      const i = (e && typeof e === 'object' ? e : {}) as { gatewayUnavailable?: boolean; nginxRed?: boolean };
-      setOcoHata((i.gatewayUnavailable || i.nginxRed) && e instanceof Error ? e.message : METIN.oco.baglantiHatasi);
+      const i = (e && typeof e === 'object' ? e : {}) as {
+        gatewayUnavailable?: boolean;
+        nginxRed?: boolean;
+      };
+      setOcoHata(
+        (i.gatewayUnavailable || i.nginxRed) && e instanceof Error
+          ? e.message
+          : METIN.oco.baglantiHatasi,
+      );
     } finally {
       if (sira === ocoSira.current) setOcoDogruluyor(false);
     }
@@ -284,8 +290,15 @@ export function NodeDegisiklikModal({
       // Geçit (Portal yeniden başlıyor) ve sunucunun çevrilmiş reddi (nginxRed: ayar eksik, yetki
       // yok; safeJson fırlatır) metni aynen gösterilir. Diğer hatalar yanıt gövdesi önizlemesi
       // taşıyabilir; değer taşıyabilecek metin gösterilmez.
-      const i = (e && typeof e === 'object' ? e : {}) as { gatewayUnavailable?: boolean; nginxRed?: boolean };
-      setHata((i.gatewayUnavailable || i.nginxRed) && e instanceof Error ? e.message : METIN.talepBaglantiHatasi);
+      const i = (e && typeof e === 'object' ? e : {}) as {
+        gatewayUnavailable?: boolean;
+        nginxRed?: boolean;
+      };
+      setHata(
+        (i.gatewayUnavailable || i.nginxRed) && e instanceof Error
+          ? e.message
+          : METIN.talepBaglantiHatasi,
+      );
     } finally {
       gonderRef.current = false;
       setGonderiyor(false);
@@ -355,7 +368,12 @@ export function NodeDegisiklikModal({
               className="px-2 py-0.5 rounded-md border"
               style={
                 i === adim
-                  ? { color: 'var(--accent)', borderColor: 'var(--accent)', background: 'var(--accent-bg)', fontWeight: 600 }
+                  ? {
+                      color: 'var(--accent)',
+                      borderColor: 'var(--accent)',
+                      background: 'var(--accent-bg)',
+                      fontWeight: 600,
+                    }
                   : { color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }
               }
             >
@@ -368,8 +386,14 @@ export function NodeDegisiklikModal({
         {hata && <Bilgi ton="danger">{hata}</Bilgi>}
 
         {grup && !bekle && adim === 0 && cokBilesen && (
-          <fieldset className="rounded-lg border px-3 py-2 space-y-1.5 min-w-0" style={{ borderColor: 'var(--border-subtle)' }}>
-            <legend className="px-1 text-[13px] font-medium" style={{ color: 'var(--text-primary)' }}>
+          <fieldset
+            className="rounded-lg border px-3 py-2 space-y-1.5 min-w-0"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <legend
+              className="px-1 text-[13px] font-medium"
+              style={{ color: 'var(--text-primary)' }}
+            >
               {METIN.secimBaslik}
             </legend>
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
@@ -390,10 +414,17 @@ export function NodeDegisiklikModal({
                       checked={secilir && secim.includes(d.ad)}
                       onChange={(e) => secimDegistir(d.ad, e.target.checked)}
                     />
-                    <label htmlFor={id} className="min-w-0 break-all" style={{ color: 'var(--text-primary)' }}>
+                    <label
+                      htmlFor={id}
+                      className="min-w-0 break-all"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
                       <b>{bilesenAdi(d)}</b>{' '}
                       <span style={{ color: 'var(--text-muted)' }}>
-                        — {secilir ? METIN.secimMevcut(mevcutNodeMetni(d, grup.roller)) : METIN.secilemez}
+                        —{' '}
+                        {secilir
+                          ? METIN.secimMevcut(mevcutNodeMetni(d, grup.roller))
+                          : METIN.secilemez}
                       </span>
                     </label>
                   </li>
@@ -405,12 +436,19 @@ export function NodeDegisiklikModal({
         )}
 
         {grup && !bekle && adim === 0 && (
-          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div
+            className="overflow-x-auto rounded-lg border"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
             <table className="w-full text-[13px]">
               <thead>
                 <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                   {METIN.mevcutBasliklar.map((b) => (
-                    <th key={b} scope="col" className="text-left font-medium px-3 py-2 whitespace-nowrap">
+                    <th
+                      key={b}
+                      scope="col"
+                      className="text-left font-medium px-3 py-2 whitespace-nowrap"
+                    >
                       {b}
                     </th>
                   ))}
@@ -452,10 +490,18 @@ export function NodeDegisiklikModal({
               const hataMetni = deger !== '' ? degerHatasi(deger, r.bicim) : null;
               return (
                 <div key={r.rol} className="space-y-1 min-w-0" data-rol={r.rol}>
-                  <label htmlFor={id} className="block font-medium" style={{ color: 'var(--text-primary)' }}>
+                  <label
+                    htmlFor={id}
+                    className="block font-medium"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     {METIN.rolEtiket(r.rol, METIN.bicimEtiketi[r.bicim] || r.bicim)}
                   </label>
-                  <div id={`${id}-env`} className="text-[12px] break-all" style={{ color: 'var(--text-muted)' }}>
+                  <div
+                    id={`${id}-env`}
+                    className="text-[12px] break-all"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
                     {METIN.rolEnvler(r.envler.join(', '))}
                   </div>
                   <input
@@ -480,15 +526,30 @@ export function NodeDegisiklikModal({
                     }}
                   />
                   {hataMetni ? (
-                    <div id={`${id}-durum`} role="alert" className="text-[12px]" style={{ color: 'var(--status-danger)' }}>
+                    <div
+                      id={`${id}-durum`}
+                      role="alert"
+                      className="text-[12px]"
+                      style={{ color: 'var(--status-danger)' }}
+                    >
                       {hataMetni}
                     </div>
                   ) : deger !== '' ? (
-                    <div id={`${id}-durum`} className="text-[12px] break-all" style={{ color: 'var(--text-muted)' }}>
-                      {(onaysiz ? METIN.onaysiz.gorunum : METIN.smartGorunum)(maskele(deger, r.bicim))}
+                    <div
+                      id={`${id}-durum`}
+                      className="text-[12px] break-all"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {(onaysiz ? METIN.onaysiz.gorunum : METIN.smartGorunum)(
+                        maskele(deger, r.bicim),
+                      )}
                     </div>
                   ) : (
-                    <div id={`${id}-durum`} className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                    <div
+                      id={`${id}-durum`}
+                      className="text-[12px]"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       {METIN.bosRolNotu}
                     </div>
                   )}
@@ -561,16 +622,26 @@ export function NodeDegisiklikModal({
             />
             <div
               className="text-[12px] text-right tabular-nums"
-              style={{ color: gerekceGecerli(gerekce) ? 'var(--text-muted)' : 'var(--status-warning)' }}
+              style={{
+                color: gerekceGecerli(gerekce) ? 'var(--text-muted)' : 'var(--status-warning)',
+              }}
             >
               {METIN.sayac(gerekce.trim().length)}
             </div>
             {ocoZorunlu && (
               <div className="space-y-1.5 pt-2 min-w-0">
-                <label htmlFor="node-oco" className="block font-medium" style={{ color: 'var(--text-primary)' }}>
+                <label
+                  htmlFor="node-oco"
+                  className="block font-medium"
+                  style={{ color: 'var(--text-primary)' }}
+                >
                   {METIN.oco.etiket}
                 </label>
-                <p id="node-oco-not" className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                <p
+                  id="node-oco-not"
+                  className="text-[12px]"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
                   {METIN.oco.zorunluNot}
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -597,9 +668,14 @@ export function NodeDegisiklikModal({
                 {ocoHata && <Bilgi ton="danger">{ocoHata}</Bilgi>}
                 {ocoBilgi && ocoKarar && (
                   <div className="space-y-1.5">
-                    <div className="text-[12px] break-words" style={{ color: 'var(--text-secondary)' }}>
+                    <div
+                      className="text-[12px] break-words"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {ocoBilgi.subject ? <div>{ocoBilgi.subject}</div> : null}
-                      <div>{METIN.oco.pencere(ocoBilgi.windowStartText, ocoBilgi.windowEndText)}</div>
+                      <div>
+                        {METIN.oco.pencere(ocoBilgi.windowStartText, ocoBilgi.windowEndText)}
+                      </div>
                       <div>{METIN.oco.sonBaslama(ocoKarar.sonBaslama)}</div>
                     </div>
                     {ocoKarar.engel ? (
@@ -616,7 +692,11 @@ export function NodeDegisiklikModal({
 
         {grup && !bekle && adim === 4 && (
           <div className="space-y-2" style={{ color: 'var(--text-primary)' }}>
-            {onaysiz ? <Bilgi ton="warn">{METIN.onaysiz.onayBilgi}</Bilgi> : <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>}
+            {onaysiz ? (
+              <Bilgi ton="warn">{METIN.onaysiz.onayBilgi}</Bilgi>
+            ) : (
+              <Bilgi ton="info">{METIN.onayBilgi}</Bilgi>
+            )}
             {ocoZorunlu && ocoBilgi && ocoKarar && (
               <div className="break-words" style={{ color: 'var(--text-secondary)' }}>
                 {METIN.oco.etiket}: {ocoBilgi.ocoNumber} ·{' '}

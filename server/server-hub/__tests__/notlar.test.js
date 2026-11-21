@@ -372,9 +372,10 @@ async function sunucu(fn, { kurallar = [], notDurumu = null } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
-  app.use(
-    (req, res, next) => { req.session = { user: { username: 'ayse', role: 'Admin' } }; return next(); },
-  );
+  app.use((req, res, next) => {
+    req.session = { user: { username: 'ayse', role: 'Admin' } };
+    return next();
+  });
   const router = express.Router();
   const hesap = require('../iliski-uclar.cjs').mount(router, {
     getAssessment: async () => ({ tableMissing: false, hosts: gr.hosts }),
@@ -508,7 +509,10 @@ test('NT5 uclar', async () => {
         [/UPDATE server_hub_notlar\s+SET supheli_kod/, () => ({ rowCount: 1 })],
         [
           /UPDATE server_hub_notlar SET durum/,
-          (params) => { durumSimdi = params[1]; return { rowCount: 1 }; },
+          (params) => {
+            durumSimdi = params[1];
+            return { rowCount: 1 };
+          },
         ],
         [
           /FROM server_hub_notlar/,

@@ -100,7 +100,8 @@ export default function AyarDuzenleyici({
     const etkin = document.activeElement;
     if (etkin && etkin !== document.body && !form.contains(etkin)) return;
     const hedef =
-      form.querySelector<HTMLInputElement>('input[type="radio"]:checked') ?? form.querySelector<HTMLInputElement>('input');
+      form.querySelector<HTMLInputElement>('input[type="radio"]:checked') ??
+      form.querySelector<HTMLInputElement>('input');
     hedef?.focus();
   }, [hata, kaydediliyor]);
 
@@ -183,8 +184,9 @@ export default function AyarDuzenleyici({
     >
       {bayatDeger !== undefined && (
         <p className="text-xs text-[var(--status-warning-text)]">
-          Siz düzenlerken sunucudaki değer değişti (şimdi: <span className="font-mono break-all">{bayatDeger || 'boş'}</span>).
-          Kaydederseniz sizin değeriniz yazılır.
+          Siz düzenlerken sunucudaki değer değişti (şimdi:{' '}
+          <span className="font-mono break-all">{bayatDeger || 'boş'}</span>). Kaydederseniz sizin
+          değeriniz yazılır.
         </p>
       )}
       {tur === 'secim' ? (
@@ -199,7 +201,11 @@ export default function AyarDuzenleyici({
         {IPUCU[tur]}
       </p>
       {hata && (
-        <p id={hataId} role="alert" className="text-xs text-[var(--status-danger-text)] break-words">
+        <p
+          id={hataId}
+          role="alert"
+          className="text-xs text-[var(--status-danger-text)] break-words"
+        >
           {hata}
         </p>
       )}

@@ -46,7 +46,8 @@ async function withMocks(overrides, fn) {
     prodDetect: { isProductionRequest: () => true },
     ocoClient: {
       getChangeOrder: async () => ({ payload: {}, result: { Subject: 'Test degisikligi' } }),
-      httpStatus: (e) => ([403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400),
+      httpStatus: (e) =>
+        [403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400,
     },
     ocoWindow: {
       extractPlannedInterruption: () => ({
@@ -187,7 +188,8 @@ test('OCO: servis hatasi → 400 (nginx 404 HTML gostermesin) + ocoRequired + me
         getChangeOrder: async () => {
           throw Object.assign(new Error('OCO kaydi bulunamadi'), { status: 404 });
         },
-        httpStatus: (e) => ([403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400),
+        httpStatus: (e) =>
+          [403, 404, 500, 502, 503, 504].includes(e.status) ? 400 : e.status || 400,
       },
     },
     async (gates) => {

@@ -58,7 +58,10 @@ export default function RetirementAnaliziSekmesi({
         {(
           [
             ['analiz', 'Karar analizi'],
-            ['etiketler', `Retirement etiketleri${retire ? ` (${fmtNumber(retire.ozet.toplam)})` : ''}`],
+            [
+              'etiketler',
+              `Retirement etiketleri${retire ? ` (${fmtNumber(retire.ozet.toplam)})` : ''}`,
+            ],
             ['karsilastirma', 'Karşılaştırma'],
           ] as const
         ).map(([id, ad]) => (
@@ -91,7 +94,12 @@ export default function RetirementAnaliziSekmesi({
       </div>
       {gorunum === 'karsilastirma' && <KarsilastirmaRaporu />}
       {gorunum === 'etiketler' && (
-        <RetireEtiketleriGorunum veri={retire} yukleniyor={retireYuk} onYenile={retireYukle} onRetirementAc={onRetirementAc} />
+        <RetireEtiketleriGorunum
+          veri={retire}
+          yukleniyor={retireYuk}
+          onYenile={retireYukle}
+          onRetirementAc={onRetirementAc}
+        />
       )}
     </div>
   );

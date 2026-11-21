@@ -3,9 +3,9 @@
 // OpsX ile AYNI uygulama/sunucu kaynağını kullanır (backend bunları yeniden kullanır —
 // bkz. server/filex/index.cjs) ama FileX hiçbir İŞLEM yapmaz, yalnızca seçilen
 // uygulamanın .ear dizinini (logs hariç) salt-okunur listeler.
-import { safeJson, okJson } from "./http";
+import { safeJson, okJson } from './http';
 
-const BASE = "/api/filex";
+const BASE = '/api/filex';
 
 export interface FilexHost {
   host: string;
@@ -17,7 +17,7 @@ export interface FilexHost {
 export interface FilexFileEntry {
   path: string;
   size: number;
-  mtime: number;   // UNIX epoch saniye (ansible.builtin.stat çıktısı, ISO değil)
+  mtime: number; // UNIX epoch saniye (ansible.builtin.stat çıktısı, ISO değil)
   mode: string;
   owner: string;
   group: string;
@@ -26,14 +26,14 @@ export interface FilexFileEntry {
 
 export interface FilexHostResult {
   host: string;
-  status: "ok" | "unreachable" | "error";
+  status: 'ok' | 'unreachable' | 'error';
   error?: string;
   ear_dirs: string[];
   files: FilexFileEntry[];
 }
 
 export interface FilexResult {
-  overall_status: "success" | "partial" | "failed";
+  overall_status: 'success' | 'partial' | 'failed';
   hosts: FilexHostResult[];
 }
 
@@ -71,8 +71,8 @@ export const filexApi = {
 
   run: (application: string, hosts: string[]): Promise<FilexRunResult> =>
     fetch(`${BASE}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ application, hosts }),
     }).then(safeJson),
 

@@ -11,7 +11,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
-import { Cip, Hap, SonucMetni, TabloIskelet, UyariKutusu } from '@/components/server_hub/RetirementUi';
+import {
+  Cip,
+  Hap,
+  SonucMetni,
+  TabloIskelet,
+  UyariKutusu,
+} from '@/components/server_hub/RetirementUi';
 import { TON, smBtn } from '@/components/server_hub/retirementStil';
 import { sonucAyir } from '@/components/server_hub/retirementSatir';
 
@@ -29,7 +35,11 @@ describe('Retirement ortak ogeleri', () => {
   });
 
   it('RUI2 Cip kirilmaz ve title tasir', () => {
-    render(<Cip ton="uyari" title="aciklama">in-place</Cip>);
+    render(
+      <Cip ton="uyari" title="aciklama">
+        in-place
+      </Cip>,
+    );
     const c = screen.getByText('in-place');
     expect(c.className).toMatch(/\bwhitespace-nowrap\b/);
     expect(c.className).toMatch(/\bshrink-0\b/);
@@ -37,7 +47,16 @@ describe('Retirement ortak ogeleri', () => {
   });
 
   it('RUI3 UyariKutusu rol, baslik, govde, eylem', () => {
-    render(<UyariKutusu ton="uyari" rol="status" baslik="Baslik" eylem={<button type="button">Eylem</button>}>Govde</UyariKutusu>);
+    render(
+      <UyariKutusu
+        ton="uyari"
+        rol="status"
+        baslik="Baslik"
+        eylem={<button type="button">Eylem</button>}
+      >
+        Govde
+      </UyariKutusu>,
+    );
     expect(screen.getByRole('status')).toHaveTextContent('BaslikGovdeEylem');
     expect(screen.getByText('Baslik').style.color).toBe('var(--status-warning-text)');
     const { container } = render(<UyariKutusu ton="bilgi" baslik="Bilgi" />);
@@ -48,11 +67,14 @@ describe('Retirement ortak ogeleri', () => {
   it('RUI4 TabloIskelet colgroup ve baslik', () => {
     const { container } = render(
       <table>
-        <TabloIskelet secimBasligi={<input type="checkbox" aria-label="Tumu" />} kolonlar={[
-          { anahtar: 'sec', baslik: '', genislik: '2.25rem' },
-          { anahtar: 'hedef', baslik: 'Hedef', genislik: '16rem', ipucu: 'ipucu' },
-          { anahtar: 'web', baslik: 'Web', sag: 'Trafik' },
-        ]} />
+        <TabloIskelet
+          secimBasligi={<input type="checkbox" aria-label="Tumu" />}
+          kolonlar={[
+            { anahtar: 'sec', baslik: '', genislik: '2.25rem' },
+            { anahtar: 'hedef', baslik: 'Hedef', genislik: '16rem', ipucu: 'ipucu' },
+            { anahtar: 'web', baslik: 'Web', sag: 'Trafik' },
+          ]}
+        />
       </table>,
     );
     const cols = [...container.querySelectorAll('col')];
@@ -88,7 +110,10 @@ describe('Retirement ortak ogeleri', () => {
     expect(sonucAyir('PLAN—2 paket')).toEqual({ etiket: 'PLAN', govde: '2 paket' });
     expect(sonucAyir('OKUNAMADI: x')).toEqual({ etiket: null, govde: 'OKUNAMADI: x' });
     expect(sonucAyir('')).toEqual({ etiket: null, govde: '' });
-    expect(sonucAyir('PLAN — PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket')).toEqual({ etiket: 'PLAN', govde: '(HENUZ HICBIR SEY YAPILMADI): 2 paket' });
+    expect(sonucAyir('PLAN — PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket')).toEqual({
+      etiket: 'PLAN',
+      govde: '(HENUZ HICBIR SEY YAPILMADI): 2 paket',
+    });
     expect(sonucAyir('OK — OK - 3 hedef')).toEqual({ etiket: 'OK', govde: '3 hedef' });
     expect(sonucAyir('SKIP — SKIP: y')).toEqual({ etiket: 'SKIP', govde: 'y' });
     // Ayni kelime DEGIL (FAILED / OKUNDU) ya da farkli etiket: dokunulmaz; govde bos kalmaz.
@@ -96,7 +121,11 @@ describe('Retirement ortak ogeleri', () => {
     expect(sonucAyir('OK - OKUNDU')).toEqual({ etiket: 'OK', govde: 'OKUNDU' });
     expect(sonucAyir('FAIL — PLAN (x)')).toEqual({ etiket: 'FAIL', govde: 'PLAN (x)' });
     expect(sonucAyir('OK — OK')).toEqual({ etiket: 'OK', govde: 'OK' });
-    const { container } = render(<SonucMetni metin="PLAN — PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket" hata={false} />);
-    expect((container.querySelector('p') as HTMLElement).textContent).toBe('PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket');
+    const { container } = render(
+      <SonucMetni metin="PLAN — PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket" hata={false} />,
+    );
+    expect((container.querySelector('p') as HTMLElement).textContent).toBe(
+      'PLAN (HENUZ HICBIR SEY YAPILMADI): 2 paket',
+    );
   });
 });

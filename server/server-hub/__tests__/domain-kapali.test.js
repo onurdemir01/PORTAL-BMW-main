@@ -73,8 +73,21 @@ const veri = (host, jboss, jvms, vis) => ({
 const kapaliVeri = (host) =>
   veri(
     host,
-    [{ host, gen: 8, host_name: 'master', host_state: '', cli: 'SKIP', note: `${HC_NOT}; host XML tahmini: host.xml` }],
-    [jvm(host, 8, 'app1', 0, 'true'), jvm(host, 8, 'app2', 0, 'true'), jvm(host, 8, 'app3', 0, 'false')],
+    [
+      {
+        host,
+        gen: 8,
+        host_name: 'master',
+        host_state: '',
+        cli: 'SKIP',
+        note: `${HC_NOT}; host XML tahmini: host.xml`,
+      },
+    ],
+    [
+      jvm(host, 8, 'app1', 0, 'true'),
+      jvm(host, 8, 'app2', 0, 'true'),
+      jvm(host, 8, 'app3', 0, 'false'),
+    ],
   );
 const sunucu = (r, host) => r.hosts.find((h) => h.host === host);
 const kodlar = (h, kod) => h.findings.filter((f) => f.code === kod);
@@ -95,15 +108,25 @@ test('DK1 domain kapali: tek JBOSS_DOMAIN_DOWN (uyari), JVM bazinda STOPPED_AUTO
       d[0].text,
       "JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş (2 tanesinde host XML'de auto-start açık: reboot'ta açılabilir); JVM bazında auto-start bulgusu üretilmedi",
     );
-    assert.equal(kodlar(h, 'STOPPED_AUTOSTART_ON').length, 0, 'JVM bazinda kritik bulgu uretilmemeli');
-    assert.ok(!h.findings.some((f) => f.fix && /^jboss_autostart_/.test(f.fix.action)), 'auto-start eylemi kalmamali');
+    assert.equal(
+      kodlar(h, 'STOPPED_AUTOSTART_ON').length,
+      0,
+      'JVM bazinda kritik bulgu uretilmemeli',
+    );
+    assert.ok(
+      !h.findings.some((f) => f.fix && /^jboss_autostart_/.test(f.fix.action)),
+      'auto-start eylemi kalmamali',
+    );
     assert.equal(kodlar(h, 'CLI_SKIP').length, 1, 'CLI_SKIP teshisi kalir');
     assert.deepEqual(h.jbossDomainKapali, [8]);
     assert.ok(h.jvms.every((j) => j.domainKapali === true));
     assert.notEqual(h.status, 'danger', 'domain kapali sunucu kritik sayilmamali');
     // retirement adaylari bulgudan ayri: R8 (kapali + auto-start acik) AYNEN
     assert.deepEqual(
-      h.retireAdaylari.filter((a) => a.kural === 'R8').map((a) => a.ad).sort(),
+      h.retireAdaylari
+        .filter((a) => a.kural === 'R8')
+        .map((a) => a.ad)
+        .sort(),
       ['app1', 'app2'],
     );
   }
@@ -117,7 +140,10 @@ test('DK1b domain kapali nesilde calisan + auto-start kapali JVM: REBOOT_RISK ka
   const [f] = kodlar(h, 'REBOOT_RISK');
   assert.ok(f, 'reboot riski bulgusu kalir');
   assert.equal(f.fix, null, 'domain kapali: jboss_autostart_on onerilmez');
-  assert.match(kodlar(h, 'JBOSS_DOMAIN_DOWN')[0].text, / 3 JVM durmuş \(2 tanesinde host XML'de auto-start açık: reboot'ta açılabilir\), 1 JVM süreci görünüyor;/);
+  assert.match(
+    kodlar(h, 'JBOSS_DOMAIN_DOWN')[0].text,
+    / 3 JVM durmuş \(2 tanesinde host XML'de auto-start açık: reboot'ta açılabilir\), 1 JVM süreci görünüyor;/,
+  );
 });
 
 test('DK2 Non-Production: bilgi (varsayilan uyari, ortamTavani); Admin seviyesi ortam inisinden once gelir', () => {
@@ -125,18 +151,33 @@ test('DK2 Non-Production: bilgi (varsayilan uyari, ortamTavani); Admin seviyesi 
   const h = sunucu(assess(kapaliVeri(host)), host);
   assert.equal(h.envGroup, 'Non-Production');
   const [f] = kodlar(h, 'JBOSS_DOMAIN_DOWN');
-  assert.deepEqual([f.severity, f.defaultSeverity, f.ortamTavani, f.prodSeverity], ['info', 'warning', true, 'warning']);
+  assert.deepEqual(
+    [f.severity, f.defaultSeverity, f.ortamTavani, f.prodSeverity],
+    ['info', 'warning', true, 'warning'],
+  );
   assert.equal(h.status, 'info');
   // Admin kritik yapti: non-prod tavani kritigi uyariya indirir (genel kural), bilgiye degil
-  const k = kodlar(sunucu(assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } }), host), 'JBOSS_DOMAIN_DOWN')[0];
+  const k = kodlar(
+    sunucu(assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } }), host),
+    'JBOSS_DOMAIN_DOWN',
+  )[0];
   assert.deepEqual([k.severity, k.defaultSeverity, k.ortamTavani], ['warning', 'warning', true]);
   // ekran "prod'da Kritik" demeli (Admin kritik yapti), varsayilan uyariyi DEGIL (inceleme A#3)
   assert.equal(k.prodSeverity, 'danger');
   // Admin acikca uyari dedi: o gecerli (ortam inisi yok)
-  const u = kodlar(sunucu(assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'warning' } }), host), 'JBOSS_DOMAIN_DOWN')[0];
+  const u = kodlar(
+    sunucu(assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'warning' } }), host),
+    'JBOSS_DOMAIN_DOWN',
+  )[0];
   assert.deepEqual([u.severity, u.ortamTavani], ['warning', undefined]);
   // Admin prod'da bilgi yapti
-  const p = kodlar(sunucu(assess(kapaliVeri('GBBFAP01'), { seviyeler: { JBOSS_DOMAIN_DOWN: 'info' } }), 'GBBFAP01'), 'JBOSS_DOMAIN_DOWN')[0];
+  const p = kodlar(
+    sunucu(
+      assess(kapaliVeri('GBBFAP01'), { seviyeler: { JBOSS_DOMAIN_DOWN: 'info' } }),
+      'GBBFAP01',
+    ),
+    'JBOSS_DOMAIN_DOWN',
+  )[0];
   assert.deepEqual([p.severity, p.defaultSeverity], ['info', 'warning']);
 });
 
@@ -144,17 +185,35 @@ test('DK3 BLIND / baska SKIP notu / CLI FAIL "Connection refused" domain kapali 
   const host = 'GBBFAP01';
   const durumlar = [
     // BLIND: tarayici CLI'yi yine dener; dustuyse FAIL yazar (bu not yazilmaz)
-    { vis: 'BLIND', b: { cli: 'FAIL', note: 'cli rc=1 Failed to connect to the controller: Connection refused' } },
+    {
+      vis: 'BLIND',
+      b: { cli: 'FAIL', note: 'cli rc=1 Failed to connect to the controller: Connection refused' },
+    },
     { vis: 'FULL', b: { cli: 'SKIP', note: 'dzdo yok, was olarak kosulamaz' } },
-    { vis: 'FULL', b: { cli: 'SKIP', note: 'jboss-cli GORULEMEDI (/usr/jboss8/bin) - izin, dosya orada olabilir' } },
+    {
+      vis: 'FULL',
+      b: {
+        cli: 'SKIP',
+        note: 'jboss-cli GORULEMEDI (/usr/jboss8/bin) - izin, dosya orada olabilir',
+      },
+    },
   ];
   for (const { vis, b } of durumlar) {
-    const d = veri(host, [{ host, gen: 8, host_name: 'master', host_state: '', ...b }], [jvm(host, 8, 'app1', 0, 'true')], vis);
+    const d = veri(
+      host,
+      [{ host, gen: 8, host_name: 'master', host_state: '', ...b }],
+      [jvm(host, 8, 'app1', 0, 'true')],
+      vis,
+    );
     const h = sunucu(assess(d), host);
     assert.equal(kodlar(h, 'JBOSS_DOMAIN_DOWN').length, 0, `${vis} ${b.note}`);
     assert.ok(!h.jvms.some((j) => j.domainKapali), `${vis} ${b.note}: JVM isaretlenmemeli`);
     assert.deepEqual(h.jbossDomainKapali, []);
-    assert.equal(kodlar(h, 'STOPPED_AUTOSTART_ON').length, 1, `${vis} ${b.note}: bulgu eskisi gibi`);
+    assert.equal(
+      kodlar(h, 'STOPPED_AUTOSTART_ON').length,
+      1,
+      `${vis} ${b.note}: bulgu eskisi gibi`,
+    );
   }
 });
 
@@ -187,7 +246,10 @@ test('DK5 ayni sunucuda JBoss 7 kapali, JBoss 8 acik: yalniz 7 bastirilir; ayni 
   const h = sunucu(assess(d), host);
   assert.equal(kodlar(h, 'JBOSS_DOMAIN_DOWN').length, 1);
   assert.match(kodlar(h, 'JBOSS_DOMAIN_DOWN')[0].text, /^JBoss 7 domain kapalı .* 1 JVM durmuş/);
-  assert.deepEqual(kodlar(h, 'STOPPED_AUTOSTART_ON').map((f) => f.fix && f.fix.jvm), ['yeni']);
+  assert.deepEqual(
+    kodlar(h, 'STOPPED_AUTOSTART_ON').map((f) => f.fix && f.fix.jvm),
+    ['yeni'],
+  );
   assert.equal(h.jvms.find((j) => j.name === 'eski').domainKapali, true);
   assert.equal(h.jvms.find((j) => j.name === 'yeni').domainKapali, undefined);
 });
@@ -200,17 +262,33 @@ test('DK6 Toplu Auto-Start: domain kapali JVM aday degil, dislanan nedeni acik; 
   const acik = 'GBBFAB01';
   const d = kapaliVeri(host);
   d.hosts.push(hostSatiri(acik));
-  d.jboss.push({ host: acik, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' });
+  d.jboss.push({
+    host: acik,
+    gen: 8,
+    host_name: 'master',
+    host_state: 'running',
+    cli: 'OK',
+    note: '',
+  });
   d.jvms.push(jvm(acik, 8, 'acikapp', 0, 'true', { cfg_src: 'CLI_WILDCARD' }));
   const A = assess(d);
   const { adaylar, dislananlar, xmlAdaylar } = T.adaylariTuret(A, { autoStart: null });
-  assert.deepEqual(adaylar.map((x) => `${x.host}/${x.jvm}/${x.eylem}`), [`${acik}/acikapp/kapat`]);
+  assert.deepEqual(
+    adaylar.map((x) => `${x.host}/${x.jvm}/${x.eylem}`),
+    [`${acik}/acikapp/kapat`],
+  );
   // 2026-11-15 ("olur ekle lutfen"): domain kapali durmus + auto-start true JVM'ler CLI adayi degil, dislanan da
   // degil: ayri host XML grubu (xmlAdaylar, eylem xml_kapat, prod isaretli).
-  assert.deepEqual(dislananlar.filter((x) => x.host === host), []);
+  assert.deepEqual(
+    dislananlar.filter((x) => x.host === host),
+    [],
+  );
   assert.deepEqual(
     xmlAdaylar.map((x) => `${x.host}/${x.jvm}/${x.eylem}/${x.action}/${x.prod}`).sort(),
-    [`${host}/app1/xml_kapat/jboss_autostart_xml_off/true`, `${host}/app2/xml_kapat/jboss_autostart_xml_off/true`],
+    [
+      `${host}/app1/xml_kapat/jboss_autostart_xml_off/true`,
+      `${host}/app2/xml_kapat/jboss_autostart_xml_off/true`,
+    ],
   );
   // tek satir dugmesi (/jvm-autostart) ayni kapi: iki yon de
   const j = sunucu(A, host).jvms.find((x) => x.name === 'app1');
@@ -218,7 +296,13 @@ test('DK6 Toplu Auto-Start: domain kapali JVM aday degil, dislanan nedeni acik; 
     const k = jvmAutoStartKapisi(j, { host, jvm: 'app1', gen: 8, enable });
     assert.deepEqual(k, { status: 400, message: DOMAIN_MESAJ });
   }
-  assert.equal(jvmAutoStartKapisi({ ...j, domainKapali: undefined }, { host, jvm: 'app1', gen: 8, enable: false }), null);
+  assert.equal(
+    jvmAutoStartKapisi(
+      { ...j, domainKapali: undefined },
+      { host, jvm: 'app1', gen: 8, enable: false },
+    ),
+    null,
+  );
 });
 
 test('DK7 tutarlilik: Acilis Hazirligi auto-start riski saymaz; Uygulama 360 uyumsuz saymaz', () => {
@@ -226,7 +310,10 @@ test('DK7 tutarlilik: Acilis Hazirligi auto-start riski saymaz; Uygulama 360 uyu
   const A = assess(kapaliVeri(host));
   const r = rebootReadiness(A.hosts, [host]);
   const satir = r.rows[0];
-  assert.ok(!satir.reasons.some((x) => x.code === 'STOPPED_AUTOSTART_ON'), 'auto-start riski sayilmamali');
+  assert.ok(
+    !satir.reasons.some((x) => x.code === 'STOPPED_AUTOSTART_ON'),
+    'auto-start riski sayilmamali',
+  );
   const dd = satir.reasons.find((x) => x.code === 'JBOSS_DOMAIN_DOWN');
   assert.ok(dd, 'domain kapali nedeni gorunmeli');
   assert.equal(dd.tip, 'unknown');
@@ -241,7 +328,12 @@ test('DK7 tutarlilik: Acilis Hazirligi auto-start riski saymaz; Uygulama 360 uyu
 test('DK9 metin: JVM satiri yoksa "0 JVM durmus" yazilmaz; auto-start acik yoksa sayi eklenmez', () => {
   const host = 'GBBFAP01';
   // host XML belirsiz (scan "host XML belirsiz: host-master.xml,host-slave.xml"): JVM satiri gelmez
-  const bos = sunucu(assess(veri(host, [{ host, gen: 8, host_name: '', host_state: '', cli: 'SKIP', note: HC_NOT }], [])), host);
+  const bos = sunucu(
+    assess(
+      veri(host, [{ host, gen: 8, host_name: '', host_state: '', cli: 'SKIP', note: HC_NOT }], []),
+    ),
+    host,
+  );
   assert.equal(
     kodlar(bos, 'JBOSS_DOMAIN_DOWN')[0].text,
     'JBoss 8 domain kapalı (host controller çalışmıyor) — JVM tanımı okunamadı; JVM bazında auto-start bulgusu üretilmedi',
@@ -260,7 +352,10 @@ test('DK9 metin: JVM satiri yoksa "0 JVM durmus" yazilmaz; auto-start acik yoksa
   const b = kapaliVeri(host);
   b.jvms = b.jvms.map((j, i) => ({ ...j, auto_start: i === 0 ? 'unknown' : 'false' }));
   const bk = kodlar(sunucu(assess(b), host), 'JBOSS_DOMAIN_DOWN')[0];
-  assert.equal(bk.text, 'JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş; JVM bazında auto-start bulgusu üretilmedi');
+  assert.equal(
+    bk.text,
+    'JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş; JVM bazında auto-start bulgusu üretilmedi',
+  );
   assert.equal(bk.severity, 'warning');
 });
 
@@ -273,15 +368,27 @@ test('DK10 genel non-prod tavani: Admin uyari->kritik yaptiysa prodSeverity krit
   );
   const A = assess(d, { seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } });
   const [s] = kodlar(sunucu(A, host), 'STOPPED_AUTOSTART_ON');
-  assert.deepEqual([s.severity, s.defaultSeverity, s.prodSeverity, s.ortamTavani], ['warning', 'danger', 'danger', true]);
+  assert.deepEqual(
+    [s.severity, s.defaultSeverity, s.prodSeverity, s.ortamTavani],
+    ['warning', 'danger', 'danger', true],
+  );
   // Bulgular sekmesi / CSV satiri da tasir (ekran isareti oradan okur)
   const satir = flattenFindings(A.hosts).find((x) => x.code === 'STOPPED_AUTOSTART_ON');
   assert.deepEqual([satir.prodSeverity, satir.ortamTavani], ['danger', true]);
-  const k = flattenFindings(assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } }).hosts).find((x) => x.code === 'JBOSS_DOMAIN_DOWN');
-  assert.deepEqual([k.severity, k.defaultSeverity, k.prodSeverity], ['warning', 'warning', 'danger']);
+  const k = flattenFindings(
+    assess(kapaliVeri(host), { seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' } }).hosts,
+  ).find((x) => x.code === 'JBOSS_DOMAIN_DOWN');
+  assert.deepEqual(
+    [k.severity, k.defaultSeverity, k.prodSeverity],
+    ['warning', 'warning', 'danger'],
+  );
   // prod sunucuda tavan yok -> prodSeverity yazilmaz
   const p = 'GBBFAP01';
-  const dp = veri(p, [{ host: p, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' }], [jvm(p, 8, 'app1', 0, 'true', { cfg_src: 'CLI_WILDCARD' })]);
+  const dp = veri(
+    p,
+    [{ host: p, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' }],
+    [jvm(p, 8, 'app1', 0, 'true', { cfg_src: 'CLI_WILDCARD' })],
+  );
   assert.equal(kodlar(sunucu(assess(dp), p), 'STOPPED_AUTOSTART_ON')[0].prodSeverity, undefined);
 });
 

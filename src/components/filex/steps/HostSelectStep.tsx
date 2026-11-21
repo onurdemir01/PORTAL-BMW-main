@@ -15,12 +15,12 @@
 //
 // SUNUCUYA YİNE SADECE HOST ADI GİDER: bu modülün playbook'u JBoss majörünü hiç
 // almıyor (extra_vars'ta yok), o yüzden seçim gönderilirken adlar tekilleştirilir.
-import React, { useMemo, useState } from "react";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { filexApi, type FilexHost } from "@/api/filexApi";
-import { hostKey, majorOfHost, normalizeJbossVersion, parseHostKey } from "@/utils/jboss";
-import JbossTag from "@/components/common/JbossTag";
+import React, { useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { filexApi, type FilexHost } from '@/api/filexApi';
+import { hostKey, majorOfHost, normalizeJbossVersion, parseHostKey } from '@/utils/jboss';
+import JbossTag from '@/components/common/JbossTag';
 
 const HostSelectStep: React.FC<{
   app: string;
@@ -33,18 +33,21 @@ const HostSelectStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useAsyncEffect(async (alive) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await filexApi.getHosts(app);
-      if (alive()) setHosts(r.hosts ?? []);
-    } catch (err) {
-      if (alive()) setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (alive()) setLoading(false);
-    }
-  }, [app]);
+  useAsyncEffect(
+    async (alive) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await filexApi.getHosts(app);
+        if (alive()) setHosts(r.hosts ?? []);
+      } catch (err) {
+        if (alive()) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [app],
+  );
 
   const filteredHosts = useMemo(() => {
     const wanted = new Set(jbossVersions);
@@ -54,7 +57,7 @@ const HostSelectStep: React.FC<{
   const grouped = useMemo(() => {
     const g: Record<string, FilexHost[]> = {};
     for (const h of filteredHosts) {
-      const key = h.env || "(ortam belirtilmemiş)";
+      const key = h.env || '(ortam belirtilmemiş)';
       (g[key] ||= []).push(h);
     }
     return g;
@@ -63,7 +66,8 @@ const HostSelectStep: React.FC<{
   function toggle(key: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -81,21 +85,33 @@ const HostSelectStep: React.FC<{
     setSelected((prev) => {
       const next = new Set(prev);
       for (const k of keys) {
-        if (allSelected) next.delete(k); else next.add(k);
+        if (allSelected) next.delete(k);
+        else next.add(k);
       }
       return next;
     });
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor...</div>;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (loading)
+    return (
+      <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+        Sunucular yükleniyor...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
 
   if (filteredHosts.length === 0) {
     return (
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <span>
-          <strong>{app}</strong> için seçilen JBoss sürümünde ({jbossVersions.map((v) => v || "Bilinmiyor").join(", ")}) sunucu bulunamadı.
+          <strong>{app}</strong> için seçilen JBoss sürümünde (
+          {jbossVersions.map((v) => v || 'Bilinmiyor').join(', ')}) sunucu bulunamadı.
         </span>
       </div>
     );
@@ -104,48 +120,55 @@ const HostSelectStep: React.FC<{
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-[var(--text-secondary)]">Hangi sunucularda dosya listelemek istiyorsunuz?</p>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Hangi sunucularda dosya listelemek istiyorsunuz?
+        </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
           Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
         </p>
       </div>
 
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((envKey) => (
-          <div key={envKey}>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-[var(--text-secondary)]">{envKey}</label>
-              <button
-                onClick={() => toggleAllIn(envKey)}
-                className="text-xs text-[var(--accent)] hover:underline"
-              >
-                {grouped[envKey].every((h) => selected.has(hostKey(h.host, majorOfHost(h))))
-                  ? "Seçimi kaldır" : "Tümünü seç"}
-              </button>
+        {Object.keys(grouped)
+          .sort((a, b) => a.localeCompare(b))
+          .map((envKey) => (
+            <div key={envKey}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-[var(--text-secondary)]">{envKey}</label>
+                <button
+                  onClick={() => toggleAllIn(envKey)}
+                  className="text-xs text-[var(--accent)] hover:underline"
+                >
+                  {grouped[envKey].every((h) => selected.has(hostKey(h.host, majorOfHost(h))))
+                    ? 'Seçimi kaldır'
+                    : 'Tümünü seç'}
+                </button>
+              </div>
+              <div className="space-y-1 border border-[var(--border)] rounded-xl p-1.5">
+                {grouped[envKey].map((h) => {
+                  const major = majorOfHost(h);
+                  const key = hostKey(h.host, major);
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(key)}
+                        onChange={() => toggle(key)}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-[var(--text-primary)] font-mono flex-1">
+                        {h.host}
+                      </span>
+                      <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-1 border border-[var(--border)] rounded-xl p-1.5">
-              {grouped[envKey].map((h) => {
-                const major = majorOfHost(h);
-                const key = hostKey(h.host, major);
-                return (
-                  <label
-                    key={key}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(key)}
-                      onChange={() => toggle(key)}
-                      className="rounded"
-                    />
-                    <span className="text-sm text-[var(--text-primary)] font-mono flex-1">{h.host}</span>
-                    <JbossTag major={major} version={normalizeJbossVersion(h.jbossVersion)} />
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       <div className="flex items-center justify-between gap-3">

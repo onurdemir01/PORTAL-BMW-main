@@ -12,6 +12,7 @@
 //   IZLENEBILIR   — elle girilenler istek kaydina ve denetime yazilir (sunucu tarafi:
 //                   server/logx/v2/__tests__/legacy-host-selection.test.js EG7/EG10).
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -136,7 +137,7 @@ test('ME8 envanterde HIC sunucu yokken de elle giris YAPILABILIR', () => {
   const n = norm(HOST_STEP);
   assert.doesNotMatch(
     n,
-    /if \(hosts\.length === 0 && manual\.length === 0\)/,
+    esnek(/if \(hosts\.length === 0 && manual\.length === 0\)/),
     'ayri "envanter bos" ekrani geri gelmis — tarama dugmesi orada yok',
   );
   assert.equal(

@@ -6,7 +6,18 @@ import SpaOzetMatrisi from '@/components/nginx_console/SpaOzetMatrisi';
 import type { NgSpaApp } from '@/api/nginxConsoleApi';
 
 const app = (o: Partial<NgSpaApp>): NgSpaApp =>
-  ({ application: 'a', namespace: 'n-prod', env: 'prod', spa: 'evet', ag: 'internet', pattern: 'uyuyor', rp: 'tanimli', rpIstek: 'var', rpHost: '4/4', ...o }) as NgSpaApp;
+  ({
+    application: 'a',
+    namespace: 'n-prod',
+    env: 'prod',
+    spa: 'evet',
+    ag: 'internet',
+    pattern: 'uyuyor',
+    rp: 'tanimli',
+    rpIstek: 'var',
+    rpHost: '4/4',
+    ...o,
+  }) as NgSpaApp;
 
 describe('SPA özet — reverse proxy akışı', () => {
   it('tek sütunda sırayla: yayında → trafik aldı / almadı → eksik sunucu; tanımı yok; sözlük; tıklama süzer', () => {
@@ -14,7 +25,13 @@ describe('SPA özet — reverse proxy akışı', () => {
     render(
       <SpaOzetMatrisi
         onSuz={onSuz}
-        apps={[app({ rpServis: ['GLOMO'] }), app({ rpIstek: 'yok', rpEslenik: 'eksik', rpServis: ['SAKLAMA'] }), app({ rpIstek: 'var', rpSorun: ['NOT_DEPLOYED'], rpServis: ['GLOMO'] }), app({ rp: 'tanimsiz', rpIstek: 'uygulanamaz' }), app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' })]}
+        apps={[
+          app({ rpServis: ['GLOMO'] }),
+          app({ rpIstek: 'yok', rpEslenik: 'eksik', rpServis: ['SAKLAMA'] }),
+          app({ rpIstek: 'var', rpSorun: ['NOT_DEPLOYED'], rpServis: ['GLOMO'] }),
+          app({ rp: 'tanimsiz', rpIstek: 'uygulanamaz' }),
+          app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' }),
+        ]}
       />,
     );
     const akis = screen.getByTestId('rp-akisi');
@@ -31,13 +48,21 @@ describe('SPA özet — reverse proxy akışı', () => {
     expect(onSuz).toHaveBeenCalledWith({ ortam: 'prod', rp: 'tanimsiz' });
     // hangi RP servisi: GLOMO / SAKLAMA ayri, tiklamak servise suzer
     const sv = within(akis).getByTestId('rp-servisler');
-    expect([...sv.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['GLOMO2', 'SAKLAMA1']);
+    expect([...sv.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'GLOMO2',
+      'SAKLAMA1',
+    ]);
     fireEvent.click(within(sv).getByText('GLOMO'));
     expect(onSuz).toHaveBeenLastCalledWith({ ortam: 'prod', rp: 'tanimli', servis: 'GLOMO' });
   });
 
   it('internet SPA yoksa açıklama yazar', () => {
-    render(<SpaOzetMatrisi onSuz={() => {}} apps={[app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' })]} />);
+    render(
+      <SpaOzetMatrisi
+        onSuz={() => {}}
+        apps={[app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' })]}
+      />,
+    );
     expect(screen.getByText(/intranet SPA'lar reverse proxy kullanmaz/)).toBeTruthy();
   });
 });

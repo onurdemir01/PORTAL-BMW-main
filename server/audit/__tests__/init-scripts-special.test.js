@@ -48,7 +48,10 @@ test('IS2 olcut Denetim ve Server Hub icinde AYNI', () => {
 test('IS3 istemci: secim yalniz ozel sunucu varsa gorunur, sayaclar secilen kumeden', () => {
   const page = read('src/components/DenetimPage.tsx');
   assert.match(page, /const \[cls, setCls\] = useState<'genel' \| 'ozel'>\('genel'\)/);
-  assert.match(page, /cls === 'ozel' && data\?\.special \? \(\{ \.\.\.data, \.\.\.data\.special \}/);
+  assert.match(
+    page,
+    /cls === 'ozel' && data\?\.special \? \(\{ \.\.\.data, \.\.\.data\.special \}/,
+  );
   assert.ok(page.includes('{data?.special && ('), 'secim dugmeleri ozel sunucu yoksa cizilmemeli');
   // ozet sayaclari secilen kumeden (shown), ham yanittan degil
   for (const alan of ['hosts', 'identicalHosts', 'totalVariants']) {

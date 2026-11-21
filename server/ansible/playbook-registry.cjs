@@ -40,24 +40,21 @@ async function listAll() {
   // Kullanici istegi (2026-08-17): liste alfabetik siralansin - sort_order/category artik
   // birincil siralama anahtari degil (sort_order alani admin ekranindan hala duzenlenebilir,
   // ama gorunumu artik etkilemiyor).
-  const { rows } = await db.query(
-    `SELECT * FROM ansible_playbook_registry ORDER BY display_name`
-  );
+  const { rows } = await db.query(`SELECT * FROM ansible_playbook_registry ORDER BY display_name`);
   return rows.map(parseRow);
 }
 
 async function listEnabled() {
   const { rows } = await db.query(
-    `SELECT * FROM ansible_playbook_registry WHERE enabled = true ORDER BY display_name`
+    `SELECT * FROM ansible_playbook_registry WHERE enabled = true ORDER BY display_name`,
   );
   return rows.map(parseRow);
 }
 
 async function getByKey(keyName) {
-  const { rows } = await db.query(
-    `SELECT * FROM ansible_playbook_registry WHERE key_name = $1`,
-    [keyName]
-  );
+  const { rows } = await db.query(`SELECT * FROM ansible_playbook_registry WHERE key_name = $1`, [
+    keyName,
+  ]);
   return rows[0] ? parseRow(rows[0]) : null;
 }
 
@@ -90,7 +87,7 @@ async function create(data) {
       data.isReadonly !== false,
       data.visibility ? String(data.visibility) : 'User,Admin',
       Number.isFinite(Number(data.sortOrder)) ? Number(data.sortOrder) : 0,
-    ]
+    ],
   );
   return parseRow(rows[0]);
 }
@@ -101,11 +98,25 @@ async function update(id, fields) {
   if (!current.rows[0]) return null;
   const row = current.rows[0];
 
-  const displayName = fields.displayName !== undefined ? String(fields.displayName).trim() : row.display_name;
-  const description = fields.description !== undefined ? String(fields.description) : row.description;
+  const displayName =
+    fields.displayName !== undefined ? String(fields.displayName).trim() : row.display_name;
+  const description =
+    fields.description !== undefined ? String(fields.description) : row.description;
   const category = fields.category !== undefined ? String(fields.category) : row.category;
-  const awxTemplateId = (() => { if (fields.awxTemplateId !== undefined) { if (fields.awxTemplateId === null || fields.awxTemplateId === '') return null; return Number(fields.awxTemplateId); } return row.awx_template_id; })();
-  const awxServerId = (() => { if (fields.awxServerId !== undefined) { if (fields.awxServerId === null || fields.awxServerId === '') return null; return Number(fields.awxServerId); } return row.awx_server_id; })();
+  const awxTemplateId = (() => {
+    if (fields.awxTemplateId !== undefined) {
+      if (fields.awxTemplateId === null || fields.awxTemplateId === '') return null;
+      return Number(fields.awxTemplateId);
+    }
+    return row.awx_template_id;
+  })();
+  const awxServerId = (() => {
+    if (fields.awxServerId !== undefined) {
+      if (fields.awxServerId === null || fields.awxServerId === '') return null;
+      return Number(fields.awxServerId);
+    }
+    return row.awx_server_id;
+  })();
   const enabled = fields.enabled !== undefined ? !!fields.enabled : row.enabled;
   const sourceType = fields.sourceType !== undefined ? String(fields.sourceType) : row.source_type;
   const isReadonly = fields.isReadonly !== undefined ? !!fields.isReadonly : row.is_readonly;
@@ -119,7 +130,19 @@ async function update(id, fields) {
            visibility = $9, sort_order = $10, updated_at = GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id = $11`,
-    [displayName, description, category, awxTemplateId, enabled, awxServerId, sourceType, isReadonly, visibility, sortOrder, id]
+    [
+      displayName,
+      description,
+      category,
+      awxTemplateId,
+      enabled,
+      awxServerId,
+      sourceType,
+      isReadonly,
+      visibility,
+      sortOrder,
+      id,
+    ],
   );
   return rows[0] ? parseRow(rows[0]) : null;
 }
@@ -141,7 +164,9 @@ async function remove(id, { username } = {}) {
   const row = parseRow(rows[0]);
   const varsayilan = !!varsayilanSatir(row.keyName);
   if (!varsayilan) {
-    const { rowCount } = await db.query(`DELETE FROM ansible_playbook_registry WHERE id = $1`, [id]);
+    const { rowCount } = await db.query(`DELETE FROM ansible_playbook_registry WHERE id = $1`, [
+      id,
+    ]);
     return rowCount > 0 ? { keyName: row.keyName, displayName: row.displayName, varsayilan } : null;
   }
   const r = await db.query(
@@ -151,7 +176,7 @@ async function remove(id, { username } = {}) {
        INSERT INTO ansible_playbook_registry_silinen (key_name, deleted_by) VALUES ($2, $3);
      DELETE FROM ansible_playbook_registry OUTPUT DELETED.key_name WHERE id = $1 AND key_name = $2;
      COMMIT TRANSACTION;`,
-    [id, row.keyName, username ? String(username).slice(0, 255) : null]
+    [id, row.keyName, username ? String(username).slice(0, 255) : null],
   );
   return r.rows.length ? { keyName: row.keyName, displayName: row.displayName, varsayilan } : null;
 }
@@ -161,7 +186,7 @@ async function listSilinenVarsayilanlar() {
   const { rows } = await db.query(
     `SELECT s.key_name, s.deleted_by, s.deleted_at FROM ansible_playbook_registry_silinen s
       WHERE NOT EXISTS (SELECT 1 FROM ansible_playbook_registry r WHERE r.key_name = s.key_name)
-      ORDER BY s.key_name`
+      ORDER BY s.key_name`,
   );
   const out = [];
   for (const r of rows) {
@@ -196,7 +221,15 @@ async function geriYukle(keyName) {
          (key_name, display_name, description, category, handler, playbook_path, env_var_name)
        VALUES ($1, $2, $3, $4, $5, $6, $7);
      COMMIT TRANSACTION;`,
-    [seed.key_name, seed.display_name, seed.description, seed.category, seed.handler, seed.playbook_path, seed.env_var_name]
+    [
+      seed.key_name,
+      seed.display_name,
+      seed.description,
+      seed.category,
+      seed.handler,
+      seed.playbook_path,
+      seed.env_var_name,
+    ],
   );
   return getByKey(seed.key_name);
 }
@@ -209,7 +242,7 @@ async function updateServerId(keyName, awxServerId) {
   if (!Number.isInteger(n) || n <= 0) return false;
   const { rowCount } = await db.query(
     `UPDATE ansible_playbook_registry SET awx_server_id = $1, updated_at = GETUTCDATE() WHERE key_name = $2`,
-    [n, keyName]
+    [n, keyName],
   );
   return rowCount > 0;
 }
@@ -227,6 +260,15 @@ function getEffectiveTemplateId(row) {
 }
 
 module.exports = {
-  listAll, listEnabled, getByKey, create, update, remove, updateServerId, getEffectiveTemplateId,
-  varsayilanSatir, listSilinenVarsayilanlar, geriYukle,
+  listAll,
+  listEnabled,
+  getByKey,
+  create,
+  update,
+  remove,
+  updateServerId,
+  getEffectiveTemplateId,
+  varsayilanSatir,
+  listSilinenVarsayilanlar,
+  geriYukle,
 };

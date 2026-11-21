@@ -163,7 +163,7 @@ async function notlariOku({ arsiv = false } = {}) {
     );
     return { okunamadi: false, notlar: (rows || []).map(satirNot) };
   } catch (e) {
-    return { okunamadi: true, hata: (e && e.message) || 'okunamadı', notlar: [] };
+    return { okunamadi: true, hata: e?.message || 'okunamadı', notlar: [] };
   }
 }
 
@@ -195,7 +195,7 @@ async function siniflariOku() {
   } catch (e) {
     return {
       okunamadi: true,
-      hata: (e && e.message) || 'okunamadı',
+      hata: e?.message || 'okunamadı',
       siniflar: [...harita.values()],
     };
   }
@@ -214,14 +214,14 @@ async function notEkle(n, { kim, imza }) {
        COMMIT;`,
       [n.konu, n.supheli_kod, n.sinif, JSON.stringify(n.etiketler), n.metin, n.yayilim, imza, kim],
     );
-    const id = rows && rows[0] ? Number(rows[0].id) : null;
+    const id = rows?.[0] ? Number(rows[0].id) : null;
     if (id == null) throw new Error('kimlik dönmedi');
     await db()
       .query(GECMIS_SQL, [id, 'EKLE', null, kim])
       .catch(() => {});
     return id;
   } catch (e) {
-    throw hata(424, `Not kaydedilemedi: ${(e && e.message) || ''}`.trim());
+    throw hata(424, `Not kaydedilemedi: ${e?.message || ''}`.trim());
   }
 }
 
@@ -251,7 +251,7 @@ async function notGuncelle(id, n, { kim, surum, imza }) {
       ],
     );
   } catch (e) {
-    throw hata(424, `Not güncellenemedi: ${(e && e.message) || ''}`.trim());
+    throw hata(424, `Not güncellenemedi: ${e?.message || ''}`.trim());
   }
   if (r.rowCount !== 1) throw hata(409, 'Not bu arada değişti; sayfayı yenileyip tekrar deneyin.');
   await db()
@@ -265,7 +265,7 @@ async function notGetir(id) {
        FROM server_hub_notlar WHERE id = $1`,
     [Number(id)],
   );
-  return rows && rows[0] ? satirNot(rows[0]) : null;
+  return rows?.[0] ? satirNot(rows[0]) : null;
 }
 
 /**
@@ -275,7 +275,7 @@ async function notGetir(id) {
  */
 async function notDurum(id, durum, { kim }) {
   const once = await notGetir(id).catch((e) => {
-    throw hata(424, (e && e.message) || 'okunamadı');
+    throw hata(424, e?.message || 'okunamadı');
   });
   if (!once) throw hata(409, 'Not artık yok.');
   if (durum !== 'SIL' && once.durum === durum)
@@ -295,12 +295,16 @@ async function notDurum(id, durum, { kim }) {
         [once.id, durum, kim],
       );
   } catch (e) {
-    throw hata(424, (e && e.message) || 'Not değiştirilemedi.');
+    throw hata(424, e?.message || 'Not değiştirilemedi.');
   }
   await db()
     .query(GECMIS_SQL, [
       once.id,
-      (() => { if (durum === 'SIL') return 'SIL'; if (durum === 'ARSIV') return 'ARSIV'; return 'GERI_AL'; })(),
+      (() => {
+        if (durum === 'SIL') return 'SIL';
+        if (durum === 'ARSIV') return 'ARSIV';
+        return 'GERI_AL';
+      })(),
       JSON.stringify(once),
       kim,
     ])
@@ -327,7 +331,7 @@ async function notGecmisi(id) {
       zaman: r.zaman ? new Date(r.zaman).toISOString() : null,
     }));
   } catch (e) {
-    throw hata(424, (e && e.message) || 'Geçmiş okunamadı.');
+    throw hata(424, e?.message || 'Geçmiş okunamadı.');
   }
 }
 
@@ -342,7 +346,7 @@ async function sinifYaz(s, { kim }) {
       [s.ad, s.baslik, s.renk, s.etki, s.aciklama, s.sira, kim],
     );
   } catch (e) {
-    throw hata(424, `Sınıf kaydedilemedi: ${(e && e.message) || ''}`.trim());
+    throw hata(424, `Sınıf kaydedilemedi: ${e?.message || ''}`.trim());
   }
 }
 
@@ -358,9 +362,9 @@ async function sinifSil(ad) {
       [a],
     ));
   } catch (e) {
-    throw hata(424, (e && e.message) || 'okunamadı');
+    throw hata(424, e?.message || 'okunamadı');
   }
-  if (Number(rows && rows[0] && rows[0].n) > 0)
+  if (Number(rows?.[0]?.n) > 0)
     throw hata(409, 'Bu sınıfta aktif not var; önce notları başka sınıfa taşıyın.');
   let r;
   try {
@@ -371,9 +375,9 @@ async function sinifSil(ad) {
       [a],
     );
   } catch (e) {
-    throw hata(424, (e && e.message) || 'Sınıf silinemedi.');
+    throw hata(424, e?.message || 'Sınıf silinemedi.');
   }
-  if (!r.rows || !r.rows.length) throw hata(409, 'Sınıf yok ya da bu arada aktif not eklendi.');
+  if (!r.rows?.length) throw hata(409, 'Sınıf yok ya da bu arada aktif not eklendi.');
 }
 
 // ── ONBELLEK ── notlar + siniflar her istekte DB'ye gitmesin (10 sn); her yazim onbellegi siler.
@@ -408,7 +412,7 @@ const ASAGI = [
 /** Notun ulastigi varliklar: Map(anahtar -> yol [konu, ..., anahtar]). */
 function yayilimKumesi(g, konu, yayilim) {
   const out = new Map([[konu, [konu]]]);
-  if (yayilim === 'YALNIZ' || !g || !g.dugumler.has(konu)) return out;
+  if (yayilim === 'YALNIZ' || !g?.dugumler.has(konu)) return out;
   const kuyruk = [konu];
   while (kuyruk.length && out.size < BILESEN_SINIRI) {
     const u = kuyruk.shift();
@@ -436,7 +440,7 @@ function notlariIndeksle(notlar, g) {
   const yetimler = [];
   for (const n of notlar) {
     if (n.durum !== 'AKTIF') continue;
-    if (!g || !g.dugumler.has(n.konu)) yetimler.push(n);
+    if (!g?.dugumler.has(n.konu)) yetimler.push(n);
     for (const [k, yol] of yayilimKumesi(g, n.konu, n.yayilim)) {
       if (!varlikNotlari.has(k)) varlikNotlari.set(k, []);
       varlikNotlari.get(k).push({ not: n, yol, dogrudan: k === n.konu });
@@ -452,9 +456,9 @@ function notlariIndeksle(notlar, g) {
 function imzaOf(g, kararlar, anahtar) {
   let govde;
   const k = kararlar && (kararlar.kopyalar.get(anahtar) || kararlar.uygulamalar.get(anahtar));
-  if (k && k.maddeler) govde = { karar: k.karar, maddeler: k.maddeler.map((m) => m.kod).sort() };
+  if (k?.maddeler) govde = { karar: k.karar, maddeler: k.maddeler.map((m) => m.kod).sort() };
   else if (k) govde = { karar: k.karar, sayilar: k.sayilar };
-  else if (g && g.dugumler.has(anahtar))
+  else if (g?.dugumler.has(anahtar))
     govde = g
       .komsuKenarlar(anahtar)
       .map((e) => `${e.tur}|${e.kaynak === anahtar ? e.hedef : e.kaynak}|${e.durum}`)

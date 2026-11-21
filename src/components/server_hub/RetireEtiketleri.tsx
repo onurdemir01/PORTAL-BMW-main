@@ -370,7 +370,8 @@ function KopyaTablosu({ e, kAd }: { e: ShRetireEtiket; kAd: Map<string, string> 
                 {c.kurallar.length
                   ? c.kurallar.map((r) => (
                       <div key={r} className="text-[11px]">
-                        {(kodGoster || !kAd.get(r)) && <span className="font-mono">{r}</span>} {kAd.get(r) || ''}
+                        {(kodGoster || !kAd.get(r)) && <span className="font-mono">{r}</span>}{' '}
+                        {kAd.get(r) || ''}
                       </div>
                     ))
                   : '—'}
@@ -483,7 +484,8 @@ export function EtiketAyrinti({
             style={{ borderColor: 'var(--border-subtle)' }}
           >
             <summary className="cursor-pointer font-semibold">
-              {kodGoster ? `${r} · ` : ''}{k.ad} — nasıl doğrulanır?
+              {kodGoster ? `${r} · ` : ''}
+              {k.ad} — nasıl doğrulanır?
             </summary>
             <div className="mt-2 space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
               <div>
@@ -716,7 +718,11 @@ function kolonlarOf(kAd: Map<string, string>): EarKolon<E>[] {
         (e.retirement || []).length ? (
           <div>
             {(e.retirement || []).map((r) => (
-              <div key={r.hedef} className="text-[11px] whitespace-normal min-w-[9rem]" title={r.host || ''}>
+              <div
+                key={r.hedef}
+                className="text-[11px] whitespace-normal min-w-[9rem]"
+                title={r.host || ''}
+              >
                 {retirementMetni(r)}
               </div>
             ))}

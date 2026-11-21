@@ -5,6 +5,8 @@
 // ne yapmasi gerektigini okuyabilmeli; HTTP kodu yonetici icin parantezde kalir.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -16,7 +18,7 @@ test('OE1 404 -> "bulunamadi" + numarayi kontrol et; ham "404 dondu" YOK', () =>
   assert.equal(e.status, 404);
   assert.match(e.message, /OCO 22502813 bulunamadı/);
   assert.match(e.message, /Numarayı kontrol edin/);
-  assert.doesNotMatch(e.message, /servisi 404 döndü/);
+  assert.doesNotMatch(e.message, esnek(/servisi 404 döndü/));
 });
 
 test('OE2 5xx -> "yanit veremiyor, tekrar deneyin"; 401/403 -> "yoneticiye bildirin"', () => {
@@ -66,7 +68,7 @@ test('OE4 nginx tarafindan yakalanan kodlar (404/502/503) HTTP katmaninda 400 ol
   const runner = fs.readFileSync(path.join(__dirname, '..', '..', 'ansible', 'runner.cjs'), 'utf8');
   assert.match(
     runner,
-    /httpStatus\(err\)\)\.json\(\{ ok: false, message: err\.message \}\)/,
+    esnek(/httpStatus\(err\)\)\.json\(\{ ok: false, message: err\.message \}\)/),
     'oco/validate ucu ham status donuyor',
   );
 });

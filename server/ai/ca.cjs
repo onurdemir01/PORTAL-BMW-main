@@ -6,8 +6,7 @@ const path = require('path');
 const tls = require('tls');
 const crypto = require('crypto');
 
-const PEM_PATTERN =
-  /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g;
+const PEM_PATTERN = /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g;
 
 function resolveCaPath(configuredPath) {
   if (!configuredPath) {
@@ -77,7 +76,7 @@ function buildCombinedCa() {
 
   // ONBELLEK ISABETI: ayni yol + ayni dosya (mtime/boyut) ise yeniden kurma.
   const anahtar = cacheKey(caPath);
-  if (anahtar && _caCache && _caCache.key === anahtar) return _caCache.value;
+  if (anahtar && _caCache?.key === anahtar) return _caCache.value;
 
   const uniqueCertificates = new Map();
 
@@ -102,9 +101,7 @@ function buildCombinedCa() {
     const corporateCertificates = parsePemCertificates(content);
 
     if (corporateCertificates.length === 0) {
-      throw new Error(
-        `CA dosyasında geçerli PEM sertifikası bulunamadı: ${caPath}`
-      );
+      throw new Error(`CA dosyasında geçerli PEM sertifikası bulunamadı: ${caPath}`);
     }
 
     corporateFileCount = corporateCertificates.length;

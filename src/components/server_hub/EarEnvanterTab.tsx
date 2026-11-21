@@ -31,7 +31,8 @@ import EarEnvanterDetay from './EarEnvanterDetay';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { KapsamSecici, PlanlarGorunum, kapsamAyristir, type KapsamDegeri } from './EarEnvanterPlan';
 
-type Gorunum = 'uygulamalar' | 'warlar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
+type Gorunum =
+  'uygulamalar' | 'warlar' | 'eslenikler' | 'kutuphaneler' | 'sunucular' | 'kosular' | 'ayarlar';
 const GORUNUMLER: { id: Gorunum; etiket: string }[] = [
   { id: 'uygulamalar', etiket: 'Uygulamalar' },
   { id: 'warlar', etiket: "WAR'lar" },
@@ -66,7 +67,12 @@ export function TaraPenceresi({
   const [hata, setHata] = useState('');
   const [mesgul, setMesgul] = useState(false);
   // Seçili liste dışındaki kapsamlarda başlatmadan önce kaç sunucu / parti olacağı (koşu açmaz).
-  const [onizleme, setOnizleme] = useState<{ anahtar: string; sunucu: number; parti: number; hata?: string } | null>(null);
+  const [onizleme, setOnizleme] = useState<{
+    anahtar: string;
+    sunucu: number;
+    parti: number;
+    hata?: string;
+  } | null>(null);
   // Çift tıklama iki AWX işi açmasın: state render'da yakalanır, ref anında (double-submit bekçisi deseni).
   const busyRef = useRef(false);
   const { hostlar, gecersiz } = hostListesiAyristir(metin);
@@ -79,7 +85,8 @@ export function TaraPenceresi({
         const r = await earApi.kapsamOnizleme(kapsam, ortamKey ? ortamKey.split(',') : [], kip);
         if (alive()) setOnizleme({ anahtar: onizlemeAnahtari, sunucu: r.sunucu, parti: r.parti });
       } catch (e) {
-        if (alive()) setOnizleme({ anahtar: onizlemeAnahtari, sunucu: 0, parti: 0, hata: hataMetni(e) });
+        if (alive())
+          setOnizleme({ anahtar: onizlemeAnahtari, sunucu: 0, parti: 0, hata: hataMetni(e) });
       }
     },
     [kapsam, ortamKey, kip, onizlemeAnahtari],
@@ -180,12 +187,19 @@ export function TaraPenceresi({
             />
             <span>
               <b id={`${seciliId}-ad`}>Seçili sunucular</b>
-              <span id={`${seciliId}-aciklama`} style={{ color: 'var(--text-muted)' }}> — aşağıya yazdığınız sunucular.</span>
+              <span id={`${seciliId}-aciklama`} style={{ color: 'var(--text-muted)' }}>
+                {' '}
+                — aşağıya yazdığınız sunucular.
+              </span>
             </span>
           </label>
           <KapsamSecici
             ad="Şimdi tara"
-            deger={kapsam === 'SECILI' ? { tur: 'FILO', ortamlar } : (kapsamAyristirTur(kapsam, ortamlar) as KapsamDegeri)}
+            deger={
+              kapsam === 'SECILI'
+                ? { tur: 'FILO', ortamlar }
+                : (kapsamAyristirTur(kapsam, ortamlar) as KapsamDegeri)
+            }
             onChange={(k) => {
               setKapsam(k.tur);
               setOrtamlar(k.ortamlar);
@@ -228,7 +242,10 @@ export function TaraPenceresi({
             </div>
             <label
               className="flex items-start gap-2 rounded-lg border px-3 py-2"
-              style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
+              style={{
+                borderColor: 'var(--status-warning)',
+                background: 'var(--status-warning-bg)',
+              }}
             >
               <input
                 type="checkbox"
@@ -236,8 +253,8 @@ export function TaraPenceresi({
                 onChange={(e) => setFiloOnay(e.target.checked)}
               />
               <span style={{ color: 'var(--text-primary)' }}>
-                Kapsamdaki sunucular partilere bölünüp sırayla taranacak (bin+ sunucuda saatler sürebilir). İlk
-                kez çalıştırıyorsanız önce 1–5 sunucuyla deneyin. Onaylıyorum.
+                Kapsamdaki sunucular partilere bölünüp sırayla taranacak (bin+ sunucuda saatler
+                sürebilir). İlk kez çalıştırıyorsanız önce 1–5 sunucuyla deneyin. Onaylıyorum.
               </span>
             </label>
           </>
@@ -330,19 +347,21 @@ function AyarlarGorunum({ ozet, onKaydedildi }: { ozet: EarOzet; onKaydedildi: (
       <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
         <table className="w-full">
           <tbody>
-            {a.tanimlar.filter((t) => !/^p[12]_/.test(t.anahtar)).map((t) => (
-              <AyarSatiri
-                // Kaydedilen deger degisince satir yeniden kurulur (taslak sifirlanir; effect'te setState yok).
-                key={`${t.anahtar}=${a.deger[t.anahtar] ?? t.varsayilan}`}
-                anahtar={t.anahtar}
-                ad={t.ad}
-                deger={a.deger[t.anahtar] ?? t.varsayilan}
-                varsayilan={t.varsayilan}
-                kayit={a.kayitlar[t.anahtar]}
-                kilitli={a.okunamadi}
-                onKaydedildi={onKaydedildi}
-              />
-            ))}
+            {a.tanimlar
+              .filter((t) => !/^p[12]_/.test(t.anahtar))
+              .map((t) => (
+                <AyarSatiri
+                  // Kaydedilen deger degisince satir yeniden kurulur (taslak sifirlanir; effect'te setState yok).
+                  key={`${t.anahtar}=${a.deger[t.anahtar] ?? t.varsayilan}`}
+                  anahtar={t.anahtar}
+                  ad={t.ad}
+                  deger={a.deger[t.anahtar] ?? t.varsayilan}
+                  varsayilan={t.varsayilan}
+                  kayit={a.kayitlar[t.anahtar]}
+                  kilitli={a.okunamadi}
+                  onKaydedildi={onKaydedildi}
+                />
+              ))}
           </tbody>
         </table>
       </div>
@@ -391,8 +410,10 @@ export default function EarEnvanterTab() {
   // Tablo satır seçiminden "Seçili sunucuları tara": "Şimdi tara" düğmesiyle aynı kapılar.
   const taraIle = (hostlar: string[]) => {
     if (!ozet) return;
-    if (ozet.aktif) return void toast.error('Çalışan bir tarama var; bitmesini bekleyin ya da iptal edin.');
-    if (!ozet.template.tanimli) return void toast.error("AWX template'i tanımlı değil; tarama başlatılamaz.");
+    if (ozet.aktif)
+      return void toast.error('Çalışan bir tarama var; bitmesini bekleyin ya da iptal edin.');
+    if (!ozet.template.tanimli)
+      return void toast.error("AWX template'i tanımlı değil; tarama başlatılamaz.");
     setTaraAcik(hostlar);
   };
   const iptalEt = async () => {
@@ -434,8 +455,8 @@ export default function EarEnvanterTab() {
         >
           AWX template'i tanımlı değil: Admin › Playbook Kayıtları ›{' '}
           <span className="font-mono">{template.anahtar}</span> satırına Template ID girilmeden
-          tarama başlamaz (otomatik planlar da çalışmaz). Template'te Variables için prompt on launch
-          açık, Forks 50 olmalı.
+          tarama başlamaz (otomatik planlar da çalışmaz). Template'te Variables için prompt on
+          launch açık, Forks 50 olmalı.
         </div>
       )}
       {hata && (
@@ -472,7 +493,10 @@ export default function EarEnvanterTab() {
             zamanlayici.acik
               ? (ozet.planlar || [])
                   .filter((p) => p.acik)
-                  .map((p) => `${p.ad}: ${p.metin}${p.sonraki[0] ? ` · sonraki ${fmtDateTime(p.sonraki[0])}` : ''}`)
+                  .map(
+                    (p) =>
+                      `${p.ad}: ${p.metin}${p.sonraki[0] ? ` · sonraki ${fmtDateTime(p.sonraki[0])}` : ''}`,
+                  )
                   .join(' | ')
               : 'Ayarlar › Planlar'
           }
@@ -584,7 +608,10 @@ export default function EarEnvanterTab() {
       </div>
       {gorunum !== 'ayarlar' && <DurumSozlugu />}
       {gorunum === 'uygulamalar' && (
-        <UygulamalarGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} onTara={taraIle} />
+        <UygulamalarGorunum
+          onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })}
+          onTara={taraIle}
+        />
       )}
       {gorunum === 'warlar' && (
         <WarlarGorunum onAc={(kosu, host, uyg) => setDetay({ kosu, host, uyg })} onTara={taraIle} />

@@ -67,9 +67,11 @@ function determineRole(memberOf) {
     .toLowerCase()
     .trim();
   const userGroup = (process.env.LDAP_USER_GROUP || '').toLowerCase().trim();
-  const groups = (() => { if (Array.isArray(memberOf)) return memberOf; if (memberOf) return [memberOf]; return []; })().map((g) =>
-    String(g).toLowerCase(),
-  );
+  const groups = (() => {
+    if (Array.isArray(memberOf)) return memberOf;
+    if (memberOf) return [memberOf];
+    return [];
+  })().map((g) => String(g).toLowerCase());
 
   // Tam esitlik veya DN-sonu eslesme — eski iki-yonlu .includes() kisa/genel bir grup DN'i
   // (or. "cn=admin") baska bir grubun DN'inin ALT DIZISI oldugunda yanlislikla Admin veriyordu
@@ -133,27 +135,46 @@ class GirisHatasi extends Error {
 
 const KIMLIK_MESAJI = 'Kullanıcı adı veya şifre hatalı.';
 const AD_KODLARI = {
-  '525': ['kimlik', KIMLIK_MESAJI],
+  525: ['kimlik', KIMLIK_MESAJI],
   '52e': ['kimlik', KIMLIK_MESAJI],
-  '775': ['kilitli', 'Hesabınız kilitli (çok fazla hatalı deneme). Kilidin açılmasını bekleyin ya da BT destekle iletişime geçin.'],
-  '533': ['devre_disi', 'Hesabınız devre dışı. BT destekle iletişime geçin.'],
-  '701': ['hesap_suresi', 'Hesabınızın süresi dolmuş. BT destekle iletişime geçin.'],
-  '532': ['sifre_suresi', 'Şifrenizin süresi dolmuş. Kurumsal şifre ekranından yenileyip tekrar deneyin.'],
-  '773': ['sifre_degismeli', 'Şifrenizi değiştirmeniz gerekiyor. Kurumsal şifre ekranından değiştirip tekrar deneyin.'],
-  '530': ['saat_kisiti', 'Hesabınızın şu saatte oturum açma izni yok.'],
-  '531': ['istasyon_kisiti', 'Hesabınızın bu sunucudan oturum açma izni yok. BT destekle iletişime geçin.'],
+  775: [
+    'kilitli',
+    'Hesabınız kilitli (çok fazla hatalı deneme). Kilidin açılmasını bekleyin ya da BT destekle iletişime geçin.',
+  ],
+  533: ['devre_disi', 'Hesabınız devre dışı. BT destekle iletişime geçin.'],
+  701: ['hesap_suresi', 'Hesabınızın süresi dolmuş. BT destekle iletişime geçin.'],
+  532: [
+    'sifre_suresi',
+    'Şifrenizin süresi dolmuş. Kurumsal şifre ekranından yenileyip tekrar deneyin.',
+  ],
+  773: [
+    'sifre_degismeli',
+    'Şifrenizi değiştirmeniz gerekiyor. Kurumsal şifre ekranından değiştirip tekrar deneyin.',
+  ],
+  530: ['saat_kisiti', 'Hesabınızın şu saatte oturum açma izni yok.'],
+  531: [
+    'istasyon_kisiti',
+    'Hesabınızın bu sunucudan oturum açma izni yok. BT destekle iletişime geçin.',
+  ],
 };
 
 function adHatasi(err) {
-  const m = /\bdata ([0-9a-f]{3})\b/i.exec(String((err?.message) || ''));
-  const kod = (m?.[1].toLowerCase() ?? null);
+  const m = /\bdata ([0-9a-f]{3})\b/i.exec(String(err?.message || ''));
+  const kod = m?.[1].toLowerCase() ?? null;
   const [code, message] = (kod && AD_KODLARI[kod]) || ['kimlik', KIMLIK_MESAJI];
   return new GirisHatasi(code, message, code === 'kimlik' ? 401 : 403);
 }
 
-const AG_KODLARI = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH']);
+const AG_KODLARI = new Set([
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+]);
 function agHatasiMi(err) {
-  const msg = String((err?.message) || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
   return (
     AG_KODLARI.has(err?.code) ||
     msg.includes('connect') ||
@@ -184,7 +205,7 @@ async function authenticateLdap(username, password, lookup) {
   try {
     const { searchEntries } = await svcClient.search(baseDn, {
       // `lookup`: login-input.cjs'nin karari (or. UPN girildiyse userPrincipalName).
-      filter: `(${(lookup?.attr) || searchAttr}=${escapeFilter((lookup?.value) || username)})`,
+      filter: `(${lookup?.attr || searchAttr}=${escapeFilter(lookup?.value || username)})`,
       scope: 'sub',
       attributes: USER_ATTRS,
     });
@@ -255,7 +276,11 @@ async function authenticateLdap(username, password, lookup) {
   // loglaniyor — sessizce eksik grup listesiyle calisip "neden erisemiyorum"
   // sorusuna yol acmasin.
   const MAX_GROUPS = 200;
-  const rawGroups = (() => { if (Array.isArray(userEntry.memberOf)) return userEntry.memberOf; if (userEntry.memberOf) return [userEntry.memberOf]; return []; })();
+  const rawGroups = (() => {
+    if (Array.isArray(userEntry.memberOf)) return userEntry.memberOf;
+    if (userEntry.memberOf) return [userEntry.memberOf];
+    return [];
+  })();
   const allGroups = [...new Set(rawGroups.map((g) => String(g || '').trim()).filter(Boolean))];
   if (allGroups.length > MAX_GROUPS) {
     console.warn(
@@ -266,9 +291,10 @@ async function authenticateLdap(username, password, lookup) {
   const groups = allGroups.slice(0, MAX_GROUPS);
 
   // UPN ile girildiyse oturum adi AD'deki hesap adidir (yerel kisim farkli olabilir).
-  const kanonik = lookup && /^(userPrincipalName|mail)$/i.test(lookup.attr) && userEntry.sAMAccountName
-    ? userEntry.sAMAccountName
-    : username;
+  const kanonik =
+    lookup && /^(userPrincipalName|mail)$/i.test(lookup.attr) && userEntry.sAMAccountName
+      ? userEntry.sAMAccountName
+      : username;
   return {
     username: normalizeUsername(kanonik),
     dn: userEntry.dn,
@@ -426,7 +452,8 @@ async function searchLdapUsers(query, limit = 25) {
       .filter((u) => u.username)
       .slice(0, tavan);
     // Yalniz BASARILI arama onbellege girer (hata onbelleklenmez; bir sonraki tus yeniden dener).
-    if (_aramaOnbellek.size >= ARAMA_ONBELLEK_TAVAN) _aramaOnbellek.delete(_aramaOnbellek.keys().next().value);
+    if (_aramaOnbellek.size >= ARAMA_ONBELLEK_TAVAN)
+      _aramaOnbellek.delete(_aramaOnbellek.keys().next().value);
     _aramaOnbellek.set(anahtar, { at: Date.now(), users });
     return users;
   } catch (err) {
@@ -495,7 +522,8 @@ async function searchLdapGroups(query, limit = 25) {
       });
       if (groups.length >= tavan) break;
     }
-    if (_grupOnbellek.size >= ARAMA_ONBELLEK_TAVAN) _grupOnbellek.delete(_grupOnbellek.keys().next().value);
+    if (_grupOnbellek.size >= ARAMA_ONBELLEK_TAVAN)
+      _grupOnbellek.delete(_grupOnbellek.keys().next().value);
     _grupOnbellek.set(anahtar, { at: Date.now(), groups });
     return groups;
   } catch (err) {
@@ -539,7 +567,11 @@ async function findLdapUserByUsername(username) {
       // ederken gruplari BOS varsayiyor ve grup kuraliyla yetkilendirilmis birine
       // "goremez" diyordu — yani yetki sorununu tesbit etmek icin kullanilan arac, tam
       // da o durumda YANLIS cevap veriyordu. authenticateLdap ile ayni bicim.
-      groups: (() => { if (Array.isArray(user.memberOf)) return user.memberOf; if (user.memberOf) return [user.memberOf]; return []; })()
+      groups: (() => {
+        if (Array.isArray(user.memberOf)) return user.memberOf;
+        if (user.memberOf) return [user.memberOf];
+        return [];
+      })()
         .map((g) => String(g || '').trim())
         .filter(Boolean),
     };
@@ -550,8 +582,6 @@ async function findLdapUserByUsername(username) {
     await client.unbind().catch(() => {});
   }
 }
-
-const _cache = new Map();
 
 // Harf duyarsiz esitlik; BOS deger hicbir seyle eslesmez (asagidaki ?? / || notuna bak).
 function ayniAd(a, b) {
@@ -572,7 +602,6 @@ async function authenticate(username, password, lookup) {
       // module.exports uzerinden cagrilir (dogrudan yerel referans degil) — testlerin
       // gercek bir LDAP baglantisi kurmadan authenticateLdap'i mock'layabilmesi icin.
       const result = await module.exports.authenticateLdap(username, password, lookup);
-      _cache.set(username.toLowerCase(), { ...result, ts: Date.now() });
       return result;
     } catch (ldapErr) {
       const msg = ldapErr.message || '';
@@ -686,18 +715,12 @@ function authenticateLocal(username, password) {
   throw new Error('Kullanıcı adı veya şifre hatalı');
 }
 
-function clearCache(username) {
-  if (username) _cache.delete(username.toLowerCase());
-  else _cache.clear();
-}
-
 module.exports = {
   authenticate,
   searchLdapUsers,
   searchLdapGroups,
   authenticateLocal,
   isConfigured,
-  clearCache,
   findLdapUserByEmail,
   findLdapUserByUsername,
   // test-only (ayrica authenticate() ic-cagrisi da bunun uzerinden gecer — bkz. yukarida):

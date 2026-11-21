@@ -88,11 +88,18 @@ const OPS = {
 const SIR_ANAHTARI =
   /(pass|passwd|password|pwd|secret|token|apikey|api_key|accesskey|access_key|credential|keystore|truststore|private[_-]?key)/i;
 
+// `anahtar: deger` satiri (dogrusal; eski tembel `(.+?)\s*$` ile ayni gruplar - Sonar S8786). Iki desen
+// sirayla denenir: deger bosluk disi bir karakter iceriyorsa yalniz DEGERLI eslesebilir (bosluksuz
+// baslayip biten metin), yalniz bosluktan olusuyorsa yalniz BOS (son satir-ici bosluk karakteri).
+// Esdegerlik: __tests__/regex-dogrusal CR1.
+const KV_DEGERLI = /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?)\s*$/;
+const KV_BOS = /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*((?![\n\r\u2028\u2029])\s)[\n\r\u2028\u2029]*$/;
+
 /** `anahtar: deger` satirlarinda sir gorunen degerleri yildizlar. Yorumlara dokunmaz. */
 function maskValues(lines) {
   return (lines || []).map((raw) => {
     const l = String(raw == null ? '' : raw);
-    const m = l.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/);
+    const m = l.match(KV_DEGERLI) || l.match(KV_BOS);
     if (!m) return l;
     const [, girinti, anahtar, deger] = m;
     if (!SIR_ANAHTARI.test(anahtar)) return l;
@@ -206,7 +213,7 @@ function normalizeOps(body) {
       throw new Error(`Geçersiz config map adı: ${out.cmName}`);
     }
     if (action === 'configmap_put') {
-      const veri = body && body.data;
+      const veri = body?.data;
       if (!veri || typeof veri !== 'object' || Array.isArray(veri)) {
         throw new Error('Config map verisi gerekli.');
       }
@@ -314,7 +321,7 @@ function normalizeOps(body) {
       .slice(0, 1000);
     // Istemcinin gordugu canli degerler yalniz ON ELEME icindir (sunucu kendi olcumunu
     // tercih eder). Bicimi bozuk deger "olculemedi" sayilir.
-    const canli = body && body.live && typeof body.live === 'object' ? body.live : null;
+    const canli = body?.live && typeof body.live === 'object' ? body.live : null;
     // null = spec'te YOK; bicimi bozuk bir deger varsa TUMU olculemedi sayilir ("yok" DEGIL).
     out.live = null;
     if (canli) {
@@ -537,7 +544,7 @@ function parseOpsLines(lines) {
     files: [...files.values()],
     routes,
     template,
-    backups: backups.sort((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
+    backups: backups.toSorted((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
     tenantKey,
     configMaps,
     configMapData: [...configMapData.entries()].map(([key, value]) => ({ key, value })),
@@ -649,7 +656,11 @@ async function loadTenant(tenant) {
     ready: r.ready == null ? null : Number(r.ready),
     image: r.image || '',
     version: r.version || '',
-    state: (() => { if (r.want === 0) return 'stopped'; if (Number(r.ready) >= Number(r.want)) return 'running'; return 'degraded'; })(),
+    state: (() => {
+      if (r.want === 0) return 'stopped';
+      if (Number(r.ready) >= Number(r.want)) return 'running';
+      return 'degraded';
+    })(),
   }));
 
   const releases = rel.map((r) => ({
@@ -734,13 +745,13 @@ const TERMINAL = ['successful', 'failed', 'error', 'canceled'];
  */
 async function uygulamaSonucunuKapat(req, serverId, jobId, statusInfo, yol) {
   const db = require('../db/index.cjs');
-  const birakti = await RES.kilitBirakIs(db, serverId, jobId, statusInfo && statusInfo.status);
+  const birakti = await RES.kilitBirakIs(db, serverId, jobId, statusInfo?.status);
   if (!birakti) return false;
   let r = null;
   try {
     const { extractStatsKey } = require('../opsx/index.cjs');
-    const stats = extractStatsKey(statusInfo && statusInfo.artifacts, 'crypto_hub_ops_result');
-    r = RES.parseResourceLines(stats && stats.lines);
+    const stats = extractStatsKey(statusInfo?.artifacts, 'crypto_hub_ops_result');
+    r = RES.parseResourceLines(stats?.lines);
   } catch {
     r = null;
   }
@@ -755,15 +766,15 @@ async function uygulamaSonucunuKapat(req, serverId, jobId, statusInfo, yol) {
   try {
     require('../audit/index.cjs').auditPortal(req, 'crypto_hub_resources_apply', {
       username: sahip || undefined,
-      result: r && r.end && r.end.sonuc === 'uygulandi' ? 'ok' : 'fail',
+      result: r?.end?.sonuc === 'uygulandi' ? 'ok' : 'fail',
       detail: JSON.stringify({
         asama: 'sonuc',
-        tenant: (kayit && kayit.tenantKey) || '',
+        tenant: kayit?.tenantKey || '',
         jobId,
-        awx: statusInfo && statusInfo.status,
+        awx: statusInfo?.status,
         // Sonuc satiri yoksa "olculemedi" - "uygulandi" ya da "dur" UYDURULMAZ.
-        sonuc: r && r.end ? r.end.sonuc : 'olculemedi',
-        kod: r && r.end ? r.end.kod : '',
+        sonuc: r?.end ? r.end.sonuc : 'olculemedi',
+        kod: r?.end ? r.end.kod : '',
         adimlar: r ? r.steps.map((s) => `${s.adim}:${s.durum}`) : [],
         gozlem: r ? r.obs.filter((o) => o.durum !== 'gecti').map((o) => o.kontrol) : [],
         isSahibi: sahip || 'bilinmiyor',
@@ -790,7 +801,16 @@ async function uygulamaSonuclariniTara() {
     try {
       const st = await runner.getJobStatusOnServer(k.awx_server_id, k.awx_job_id);
       if (st && TERMINAL.includes(st.status)) {
-        if (await uygulamaSonucunuKapat(null, Number(k.awx_server_id), Number(k.awx_job_id), st, 'tarama')) n += 1;
+        if (
+          await uygulamaSonucunuKapat(
+            null,
+            Number(k.awx_server_id),
+            Number(k.awx_job_id),
+            st,
+            'tarama',
+          )
+        )
+          n += 1;
       }
     } catch {
       /* bu is icin AWX okunamadi - bir sonraki turda yeniden denenir */
@@ -946,7 +966,9 @@ function initCryptoHub(app) {
     // nodeOpen isaretleri ekran sekme suzgecini ve "kapali" gostergesini besler.
     const nodeGorunen = await nodeYetkisi(req);
     const { nodeAcikMi } = require('../../shared/cryptoHubNodes.cjs');
-    const suzulmus = selectionTree().filter((a) => acik.has(a.app) || (a.app === 'metaco' && nodeGorunen));
+    const suzulmus = selectionTree().filter(
+      (a) => acik.has(a.app) || (a.app === 'metaco' && nodeGorunen),
+    );
     const apps = suzulmus.map((a) =>
       a.app !== 'metaco'
         ? a
@@ -1050,7 +1072,7 @@ function initCryptoHub(app) {
           components: veri.components || [],
           lastNonZero,
           // Kosan surum: "ayni surume upgrade" uyarisi ve rollout komutu bundan uretilir.
-          running: (veri.versions && veri.versions.running) || '',
+          running: veri.versions?.running || '',
           // Tarama asamasi dustuyse (ornegin statefulset listesi Forbidden) bilesen listesi
           // EKSIKTIR; plan bunu uyari olarak yazsin diye notlar da gecirilir.
           notes: veri.notes || [],
@@ -1168,7 +1190,11 @@ function initCryptoHub(app) {
         kayit,
         asim: d.asimKullanildi,
         dogrulama: d,
-        canliKaynagi: (() => { if (canliSunucu) return 'sunucu'; if (params.live) return 'istemci'; return 'olculemedi'; })(),
+        canliKaynagi: (() => {
+          if (canliSunucu) return 'sunucu';
+          if (params.live) return 'istemci';
+          return 'olculemedi';
+        })(),
       };
     }
     if (params.action === 'resources_apply') {
@@ -1210,7 +1236,7 @@ function initCryptoHub(app) {
       const reg = require('../ansible/playbook-registry.cjs');
       const row = await reg.getByKey(OPS_KEY).catch(() => null);
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-      const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+      const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
         return res.status(501).json({
           ok: false,
@@ -1267,7 +1293,7 @@ function initCryptoHub(app) {
         // Betik bu degeri bastion'da GERCEKTEN kosan surumle ayrica karsilastirir: iki
         // kaynak da ayni demiyorsa hicbir sey uygulanmaz.
         const veri = await loadTenant(tenant).catch(() => null);
-        const kosan = String((veri && veri.versions && veri.versions.running) || '').trim();
+        const kosan = String(veri?.versions?.running || '').trim();
         const chart = chartRefOf(tenant);
         if (!chart) {
           return res.status(501).json({
@@ -1300,7 +1326,7 @@ function initCryptoHub(app) {
       if (params.action === 'resources_plan' || params.action === 'resources_apply') {
         // KOSAN SURUM taramadan; betik bastion'da helm list ile ayrica karsilastirir.
         const veri = await loadTenant(tenant).catch(() => null);
-        const kosan = String((veri && veri.versions && veri.versions.running) || '').trim();
+        const kosan = String(veri?.versions?.running || '').trim();
         if (!kosan) {
           return res.status(409).json({
             ok: false,
@@ -1360,12 +1386,18 @@ function initCryptoHub(app) {
       // yoksa CAS UPDATE onu sessizce devralip onceki isin sonucunu kaybederdi.
       const oncekiniKapat = async () => {
         const row = await RES.kilitOku(db, tenant.key, tenant.helmRelease);
-        if (!row || !row.held || !row.awx_job_id) return row;
+        if (!row?.held || !row.awx_job_id) return row;
         const st = await require('../ansible/runner.cjs')
           .getJobStatusOnServer(row.awx_server_id, row.awx_job_id)
           .catch(() => null);
         if (st && TERMINAL.includes(st.status)) {
-          await uygulamaSonucunuKapat(req, Number(row.awx_server_id), Number(row.awx_job_id), st, 'devralma');
+          await uygulamaSonucunuKapat(
+            req,
+            Number(row.awx_server_id),
+            Number(row.awx_job_id),
+            st,
+            'devralma',
+          );
           return RES.kilitOku(db, tenant.key, tenant.helmRelease);
         }
         return row;
@@ -1421,7 +1453,7 @@ function initCryptoHub(app) {
           return res.status(409).json({
             ok: false,
             code: 'KILIT',
-            message: `Bu ortamda başka bir CPU/bellek uygulaması sürüyor (${(k.sahip && k.sahip.holder) || 'bilinmiyor'}). Bitince yeniden önizleyin.`,
+            message: `Bu ortamda başka bir CPU/bellek uygulaması sürüyor (${k.sahip?.holder || 'bilinmiyor'}). Bitince yeniden önizleyin.`,
           });
         }
         kilit = { key: k.key, lockId };
@@ -1493,12 +1525,17 @@ function initCryptoHub(app) {
               asama: 'baslatildi',
               tenant: tenant.key,
               jobId: result?.jobId ?? null,
-              bilesen: params.component || (kaynak.plan && kaynak.plan.bilesen),
-              kap: params.container || (kaynak.plan && kaynak.plan.kap),
-              degisiklikler: params.changes || (kaynak.plan && kaynak.plan.degisiklikler),
+              bilesen: params.component || kaynak.plan?.bilesen,
+              kap: params.container || kaynak.plan?.kap,
+              degisiklikler: params.changes || kaynak.plan?.degisiklikler,
               asim: params.action === 'resources_plan' ? kaynak.asim : kaynak.plan.asim,
-              gerekce:
-                (() => { if (params.action === 'resources_plan') { if (kaynak.asim) return params.reason; return undefined; } return kaynak.plan.gerekce || undefined; })(),
+              gerekce: (() => {
+                if (params.action === 'resources_plan') {
+                  if (kaynak.asim) return params.reason;
+                  return undefined;
+                }
+                return kaynak.plan.gerekce || undefined;
+              })(),
               riskliOnay: params.riskyAck || undefined,
               bekleyenOnay: params.acceptPending || undefined,
             }),
@@ -1514,14 +1551,17 @@ function initCryptoHub(app) {
         status: result?.status ?? null,
         awxServerId: serverId,
         action: params.action,
-        dogrulama: kaynak && kaynak.dogrulama ? kaynak.dogrulama : undefined,
-        canliKaynagi: kaynak && kaynak.canliKaynagi ? kaynak.canliKaynagi : undefined,
+        dogrulama: kaynak?.dogrulama ? kaynak.dogrulama : undefined,
+        canliKaynagi: kaynak?.canliKaynagi ? kaynak.canliKaynagi : undefined,
       });
     } catch (err) {
       if (kilit) {
-        await RES.kilitBirak(require('../db/index.cjs'), kilit.key, kilit.lockId, 'baslatilamadi').catch(
-          (e) => console.warn('[CryptoHub] kilit birakilamadi:', e.message),
-        );
+        await RES.kilitBirak(
+          require('../db/index.cjs'),
+          kilit.key,
+          kilit.lockId,
+          'baslatilamadi',
+        ).catch((e) => console.warn('[CryptoHub] kilit birakilamadi:', e.message));
       }
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1552,7 +1592,7 @@ function initCryptoHub(app) {
       if (terminal) {
         const { extractStatsKey } = require('../opsx/index.cjs');
         const stats = extractStatsKey(statusInfo.artifacts, 'crypto_hub_ops_result');
-        parsed = parseOpsLines(stats && stats.lines);
+        parsed = parseOpsLines(stats?.lines);
         if (parsed) {
           // KAPALI KIRACININ SONUCU DA DONMEZ. Bu uc kiraci parametresi almiyor ama isin
           // ciktisi kiraci anahtarini tasiyor; is baslatilirken kapi vardi, sonucu okurken
@@ -1561,7 +1601,7 @@ function initCryptoHub(app) {
           const tenant = tenantOf(parsed.tenantKey);
           if (tenant && !isOpen(tenant))
             return res.status(403).json({ ok: false, closed: true, message: CLOSED_MSG });
-          parsed.action = (stats && stats.action) || null;
+          parsed.action = stats?.action || null;
           // Cikti, kayittaki kiraciyla/islemle CELISIYORSA sonuc verilmez (kayit esastir).
           if (
             (parsed.tenantKey && parsed.tenantKey !== erisim.tenant.key) ||
@@ -1574,7 +1614,7 @@ function initCryptoHub(app) {
           // ONIZLEME (helm_template) MASKELI: Secret data/stringData degerleri ve sir adli
           // anahtarlar '****'. Bastion da maskeler; AWX'in kosturdugu revizyon bilinmedigi
           // icin (K-5) Portal ayrica maskeler. Maske DUSERSE ham manifest DONMEZ.
-          if (parsed.template && parsed.template.lines.length) {
+          if (parsed.template?.lines.length) {
             try {
               parsed.template.lines = RES.maskeleManifest(parsed.template.lines, SIR_ANAHTARI);
               parsed.template.masked = true;
@@ -1607,7 +1647,7 @@ function initCryptoHub(app) {
             parsed.resources = r;
           }
           // VARSAYILAN MASKELI. Ham icerik icin ayri ve denetlenen bir uc var (?reveal=1).
-          if (parsed.values && parsed.values.length) {
+          if (parsed.values?.length) {
             parsed.masked = String(req.query.reveal || '') !== '1';
             if (parsed.masked) parsed.values = maskValues(parsed.values);
             else {
@@ -1631,14 +1671,14 @@ function initCryptoHub(app) {
           // CONFIG MAP -> ROLLOUT ESLESMESI SUNUCUDA cozulur: istemci `shared/` altindan
           // import edemiyor (takma ad yok) ve iki kopya tutmak, bir gun birinin eskimesi
           // demekti. Uc durum korunur: kayitli / tahmin / yok.
-          if (parsed.configMaps && parsed.configMaps.length) {
+          if (parsed.configMaps?.length) {
             const { rolloutHedefleri } = require('../../shared/cryptoHubConfigMaps.cjs');
             parsed.configMaps = parsed.configMaps.map((c) => ({
               ...c,
-              rollout: rolloutHedefleri(tenant && tenant.app, c.name),
+              rollout: rolloutHedefleri(tenant?.app, c.name),
             }));
           }
-          if (parsed.files && parsed.files.length) {
+          if (parsed.files?.length) {
             parsed.masked = String(req.query.reveal || '') !== '1';
             parsed.compare = require('./values-compare.cjs').karsilastir(
               parsed.files,
@@ -1728,7 +1768,7 @@ function initCryptoHub(app) {
       const reg = require('../ansible/playbook-registry.cjs');
       const row = await reg.getByKey(REGISTRY_KEY).catch(() => null);
       const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-      const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+      const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
       if (!templateId) {
         return res.status(501).json({
           ok: false,

@@ -87,7 +87,8 @@ function bindingProblem(entry, server) {
   if (!server) return "bu AWX sunucusu Portal'da artık tanımlı değil";
   if (!have) return 'AWX sunucusunun adresi okunamadı';
   if (!entry.bind) return "kayıtta token'ın hangi AWX adresi için girildiği yok";
-  if (entry.bind !== have) return `token ${entry.bind} adresi için girildi, sunucu şimdi ${have} adresini gösteriyor`;
+  if (entry.bind !== have)
+    return `token ${entry.bind} adresi için girildi, sunucu şimdi ${have} adresini gösteriyor`;
   return null;
 }
 
@@ -139,7 +140,10 @@ function parseBlob(raw) {
   const { ENC_PREFIX } = cryptoMod();
   const map = new Map();
   const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  const servers = obj && typeof obj === 'object' && obj.servers && typeof obj.servers === 'object' ? obj.servers : {};
+  const servers =
+    obj && typeof obj === 'object' && obj.servers && typeof obj.servers === 'object'
+      ? obj.servers
+      : {};
   for (const [k, v] of Object.entries(servers)) {
     const id = Number(k);
     if (!Number.isInteger(id) || id < 0) continue;
@@ -183,7 +187,9 @@ function setEntries(map) {
 }
 
 async function readFresh(db) {
-  const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
+  const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+    BLOB_NAME,
+  ]);
   return parseBlob(rows?.[0] ? rows[0].data : null);
 }
 
@@ -192,14 +198,15 @@ async function readFresh(db) {
  * hata console.error + readError; hic gecerli kayit yoksa entries null (= OLCULEMEDI).
  */
 async function load(db, { fresh = false } = {}) {
-  if (!fresh && _entries && Date.now() - _cacheAt < CACHE_TTL_MS) return { entries: _entries, error: null };
+  if (!fresh && _entries && Date.now() - _cacheAt < CACHE_TTL_MS)
+    return { entries: _entries, error: null };
   try {
     const m = await readFresh(db);
     setEntries(m);
     _readError = null;
     return { entries: m, error: null };
   } catch (e) {
-    _readError = { at: iso(), message: redact((e?.message) || String(e)).slice(0, 500) };
+    _readError = { at: iso(), message: redact(e?.message || String(e)).slice(0, 500) };
     console.error(
       `[LongJobCancelToken] iptal token kaydi okunamadi (portal_config_blobs '${BLOB_NAME}'); ` +
         (_entries ? 'son gecerli kayitla devam ediliyor' : 'hic gecerli kayit yok (olculemedi)') +
@@ -247,8 +254,18 @@ async function getCancelAuth(db, serverId, { server = null } = {}) {
   const why = bindingProblem(e, server);
   if (why) {
     const message = mismatchMessage(e, why);
-    _runtime.set(id, { at: iso(), httpStatus: null, message, tokenEnc: e.tokenEnc, reason: 'adres_degisti' });
-    throw codeErr('server_mismatch', message, { tokenServerMismatch: true, permanent: true, owner: e.owner || null });
+    _runtime.set(id, {
+      at: iso(),
+      httpStatus: null,
+      message,
+      tokenEnc: e.tokenEnc,
+      reason: 'adres_degisti',
+    });
+    throw codeErr('server_mismatch', message, {
+      tokenServerMismatch: true,
+      permanent: true,
+      owner: e.owner || null,
+    });
   }
   let token;
   try {
@@ -256,13 +273,23 @@ async function getCancelAuth(db, serverId, { server = null } = {}) {
   } catch (err) {
     const message =
       `İPTAL TOKEN'I ÇÖZÜLEMEDİ (${e.owner || 'sahibi bilinmiyor'}): ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş ` +
-      `olabilir (${redact((err?.message) || String(err)).slice(0, 200)}). Admin ekranından token'ı yeniden girin ya da silin.`;
+      `olabilir (${redact(err?.message || String(err)).slice(0, 200)}). Admin ekranından token'ı yeniden girin ya da silin.`;
     // Durum/ekran: token tanimli ama KULLANILAMIYOR (sessiz degil).
-    _runtime.set(id, { at: iso(), httpStatus: null, message, tokenEnc: e.tokenEnc, reason: 'cozulemedi' });
-    throw codeErr('undecryptable', message, { tokenUndecryptable: true, permanent: true, owner: e.owner || null });
+    _runtime.set(id, {
+      at: iso(),
+      httpStatus: null,
+      message,
+      tokenEnc: e.tokenEnc,
+      reason: 'cozulemedi',
+    });
+    throw codeErr('undecryptable', message, {
+      tokenUndecryptable: true,
+      permanent: true,
+      owner: e.owner || null,
+    });
   }
   const rt = _runtime.get(id);
-  if ((rt?.reason === 'cozulemedi' || rt?.reason === 'adres_degisti')) _runtime.delete(id);
+  if (rt?.reason === 'cozulemedi' || rt?.reason === 'adres_degisti') _runtime.delete(id);
   return { via: 'cancel_token', token, owner: e.owner, entry: { tokenEnc: e.tokenEnc } };
 }
 
@@ -300,9 +327,15 @@ function mutate(db, fn) {
     const data = serialize(map);
     const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
     if (ex.rows?.length) {
-      await db.query(`UPDATE portal_config_blobs SET data = $2, updated_at = GETUTCDATE() WHERE name = $1`, [BLOB_NAME, data]);
+      await db.query(
+        `UPDATE portal_config_blobs SET data = $2, updated_at = GETUTCDATE() WHERE name = $1`,
+        [BLOB_NAME, data],
+      );
     } else {
-      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, data]);
+      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+        BLOB_NAME,
+        data,
+      ]);
     }
     setEntries(map);
     _readError = null;
@@ -325,9 +358,9 @@ function encryptionReady() {
 
 /** Bicim kontrolu. Hata mesaji DEGERI ICERMEZ. */
 function validateTokenShape(token) {
-  if (typeof token !== 'string') throw codeErr(400, "Token metin olmalı.");
+  if (typeof token !== 'string') throw codeErr(400, 'Token metin olmalı.');
   const t = token.trim();
-  if (!t) throw codeErr(400, "Token boş olamaz.");
+  if (!t) throw codeErr(400, 'Token boş olamaz.');
   if (t.length < TOKEN_MIN_LEN || t.length > TOKEN_MAX_LEN) {
     throw codeErr(400, `Token uzunluğu ${TOKEN_MIN_LEN}-${TOKEN_MAX_LEN} karakter olmalı.`);
   }
@@ -350,12 +383,15 @@ function validateTokenShape(token) {
 async function saveToken(db, { serverId, server, token, by, verify }) {
   const id = Number(serverId);
   const bind = serverFingerprint(server);
-  if (!bind) throw codeErr(404, 'AWX sunucusunun adresi okunamadı — token kaydedilmedi.', { reason: 'no_server' });
+  if (!bind)
+    throw codeErr(404, 'AWX sunucusunun adresi okunamadı — token kaydedilmedi.', {
+      reason: 'no_server',
+    });
   if (!encryptionReady()) {
     throw codeErr(
       400,
       "ENV_OVERRIDES_ENCRYPTION_KEY tanımlı değil: iptal token'ı şifrelenmeden saklanamaz — kayıt REDDEDİLDİ " +
-        '(düz metin saklanmaz). Operatör anahtarı tanımlayıp Portal\'ı yeniden başlattıktan sonra tekrar deneyin.',
+        "(düz metin saklanmaz). Operatör anahtarı tanımlayıp Portal'ı yeniden başlattıktan sonra tekrar deneyin.",
       { reason: 'no_key' },
     );
   }
@@ -365,9 +401,12 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
     who = await verify(t);
   } catch (e) {
     const status = e?.status;
-    const msg = redact((e?.message) || String(e), [t]).slice(0, 300);
+    const msg = redact(e?.message || String(e), [t]).slice(0, 300);
     if (status === 401 || status === 403) {
-      throw codeErr(400, `Token geçersiz (AWX ${status}) — kaydedilmedi. AWX yanıtı: ${msg}`, { reason: 'invalid', httpStatus: status });
+      throw codeErr(400, `Token geçersiz (AWX ${status}) — kaydedilmedi. AWX yanıtı: ${msg}`, {
+        reason: 'invalid',
+        httpStatus: status,
+      });
     }
     throw codeErr(
       502,
@@ -376,18 +415,26 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
     );
   }
   if (!who?.username) {
-    throw codeErr(502, "Token doğrulanamadı: AWX /me yanıtında kullanıcı adı yok — kaydedilmedi.", { reason: 'unverified' });
+    throw codeErr(502, 'Token doğrulanamadı: AWX /me yanıtında kullanıcı adı yok — kaydedilmedi.', {
+      reason: 'unverified',
+    });
   }
   const tokenEnc = cryptoMod().encryptSecretValue(t);
-  if (typeof tokenEnc !== 'string' || !tokenEnc.startsWith(cryptoMod().ENC_PREFIX) || tokenEnc.includes(t)) {
+  if (
+    typeof tokenEnc !== 'string' ||
+    !tokenEnc.startsWith(cryptoMod().ENC_PREFIX) ||
+    tokenEnc.includes(t)
+  ) {
     // Savunma: env-overrides'in duz-metin yedegi ya da beklenmedik bicim -> YAZMA.
-    throw codeErr(500, "Token şifrelenemedi — kayıt REDDEDİLDİ (düz metin saklanmaz).", { reason: 'no_key' });
+    throw codeErr(500, 'Token şifrelenemedi — kayıt REDDEDİLDİ (düz metin saklanmaz).', {
+      reason: 'no_key',
+    });
   }
   const now = iso();
   let replacedOwner = null;
   await mutate(db, (map) => {
     const prev = map.get(id);
-    replacedOwner = (prev?.owner ?? null);
+    replacedOwner = prev?.owner ?? null;
     map.set(id, {
       tokenEnc,
       owner: str(who.username, 150),
@@ -396,12 +443,23 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
       bind,
       setBy: str(by, 150) || null,
       setAt: now,
-      lastVerify: { at: now, ok: true, httpStatus: 200, result: 'gecerli', message: null, by: str(by, 150) || null },
+      lastVerify: {
+        at: now,
+        ok: true,
+        httpStatus: 200,
+        result: 'gecerli',
+        message: null,
+        by: str(by, 150) || null,
+      },
     });
   });
   _plain.set(id, { enc: tokenEnc, token: t });
   _runtime.delete(id);
-  return { owner: str(who.username, 150), ownerIsSuperuser: who.isSuperuser === true, replacedOwner };
+  return {
+    owner: str(who.username, 150),
+    ownerIsSuperuser: who.isSuperuser === true,
+    replacedOwner,
+  };
 }
 
 /** @returns {Promise<{ deleted: boolean, owner: string|null }>} */
@@ -443,43 +501,85 @@ async function recordVerify(db, serverId, tokenEnc, verifyResult) {
 async function verifyStored(db, serverId, { by, verify, server = null }) {
   const id = Number(serverId);
   const { entries, error } = await load(db, { fresh: true });
-  if (!entries) throw codeErr(503, `İptal token kaydı okunamadı (DB): ${error ? error.message : ''}`);
+  if (!entries)
+    throw codeErr(503, `İptal token kaydı okunamadı (DB): ${error ? error.message : ''}`);
   const e = entries.get(id);
-  if (!e) throw codeErr(404, 'Bu sunucu için iptal token\'ı tanımlı değil.');
+  if (!e) throw codeErr(404, "Bu sunucu için iptal token'ı tanımlı değil.");
   // Adres degistiyse token YENI adrese gonderilmez (dogrulama da bir gonderimdir).
   const why = bindingProblem(e, server);
   if (why) {
     const message = mismatchMessage(e, why);
-    _runtime.set(id, { at: iso(), httpStatus: null, message, tokenEnc: e.tokenEnc, reason: 'adres_degisti' });
-    return { ok: false, measured: true, owner: e.owner, httpStatus: null, message, addressChanged: true };
+    _runtime.set(id, {
+      at: iso(),
+      httpStatus: null,
+      message,
+      tokenEnc: e.tokenEnc,
+      reason: 'adres_degisti',
+    });
+    return {
+      ok: false,
+      measured: true,
+      owner: e.owner,
+      httpStatus: null,
+      message,
+      addressChanged: true,
+    };
   }
   let token;
   try {
     token = decryptFor(id, e);
   } catch (err) {
     const message = `Token çözülemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş olabilir): ${redact(err?.message).slice(0, 200)}`;
-    await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: false, result: 'cozulemedi', message, by }).catch(() => {});
+    await recordVerify(db, id, e.tokenEnc, {
+      at: iso(),
+      ok: false,
+      result: 'cozulemedi',
+      message,
+      by,
+    }).catch(() => {});
     return { ok: false, measured: true, owner: e.owner, httpStatus: null, message };
   }
   try {
     const who = await verify(token);
-    if (!who?.username) throw new Error("AWX /me yanıtında kullanıcı adı yok");
+    if (!who?.username) throw new Error('AWX /me yanıtında kullanıcı adı yok');
     const ownerChanged = e.owner && who.username !== e.owner;
-    const message = ownerChanged ? `Token sahibi değişmiş görünüyor: kayıtta ${e.owner}, AWX ${who.username} diyor.` : null;
-    await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: true, httpStatus: 200, result: 'gecerli', message, by });
+    const message = ownerChanged
+      ? `Token sahibi değişmiş görünüyor: kayıtta ${e.owner}, AWX ${who.username} diyor.`
+      : null;
+    await recordVerify(db, id, e.tokenEnc, {
+      at: iso(),
+      ok: true,
+      httpStatus: 200,
+      result: 'gecerli',
+      message,
+      by,
+    });
     _runtime.delete(id);
     return { ok: true, measured: true, owner: who.username, httpStatus: 200, message };
   } catch (err) {
     const status = err?.status;
-    const msg = redact((err?.message) || String(err), [token]).slice(0, 300);
+    const msg = redact(err?.message || String(err), [token]).slice(0, 300);
     if (status === 401 || status === 403) {
       const message = `İPTAL TOKEN'I GEÇERSİZ (AWX ${status}): ${msg}`;
-      await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: false, httpStatus: status, result: 'gecersiz', message, by }).catch(() => {});
+      await recordVerify(db, id, e.tokenEnc, {
+        at: iso(),
+        ok: false,
+        httpStatus: status,
+        result: 'gecersiz',
+        message,
+        by,
+      }).catch(() => {});
       _runtime.set(id, { at: iso(), httpStatus: status, message, tokenEnc: e.tokenEnc });
       return { ok: false, measured: true, owner: e.owner, httpStatus: status, message };
     }
     // Ag/AWX hatasi: OLCULEMEDI. "gecersiz" DENMEZ, kalici kayit da degismez.
-    return { ok: false, measured: false, owner: e.owner, httpStatus: status || null, message: `Ölçülemedi (geçersiz DEMEK DEĞİL): ${msg}` };
+    return {
+      ok: false,
+      measured: false,
+      owner: e.owner,
+      httpStatus: status || null,
+      message: `Ölçülemedi (geçersiz DEMEK DEĞİL): ${msg}`,
+    };
   }
 }
 
@@ -494,9 +594,19 @@ async function markInvalid(db, serverId, { tokenEnc, httpStatus, message }) {
   _runtime.set(id, { at, httpStatus: httpStatus || 401, message: m, tokenEnc: tokenEnc || null });
   if (!tokenEnc || !db) return;
   try {
-    await recordVerify(db, id, tokenEnc, { at, ok: false, httpStatus: httpStatus || 401, result: 'gecersiz', message: m, by: 'otomatik iptal' });
+    await recordVerify(db, id, tokenEnc, {
+      at,
+      ok: false,
+      httpStatus: httpStatus || 401,
+      result: 'gecersiz',
+      message: m,
+      by: 'otomatik iptal',
+    });
   } catch (e) {
-    console.error('[LongJobCancelToken] gecersiz token sonucu kaydedilemedi:', redact((e?.message) || String(e)));
+    console.error(
+      '[LongJobCancelToken] gecersiz token sonucu kaydedilemedi:',
+      redact(e?.message || String(e)),
+    );
   }
 }
 
@@ -504,23 +614,28 @@ async function markInvalid(db, serverId, { tokenEnc, httpStatus, message }) {
 function entryView(id, e, server) {
   const rt = _runtime.get(id);
   const invalidRt = !!(rt && e && rt.tokenEnc && rt.tokenEnc === e.tokenEnc);
-  const lv = (e?.lastVerify ?? null);
+  const lv = e?.lastVerify ?? null;
   // server verilmediyse (durum ekrani) adres OLCULMEZ: null ("degismedi" DENMEZ).
   const why = e && server !== undefined ? bindingProblem(e, server) : null;
   return {
     serverId: id,
     defined: !!e,
-    owner: (e?.owner ?? null),
+    owner: e?.owner ?? null,
     ownerIsSuperuser: e ? !!e.ownerIsSuperuser : false,
-    setBy: (e?.setBy ?? null),
-    setAt: (e?.setAt ?? null),
+    setBy: e?.setBy ?? null,
+    setAt: e?.setAt ?? null,
     lastVerify: lv,
     boundTo: e?.bind || null,
     addressChanged: e && server !== undefined ? !!why : null,
     addressMessage: why ? mismatchMessage(e, why) : null,
     invalid: !!e && (invalidRt || !!why || !!(lv?.ok === false && lv.result === 'gecersiz')),
     invalidInfo: invalidRt
-      ? { at: rt.at, httpStatus: rt.httpStatus, message: rt.message, reason: rt.reason || 'gecersiz' }
+      ? {
+          at: rt.at,
+          httpStatus: rt.httpStatus,
+          message: rt.message,
+          reason: rt.reason || 'gecersiz',
+        }
       : null,
   };
 }
@@ -540,7 +655,11 @@ async function publicView(db, servers = []) {
     const id = Number(s.id);
     seen.add(id);
     const srv = s.url ? { url: s.url, apiBase: s.apiBase } : undefined;
-    out.push({ ...entryView(id, map.get(id), srv), serverName: s.name || `sunucu ${id}`, serverKnown: true });
+    out.push({
+      ...entryView(id, map.get(id), srv),
+      serverName: s.name || `sunucu ${id}`,
+      serverKnown: true,
+    });
   }
   for (const [id, e] of map) {
     if (seen.has(id)) continue;

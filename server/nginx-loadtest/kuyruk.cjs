@@ -53,8 +53,22 @@
 
 const crypto = require('node:crypto');
 
-const KUYRUK_DURUMLARI = Object.freeze(['BEKLIYOR', 'CALISIYOR', 'DINLENME', 'BITTI', 'IPTAL', 'HATALI']);
-const OGE_DURUMLARI = Object.freeze(['BEKLIYOR', 'CALISIYOR', 'BITTI', 'ATLANDI', 'HATALI', 'IPTAL']);
+const KUYRUK_DURUMLARI = Object.freeze([
+  'BEKLIYOR',
+  'CALISIYOR',
+  'DINLENME',
+  'BITTI',
+  'IPTAL',
+  'HATALI',
+]);
+const OGE_DURUMLARI = Object.freeze([
+  'BEKLIYOR',
+  'CALISIYOR',
+  'BITTI',
+  'ATLANDI',
+  'HATALI',
+  'IPTAL',
+]);
 const BEKLEME_VARSAYILAN_DK = 5;
 const BEKLEME_MIN_DK = 1;
 const BEKLEME_MAX_DK = 30;
@@ -96,7 +110,10 @@ function hata(status, code, message, ek) {
 // boslugu tekillesmis metin; kod = onun sha256'sinin ilk 10 hanesi. Ayni tur farkli sayiyla gelirse ayni koddur.
 
 function uyariNormal(metin) {
-  return String(metin ?? '').replace(/\d+(?:[.,]\d+)*/g, '#').replace(/\s+/g, ' ').trim();
+  return String(metin ?? '')
+    .replace(/\d+(?:[.,]\d+)*/g, '#')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function uyariTuru(metin) {
@@ -119,10 +136,17 @@ function uyariTurleri(liste) {
 
 /** Gece kosu kapisinin uyari karari: onaylanmamis TUR varsa 409 yeni_uyari (oge ATLANDI). */
 function uyariKarariOf(onaylananTurler) {
-  const kodlar = (Array.isArray(onaylananTurler) ? onaylananTurler : []).map((t) => (t && typeof t === 'object' ? t.kod : t));
+  const kodlar = (Array.isArray(onaylananTurler) ? onaylananTurler : []).map((t) =>
+    t && typeof t === 'object' ? t.kod : t,
+  );
   return (uyarilar) => {
     const yeni = yeniTurler(uyarilar, kodlar);
-    if (yeni.length) throw hata(409, 'yeni_uyari', `yeni uyarı: ${yeni.map((t) => (String(t.kod) + " " + t.ornek)).join(' | ')}`.slice(0, 900));
+    if (yeni.length)
+      throw hata(
+        409,
+        'yeni_uyari',
+        `yeni uyarı: ${yeni.map((t) => String(t.kod) + ' ' + t.ornek).join(' | ')}`.slice(0, 900),
+      );
   };
 }
 
@@ -151,16 +175,25 @@ function zaman(v, ad) {
 /** Oge etiketi kurallari (olusturma ve duzenleme ortak): kirpilmis, zorunlu, en cok ETIKET_MAX, kontrol karakteri yok. */
 function ogeEtiketi(v, onEk) {
   const etiket = typeof v === 'string' ? v.trim() : '';
-  if (!etiket) throw hata(400, 'gecersiz_istek', `${onEk}etiket zorunlu (ne değiştirdiğinizi yazın, ör. "A3 brotli seviye 4").`);
-  if (Array.from(etiket).length > ETIKET_MAX) throw hata(400, 'gecersiz_istek', `${onEk}etiket en çok ${ETIKET_MAX} karakter.`);
+  if (!etiket)
+    throw hata(
+      400,
+      'gecersiz_istek',
+      `${onEk}etiket zorunlu (ne değiştirdiğinizi yazın, ör. "A3 brotli seviye 4").`,
+    );
+  if (Array.from(etiket).length > ETIKET_MAX)
+    throw hata(400, 'gecersiz_istek', `${onEk}etiket en çok ${ETIKET_MAX} karakter.`);
   // Kosu etiketi ve denetim kaydina yazilir: tekli kosunun etiket kapisi (dogrula.cjs KONTROL_KARAKTERI) ile ayni.
-  if (KONTROL_KARAKTERI.test(etiket)) throw hata(400, 'gecersiz_istek', `${onEk}etiket satır sonu / kontrol karakteri içeremez.`);
+  if (KONTROL_KARAKTERI.test(etiket))
+    throw hata(400, 'gecersiz_istek', `${onEk}etiket satır sonu / kontrol karakteri içeremez.`);
   return etiket;
 }
 
 /** Istemcinin onayladigi uyari turu kodlari: bicimi tutanlar, tekil. */
 function turKodlari(v) {
-  return Array.isArray(v) ? [...new Set(v.filter((k) => typeof k === 'string' && /^U[0-9a-f]{10}$/.test(k)))] : [];
+  return Array.isArray(v)
+    ? [...new Set(v.filter((k) => typeof k === 'string' && /^U[0-9a-f]{10}$/.test(k)))]
+    : [];
 }
 
 /**
@@ -173,41 +206,72 @@ function kuyrukGovdesi(b, { simdiMs = Date.now() } = {}) {
   if (g.beklemeDk !== undefined && g.beklemeDk !== null && g.beklemeDk !== '') {
     beklemeDk = tamSayi(g.beklemeDk);
     if (beklemeDk === null || beklemeDk < BEKLEME_MIN_DK || beklemeDk > BEKLEME_MAX_DK) {
-      throw hata(400, 'gecersiz_istek', `Bekleme ${BEKLEME_MIN_DK}–${BEKLEME_MAX_DK} dk arasında bir tam sayı olmalı.`);
+      throw hata(
+        400,
+        'gecersiz_istek',
+        `Bekleme ${BEKLEME_MIN_DK}–${BEKLEME_MAX_DK} dk arasında bir tam sayı olmalı.`,
+      );
     }
   }
   const baslangic = zaman(g.baslangic, 'Başlangıç');
-  if (baslangic && (baslangic.getTime() < simdiMs - 5 * 60000 || baslangic.getTime() > simdiMs + BASLANGIC_MAX_SAAT * 3600000)) {
-    throw hata(400, 'gecersiz_istek', `Başlangıç şimdiden en çok ${BASLANGIC_MAX_SAAT} saat sonrası olabilir.`);
+  if (
+    baslangic &&
+    (baslangic.getTime() < simdiMs - 5 * 60000 ||
+      baslangic.getTime() > simdiMs + BASLANGIC_MAX_SAAT * 3600000)
+  ) {
+    throw hata(
+      400,
+      'gecersiz_istek',
+      `Başlangıç şimdiden en çok ${BASLANGIC_MAX_SAAT} saat sonrası olabilir.`,
+    );
   }
   const enGecBitis = zaman(g.enGecBitis, 'En geç bitiş');
   if (enGecBitis) {
     const alt = Math.max(simdiMs, baslangic ? baslangic.getTime() : 0);
-    if (enGecBitis.getTime() <= alt) throw hata(400, 'gecersiz_istek', 'En geç bitiş başlangıçtan sonra olmalı.');
-    if (enGecBitis.getTime() > simdiMs + BITIS_MAX_SAAT * 3600000) throw hata(400, 'gecersiz_istek', `En geç bitiş şimdiden en çok ${BITIS_MAX_SAAT} saat sonrası olabilir.`);
+    if (enGecBitis.getTime() <= alt)
+      throw hata(400, 'gecersiz_istek', 'En geç bitiş başlangıçtan sonra olmalı.');
+    if (enGecBitis.getTime() > simdiMs + BITIS_MAX_SAAT * 3600000)
+      throw hata(
+        400,
+        'gecersiz_istek',
+        `En geç bitiş şimdiden en çok ${BITIS_MAX_SAAT} saat sonrası olabilir.`,
+      );
   }
   const ad = typeof g.ad === 'string' ? g.ad.trim().slice(0, 120) : '';
-  if (KONTROL_KARAKTERI.test(ad)) throw hata(400, 'gecersiz_istek', 'Kuyruk adı satır sonu / kontrol karakteri içeremez.');
-  if (!Array.isArray(g.ogeler) || g.ogeler.length < 1) throw hata(400, 'gecersiz_istek', 'Kuyrukta en az bir öğe olmalı.');
-  if (g.ogeler.length > MAX_OGE) throw hata(400, 'gecersiz_istek', `Kuyrukta en çok ${MAX_OGE} öğe olabilir.`);
+  if (KONTROL_KARAKTERI.test(ad))
+    throw hata(400, 'gecersiz_istek', 'Kuyruk adı satır sonu / kontrol karakteri içeremez.');
+  if (!Array.isArray(g.ogeler) || g.ogeler.length < 1)
+    throw hata(400, 'gecersiz_istek', 'Kuyrukta en az bir öğe olmalı.');
+  if (g.ogeler.length > MAX_OGE)
+    throw hata(400, 'gecersiz_istek', `Kuyrukta en çok ${MAX_OGE} öğe olabilir.`);
   const ogeler = g.ogeler.map((o, i) => {
     const x = o && typeof o === 'object' && !Array.isArray(o) ? o : {};
     const etiket = ogeEtiketi(x.etiket, `Öğe ${i + 1}: `);
-    if (!x.govde || typeof x.govde !== 'object' || Array.isArray(x.govde)) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: ayarlar (govde) eksik.`);
+    if (!x.govde || typeof x.govde !== 'object' || Array.isArray(x.govde))
+      throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: ayarlar (govde) eksik.`);
     let onKontrolKosuId = null;
     if (x.onKontrolKosuId !== undefined && x.onKontrolKosuId !== null) {
       onKontrolKosuId = tamSayi(x.onKontrolKosuId);
-      if (!(onKontrolKosuId > 0)) throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: onKontrolKosuId geçersiz.`);
+      if (!(onKontrolKosuId > 0))
+        throw hata(400, 'gecersiz_istek', `Öğe ${i + 1}: onKontrolKosuId geçersiz.`);
     }
     return { etiket, govde: x.govde, onKontrolKosuId };
   });
   const onaylananTurler = turKodlari(g.onaylananTurler);
-  return { ad: ad || null, beklemeDk, baslangic, enGecBitis, confirmText: g.confirmText, onaylananTurler, ogeler };
+  return {
+    ad: ad || null,
+    beklemeDk,
+    baslangic,
+    enGecBitis,
+    confirmText: g.confirmText,
+    onaylananTurler,
+    ogeler,
+  };
 }
 
 /** Kosu oncesi dosya uretimi payi: yalniz static sunucu ayarinda (parametreler kanonik nesne). */
 function hazirlikPayiSn(p) {
-  return p && p.sunucuAyar && p.sunucuAyar.static ? HAZIRLIK_PAY_SN : 0;
+  return p?.sunucuAyar?.static ? HAZIRLIK_PAY_SN : 0;
 }
 
 /** Kosu satirina yazilan etiket: "[K<kuyruk>] <oge etiketi>" (en cok 120 karakter). */
@@ -229,7 +293,8 @@ const OGE_KOLONLARI = `id, kuyruk_id, sira, etiket, govde, butce_sn, uyari_turle
   kosu_id, neden, deneme, baslama_at, bitis_at, created_at, sonraki_deneme_at,
   DATEDIFF(SECOND, GETUTCDATE(), sonraki_deneme_at) AS deneme_kalan_sn`;
 // Kuyruk CALISIYOR, duraklatilmamis ve kira BIZDE: yeni is baslatan yazimlarin ortak kosulu ($K = kira parametresi).
-const KUYRUK_BIZDE = (p) => `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR' AND q.duraklat_at IS NULL AND q.kira_id = ${p})`;
+const KUYRUK_BIZDE = (p) =>
+  `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR' AND q.duraklat_at IS NULL AND q.kira_id = ${p})`;
 // Yalniz kuyruk CALISIYOR (kirasiz): BEKLIYOR'a geri alma bununla. Kuyruk iptal / HATALI olduysa geri alma TUTMAZ;
 // oge CALISIYOR kalir ve sonraki tur (aktifKuyruklar IPTAL / HATALI + calisan oge) onu IPTAL kapatir (yetim yok).
 const KUYRUK_CALISIYOR = `EXISTS (SELECT 1 FROM nginx_loadtest_kuyruk q WHERE q.id = nginx_loadtest_kuyruk_ogeler.kuyruk_id AND q.durum = 'CALISIYOR')`;
@@ -356,7 +421,10 @@ const SQL = Object.freeze({
 
 /** Siralama: tek UPDATE (CASE) - yalniz hala BEKLIYOR olanlar; sira degerleri kuyrugun en buyugunun ustunden. */
 function siraSql(n) {
-  const durumlar = Array.from({ length: n }, (_, i) => `WHEN $${i + 2} THEN $${n + 2} + ${i + 1}`).join(' ');
+  const durumlar = Array.from(
+    { length: n },
+    (_, i) => `WHEN $${i + 2} THEN $${n + 2} + ${i + 1}`,
+  ).join(' ');
   const idler = Array.from({ length: n }, (_, i) => `$${i + 2}`).join(', ');
   return `UPDATE /*KQ:sira*/ nginx_loadtest_kuyruk_ogeler SET sira = CASE id ${durumlar} END
      WHERE kuyruk_id = $1 AND durum = 'BEKLIYOR' AND id IN (${idler})`;
@@ -365,7 +433,11 @@ const SIRA_TABAN_SQL = `SELECT /*KQ:siraTaban*/ MAX(sira) AS m FROM nginx_loadte
 
 // -- YURUTUCU ------------------------------------------------------------------------------
 
-const sayiOf = (v) => { if (v == null || v === '') return null; if (Number.isFinite(Number(v))) return Number(v); return null; };
+const sayiOf = (v) => {
+  if (v == null || v === '') return null;
+  if (Number.isFinite(Number(v))) return Number(v);
+  return null;
+};
 function jsonOku(s, varsayilan = null) {
   if (s == null || s === '') return varsayilan;
   try {
@@ -385,18 +457,18 @@ const kisa = (s, n = 1000) => maskele(String(s ?? '')).slice(0, n);
  * kosuyuBaslat kilidi birakti, satir FAILED -> durumuna gore 'gecici' / 'atla' (kisa AWX kesintisi kuyrugu bitirmez).
  */
 function hataSinifi(e) {
-  const code = e && e.code;
+  const code = e?.code;
   if (code === 'kilit_dolu') return 'bekle';
   if (code === 'kuyruk_yazilamadi') return 'birak';
-  if (e && e.kosuId != null && (e.belirsiz || e.jobId != null)) return 'hatali';
-  const st = Number(e && e.status);
+  if (e?.kosuId != null && (e.belirsiz || e.jobId != null)) return 'hatali';
+  const st = Number(e?.status);
   if (st === 400 || st === 403 || st === 409) return 'atla';
   return 'gecici';
 }
 
 /** Hata kosu satiri tasiyor ama is kesin baslamadi mi (numara ogeden silinip yeniden denenebilir). */
 function numaraliBaslamadi(e) {
-  return !!(e && e.kosuId != null && !e.belirsiz && e.jobId == null);
+  return !!(e?.kosuId != null && !e.belirsiz && e.jobId == null);
 }
 
 /** Gecici denemeden sonra geri cekilme bitmedi mi (DB saatiyle kalan sn). */
@@ -409,8 +481,14 @@ function geriCekiliyor(oge) {
 function ogePlanGirdisi(kuyruk, oge) {
   const g = jsonOku(oge.govde, {}) || {};
   return {
-    senaryoId: Number(g.senaryoId), hedefHost: g.hedefHost || null, hedefIp: g.hedefIp, vhost: g.vhost, yukHost: g.yukHost,
-    sni: g.sni === true, parametrelerHam: g.parametreler, etiket: kosuEtiketi(kuyruk.id, oge.etiket),
+    senaryoId: Number(g.senaryoId),
+    hedefHost: g.hedefHost || null,
+    hedefIp: g.hedefIp,
+    vhost: g.vhost,
+    yukHost: g.yukHost,
+    sni: g.sni === true,
+    parametrelerHam: g.parametreler,
+    etiket: kosuEtiketi(kuyruk.id, oge.etiket),
   };
 }
 
@@ -438,7 +516,7 @@ async function kuyrukIsle(ctx, kuyrukId) {
   let gecis = 0;
   for (let i = 0; i < ADIM_SINIRI; i += 1) {
     const { rows } = await db.query(SQL.kuyrukOku, [kuyrukId]);
-    const k = rows && rows[0];
+    const k = rows?.[0];
     if (!k) return gecis;
     const sonuc = await kuyrukAdimi(ctx, k);
     if (sonuc !== 'devam') return gecis;
@@ -454,13 +532,13 @@ async function kuyrukAdimi(ctx, k) {
     return r.rowCount ? 'devam' : 'dur';
   }
   const { rows: cr } = await db.query(SQL.calisanOge, [k.id]);
-  const cur = cr && cr[0];
+  const cur = cr?.[0];
   if (cur) return ogeIlerlet(ctx, k, cur);
   if (k.durum === 'IPTAL' || k.durum === 'BITTI' || k.durum === 'HATALI') return 'dur';
   if (k.durum === 'DINLENME') return dinlenme(ctx, k);
   // CALISIYOR, calisan oge yok: siradaki.
   const { rows: sr } = await db.query(SQL.siradakiOge, [k.id]);
-  const next = sr && sr[0];
+  const next = sr?.[0];
   if (!next) {
     const r = await db.query(SQL.kuyrukBitti, [k.id, kira]);
     if (r.rowCount) console.log(`[NginxYukTesti kuyruk] kuyruk ${k.id} bitti`);
@@ -472,9 +550,15 @@ async function kuyrukAdimi(ctx, k) {
 }
 
 async function ogeKapat(db, oge, beklenen, yeni, neden) {
-  const r = await db.query(SQL.ogeKapat, [oge.id, beklenen, yeni, neden == null ? null : kisa(neden)]);
+  const r = await db.query(SQL.ogeKapat, [
+    oge.id,
+    beklenen,
+    yeni,
+    neden == null ? null : kisa(neden),
+  ]);
   // Log ASCII: neden (Turkce metin) satirda, logda yalniz durum.
-  if (r.rowCount) console.log(`[NginxYukTesti kuyruk] oge ${oge.id} (kuyruk ${oge.kuyruk_id}) ${yeni}`);
+  if (r.rowCount)
+    console.log(`[NginxYukTesti kuyruk] oge ${oge.id} (kuyruk ${oge.kuyruk_id}) ${yeni}`);
   return r.rowCount > 0;
 }
 
@@ -496,7 +580,9 @@ function sureYetmiyor(k, tahminSn) {
 
 async function yetkiKapisi(ctx, k) {
   const y = await ctx.islem.yetkiVarMi(k.created_by);
-  return y && y.ok ? null : `yetki: ${(y && y.neden) || 'kuyruğu oluşturan kullanıcının yetkisi doğrulanamadı'}`;
+  return y?.ok
+    ? null
+    : `yetki: ${y?.neden || 'kuyruğu oluşturan kullanıcının yetkisi doğrulanamadı'}`;
 }
 
 /**
@@ -507,7 +593,7 @@ async function geciciHata(ctx, oge, e, geriAl) {
   const deneme = Number(oge.deneme || 0) + 1;
   const son = deneme >= GECICI_DENEME_SINIRI;
   const bekleSn = GERI_CEKILME_SN[Math.min(deneme, GERI_CEKILME_SN.length) - 1];
-  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e && e.message, 400)}${son ? '' : ("; yeniden deneme " + sureMetni(bekleSn) + " sonra")}`;
+  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e?.message, 400)}${son ? '' : '; yeniden deneme ' + sureMetni(bekleSn) + ' sonra'}`;
   const durum = geriAl && oge.asama !== 'kosu' ? 'BEKLIYOR' : oge.durum;
   if (geriAl) await geriAl(msg, 1);
   else await ctx.db.query(SQL.ogeNeden, [oge.id, msg, 1, durum]);
@@ -541,15 +627,22 @@ async function ogeBaslat(ctx, k, oge) {
     plan = await islem.plan(ogePlanGirdisi(k, oge));
   } catch (e) {
     const s = hataSinifi(e);
-    if (s === 'atla' || s === 'hatali') return ogeAtla(db, oge, `kapı: ${kisa(e && e.message)}`);
+    if (s === 'atla' || s === 'hatali') return ogeAtla(db, oge, `kapı: ${kisa(e?.message)}`);
     return geciciHata(ctx, oge, e, null);
   }
   if (onayHedefiOf(plan) !== k.onay_hedefi) {
-    return ogeAtla(db, oge, `hedef değişti: onaylanan ${k.onay_hedefi}, şimdi ${onayHedefiOf(plan) || '?'}`);
+    return ogeAtla(
+      db,
+      oge,
+      `hedef değişti: onaylanan ${k.onay_hedefi}, şimdi ${onayHedefiOf(plan) || '?'}`,
+    );
   }
   // Kosu butcesi yeniden olculdu (varsayilan degismis olabilir): sure kapisi bu degerle de.
-  const planButce = Number(plan.parametreler && plan.parametreler.butceSn);
-  const yetmez2 = sureYetmiyor(k, ON_KONTROL_PAY_SN + (planButce ? planButce + hazirlikPayiSn(plan.parametreler) : butce));
+  const planButce = Number(plan.parametreler?.butceSn);
+  const yetmez2 = sureYetmiyor(
+    k,
+    ON_KONTROL_PAY_SN + (planButce ? planButce + hazirlikPayiSn(plan.parametreler) : butce),
+  );
   if (yetmez2) return ogeAtla(db, oge, yetmez2);
   const token = crypto.randomUUID();
   let al;
@@ -557,7 +650,8 @@ async function ogeBaslat(ctx, k, oge) {
     al = await db.query(SQL.ogeSahiplen, [oge.id, token, kira, oge.govde, oge.etiket]);
   } catch (e) {
     // UX_nlko_calisan: baska surec ayni kuyrukta bir ogeyi az once sahiplendi.
-    if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message))) return 'dur';
+    if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e?.message)))
+      return 'dur';
     throw e;
   }
   if (!al.rowCount) return 'dur';
@@ -565,24 +659,31 @@ async function ogeBaslat(ctx, k, oge) {
   try {
     await islem.onKontrolBaslat(k.created_by, plan, async (kosuId) => {
       const r = await db.query(SQL.okKaydet, [oge.id, kosuId, token, kira]);
-      if (!r.rowCount) throw hata(409, 'kuyruk_yazilamadi', 'Kuyruk öğesi bu sürece ait değil (iptal / kira); iş başlatılmadı.');
+      if (!r.rowCount)
+        throw hata(
+          409,
+          'kuyruk_yazilamadi',
+          'Kuyruk öğesi bu sürece ait değil (iptal / kira); iş başlatılmadı.',
+        );
     });
     return 'dur';
   } catch (e) {
     const s = hataSinifi(e);
     if (s === 'birak') return 'dur';
     if (s === 'bekle') {
-      await geriAl(`bekliyor: ${kisa(e && e.message, 400)}`, 0);
+      await geriAl(`bekliyor: ${kisa(e?.message, 400)}`, 0);
       return 'dur';
     }
     if (s === 'gecici') {
       // Numara yazildi ama is kesin baslamadi (satir FAILED, kilit birakildi): numara silinerek geri alinir.
-      const geri = numaraliBaslamadi(e) ? async (neden, artis) => db.query(SQL.okSifirla, [oge.id, token, neden, artis, e.kosuId]) : geriAl;
+      const geri = numaraliBaslamadi(e)
+        ? async (neden, artis) => db.query(SQL.okSifirla, [oge.id, token, neden, artis, e.kosuId])
+        : geriAl;
       return geciciHata(ctx, { ...oge, asama: 'on_kontrol' }, e, geri);
     }
     // Kalici ret ya da is baslamis olabilir (belirsiz): oge kapanir (CALISIYOR -> ATLANDI / HATALI).
     const yeni = s === 'hatali' ? 'HATALI' : 'ATLANDI';
-    await ogeKapat(db, oge, 'CALISIYOR', yeni, `ön kontrol başlatılamadı: ${kisa(e && e.message)}`);
+    await ogeKapat(db, oge, 'CALISIYOR', yeni, `ön kontrol başlatılamadı: ${kisa(e?.message)}`);
     return 'devam';
   }
 }
@@ -604,45 +705,108 @@ async function ogeIlerlet(ctx, k, oge) {
   if ((oge.asama === 'on_kontrol' && okId == null) || (oge.asama === 'kosu' && kosuId == null)) {
     // Numarasiz sahiplenme: is AWX'e GITMEDI (numara launch'tan once, kuyruk CALISIYOR iken yazilir). Kuyruk
     // iptal edildiyse oge IPTAL; degilse geri alinir (surec yeniden basladi / kira dustu) ve yeniden denenir.
-    if (k.durum !== 'CALISIYOR') return (await (async () => { if ((await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; iş başlatılmamıştı`))) return 'devam'; return 'dur'; })());
-    const r = oge.asama === 'kosu'
-      ? await db.query(SQL.kosuGeriAl, [oge.id, null, 'koşu başlatma yarım kaldı; iş başlatılmamıştı, yeniden denenecek', 0])
-      : await db.query(SQL.ogeGeriAl, [oge.id, null, 'Portal başlatma sırasında yeniden başladı; iş başlatılmamıştı, yeniden denenecek', 0]);
+    if (k.durum !== 'CALISIYOR')
+      return await (async () => {
+        if (
+          await ogeKapat(
+            db,
+            oge,
+            'CALISIYOR',
+            'IPTAL',
+            `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; iş başlatılmamıştı`,
+          )
+        )
+          return 'devam';
+        return 'dur';
+      })();
+    const r =
+      oge.asama === 'kosu'
+        ? await db.query(SQL.kosuGeriAl, [
+            oge.id,
+            null,
+            'koşu başlatma yarım kaldı; iş başlatılmamıştı, yeniden denenecek',
+            0,
+          ])
+        : await db.query(SQL.ogeGeriAl, [
+            oge.id,
+            null,
+            'Portal başlatma sırasında yeniden başladı; iş başlatılmamıştı, yeniden denenecek',
+            0,
+          ]);
     return r.rowCount ? 'devam' : 'dur';
   }
   if (oge.asama === 'kosu') {
     const kosu = await islem.kosuOku(kosuId);
-    if (!kosu) return (await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu #${kosuId} bulunamadı`)) ? sonrasi(ctx, k, kosuId) : 'dur';
+    if (!kosu)
+      return (await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu #${kosuId} bulunamadı`))
+        ? sonrasi(ctx, k, kosuId)
+        : 'dur';
     if (AKTIF_KOSU.has(kosu.durum)) return 'dur';
     if (k.duraklat_at != null && AKTIF_KUYRUK.has(k.durum) && kosuDurduruldu(kosu)) {
       // Once DINLENME: tersi sirada ikinci yazim kaybolursa oge BEKLIYOR, dinlenme hic yok ve ekran geri alma surerken "Duraklatildi"
       // derdi. Bu sirada kesilirse oge CALISIYOR kalir, sonraki tur (kuyruk DINLENME) buraya doner ve yalniz ogeyi yazar.
-      if (k.durum === 'CALISIYOR' && !(await db.query(SQL.dinlenmeyeGec, [k.id, kosuId])).rowCount) return 'dur';
-      const r = await db.query(SQL.kosuYenidenSirala, [oge.id, kosuId, `koşu #${kosuId} duraklatmada durduruldu; devamda baştan koşulacak`]);
+      if (k.durum === 'CALISIYOR' && !(await db.query(SQL.dinlenmeyeGec, [k.id, kosuId])).rowCount)
+        return 'dur';
+      const r = await db.query(SQL.kosuYenidenSirala, [
+        oge.id,
+        kosuId,
+        `koşu #${kosuId} duraklatmada durduruldu; devamda baştan koşulacak`,
+      ]);
       return r.rowCount ? 'devam' : 'dur';
     }
     const tamam = kosu.durum === 'DONE';
-    const neden = (() => { if (tamam) return null; if (kosu.durum === 'CANCELED') return `koşu #${kosuId} durduruldu (CANCELED)`; return `koşu #${kosuId} ${kosu.durum}`; })();
+    const neden = (() => {
+      if (tamam) return null;
+      if (kosu.durum === 'CANCELED') return `koşu #${kosuId} durduruldu (CANCELED)`;
+      return `koşu #${kosuId} ${kosu.durum}`;
+    })();
     if (!(await ogeKapat(db, oge, 'CALISIYOR', tamam ? 'BITTI' : 'HATALI', neden))) return 'dur';
     return sonrasi(ctx, k, kosuId);
   }
   // asama on_kontrol, numarali.
   const ok = await islem.kosuOku(okId);
-  if (!ok) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} bulunamadı`)) ? 'devam' : 'dur';
+  if (!ok)
+    return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} bulunamadı`))
+      ? 'devam'
+      : 'dur';
   if (AKTIF_KOSU.has(ok.durum)) return 'dur';
   if (duraklatildi(k)) {
     // Kilit tutuluyorsa (durdurma isi sunucu ayarini geri aliyor olabilir) oge CALISIYOR kalir: ekran "bekliyor" der.
     if (await kosuKilitliMi(db, okId)) return 'dur';
-    const r = await db.query(SQL.onKontrolYenile, [oge.id, okId, 'kuyruk duraklatıldı; devamda ön kontrol yeniden çalışacak']);
+    const r = await db.query(SQL.onKontrolYenile, [
+      oge.id,
+      okId,
+      'kuyruk duraklatıldı; devamda ön kontrol yeniden çalışacak',
+    ]);
     return r.rowCount ? 'devam' : 'dur';
   }
   if (ok.durum !== 'DONE') {
     const s = jsonOku(ok.sonuc, {}) || {};
-    if ((await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} ${ok.durum}${s.hata ? (": " + s.hata) : ''}`))) return 'devam'; return 'dur';
+    if (
+      await ogeKapat(
+        db,
+        oge,
+        'CALISIYOR',
+        'ATLANDI',
+        `ön kontrol #${okId} ${ok.durum}${s.hata ? ': ' + s.hata : ''}`,
+      )
+    )
+      return 'devam';
+    return 'dur';
   }
   if (k.durum !== 'CALISIYOR') {
     // Kuyruk iptal edildi (ya da durdu): kosu BASLATILMAZ.
-    if ((await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; ön kontrol #${okId} sonrası koşu başlatılmadı`))) return 'devam'; return 'dur';
+    if (
+      await ogeKapat(
+        db,
+        oge,
+        'CALISIYOR',
+        'IPTAL',
+        `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; ön kontrol #${okId} sonrası koşu başlatılmadı`,
+      )
+    )
+      return 'devam';
+    return 'dur';
   }
   if (geriCekiliyor(oge)) return 'dur';
   let yetkiNeden;
@@ -651,14 +815,24 @@ async function ogeIlerlet(ctx, k, oge) {
   } catch (e) {
     return geciciHata(ctx, oge, e, null);
   }
-  if (yetkiNeden) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', yetkiNeden)) ? 'devam' : 'dur';
+  if (yetkiNeden)
+    return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', yetkiNeden)) ? 'devam' : 'dur';
   const okParam = jsonOku(ok.parametreler, {}) || {};
-  const yetmez = sureYetmiyor(k, Number(okParam.butceSn) ? Number(okParam.butceSn) + hazirlikPayiSn(okParam) : sayiOf(oge.butce_sn) || 0);
+  const yetmez = sureYetmiyor(
+    k,
+    Number(okParam.butceSn)
+      ? Number(okParam.butceSn) + hazirlikPayiSn(okParam)
+      : sayiOf(oge.butce_sn) || 0,
+  );
   if (yetmez) return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', yetmez)) ? 'devam' : 'dur';
   const yas = sayiOf(ok.yas_sn);
   if (yas === null || yas > ON_KONTROL_TAZE_SN) {
     // Kosu kilit beklerken on kontrol eskidi: yeniden on kontrol (sira korunur).
-    const r = await db.query(SQL.onKontrolYenile, [oge.id, okId, `ön kontrol #${okId} eskidi (kilit beklenirken); yeniden çalıştırılacak`]);
+    const r = await db.query(SQL.onKontrolYenile, [
+      oge.id,
+      okId,
+      `ön kontrol #${okId} eskidi (kilit beklenirken); yeniden çalıştırılacak`,
+    ]);
     return r.rowCount ? 'devam' : 'dur';
   }
   const token = crypto.randomUUID();
@@ -672,7 +846,12 @@ async function ogeIlerlet(ctx, k, oge) {
       onaylananTurler: jsonOku(k.onaylanan_turler, []) || [],
       kosuKaydedildi: async (yeniId) => {
         const r = await db.query(SQL.kosuKaydet, [oge.id, yeniId, token, kira]);
-        if (!r.rowCount) throw hata(409, 'kuyruk_yazilamadi', 'Kuyruk öğesi bu sürece ait değil (iptal / kira); koşu başlatılmadı.');
+        if (!r.rowCount)
+          throw hata(
+            409,
+            'kuyruk_yazilamadi',
+            'Kuyruk öğesi bu sürece ait değil (iptal / kira); koşu başlatılmadı.',
+          );
       },
     });
     return 'dur';
@@ -680,19 +859,21 @@ async function ogeIlerlet(ctx, k, oge) {
     const s = hataSinifi(e);
     if (s === 'birak') return 'dur';
     if (s === 'bekle') {
-      await geriAl(`bekliyor: ${kisa(e && e.message, 400)}`, 0);
+      await geriAl(`bekliyor: ${kisa(e?.message, 400)}`, 0);
       return 'dur';
     }
     if (s === 'gecici') {
-      const geri = numaraliBaslamadi(e) ? async (neden, artis) => db.query(SQL.kosuSifirla, [oge.id, token, neden, artis, e.kosuId]) : geriAl;
+      const geri = numaraliBaslamadi(e)
+        ? async (neden, artis) => db.query(SQL.kosuSifirla, [oge.id, token, neden, artis, e.kosuId])
+        : geriAl;
       return geciciHata(ctx, { ...oge, asama: 'kosu' }, e, geri);
     }
     if (s === 'hatali') {
-      await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu başlatılamadı: ${kisa(e && e.message)}`);
+      await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu başlatılamadı: ${kisa(e?.message)}`);
       // Is AWX'te baslamis olabilir (belirsiz / is numarali): yuk surebilir, dinlenme kilit birakilinca baslar.
       return sonrasi(ctx, k, e.kosuId);
     }
-    const neden = e && e.code === 'yeni_uyari' ? kisa(e.message) : `koşu kapısı: ${kisa(e && e.message)}`;
+    const neden = e?.code === 'yeni_uyari' ? kisa(e.message) : `koşu kapısı: ${kisa(e?.message)}`;
     await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', neden);
     return 'devam';
   }
@@ -707,7 +888,9 @@ async function sonrasi(ctx, k, kosuId) {
 
 /** Kuyrugun hedef kilidi anahtari (kilit.cjs kilitAnahtarlari ile ayni). */
 function hedefKilitAnahtari(k) {
-  return k.hedef_turu === 'serbest' ? `T|IP:${k.onay_hedefi}` : `T|${String(k.onay_hedefi).trim().toUpperCase()}`;
+  return k.hedef_turu === 'serbest'
+    ? `T|IP:${k.onay_hedefi}`
+    : `T|${String(k.onay_hedefi).trim().toUpperCase()}`;
 }
 
 /**
@@ -717,19 +900,20 @@ function hedefKilitAnahtari(k) {
  */
 async function kosuKilitliMi(db, kosuId) {
   const { rows } = await db.query(SQL.kosuKilidi, [kosuId]);
-  const r = rows && rows[0];
+  const r = rows?.[0];
   if (!r) return false;
   if (AKTIF_KOSU.has(r.durum)) return true;
   if (!r.kilit_id) return false;
   const { rows: kr } = await db.query(SQL.kilitTutuluyor, [String(r.kilit_id)]);
-  return Number(kr && kr[0] && kr[0].n) > 0;
+  return Number(kr?.[0]?.n) > 0;
 }
 
 async function dinlenme(ctx, k) {
   const { db } = ctx;
   if (k.dinlenme_bitis == null) {
     // Bekleme, onceki kosunun kilitleri BIRAKILDIKTAN SONRA sayilir.
-    if (k.dinlenme_kosu_id != null && (await kosuKilitliMi(db, Number(k.dinlenme_kosu_id)))) return 'dur';
+    if (k.dinlenme_kosu_id != null && (await kosuKilitliMi(db, Number(k.dinlenme_kosu_id))))
+      return 'dur';
     const r = await db.query(SQL.dinlenmeBaslat, [k.id]);
     return r.rowCount ? 'devam' : 'dur';
   }
@@ -752,14 +936,22 @@ async function tick(ctx) {
       toplam += await kuyrukIsle({ ...ctx, kira }, id);
       await db.query(SQL.hataSifirla, [id]);
     } catch (e) {
-      const m = kisa(e && e.message, 500);
-      console.warn(`[NginxYukTesti kuyruk] kuyruk ${id} adimi hata verdi (sonraki tur yeniden):`, m);
+      const m = kisa(e?.message, 500);
+      console.warn(
+        `[NginxYukTesti kuyruk] kuyruk ${id} adimi hata verdi (sonraki tur yeniden):`,
+        m,
+      );
       try {
         await db.query(SQL.hataSay, [id, m]);
         const h = await db.query(SQL.kuyrukHatali, [id, KUYRUK_HATA_SINIRI]);
         if (h.rowCount) {
-          await db.query(SQL.hataliOgeler, [id, `kuyruk ${KUYRUK_HATA_SINIRI} kez üst üste hata verdi ve durdu: ${m}`]);
-          console.warn(`[NginxYukTesti kuyruk] kuyruk ${id} HATALI (${KUYRUK_HATA_SINIRI} ardisik hata)`);
+          await db.query(SQL.hataliOgeler, [
+            id,
+            `kuyruk ${KUYRUK_HATA_SINIRI} kez üst üste hata verdi ve durdu: ${m}`,
+          ]);
+          console.warn(
+            `[NginxYukTesti kuyruk] kuyruk ${id} HATALI (${KUYRUK_HATA_SINIRI} ardisik hata)`,
+          );
         }
       } catch {
         /* DB yoksa sayac da yazilamaz; sonraki tur */
@@ -783,7 +975,7 @@ function startKuyruk(islem) {
     if (_ticking) return;
     _ticking = true;
     tick({ db: require('../db/index.cjs'), islem, kira: SUREC_ID })
-      .catch((e) => console.warn('[NginxYukTesti kuyruk] tur hatasi:', kisa(e && e.message, 500)))
+      .catch((e) => console.warn('[NginxYukTesti kuyruk] tur hatasi:', kisa(e?.message, 500)))
       .finally(() => {
         _ticking = false;
       });
@@ -794,11 +986,19 @@ function startKuyruk(islem) {
 
 // -- GORUNUM -------------------------------------------------------------------------------
 
-const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
+const iso = (v) => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+};
 
 function turlerApi(v) {
   const d = jsonOku(v, []);
-  return Array.isArray(d) ? d.filter((t) => t && typeof t.kod === 'string').map((t) => ({ kod: t.kod, ornek: String(t.ornek ?? '') })) : [];
+  return Array.isArray(d)
+    ? d
+        .filter((t) => t && typeof t.kod === 'string')
+        .map((t) => ({ kod: t.kod, ornek: String(t.ornek ?? '') }))
+    : [];
 }
 
 function kuyrukApi(r) {
@@ -842,7 +1042,15 @@ function ogeApi(r) {
     uyariTurleri: turlerApi(r.uyari_turleri),
     baslamaAt: iso(r.baslama_at),
     bitisAt: iso(r.bitis_at),
-    ayar: { senaryoId: g.senaryoId ?? null, hedefIp: g.hedefIp ?? null, hedefHost: g.hedefHost ?? null, vhost: g.vhost ?? null, yukHost: g.yukHost ?? null, sni: g.sni === true, parametreler: g.parametreler ?? null },
+    ayar: {
+      senaryoId: g.senaryoId ?? null,
+      hedefIp: g.hedefIp ?? null,
+      hedefHost: g.hedefHost ?? null,
+      vhost: g.vhost ?? null,
+      yukHost: g.yukHost ?? null,
+      sni: g.sni === true,
+      parametreler: g.parametreler ?? null,
+    },
   };
 }
 
@@ -873,7 +1081,10 @@ function zamanlama(k, ogeler, simdiMs = Date.now()) {
   if (calisan) {
     const bas = calisan.baslama_at ? new Date(calisan.baslama_at).getTime() / 1000 : t;
     const bit = Math.max(t, bas + ON_KONTROL_PAY_SN + (sayiOf(calisan.butce_sn) || 0));
-    out.set(Number(calisan.id), { tahminiBaslangic: new Date(bas * 1000).toISOString(), tahminiBitis: new Date(bit * 1000).toISOString() });
+    out.set(Number(calisan.id), {
+      tahminiBaslangic: new Date(bas * 1000).toISOString(),
+      tahminiBitis: new Date(bit * 1000).toISOString(),
+    });
     t = bit;
     yukVar = true;
   }
@@ -892,7 +1103,11 @@ function zamanlama(k, ogeler, simdiMs = Date.now()) {
     });
     yukVar = true;
   }
-  return { ogeler: out, tahminiBitis: aktif && out.size ? new Date(t * 1000).toISOString() : null, siradakiKalanSn };
+  return {
+    ogeler: out,
+    tahminiBitis: aktif && out.size ? new Date(t * 1000).toISOString() : null,
+    siradakiKalanSn,
+  };
 }
 
 module.exports = {

@@ -22,13 +22,22 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
     setOrtamHam(o);
     setSurum('');
   };
-  const liste = d.sunucular.filter((s) => (!ortam || (s.ortam || '') === ortam) && (!surum || (s.wasSurum || '—') === surum));
+  const liste = d.sunucular.filter(
+    (s) => (!ortam || (s.ortam || '') === ortam) && (!surum || (s.wasSurum || '—') === surum),
+  );
   const anahtarlar = satirAnahtarlari(liste.map((s) => s.host));
   return (
     <div className="space-y-4">
       <KaynakUyarisi kaynaklar={d.kaynaklar} adlar={KAYNAK_AD} />
       <OrtamOzeti
-        satirlar={d.sunucular.map((s) => ({ host: s.host, ortam: s.ortam, surum: s.wasSurum, java: s.jre, jvmler: [], kapasite: s.kapasite }))}
+        satirlar={d.sunucular.map((s) => ({
+          host: s.host,
+          ortam: s.ortam,
+          surum: s.wasSurum,
+          java: s.jre,
+          jvmler: [],
+          kapasite: s.kapasite,
+        }))}
         surumBasligi="WAS sürümü"
         secili={ortam}
         onSec={setOrtam}
@@ -40,7 +49,10 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
         jvmGoster={false}
         altBilgi={`${fmtNumber(d.ozet.webSunucuSayisi)} web sunucusu`}
       />
-      <Bolum baslik="Sunucular" aciklama="JVM ayarları Uygulama Envanteri taramasının okuduğu server.xml'den gelir; tarama kapalıysa ya da bu alan henüz toplanmıyorsa boş görünür.">
+      <Bolum
+        baslik="Sunucular"
+        aciklama="JVM ayarları Uygulama Envanteri taramasının okuduğu server.xml'den gelir; tarama kapalıysa ya da bu alan henüz toplanmıyorsa boş görünür."
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -57,9 +69,17 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
             <tbody>
               {surum && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-2 text-[12px]" style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}>
-                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında WAS sürümü <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular gösteriliyor ({liste.length}).{' '}
-                    <button type="button" className="underline" onClick={() => setSurum('')}>Sürüm süzgecini kaldır</button>
+                  <td
+                    colSpan={7}
+                    className="px-3 py-2 text-[12px]"
+                    style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}
+                  >
+                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında WAS sürümü{' '}
+                    <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular
+                    gösteriliyor ({liste.length}).{' '}
+                    <button type="button" className="underline" onClick={() => setSurum('')}>
+                      Sürüm süzgecini kaldır
+                    </button>
                   </td>
                 </tr>
               )}
@@ -67,27 +87,55 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
               {liste.map((s, i) => (
                 <React.Fragment key={anahtarlar[i]}>
                   <tr style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                    <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>{s.host}</td>
+                    <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
+                      {s.host}
+                    </td>
                     <td className={TD}>{s.ortam || '—'}</td>
                     <td className={TD}>{s.wasSurum || '—'}</td>
                     <td className={TD}>
                       <div>{s.jre || '—'}</div>
-                      {s.jdk && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.jdk}</div>}
+                      {s.jdk && (
+                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          {s.jdk}
+                        </div>
+                      )}
                     </td>
                     <td className={TD}>{s.envanterDurumu || '—'}</td>
                     <td className={`${TD} text-[12px]`} style={{ fontFamily: 'var(--font-mono)' }}>
-                      {s.web.length ? [...new Set(s.web.map((w) => w.host))].join(', ') : <span style={{ color: 'var(--text-muted)' }}>bulunamadı</span>}
+                      {s.web.length ? (
+                        [...new Set(s.web.map((w) => w.host))].join(', ')
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>bulunamadı</span>
+                      )}
                     </td>
-                    <td className={TD}><KapasiteHucresi k={s.kapasite} /></td>
+                    <td className={TD}>
+                      <KapasiteHucresi k={s.kapasite} />
+                    </td>
                   </tr>
                   <tr>
                     <td colSpan={7} className="px-4 pb-3 pt-0">
-                      <div className="rounded p-3 space-y-2" style={{ background: 'var(--bg-inset)' }}>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                          <span>Heap (min / max): <strong className="tabular-nums">{s.jvm?.minHeap || '?'} / {s.jvm?.maxHeap || '?'}</strong>{s.jvm?.minHeap || s.jvm?.maxHeap ? ' MB' : ''}</span>
+                      <div
+                        className="rounded p-3 space-y-2"
+                        style={{ background: 'var(--bg-inset)' }}
+                      >
+                        <div
+                          className="flex flex-wrap gap-x-4 gap-y-1 text-[12px]"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <span>
+                            Heap (min / max):{' '}
+                            <strong className="tabular-nums">
+                              {s.jvm?.minHeap || '?'} / {s.jvm?.maxHeap || '?'}
+                            </strong>
+                            {s.jvm?.minHeap || s.jvm?.maxHeap ? ' MB' : ''}
+                          </span>
                           {s.jvm?.profil && <span>Profil {s.jvm.profil}</span>}
                           {s.jvm?.dugum && <span>Düğüm {s.jvm.dugum}</span>}
-                          {s.jvm?.taranma && <span style={{ color: 'var(--text-muted)' }}>tarama {fmtDate(s.jvm.taranma)}</span>}
+                          {s.jvm?.taranma && (
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              tarama {fmtDate(s.jvm.taranma)}
+                            </span>
+                          )}
                         </div>
                         <JvmArglari
                           baslik="genericJvmArguments"
@@ -103,14 +151,32 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
                         />
                         {s.jvm && s.jvm.sistemOzellikleri.length > 0 && (
                           <details className="text-[12px]">
-                            <summary className="cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
-                              Sistem özellikleri ({s.jvm.sistemOzellikleri.length}{s.jvm.ozellikKesildi ? '+, kesildi' : ''})
+                            <summary
+                              className="cursor-pointer"
+                              style={{ color: 'var(--text-secondary)' }}
+                            >
+                              Sistem özellikleri ({s.jvm.sistemOzellikleri.length}
+                              {s.jvm.ozellikKesildi ? '+, kesildi' : ''})
                             </summary>
-                            <ul className="mt-1 space-y-0.5" style={{ fontFamily: 'var(--font-mono)' }}>
+                            <ul
+                              className="mt-1 space-y-0.5"
+                              style={{ fontFamily: 'var(--font-mono)' }}
+                            >
                               {s.jvm.sistemOzellikleri.map((o) => (
                                 <li key={o.ad} className="break-all">
                                   {o.ad}
-                                  {o.deger != null && <span style={{ color: o.deger === '***' ? 'var(--text-muted)' : 'var(--text-primary)' }}>={o.deger}</span>}
+                                  {o.deger != null && (
+                                    <span
+                                      style={{
+                                        color:
+                                          o.deger === '***'
+                                            ? 'var(--text-muted)'
+                                            : 'var(--text-primary)',
+                                      }}
+                                    >
+                                      ={o.deger}
+                                    </span>
+                                  )}
                                 </li>
                               ))}
                             </ul>
@@ -125,7 +191,10 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
           </table>
         </div>
       </Bolum>
-      <Bolum baslik="Web sunucuları (IHS)" aciklama="Sertifika envanterindeki vhost'lardan uygulama adı ve sunucu adlandırma kuralıyla eşlenir.">
+      <Bolum
+        baslik="Web sunucuları (IHS)"
+        aciklama="Sertifika envanterindeki vhost'lardan uygulama adı ve sunucu adlandırma kuralıyla eşlenir."
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -137,13 +206,19 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
               </tr>
             </thead>
             <tbody>
-              {!d.webSunuculari.length && <TableEmptyRow colSpan={4} title="Web sunucusu eşlenemedi." />}
+              {!d.webSunuculari.length && (
+                <TableEmptyRow colSpan={4} title="Web sunucusu eşlenemedi." />
+              )}
               {d.webSunuculari.map((w) => (
                 <tr key={w.host} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>{w.host}</td>
+                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {w.host}
+                  </td>
                   <td className={TD}>{w.urun || '—'}</td>
                   <td className={`${TD} text-[12px] break-all`}>{w.vhostlar.join(', ') || '—'}</td>
-                  <td className={`${TD} text-[12px]`} style={{ fontFamily: 'var(--font-mono)' }}>{w.uygulamaSunuculari.join(', ')}</td>
+                  <td className={`${TD} text-[12px]`} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {w.uygulamaSunuculari.join(', ')}
+                  </td>
                 </tr>
               ))}
             </tbody>

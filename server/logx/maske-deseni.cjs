@@ -39,7 +39,13 @@ function niceleyiciOku(desen, i) {
     const m = /^\{(\d+)(,(\d*))?\}/.exec(desen.slice(i));
     if (!m) return null;
     const alt = Number(m[1]);
-    const ust = (() => { if (m[2]) { if (m[3] === '') return Infinity; return Number(m[3]); } return alt; })();
+    const ust = (() => {
+      if (m[2]) {
+        if (m[3] === '') return Infinity;
+        return Number(m[3]);
+      }
+      return alt;
+    })();
     return { sinirsiz: ust === Infinity || ust - alt >= 100, son: i + m[0].length };
   }
   return null;

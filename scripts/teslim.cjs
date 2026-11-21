@@ -15,13 +15,20 @@
 // NE KARSILASTIRILIR: `git ls-files -s` blob sha'lari (icerik). Calisma agaci okunmaz: CRLF donusumu
 // yanlis alarm uretmez, dosya okunmadigi icin hizlidir. Mod bitleri karsilastirilmaz: Windows'tan
 // yapilan commit'ler calistirma bitini kaybeder.
-// KURUMA GITMEYENLER (iki yonde de yok sayilir: kurumsal depoda olsalar da olmasalar da denetim gecer):
+// IMZA DISI (kuruma GIDER, imzada yok sayilir):
 //   kalite/                       kapsam raporu kendi parmak iziyle denetlenir (scripts/kapsam-yayinla.cjs);
 //                                 imza kendini iceremez. Kapsam / imza tazeleme commit'leri imzayi bayatlatmaz.
+// KURUMA GITMEYENLER (kurumsal depoda BULUNMAZ; aktaran kisi ZIP icerigini kopyaladiktan sonra siler.
+// Imzada iki yonde de yok sayilir: olsalar da olmasalar da denetim gecer):
 //   .github/ .claude/ .agent/     GitHub CI ve ajan talimatlari: kurumsal derlemede kullanilmaz.
 //   sunum/                        tanitim sunumu (ikili dosyalar): derlemede ve pakette yok.
-// Kurumsal is #50 (2026-11-18) bu dort dizin kurumsal dalda olmadigi icin dustu; kurumsal depoya
-// gitmemeleri karar (kullanici). Kod, betik, yapilandirma ve package.json bu listeye GIREMEZ (TS1).
+//   server/ansible/playbooks/     Ansible playbook'lari (AWX aynasi bmw_portal/ + tani playbook'lari). Portal
+//                                 bunlari calistirmaz, AWX calistirir; kaynagi Ansible deposudur. Calisma
+//                                 zamani yalniz server/ansible/playbook-revisions.json'u okur (bu liste disinda).
+// Kurumsal is #50 (2026-11-18) ilk dort dizin kurumsal dalda olmadigi icin dustu; is #52 (2026-11-20)
+// kurumsal Sonar'in 14 hotspot'unun 11'ini ve 6 Python bulgusunu Ansible agacinda buldu. Ikisi de kullanici
+// karari. Kod, betik, yapilandirma ve package.json bu listelere GIREMEZ (TS1); Ansible'siz agacin
+// derlendigini ve paketlendigini CI provasi kanitlar (scripts/kurumsal-prova.cjs).
 //
 // SINIR: package.json'in kendisi eskiyse `npm run kurumsal:derle` hic calismaz (is #48 tam olarak
 // buydu); onu aktarim yontemi onler (docs/KALITE-KAPILARI.md "Kurumsal aktarim").
@@ -34,7 +41,8 @@ const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const IMZA = 'kalite/teslim.json';
-const KURUMA_GITMEYEN = ['kalite/', '.github/', '.claude/', '.agent/', 'sunum/'];
+const KURUMA_GITMEYEN = ['.github/', '.claude/', '.agent/', 'sunum/', 'server/ansible/playbooks/'];
+const IMZA_DISI = ['kalite/', ...KURUMA_GITMEYEN];
 const GOSTER = 20;
 const ACIKLAMA =
   'Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). ' +
@@ -57,7 +65,7 @@ function imza(kok = KOK) {
     // "<mod> <sha> <asama>\t<yol>"
     const sekme = kayit.indexOf('\t');
     const yol = kayit.slice(sekme + 1);
-    if (KURUMA_GITMEYEN.some((h) => yol.startsWith(h))) continue;
+    if (IMZA_DISI.some((h) => yol.startsWith(h))) continue;
     dosyalar[yol] = kayit.slice(0, sekme).split(' ')[1];
   }
   return dosyalar;
@@ -113,7 +121,8 @@ const liste = (ad, yollar) => {
 const NEDENLER = [
   '  Olasi nedenler:',
   "   1. Aktarim yarim ya da karisik. Kurumsal klonda: `git rm -r -q .`, main ZIP'inin ICERIGINI koke",
-  '      kopyala, `git add -A`, commit, push (docs/KALITE-KAPILARI.md "Kurumsal aktarim").',
+  '      kopyala, kuruma gitmeyenleri sil (.github .claude .agent sunum server/ansible/playbooks),',
+  '      `git add -A`, commit, push (docs/KALITE-KAPILARI.md "Kurumsal aktarim").',
   "   2. ZIP, main'deki son degisiklikten hemen sonra, imza tazelenmeden indirildi: GitHub Actions",
   '      "Teslim imzasi" isi bitince ZIP\'i yeniden indirip aktar.',
 ];
@@ -125,7 +134,7 @@ function imzaDogrula(kok = KOK, { yaz = console.log, hata = console.error } = {}
     kayit = imzaOku(kok);
   } catch (e) {
     hata(`[teslim] ${IMZA} okunamadi (${e.code || e.message}): kod main ZIP'inden aktarilmamis.`);
-    hata(NEDENLER.slice(0, 3).join('\n'));
+    hata(NEDENLER.slice(0, 4).join('\n'));
     return 1;
   }
   let mevcut;
@@ -172,4 +181,13 @@ function main(argv, kok = KOK, { yaz = console.log, hata = console.error } = {})
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { IMZA, KURUMA_GITMEYEN, imza, karsilastir, imzaYaz, imzaDogrula, main };
+module.exports = {
+  IMZA,
+  KURUMA_GITMEYEN,
+  IMZA_DISI,
+  imza,
+  karsilastir,
+  imzaYaz,
+  imzaDogrula,
+  main,
+};

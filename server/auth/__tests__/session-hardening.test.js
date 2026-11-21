@@ -8,6 +8,7 @@
 // production'daki SESSION_SECRET kontrolunu "gecici olarak" kaldirmak — hicbiri test
 // kirmaz, hicbiri derlemede gorunmez, ama ucu de oturum calmayi mumkun kilar.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -86,11 +87,11 @@ test('SH4 HICBIR ortamda sabit / bilinen imza anahtari yok; bos anahtar sureci D
     flat.indexOf('const SESSION_SECRET'),
     flat.indexOf(';', flat.indexOf('const SESSION_SECRET')),
   );
-  assert.doesNotMatch(atama, /\|\| *'[^']+'/, 'sabit bir anahtar yedegi geri gelmis');
+  assert.doesNotMatch(atama, esnek(/\|\| *'[^']+'/), 'sabit bir anahtar yedegi geri gelmis');
   assert.doesNotMatch(SRC, /dev-secret/, 'eski sabit gelistirme anahtari geri gelmis');
   // Anahtar yok diye surec dusurulmez: buna bagimli hicbir sey yok.
   const ust = codeOnly.slice(0, codeOnly.indexOf('function initAuth'));
-  assert.doesNotMatch(ust, /process\.exit\(/, 'SESSION_SECRET yoklugu sureci dusuruyor');
+  assert.doesNotMatch(ust, esnek(/process\.exit\(/), 'SESSION_SECRET yoklugu sureci dusuruyor');
 });
 
 test('SH5 oturum SUNUCUDA saklaniyor ve bos oturum YAZILMIYOR', () => {

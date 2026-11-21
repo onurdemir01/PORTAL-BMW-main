@@ -60,10 +60,28 @@ describe('Taleplerim zaman asimi sayaci', () => {
       ok: true,
       serverNow: SUNUCU,
       tickets: [
-        talep({ id: 1, status: 'PENDING', templateName: 'JBoss restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'genel' }),
-        talep({ id: 2, status: 'LAUNCHED', templateName: 'Log temizle', jobId: 55, resolvedAt: '2026-10-15T08:05:00.000Z' }),
+        talep({
+          id: 1,
+          status: 'PENDING',
+          templateName: 'JBoss restart',
+          deadline: '2026-10-15T08:30:00.000Z',
+          deadlineKaynak: 'genel',
+        }),
+        talep({
+          id: 2,
+          status: 'LAUNCHED',
+          templateName: 'Log temizle',
+          jobId: 55,
+          resolvedAt: '2026-10-15T08:05:00.000Z',
+        }),
         // LAUNCHING'de sunucu deadline doner (sozlesme) ama poller sureyi uygulamaz -> sayac yok.
-        talep({ id: 3, status: 'LAUNCHING', templateName: 'Disk temizle', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'genel' }),
+        talep({
+          id: 3,
+          status: 'LAUNCHING',
+          templateName: 'Disk temizle',
+          deadline: '2026-10-15T08:30:00.000Z',
+          deadlineKaynak: 'genel',
+        }),
       ],
     });
     render(<RequestsSidePanel />);
@@ -87,7 +105,13 @@ describe('Taleplerim zaman asimi sayaci', () => {
       ok: true,
       serverNow: SUNUCU,
       tickets: [
-        talep({ id: 6, status: 'PENDING', templateName: 'OpsX: restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'islem' }),
+        talep({
+          id: 6,
+          status: 'PENDING',
+          templateName: 'OpsX: restart',
+          deadline: '2026-10-15T08:30:00.000Z',
+          deadlineKaynak: 'islem',
+        }),
       ],
     });
     render(<RequestsSidePanel />);
@@ -112,11 +136,22 @@ describe('Taleplerim zaman asimi sayaci', () => {
   });
 
   it('TS3 daralt / genislet: saklanmis yanitla kurulan sayac gercek kalani gosterir', async () => {
-    const bekleyen = talep({ id: 5, status: 'PENDING', templateName: 'JBoss restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'genel' });
-    api.smartTicketsMine.mockResolvedValueOnce({ ok: true, serverNow: SUNUCU, tickets: [bekleyen] });
+    const bekleyen = talep({
+      id: 5,
+      status: 'PENDING',
+      templateName: 'JBoss restart',
+      deadline: '2026-10-15T08:30:00.000Z',
+      deadlineKaynak: 'genel',
+    });
+    api.smartTicketsMine.mockResolvedValueOnce({
+      ok: true,
+      serverNow: SUNUCU,
+      tickets: [bekleyen],
+    });
     render(<RequestsSidePanel />);
     await screen.findByText('JBoss restart');
-    const metin = () => within(within(kart('JBoss restart')).getByRole('timer')).getByTestId('sbs-metin').textContent;
+    const metin = () =>
+      within(within(kart('JBoss restart')).getByRole('timer')).getByTestId('sbs-metin').textContent;
     expect(metin()).toBe('Kalan 09:41');
 
     fireEvent.click(screen.getByTitle('Daralt'));

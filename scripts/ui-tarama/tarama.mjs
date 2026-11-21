@@ -25,20 +25,41 @@ import { sekme, DENETIM, sleep } from './lib.mjs';
 import araclar from '../arac-yolu.cjs';
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const arg = (ad, varsayilan = null) => {
+// Komut satiri: `--ad deger` -> deger (yoksa varsayilan); degersiz bayrak `--ad` -> bayrak() true.
+const sonrakiDeger = (ad) => {
   const i = process.argv.indexOf(ad);
-  if (i < 0) return varsayilan; if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1]; return true;
+  const s = i < 0 ? undefined : process.argv[i + 1];
+  return s && !s.startsWith('--') ? s : null;
 };
+const deger = (ad, varsayilan = null) => sonrakiDeger(ad) ?? varsayilan;
+const bayrak = (ad) => process.argv.includes(ad) && sonrakiDeger(ad) === null;
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5199);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9333);
 const TABAN = `http://127.0.0.1:${VITE_PORT}`;
-const CIKTI = path.resolve(String(arg('--cikti', path.join(os.tmpdir(), 'ui-tarama'))));
-const KATI = arg('--kati') === true;
-const TEK = arg('--sayfa');
+const CIKTI = path.resolve(deger('--cikti', path.join(os.tmpdir(), 'ui-tarama')));
+const KATI = bayrak('--kati');
+const TEK = deger('--sayfa');
 
 // Kapsam: sahibi baska ekipler olan agaclar (nginx-console, server-hub, crypto-hub) burada
 // yok; `--sayfa /server-hub` ile yine de taranabilir.
-const SAYFALAR = ['/dashboard', '/envanter', '/denetim', '/duty-roster', '/oco-takvimi', '/performance', '/ai-analyst', '/self-service', '/logx', '/scalex', '/filex', '/telnet', '/opsx', '/ansible', '/admin', '/403'];
+const SAYFALAR = [
+  '/dashboard',
+  '/envanter',
+  '/denetim',
+  '/duty-roster',
+  '/oco-takvimi',
+  '/performance',
+  '/ai-analyst',
+  '/self-service',
+  '/logx',
+  '/scalex',
+  '/filex',
+  '/telnet',
+  '/opsx',
+  '/ansible',
+  '/admin',
+  '/403',
+];
 // Sayfa acildiktan sonra tiklanacak ilk adimlar (her biri ayri bir taramadir).
 const ADIMLAR = {
   '/telnet': ['text=Legacy', 'text=Openshift'],
@@ -49,8 +70,40 @@ const ADIMLAR = {
 // Denetim yalniz "hata" durumunda: alti sekmesi genel bos govdede ({ok:true, items:[]}) gercek
 // sunucunun HER ZAMAN dondugu bir alani bulamayip cokuyor (sahte cokme; hata yolu dogru calisiyor).
 const SEKMELER = {
-  '/nginx-console': { modlar: ['bos', 'hata'], sekmeler: ['instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'upstream', 'audit'] },
-  '/denetim': { modlar: ['hata'], sekmeler: ['ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp', 'katalog'] },
+  '/nginx-console': {
+    modlar: ['bos', 'hata'],
+    sekmeler: [
+      'instances',
+      'config',
+      'changes',
+      'certs',
+      'orphans',
+      'drift',
+      'cis',
+      'ratelimit',
+      'rvpsecim',
+      'yuktesti',
+      'spadiscovery',
+      'api',
+      'envanter',
+      'upstream',
+      'audit',
+    ],
+  },
+  '/denetim': {
+    modlar: ['hata'],
+    sekmeler: [
+      'ocp',
+      'ocproute',
+      'init',
+      'deploy',
+      'envanter',
+      'degisim',
+      'appenvs',
+      'webapp',
+      'katalog',
+    ],
+  },
 };
 // "bos" durumunda genel sahte govde ({ok:true, items:[] ...}) bazi uclarin GERCEK bos yanitina
 // benzemiyor; ekran olmayan bir alan yuzunden cokuyor ve tarama sahte cokme raporluyordu (2026-11-07,
@@ -58,14 +111,29 @@ const SEKMELER = {
 // (ozetleyiciler bos satirla cagrilir; sunucu sekli degisirse burasi da degisir).
 const sunucuRequire = createRequire(import.meta.url);
 function bosSekiller() {
-  const { summarizeNginxInventory } = sunucuRequire('../../server/audit/nginx-inventory-summary.cjs');
+  const { summarizeNginxInventory } = sunucuRequire(
+    '../../server/audit/nginx-inventory-summary.cjs',
+  );
   const { summarize } = sunucuRequire('../../server/audit/nginx-api-summary.cjs');
   const { upstreamOzeti } = sunucuRequire('../../server/audit/nginx-upstream-envanter.cjs');
   return {
-    '=/api/denetim/nginx-upstreams': { ok: true, hazir: true, scanDate: null, serversOlculdu: true, ...upstreamOzeti([], [], [], () => 'BILINMIYOR') },
+    '=/api/denetim/nginx-upstreams': {
+      ok: true,
+      hazir: true,
+      scanDate: null,
+      serversOlculdu: true,
+      ...upstreamOzeti([], [], [], () => 'BILINMIYOR'),
+    },
     '=/api/denetim/nginx-inventory': { ok: true, lastUpdate: null, ...summarizeNginxInventory([]) },
     '=/api/denetim/nginx-api': { ok: true, scanDate: null, availableDates: [], ...summarize([]) },
-    '=/api/denetim/nginx-audit': { ok: true, schemaReady: true, filesReady: false, scanDate: null, hosts: [], totals: null },
+    '=/api/denetim/nginx-audit': {
+      ok: true,
+      schemaReady: true,
+      filesReady: false,
+      scanDate: null,
+      hosts: [],
+      totals: null,
+    },
   };
 }
 const BOS_OZEL = bosSekiller();
@@ -77,7 +145,14 @@ const GORUNUMLER = [
 ];
 
 function chromeYolu() {
-  const adaylar = [process.env.CHROME_BIN, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  const adaylar = [
+    process.env.CHROME_BIN,
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+  ];
   const bulunan = adaylar.find((p) => p && fs.existsSync(p));
   if (!bulunan) throw new Error('Chrome bulunamadi. CHROME_BIN ile yolunu verin.');
   return bulunan;
@@ -112,8 +187,26 @@ fs.mkdirSync(CIKTI, { recursive: true });
 const profil = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-tarama-profil-'));
 
 console.log(`[ui-tarama] Vite ${TABAN} ve headless Chrome baslatiliyor...`);
-surecler.push(spawn(araclar.aracYolu('npx'), ['vite', '--port', String(VITE_PORT), '--strictPort'], { cwd: KOK, stdio: 'ignore' }));
-surecler.push(spawn(chromeYolu(), ['--headless=new', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profil}`, '--no-first-run', '--disable-gpu', 'about:blank'], { stdio: 'ignore' }));
+surecler.push(
+  spawn(araclar.aracYolu('npx'), ['vite', '--port', String(VITE_PORT), '--strictPort'], {
+    cwd: KOK,
+    stdio: 'ignore',
+  }),
+);
+surecler.push(
+  spawn(
+    chromeYolu(),
+    [
+      '--headless=new',
+      `--remote-debugging-port=${CDP_PORT}`,
+      `--user-data-dir=${profil}`,
+      '--no-first-run',
+      '--disable-gpu',
+      'about:blank',
+    ],
+    { stdio: 'ignore' },
+  ),
+);
 await hazirOlana(TABAN + '/');
 await hazirOlana(`http://127.0.0.1:${CDP_PORT}/json/version`);
 
@@ -142,12 +235,16 @@ for (const mod of ['bos', 'hata']) {
       await t.kapat();
     }
     const sekmeli = SEKMELER[yol];
-    for (const sk of sekmeli && sekmeli.modlar.includes(mod) ? sekmeli.sekmeler : []) {
+    for (const sk of sekmeli?.modlar.includes(mod) ? sekmeli.sekmeler : []) {
       for (const tema of ['light', 'dark']) {
         const t = await sekme(CDP_PORT, TABAN);
         try {
           await t.ac(`${yol}?tab=${sk}`, { tema, mod, ozel: ozelOf(mod) });
-          await olc(t, { mod, yol, adim: `?tab=${sk}`, tema, w: 1440 }, `${mod}-${ad(yol)}-${sk}-${tema}`);
+          await olc(
+            t,
+            { mod, yol, adim: `?tab=${sk}`, tema, w: 1440 },
+            `${mod}-${ad(yol)}-${sk}-${tema}`,
+          );
         } catch (e) {
           sonuclar.push({ mod, yol, adim: `?tab=${sk}`, tema, w: 1440, aracHatasi: e.message });
         }
@@ -159,7 +256,8 @@ for (const mod of ['bos', 'hata']) {
       const t = await sekme(CDP_PORT, TABAN);
       try {
         await t.ac(yol, { mod, ozel: ozelOf(mod) });
-        if (await t.tikla(adim)) await olc(t, { mod, yol, adim, tema: 'light', w: 1440 }, `${mod}-${ad(yol)}-${ad(adim)}`);
+        if (await t.tikla(adim))
+          await olc(t, { mod, yol, adim, tema: 'light', w: 1440 }, `${mod}-${ad(yol)}-${ad(adim)}`);
       } catch (e) {
         sonuclar.push({ mod, yol, adim, tema: 'light', w: 1440, aracHatasi: e.message });
       }
@@ -170,10 +268,16 @@ for (const mod of ['bos', 'hata']) {
       const t = await sekme(CDP_PORT, TABAN);
       try {
         await t.ac(yol, { mod, tema: mod === 'bos' ? 'dark' : 'light', ozel: ozelOf(mod) });
-        const sekmeler = await t.eval(`[...document.querySelectorAll('nav[aria-label="Admin bölümleri"] button')].map((b) => b.textContent.trim())`);
+        const sekmeler = await t.eval(
+          `[...document.querySelectorAll('nav[aria-label="Admin bölümleri"] button')].map((b) => b.textContent.trim())`,
+        );
         for (const s of sekmeler) {
           if (!(await t.tikla('text=' + s))) continue;
-          await olc(t, { mod, yol, adim: s, tema: mod === 'bos' ? 'dark' : 'light', w: 1440 }, `${mod}-admin-${ad(s)}`);
+          await olc(
+            t,
+            { mod, yol, adim: s, tema: mod === 'bos' ? 'dark' : 'light', w: 1440 },
+            `${mod}-admin-${ad(s)}`,
+          );
         }
       } catch (e) {
         sonuclar.push({ mod, yol, adim: 'sekmeler', tema: '-', w: 0, aracHatasi: e.message });
@@ -186,7 +290,16 @@ for (const mod of ['bos', 'hata']) {
 fs.writeFileSync(path.join(CIKTI, 'rapor.json'), JSON.stringify(sonuclar, null, 1));
 
 // ── ozet ──────────────────────────────────────────────────────────────────────────────────
-const say = { cokme: 0, tasma: 0, kontrast: 0, etiketsiz: 0, adsiz: 0, hamJson: 0, konsol: 0, arac: 0 };
+const say = {
+  cokme: 0,
+  tasma: 0,
+  kontrast: 0,
+  etiketsiz: 0,
+  adsiz: 0,
+  hamJson: 0,
+  konsol: 0,
+  arac: 0,
+};
 const satirlar = [];
 for (const r of sonuclar) {
   const yer = `${r.mod.padEnd(4)} ${(r.yol + (r.adim ? ' > ' + r.adim : '')).padEnd(38)} ${String(r.tema).padEnd(5)} ${String(r.w).padEnd(4)}`;
@@ -226,12 +339,17 @@ for (const r of sonuclar) {
   }
   if (bulgu.length) satirlar.push(`${yer}  ${bulgu.join(' | ')}`);
 }
-console.log(`\n[ui-tarama] ${sonuclar.length} olcum. Bulgu olan satirlar:\n` + (satirlar.join('\n') || '  (bulgu yok)'));
+console.log(
+  `\n[ui-tarama] ${sonuclar.length} olcum. Bulgu olan satirlar:\n` +
+    (satirlar.join('\n') || '  (bulgu yok)'),
+);
 console.log(
   `\n[ui-tarama] OZET  cokme=${say.cokme}  tasma=${say.tasma}  kontrast<3=${say.kontrast}  etiketsiz girdi=${say.etiketsiz}  ` +
     `adsiz dugme=${say.adsiz}  ham JSON=${say.hamJson}  konsol hatasi=${say.konsol}  arac hatasi=${say.arac}`,
 );
-console.log(`[ui-tarama] Ayrinti: ${path.join(CIKTI, 'rapor.json')}  (ekran goruntuleri ayni dizinde)`);
+console.log(
+  `[ui-tarama] Ayrinti: ${path.join(CIKTI, 'rapor.json')}  (ekran goruntuleri ayni dizinde)`,
+);
 
 kapat();
 // Chrome kapanirken profil dizinine yazmaya devam edebilir; silinemezse arac DUSMEZ.

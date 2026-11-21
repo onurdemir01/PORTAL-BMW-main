@@ -8,12 +8,13 @@
 // element motorunun gerçekten yüklendiğini gösteren `visibilityReady` beklenir; harita
 // gelene kadar kısa bir yükleniyor durumu gösterilir (kapalı sayfanın bir an görünmesi
 // yerine). Sunucu tarafı zaten fail-closed'dır; bu yalnızca UI'ın buna uymasını sağlar.
-import React, { useContext } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { AuthContext } from "@/contexts/AuthContext";
+import React, { useContext } from 'react';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { AuthContext } from '@/contexts/AuthContext';
 
 export default function PageVisibilityRoute({ pageId }: { pageId: string }) {
-  const { isAuthenticated, visibilityReady, visibilityFailed, canViewPage } = useContext(AuthContext);
+  const { isAuthenticated, visibilityReady, visibilityFailed, canViewPage } =
+    useContext(AuthContext);
   const location = useLocation();
 
   if (!isAuthenticated) {

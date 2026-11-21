@@ -20,22 +20,28 @@ const { timeQuery } = require('../metrics.cjs');
 // adlarini yakalayamiyordu (kurumsal AI kod incelemesi, review.md #20) — su an hicbir gercek
 // db.query( cagri noktasi bu bicimleri kullanmiyor (dogrulandi, tek RETURNING kullanimi
 // history.cjs'teki duz `RETURNING id`), yani onleyici bir sertlestirme, aktif bug degil.
-// Yeni regex noktali virgul HARIC her karakteri yakalar.
+// Yeni regex noktali virgul HARIC her karakteri yakalar: RETURNING'den sonraki ilk bosluktan ';' ya da
+// sona kadar. Kolon metni yalniz trim() edilmis haliyle kullanilir; eski tembel `\s+([^;]+?)\s*` ile ayni
+// eslesme ve ayni kolonlar, dogrusal (Sonar S8786; esdegerlik: __tests__/regex-dogrusal DR1).
 function handleReturning(sql) {
-  const m = sql.match(/\bRETURNING\b\s+([^\s;](?:[^;]*[^\s;])?|\s(?=(?:;\s*)?$))\s*(?:;\s*)?$/i);
+  const m = sql.match(/\bRETURNING\b\s([^;]+)(?:;\s*)?$/i);
   if (!m) return sql;
 
   const rawCols = m[1].trim();
-  const outputCols = rawCols === '*'
-    ? 'INSERTED.*'
-    : rawCols.split(',').map(c => {
-        const col = c.trim();
-        // Tablo/alias-nitelikli RETURNING kolonlari (RETURNING t.id) icin OUTPUT'ta
-        // INSERTED/DELETED pseudo-tablosuna gore SADECE kolon adi kalmali —
-        // `OUTPUT INSERTED.t.id` GECERSIZ T-SQL'dir; son "." sonrasi segment alinir.
-        const bare = col.includes('.') ? col.slice(col.lastIndexOf('.') + 1) : col;
-        return `INSERTED.${bare}`;
-      }).join(', ');
+  const outputCols =
+    rawCols === '*'
+      ? 'INSERTED.*'
+      : rawCols
+          .split(',')
+          .map((c) => {
+            const col = c.trim();
+            // Tablo/alias-nitelikli RETURNING kolonlari (RETURNING t.id) icin OUTPUT'ta
+            // INSERTED/DELETED pseudo-tablosuna gore SADECE kolon adi kalmali —
+            // `OUTPUT INSERTED.t.id` GECERSIZ T-SQL'dir; son "." sonrasi segment alinir.
+            const bare = col.includes('.') ? col.slice(col.lastIndexOf('.') + 1) : col;
+            return `INSERTED.${bare}`;
+          })
+          .join(', ');
 
   // Remove RETURNING clause
   sql = sql.replace(/(?<!\s)\s*\bRETURNING\b\s[^;]+(?:;\s*)?$/i, '').trim();
@@ -69,9 +75,9 @@ function adaptSql(pgSql) {
 
   // 3) Boolean literals (PG → MSSQL)
   // \b= won't match "col = true" (space before =), so use =\s* directly
-  s = s.replace(/=\s*true\b/gi,  '= 1');
+  s = s.replace(/=\s*true\b/gi, '= 1');
   s = s.replace(/=\s*false\b/gi, '= 0');
-  s = s.replace(/\bIS\s+true\b/gi,  '= 1');
+  s = s.replace(/\bIS\s+true\b/gi, '= 1');
   s = s.replace(/\bIS\s+false\b/gi, '= 0');
 
   // 4) ILIKE → LIKE
@@ -125,7 +131,9 @@ async function _execQuery(pgSql, params, opts = {}) {
   });
 
   const sql = adaptSql(pgSql);
-  const result = await timeQuery('portal', waitNs, sql, () => request.query(sql), { retry: !!opts.retry });
+  const result = await timeQuery('portal', waitNs, sql, () => request.query(sql), {
+    retry: !!opts.retry,
+  });
 
   const rows = result.recordset || [];
   const rowCount = result.rowsAffected?.[0] ?? rows.length;
@@ -139,11 +147,14 @@ async function query(pgSql, params = [], opts = {}) {
     return await _execQuery(pgSql, params);
   } catch (err) {
     // Single retry for transient connection drop (ECONNCLOSED, ECONNRESET, etc.)
-    const isTransient = err.code === 'ECONNCLOSED' || err.code === 'ECONNRESET' ||
-      err.message?.includes('Connection not yet open') || err.message?.includes('pool');
-    if (isTransient && !(opts && opts.tekrar === false)) {
+    const isTransient =
+      err.code === 'ECONNCLOSED' ||
+      err.code === 'ECONNRESET' ||
+      err.message?.includes('Connection not yet open') ||
+      err.message?.includes('pool');
+    if (isTransient && !(opts?.tekrar === false)) {
       console.warn('[db] Transient connection error, retrying once:', err.message);
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 300));
       return _execQuery(pgSql, params, { retry: true });
     }
     throw err;
@@ -197,7 +208,11 @@ async function isAvailable() {
 }
 
 module.exports = {
-  query, transaction, isAvailable,
+  query,
+  transaction,
+  isAvailable,
   // saf ceviri yardimcilari — birim testleri icin acildi (DB gerektirmez)
-  _adaptSql: adaptSql, _handleReturning: handleReturning, _coerce: coerce,
+  _adaptSql: adaptSql,
+  _handleReturning: handleReturning,
+  _coerce: coerce,
 };

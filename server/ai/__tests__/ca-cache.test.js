@@ -48,7 +48,11 @@ test('CA1 ayni yapilandirmada depo YENIDEN KURULMUYOR', () => {
     assert.equal(a, b, 'onbellek isabet etmiyor — her cagri yeniden kuruyor');
     assert.equal(b, c);
     const kurulum = satirlar.filter((l) => l.includes('TLS guven deposu hazirlandi'));
-    assert.equal(kurulum.length, 1, `uc cagride ${kurulum.length} log satiri — acilis gurultusu surer`);
+    assert.equal(
+      kurulum.length,
+      1,
+      `uc cagride ${kurulum.length} log satiri — acilis gurultusu surer`,
+    );
   } finally {
     console.log = orijinal;
     if (onceki === undefined) delete process.env.CORP_CA_CERT_PATH;
@@ -172,7 +176,10 @@ test('CA4 HATA ONBELLEKLENMIYOR — bozuk yapilandirma HER cagride patlar', () =
 
 test('CA5 onbellek anahtari DOSYAYI kapsiyor (yalniz yol DEGIL)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'ca.cjs'), 'utf8');
-  const kod = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const kod = src
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   const i = kod.indexOf('function cacheKey');
   const j = kod.indexOf('function buildCombinedCa');
   assert.ok(i >= 0 && j > i, 'anahtar uretici bulunamadi');

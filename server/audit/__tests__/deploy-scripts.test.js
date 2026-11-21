@@ -3,6 +3,7 @@
 // veri dbo.DeployScriptsInventory (uzun bicim). Kaynak-sozlesme testi: uc, sekme kapisi,
 // sekme kaydi (UI + seed + erisim anahtarlari) birlikte var mi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -83,5 +84,5 @@ test('DS4 Ansible job dosyalari repo icinde belgelenmis (tablo adi ve CSV sozles
   );
   assert.match(loader, /dbo\.DeployScriptsInventory/);
   assert.match(loader, /scan_date, host, root, script, sha512, size_bytes, mtime/);
-  assert.doesNotMatch(loader, /PWD=[A-Za-z0-9]{8,}/, 'loader parola icermemeli');
+  assert.doesNotMatch(loader, esnek(/PWD=[A-Za-z0-9]{8,}/), 'loader parola icermemeli');
 });

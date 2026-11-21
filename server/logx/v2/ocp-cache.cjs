@@ -136,7 +136,7 @@ async function putApps({ env, tenant, entries, source = 'discovery' }) {
   for (const e of entries || []) {
     // Basarisiz namespace taramasi onbellege YAZILMAZ — aksi halde "hic uygulama yok"
     // gibi gorunur ve kullanici yanilir.
-    if (!e || e.status !== 'ok' || !e.clusterName || !e.namespace) continue;
+    if (e?.status !== 'ok' || !e.clusterName || !e.namespace) continue;
 
     for (const o of e.objects || []) {
       const name = String(o.name || '');
@@ -267,7 +267,7 @@ async function putAppScan({ env, tenant, entries }) {
   let written = 0;
   for (const e of entries || []) {
     // Basarisiz tarama kaydedilmez: "bos" demek yaniltici olurdu.
-    if (!e || e.status !== 'ok' || !e.clusterName || !e.namespace) continue;
+    if (e?.status !== 'ok' || !e.clusterName || !e.namespace) continue;
     const params = [
       String(env),
       String(tenant),

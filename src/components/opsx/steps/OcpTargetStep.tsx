@@ -26,19 +26,23 @@
 // namespace ve uygulama zincirdeki her yükleme bittiğinde SIRAYLA uygulanır (env → namespace →
 // uygulama). Her aşama yalnız BİR KEZ denenir (`onSecimRef.asama`); geçersiz bir değer görünür
 // bir uyarıyla düşer, kalan seçim elle yapılır. "Devam Et" yine kullanıcıya bırakılır.
-import React, { useEffect, useId, useRef, useState } from "react";
-import { XMarkIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
-import FilterableList from "@/components/common/FilterableList";
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from '@/api/opsxApi';
+import FilterableList from '@/components/common/FilterableList';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
-import type { OcpHedef } from "@/utils/derinBaglanti";
+import type { OcpHedef } from '@/utils/derinBaglanti';
 
-type OnSecimAsamasi = OcpHedef & { asama: "env" | "ns" | "app" };
+type OnSecimAsamasi = OcpHedef & { asama: 'env' | 'ns' | 'app' };
 
 // Büyük/küçük harf farkı bağlantıyı düşürmesin: anahtarın envanterdeki yazımı döner.
 function anahtarBul(keys: string[], aranan: string): string | null {
-  return keys.find((k) => k === aranan) ?? keys.find((k) => k.toLowerCase() === aranan.toLowerCase()) ?? null;
+  return (
+    keys.find((k) => k === aranan) ??
+    keys.find((k) => k.toLowerCase() === aranan.toLowerCase()) ??
+    null
+  );
 }
 
 const OcpTargetStep: React.FC<{
@@ -49,14 +53,14 @@ const OcpTargetStep: React.FC<{
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [env, setEnv] = useState("");
-  const [tenant, setTenant] = useState("");
-  const onSecimRef = useRef<OnSecimAsamasi | null>(initial ? { ...initial, asama: "env" } : null);
+  const [env, setEnv] = useState('');
+  const [tenant, setTenant] = useState('');
+  const onSecimRef = useRef<OnSecimAsamasi | null>(initial ? { ...initial, asama: 'env' } : null);
   const [onSecimUyari, setOnSecimUyari] = useState<string | null>(null);
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
-  const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
-  const [namespace, setNamespace] = useState("");
+  const [namespaceMode, setNamespaceMode] = useState<'list' | 'free'>('list');
+  const [namespace, setNamespace] = useState('');
   const nsBaslikId = useId();
   // "Yaz" (serbest metin) kipinde `namespace` düz bir <input>'tan gelir ve HER TUŞ
   // VURUŞUNDA değişir. Bunu doğrudan "Uygulama Adı" bloğunun görünürlüğüne VE
@@ -65,7 +69,7 @@ const OcpTargetStep: React.FC<{
   // zıplıyor, "alt alta bozulmuş" görünüyordu ("Listeden seç" kipinde FilterableList
   // değeri yalnızca TIKLAMADA commit ettiği için bu sorun yoktu). Kullanıcı yazmayı
   // KISA BİR SÜRE durdurunca (debounce) namespace burada "yerleşir".
-  const [settledNamespace, setSettledNamespace] = useState("");
+  const [settledNamespace, setSettledNamespace] = useState('');
   // "Listeden seç" kipinde bir namespace'e TIKLANINCA true olur: liste (arama kutusu +
   // ~10 satırlık kaydırılabilir kutu) kapanıp tek satırlık "seçili: X · Değiştir" görünümüne
   // döner. Bu OLMADAN namespace VE uygulama listeleri aynı anda tam açık kalıyor, ikisi de
@@ -80,11 +84,12 @@ const OcpTargetStep: React.FC<{
   const [pairs, setPairs] = useState<OpsxOcpPair[]>([]);
 
   useEffect(() => {
-    opsxApi.getClusters()
+    opsxApi
+      .getClusters()
       .then((r) => {
         setTree(r.tree);
         const os = onSecimRef.current;
-        if (!os || os.asama !== "env") return;
+        if (!os || os.asama !== 'env') return;
         const e = anahtarBul(Object.keys(r.tree || {}), os.env);
         const t = e ? anahtarBul(Object.keys(r.tree[e] || {}), os.tenant) : null;
         if (!e || !t) {
@@ -96,7 +101,7 @@ const OcpTargetStep: React.FC<{
           );
           return;
         }
-        onSecimRef.current = { ...os, env: e, tenant: t, asama: "ns" };
+        onSecimRef.current = { ...os, env: e, tenant: t, asama: 'ns' };
         setEnv(e);
         setTenant(t);
       })
@@ -110,47 +115,55 @@ const OcpTargetStep: React.FC<{
   // tamamına gider (AWX `limit` denendi, sessizce yutuldu; bkz. server/opsx/index.cjs).
   // Ama kullanıcı neyin hedefleneceğini GÖRMELİ: sessizce "hepsi" demek, seçim yaptığını
   // sanma yanılgısının kaynağıydı.
-  const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
+  const groupClusters = env && tenant ? tree[env]?.[tenant] || [] : [];
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
-  useAsyncEffect(async (alive) => {
-    setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
-    setNamespaceOptions([]); setAppOptions([]);
-    if (!env || !tenant) return;
-    // Ön-seçimli namespace: listede varsa listeden seçilmiş gibi kilitlenir; listede yoksa
-    // (ya da liste okunamadıysa) "Yaz" kipine düşer — serbest yazım zaten meşru kaçış yolu —
-    // ve liste DOLUYKEN bunun bir sapma olduğu söylenir.
-    const onSecimNamespace = (liste: string[]) => {
-      const os = onSecimRef.current;
-      if (!os || os.asama !== "ns" || os.env !== env || os.tenant !== tenant) return;
-      const ns = anahtarBul(liste, os.namespace);
-      if (ns) {
-        onSecimRef.current = { ...os, namespace: ns, asama: "app" };
-        setNamespaceMode("list");
-        setNamespace(ns);
-        setSettledNamespace(ns);
-        setNamespaceLocked(true);
-        return;
-      }
-      onSecimRef.current = { ...os, asama: "app" };
-      setNamespaceMode("free");
-      setNamespace(os.namespace);
-      setSettledNamespace(os.namespace);
-      if (liste.length > 0) {
-        setOnSecimUyari(`“${os.namespace}” bu cluster grubunun namespace envanterinde yok — yazılı olarak dolduruldu; doğrulayın.`);
-      }
-    };
-    try {
-      const r = await opsxApi.getOcpNamespaces(env, tenant);
-      if (!alive()) return;
-      setNamespaceOptions(r.namespaces || []);
-      onSecimNamespace(r.namespaces || []);
-    } catch {
-      if (!alive()) return;
+  useAsyncEffect(
+    async (alive) => {
+      setNamespace('');
+      setSettledNamespace('');
+      setNamespaceLocked(false);
       setNamespaceOptions([]);
-      onSecimNamespace([]);
-    }
-  }, [env, tenant]);
+      setAppOptions([]);
+      if (!env || !tenant) return;
+      // Ön-seçimli namespace: listede varsa listeden seçilmiş gibi kilitlenir; listede yoksa
+      // (ya da liste okunamadıysa) "Yaz" kipine düşer — serbest yazım zaten meşru kaçış yolu —
+      // ve liste DOLUYKEN bunun bir sapma olduğu söylenir.
+      const onSecimNamespace = (liste: string[]) => {
+        const os = onSecimRef.current;
+        if (!os || os.asama !== 'ns' || os.env !== env || os.tenant !== tenant) return;
+        const ns = anahtarBul(liste, os.namespace);
+        if (ns) {
+          onSecimRef.current = { ...os, namespace: ns, asama: 'app' };
+          setNamespaceMode('list');
+          setNamespace(ns);
+          setSettledNamespace(ns);
+          setNamespaceLocked(true);
+          return;
+        }
+        onSecimRef.current = { ...os, asama: 'app' };
+        setNamespaceMode('free');
+        setNamespace(os.namespace);
+        setSettledNamespace(os.namespace);
+        if (liste.length > 0) {
+          setOnSecimUyari(
+            `“${os.namespace}” bu cluster grubunun namespace envanterinde yok — yazılı olarak dolduruldu; doğrulayın.`,
+          );
+        }
+      };
+      try {
+        const r = await opsxApi.getOcpNamespaces(env, tenant);
+        if (!alive()) return;
+        setNamespaceOptions(r.namespaces || []);
+        onSecimNamespace(r.namespaces || []);
+      } catch {
+        if (!alive()) return;
+        setNamespaceOptions([]);
+        onSecimNamespace([]);
+      }
+    },
+    [env, tenant],
+  );
 
   // namespace listeden seçilince (tıklama, anında) YA DA serbest yazımda kısa bir süre
   // durunca (debounce) "yerleşir".
@@ -160,38 +173,52 @@ const OcpTargetStep: React.FC<{
   }, [namespace]);
 
   // Namespace yerleşince uygulama dropdown'u otomatik dolar.
-  useAsyncEffect(async (alive) => {
-    setAppOptions([]);
-    if (!env || !tenant || !settledNamespace) return;
-    setAppsLoading(true);
-    // Ön-seçimli uygulama: listede varsa çift DOĞRUDAN eklenir (tıklamayla aynı sonuç);
-    // listede yoksa SESSİZCE DÜŞMEZ — kullanıcı neyin eklenmediğini görür.
-    const onSecimUygulama = (liste: string[]) => {
-      const os = onSecimRef.current;
-      if (!os || os.asama !== "app" || os.env !== env || os.tenant !== tenant || os.namespace !== settledNamespace) return;
-      onSecimRef.current = null;
-      const a = anahtarBul(liste, os.app);
-      if (!a) {
-        setOnSecimUyari(`“${os.app}” bu namespace'in uygulama listesinde yok — listeden seçin.`);
-        return;
-      }
-      const ns = settledNamespace;
-      setPairs((prev) => (prev.some((p) => p.namespace === ns && p.application === a) ? prev : [...prev, { namespace: ns, application: a }]));
-      setSonEklenen(`${ns}-${a}`);
-    };
-    try {
-      const r = await opsxApi.getOcpApps(env, tenant, settledNamespace);
-      if (!alive()) return;
-      setAppOptions(r.apps || []);
-      onSecimUygulama(r.apps || []);
-    } catch {
-      if (!alive()) return;
+  useAsyncEffect(
+    async (alive) => {
       setAppOptions([]);
-      onSecimUygulama([]);
-    } finally {
-      if (alive()) setAppsLoading(false);
-    }
-  }, [env, tenant, settledNamespace]);
+      if (!env || !tenant || !settledNamespace) return;
+      setAppsLoading(true);
+      // Ön-seçimli uygulama: listede varsa çift DOĞRUDAN eklenir (tıklamayla aynı sonuç);
+      // listede yoksa SESSİZCE DÜŞMEZ — kullanıcı neyin eklenmediğini görür.
+      const onSecimUygulama = (liste: string[]) => {
+        const os = onSecimRef.current;
+        if (
+          !os ||
+          os.asama !== 'app' ||
+          os.env !== env ||
+          os.tenant !== tenant ||
+          os.namespace !== settledNamespace
+        )
+          return;
+        onSecimRef.current = null;
+        const a = anahtarBul(liste, os.app);
+        if (!a) {
+          setOnSecimUyari(`“${os.app}” bu namespace'in uygulama listesinde yok — listeden seçin.`);
+          return;
+        }
+        const ns = settledNamespace;
+        setPairs((prev) =>
+          prev.some((p) => p.namespace === ns && p.application === a)
+            ? prev
+            : [...prev, { namespace: ns, application: a }],
+        );
+        setSonEklenen(`${ns}-${a}`);
+      };
+      try {
+        const r = await opsxApi.getOcpApps(env, tenant, settledNamespace);
+        if (!alive()) return;
+        setAppOptions(r.apps || []);
+        onSecimUygulama(r.apps || []);
+      } catch {
+        if (!alive()) return;
+        setAppOptions([]);
+        onSecimUygulama([]);
+      } finally {
+        if (alive()) setAppsLoading(false);
+      }
+    },
+    [env, tenant, settledNamespace],
+  );
 
   // Uygulama listesi `settledNamespace` için çekildi; çift de ONUNLA kurulur (yazım kipinde
   // kutudaki metin henüz yerleşmemiş olabilir).
@@ -209,7 +236,9 @@ const OcpTargetStep: React.FC<{
     return () => window.clearTimeout(t);
   }, [sonEklenen]);
   // Bu namespace'ten zaten eklenmiş uygulamalar listede tekrar görünmez.
-  const kalanApps = appOptions.filter((a) => !pairs.some((p) => p.namespace === settledNamespace && p.application === a));
+  const kalanApps = appOptions.filter(
+    (a) => !pairs.some((p) => p.namespace === settledNamespace && p.application === a),
+  );
 
   function removePair(i: number) {
     setPairs((prev) => prev.filter((_, idx) => idx !== i));
@@ -218,11 +247,17 @@ const OcpTargetStep: React.FC<{
   const ready = env && tenant && pairs.length > 0;
 
   if (loading) return <LoadingLogo compact />;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
   if (envs.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-        Henüz hiç cluster tanımlanmamış — admin panelinden "LogX v2 Yapılandırma" sekmesinden eklenmeli.
+        Henüz hiç cluster tanımlanmamış — admin panelinden "LogX v2 Yapılandırma" sekmesinden
+        eklenmeli.
       </div>
     );
   }
@@ -241,13 +276,19 @@ const OcpTargetStep: React.FC<{
       <div>
         {/* Grup basliklari (dugme listesi / degisen alan): etiket ogesi degil. cursor-default
             etiketin tarayici varsayilani, gorunum ayni kalir. */}
-        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Ortam</span>
+        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">
+          Ortam
+        </span>
         <div className="flex flex-wrap gap-1.5">
           {envs.map((e) => (
             <button
               key={e}
-              onClick={() => { onSecimRef.current = null; setEnv(e); setTenant(""); }}
-              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${env === e ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
+              onClick={() => {
+                onSecimRef.current = null;
+                setEnv(e);
+                setTenant('');
+              }}
+              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${env === e ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'}`}
             >
               {e}
             </button>
@@ -257,13 +298,18 @@ const OcpTargetStep: React.FC<{
 
       {env && (
         <div>
-          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Cluster</span>
+          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">
+            Cluster
+          </span>
           <div className="flex flex-wrap gap-1.5">
             {tenants.map((t) => (
               <button
                 key={t}
-                onClick={() => { onSecimRef.current = null; setTenant(t); }}
-                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${tenant === t ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
+                onClick={() => {
+                  onSecimRef.current = null;
+                  setTenant(t);
+                }}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${tenant === t ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'}`}
               >
                 {t}
               </button>
@@ -274,9 +320,9 @@ const OcpTargetStep: React.FC<{
 
       {env && tenant && groupClusters.length > 0 && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          Hedeflenecek cluster'lar:{" "}
-          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(", ")}</span>
-          {groupClusters.length > 1 && " — grubun tamamı hedeflenir."}
+          Hedeflenecek cluster'lar:{' '}
+          <span className="font-mono text-[var(--text-secondary)]">{groupClusters.join(', ')}</span>
+          {groupClusters.length > 1 && ' — grubun tamamı hedeflenir.'}
         </p>
       )}
 
@@ -284,18 +330,26 @@ const OcpTargetStep: React.FC<{
         <div className="space-y-3 border border-[var(--border)] rounded-xl p-3">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span id={nsBaslikId} className="block text-xs font-medium text-[var(--text-secondary)] cursor-default">Namespace</span>
+              <span
+                id={nsBaslikId}
+                className="block text-xs font-medium text-[var(--text-secondary)] cursor-default"
+              >
+                Namespace
+              </span>
               {namespaceOptions.length > 0 && (
                 <div className="flex gap-1 text-[10px]">
                   <button
-                    onClick={() => setNamespaceMode("list")}
-                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "list" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                    onClick={() => setNamespaceMode('list')}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === 'list' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}
                   >
                     Listeden seç
                   </button>
                   <button
-                    onClick={() => { setNamespaceMode("free"); setNamespaceLocked(false); }}
-                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === "free" ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}
+                    onClick={() => {
+                      setNamespaceMode('free');
+                      setNamespaceLocked(false);
+                    }}
+                    className={`px-2 py-0.5 rounded-full border ${namespaceMode === 'free' ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'border-[var(--border)] text-[var(--text-muted)]'}`}
                   >
                     Yaz
                   </button>
@@ -303,13 +357,18 @@ const OcpTargetStep: React.FC<{
               )}
             </div>
 
-            {namespaceMode === "list" && namespaceOptions.length > 0 ? (
+            {namespaceMode === 'list' && namespaceOptions.length > 0 ? (
               namespaceLocked && namespace.trim() ? (
                 /* Seçildi: uzun liste kapanır, ekran tek satırlık bir öze döner — "Uygulama
                    Adı" bloğuyla ikisi birden tam açıkken oluşan "alt alta yığılma" görünümü
                    böyle önlenir. */
                 <div className="flex items-center justify-between gap-2 px-3 py-2 border border-[var(--border)] rounded-xl bg-[var(--bg-elevated)]">
-                  <span className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal" title={namespace}>{namespace}</span>
+                  <span
+                    className="text-sm font-mono text-[var(--text-primary)] break-all whitespace-normal"
+                    title={namespace}
+                  >
+                    {namespace}
+                  </span>
                   <button
                     onClick={() => setNamespaceLocked(false)}
                     className="text-xs text-[var(--accent)] hover:underline flex-shrink-0"
@@ -323,7 +382,10 @@ const OcpTargetStep: React.FC<{
                 <FilterableList
                   options={namespaceOptions}
                   value={namespace}
-                  onChange={(v) => { setNamespace(v); setNamespaceLocked(true); }}
+                  onChange={(v) => {
+                    setNamespace(v);
+                    setNamespaceLocked(true);
+                  }}
                   placeholder="Namespace ara…"
                 />
               )
@@ -338,38 +400,52 @@ const OcpTargetStep: React.FC<{
             )}
             {namespaceOptions.length === 0 && (
               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                Bu cluster için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i yazabilirsiniz.
+                Bu cluster için envanterde henüz namespace kaydı yok — bildiğiniz namespace'i
+                yazabilirsiniz.
               </p>
             )}
           </div>
 
           {settledNamespace && (
             <div>
-              <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Uygulama Adı</span>
+              <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">
+                Uygulama Adı
+              </span>
               {/* BATCH / JOB POD'LARI (2026-10-14): envanter yalnız deployment / rollout / dc tutar;
                   CronJob / Job pod'larının "uygulaması" yoktur. Namespace'in TÜM pod'ları ayrı bir
                   seçim olarak eklenir - yalnız pod işlemleri (pod silme, thread/heap dump) için. */}
               <button
                 type="button"
                 onClick={() => addPair(OCP_TUM_PODLAR)}
-                disabled={busy || pairs.some((p) => p.namespace === settledNamespace && p.application === OCP_TUM_PODLAR)}
+                disabled={
+                  busy ||
+                  pairs.some(
+                    (p) => p.namespace === settledNamespace && p.application === OCP_TUM_PODLAR,
+                  )
+                }
                 className="mb-2 w-full text-left px-3 py-2 text-xs border border-dashed border-[var(--border)] rounded-xl hover:border-[var(--accent)] disabled:opacity-50"
                 title="Envanterde olmayan batch / job pod'ları için: namespace'teki bütün pod'lar listelenir, siz seçersiniz. Yalnız pod silme ve thread/heap dump."
               >
-                + Bu namespace'in <b>tüm pod'ları</b> (batch / job dahil) — yalnız pod silme ve dump için
+                + Bu namespace'in <b>tüm pod'ları</b> (batch / job dahil) — yalnız pod silme ve dump
+                için
               </button>
               {appsLoading ? (
                 <div className="text-xs text-[var(--text-muted)] py-2">Uygulamalar yükleniyor…</div>
               ) : appOptions.length === 0 ? (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                  Bu namespace için envanterde uygulama bulunamadı (yalnız batch / job çalışıyor olabilir) —
-                  pod silme ya da dump için yukarıdan “tüm pod'ları” ekleyebilirsiniz.
+                  Bu namespace için envanterde uygulama bulunamadı (yalnız batch / job çalışıyor
+                  olabilir) — pod silme ya da dump için yukarıdan “tüm pod'ları” ekleyebilirsiniz.
                 </p>
               ) : kalanApps.length === 0 ? (
-                <p className="text-xs text-[var(--text-muted)] px-1 py-2">Bu namespace'in bütün uygulamaları listeye eklendi.</p>
+                <p className="text-xs text-[var(--text-muted)] px-1 py-2">
+                  Bu namespace'in bütün uygulamaları listeye eklendi.
+                </p>
               ) : (
                 <>
-                  <p className="mb-1 text-[11px] text-[var(--text-muted)]">Tıkladığınız uygulama hemen aşağıdaki listeye eklenir; birden fazla seçebilirsiniz.</p>
+                  <p className="mb-1 text-[11px] text-[var(--text-muted)]">
+                    Tıkladığınız uygulama hemen aşağıdaki listeye eklenir; birden fazla
+                    seçebilirsiniz.
+                  </p>
                   <FilterableList
                     options={kalanApps}
                     value=""
@@ -380,7 +456,6 @@ const OcpTargetStep: React.FC<{
               )}
             </div>
           )}
-
         </div>
       )}
 
@@ -394,12 +469,23 @@ const OcpTargetStep: React.FC<{
               <div
                 key={`${p.namespace}-${p.application}`}
                 className="flex items-center justify-between gap-2 px-3 py-1.5 border rounded-lg transition-colors duration-700"
-                style={sonEklenen === `${p.namespace}-${p.application}`
-                  ? { borderColor: 'var(--status-success)', background: 'var(--status-success-bg, transparent)' }
-                  : { borderColor: 'var(--border)' }}
+                style={
+                  sonEklenen === `${p.namespace}-${p.application}`
+                    ? {
+                        borderColor: 'var(--status-success)',
+                        background: 'var(--status-success-bg, transparent)',
+                      }
+                    : { borderColor: 'var(--border)' }
+                }
               >
-                <span className="text-sm font-mono text-[var(--text-primary)]">{ocpCiftEtiketi(p)}</span>
-                <button onClick={() => removePair(i)} disabled={busy} className="text-[var(--text-muted)] hover:text-red-600">
+                <span className="text-sm font-mono text-[var(--text-primary)]">
+                  {ocpCiftEtiketi(p)}
+                </span>
+                <button
+                  onClick={() => removePair(i)}
+                  disabled={busy}
+                  className="text-[var(--text-muted)] hover:text-red-600"
+                >
                   <XMarkIcon className="w-4 h-4" />
                 </button>
               </div>
@@ -409,7 +495,9 @@ const OcpTargetStep: React.FC<{
       )}
 
       {env && tenant && pairs.length === 0 && (
-        <p className="text-[11px] text-[var(--text-muted)]">Devam etmek için en az bir namespace / uygulama seçin.</p>
+        <p className="text-[11px] text-[var(--text-muted)]">
+          Devam etmek için en az bir namespace / uygulama seçin.
+        </p>
       )}
       <button
         onClick={() => onSubmit({ env, tenant, pairs })}

@@ -29,7 +29,8 @@ const bilet = (id: number, ek: Record<string, unknown> = {}) => ({
   ...ek,
 });
 const son = () => new Date(Date.now() + 3600000).toISOString();
-const onayli = (id: number) => bilet(id, { approvedAt: new Date().toISOString(), deadline: son(), deadlineKaynak: 'oco' });
+const onayli = (id: number) =>
+  bilet(id, { approvedAt: new Date().toISOString(), deadline: son(), deadlineKaynak: 'oco' });
 
 async function panel(tickets: unknown[]) {
   m.mine.mockResolvedValue({ ok: true, tickets, serverNow: new Date().toISOString() });
@@ -52,7 +53,9 @@ describe('Taleplerim', () => {
   it('onaylı bekleyen bilet "onay bekliyor" sayılmaz; kartta ve bantta doğru metin', async () => {
     await panel([onayli(1)]);
     expect(screen.getByText(/1 talebiniz onaylandı, pencere bekleniyor\./)).toBeTruthy();
-    expect(screen.getByText(/Onaylandı, pencere bekleniyor/, { selector: 'div.text-\\[11px\\]' })).toBeTruthy();
+    expect(
+      screen.getByText(/Onaylandı, pencere bekleniyor/, { selector: 'div.text-\\[11px\\]' }),
+    ).toBeTruthy();
     expect(screen.queryByText(/Smart’ta bekliyor/)).toBeNull();
     expect(screen.queryByText(/onay bekliyor/)).toBeNull();
     expect(screen.queryByText(/TAMAMLA/)).toBeNull();
@@ -87,7 +90,12 @@ describe('Admin Smart Talepleri', () => {
       total: 2,
       summary: {},
       serverNow: new Date().toISOString(),
-      tickets: [onayli(1), bilet(2)].map((t) => ({ ...t, username: 'ali', flowKey: 'F', extraVars: {} })),
+      tickets: [onayli(1), bilet(2)].map((t) => ({
+        ...t,
+        username: 'ali',
+        flowKey: 'F',
+        extraVars: {},
+      })),
     });
     render(<SmartTicketsTab />);
     const metinler = await screen.findAllByText('Onaylandı, pencere bekleniyor');

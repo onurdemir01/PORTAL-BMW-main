@@ -138,7 +138,11 @@ async function mirrorToIndex(c) {
       c.createdBy || null,
       c.id,
       // Tenant atanmamissa PASIF gelir (sihirbaz agacina sizmasin).
-      (() => { if (isPlaceholderTenant) return 0; if (c.isActive !== false) return 1; return 0; })(),
+      (() => {
+        if (isPlaceholderTenant) return 0;
+        if (c.isActive !== false) return 1;
+        return 0;
+      })(),
     ],
   );
 }

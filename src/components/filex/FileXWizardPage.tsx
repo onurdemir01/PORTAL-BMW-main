@@ -184,9 +184,10 @@ const FileXWizardPage: React.FC = () => {
           // Ağ geçidi (502/503/504, gövde HTML) ya da ağ hatası: portal yeniden
           // başlatılıyor olabilir, iş AWX'te sürüyor. Birkaç tur daha denenir.
           const durum = (err as { status?: number })?.status;
-          const gecici = (err as { gatewayUnavailable?: boolean })?.gatewayUnavailable === true
-            || durum === undefined
-            || durum >= 500;
+          const gecici =
+            (err as { gatewayUnavailable?: boolean })?.gatewayUnavailable === true ||
+            durum === undefined ||
+            durum >= 500;
           if (gecici && ++geciciHata < GECICI_HATA_TAVANI) return;
           kapat(err instanceof Error ? err.message : String(err));
         }

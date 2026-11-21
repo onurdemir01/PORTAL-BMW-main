@@ -11,6 +11,7 @@
 // var (Turkce Excel `;` bekler, bir script'e besleyen RFC 4180 virgulunu
 // ister) ve birini secmek digerinin dosyasini bozardi.
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -61,11 +62,7 @@ test('CB1 kapsamdaki HICBIR ekran kendi CSV`sini uretmiyor', () => {
     const src = fs.readFileSync(p, 'utf8');
     if (/text\/csv/.test(src)) suclular.push(rel);
   }
-  assert.deepEqual(
-    suclular,
-    [],
-    `kendi CSV metnini ureten dosya(lar):\n${suclular.join('\n')}`,
-  );
+  assert.deepEqual(suclular, [], `kendi CSV metnini ureten dosya(lar):\n${suclular.join('\n')}`);
 });
 
 test('CB2 ayirici HICBIR YERDE sabitlenmemis (tercih islevsiz kalmasin)', () => {
@@ -109,6 +106,6 @@ test('CB5 taşınan ekranlar ortak yardimciyi GERCEKTEN cagiriyor', () => {
   ]) {
     const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
     assert.match(src, /from '@\/utils\/csv'/, `${rel}: ortak yardimci import edilmemis`);
-    assert.doesNotMatch(src, /function csvDownload\(/, `${rel}: yerel kopya duruyor`);
+    assert.doesNotMatch(src, esnek(/function csvDownload\(/), `${rel}: yerel kopya duruyor`);
   }
 });

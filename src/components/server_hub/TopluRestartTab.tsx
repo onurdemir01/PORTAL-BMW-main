@@ -99,7 +99,10 @@ function Rozet({ durum }: { durum: string }) {
         ? 'var(--accent)'
         : 'var(--status-warning)';
   return (
-    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border" style={{ color: renk, borderColor: renk }}>
+    <span
+      className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+      style={{ color: renk, borderColor: renk }}
+    >
       {IS_ETIKET[durum] || durum}
     </span>
   );
@@ -130,8 +133,14 @@ function AdayTablosu({
   if (!satirlar.length) return null;
   const hepsi = satirlar.every((x) => secili.has(anahtar(x)));
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
-      <div className="px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ background: 'var(--bg-elevated)' }}>
+    <div
+      className="rounded-lg border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
+      <div
+        className="px-3 py-2 text-xs font-semibold flex items-center gap-2"
+        style={{ background: 'var(--bg-elevated)' }}
+      >
         <input
           type="checkbox"
           aria-label="Tümünü seç"
@@ -148,7 +157,8 @@ function AdayTablosu({
             })
           }
         />
-        Parametre farkı olan çalışan JVM’ler <span style={{ color: 'var(--text-muted)' }}>({fmtNumber(satirlar.length)})</span>
+        Parametre farkı olan çalışan JVM’ler{' '}
+        <span style={{ color: 'var(--text-muted)' }}>({fmtNumber(satirlar.length)})</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[12px]">
@@ -158,13 +168,19 @@ function AdayTablosu({
               <th className="px-3 py-1 text-left font-medium">Sunucu</th>
               <th className="px-3 py-1 text-left font-medium">Ortam</th>
               <th className="px-3 py-1 text-left font-medium">JVM</th>
-              <th className="px-3 py-1 text-left font-medium">Farklı parametreler (çalışan → yapılandırılan, maskeli)</th>
+              <th className="px-3 py-1 text-left font-medium">
+                Farklı parametreler (çalışan → yapılandırılan, maskeli)
+              </th>
               <th className="px-3 py-1 text-left font-medium">Tarama</th>
             </tr>
           </thead>
           <tbody>
             {satirlar.map((x) => (
-              <tr key={anahtar(x)} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+              <tr
+                key={anahtar(x)}
+                className="border-t align-top"
+                style={{ borderColor: 'var(--border-subtle)' }}
+              >
                 <td className="px-3 py-1">
                   <input
                     type="checkbox"
@@ -184,12 +200,18 @@ function AdayTablosu({
                 <td className="px-3 py-1 font-mono">{x.host}</td>
                 <td className="px-3 py-1">{x.env || '—'}</td>
                 <td className="px-3 py-1 font-mono">
-                  {x.jvm} <span style={{ color: 'var(--text-muted)' }}>JBoss {x.gen}{x.grp ? ` · ${x.grp}` : ''}</span>
+                  {x.jvm}{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    JBoss {x.gen}
+                    {x.grp ? ` · ${x.grp}` : ''}
+                  </span>
                 </td>
                 <td className="px-3 py-1 max-w-xl">
                   <Fark metin={x.fark} />
                 </td>
-                <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>{x.scanDate || '—'}</td>
+                <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>
+                  {x.scanDate || '—'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -201,7 +223,10 @@ function AdayTablosu({
 
 function OgeTablosu({ ogeler }: { ogeler: ShRestartOge[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+    <div
+      className="overflow-x-auto rounded-lg border"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
       <table className="w-full text-[12px]">
         <thead>
           <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
@@ -216,15 +241,26 @@ function OgeTablosu({ ogeler }: { ogeler: ShRestartOge[] }) {
         </thead>
         <tbody>
           {ogeler.map((o) => (
-            <tr key={o.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
-              <td className="px-3 py-1 tabular-nums" style={{ color: 'var(--text-muted)' }}>{o.sira}</td>
+            <tr
+              key={o.id}
+              className="border-t align-top"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              <td className="px-3 py-1 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {o.sira}
+              </td>
               <td className="px-3 py-1 font-mono">{o.host}</td>
               <td className="px-3 py-1 font-mono">
                 {o.jvm} <span style={{ color: 'var(--text-muted)' }}>JBoss {o.gen}</span>
               </td>
               <td className="px-3 py-1 font-semibold" style={{ color: ogeRengi(o.durum) }}>
                 {OGE_ETIKET[o.durum] || o.durum}
-                {o.startState ? <span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {o.startState}</span> : null}
+                {o.startState ? (
+                  <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
+                    {' '}
+                    · {o.startState}
+                  </span>
+                ) : null}
               </td>
               <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>
                 <KategoriEtiketi oge={o} basarisiz={RESTART_BASARISIZ} />
@@ -233,7 +269,10 @@ function OgeTablosu({ ogeler }: { ogeler: ShRestartOge[] }) {
               <td className="px-3 py-1 max-w-md">
                 <Fark metin={o.fark} />
               </td>
-              <td className="px-3 py-1 tabular-nums whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+              <td
+                className="px-3 py-1 tabular-nums whitespace-nowrap"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {[
                   o.planJobId ? `önizleme #${o.planJobId}` : null,
                   o.restartJobId ? `restart #${o.restartJobId}` : null,
@@ -262,13 +301,19 @@ export default function TopluRestartTab() {
   const [ogeler, setOgeler] = useState<ShRestartOge[]>([]);
   const [gonderiliyor, setGonderiliyor] = useState(false);
   // Kategori seçimi izlenen işe bağlı: başka iş / yeni toplu iş açılınca seçim kendiliğinden düşer (inceleme B-F8).
-  const [kategoriSecimi, setKategoriSecimi] = useState<{ isId: number | null; k: TopluKategori | null }>({ isId: null, k: null });
+  const [kategoriSecimi, setKategoriSecimi] = useState<{
+    isId: number | null;
+    k: TopluKategori | null;
+  }>({ isId: null, k: null });
 
   const adaylariYukle = useCallback(async (fresh: boolean) => {
     setYukleniyor(true);
     setHata(null);
     try {
-      const [a, l] = await Promise.all([serverHubApi.topluRestartAdaylar(fresh), serverHubApi.topluRestartListe()]);
+      const [a, l] = await Promise.all([
+        serverHubApi.topluRestartAdaylar(fresh),
+        serverHubApi.topluRestartListe(),
+      ]);
       if (!a.ok) throw new Error(a.message || 'Aday listesi okunamadı.');
       setVeri(a);
       setSecili(new Set(a.adaylar.map(anahtar)));
@@ -313,7 +358,10 @@ export default function TopluRestartTab() {
     );
     return () => clearInterval(t);
   }, [gorunur, izlenen, yuruyor, onayBekliyor, durumOku]);
-  const planKalanMs = onayBekliyor && is?.planBitisAt ? new Date(is.planBitisAt).getTime() + PLAN_GECERLILIK_MS - simdi : null;
+  const planKalanMs =
+    onayBekliyor && is?.planBitisAt
+      ? new Date(is.planBitisAt).getTime() + PLAN_GECERLILIK_MS - simdi
+      : null;
   const planDoldu = planKalanMs != null && planKalanMs <= 0;
 
   const adaylar = useMemo(() => veri?.adaylar || [], [veri]);
@@ -321,7 +369,9 @@ export default function TopluRestartTab() {
   const limit = veri?.limit ?? null;
   const limitAsti = limit != null && secim.length > limit;
   const aktifVar = !!is && (YURUYEN.has(is.durum) || is.durum === 'PLAN_HAZIR');
-  const prodDislanan = (veri?.dislananlar || []).filter((x) => /OpsX'ten tek tek/.test(x.neden || ''));
+  const prodDislanan = (veri?.dislananlar || []).filter((x) =>
+    /OpsX'ten tek tek/.test(x.neden || ''),
+  );
 
   const onizle = async () => {
     if (!secim.length || limitAsti || aktifVar) return;
@@ -329,7 +379,9 @@ export default function TopluRestartTab() {
     const baslangic = Date.now();
     const oncekiSonId = izlenen;
     try {
-      const r = await serverHubApi.topluRestartOlustur(secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm })));
+      const r = await serverHubApi.topluRestartOlustur(
+        secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm })),
+      );
       if (!r.ok || r.id == null) {
         toast.error(r.message || 'Toplu restart işi açılamadı.');
         return;
@@ -361,7 +413,15 @@ export default function TopluRestartTab() {
 
   const onayVer = async () => {
     if (!is || is.durum !== 'PLAN_HAZIR') return;
-    if (!(await onayla({ baslik: 'Toplu restart', metin: onayMetni(ogeler), onayMetni: 'Onayla ve restart et', tehlikeli: true }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Toplu restart',
+        metin: onayMetni(ogeler),
+        onayMetni: 'Onayla ve restart et',
+        tehlikeli: true,
+      }))
+    )
+      return;
     setGonderiliyor(true);
     try {
       const r = await serverHubApi.topluRestartOnayla(is.id);
@@ -403,7 +463,9 @@ export default function TopluRestartTab() {
 
   const say = (d: ShRestartOgeDurum) => ogeler.filter((o) => o.durum === d).length;
   const bitti = !!is && !YURUYEN.has(is.durum) && is.durum !== 'PLAN_HAZIR';
-  const suren = ogeler.find((o) => o.durum === 'CALISIYOR' || o.durum === 'TARANIYOR' || o.durum === 'BASLATILIYOR');
+  const suren = ogeler.find(
+    (o) => o.durum === 'CALISIYOR' || o.durum === 'TARANIYOR' || o.durum === 'BASLATILIYOR',
+  );
   // Hiç restart denenmediyse (hepsi düştü / atlandı / iptal) özet yeşil "Tamamlandı" değil, nötr.
   const uygulanan = say('KAPANDI') + say('KAPANMADI') + say('FAIL') + say('YARIM_KALDI');
   const hicUygulanmadi = bitti && !!is && uygulanan === 0 && !kirmiziMi(is.durum);
@@ -411,14 +473,21 @@ export default function TopluRestartTab() {
   return (
     <div className="space-y-4">
       {onayPenceresi}
-      <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <section
+        className="rounded-xl border p-4 space-y-3"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>JVM parametre farkı — toplu restart</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              JVM parametre farkı — toplu restart
+            </h2>
             <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-              Yalnız taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan, çalışan JVM’ler. Düğme önce
-              seçilen sunucuları salt okunur olarak yeniden tarar; JVM durmuşsa ya da fark kalmadıysa düşer. Sonra onay istenir ve
-              JVM’ler tek tek restart edilir. Prod ve ortamı bilinmeyen sunucular bu listeye alınmaz (OpsX’ten tek tek).
+              Yalnız taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı
+              olan, çalışan JVM’ler. Düğme önce seçilen sunucuları salt okunur olarak yeniden tarar;
+              JVM durmuşsa ya da fark kalmadıysa düşer. Sonra onay istenir ve JVM’ler tek tek
+              restart edilir. Prod ve ortamı bilinmeyen sunucular bu listeye alınmaz (OpsX’ten tek
+              tek).
               {veri?.latestScan ? ` Son tarama: ${veri.latestScan}.` : ''}
             </p>
           </div>
@@ -433,7 +502,10 @@ export default function TopluRestartTab() {
           </button>
         </div>
         {hata && (
-          <div className="text-[12px] rounded-lg border px-3 py-2" style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>
+          <div
+            className="text-[12px] rounded-lg border px-3 py-2"
+            style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}
+          >
             {hata}
           </div>
         )}
@@ -446,9 +518,16 @@ export default function TopluRestartTab() {
               </div>
             )}
             {!adaylar.length && !veri.schemaUnknown && (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Taze taramada parametre farkı olan, toplu restart’a uygun JVM yok.</div>
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                Taze taramada parametre farkı olan, toplu restart’a uygun JVM yok.
+              </div>
             )}
-            <AdayTablosu satirlar={adaylar} secili={secili} setSecili={setSecili} kilitli={aktifVar} />
+            <AdayTablosu
+              satirlar={adaylar}
+              secili={secili}
+              setSecili={setSecili}
+              kilitli={aktifVar}
+            />
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 type="button"
@@ -459,9 +538,14 @@ export default function TopluRestartTab() {
                 Önizle ve restart et ({fmtNumber(secim.length)} JVM)
               </button>
               {limit != null && (
-                <span className="text-[11px] tabular-nums" style={{ color: limitAsti ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+                <span
+                  className="text-[11px] tabular-nums"
+                  style={{ color: limitAsti ? 'var(--status-danger)' : 'var(--text-muted)' }}
+                >
                   {fmtNumber(secim.length)} / {fmtNumber(limit)} JVM
-                  {limitAsti ? ' — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın' : ''}
+                  {limitAsti
+                    ? ' — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın'
+                    : ''}
                 </span>
               )}
               {aktifVar && (
@@ -472,19 +556,24 @@ export default function TopluRestartTab() {
             </div>
             {prodDislanan.length > 0 && (
               <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                {fmtNumber(prodDislanan.length)} JVM prod / ortamı bilinmeyen ya da standalone sunucuda — toplu restart’a alınmadı;
-                OpsX’ten tek tek restart edin (prod’da Smart onayı).
+                {fmtNumber(prodDislanan.length)} JVM prod / ortamı bilinmeyen ya da standalone
+                sunucuda — toplu restart’a alınmadı; OpsX’ten tek tek restart edin (prod’da Smart
+                onayı).
               </div>
             )}
             {veri.dislananlar.length > 0 && (
               <details className="text-[12px]">
                 <summary className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>
-                  Farkı olan ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM (nedeniyle)
+                  Farkı olan ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM
+                  (nedeniyle)
                 </summary>
                 <ul className="mt-1 space-y-0.5">
                   {veri.dislananlar.map((x) => (
                     <li key={anahtar(x)}>
-                      <span className="font-mono">{x.host}/{x.jvm}</span> — {x.neden}
+                      <span className="font-mono">
+                        {x.host}/{x.jvm}
+                      </span>{' '}
+                      — {x.neden}
                     </li>
                   ))}
                 </ul>
@@ -497,12 +586,17 @@ export default function TopluRestartTab() {
       {is && (
         <section
           className="rounded-xl border p-4 space-y-3"
-          style={{ borderColor: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+          style={{
+            borderColor: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--border-subtle)',
+            background: 'var(--bg-surface)',
+          }}
           aria-label={`Toplu restart #${is.id}`}
         >
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Toplu restart #{is.id}</h2>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Toplu restart #{is.id}
+              </h2>
               <Rozet durum={is.durum} />
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                 açan {is.olusturan}
@@ -513,37 +607,73 @@ export default function TopluRestartTab() {
             </div>
             <div className="flex items-center gap-2">
               {is.durum === 'PLAN_HAZIR' && (
-                <button type="button" className="btn-primary text-xs" disabled={gonderiliyor || !say('PLAN_GECTI') || planDoldu} onClick={() => void onayVer()}>
+                <button
+                  type="button"
+                  className="btn-primary text-xs"
+                  disabled={gonderiliyor || !say('PLAN_GECTI') || planDoldu}
+                  onClick={() => void onayVer()}
+                >
                   Onayla ve restart et ({fmtNumber(say('PLAN_GECTI'))} JVM)
                 </button>
               )}
-              {(is.durum === 'PLAN_HAZIR' || is.durum === 'PLANLANIYOR' || is.durum === 'CALISIYOR') && (
-                <button type="button" className="btn-secondary text-xs" onClick={() => void iptalEt()}>
+              {(is.durum === 'PLAN_HAZIR' ||
+                is.durum === 'PLANLANIYOR' ||
+                is.durum === 'CALISIYOR') && (
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => void iptalEt()}
+                >
                   İptal
                 </button>
               )}
             </div>
           </div>
-          <div className="text-[12px] tabular-nums flex gap-3 flex-wrap" style={{ color: 'var(--text-secondary)' }}>
+          <div
+            className="text-[12px] tabular-nums flex gap-3 flex-wrap"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             <span>{fmtNumber(ogeler.length)} JVM</span>
             <span>düşen {fmtNumber(say('DUSTU'))}</span>
-            <span style={{ color: 'var(--status-success)' }}>fark kapandı {fmtNumber(say('KAPANDI'))}</span>
-            <span style={{ color: say('KAPANMADI') ? 'var(--status-warning)' : undefined }}>fark kapanmadı {fmtNumber(say('KAPANMADI'))}</span>
-            <span style={{ color: say('FAIL') ? 'var(--status-danger)' : undefined }}>başarısız {fmtNumber(say('FAIL'))}</span>
+            <span style={{ color: 'var(--status-success)' }}>
+              fark kapandı {fmtNumber(say('KAPANDI'))}
+            </span>
+            <span style={{ color: say('KAPANMADI') ? 'var(--status-warning)' : undefined }}>
+              fark kapanmadı {fmtNumber(say('KAPANMADI'))}
+            </span>
+            <span style={{ color: say('FAIL') ? 'var(--status-danger)' : undefined }}>
+              başarısız {fmtNumber(say('FAIL'))}
+            </span>
             <span>atlandı {fmtNumber(say('ATLANDI'))}</span>
-            {say('YARIM_KALDI') > 0 && <span style={{ color: 'var(--status-danger)' }}>yarım kaldı {fmtNumber(say('YARIM_KALDI'))}</span>}
+            {say('YARIM_KALDI') > 0 && (
+              <span style={{ color: 'var(--status-danger)' }}>
+                yarım kaldı {fmtNumber(say('YARIM_KALDI'))}
+              </span>
+            )}
           </div>
           {suren && (
             <div className="text-[12px]" style={{ color: 'var(--accent)' }}>
               Şu an: {suren.host}/{suren.jvm} — {OGE_ETIKET[suren.durum]}
-              {suren.restartJobId ? ` (restart #${suren.restartJobId}${suren.taramaJobId ? `, tarama #${suren.taramaJobId}` : ''})` : ''}
+              {suren.restartJobId
+                ? ` (restart #${suren.restartJobId}${suren.taramaJobId ? `, tarama #${suren.taramaJobId}` : ''})`
+                : ''}
             </div>
           )}
-          {is.hata && <div className="text-[12px]" style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}>{is.hata}</div>}
+          {is.hata && (
+            <div
+              className="text-[12px]"
+              style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}
+            >
+              {is.hata}
+            </div>
+          )}
           {is.durum === 'PLAN_HAZIR' && (
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Önizleme sunucuları yeniden taramayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık onay
-              süresi önizleme BİTTİĞİNDE başladı (önizlemenin kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden önizlenmeli. Onayda AWX şablonunun Limit’i kabul ettiği yeniden kontrol edilir.
+              Önizleme sunucuları yeniden taramayı{' '}
+              {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık
+              onay süresi önizleme BİTTİĞİNDE başladı (önizlemenin kendi süresi buna dahil değil);
+              bu sürede onaylanmazsa yeniden önizlenmeli. Onayda AWX şablonunun Limit’i kabul ettiği
+              yeniden kontrol edilir.
               {planKalanMs != null && (
                 <span style={{ color: planDoldu ? 'var(--status-danger)' : undefined }}>
                   {planDoldu
@@ -569,14 +699,23 @@ export default function TopluRestartTab() {
               {hicUygulanmadi
                 ? `Restart edilen JVM yok: ${fmtNumber(say('DUSTU'))} düştü, ${fmtNumber(say('ATLANDI'))} atlandı, ${fmtNumber(say('IPTAL'))} iptal — nedeni tabloda.`
                 : is.durum === 'BITTI' && !say('FAIL') && !say('YARIM_KALDI')
-                ? `Tamamlandı: ${fmtNumber(say('KAPANDI'))} JVM’de fark kapandı, ${fmtNumber(say('KAPANMADI'))} JVM’de kapanmadı (tarama yanlış uyarı veriyor olabilir — nedeni tabloda).`
-                : `Özet: ${fmtNumber(say('KAPANDI'))} kapandı, ${fmtNumber(say('KAPANMADI'))} kapanmadı, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('ATLANDI'))} atlandı, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın.`}
+                  ? `Tamamlandı: ${fmtNumber(say('KAPANDI'))} JVM’de fark kapandı, ${fmtNumber(say('KAPANMADI'))} JVM’de kapanmadı (tarama yanlış uyarı veriyor olabilir — nedeni tabloda).`
+                  : `Özet: ${fmtNumber(say('KAPANDI'))} kapandı, ${fmtNumber(say('KAPANMADI'))} kapanmadı, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('ATLANDI'))} atlandı, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın.`}
             </div>
           )}
-          <TopluKategoriFiltresi ogeler={ogeler} basarisiz={RESTART_BASARISIZ} secili={kategori} onSec={setKategori} />
+          <TopluKategoriFiltresi
+            ogeler={ogeler}
+            basarisiz={RESTART_BASARISIZ}
+            secili={kategori}
+            onSec={setKategori}
+          />
           <OgeTablosu ogeler={kategoriyeGore(ogeler, RESTART_BASARISIZ, kategori)} />
           {bitti && (
-            <button type="button" className="btn-secondary text-xs" onClick={() => void adaylariYukle(true)}>
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => void adaylariYukle(true)}
+            >
               Listeyi yenile
             </button>
           )}

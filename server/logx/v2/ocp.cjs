@@ -36,7 +36,7 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
   // kalir (playbook'ta "sahipsiz cluster" kovasina duser).
   const names = [...new Set((clusters || []).map((n) => String(n || '').trim()).filter(Boolean))];
   const items = names.map((name) => {
-    const m = (meta?.[name]) || {};
+    const m = meta?.[name] || {};
     return {
       env,
       tenant,
@@ -53,7 +53,9 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
       ...(m.ocp_username ? { username: m.ocp_username } : {}),
     };
   });
-  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort((a, b) => Number(a > b) - Number(a < b));
+  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  );
   return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
 }
 
@@ -173,7 +175,9 @@ async function selectClusters(requestRow, env, tenant, clusters) {
   const hosts = await resolveHostsOrThrow(env, tenant, clusters);
   // `terminalHost` (tekil) yalnizca geriye donuk uyum icin saklanir: bu alani okuyan eski
   // istek satirlari ve UI hala calissin diye. Gercek kaynak her launch'ta taze cozulur.
-  const terminalHost = [...new Set(Object.values(hosts))].sort((a, b) => Number(a > b) - Number(a < b))[0];
+  const terminalHost = [...new Set(Object.values(hosts))].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  )[0];
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'draft',
@@ -322,7 +326,10 @@ function normalizeDiscoveryResult(artifacts) {
   if (!artifacts || !Array.isArray(artifacts.clusters)) return artifacts;
   const clusters = artifacts.clusters.map((c) => {
     const cleaned = (c.namespaces || []).map(cleanNamespaceName).filter(Boolean);
-    return { ...c, namespaces: [...new Set(cleaned)].sort((a, b) => Number(a > b) - Number(a < b)) };
+    return {
+      ...c,
+      namespaces: [...new Set(cleaned)].sort((a, b) => Number(a > b) - Number(a < b)),
+    };
   });
   return { ...artifacts, clusters };
 }
@@ -501,7 +508,7 @@ async function discoverFetch(requestRow, targets) {
     namespace: first.namespace,
     app_name: first.appName,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
+    fallback_dir: require('./downloads.cjs').uzakFallbackDiziniZorunlu(),
   });
 
   await requests.updateRequest(requestRow.request_id, {

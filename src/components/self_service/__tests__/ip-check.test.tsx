@@ -10,7 +10,9 @@ import IpCheckSection from '@/components/self_service/IpCheckSection';
 import type { ServerIpCheckResult } from '@/api/selfServiceApi';
 
 const { mockIp, mockSunucu } = vi.hoisted(() => ({ mockIp: vi.fn(), mockSunucu: vi.fn() }));
-vi.mock('@/api/selfServiceApi', () => ({ selfServiceApi: { ipCheck: mockIp, serverIpCheck: mockSunucu } }));
+vi.mock('@/api/selfServiceApi', () => ({
+  selfServiceApi: { ipCheck: mockIp, serverIpCheck: mockSunucu },
+}));
 
 const LB: ServerIpCheckResult = {
   ok: true,
@@ -42,7 +44,14 @@ function sorgula(metin: string) {
 
 describe('IpCheckSection', () => {
   beforeEach(() => {
-    mockIp.mockReset().mockResolvedValue({ ok: true, results: [{ ip: '10.0.0.1', found: false, matches: [] }], totalChecked: 1, totalFound: 0, truncated: 0, maxItems: 1000 });
+    mockIp.mockReset().mockResolvedValue({
+      ok: true,
+      results: [{ ip: '10.0.0.1', found: false, matches: [] }],
+      totalChecked: 1,
+      totalFound: 0,
+      truncated: 0,
+      maxItems: 1000,
+    });
     mockSunucu.mockReset().mockResolvedValue(LB);
   });
 
@@ -82,7 +91,10 @@ describe('IpCheckSection', () => {
   it('IC4 uyarılar görünür', async () => {
     mockSunucu.mockResolvedValue({
       ...LB,
-      sonuclar: [...LB.sonuclar, { sunucu: 'GBYOKP01', bulundu: false, eslenikler: [], kayitlar: [] }],
+      sonuclar: [
+        ...LB.sonuclar,
+        { sunucu: 'GBYOKP01', bulundu: false, eslenikler: [], kayitlar: [] },
+      ],
       uyarilar: [{ sunucu: 'GBJBOP07', uygulama: '-', aciklama: 'batch kontrol edilmeli' }],
       gecersiz: ['A;B'],
       veriBayat: true,

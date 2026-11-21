@@ -31,7 +31,16 @@ function stub(rel, exports) {
   require.cache[p] = m;
 }
 
-const S = { inv: [], launches: [], history: [], audits: [], settings: { askLimitOnLaunch: true }, settingsHata: null, poolSorgu: 0, launchHata: null };
+const S = {
+  inv: [],
+  launches: [],
+  history: [],
+  audits: [],
+  settings: { askLimitOnLaunch: true },
+  settingsHata: null,
+  poolSorgu: 0,
+  launchHata: null,
+};
 stub('../../inventory/mssql.cjs', {
   getPool: async () => ({
     request: () => {
@@ -54,7 +63,14 @@ stub('../../ansible/playbook-registry.cjs', {
   getEffectiveTemplateId: () => 77,
 });
 stub('../config.cjs', {
-  getConfig: async () => ({ legacy: { extraVars: '', applicationKey: 'application', operationKey: 'operation', separator: ',' } }),
+  getConfig: async () => ({
+    legacy: {
+      extraVars: '',
+      applicationKey: 'application',
+      operationKey: 'operation',
+      separator: ',',
+    },
+  }),
   parseExtraVarLines: () => ({ vars: {}, rejected: [] }),
 });
 stub('../../ansible/runner.cjs', {
@@ -75,15 +91,28 @@ stub('../../db/index.cjs', {
     return { rows: [], rowCount: 1 };
   },
 });
-stub('../../audit/index.cjs', { auditPortal: (req, tur, d) => S.audits.push({ user: req.session.user.username, tur, d: JSON.parse(d.detail) }) });
+stub('../../audit/index.cjs', {
+  auditPortal: (req, tur, d) =>
+    S.audits.push({ user: req.session.user.username, tur, d: JSON.parse(d.detail) }),
+});
 
 const O = require('../index.cjs');
 
 const istek = (u = 'mehmet') => ({ session: { user: { username: u, role: 'Admin' } } });
-const satir = (host, env, appPath) => ({ app: 'crm', host, env, jboss_version: '8.0.1', status: 'running', app_path: appPath });
+const satir = (host, env, appPath) => ({
+  app: 'crm',
+  host,
+  env,
+  jboss_version: '8.0.1',
+  status: 'running',
+  app_path: appPath,
+});
 
 beforeEach(() => {
-  S.inv = [satir('APP01', 'TEST', '/vhosting8/crm.ear'), satir('APP02', 'TEST', '/vhosting/crm.ear')];
+  S.inv = [
+    satir('APP01', 'TEST', '/vhosting8/crm.ear'),
+    satir('APP02', 'TEST', '/vhosting/crm.ear'),
+  ];
   S.launches = [];
   S.history = [];
   S.audits = [];
@@ -99,8 +128,17 @@ beforeEach(() => {
 });
 
 test('OB1 test ortami: tek JVM, limit host + GBLABT02, kurulum kolu, gecmis + denetim', async () => {
-  const r = await O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'app01', gen: 8, jvm: 'crm' });
-  assert.deepEqual([r.jobId, r.awxServerId, r.templateId, r.limit], [4242, 3, 77, 'APP01,GBLABT02']);
+  const r = await O.topluRestartBaslat({
+    req: istek(),
+    application: 'crm',
+    host: 'app01',
+    gen: 8,
+    jvm: 'crm',
+  });
+  assert.deepEqual(
+    [r.jobId, r.awxServerId, r.templateId, r.limit],
+    [4242, 3, 77, 'APP01,GBLABT02'],
+  );
   assert.equal(S.launches.length, 1);
   const l = S.launches[0];
   assert.deepEqual(l.extraVars, {
@@ -113,34 +151,65 @@ test('OB1 test ortami: tek JVM, limit host + GBLABT02, kurulum kolu, gecmis + de
   assert.equal(l.user, 'mehmet');
   assert.equal(S.history.length, 1);
   assert.equal(S.audits.length, 1);
-  assert.deepEqual([S.audits[0].tur, S.audits[0].user, S.audits[0].d.jobId], ['opsx_operation', 'mehmet', 4242]);
+  assert.deepEqual(
+    [S.audits[0].tur, S.audits[0].user, S.audits[0].d.jobId],
+    ['opsx_operation', 'mehmet', 4242],
+  );
 });
 
 test('OB2 uretim hic baslatilmaz: envanter prod, bos ortam, prod sunucu adi', async () => {
   S.inv = [satir('APP01', 'Production', '/vhosting8/crm.ear')];
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e.status === 409 && e.code === 'uretim' && /OpsX'ten tek tek/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+    (e) => e.status === 409 && e.code === 'uretim' && /OpsX'ten tek tek/.test(e.message),
+  );
   S.inv = [satir('APP01', '', '/vhosting8/crm.ear')];
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e.code === 'uretim' && /ortamı bilinmiyor/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+    (e) => e.code === 'uretim' && /ortamı bilinmiyor/.test(e.message),
+  );
   S.inv = [satir('GBJBPROD01', 'TEST', '/vhosting8/crm.ear')];
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'GBJBPROD01', gen: 8, jvm: 'crm' }), (e) => e.code === 'uretim' && /sunucu=GBJBPROD01/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({
+      req: istek(),
+      application: 'crm',
+      host: 'GBJBPROD01',
+      gen: 8,
+      jvm: 'crm',
+    }),
+    (e) => e.code === 'uretim' && /sunucu=GBJBPROD01/.test(e.message),
+  );
   assert.equal(S.launches.length, 0);
   assert.equal(S.audits.length, 0);
 });
 
 test('OB3 sablon Limit kabul etmiyor / olculemiyor: launch YOK', async () => {
   S.settings = { askLimitOnLaunch: false };
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e.status === 409 && e.code === 'limit_kabul_edilmiyor' && /Prompt on launch/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+    (e) =>
+      e.status === 409 && e.code === 'limit_kabul_edilmiyor' && /Prompt on launch/.test(e.message),
+  );
   S.settings = {};
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e.code === 'limit_kabul_edilmiyor');
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+    (e) => e.code === 'limit_kabul_edilmiyor',
+  );
   S.settingsHata = 'AWX 502';
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e.status === 503 && e.code === 'limit_olculemedi');
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+    (e) => e.status === 503 && e.code === 'limit_olculemedi',
+  );
   await assert.rejects(O.legacyLimitKontrol(), (e) => e.code === 'limit_olculemedi');
   assert.equal(S.launches.length, 0);
 });
 
 test('OB4 metadatahub standalone: envantere gidilmeden reddedilir', async () => {
   for (const h of ['GBABAT01', 'gbabap02', 'GBABAT01X']) {
-    await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: h, gen: 8, jvm: 'crm' }), (e) => e.code === 'standalone');
+    await assert.rejects(
+      O.topluRestartBaslat({ req: istek(), application: 'crm', host: h, gen: 8, jvm: 'crm' }),
+      (e) => e.code === 'standalone',
+    );
   }
   assert.equal(O.metadatahubHostMu('GBABAX01'), false);
   assert.equal(S.poolSorgu, 0);
@@ -148,34 +217,65 @@ test('OB4 metadatahub standalone: envantere gidilmeden reddedilir', async () => 
 });
 
 test('OB5 anti-TOCTOU: uygulama sunucuda yok / kurulum kolu farkli -> 400', async () => {
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP09', gen: 8, jvm: 'crm' }), (e) => e.status === 400 && /ait değil/.test(e.message));
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP02', gen: 8, jvm: 'crm' }), (e) => e.status === 400 && /JBoss 8/.test(e.message));
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm;rm' }), (e) => e.status === 400 && /server-config/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP09', gen: 8, jvm: 'crm' }),
+    (e) => e.status === 400 && /ait değil/.test(e.message),
+  );
+  await assert.rejects(
+    O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP02', gen: 8, jvm: 'crm' }),
+    (e) => e.status === 400 && /JBoss 8/.test(e.message),
+  );
+  await assert.rejects(
+    O.topluRestartBaslat({
+      req: istek(),
+      application: 'crm',
+      host: 'APP01',
+      gen: 8,
+      jvm: 'crm;rm',
+    }),
+    (e) => e.status === 400 && /server-config/.test(e.message),
+  );
   assert.equal(S.launches.length, 0);
 });
 
-test('OB6 kaynak bekcisi: route ayni fonksiyonlar; prod kapisi route\'ta launch\'tan once; toplu yol Smart kapisi cagirmaz', () => {
+test("OB6 kaynak bekcisi: route ayni fonksiyonlar; prod kapisi route'ta launch'tan once; toplu yol Smart kapisi cagirmaz", () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  const route = src.slice(src.indexOf("app.post('/api/opsx/run'"), src.indexOf('// ── Thread/Heap Dump'));
+  const route = src.slice(
+    src.indexOf("app.post('/api/opsx/run'"),
+    src.indexOf('// ── Thread/Heap Dump'),
+  );
   assert.match(route, /await legacyIstegiHazirla\(/);
   const kapi = route.indexOf('opsxProductionKapisi(');
   const bas = route.indexOf('await opsxIsiBaslat(');
-  assert.ok(kapi > 0 && bas > kapi, 'route: prod kapisi launch\'tan once olmali');
-  const fn = src.slice(src.indexOf('async function topluRestartBaslat('), src.indexOf('function initOpsX('));
+  assert.ok(kapi > 0 && bas > kapi, "route: prod kapisi launch'tan once olmali");
+  const fn = src.slice(
+    src.indexOf('async function topluRestartBaslat('),
+    src.indexOf('function initOpsX('),
+  );
   assert.ok(!fn.includes('opsxProductionKapisi'), 'toplu yol Smart bileti acmamali');
   const u = fn.indexOf('uretimIstegi(');
   const l = fn.indexOf('opsxIsiBaslat(');
   const lk = fn.indexOf('legacyLimitKontrol()');
-  assert.ok(u > 0 && l > u && lk > 0 && l > lk, 'uretim ve limit kontrolu launch\'tan once');
-  assert.ok(!/launchJobOnServer/.test(fn), 'toplu yol launch\'i yalniz opsxIsiBaslat ile yapar');
+  assert.ok(u > 0 && l > u && lk > 0 && l > lk, "uretim ve limit kontrolu launch'tan once");
+  assert.ok(!/launchJobOnServer/.test(fn), "toplu yol launch'i yalniz opsxIsiBaslat ile yapar");
 });
 
 test('OB7 ad kurali: envanter TEST ama ad prod (ortam harfi P) -> uretim, launch YOK', async () => {
   S.inv = [satir('GBJBOP18', 'TEST', '/vhosting8/crm.ear')];
-  await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'GBJBOP18', gen: 8, jvm: 'crm' }), (e) => e.status === 409 && e.code === 'uretim' && /ad. kural/.test(e.message));
+  await assert.rejects(
+    O.topluRestartBaslat({
+      req: istek(),
+      application: 'crm',
+      host: 'GBJBOP18',
+      gen: 8,
+      jvm: 'crm',
+    }),
+    (e) => e.status === 409 && e.code === 'uretim' && /ad. kural/.test(e.message),
+  );
   assert.equal(S.launches.length, 0);
   assert.equal(O.adKuraliProdMu('gojbwp03.dom.local'), true);
-  for (const h of ['GBJBOT18', 'GBJBOD01', 'APP01', 'GOJBAQ03']) assert.equal(O.adKuraliProdMu(h), false, h);
+  for (const h of ['GBJBOT18', 'GBJBOD01', 'APP01', 'GOJBAQ03'])
+    assert.equal(O.adKuraliProdMu(h), false, h);
 });
 
 test('OB8 belirsiz launch: zaman asimi / 5xx isaretlenir, AWX 4xx reddi isaretlenmez', async () => {
@@ -186,7 +286,10 @@ test('OB8 belirsiz launch: zaman asimi / 5xx isaretlenir, AWX 4xx reddi isaretle
     [Object.assign(new Error('AWX HTTP 403'), { status: 403 }), false],
   ]) {
     S.launchHata = hata;
-    await assert.rejects(O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }), (e) => e === hata && (e.launchBelirsiz === true) === belirsiz);
+    await assert.rejects(
+      O.topluRestartBaslat({ req: istek(), application: 'crm', host: 'APP01', gen: 8, jvm: 'crm' }),
+      (e) => e === hata && (e.launchBelirsiz === true) === belirsiz,
+    );
   }
   assert.equal(S.history.length, 0, 'basarisiz launch gecmise yazilmaz');
 });

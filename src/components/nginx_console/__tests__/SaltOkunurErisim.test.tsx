@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { render } from '@/test/test-utils';
 import { InstancesTab } from '@/components/nginx_console/NimTabs';
 import type { NcHost } from '@/api/nginxConsoleApi';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const HOST = {
   host: 'GBNGXP40',
@@ -43,13 +44,25 @@ describe('Nginx Hub salt okunur erisim', () => {
   });
 
   it('Instances: Admin icin (onRefreshHosts verilince) dugmeler durur', () => {
-    render(<InstancesTab hosts={[HOST]} loading={false} onRefreshHosts={vi.fn()} onOpen={vi.fn()} onReload={vi.fn()} />);
+    render(
+      <InstancesTab
+        hosts={[HOST]}
+        loading={false}
+        onRefreshHosts={vi.fn()}
+        onOpen={vi.fn()}
+        onReload={vi.fn()}
+      />,
+    );
     expect(screen.getByText(/Seçilileri yenile/)).toBeTruthy();
   });
 
   it('sayfa: Instances yenilemesi ve Config dokum araclari yalniz Admin', () => {
     const s = readFileSync(join(__dirname, '..', 'NginxConsolePage.tsx'), 'utf8');
     expect(s).toContain('onRefreshHosts={isAdmin ? refreshHosts : undefined}');
-    expect(s).toMatch(/\{isAdmin && <div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/);
+    expect(s).toMatch(
+      esnek(
+        /\{isAdmin && \(?\s*<div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/,
+      ),
+    );
   });
 });

@@ -4,6 +4,41 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import reactHooks from 'eslint-plugin-react-hooks';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
+import sonarjs from 'eslint-plugin-sonarjs';
+
+// Kurumsal SonarQube profiliyle (kurumsal is #52) ayni kurallar, commit aninda. Kurum JS ve TS icin ayri profil
+// kullaniyor; her listede yalniz kurumun #52 taramasinda o dilde bulgu verdigi kurallar var (yorumda Sonar
+// anahtari). Kurum *.test.js / *.test.tsx'i kaynak saymaz; test yardimcilari (__tests__ altindaki .cjs)
+// kaynak sayilir. Bastirma yok; --max-warnings 0.
+const KURUM_JS = {
+  'sonarjs/no-unenclosed-multiline-block': 'error', // S2681
+  'sonarjs/no-same-line-conditional': 'error', // S3972
+  'sonarjs/no-nested-conditional': 'error', // S3358
+  'sonarjs/no-nested-template-literals': 'error', // S4624
+  'sonarjs/duplicates-in-character-class': 'error', // S5869
+  'sonarjs/regex-complexity': ['error', { threshold: 20 }], // S5843 (kurum esigi 20)
+  'sonarjs/no-invariant-returns': 'error', // S3516
+  'sonarjs/no-unused-collection': 'error', // S4030
+  'sonarjs/no-unused-vars': 'error', // S1481
+  'prefer-object-has-own': 'error', // S6653
+  'prefer-promise-reject-errors': 'error', // S6671
+  'no-unneeded-ternary': 'error', // S6644
+  'sonarjs/publicly-writable-directories': 'error', // S5443 (hotspot)
+};
+// Tip bilgisi isteyen JS kurallari (tsconfig.eslint.json ile).
+const KURUM_JS_TIPLI = {
+  '@typescript-eslint/prefer-optional-chain': 'error', // S6582
+  '@typescript-eslint/prefer-for-of': 'error', // S4138
+  'sonarjs/no-misleading-array-reverse': 'error', // S4043
+  'sonarjs/function-return-type': 'error', // S3800
+  'sonarjs/argument-type': 'error', // S3782
+};
+const KURUM_TS = {
+  'sonarjs/no-unenclosed-multiline-block': 'error', // S2681
+  'sonarjs/no-misleading-array-reverse': 'error', // S4043
+  'sonarjs/no-inverted-boolean-check': 'error', // S1940
+  'sonarjs/no-alphabetical-sort': 'error', // S2871 (bug)
+};
 
 export default [
   js.configs.recommended,
@@ -86,12 +121,48 @@ export default [
     },
   },
   {
-    ignores: [
-      'dist/**',
-      'node_modules/**',
-      'gelistirme/**',
-      '.claude/worktrees/**',
-    ],
+    ignores: ['dist/**', 'node_modules/**', 'gelistirme/**', '.claude/worktrees/**'],
+  },
+  {
+    files: ['{server,src,shared,scripts}/**/*.{cjs,mjs}'],
+    plugins: { sonarjs },
+    rules: KURUM_JS,
+  },
+  {
+    files: ['{server,src,shared,scripts}/**/*.cjs'],
+    languageOptions: {
+      parser: tsParser,
+      // CommonJS kapsami: TS ayristiricisi 'commonjs' sourceType'ini bilmez; globalReturn ayni kapsami kurar
+      // (yoksa ust duzeydeki `const crypto = require(...)` yerlesik geneli yeniden tanimliyor sayilir).
+      parserOptions: {
+        project: './tsconfig.eslint.json',
+        tsconfigRootDir: import.meta.dirname,
+        ecmaFeatures: { globalReturn: true },
+      },
+    },
+    plugins: { sonarjs, '@typescript-eslint': tsPlugin },
+    rules: KURUM_JS_TIPLI,
+  },
+  {
+    // ES modulu betikler: ayni tip bilgili kurallar (kurumsal is #52'de iki .mjs S6582'si ESLint'ten kacmisti).
+    files: ['{server,src,shared,scripts}/**/*.mjs'],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: 'module',
+      parserOptions: { project: './tsconfig.eslint.json', tsconfigRootDir: import.meta.dirname },
+    },
+    plugins: { sonarjs, '@typescript-eslint': tsPlugin },
+    rules: KURUM_JS_TIPLI,
+  },
+  {
+    // Tip bilgisi: S4043 dizi oldugunu bilmeden yakalayamaz (is #52 typescript:S4043 ESLint'ten kacmisti).
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**'],
+    languageOptions: {
+      parserOptions: { project: './tsconfig.json', tsconfigRootDir: import.meta.dirname },
+    },
+    plugins: { sonarjs },
+    rules: KURUM_TS,
   },
   eslintConfigPrettier,
 ];

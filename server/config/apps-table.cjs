@@ -30,7 +30,7 @@ function getAppsTable() {
     if (!warned) {
       console.warn(
         `[Config] LOGX_APPS_TABLE gecersiz bicimde ("${raw}") — yok sayildi, ` +
-        `varsayilan kullaniliyor: ${DEFAULT_APPS_TABLE}`
+          `varsayilan kullaniliyor: ${DEFAULT_APPS_TABLE}`,
       );
       warned = true;
     }

@@ -86,10 +86,7 @@ test('CSV disa aktarma durma kosulu `hasMore` (sayiya DEGIL)', () => {
   const fn = page.match(/async function handleExportCsv\([\s\S]*?\n  \}/);
   assert.ok(fn, 'handleExportCsv bulunamadi');
   assert.match(fn[0], /more = r\.pagination\.hasMore;/, 'durma kosulu hasMore olmali');
-  assert.ok(
-    !/while \(page <= totalPages\)/.test(fn[0]),
-    'eski `pages` tabanli dongu geri gelmis',
-  );
+  assert.ok(!/while \(page <= totalPages\)/.test(fn[0]), 'eski `pages` tabanli dongu geri gelmis');
 });
 
 test('yanit exact/hasMore tasiyor (arayuz ikisini ayirt ediyor)', () => {

@@ -9,12 +9,32 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import PlaybookRegistryTab, { silmeOnayMetni } from '@/components/admin/tabs/PlaybookRegistryTab';
 
 const satir = {
-  id: 7, keyName: 'nginx_loadtest_run', displayName: 'Nginx Yük Testi', description: '', category: 'nginx',
-  handler: 'host_target', playbookPath: '', awxTemplateId: 12, awxServerId: null, envVarName: '', enabled: true,
-  sourceType: 'awx_template', isReadonly: false, visibility: 'Admin', sortOrder: 0, effectiveTemplateId: 12,
-  varsayilan: true, kullanan: 'Nginx Hub > Yük Testi',
+  id: 7,
+  keyName: 'nginx_loadtest_run',
+  displayName: 'Nginx Yük Testi',
+  description: '',
+  category: 'nginx',
+  handler: 'host_target',
+  playbookPath: '',
+  awxTemplateId: 12,
+  awxServerId: null,
+  envVarName: '',
+  enabled: true,
+  sourceType: 'awx_template',
+  isReadonly: false,
+  visibility: 'Admin',
+  sortOrder: 0,
+  effectiveTemplateId: 12,
+  varsayilan: true,
+  kullanan: 'Nginx Hub > Yük Testi',
 };
-const silinen = { keyName: 'jvm_heap_status', displayName: 'JVM Heap/GC Durumu', category: 'jvm', deletedBy: 'ali', deletedAt: null };
+const silinen = {
+  keyName: 'jvm_heap_status',
+  displayName: 'JVM Heap/GC Durumu',
+  category: 'jvm',
+  deletedBy: 'ali',
+  deletedAt: null,
+};
 
 let liste: Record<string, unknown>;
 const istekler: { url: string; method: string }[] = [];
@@ -35,7 +55,8 @@ beforeEach(() => {
         liste = { ok: true, playbooks: [satir], silinenVarsayilanlar: [], silinenHata: null };
         return yanit({ ok: true });
       }
-      if (method === 'DELETE') return yanit({ ok: true, varsayilan: true, kullanan: satir.kullanan });
+      if (method === 'DELETE')
+        return yanit({ ok: true, varsayilan: true, kullanan: satir.kullanan });
       return yanit({ ok: true, servers: [] });
     }),
   );
@@ -56,10 +77,16 @@ describe('Playbook Kayıtları silme / geri yükleme', () => {
     render(<PlaybookRegistryTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Nginx Yük Testi kaydını sil' }));
     const pencere = await screen.findByRole('dialog');
-    expect(pencere).toHaveTextContent('Bu kaydı Nginx Hub > Yük Testi kullanıyor; silerseniz o ekran çalışmaz.');
+    expect(pencere).toHaveTextContent(
+      'Bu kaydı Nginx Hub > Yük Testi kullanıyor; silerseniz o ekran çalışmaz.',
+    );
     expect(istekler.some((i) => i.method === 'DELETE')).toBe(false);
     fireEvent.click(within(pencere).getByRole('button', { name: 'Sil' }));
-    await waitFor(() => expect(istekler.some((i) => i.method === 'DELETE' && i.url === '/api/ansible/playbooks/7')).toBe(true));
+    await waitFor(() =>
+      expect(
+        istekler.some((i) => i.method === 'DELETE' && i.url === '/api/ansible/playbooks/7'),
+      ).toBe(true),
+    );
   });
 
   it('PKU3 "Silinen varsayılanlar (N)" listelenir; Geri yükle POST atar ve listeyi tazeler', async () => {
@@ -68,7 +95,13 @@ describe('Playbook Kayıtları silme / geri yükleme', () => {
     expect(screen.getByText('JVM Heap/GC Durumu')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Geri yükle/ }));
     await waitFor(() =>
-      expect(istekler.some((i) => i.method === 'POST' && i.url === '/api/ansible/playbooks/silinen/jvm_heap_status/geri-yukle')).toBe(true),
+      expect(
+        istekler.some(
+          (i) =>
+            i.method === 'POST' &&
+            i.url === '/api/ansible/playbooks/silinen/jvm_heap_status/geri-yukle',
+        ),
+      ).toBe(true),
     );
     await waitFor(() => expect(screen.queryByTestId('silinen-varsayilanlar')).toBeNull());
   });

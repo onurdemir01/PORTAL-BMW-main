@@ -1,7 +1,7 @@
 // src/components/telnet/steps/TelnetInputStep.tsx — Telnet testinin son adımı:
 // hedef IP/host ve port. OpsX'teki OperationStep'in yerini alır — burada bir "işlem"
 // değil, tek bir bağlantı testi tetiklenir.
-import React, { useId, useState } from "react";
+import React, { useId, useState } from 'react';
 import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 const IP_PORT_RE = /^[A-Za-z0-9.\-:_]{1,255}$/;
@@ -15,8 +15,8 @@ const TelnetInputStep: React.FC<{
   initial?: { ip: string; port: string } | null;
   onSubmit: (v: { ip: string; port: string }) => void;
 }> = ({ summary, busy, initial, onSubmit }) => {
-  const [ip, setIp] = useState(initial?.ip ?? "");
-  const [port, setPort] = useState(initial?.port ?? "");
+  const [ip, setIp] = useState(initial?.ip ?? '');
+  const [port, setPort] = useState(initial?.port ?? '');
   const alanId = useId();
 
   const ipTrim = ip.trim();
@@ -35,7 +35,12 @@ const TelnetInputStep: React.FC<{
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor={`${alanId}-ip`} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">IP / Host</label>
+          <label
+            htmlFor={`${alanId}-ip`}
+            className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+          >
+            IP / Host
+          </label>
           <input
             id={`${alanId}-ip`}
             // Adim kullanici secimiyle acilir: odak IP kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
@@ -45,10 +50,17 @@ const TelnetInputStep: React.FC<{
             placeholder="192.0.2.10"
             className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
           />
-          {ipTrim && !ipValid && <p className="mt-1 text-xs text-red-600">Geçersiz karakter içeriyor.</p>}
+          {ipTrim && !ipValid && (
+            <p className="mt-1 text-xs text-red-600">Geçersiz karakter içeriyor.</p>
+          )}
         </div>
         <div>
-          <label htmlFor={`${alanId}-port`} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Port</label>
+          <label
+            htmlFor={`${alanId}-port`}
+            className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5"
+          >
+            Port
+          </label>
           <input
             id={`${alanId}-port`}
             value={port}
@@ -57,7 +69,9 @@ const TelnetInputStep: React.FC<{
             inputMode="numeric"
             className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
           />
-          {portTrim && !portValid && <p className="mt-1 text-xs text-red-600">1-65535 arası bir sayı olmalı.</p>}
+          {portTrim && !portValid && (
+            <p className="mt-1 text-xs text-red-600">1-65535 arası bir sayı olmalı.</p>
+          )}
         </div>
       </div>
 
@@ -66,7 +80,7 @@ const TelnetInputStep: React.FC<{
         disabled={!ready || busy}
         className="btn-primary w-full flex items-center justify-center gap-1.5"
       >
-        {busy ? "Gönderiliyor…" : "Telnet Testini Başlat"}
+        {busy ? 'Gönderiliyor…' : 'Telnet Testini Başlat'}
       </button>
     </div>
   );

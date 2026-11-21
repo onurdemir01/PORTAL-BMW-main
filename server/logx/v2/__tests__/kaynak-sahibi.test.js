@@ -311,7 +311,10 @@ test('S3 sahip KENDI kaynagini kisitlar ve izinlerini yonetir; baskasininkine do
       resourceKey: 'Z',
     })
   ).body.restriction.id;
-  reddedildi(await istek('POST', `/manage/restrictions/${z}/grants`, ali, { username: 'ali' }), 403);
+  reddedildi(
+    await istek('POST', `/manage/restrictions/${z}/grants`, ali, { username: 'ali' }),
+    403,
+  );
   reddedildi(await istek('DELETE', `/manage/restrictions/${z}`, ali), 403);
   assert.equal(T.grants.length, 1, 'yetkisiz izin yazildi');
   // Kendi kisitini kaldirabilir.

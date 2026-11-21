@@ -17,11 +17,23 @@ function shortGroup(g: string): string {
 }
 
 export function OwnerCell({ owner, ready = true }: { owner?: AppOwner; ready?: boolean }) {
-  if (!ready) return <span className="text-[10px] text-[var(--text-muted)]" title="Sahiplik tabloları (dbo.Openshift_App_Owners / dbo.Openshift_Namespace_Owners) okunamadı">veri yok</span>;
+  if (!ready)
+    return (
+      <span
+        className="text-[10px] text-[var(--text-muted)]"
+        title="Sahiplik tabloları (dbo.Openshift_App_Owners / dbo.Openshift_Namespace_Owners) okunamadı"
+      >
+        veri yok
+      </span>
+    );
   const veriYokNs = owner?.veriYokNs || [];
   if (owner && owner.groups.length === 0 && veriYokNs.length > 0 && owner.unknownNs.length === 0) {
     return (
-      <span className="text-[10px] text-[var(--text-muted)]" title={`${VERI_YOK_IPUCU}: ${veriYokNs.join(', ')}`} data-veri-yok="1">
+      <span
+        className="text-[10px] text-[var(--text-muted)]"
+        title={`${VERI_YOK_IPUCU}: ${veriYokNs.join(', ')}`}
+        data-veri-yok="1"
+      >
         veri yok
       </span>
     );
@@ -29,7 +41,10 @@ export function OwnerCell({ owner, ready = true }: { owner?: AppOwner; ready?: b
   if (!owner || owner.groups.length === 0) {
     const ns = owner?.unknownNs?.length ? owner.unknownNs.join(', ') : '';
     return (
-      <span className="text-[10px] text-[var(--text-muted)]" title={ns ? `CMDB'de sorumlu bulunamadı: ${ns}` : 'namespace bilinmiyor'}>
+      <span
+        className="text-[10px] text-[var(--text-muted)]"
+        title={ns ? `CMDB'de sorumlu bulunamadı: ${ns}` : 'namespace bilinmiyor'}
+      >
         bilinmiyor
       </span>
     );
@@ -42,7 +57,11 @@ export function OwnerCell({ owner, ready = true }: { owner?: AppOwner; ready?: b
           <span key={g} className="inline-flex items-center gap-1">
             <span
               className="text-[10px] px-1.5 py-0.5 rounded border font-medium whitespace-nowrap"
-              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+              style={{
+                borderColor: 'var(--border-subtle)',
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-secondary)',
+              }}
               title={[
                 g,
                 owner.emails[i] || '',
@@ -59,12 +78,19 @@ export function OwnerCell({ owner, ready = true }: { owner?: AppOwner; ready?: b
         );
       })}
       {veriYokNs.length > 0 && (
-        <span className="text-[10px] text-[var(--text-muted)]" title={`${VERI_YOK_IPUCU}: ${veriYokNs.join(', ')}`} data-veri-yok="1">
+        <span
+          className="text-[10px] text-[var(--text-muted)]"
+          title={`${VERI_YOK_IPUCU}: ${veriYokNs.join(', ')}`}
+          data-veri-yok="1"
+        >
           +veri yok
         </span>
       )}
       {owner.unknownNs.length > 0 && (
-        <span className="text-[10px] text-[var(--text-muted)]" title={`sahibi bilinmeyen namespace: ${owner.unknownNs.join(', ')}`}>
+        <span
+          className="text-[10px] text-[var(--text-muted)]"
+          title={`sahibi bilinmeyen namespace: ${owner.unknownNs.join(', ')}`}
+        >
           +?
         </span>
       )}

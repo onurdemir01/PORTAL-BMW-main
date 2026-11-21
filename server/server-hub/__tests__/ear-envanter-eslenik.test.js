@@ -46,7 +46,13 @@ function kopya(host, ek = {}) {
     taranma: '2026-11-01T02:00:00',
     ...ek,
   };
-  const kok = o.kok || (() => { if (o.jboss === '7') return '/vhosting'; if (o.jboss === '8') return '/vhosting8'; return '/ozel'; })();
+  const kok =
+    o.kok ||
+    (() => {
+      if (o.jboss === '7') return '/vhosting';
+      if (o.jboss === '8') return '/vhosting8';
+      return '/ozel';
+    })();
   const surum = new Map();
   const setOf = (l) => {
     const s = alim.kutuphaneSeti(l);
@@ -306,7 +312,10 @@ test('EE14 rastgele gruplar: sira bagimsiz, eksikte AYNI yok, karar = ayrinti', 
     const ks = [];
     const n = 2 + r(4);
     for (let i = 0; i < n; i++) {
-      const w = (() => { if (r(3)) return temel; return { 'A.war': rastgeleWar(), ...(r(2) ? { 'B.war': temel['B.war'] } : {}) }; })();
+      const w = (() => {
+        if (r(3)) return temel;
+        return { 'A.war': rastgeleWar(), ...(r(2) ? { 'B.war': temel['B.war'] } : {}) };
+      })();
       // boyut-only degisken: ayni surumler, farkli boyut
       const b = r(5)
         ? w
@@ -369,6 +378,7 @@ test('EE15 JS yapi izi = ear_tara.py izi', { skip: PY ? false : 'python3 yok' },
     '..',
     '..',
     'ansible',
+    'playbooks',
     'bmw_portal',
     'ear_envanter',
     'files',

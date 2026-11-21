@@ -17,9 +17,24 @@ const VERI_BAYAT_SAAT = 30;
 // Kaynak: bmw_inventory/lb_suspend_excludelist/operations/files/operational_hazard.csv.
 // Ansible deposu Portal'a teslim edilmedigi icin kopyadir; CSV degisirse burasi da guncellenir.
 const OPERASYON_UYARILARI = [
-  { sunucu: 'GBJGKP01', uygulama: 'GBBKMGKSINQUIRY-GBBKMGKSANNOUNCEMENT', aciklama: '01 sunucusu primary konumda Umut Kizgindere ile iletisime gecilip diger sunuculara primary status alinmali' },
-  { sunucu: 'GBJBOP07', uygulama: '-', aciklama: 'Mert arisan ile iletisime gecilip ark batch bu sunucuda calisiyorsa GBJBOP08 sunucusunda calisacak sekilde ayarlanmali' },
-  { sunucu: 'GBJBOP08', uygulama: '-', aciklama: 'Mert arisan ile iletisime gecilip ark batch bu sunucuda calisiyorsa GBJBOP07 sunucusunda calisacak sekilde ayarlanmali' },
+  {
+    sunucu: 'GBJGKP01',
+    uygulama: 'GBBKMGKSINQUIRY-GBBKMGKSANNOUNCEMENT',
+    aciklama:
+      '01 sunucusu primary konumda Umut Kizgindere ile iletisime gecilip diger sunuculara primary status alinmali',
+  },
+  {
+    sunucu: 'GBJBOP07',
+    uygulama: '-',
+    aciklama:
+      'Mert arisan ile iletisime gecilip ark batch bu sunucuda calisiyorsa GBJBOP08 sunucusunda calisacak sekilde ayarlanmali',
+  },
+  {
+    sunucu: 'GBJBOP08',
+    uygulama: '-',
+    aciklama:
+      'Mert arisan ile iletisime gecilip ark batch bu sunucuda calisiyorsa GBJBOP07 sunucusunda calisacak sekilde ayarlanmali',
+  },
 ];
 
 function raporDizini() {
@@ -39,7 +54,9 @@ function girdiyiAyikla(ham) {
   const gecersiz = [];
   const gorulen = new Set();
   for (const oge of ham) {
-    const ad = String(oge ?? '').trim().toUpperCase();
+    const ad = String(oge ?? '')
+      .trim()
+      .toUpperCase();
     if (!ad || gorulen.has(ad)) continue;
     gorulen.add(ad);
     if (SUNUCU_AD_RE.test(ad)) sunucular.push(ad);
@@ -73,7 +90,10 @@ function lbIpCoz({ sunucular, kayitlar, dijitalKanalMetni = '' }) {
   const eslesen = (parca) => hostlar.filter((h) => h.includes(parca));
   const varMi = (parca) => hostlar.some((h) => h.includes(parca));
   const tumGirdi = sunucular.join(' ');
-  const dijitalSatirlar = dijitalKanalMetni.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const dijitalSatirlar = dijitalKanalMetni
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const sonuclar = sunucular.map((sunucu) => {
     const kayit = new Map();
@@ -90,8 +110,11 @@ function lbIpCoz({ sunucular, kayitlar, dijitalKanalMetni = '' }) {
     const uygulamaYaDaSube = sunucu[4] === 'A' || sunucu[4] === 'S';
     const w = wEslenik(sunucu);
     const web = webEslenik(sunucu);
-    const bulundu = varMi(sunucu) || varMi(uEslenik2(sunucu)) || varMi(uEslenik3(sunucu))
-      || (uygulamaYaDaSube && varMi(w));
+    const bulundu =
+      varMi(sunucu) ||
+      varMi(uEslenik2(sunucu)) ||
+      varMi(uEslenik3(sunucu)) ||
+      (uygulamaYaDaSube && varMi(w));
 
     if (bulundu) {
       ekle(sunucu, 'sunucu');
@@ -136,7 +159,10 @@ function lbIpCoz({ sunucular, kayitlar, dijitalKanalMetni = '' }) {
 /** Okunamazsa ok:false doner; dosya eksikligi "eslenik yok" diye sessizce gecmesin. */
 async function dijitalKanalOku() {
   try {
-    const metin = await fs.readFile(path.join(raporDizini(), 'dijital-kanal-sunuculari.txt'), 'utf8');
+    const metin = await fs.readFile(
+      path.join(raporDizini(), 'dijital-kanal-sunuculari.txt'),
+      'utf8',
+    );
     return { ok: true, metin };
   } catch {
     return { ok: false, metin: '' };
@@ -155,4 +181,11 @@ function veriDurumu(kayitlar, simdi = Date.now()) {
   };
 }
 
-module.exports = { lbIpCoz, girdiyiAyikla, dijitalKanalOku, veriDurumu, OPERASYON_UYARILARI, VERI_BAYAT_SAAT };
+module.exports = {
+  lbIpCoz,
+  girdiyiAyikla,
+  dijitalKanalOku,
+  veriDurumu,
+  OPERASYON_UYARILARI,
+  VERI_BAYAT_SAAT,
+};

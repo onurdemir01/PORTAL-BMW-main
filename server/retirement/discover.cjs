@@ -11,11 +11,19 @@
 // Site: sunucu adinda tier harfinden sonra fazladan 'A' = Ankara (siteOf, asagida).
 'use strict';
 
-const { buildCertIndex, matchWebForApp, webHostAdaylari, adVaryantlari } = require('../audit/web-app.cjs');
+const {
+  buildCertIndex,
+  matchWebForApp,
+  webHostAdaylari,
+  adVaryantlari,
+} = require('../audit/web-app.cjs');
 const { webConfKanonik, urunAilesi, webKanonikAnahtar } = require('./web-liste.cjs');
 const { varsayilanSira } = require('../util/siralama.cjs');
 
-const U = (s) => String(s || '').trim().toUpperCase();
+const U = (s) =>
+  String(s || '')
+    .trim()
+    .toUpperCase();
 
 // Sunucu adi: <2 sirket><2 servis><tier A|W|X...><site A?><ortam P|T|Q|D><n>. Ornek: GBCJAP01 Pendik
 // (tier A, site harfi yok), GBCJAAP02 Ankara (fazladan A), GBNGXP40 Pendik, GBNGXAP34 Ankara
@@ -40,11 +48,25 @@ function parseAppName(app) {
 // (envanter job'i HOSTNAME'den turetir: *Q<n> -> QA, *T<n>/*D<n> -> Test, *O<n> -> ODM, *A<n> ->
 // Alpha, aksi halde Production). Son ek varsa o kazanir (sutun D ile T'yi ayirt edemez).
 // Sutun bos/taninmazsa PROD kalir: belirsizlikte guvenli taraf (OCO + SCC kapilari).
-const ENVANTER_ORTAM = { PRODUCTION: 'PROD', PROD: 'PROD', QA: 'QA', TEST: 'TEST', ALPHA: 'ALPHA', ODM: 'ODM', DEV: 'DEV' };
+const ENVANTER_ORTAM = {
+  PRODUCTION: 'PROD',
+  PROD: 'PROD',
+  QA: 'QA',
+  TEST: 'TEST',
+  ALPHA: 'ALPHA',
+  ODM: 'ODM',
+  DEV: 'DEV',
+};
 function hedefOrtami(app, envanterEnv) {
   const p = parseAppName(app);
   if (/-[DdTtQq]$/.test(String(app || '').trim())) return p.env;
-  return ENVANTER_ORTAM[String(envanterEnv || '').trim().toUpperCase()] || 'PROD';
+  return (
+    ENVANTER_ORTAM[
+      String(envanterEnv || '')
+        .trim()
+        .toUpperCase()
+    ] || 'PROD'
+  );
 }
 
 /**
@@ -57,17 +79,29 @@ function hedefOrtami(app, envanterEnv) {
 function jvmIndeksi(rows) {
   const m = new Map();
   for (const r of rows || []) {
-    const k = `${String(r.host || '').trim().toUpperCase()}|${String(r.jvm || '').trim().toUpperCase()}`;
+    const k = `${String(r.host || '')
+      .trim()
+      .toUpperCase()}|${String(r.jvm || '')
+      .trim()
+      .toUpperCase()}`;
     if (!m.has(k)) m.set(k, []);
     m.get(k).push(r);
   }
   return m;
 }
 function jvmSec(idx, host, app, gen) {
-  const l = idx.get(`${String(host || '').trim().toUpperCase()}|${String(app || '').trim().toUpperCase()}`) || [];
+  const l =
+    idx.get(
+      `${String(host || '')
+        .trim()
+        .toUpperCase()}|${String(app || '')
+        .trim()
+        .toUpperCase()}`,
+    ) || [];
   if (!l.length) return null;
   const surumlu = l.filter((r) => r.gen != null && r.gen !== '');
-  if (gen != null && surumlu.length) return surumlu.find((r) => Number(r.gen) === Number(gen)) || null;
+  if (gen != null && surumlu.length)
+    return surumlu.find((r) => Number(r.gen) === Number(gen)) || null;
   return l.length === 1 ? l[0] : null;
 }
 
@@ -87,7 +121,9 @@ function genOf(jbossVersion) {
 // Envanter iki kurulumu app_path ile ayirir; kol oradan okunur, yoksa urun majoru. Standart disi
 // sunucuda /usr/jboss altinda JBoss 8 urunu kurulu olabilir (GBJBOP18): urun surumu kolu SOYLEMEZ.
 function kolOf(appPath, jbossVersion) {
-  const p = String(appPath || '').trim().toLowerCase();
+  const p = String(appPath || '')
+    .trim()
+    .toLowerCase();
   if (p.startsWith('/vhosting8/')) return 8;
   if (p.startsWith('/vhosting/')) return 7;
   return genOf(jbossVersion);
@@ -176,13 +212,23 @@ function trafikSinifi(v) {
 function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
   // Alt cizgili ad: '-' ve bitisik bicimler de (alan adinda '_' olamaz). Esleme yine BIREBIR ilk etiket.
   const needles = new Set(adVaryantlari(app));
-  const ilkEtiket = (s) => String(s || '').trim().toLowerCase().split('.')[0];
+  const ilkEtiket = (s) =>
+    String(s || '')
+      .trim()
+      .toLowerCase()
+      .split('.')[0];
   // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
   // TUM 3-tier adaylari (webHostAdaylari: A->W ve son harf P; Pendik 6, Ankara 7 harf) - sertifika envanterinde vhost'u olmayan
   // aday Server Hub taramasinda olabilir (2026-10-12: GOJBAB03 -> GOJBWP03).
   const adaylar = [
-    { host: certSonucu.webHostCandidate, how: U(certSonucu.webHostCandidate) === U(appHost) ? 'aynı host' : 'harf-dönüşümü' },
-    ...(certSonucu.tier === '2-tier' ? [] : webHostAdaylari(appHost)).map((h) => ({ host: h, how: 'harf-dönüşümü' })),
+    {
+      host: certSonucu.webHostCandidate,
+      how: U(certSonucu.webHostCandidate) === U(appHost) ? 'aynı host' : 'harf-dönüşümü',
+    },
+    ...(certSonucu.tier === '2-tier' ? [] : webHostAdaylari(appHost)).map((h) => ({
+      host: h,
+      how: 'harf-dönüşümü',
+    })),
     { host: appHost, how: 'aynı host' },
   ];
   const goruldu = new Set();
@@ -192,19 +238,30 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
     goruldu.add(h);
     const list = hubVhostsByHost.get(h) || [];
     const hits = list.filter((v) =>
-      [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].some((n) => n && needles.has(ilkEtiket(n))),
+      [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].some(
+        (n) => n && needles.has(ilkEtiket(n)),
+      ),
     );
     if (!hits.length) continue;
     const tekil = new Map();
     for (const v of hits) {
       // PORT ANAHTARDA: ayni conf'ta :80 ve :443 iki ayri blok (sertifika yolu da port
       // basina giris uretiyor). Portsuz anahtar :80 blogunu sessizce dusuruyordu.
-      const port = String(v.listen || '').split(/[\s,]+/)[0].split(':').pop() || '';
-      const k = `${U(v.host)}|${String(v.server_name || '').trim().toLowerCase()}|${port}|${v.conf_file || ''}`;
+      const port =
+        String(v.listen || '')
+          .split(/[\s,]+/)[0]
+          .split(':')
+          .pop() || '';
+      const k = `${U(v.host)}|${String(v.server_name || '')
+        .trim()
+        .toLowerCase()}|${port}|${v.conf_file || ''}`;
       if (tekil.has(k)) continue;
       tekil.set(k, {
-        host: U(v.host), serverName: String(v.server_name || '').trim(), product: String(v.product || ''),
-        port, confFile: String(v.conf_file || ''),
+        host: U(v.host),
+        serverName: String(v.server_name || '').trim(),
+        product: String(v.product || ''),
+        port,
+        confFile: String(v.conf_file || ''),
       });
     }
     return {
@@ -228,7 +285,10 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
 // Hedef sunucu cozumu Server Hub degerlendirmesiyle ayni: localhost/127.x -> vhost'un kendi sunucusu;
 // IP -> Server_Hub_Ips'te o IP'yi tasiyan TEK sunucu (iki sunucuda ise VIP/kayan IP: cozulmez);
 // ad -> ilk etiketin buyuk harfi. '~DYNAMIC'/'~TRUNC' isaretleri hedef degildir.
-const portListesi = (s) => String(s || '').split(/[\s,]+/).filter((x) => /^[0-9]{1,5}$/.test(x));
+const portListesi = (s) =>
+  String(s || '')
+    .split(/[\s,]+/)
+    .filter((x) => /^[0-9]{1,5}$/.test(x));
 function ipSahipleri(ipRows) {
   const m = new Map();
   for (const r of ipRows || []) {
@@ -240,10 +300,16 @@ function ipSahipleri(ipRows) {
   return m;
 }
 function hedefSunucusu(hh, vhostHost, ipMap) {
-  const h = String(hh || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const h = String(hh || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
   if (!h) return null;
   if (h === 'localhost' || h === '::1' || h === '0.0.0.0' || /^127\./.test(h)) return U(vhostHost);
-  if (/^[0-9.]+$/.test(h)) { const o = ipMap.get(h); return o && o.size === 1 ? [...o][0] : null; }
+  if (/^[0-9.]+$/.test(h)) {
+    const o = ipMap.get(h);
+    return o?.size === 1 ? [...o][0] : null;
+  }
   return U(h.split('.')[0]);
 }
 function ajpWeb(appHost, jvm, vhostRows, ipMap) {
@@ -258,11 +324,20 @@ function ajpWeb(appHost, jvm, vhostRows, ipMap) {
       const i = x.lastIndexOf(':');
       if (i <= 0) continue;
       const port = x.slice(i + 1);
-      if (!portlar.has(port) || hedefSunucusu(x.slice(0, i), v.host, ipMap) !== U(appHost)) continue;
+      if (!portlar.has(port) || hedefSunucusu(x.slice(0, i), v.host, ipMap) !== U(appHost))
+        continue;
       out.push({
-        host: U(v.host), serverName: String(v.server_name || '').trim(), product: String(v.product || ''),
-        port: String(v.listen || '').split(/[\s,]+/)[0].split(':').pop() || '', confFile: String(v.conf_file || ''),
-        kaynak: 'ajp', ajpHedef: x,
+        host: U(v.host),
+        serverName: String(v.server_name || '').trim(),
+        product: String(v.product || ''),
+        port:
+          String(v.listen || '')
+            .split(/[\s,]+/)[0]
+            .split(':')
+            .pop() || '',
+        confFile: String(v.conf_file || ''),
+        kaynak: 'ajp',
+        ajpHedef: x,
       });
       break;
     }
@@ -271,8 +346,11 @@ function ajpWeb(appHost, jvm, vhostRows, ipMap) {
 }
 
 function webUyariMetni(web, host, hubVhostsByHost) {
-  const uc = web.tier === '3-tier' || (web.tier !== '2-tier' && (web.webHostAdaylari || []).length > 0);
-  const aday = (web.webHostAdaylari || []).map((h) => `${U(h)}${hubVhostsByHost.has(U(h)) ? '' : ' (taramada yok)'}`);
+  const uc =
+    web.tier === '3-tier' || (web.tier !== '2-tier' && (web.webHostAdaylari || []).length > 0);
+  const aday = (web.webHostAdaylari || []).map(
+    (h) => `${U(h)}${hubVhostsByHost.has(U(h)) ? '' : ' (taramada yok)'}`,
+  );
   const denenen = [...aday, `${U(host)} (aynı host)`].join(', ');
   return `${uc ? '3-tier: ' : ''}web vhost'u BULUNAMADI — denenen: ${denenen}. Retirement bu vhost'u KAPATMAZ ve trafiğini kontrol edemez; web sunucusunu elle doğrulayın.`;
 }
@@ -297,7 +375,10 @@ function webUyariMetni(web, host, hubVhostsByHost) {
 //   3) web sunucusu uygulama sunucusunun KENDISI ya da AYNI site + AYNI ortam harfinde
 //      (advertise ayni ag/ortam icinde; Ankara Pendik'i, test prod'u almaz)
 // Hangi JVM'in o an uye oldugu dogrulanmaz; ekran bunu "mod_cluster" etiketiyle ayri gosterir.
-const envHarfi = (h) => { const m = /([A-Z])\d+$/.exec(U(h)); return m ? m[1] : ''; };
+const envHarfi = (h) => {
+  const m = /([A-Z])\d+$/.exec(U(h));
+  return m ? m[1] : '';
+};
 function mcWeb(app, appHost, gen, vhostRows) {
   if (Number(gen) === 7) return [];
   const adlar = new Set(adVaryantlari(app));
@@ -307,14 +388,24 @@ function mcWeb(app, appHost, gen, vhostRows) {
   for (const v of vhostRows || []) {
     const vh = U(v.host);
     if (!(vh === U(appHost) || (siteOf(vh) === site && envHarfi(vh) === env))) continue;
-    const bal = String(v.proxy_targets || '').split(',').map((x) => x.trim().toLowerCase())
+    const bal = String(v.proxy_targets || '')
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
       .filter((x) => x && !x.startsWith('~') && !x.includes(':'));
     const hit = bal.find((b) => adlar.has(b));
     if (!hit) continue;
     out.push({
-      host: vh, serverName: String(v.server_name || '').trim(), product: String(v.product || ''),
-      port: String(v.listen || '').split(/[\s,]+/)[0].split(':').pop() || '', confFile: String(v.conf_file || ''),
-      kaynak: 'mc', mcBalancer: hit,
+      host: vh,
+      serverName: String(v.server_name || '').trim(),
+      product: String(v.product || ''),
+      port:
+        String(v.listen || '')
+          .split(/[\s,]+/)[0]
+          .split(':')
+          .pop() || '',
+      confFile: String(v.conf_file || ''),
+      kaynak: 'mc',
+      mcBalancer: hit,
     });
   }
   return out;
@@ -388,7 +479,8 @@ function adayVhostlar(app, host, ctx) {
 function webZenginlestir(app, host, web, ctx) {
   let w = web;
   if (!w.matched) w = hubWebFallback(app, host, w, ctx.hubVhostsByHost || new Map());
-  const anahtar = (x) => `${U(x.host)}|${String(x.serverName || '').toLowerCase()}|${x.port || ''}|${x.confFile || ''}`;
+  const anahtar = (x) =>
+    `${U(x.host)}|${String(x.serverName || '').toLowerCase()}|${x.port || ''}|${x.confFile || ''}`;
   const ekle = (wx, liste, tur, ozet, kisa) => {
     if (!liste.length) return wx;
     const mevcut = new Map((wx.web || []).map((x) => [anahtar(x), { ...x }]));
@@ -404,41 +496,84 @@ function webZenginlestir(app, host, web, ctx) {
     let yeni = 0;
     for (const a of liste) {
       const k = anahtar(a);
-      const hedef = (() => { if (mevcut.has(k)) return k; if (urunAilesi(a.product) !== 'RHA') return kanonik.get(k); return undefined; })();
+      const hedef = (() => {
+        if (mevcut.has(k)) return k;
+        if (urunAilesi(a.product) !== 'RHA') return kanonik.get(k);
+        return undefined;
+      })();
       if (hedef && hedef !== k) mevcut.get(hedef).confFile = a.confFile;
       if (hedef) {
         const m = mevcut.get(hedef);
         m.kaynak = m.kaynak && m.kaynak !== 'ad' ? `${m.kaynak}+${tur}` : `ad+${tur}`;
         if (a.ajpHedef) m.ajpHedef = a.ajpHedef;
         if (a.mcBalancer) m.mcBalancer = a.mcBalancer;
-      } else { mevcut.set(k, a); yeni += 1; }
+      } else {
+        mevcut.set(k, a);
+        yeni += 1;
+      }
     }
-    return { ...wx, matched: true, web: [...mevcut.values()],
-      how: `${wx.matched ? (String(wx.how) + " + ") : ''}${ozet} (${liste.length} vhost${yeni ? (", " + yeni + " yalniz " + kisa + " ile bulundu") : ''})` };
+    return {
+      ...wx,
+      matched: true,
+      web: [...mevcut.values()],
+      how: `${wx.matched ? String(wx.how) + ' + ' : ''}${ozet} (${liste.length} vhost${yeni ? ', ' + yeni + ' yalniz ' + kisa + ' ile bulundu' : ''})`,
+    };
   };
   // Tum filo yerine yalniz ADAY vhost'lar (bkz. vhostIndeksi) - sonuc ayni, is uygulama x vhost degil.
   const ipMap = ctx.ipMap || BOS_IP;
   const adaylar = adayVhostlar(app, host, { ...ctx, ipMap });
-  w = ekle(w, ajpWeb(host, ctx.jvm || null, adaylar, ipMap), 'ajp', 'AJP/proxy hedefi = JVM portu', 'AJP');
-  if (ctx.modCluster !== false) w = ekle(w, mcWeb(app, host, ctx.gen ?? null, adaylar), 'mc', 'mod_cluster balancer adı = uygulama adı', 'mod_cluster');
+  w = ekle(
+    w,
+    ajpWeb(host, ctx.jvm || null, adaylar, ipMap),
+    'ajp',
+    'AJP/proxy hedefi = JVM portu',
+    'AJP',
+  );
+  if (ctx.modCluster !== false)
+    w = ekle(
+      w,
+      mcWeb(app, host, ctx.gen ?? null, adaylar),
+      'mc',
+      'mod_cluster balancer adı = uygulama adı',
+      'mod_cluster',
+    );
   return w;
 }
 
 /** Server Hub baglami (en yeni tarama): vhost'lar, JVM portlari, IP sahipleri. Okunamayan kaynak bos kalir. */
 async function hubBaglamiYukle(query) {
   const enYeni = `JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m ON m.host = t.host AND m.d = t.scan_date`;
-  const jvmCols = await query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`)
+  const jvmCols = await query(
+    `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Jvms')`,
+  )
     .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
     .catch(() => []);
-  const jvmSel = ['host', 'jvm', 'ports'].concat(jvmCols.includes('gen') ? ['gen'] : []).concat(jvmCols.includes('cfg_ports') ? ['cfg_ports'] : []).map((c) => `t.${c}`).join(', ');
+  const jvmSel = ['host', 'jvm', 'ports']
+    .concat(jvmCols.includes('gen') ? ['gen'] : [])
+    .concat(jvmCols.includes('cfg_ports') ? ['cfg_ports'] : [])
+    .map((c) => `t.${c}`)
+    .join(', ');
   const hata = [];
   const [vhostRows, jvmRows, ipRows] = await Promise.all([
-    query(`SELECT t.host, t.server_name, t.aliases, t.listen, t.conf_file, t.product, t.proxy_targets FROM dbo.Server_Hub_Vhosts t ${enYeni}`)
-      .then((r) => r.recordset || []).catch((e) => { hata.push(`vhost: ${e.message}`); return []; }),
+    query(
+      `SELECT t.host, t.server_name, t.aliases, t.listen, t.conf_file, t.product, t.proxy_targets FROM dbo.Server_Hub_Vhosts t ${enYeni}`,
+    )
+      .then((r) => r.recordset || [])
+      .catch((e) => {
+        hata.push(`vhost: ${e.message}`);
+        return [];
+      }),
     jvmCols.length
-      ? query(`SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t ${enYeni}`).then((r) => r.recordset || []).catch((e) => { hata.push(`jvm: ${e.message}`); return []; })
+      ? query(`SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t ${enYeni}`)
+          .then((r) => r.recordset || [])
+          .catch((e) => {
+            hata.push(`jvm: ${e.message}`);
+            return [];
+          })
       : Promise.resolve([]),
-    query(`SELECT t.host, t.ip FROM dbo.Server_Hub_Ips t ${enYeni}`).then((r) => r.recordset || []).catch(() => []),
+    query(`SELECT t.host, t.ip FROM dbo.Server_Hub_Ips t ${enYeni}`)
+      .then((r) => r.recordset || [])
+      .catch(() => []),
   ]);
   const hubVhostsByHost = new Map();
   for (const v of vhostRows) {
@@ -447,7 +582,13 @@ async function hubBaglamiYukle(query) {
     hubVhostsByHost.get(h).push(v);
   }
   const jvms = jvmIndeksi(jvmRows);
-  return { vhostRows, hubVhostsByHost, ipMap: ipSahipleri(ipRows), jvmOf: (host, app, gen = null) => jvmSec(jvms, host, app, gen), hata };
+  return {
+    vhostRows,
+    hubVhostsByHost,
+    ipMap: ipSahipleri(ipRows),
+    jvmOf: (host, app, gen = null) => jvmSec(jvms, host, app, gen),
+    hata,
+  };
 }
 
 // IN-PLACE ISARETI + WEB ADIMI (job_3438186 denetimi): ayni sunucu + uygulama birden cok kolda ise
@@ -482,7 +623,9 @@ function inPlaceIsaretle(targets) {
     if (!set || set.size < 2) continue;
     t.inPlace = true;
     t.digerSurumler = [...set].filter((g) => g !== (t.gen ?? 0)).sort(varsayilanSira);
-    const diger = t.digerSurumler.map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum')).join(', ');
+    const diger = t.digerSurumler
+      .map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum'))
+      .join(', ');
     t.web = (t.web || [])
       .filter((w) => {
         if (kesin(w)) return true;
@@ -491,7 +634,10 @@ function inPlaceIsaretle(targets) {
       })
       .map((w) => {
         if (kesin(w)) return w;
-        return { ...w, elle: `in-place: ${t.appName} bu sunucuda ${diger} kurulumunda da var; vhost yalnız ad/sertifika ile eşleşti, hangi kurulumun önünde olduğu doğrulanamadı — otomatik kapatılmaz, elle kontrol edilmeli` };
+        return {
+          ...w,
+          elle: `in-place: ${t.appName} bu sunucuda ${diger} kurulumunda da var; vhost yalnız ad/sertifika ile eşleşti, hangi kurulumun önünde olduğu doğrulanamadı — otomatik kapatılmaz, elle kontrol edilmeli`,
+        };
       });
   }
 }
@@ -504,7 +650,12 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
   // DUYARSIZ karsilastirilir (Apache sunucu adlarini kasa korumadan yaziyor); kasaya
   // duyarli bir anahtar, olculmus trafigi "olculemedi" gosterirdi.
   const vhostByKey = new Map(
-    (vhostRows || []).map((v) => [`${U(v.host)}|${String(v.server_name || '').trim().toLowerCase()}`, v]),
+    (vhostRows || []).map((v) => [
+      `${U(v.host)}|${String(v.server_name || '')
+        .trim()
+        .toLowerCase()}`,
+      v,
+    ]),
   );
   const hubVhostsByHost = new Map();
   for (const v of vhostRows || []) {
@@ -532,49 +683,99 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     seen.add(key);
     const j = jvmSec(jvms, host, app, gen);
     // Sertifika eslesmesi + Server Hub + AJP/proxy (ortak: Denetim > Web-App de kullanir).
-    const web = webZenginlestir(app, host, matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
-      { hubVhostsByHost, vhostRows, ipMap, jvm: j, gen });
+    const web = webZenginlestir(
+      app,
+      host,
+      matchWebForApp({ app, appHost: host, domain: r.domain || '' }, certByHost),
+      { hubVhostsByHost, vhostRows, ipMap, jvm: j, gen },
+    );
     // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
     // kolon henuz yok) bilinen sayilir.
-    const runningSrc = j && j.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
+    const runningSrc = j?.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
     // SURUM -> WEB URUNU KESIN (2026-10-27, kullanici: "Jboss7'ler icin web process'imiz kesin olarak sadece IBM
     // Apache, Jboss8'ler icin ... sadece Redhat Apache"). Yanlis aileden gelen vhost (bag turu ad/ajp/mc ne olursa
     // olsun) baska kurulumun onudur: listelenmez, otomatik kapatilmaz; sayisi webHow'da soylenir. Urunu bilinmeyen
     // girdi ve surumu bilinmeyen hedef eskisi gibi kalir.
-    const beklenenUrun = (() => { if (gen === 7) return 'IHS'; if (gen === 8) return 'RHA'; return ''; })();
-    const yanlisUrun = (w) => !!beklenenUrun && !!urunAilesi(w.product) && urunAilesi(w.product) !== beklenenUrun;
+    const beklenenUrun = (() => {
+      if (gen === 7) return 'IHS';
+      if (gen === 8) return 'RHA';
+      return '';
+    })();
+    const yanlisUrun = (w) =>
+      !!beklenenUrun && !!urunAilesi(w.product) && urunAilesi(w.product) !== beklenenUrun;
     const elenenUrun = web.web.filter(yanlisUrun).length;
     if (elenenUrun) web.web = web.web.filter((w) => !yanlisUrun(w));
     targets.push({
-      host, site: siteOf(host), env, appName: app, gen,
-      appPath: paketYolu(r.app_path), inventoryStatus: r.status || '', domain: r.domain || '', tier: web.tier,
+      host,
+      site: siteOf(host),
+      env,
+      appName: app,
+      gen,
+      appPath: paketYolu(r.app_path),
+      inventoryStatus: r.status || '',
+      domain: r.domain || '',
+      tier: web.tier,
       web: web.web.map((w) => ({
-        host: w.host, serverName: w.serverName, product: w.product, port: w.port, confFile: w.confFile,
-        kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}), ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
-        trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
+        host: w.host,
+        serverName: w.serverName,
+        product: w.product,
+        port: w.port,
+        confFile: w.confFile,
+        kaynak: w.kaynak || 'ad',
+        ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}),
+        ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
+        trafik: trafikSinifi(
+          vhostByKey.get(
+            `${U(w.host)}|${String(w.serverName || '')
+              .trim()
+              .toLowerCase()}`,
+          ),
+        ),
       })),
-      webHow: (() => { if (elenenUrun) return `${web.how} · JBoss ${gen} için ${elenenUrun} ${beklenenUrun === 'IHS' ? 'Red Hat Apache' : 'IBM HTTP Server'} vhost'u sayılmadı (JBoss ${gen} yalnız ${beklenenUrun === 'IHS' ? 'IBM HTTP Server' : 'Red Hat Apache'} arkasında çalışır)`; return web.how; })(),
+      webHow: (() => {
+        if (elenenUrun)
+          return `${web.how} · JBoss ${gen} için ${elenenUrun} ${beklenenUrun === 'IHS' ? 'Red Hat Apache' : 'IBM HTTP Server'} vhost'u sayılmadı (JBoss ${gen} yalnız ${beklenenUrun === 'IHS' ? 'IBM HTTP Server' : 'Red Hat Apache'} arkasında çalışır)`;
+        return web.how;
+      })(),
       // WEB BULUNAMADI UYARISI (2026-10-12, kullanici: "3-tier bir uygulamayi retire etmek
       // istedigimizde web vhost icin herhangi bir uyari vermedi"). Bos web listesi "web yok"
       // DEMEK DEGIL: retirement o vhost'u KAPATMAZ ve trafik kontrolu de yapamaz.
       webUyari: web.web.length ? null : webUyariMetni(web, host, hubVhostsByHost),
-      hub: (() => { if (j) return {
-        running: Number(j.running) === 1,
-        runningSrc,
-        runningKnown: runningSrc !== 'UNMEASURED',
-        autoStart: String(j.auto_start || 'unknown'),
-        scanDate: j.scan_date ? new Date(j.scan_date).toISOString().slice(0, 10) : null,
-      }; return null; })(),
+      hub: (() => {
+        if (j)
+          return {
+            running: Number(j.running) === 1,
+            runningSrc,
+            runningKnown: runningSrc !== 'UNMEASURED',
+            autoStart: String(j.auto_start || 'unknown'),
+            scanDate: j.scan_date ? new Date(j.scan_date).toISOString().slice(0, 10) : null,
+          };
+        return null;
+      })(),
     });
   }
   inPlaceIsaretle(targets);
   const order = { PROD: 0, QA: 1, TEST: 2, DEV: 3, ALPHA: 4, ODM: 5 };
-  targets.sort((a, b) => (order[a.env] ?? 9) - (order[b.env] ?? 9) || a.site.localeCompare(b.site) || a.host.localeCompare(b.host) || (a.gen ?? 0) - (b.gen ?? 0));
+  targets.sort(
+    (a, b) =>
+      (order[a.env] ?? 9) - (order[b.env] ?? 9) ||
+      a.site.localeCompare(b.site) ||
+      a.host.localeCompare(b.host) ||
+      (a.gen ?? 0) - (b.gen ?? 0),
+  );
   const summary = {
     total: targets.length,
-    bySite: { Pendik: targets.filter((t) => t.site === 'Pendik').length, Ankara: targets.filter((t) => t.site === 'Ankara').length },
-    byEnv: Object.fromEntries(['PROD', 'QA', 'TEST', 'DEV', 'ALPHA', 'ODM'].map((e) => [e, targets.filter((t) => t.env === e).length])),
+    bySite: {
+      Pendik: targets.filter((t) => t.site === 'Pendik').length,
+      Ankara: targets.filter((t) => t.site === 'Ankara').length,
+    },
+    byEnv: Object.fromEntries(
+      ['PROD', 'QA', 'TEST', 'DEV', 'ALPHA', 'ODM'].map((e) => [
+        e,
+        targets.filter((t) => t.env === e).length,
+      ]),
+    ),
     webMatched: targets.filter((t) => t.web.length).length,
     webBulunamadi: targets.filter((t) => !t.web.length).length,
     prod: targets.some((t) => t.env === 'PROD'),
@@ -602,7 +803,7 @@ async function discover(base, db) {
   )
     .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
     .catch((e) => {
-      hubError = `sema okunamadi: ${String((e && e.message) || e || 'okunamadi')}`;
+      hubError = `sema okunamadi: ${String(e?.message || e || 'okunamadi')}`;
       console.warn('[Retirement] Server_Hub_Jvms kolonlari okunamadi:', hubError);
       return null;
     });
@@ -618,23 +819,35 @@ async function discover(base, db) {
       ? 'v.repeat_7d, v.repeat_uris'
       : 'NULL AS repeat_7d, NULL AS repeat_uris';
   const jvmSel = ['host', 'jvm', 'gen', 'running', 'auto_start', 'scan_date', 'ports']
-    .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
-    .concat(jvmCols && jvmCols.includes('cfg_ports') ? ['cfg_ports'] : [])
+    .concat(jvmCols?.includes('running_src') ? ['running_src'] : [])
+    .concat(jvmCols?.includes('cfg_ports') ? ['cfg_ports'] : [])
     .map((c) => `t.${c}`)
     .join(', ');
   const [inv, certs, jvms, vhosts, ips] = await Promise.all([
-    query(`SELECT DISTINCT app, host, env, domain, jboss_version, app_path, status FROM dbo.MWAppsInventory WHERE app = @b OR app LIKE @b + '-_'`, p).then((r) => r.recordset || []),
-    query(`SELECT host, ip, port, server_name, conf_file, product, env FROM dbo.BMW_Certificates_Inventory`).then((r) => r.recordset || []).catch(() => []),
+    query(
+      `SELECT DISTINCT app, host, env, domain, jboss_version, app_path, status FROM dbo.MWAppsInventory WHERE app = @b OR app LIKE @b + '-_'`,
+      p,
+    ).then((r) => r.recordset || []),
+    query(
+      `SELECT host, ip, port, server_name, conf_file, product, env FROM dbo.BMW_Certificates_Inventory`,
+    )
+      .then((r) => r.recordset || [])
+      .catch(() => []),
     jvmCols == null
       ? Promise.resolve([])
-      : query(`SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t
+      : query(
+          `SELECT ${jvmSel} FROM dbo.Server_Hub_Jvms t
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m ON m.host = t.host AND m.d = t.scan_date
-            WHERE t.jvm = @b OR t.jvm LIKE @b + '-_'`, p).then((r) => r.recordset || []).catch((e) => {
-          // OLCULEMEDI != YOK: Server Hub okunamadiysa bu "tarama yok" degil; ozet bunu tasir.
-          hubError = String((e && e.message) || e || 'okunamadi');
-          console.warn('[Retirement] Server_Hub_Jvms okunamadi:', hubError);
-          return [];
-        }),
+            WHERE t.jvm = @b OR t.jvm LIKE @b + '-_'`,
+          p,
+        )
+          .then((r) => r.recordset || [])
+          .catch((e) => {
+            // OLCULEMEDI != YOK: Server Hub okunamadiysa bu "tarama yok" degil; ozet bunu tasir.
+            hubError = String(e?.message || e || 'okunamadi');
+            console.warn('[Retirement] Server_Hub_Jvms okunamadi:', hubError);
+            return [];
+          }),
     // VHOST TRAFIGI (en yeni tarama). Kolonlar migration ile geldigi icin SELECT * DEGIL
     // acik liste; okunamazsa BOS doner ve her vhost 'olculemedi' olur - "trafik yok"
     // DEGIL. Tablo/kolon yoksa da ayni yere duser.
@@ -642,15 +855,19 @@ async function discover(base, db) {
                   v.traffic_state, v.traffic_reason, v.sampled, v.last_req_epoch, v.scan_date, ${tekrarSel}
              FROM dbo.Server_Hub_Vhosts v
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
-               ON m.host = v.host AND m.d = v.scan_date`).then((r) => r.recordset || []).catch((e) => {
-          trafikError = String((e && e.message) || e || 'okunamadi');
-          console.warn('[Retirement] Server_Hub_Vhosts okunamadi:', trafikError);
-          return [];
-        }),
+               ON m.host = v.host AND m.d = v.scan_date`)
+      .then((r) => r.recordset || [])
+      .catch((e) => {
+        trafikError = String(e?.message || e || 'okunamadi');
+        console.warn('[Retirement] Server_Hub_Vhosts okunamadi:', trafikError);
+        return [];
+      }),
     // AJP/proxy hedefindeki IP'yi sunucuya cevirmek icin (en yeni tarama). Okunamazsa IP hedefler cozulmez.
     query(`SELECT i.host, i.ip FROM dbo.Server_Hub_Ips i
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
-               ON m.host = i.host AND m.d = i.scan_date`).then((r) => r.recordset || []).catch(() => []),
+               ON m.host = i.host AND m.d = i.scan_date`)
+      .then((r) => r.recordset || [])
+      .catch(() => []),
   ]);
   const out = buildTargets(base, inv, certs, jvms, vhosts, ips);
   out.summary.hubUnavailable = hubError != null;
@@ -681,4 +898,25 @@ async function searchApps(q) {
   return [...bases].sort(varsayilanSira);
 }
 
-module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, kolOf, paketYolu, inPlaceIsaretle, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle, adayVhostlar, ipSahipleri };
+module.exports = {
+  buildTargets,
+  discover,
+  searchApps,
+  siteOf,
+  parseAppName,
+  hedefOrtami,
+  genOf,
+  kolOf,
+  paketYolu,
+  inPlaceIsaretle,
+  jvmIndeksi,
+  jvmSec,
+  trafikSinifi,
+  ajpWeb,
+  mcWeb,
+  hedefSunucusu,
+  webZenginlestir,
+  hubBaglamiYukle,
+  adayVhostlar,
+  ipSahipleri,
+};

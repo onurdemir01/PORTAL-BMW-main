@@ -158,11 +158,11 @@ function loadSummary(host) {
   const st = statDump(H);
   if (!st) return null;
   const hit = _summaries.get(H);
-  if (hit && hit.mtimeMs === st.mtimeMs) return hit.summary;
+  if (hit?.mtimeMs === st.mtimeMs) return hit.summary;
   // yan dosya
   try {
     const raw = JSON.parse(fs.readFileSync(summaryPathOf(H), 'utf8'));
-    if (raw && raw.mtimeMs === st.mtimeMs && raw.ozetSurumu === OZET_SURUMU) {
+    if (raw?.mtimeMs === st.mtimeMs && raw.ozetSurumu === OZET_SURUMU) {
       _summaries.set(H, { mtimeMs: st.mtimeMs, summary: raw });
       if (!raw.ingested) scheduleIngest(H, st);
       return raw;
@@ -180,7 +180,7 @@ function loadSummary(host) {
   try {
     tam = parseFull(H, st);
   } catch (e) {
-    if (!e || !e.tooLarge) throw e;
+    if (!e?.tooLarge) throw e;
     // TAVANI ASAN DOKUM: bellege almadan, diskten parca parca okuyarak ozet cikarmayi
     // dene (2026-09-22). Ozet ekranlarinin (host listesi, sertifikalar, tutarlilik,
     // artik dosyalar) dosya ICERIGINE ihtiyaci yok; icerik isteyen uclar yine "cok
@@ -306,7 +306,7 @@ function loadFull(host) {
   const st = statDump(H);
   if (!st) return null;
   const hit = _full.get(H);
-  if (hit && hit.mtimeMs === st.mtimeMs) {
+  if (hit?.mtimeMs === st.mtimeMs) {
     _full.delete(H);
     _full.set(H, hit); // LRU: en yeni sona
     return hit.parsed;
@@ -418,7 +418,11 @@ function paketTutarlilikYaniti(opts = {}) {
     }
   }
   const r = computePaketTutarlilik(gruplar, veriler, { nowMs: opts.nowMs });
-  return { ok: true, ...r, generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString() };
+  return {
+    ok: true,
+    ...r,
+    generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString(),
+  };
 }
 
 // ── Envanter: nginx sunuculari (dbo.nginx_inventory, nginx_metadata job'i) ──────────────
@@ -833,7 +837,9 @@ async function spaKesfiHesapla() {
   // uygulamanin Dynatrace olcumu gorunmuyordu. Eslesme zaten ARK kesif satirinin (namespace,
   // uygulama) anahtariyla yapilir; yalniz ACIKCA ARK disi bir cluster'in satiri atilir.
   const usage =
-    usageHam == null ? usageHam : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
+    usageHam == null
+      ? usageHam
+      : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
   const runs = arkSuz(runsHam, 'cluster');
   const katalog = arkSuz(katalogHam, 'cluster_name');
   // ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): RP tanim/trafik satirlari nginx sunucusundan
@@ -1498,7 +1504,9 @@ function initNginxConsole(app) {
     try {
       res.json(paketTutarlilikYaniti());
     } catch (err) {
-      res.status(500).json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
+      res
+        .status(500)
+        .json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
     }
   });
 
@@ -1761,8 +1769,7 @@ function initNginxConsole(app) {
     }
     if (!['create', 'update'].includes(mode))
       return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
-    if (content == null || !content.trim())
-      return res.status(400).json({ ok: false, message: 'İçerik boş.' });
+    if (!content?.trim()) return res.status(400).json({ ok: false, message: 'İçerik boş.' });
     if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT)
       return res.status(400).json({ ok: false, message: 'İçerik 512 KB sınırını aşıyor.' });
     if (content.includes('\0'))

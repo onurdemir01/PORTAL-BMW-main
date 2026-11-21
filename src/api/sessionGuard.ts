@@ -113,14 +113,18 @@ function arkaPlanMi(): boolean {
 
 /** Arka plan isaretini ekler; cagiranin kendi basliklari ve acik isareti korunur. */
 function arkaPlanIsaretle(input: RequestInfo | URL, init?: RequestInit): RequestInit {
-  const kaynak = init?.headers ?? (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
+  const kaynak =
+    init?.headers ??
+    (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
   const h = new Headers(kaynak);
   if (!h.has(BASLIK_ETKINLIK)) h.set(BASLIK_ETKINLIK, 'background');
   return { ...init, headers: h };
 }
 
 const _aboneler = new Set<(sebep: OturumBitisSebebi) => void>();
-const _baslikAboneleri = new Set<(bitis: { idleExpiresAt: number; absoluteExpiresAt: number }) => void>();
+const _baslikAboneleri = new Set<
+  (bitis: { idleExpiresAt: number; absoluteExpiresAt: number }) => void
+>();
 
 /** Oturum bitince haber verilir (AuthContext yerinde yeniden giris katmanini acar). */
 export function oturumBittiAbone(fn: (sebep: OturumBitisSebebi) => void): () => void {
@@ -143,7 +147,13 @@ function basliklariYay(res: Response): void {
   if (!_baslikAboneleri.size || !res.headers) return;
   const idleExpiresAt = Number(res.headers.get(BASLIK_BOSTA));
   const absoluteExpiresAt = Number(res.headers.get(BASLIK_MUTLAK));
-  if (!Number.isFinite(idleExpiresAt) || idleExpiresAt <= 0 || !Number.isFinite(absoluteExpiresAt) || absoluteExpiresAt <= 0) return;
+  if (
+    !Number.isFinite(idleExpiresAt) ||
+    idleExpiresAt <= 0 ||
+    !Number.isFinite(absoluteExpiresAt) ||
+    absoluteExpiresAt <= 0
+  )
+    return;
   for (const fn of _baslikAboneleri) {
     try {
       fn({ idleExpiresAt, absoluteExpiresAt });

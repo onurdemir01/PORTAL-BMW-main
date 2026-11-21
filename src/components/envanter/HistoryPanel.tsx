@@ -10,19 +10,24 @@
 // yazıldığı için geçmiş yalnızca Portal'ın gecelik anlık görüntüleri başladıktan
 // SONRASINI bilir. Panel bunu boş durumda açıkça söyler — kullanıcı "veri mi yok,
 // özellik mi bozuk" ikilemine düşmesin.
-import React, { useCallback, useMemo, useState } from "react";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
+import React, { useCallback, useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
-  ClockIcon, ArrowsRightLeftIcon, MagnifyingGlassIcon, PlusCircleIcon,
-  MinusCircleIcon, PencilSquareIcon, ArrowDownTrayIcon,
-} from "@heroicons/react/24/outline";
-import { Modal } from "@/components/common/Modal";
-import { TextInput } from "@/components/ui/Form";
-import { inventoryApi, type HistoryRow, type HistoryDiff } from "@/api/inventoryApi";
-import { fmtNumber } from "@/utils/datetime";
+  ClockIcon,
+  ArrowsRightLeftIcon,
+  MagnifyingGlassIcon,
+  PlusCircleIcon,
+  MinusCircleIcon,
+  PencilSquareIcon,
+  ArrowDownTrayIcon,
+} from '@heroicons/react/24/outline';
+import { Modal } from '@/components/common/Modal';
+import { TextInput } from '@/components/ui/Form';
+import { inventoryApi, type HistoryRow, type HistoryDiff } from '@/api/inventoryApi';
+import { fmtNumber } from '@/utils/datetime';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 
-type Mode = "at" | "diff";
+type Mode = 'at' | 'diff';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -33,23 +38,27 @@ function daysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-
 /** Küçük, tekrar eden başlık şeridi — üç fark bölümü de aynı görsel dili kullanır. */
 function SectionHead({
-  icon: Icon, title, count, tone,
+  icon: Icon,
+  title,
+  count,
+  tone,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   count: number;
-  tone: "add" | "remove" | "change";
+  tone: 'add' | 'remove' | 'change';
 }) {
   const tones = {
-    add: "text-emerald-700 bg-emerald-50 border-emerald-200",
-    remove: "text-red-700 bg-red-50 border-red-200",
-    change: "text-amber-700 bg-amber-50 border-amber-200",
+    add: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+    remove: 'text-red-700 bg-red-50 border-red-200',
+    change: 'text-amber-700 bg-amber-50 border-amber-200',
   } as const;
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${tones[tone]}`}>
+    <div
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${tones[tone]}`}
+    >
       <Icon className="w-4 h-4 flex-shrink-0" />
       <span>{title}</span>
       <span className="ml-auto font-mono tabular-nums">{fmtNumber(count)}</span>
@@ -58,50 +67,68 @@ function SectionHead({
 }
 
 export default function HistoryPanel({
-  open, onClose, table, label,
+  open,
+  onClose,
+  table,
+  label,
 }: {
   open: boolean;
   onClose: () => void;
   table: string;
   label?: string;
 }) {
-  const [mode, setMode] = useState<Mode>("at");
+  const [mode, setMode] = useState<Mode>('at');
   const [atDate, setAtDate] = useState(today());
   const [fromDate, setFromDate] = useState(daysAgo(7));
   const [toDate, setToDate] = useState(today());
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [diff, setDiff] = useState<HistoryDiff | null>(null);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-  const [q, setQ] = useState("");
+  const [err, setErr] = useState('');
+  const [q, setQ] = useState('');
 
   const loadAt = useCallback(async () => {
-    setLoading(true); setErr("");
+    setLoading(true);
+    setErr('');
     try {
       const r = await inventoryApi.historyAt(table, atDate);
       if (r.ok) setRows(r.rows);
-      else { setRows([]); setErr(r.message || "Veri alınamadı."); }
+      else {
+        setRows([]);
+        setErr(r.message || 'Veri alınamadı.');
+      }
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [table, atDate]);
 
   const loadDiff = useCallback(async () => {
-    setLoading(true); setErr("");
+    setLoading(true);
+    setErr('');
     try {
       const r = await inventoryApi.historyDiff(table, fromDate, toDate);
       if (r.ok) setDiff(r);
-      else { setDiff(null); setErr(r.message || "Veri alınamadı."); }
+      else {
+        setDiff(null);
+        setErr(r.message || 'Veri alınamadı.');
+      }
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [table, fromDate, toDate]);
 
-  useAsyncEffect(async (alive) => {
-    if (!open || !alive()) return;
-    if (mode === "at") await loadAt();
-    else await loadDiff();
-  }, [open, mode, loadAt, loadDiff]);
+  useAsyncEffect(
+    async (alive) => {
+      if (!open || !alive()) return;
+      if (mode === 'at') await loadAt();
+      else await loadDiff();
+    },
+    [open, mode, loadAt, loadDiff],
+  );
 
   // Sunucuda arama YOK: geçmiş satırları JSON olarak zaten bellekte, istemcide filtrelemek
   // hem anında hem de ek uç gerektirmiyor.
@@ -117,10 +144,15 @@ export default function HistoryPanel({
     return [...set].slice(0, 8);
   }, [shownRows]);
 
-  const noHistoryYet = !loading && !err &&
-    ((mode === "at" && rows.length === 0) ||
-     (mode === "diff" && diff !== null &&
-      diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0));
+  const noHistoryYet =
+    !loading &&
+    !err &&
+    ((mode === 'at' && rows.length === 0) ||
+      (mode === 'diff' &&
+        diff !== null &&
+        diff.added.length === 0 &&
+        diff.removed.length === 0 &&
+        diff.changed.length === 0));
 
   return (
     <Modal
@@ -133,11 +165,14 @@ export default function HistoryPanel({
     >
       <div className="space-y-4">
         {/* Mod seçici */}
-        <div className="flex gap-1 rounded-xl p-1 w-fit" style={{ background: "var(--bg-elevated)" }}>
-          {([
-            { id: "at" as Mode, label: "Tarihteki Hâli", icon: ClockIcon },
-            { id: "diff" as Mode, label: "İki Tarih Farkı", icon: ArrowsRightLeftIcon },
-          ]).map((m) => {
+        <div
+          className="flex gap-1 rounded-xl p-1 w-fit"
+          style={{ background: 'var(--bg-elevated)' }}
+        >
+          {[
+            { id: 'at' as Mode, label: 'Tarihteki Hâli', icon: ClockIcon },
+            { id: 'diff' as Mode, label: 'İki Tarih Farkı', icon: ArrowsRightLeftIcon },
+          ].map((m) => {
             const Icon = m.icon;
             const active = mode === m.id;
             return (
@@ -145,9 +180,11 @@ export default function HistoryPanel({
                 key={m.id}
                 onClick={() => setMode(m.id)}
                 className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                  active ? "bg-white text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  active
+                    ? 'bg-white text-[var(--accent)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
-                style={active ? { boxShadow: "var(--shadow-sm)" } : {}}
+                style={active ? { boxShadow: 'var(--shadow-sm)' } : {}}
               >
                 <Icon className="w-4 h-4" />
                 {m.label}
@@ -158,7 +195,7 @@ export default function HistoryPanel({
 
         {/* Tarih girdileri */}
         <div className="flex flex-wrap items-end gap-3">
-          {mode === "at" ? (
+          {mode === 'at' ? (
             <label className="text-xs font-semibold text-[var(--text-secondary)]">
               Tarih
               <input
@@ -195,7 +232,7 @@ export default function HistoryPanel({
             </>
           )}
 
-          {mode === "at" && (
+          {mode === 'at' && (
             <div className="relative flex-1 min-w-[12rem]">
               <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <TextInput
@@ -207,13 +244,13 @@ export default function HistoryPanel({
             </div>
           )}
 
-          {mode === "at" && shownRows.length > 0 && (
+          {mode === 'at' && shownRows.length > 0 && (
             <button
               onClick={() =>
                 csvDownload(
                   `${table}_${atDate}`,
                   cols,
-                  shownRows.map((r) => cols.map((c) => String(r.data[c] ?? ""))),
+                  shownRows.map((r) => cols.map((c) => String(r.data[c] ?? ''))),
                 )
               }
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -225,7 +262,9 @@ export default function HistoryPanel({
         </div>
 
         {err && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>
+          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            {err}
+          </div>
         )}
 
         {loading && (
@@ -242,26 +281,32 @@ export default function HistoryPanel({
               Bu tarih için kayıtlı geçmiş yok.
             </p>
             <p className="mt-1 text-xs text-[var(--text-muted)] max-w-md mx-auto">
-              Envanter tabloları her yenilemede sıfırdan yazıldığı için geçmiş, Portal
-              günlük anlık görüntü almaya başladıktan <strong>sonrasını</strong> kapsar.
-              Daha eski tarihler geriye dönük üretilemez.
+              Envanter tabloları her yenilemede sıfırdan yazıldığı için geçmiş, Portal günlük anlık
+              görüntü almaya başladıktan <strong>sonrasını</strong> kapsar. Daha eski tarihler
+              geriye dönük üretilemez.
             </p>
           </div>
         )}
 
         {/* Mod 1 — tarihteki hâli */}
-        {!loading && mode === "at" && shownRows.length > 0 && (
+        {!loading && mode === 'at' && shownRows.length > 0 && (
           <>
             <p className="text-xs text-[var(--text-muted)]">
-              <strong className="text-[var(--text-primary)]">{fmtNumber(shownRows.length)}</strong> satır
+              <strong className="text-[var(--text-primary)]">{fmtNumber(shownRows.length)}</strong>{' '}
+              satır
               {q && ` (${fmtNumber(rows.length)} içinden)`} · {atDate} tarihindeki hâli
             </p>
             <div className="overflow-auto max-h-[26rem] rounded-xl border border-[var(--border)]">
               <table className="w-full text-xs">
-                <thead className="sticky top-0" style={{ background: "var(--bg-elevated)" }}>
+                <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
                   <tr>
                     {cols.map((c) => (
-                      <th key={c} className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap">{c}</th>
+                      <th
+                        key={c}
+                        className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap"
+                      >
+                        {c}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -269,8 +314,12 @@ export default function HistoryPanel({
                   {shownRows.slice(0, 500).map((r) => (
                     <tr key={r.key} className="border-t border-[var(--border)]">
                       {cols.map((c) => (
-                        <td key={c} className="px-3 py-1.5 text-[var(--text-primary)] whitespace-nowrap max-w-xs truncate" title={String(r.data[c] ?? "")}>
-                          {String(r.data[c] ?? "")}
+                        <td
+                          key={c}
+                          className="px-3 py-1.5 text-[var(--text-primary)] whitespace-nowrap max-w-xs truncate"
+                          title={String(r.data[c] ?? '')}
+                        >
+                          {String(r.data[c] ?? '')}
                         </td>
                       ))}
                     </tr>
@@ -287,12 +336,27 @@ export default function HistoryPanel({
         )}
 
         {/* Mod 2 — iki tarih farkı */}
-        {!loading && mode === "diff" && diff && !noHistoryYet && (
+        {!loading && mode === 'diff' && diff && !noHistoryYet && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <SectionHead icon={PlusCircleIcon} title="Gelen" count={diff.added.length} tone="add" />
-              <SectionHead icon={MinusCircleIcon} title="Giden" count={diff.removed.length} tone="remove" />
-              <SectionHead icon={PencilSquareIcon} title="Değişen" count={diff.changed.length} tone="change" />
+              <SectionHead
+                icon={PlusCircleIcon}
+                title="Gelen"
+                count={diff.added.length}
+                tone="add"
+              />
+              <SectionHead
+                icon={MinusCircleIcon}
+                title="Giden"
+                count={diff.removed.length}
+                tone="remove"
+              />
+              <SectionHead
+                icon={PencilSquareIcon}
+                title="Değişen"
+                count={diff.changed.length}
+                tone="change"
+              />
             </div>
 
             {diff.added.length > 0 && (
@@ -302,7 +366,9 @@ export default function HistoryPanel({
                 </summary>
                 <ul className="px-3 pb-3 space-y-1 max-h-52 overflow-auto">
                   {diff.added.slice(0, 300).map((r) => (
-                    <li key={r.key} className="text-xs font-mono text-[var(--text-primary)]">{r.key}</li>
+                    <li key={r.key} className="text-xs font-mono text-[var(--text-primary)]">
+                      {r.key}
+                    </li>
                   ))}
                 </ul>
               </details>
@@ -315,7 +381,9 @@ export default function HistoryPanel({
                 </summary>
                 <ul className="px-3 pb-3 space-y-1 max-h-52 overflow-auto">
                   {diff.removed.slice(0, 300).map((r) => (
-                    <li key={r.key} className="text-xs font-mono text-[var(--text-primary)]">{r.key}</li>
+                    <li key={r.key} className="text-xs font-mono text-[var(--text-primary)]">
+                      {r.key}
+                    </li>
                   ))}
                 </ul>
               </details>
@@ -329,13 +397,17 @@ export default function HistoryPanel({
                 <div className="px-3 pb-3 space-y-2 max-h-72 overflow-auto">
                   {diff.changed.slice(0, 200).map((c) => (
                     <div key={c.key} className="rounded-lg border border-[var(--border)] p-2">
-                      <p className="text-xs font-mono font-semibold text-[var(--text-primary)] mb-1">{c.key}</p>
+                      <p className="text-xs font-mono font-semibold text-[var(--text-primary)] mb-1">
+                        {c.key}
+                      </p>
                       {Object.entries(c.fields).map(([col, v]) => (
                         <p key={col} className="text-[11px] text-[var(--text-muted)]">
-                          <span className="font-semibold text-[var(--text-secondary)]">{col}:</span>{" "}
-                          <span className="line-through">{String(v.before ?? "—")}</span>
-                          {" → "}
-                          <span className="text-[var(--text-primary)] font-medium">{String(v.after ?? "—")}</span>
+                          <span className="font-semibold text-[var(--text-secondary)]">{col}:</span>{' '}
+                          <span className="line-through">{String(v.before ?? '—')}</span>
+                          {' → '}
+                          <span className="text-[var(--text-primary)] font-medium">
+                            {String(v.after ?? '—')}
+                          </span>
                         </p>
                       ))}
                     </div>

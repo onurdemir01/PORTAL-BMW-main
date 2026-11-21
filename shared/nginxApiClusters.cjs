@@ -18,31 +18,80 @@ const API_CLUSTERS = [
     key: 'mblcustomers',
     label: 'mblcustomers',
     hosts: [
-      'GBNGWP01', 'GBNGWP02', 'GBNGWP03', 'GBNGWP04', 'GBNGWP05', 'GBNGWP06', 'GBNGWP07', 'GBNGWP08',
-      'GBNGWP09', 'GBNGWP10', 'GBNGWP11', 'GBNGWP12', 'GBNGWP13', 'GBNGWP14', 'GBNGWP15', 'GBNGWP16',
-      'GBNGWAP01', 'GBNGWAP02', 'GBNGWAP03', 'GBNGWAP04', 'GBNGWAP05', 'GBNGWAP06', 'GBNGWAP07', 'GBNGWAP08',
+      'GBNGWP01',
+      'GBNGWP02',
+      'GBNGWP03',
+      'GBNGWP04',
+      'GBNGWP05',
+      'GBNGWP06',
+      'GBNGWP07',
+      'GBNGWP08',
+      'GBNGWP09',
+      'GBNGWP10',
+      'GBNGWP11',
+      'GBNGWP12',
+      'GBNGWP13',
+      'GBNGWP14',
+      'GBNGWP15',
+      'GBNGWP16',
+      'GBNGWAP01',
+      'GBNGWAP02',
+      'GBNGWAP03',
+      'GBNGWAP04',
+      'GBNGWAP05',
+      'GBNGWAP06',
+      'GBNGWAP07',
+      'GBNGWAP08',
     ],
   },
   {
     key: 'customers',
     label: 'customers',
     hosts: [
-      'GBNGWP25', 'GBNGWP26', 'GBNGWP27', 'GBNGWP28', 'GBNGWP29', 'GBNGWP30', 'GBNGWP31', 'GBNGWP32',
-      'GBNGWAP22', 'GBNGWAP23', 'GBNGWAP24', 'GBNGWAP25',
+      'GBNGWP25',
+      'GBNGWP26',
+      'GBNGWP27',
+      'GBNGWP28',
+      'GBNGWP29',
+      'GBNGWP30',
+      'GBNGWP31',
+      'GBNGWP32',
+      'GBNGWAP22',
+      'GBNGWAP23',
+      'GBNGWAP24',
+      'GBNGWAP25',
     ],
   },
   {
     key: 'mcustomers',
     label: 'mcustomers',
     hosts: [
-      'GBNGWAP10', 'GBNGWAP11', 'GBNGWAP12', 'GBNGWAP13',
-      'GBNGWP17', 'GBNGWP18', 'GBNGWP19', 'GBNGWP20', 'GBNGWP21', 'GBNGWP22', 'GBNGWP23', 'GBNGWP24',
-      'GBNGXAP30', 'GBNGXAP31', 'GBNGXP60', 'GBNGXP61', 'GBNGXP62', 'GBNGXP63',
+      'GBNGWAP10',
+      'GBNGWAP11',
+      'GBNGWAP12',
+      'GBNGWAP13',
+      'GBNGWP17',
+      'GBNGWP18',
+      'GBNGWP19',
+      'GBNGWP20',
+      'GBNGWP21',
+      'GBNGWP22',
+      'GBNGWP23',
+      'GBNGWP24',
+      'GBNGXAP30',
+      'GBNGXAP31',
+      'GBNGXP60',
+      'GBNGXP61',
+      'GBNGXP62',
+      'GBNGXP63',
     ],
   },
 ];
 
-const UP = (s) => String(s || '').trim().toUpperCase();
+const UP = (s) =>
+  String(s || '')
+    .trim()
+    .toUpperCase();
 
 /**
  * Bir API'nin bulunduğu sunucuları kümelere göre ayırır.
@@ -93,7 +142,9 @@ const API_GENERATOR_NONPROD = {
 function apiGeneratorHosts(env, site, channel) {
   const e = UP(env) === 'PRODUCTION' ? 'PROD' : UP(env);
   if (e !== 'PROD') return (API_GENERATOR_NONPROD[e] || []).slice();
-  const s = String(site || '').trim().toLowerCase();
+  const s = String(site || '')
+    .trim()
+    .toLowerCase();
   // Kanal (mblcustomers / customers / mcustomers) production'da kumeyi belirler: o kanalin API'leri
   // yalniz o kumenin sunucularindadir. Tanınmayan / boş kanal daraltmaz.
   const kume = apiCluster(channel);
@@ -106,8 +157,16 @@ function apiGeneratorHosts(env, site, channel) {
 
 /** Kanal adına (harf duyarsız) karşılık gelen production kümesi; yoksa null. */
 function apiCluster(channel) {
-  const k = String(channel || '').trim().toLowerCase();
+  const k = String(channel || '')
+    .trim()
+    .toLowerCase();
   return (k && API_CLUSTERS.find((c) => c.key === k)) || null;
 }
 
-module.exports = { API_CLUSTERS, API_GENERATOR_NONPROD, apiGeneratorHosts, apiCluster, clusterCoverage };
+module.exports = {
+  API_CLUSTERS,
+  API_GENERATOR_NONPROD,
+  apiGeneratorHosts,
+  apiCluster,
+  clusterCoverage,
+};

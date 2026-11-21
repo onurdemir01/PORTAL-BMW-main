@@ -117,7 +117,7 @@ async function resolveStatus(group, legacy) {
       const found = await legacy.searchApps(group.name);
       // FALLBACK MODU BIR CEVAP DEGIL: snapshot, envanterin SON BILINEN halidir.
       // Ondan "hala yok" sonucu cikarmak, bayat veriyi kanit saymaktir.
-      if (found && found.fallbackMode) return 'kontrol_edilemedi';
+      if (found?.fallbackMode) return 'kontrol_edilemedi';
       const var_mi = (found.apps || []).some(
         (a) => String(a).toUpperCase() === group.name.toUpperCase(),
       );

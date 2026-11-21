@@ -90,17 +90,13 @@ describe('LdapUserPicker · field="mail" (Crypto Hub)', () => {
     fireEvent.click(await screen.findByText('Osman Koz'));
 
     // ASIL IDDIA: e-posta kuralina kullanici adi yazilirsa motor ASLA eslestiremez.
-    await waitFor(() =>
-      expect(onChange).toHaveBeenCalledWith('osmankoz@garantibbva.com.tr'),
-    );
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('osmankoz@garantibbva.com.tr'));
     expect(onChange).not.toHaveBeenCalledWith('osmankoz');
   });
 
   it('e-postasi OLMAYAN kayit sessizce gecilmez (asla eslesmeyecek kural uretilmez)', async () => {
     const onChange = vi.fn();
-    const search = vi
-      .fn()
-      .mockResolvedValue({ users: [{ ...KULLANICI, mail: '' }] });
+    const search = vi.fn().mockResolvedValue({ users: [{ ...KULLANICI, mail: '' }] });
     render(<LdapUserPicker value="" onChange={onChange} search={search} field="mail" />);
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osman' } });
     await act(async () => {

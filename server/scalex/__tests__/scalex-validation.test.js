@@ -8,6 +8,8 @@
 //           F) durum/sapma  G) uc yuzeyi  H) portal↔playbook sozlesmesi
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -1450,7 +1452,7 @@ test('J2 sapma tazeleme GERCEKTEN bir uctan cagriliyor', () => {
   );
   assert.match(
     codeOnly(INDEX),
-    /parsed\.mode === 'state'/,
+    /parsed\??\.mode === 'state'/,
     'tazeleme `state` kesfinin bitisine bagli olmali',
   );
 });
@@ -1677,7 +1679,7 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   for (const c of ornekler) {
     assert.match(
       c,
-      /environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/,
+      esnek(/environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/),
       `ornek durumda belirsiz ortam: ${c}`,
     );
     assert.match(c, /\.\.\.ortak/, `ornek durum herkesIcin degil: ${c}`);
@@ -1900,7 +1902,11 @@ test('N5 admin kategori listesi seed ile AYRISMIYOR', () => {
 
   const seeded = new Set((setup.match(/category: '([a-z_]+)'/g) || []).map((m) => m.slice(11, -1)));
   const listed = new Set(
-    JSON.parse((tab.match(/const CATEGORIES = (\[[^\]]*\])/) || [])[1].replace(/"/g, '"')),
+    JSON.parse(
+      (tab.match(/const CATEGORIES = (\[[^\]]*\])/) || [])[1]
+        .replace(/'/g, '"')
+        .replace(/,\s*\]$/, ']'),
+    ),
   );
 
   const missing = [...seeded].filter((c) => !listed.has(c)).sort();
@@ -2037,7 +2043,7 @@ test('P1 isin GERCEK SONUCU denetime yaziliyor', () => {
   // olmali. Sonra yazilsaydi dry_run calistirmalari hic iz birakmazdi.
   const fin = code.slice(code.indexOf('async function finalizeOperation'));
   assert.ok(
-    fin.indexOf('scalex_finalize') < fin.indexOf("parsed.mode !== 'apply'"),
+    fin.indexOf('scalex_finalize') < fin.search(/parsed\??\.mode !== 'apply'/),
     'sonuc izi `apply` kontrolunden SONRA — dry_run calistirmalari iz birakmaz',
   );
 });
@@ -2414,7 +2420,11 @@ test('S7 ortak CRUD tablosu ARANABILIR', () => {
   assert.match(t, /searchable/, 'arama destegi yok');
   // Arama TUM kolonlarda: kullanici aradiginin hangi kolonda oldugunu bilmek
   // zorunda kalmamali.
-  assert.match(t, /columns\.some\(\(c\) => String\(r\[c\.key\]/, 'arama tum kolonlarda calismiyor');
+  assert.match(
+    t,
+    esnek(/columns\.some\(\(c\) => String\(r\[c\.key\]/),
+    'arama tum kolonlarda calismiyor',
+  );
   // Kisa listede kutu gosterilmemeli.
   assert.match(t, /rows\.length >= SEARCH_MIN_ROWS/, 'kisa listede de arama kutusu cikiyor');
   // Bos sonucta "kayit yok" demek yaniltici olurdu — arama yuzunden bos oldugu

@@ -86,8 +86,14 @@ test('H2: interval her cikis yolunda temizleniyor', () => {
   // unmount, yeniden baslatma, `kapat` — ve olcut, yoklamanin HER cikisinin `kapat`tan
   // gecmesi.
   const clears = (src.match(/clearInterval\(pollRef\.current\)/g) || []).length;
-  assert.ok(clears >= 3, `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`);
-  const kapatGovde = src.slice(src.indexOf('const kapat = ('), src.indexOf('pollRef.current = setInterval('));
+  assert.ok(
+    clears >= 3,
+    `clearInterval cagrisi az (${clears}) — bir cikis yolu sizdiriyor olabilir`,
+  );
+  const kapatGovde = src.slice(
+    src.indexOf('const kapat = ('),
+    src.indexOf('pollRef.current = setInterval('),
+  );
   assert.match(kapatGovde, /clearInterval\(pollRef\.current\)/, '`kapat` interval`i temizlemiyor');
   const yoklama = src.slice(
     src.indexOf('pollRef.current = setInterval('),
@@ -95,7 +101,10 @@ test('H2: interval her cikis yolunda temizleniyor', () => {
   );
   assert.ok(yoklama.length > 200, 'yoklama govdesi bulunamadi');
   const cikislar = (yoklama.match(/\bkapat\(/g) || []).length;
-  assert.ok(cikislar >= 4, `yoklamanin ${cikislar} cikisi \`kapat\`tan geciyor (en az 4 bekleniyor)`);
+  assert.ok(
+    cikislar >= 4,
+    `yoklamanin ${cikislar} cikisi \`kapat\`tan geciyor (en az 4 bekleniyor)`,
+  );
   // `kapat`tan gecmeden ekran degistiren cikis yok: tek dogrudan adim, `kapat(null)`dan
   // hemen sonra gelen sonuc ekrani.
   assert.deepEqual(yoklama.match(/setStep\('\w+'\)/g) || [], ["setStep('result')"]);

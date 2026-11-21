@@ -99,7 +99,7 @@ test('J4 hpa, durum kaydi ve is yuku dizini AYNI ANDA okunuyor (kaynak sirasi)',
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(
-    path.join(__dirname, '..', 'bmw_portal/scalex/scalex_app/files/scalex_runner.sh'),
+    path.join(__dirname, '..', 'playbooks', 'bmw_portal/scalex/scalex_app/files/scalex_runner.sh'),
     'utf8',
   );
   const i = src.indexOf('pc_prefetch() {');

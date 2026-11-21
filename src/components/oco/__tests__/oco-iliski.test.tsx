@@ -9,20 +9,42 @@ import { render } from '@/test/test-utils';
 import OcoTakvimiPage from '@/components/OcoTakvimiPage';
 
 const satir = (oco: number, iliski: string[]) => ({
-  oco, subject: `konu ${oco}`, explanation: '', statusText: '', statusCode: 0, impactText: '', processText: '',
-  pcabRequired: false, plannedStart: '2099-01-0' + oco + 'T10:00:00.000Z', plannedEnd: null, actualStart: null,
-  actualEnd: null, openedAt: null, iliski,
+  oco,
+  subject: `konu ${oco}`,
+  explanation: '',
+  statusText: '',
+  statusCode: 0,
+  impactText: '',
+  processText: '',
+  pcabRequired: false,
+  plannedStart: '2099-01-0' + oco + 'T10:00:00.000Z',
+  plannedEnd: null,
+  actualStart: null,
+  actualEnd: null,
+  openedAt: null,
+  iliski,
 });
 const yanit = (body: unknown) => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => body })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => body })),
+  );
 };
 afterEach(() => vi.unstubAllGlobals());
 
 describe('OCO Takvimi — açtığımız + bize açılan', () => {
   it('OI1 iki ilişki aynı listede; süzgeç ve sayılar', async () => {
     yanit({
-      ok: true, rows: [satir(1, ['acan']), satir(2, ['acan', 'sorumlu']), satir(3, ['sorumlu'])], total: 3, fetched: 3,
-      truncated: false, kaynak: { acan: { total: 2, fetched: 2, truncated: false }, sorumlu: { total: 2, fetched: 2, truncated: false } }, eksik: [],
+      ok: true,
+      rows: [satir(1, ['acan']), satir(2, ['acan', 'sorumlu']), satir(3, ['sorumlu'])],
+      total: 3,
+      fetched: 3,
+      truncated: false,
+      kaynak: {
+        acan: { total: 2, fetched: 2, truncated: false },
+        sorumlu: { total: 2, fetched: 2, truncated: false },
+      },
+      eksik: [],
     });
     render(<OcoTakvimiPage />);
     expect(await screen.findByText('konu 1')).toBeTruthy();
@@ -39,12 +61,18 @@ describe('OCO Takvimi — açtığımız + bize açılan', () => {
 
   it('OI2 bir sorgu düştüyse "eksik" uyarısı', async () => {
     yanit({
-      ok: true, rows: [satir(3, ['sorumlu'])], total: 1, fetched: 1, truncated: false,
+      ok: true,
+      rows: [satir(3, ['sorumlu'])],
+      total: 1,
+      fetched: 1,
+      truncated: false,
       kaynak: { sorumlu: { total: 1, fetched: 1, truncated: false } },
       eksik: [{ rol: 'acan', message: "açtığımız OCO'lar alınamadı: zaman aşımı" }],
     });
     render(<OcoTakvimiPage />);
-    expect((await screen.findByTestId('oco-eksik')).textContent).toMatch(/açtığımız OCO'lar alınamadı: zaman aşımı/);
+    expect((await screen.findByTestId('oco-eksik')).textContent).toMatch(
+      /açtığımız OCO'lar alınamadı: zaman aşımı/,
+    );
   });
 });
 
@@ -56,9 +84,19 @@ describe('OCO Takvimi — geçmiş 7 günlük adımlarla', () => {
     d.setHours(10, 0, 0, 0);
     return d.toISOString();
   };
-  const r = (oco: number, gun: number) => ({ ...satir(oco, ['sorumlu']), plannedStart: gunOnce(gun) });
+  const r = (oco: number, gun: number) => ({
+    ...satir(oco, ['sorumlu']),
+    plannedStart: gunOnce(gun),
+  });
   it('OG1 ilk tıklama son 7 gün, sonraki her tıklama 7 gün daha; gizle sıfırlar', async () => {
-    yanit({ ok: true, rows: [r(1, 3), r(2, 10), r(3, 400)], total: 3, fetched: 3, truncated: false, eksik: [] });
+    yanit({
+      ok: true,
+      rows: [r(1, 3), r(2, 10), r(3, 400)],
+      total: 3,
+      fetched: 3,
+      truncated: false,
+      eksik: [],
+    });
     render(<OcoTakvimiPage />);
     const ilk = await screen.findByText('Geçen haftanın OCO’larını göster');
     expect(screen.queryByText('konu 1')).toBeNull();

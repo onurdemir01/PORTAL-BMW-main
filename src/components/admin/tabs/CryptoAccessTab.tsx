@@ -33,17 +33,17 @@ export default function CryptoAccessTab() {
       emptyText="Henüz kimseye açılmamış — Crypto Hub'ı kimse görmüyor (yöneticiler dahil)."
       intro={
         <>
-          Crypto Hub <b>sıkı</b> bir sayfadır: açık bir kural olmadan <b>yönetici bile</b>{' '}
-          göremez. Buradan bir <b>e-postaya</b>, <b>kullanıcıya</b> ya da <b>LDAP (AD) grubuna</b>{' '}
-          sayfayı ve <b>seçtiğiniz uygulamaları</b> açarsınız.
+          Crypto Hub <b>sıkı</b> bir sayfadır: açık bir kural olmadan <b>yönetici bile</b> göremez.
+          Buradan bir <b>e-postaya</b>, <b>kullanıcıya</b> ya da <b>LDAP (AD) grubuna</b> sayfayı ve{' '}
+          <b>seçtiğiniz uygulamaları</b> açarsınız.
           <br />
           Seçilmeyen uygulama hem seçim ağacında görünmez hem de verisi{' '}
           <b>sunucu tarafında kapalıdır</b> — tenant anahtarı elle gönderilse bile 403 döner.
           Örneğin yalnız <code className="px-1 rounded bg-[var(--bg-elevated)]">Metaco</code>{' '}
           seçilirse kişi Wyden ortamlarını hiç görmez.
           <br />
-          Kaydı <b>kaldırmak</b> kişinin Crypto Hub erişimini tamamen kapatır. Grup için CN adı
-          ya da tam DN girilebilir; eşleşme oturumdaki{' '}
+          Kaydı <b>kaldırmak</b> kişinin Crypto Hub erişimini tamamen kapatır. Grup için CN adı ya
+          da tam DN girilebilir; eşleşme oturumdaki{' '}
           <code className="px-1 rounded bg-[var(--bg-elevated)]">memberOf</code> listesine göre
           yapılır ve değişiklik anında yayılır.
         </>

@@ -21,7 +21,12 @@ const DEGISTIREN = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function liste() {
   return String(process.env.PORTAL_ALLOWED_ORIGINS || '')
     .split(',')
-    .map((s) => s.trim().toLowerCase().replace(/(?<!\/)\/+$/, ''))
+    .map((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/(?<!\/)\/+$/, ''),
+    )
     .filter(Boolean);
 }
 
@@ -47,7 +52,9 @@ function kokenUygunMu(req) {
   if (host && k.host === host) return { ok: true };
   // service.cjs CORS'u ile AYNI varsayilan: gelistirmede Vite proxy'si Host'u hedefe
   // cevirebilir, koken ise localhost:3000 kalir.
-  const cors = String(process.env.CORS_ORIGIN || 'http://localhost:3000').toLowerCase().replace(/(?<!\/)\/+$/, '');
+  const cors = String(process.env.CORS_ORIGIN || 'http://localhost:3000')
+    .toLowerCase()
+    .replace(/(?<!\/)\/+$/, '');
   if (cors && k.origin === cors) return { ok: true };
   if (liste().includes(k.origin)) return { ok: true };
   return { ok: false, sebep: `yabanci-koken ${k.origin}` };
@@ -59,17 +66,23 @@ function originKontrolu() {
     if (mod === 'off') return next();
     const r = kokenUygunMu(req);
     if (r.ok) return next();
-    console.warn(`[CSRF] ${mod === 'log' ? '(yalnizca log) ' : ''}reddedilen istek: ${req.method} ${req.originalUrl} sebep=${r.sebep}`);
+    console.warn(
+      `[CSRF] ${mod === 'log' ? '(yalnizca log) ' : ''}reddedilen istek: ${req.method} ${req.originalUrl} sebep=${r.sebep}`,
+    );
     if (mod === 'log') return next();
     try {
-      require('../audit/index.cjs').auditPortal(req, 'csrf_blocked', { result: 'fail', detail: `${req.method} ${req.path} ${r.sebep}` });
+      require('../audit/index.cjs').auditPortal(req, 'csrf_blocked', {
+        result: 'fail',
+        detail: `${req.method} ${req.path} ${r.sebep}`,
+      });
     } catch {
       /* denetim yoksa yoksay */
     }
     return res.status(403).json({
       ok: false,
       code: 'koken',
-      error: 'İstek portalın kendi sayfasından gelmediği için reddedildi. Sayfayı yenileyip tekrar deneyin.',
+      error:
+        'İstek portalın kendi sayfasından gelmediği için reddedildi. Sayfayı yenileyip tekrar deneyin.',
     });
   };
 }

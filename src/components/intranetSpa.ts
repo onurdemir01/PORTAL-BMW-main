@@ -1,7 +1,12 @@
 // src/components/intranetSpa.ts — Nginx ARK SPA > Intranet SPA: saf yardımcılar (süzgeç, etiket, CSV).
 // Sayfa: IntranetSpaPage.tsx. Hesap sunucuda (server/spa-report/intranet.cjs); burada gösterim.
 // Yük DYNATRACE'ten (BMW_Application_Usage): beş durum, hiçbiri diğerine indirgenmez.
-import type { IntranetDegerlendirme, IntranetIstek, IntranetKurulum, IntranetSatir } from '@/api/arkSpaApi';
+import type {
+  IntranetDegerlendirme,
+  IntranetIstek,
+  IntranetKurulum,
+  IntranetSatir,
+} from '@/api/arkSpaApi';
 import type { Tone } from '@/components/denetim/ui';
 
 export const BEYAN_ETIKET: Record<string, string> = {
@@ -30,7 +35,10 @@ export const ISTEK: Record<IntranetIstek, { label: string; hint: string }> = {
   },
 };
 
-export const DEGERLENDIRME: Record<IntranetDegerlendirme, { label: string; tone: Tone; hint: string }> = {
+export const DEGERLENDIRME: Record<
+  IntranetDegerlendirme,
+  { label: string; tone: Tone; hint: string }
+> = {
   'kapatma-adayi': {
     label: 'kapatma adayı',
     tone: 'danger',
@@ -65,7 +73,10 @@ export const DEGERLENDIRME: Record<IntranetDegerlendirme, { label: string; tone:
 
 // INTRANET SUNUCU KURULUMU (Nginx_Intranet_Audit): uygulamanın kendi ortamının intranet nginx
 // sunucularında paket (/hysdeploy) + dosyalar (/usr/nginx/applications) + conf var mı.
-export const KURULUM: Record<IntranetKurulum['durum'], { label: string; tone: Tone; hint: string }> = {
+export const KURULUM: Record<
+  IntranetKurulum['durum'],
+  { label: string; tone: Tone; hint: string }
+> = {
   tamam: {
     label: 'tamamlandı',
     tone: 'success',
@@ -107,7 +118,9 @@ export const sunucuDurumu = (s: string) => SUNUCU_DURUM[s] || s || 'bilinmiyor';
 
 export function kurulumMetni(k: IntranetKurulum): string {
   const l = KURULUM[k.durum]?.label || k.durum;
-  return k.durum === 'tamam' || k.durum === 'kismi' || k.durum === 'yok' ? `${l} ${k.tam}/${k.beklenen}` : l;
+  return k.durum === 'tamam' || k.durum === 'kismi' || k.durum === 'yok'
+    ? `${l} ${k.tam}/${k.beklenen}`
+    : l;
 }
 
 export const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
@@ -171,7 +184,8 @@ export function suzIntranet(
     if (f.kurulum && f.kurulum !== 'all' && r.kurulum.durum !== f.kurulum) return false;
     if (f.beyan === 'bekleyen' && r.inUse) return false;
     if (f.beyan === 'verilmis' && !r.inUse) return false;
-    if ((f.beyan === 'yes' || f.beyan === 'no' || f.beyan === 'unknown') && r.inUse !== f.beyan) return false;
+    if ((f.beyan === 'yes' || f.beyan === 'no' || f.beyan === 'unknown') && r.inUse !== f.beyan)
+      return false;
     if (f.deg !== 'all' && !r.degerlendirme.includes(f.deg)) return false;
     if (f.ekip !== 'all') {
       if (f.ekip === '-') {
@@ -212,7 +226,10 @@ export const INTRANET_CSV_BASLIK = [
   'degerlendirme',
 ] as const;
 
-export function intranetCsvSatirlari(rows: readonly IntranetSatir[], tarih: (v: string) => string): string[][] {
+export function intranetCsvSatirlari(
+  rows: readonly IntranetSatir[],
+  tarih: (v: string) => string,
+): string[][] {
   return rows.map((r) => [
     r.env,
     r.namespace,

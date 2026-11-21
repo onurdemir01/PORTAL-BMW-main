@@ -7,7 +7,10 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 
 const kimlik = (kod: string) => kod;
-const KodGorunurContext = createContext<{ goster: boolean; ad: (kod: string) => string }>({ goster: true, ad: kimlik });
+const KodGorunurContext = createContext<{ goster: boolean; ad: (kod: string) => string }>({
+  goster: true,
+  ad: kimlik,
+});
 
 /** Bu bileşenin içinde teknik kodlar gösterilsin mi (sağlayıcı yoksa true). */
 export const useKodGorunur = () => useContext(KodGorunurContext).goster;

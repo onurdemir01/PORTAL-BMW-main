@@ -20,7 +20,14 @@ const path = require('node:path');
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 
 const GUN = '2026-10-02';
@@ -99,7 +106,10 @@ const emekliAdayi = (r) => r.rows.filter((x) => (x.traffic ? x.traffic.state : '
 const IKI = [CFG('H1'), CFG('H2')];
 
 test('AY1 gunluk rotasyon (~3 gun, sampled=0) emekli adayi suzgecine GIRMEZ', async () => {
-  const r = await rapor({ config: IKI, trafik: [LOAD('H1', { first_seen: ROT3 }), LOAD('H2', { first_seen: ROT3 })] });
+  const r = await rapor({
+    config: IKI,
+    trafik: [LOAD('H1', { first_seen: ROT3 }), LOAD('H2', { first_seen: ROT3 })],
+  });
   const t = r.rows[0].traffic;
   assert.equal(t.state, 'unknown', '3 gunluk olcum "yuk almiyor" gosterildi');
   assert.deepEqual(t.kismi, ['pencere']);
@@ -111,7 +121,10 @@ test('AY2 tam pencere + her mirror olculdu + istek yok -> idle (emekli adayi)', 
   const r = await rapor({ config: IKI, trafik: [LOAD('H1'), LOAD('H2')] });
   assert.equal(r.rows[0].traffic.state, 'idle');
   assert.equal(emekliAdayi(r).length, 1);
-  const yuk = await rapor({ config: IKI, trafik: [LOAD('H1', { first_seen: ROT3, req_7d: 3 }), LOAD('H2')] });
+  const yuk = await rapor({
+    config: IKI,
+    trafik: [LOAD('H1', { first_seen: ROT3, req_7d: 3 }), LOAD('H2')],
+  });
   assert.equal(yuk.rows[0].traffic.state, 'active');
   assert.equal(yuk.rows[0].traffic.req7, 3);
 });
@@ -127,7 +140,11 @@ test('AY3 okunamayan / satirsiz mirror -> idle DEGIL', async () => {
 });
 
 test('AY4 first_seen kolonu YOK: sorgu dusmez ve "yuk almiyor" denmez', async () => {
-  const r = await rapor({ config: IKI, fs: null, trafik: [LOAD('H1', { first_seen: null }), LOAD('H2', { first_seen: null })] });
+  const r = await rapor({
+    config: IKI,
+    fs: null,
+    trafik: [LOAD('H1', { first_seen: null }), LOAD('H2', { first_seen: null })],
+  });
   assert.equal(r.trafficReady, true, 'kolon yokken trafik sorgusu dustu');
   assert.equal(r.rows[0].traffic.state, 'unknown');
   assert.deepEqual(r.rows[0].traffic.kismi, ['pencere-bilinmiyor']);
@@ -136,16 +153,26 @@ test('AY4 first_seen kolonu YOK: sorgu dusmez ve "yuk almiyor" denmez', async ()
 test('AY6 tanim sunuculari rapor satiriyla AYNI normalizasyonla bulunur (bosluk / harf)', async () => {
   // build.cjs satiri U(service) / U(env) / T(location) ile kurar; tanim sunuculari baska
   // anahtarla tutulsaydi bulunamaz, H2'nin satirsizligi gorulmez ve 0 "idle" olurdu.
-  const cfg = [CFG('H1', { service: ' glomo', env: 'prod ' }), CFG('H2', { service: 'Glomo', location_path: '/kart/ ' })];
+  const cfg = [
+    CFG('H1', { service: ' glomo', env: 'prod ' }),
+    CFG('H2', { service: 'Glomo', location_path: '/kart/ ' }),
+  ];
   const r = await rapor({ config: cfg, trafik: [LOAD('H1')] });
   assert.equal(r.rows.length, 1);
-  assert.equal(r.rows[0].traffic.state, 'unknown', 'tanim sunuculari kayboldu: satirsiz mirror gorulmedi');
+  assert.equal(
+    r.rows[0].traffic.state,
+    'unknown',
+    'tanim sunuculari kayboldu: satirsiz mirror gorulmedi',
+  );
   assert.equal(r.rows[0].traffic.missingHosts, 1);
 });
 
 test('AY5 host kipi satirlari ve kovalar rapora yazilmaz, "olcum var" saymaz', async () => {
   const hk = [
-    { ...LOAD('H1', { service: null, env: null, location: '@kart.irp.local', req_7d: 900 }), vhost: 'kart-app-v1-kart-prod' },
+    {
+      ...LOAD('H1', { service: null, env: null, location: '@kart.irp.local', req_7d: 900 }),
+      vhost: 'kart-app-v1-kart-prod',
+    },
     { ...LOAD('H1', { service: null, env: null, location: '@_', req_7d: 240 }), vhost: '_' },
   ];
   const yalniz = await rapor({ config: [CFG('H1')], trafik: hk });
@@ -154,7 +181,9 @@ test('AY5 host kipi satirlari ve kovalar rapora yazilmaz, "olcum var" saymaz', a
   const karisik = await rapor({ config: [CFG('H1')], trafik: [...hk, LOAD('H1')] });
   assert.equal(karisik.rows[0].traffic.state, 'idle');
   assert.equal(karisik.rows[0].traffic.req7, 0);
-  const trf = SORGULAR.find((s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'));
+  const trf = SORGULAR.find(
+    (s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'),
+  );
   assert.match(trf, /location NOT LIKE '@%'/, 'host kipi satirlari SQL de suzulmuyor');
   assert.match(trf, /scan_date, 23\) AS scan_date/);
 });

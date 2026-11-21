@@ -1,17 +1,17 @@
 // server/selfservice/index.cjs
-const express = require("express");
-const { loadSelfServiceStore, readGroups, updateGroup } = require("./store.cjs");
+const express = require('express');
+const { loadSelfServiceStore, readGroups, updateGroup } = require('./store.cjs');
 
 function initSelfService(app) {
-  loadSelfServiceStore().catch((e) => console.warn("[SelfService] store yukleme hata:", e.message));
-  const { requireAuth, requireAdmin } = require("../auth/index.cjs");
+  loadSelfServiceStore().catch((e) => console.warn('[SelfService] store yukleme hata:', e.message));
+  const { requireAuth, requireAdmin } = require('../auth/index.cjs');
   const router = express.Router();
-  router.use(express.json({ limit: "2mb" }));
+  router.use(express.json({ limit: '2mb' }));
 
   // /health guard'siz kalir (probe). Asagidaki her sey en az authenticated; okuma (GET)
   // her kullaniciya, mutasyonlar (PUT /groups/:id) yalnizca admin'e.
-  router.get("/health", async (req, res) => {
-    res.json({ ok: true, service: "selfservice" });
+  router.get('/health', async (req, res) => {
+    res.json({ ok: true, service: 'selfservice' });
   });
 
   router.use(requireAuth);
@@ -21,40 +21,51 @@ function initSelfService(app) {
   // Service sayfa gorunurlugu) ve audit loglama ise NORMAL SEKILDE uygulanmaya devam eder
   // (asagida route TANIMI o middleware'lerden SONRA).
   router.use((req, res, next) => {
-    if (req.method === "GET") return next();
-    if (req.path === "/ip-check" || req.path === "/server-ip-check" || req.path === "/openshift-check") return next();
+    if (req.method === 'GET') return next();
+    if (
+      req.path === '/ip-check' ||
+      req.path === '/server-ip-check' ||
+      req.path === '/openshift-check'
+    )
+      return next();
     return requireAdmin(req, res, next);
   });
   // Tum mutasyonlar portal_audit_logs'a yazilir (bkz. server/audit/index.cjs) — /ip-check
   // de POST oldugu icin burada denetim kaydina girer (kim hangi IP'leri sorguladi).
-  try { router.use(require("../audit/index.cjs").auditMutations("selfservice")); } catch { /* audit yoksa yoksay */ }
+  try {
+    router.use(require('../audit/index.cjs').auditMutations('selfservice'));
+  } catch {
+    /* audit yoksa yoksay */
+  }
 
   // Self Service sayfasi gizliyse gercek 403.
   // SORGU UCLARI BMW HUB'DA DA (kullanici, 2026-11-12: "IP Sorgu ve OpenShift sorgu sekmelerini
   // Otomasyon'dan alip BMW Hub'a tasiyalim"): bu uc salt okunur uc, Self Service YA DA BMW Hub sayfasini
   // gorene acik. Ikisini de goremeyen 403; motor okunamazsa requireVisible'in fail-closed kurali gecerli.
   try {
-    const { requireVisiblePrefix, requireVisible, canSee } = require("../auth/visibility.cjs");
-    const SORGU_UCLARI = ["/ip-check", "/server-ip-check", "/openshift-check"];
-    router.use(requireVisiblePrefix("Self Service", { exempt: SORGU_UCLARI }));
-    const selfService = requireVisible("Self Service");
+    const { requireVisiblePrefix, requireVisible, canSee } = require('../auth/visibility.cjs');
+    const SORGU_UCLARI = ['/ip-check', '/server-ip-check', '/openshift-check'];
+    router.use(requireVisiblePrefix('Self Service', { exempt: SORGU_UCLARI }));
+    const selfService = requireVisible('Self Service');
     router.use(async (req, res, next) => {
       if (!SORGU_UCLARI.includes(req.path)) return next();
-      const { getRequestUser } = require("../auth/index.cjs");
+      const { getRequestUser } = require('../auth/index.cjs');
       const user = getRequestUser(req);
       // Oturum yoksa ya da motor okunamazsa karar Self Service kapisinin (401 / fail-closed + Admin muaf).
       if (!user) return selfService(req, res, next);
       try {
         // 2026-11-13: sorgular BMW Hub menusunde AYRI sayfa (IpSorgu / OcpSorgu); eski izinler de gecer.
-        for (const anahtar of ["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"]) {
+        for (const anahtar of ['IpSorgu', 'OcpSorgu', 'BmwHub', 'Self Service']) {
           if (await canSee(user, anahtar)) return next();
         }
-        return res.status(403).json({ ok: false, error: "Bu kaynağa erişiminiz kapalı." });
+        return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
       } catch {
         return selfService(req, res, next);
       }
     });
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── SESSIZ KESME (2026-08-28) ────────────────────────────────────────────────
   // Asagidaki iki uc de girdiyi 1000'de kesiyordu ve bunu SOYLEMIYORDU. Kullanici
@@ -69,16 +80,16 @@ function initSelfService(app) {
   // Genel /api/inventory/data/:table ucu KULLANILMADI (o, tabloya rol-bazli gorunurluk
   // izni gerektiriyor ve tum tabloyu tarama/sayfalama gibi cok daha genis bir yetki
   // yuzeyi acar) - bunun yerine kucuk, amaca-ozel, salt-okunur bir sorgu.
-  router.post("/ip-check", async (req, res) => {
+  router.post('/ip-check', async (req, res) => {
     try {
       const raw = req.body?.ips;
       if (!Array.isArray(raw) || raw.length === 0) {
-        return res.status(400).json({ ok: false, message: "En az bir IP girilmeli." });
+        return res.status(400).json({ ok: false, message: 'En az bir IP girilmeli.' });
       }
       const seen = new Set();
       const ips = [];
       for (const item of raw) {
-        const v = String(item ?? "").trim();
+        const v = String(item ?? '').trim();
         if (!v) continue;
         const key = v.toUpperCase();
         if (seen.has(key)) continue;
@@ -88,15 +99,15 @@ function initSelfService(app) {
       const ipsTruncated = Math.max(0, ips.length - MAX_CHECK_ITEMS);
       if (ipsTruncated > 0) ips.length = MAX_CHECK_ITEMS;
       if (ips.length === 0) {
-        return res.status(400).json({ ok: false, message: "Geçerli bir IP bulunamadı." });
+        return res.status(400).json({ ok: false, message: 'Geçerli bir IP bulunamadı.' });
       }
 
-      const { query, sql } = require("../inventory/mssql.cjs");
+      const { query, sql } = require('../inventory/mssql.cjs');
       const inputs = ips.map((ip, i) => ({ name: `ip${i}`, type: sql.NVarChar(64), value: ip }));
-      const placeholders = ips.map((_, i) => `@ip${i}`).join(", ");
+      const placeholders = ips.map((_, i) => `@ip${i}`).join(', ');
       const result = await query(
         `SELECT host, ip, created_at, updated_at, last_seen_at FROM dbo.IPInventory WHERE ip IN (${placeholders})`,
-        inputs
+        inputs,
       );
       const rows = result.recordset || [];
 
@@ -104,7 +115,9 @@ function initSelfService(app) {
       // TRUNCATE+reload tarama modelinde teorik olarak tekrar etmemeli ama garanti degil).
       const byIp = new Map();
       for (const r of rows) {
-        const key = String(r.ip || "").trim().toUpperCase();
+        const key = String(r.ip || '')
+          .trim()
+          .toUpperCase();
         if (!byIp.has(key)) byIp.set(key, []);
         byIp.get(key).push(r);
       }
@@ -124,36 +137,41 @@ function initSelfService(app) {
         maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+      res.status(500).json({ ok: false, message: err.message || 'Sorgulama başarısız.' });
     }
   });
 
   // POST /server-ip-check — Check sekmesi: sunucu listesinden LB'de kullanilacak IP'ler. LB Suspend
   // Exclude List AWX isinin kurallari (bkz. lb-ip-kurallari.cjs); ayni veri dbo.IPInventory'de.
   // Tablonun tamami okunur: betik alt metin eslestirir, IN listesi bunu karsilamaz.
-  router.post("/server-ip-check", async (req, res) => {
+  router.post('/server-ip-check', async (req, res) => {
     try {
       const raw = req.body?.servers;
       if (!Array.isArray(raw) || raw.length === 0) {
-        return res.status(400).json({ ok: false, message: "En az bir sunucu adı girilmeli." });
+        return res.status(400).json({ ok: false, message: 'En az bir sunucu adı girilmeli.' });
       }
-      const { lbIpCoz, girdiyiAyikla, dijitalKanalOku, veriDurumu } = require("./lb-ip-kurallari.cjs");
+      const {
+        lbIpCoz,
+        girdiyiAyikla,
+        dijitalKanalOku,
+        veriDurumu,
+      } = require('./lb-ip-kurallari.cjs');
       const { sunucular, gecersiz } = girdiyiAyikla(raw);
       const serversTruncated = Math.max(0, sunucular.length - MAX_CHECK_ITEMS);
       if (serversTruncated > 0) sunucular.length = MAX_CHECK_ITEMS;
       if (sunucular.length === 0) {
-        return res.status(400).json({ ok: false, message: "Geçerli bir sunucu adı bulunamadı." });
+        return res.status(400).json({ ok: false, message: 'Geçerli bir sunucu adı bulunamadı.' });
       }
 
-      const { query } = require("../inventory/mssql.cjs");
+      const { query } = require('../inventory/mssql.cjs');
       const [tablo, dijitalKanal] = await Promise.all([
-        query("SELECT host, ip, last_seen_at FROM dbo.IPInventory"),
+        query('SELECT host, ip, last_seen_at FROM dbo.IPInventory'),
         dijitalKanalOku(),
       ]);
       const kayitlar = tablo.recordset || [];
       // Bos tablo "hicbir sunucu bulunamadi" diye okunmasin.
       if (kayitlar.length === 0) {
-        return res.status(503).json({ ok: false, message: "IP envanteri boş; sonuç üretilemedi." });
+        return res.status(503).json({ ok: false, message: 'IP envanteri boş; sonuç üretilemedi.' });
       }
 
       res.json({
@@ -166,7 +184,7 @@ function initSelfService(app) {
         maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+      res.status(500).json({ ok: false, message: err.message || 'Sorgulama başarısız.' });
     }
   });
 
@@ -179,16 +197,18 @@ function initSelfService(app) {
   // istendi (kullanici talebi, 2026-08-20). owner_* kolonlari CMDB+Smart uzerinden ayrica
   // doldurulan sahiplik bilgisi (bkz. bmw_inventory/openshift_inventory namespace_owners
   // akisi) - bir namespace'in sahibi henuz cozulmemisse NULL gelir, "-" olarak gosterilir.
-  router.post("/openshift-check", async (req, res) => {
+  router.post('/openshift-check', async (req, res) => {
     try {
       const raw = req.body?.items;
       if (!Array.isArray(raw) || raw.length === 0) {
-        return res.status(400).json({ ok: false, message: "En az bir namespace veya uygulama adı girilmeli." });
+        return res
+          .status(400)
+          .json({ ok: false, message: 'En az bir namespace veya uygulama adı girilmeli.' });
       }
       const seen = new Set();
       const items = [];
       for (const item of raw) {
-        const v = String(item ?? "").trim();
+        const v = String(item ?? '').trim();
         if (!v) continue;
         const key = v.toLowerCase();
         if (seen.has(key)) continue;
@@ -198,17 +218,19 @@ function initSelfService(app) {
       const itemsTruncated = Math.max(0, items.length - MAX_CHECK_ITEMS);
       if (itemsTruncated > 0) items.length = MAX_CHECK_ITEMS;
       if (items.length === 0) {
-        return res.status(400).json({ ok: false, message: "Geçerli bir namespace/uygulama adı bulunamadı." });
+        return res
+          .status(400)
+          .json({ ok: false, message: 'Geçerli bir namespace/uygulama adı bulunamadı.' });
       }
 
-      const { query, sql } = require("../inventory/mssql.cjs");
+      const { query, sql } = require('../inventory/mssql.cjs');
       const inputs = items.map((v, i) => ({ name: `v${i}`, type: sql.NVarChar(200), value: v }));
-      const placeholders = items.map((_, i) => `@v${i}`).join(", ");
+      const placeholders = items.map((_, i) => `@v${i}`).join(', ');
       const result = await query(
         `SELECT DISTINCT namespace, application, owner_group_name, owner_email
            FROM dbo.Openshift_Inventory
           WHERE namespace IN (${placeholders}) OR application IN (${placeholders})`,
-        inputs
+        inputs,
       );
       const rows = result.recordset || [];
 
@@ -231,16 +253,16 @@ function initSelfService(app) {
         maxItems: MAX_CHECK_ITEMS,
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || "Sorgulama başarısız." });
+      res.status(500).json({ ok: false, message: err.message || 'Sorgulama başarısız.' });
     }
   });
 
   // GET /nginx-tanimlar — Nginx - RVP Operations "read" (2026-10-20): AWX job'i BASLATILMAZ;
   // silme akisinin okudugu tarama verisinden "hangi location'a hangi uygulama cevap veriyor".
   // Bkz. nginx-tanim-okuma.cjs.
-  router.get("/nginx-tanimlar", async (req, res) => {
+  router.get('/nginx-tanimlar', async (req, res) => {
     try {
-      const { nginxTanimlari } = require("./nginx-tanim-okuma.cjs");
+      const { nginxTanimlari } = require('./nginx-tanim-okuma.cjs');
       const r = await nginxTanimlari({
         env: req.query.env,
         service: req.query.service,
@@ -250,26 +272,28 @@ function initSelfService(app) {
       if (!r.ok) return res.status(r.status || 400).json(r);
       res.json(r);
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || "Tanımlar okunamadı." });
+      res.status(500).json({ ok: false, message: err.message || 'Tanımlar okunamadı.' });
     }
   });
 
   // "Ansible" sekmesinin etiket/sira/aktiflik metadata'si (Smart/Digerleri katalogu
   // kaldirildigi icin geriye yalniz bu grup kaldi).
-  router.get("/", async (req, res) => {
-    const groups = readGroups().filter((g) => g.isActive).sort((a, b) => a.sortOrder - b.sortOrder);
+  router.get('/', async (req, res) => {
+    const groups = readGroups()
+      .filter((g) => g.isActive)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
     res.json({ ok: true, groups });
   });
 
-  router.put("/groups/:id", async (req, res) => {
+  router.put('/groups/:id', async (req, res) => {
     const { label, icon, sortOrder, isActive } = req.body || {};
     const updated = await updateGroup(req.params.id, { label, icon, sortOrder, isActive });
-    if (!updated) return res.status(404).json({ ok: false, error: "Grup bulunamadı." });
+    if (!updated) return res.status(404).json({ ok: false, error: 'Grup bulunamadı.' });
     res.json({ ok: true, group: updated });
   });
 
-  app.use("/api/selfservice", router);
-  console.log("[SelfService] module mounted at /api/selfservice");
+  app.use('/api/selfservice', router);
+  console.log('[SelfService] module mounted at /api/selfservice');
 }
 
 module.exports = { initSelfService };

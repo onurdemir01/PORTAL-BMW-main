@@ -347,7 +347,10 @@ function initDenetim(app) {
       for (const r of raw) {
         seenEnvs.add(normEnv(r.env));
       }
-      const envList = [...CANON, ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort(varsayilanSira)];
+      const envList = [
+        ...CANON,
+        ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort(varsayilanSira),
+      ];
 
       // Teshis: her env jetonu icin kac satir, hangi host'lar, hangi vhost dosyalari.
       // "PROD nicin bos" gibi sorular bu tabloya bakilarak cevaplanir.
@@ -1258,7 +1261,8 @@ function initDenetim(app) {
           bucket[v.net].push(v.name);
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
-        const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        // Bir kez sirali: liste (internetMissing) ve ayrintisi (missing.internet) ayni sirayi okur.
+        const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase())).sort(sortTr);
         // DEPLOY EDILMIS (H+A) / SERVISE TANIMLI / YUK ALIYOR (ikisi de) - uc ayri kume
         const nd = netDirs.get(e) || new Map();
         const dirsMeasured = nd.size > 0;
@@ -1324,7 +1328,7 @@ function initDenetim(app) {
           internetMultiService: multi,
           internetServiced: serviced,
           internetMissingCount: internetMissing.length,
-          internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
+          internetMissing: internetMissing.slice(0, CAP),
           // Deploy (H+A, internet sunuculari) - 2026-09-18
           internetDirsMeasured: dirsMeasured,
           internetDeployed: deployed.length,
@@ -1352,11 +1356,11 @@ function initDenetim(app) {
               .map((a) => detailOf(e, a, { kind: 'noroute', inNginx: n.has(a.toLowerCase()) })),
             // deploy bakisi (2026-09-18): ekibin isi / bizim isimiz / 404 riski
             notDeployed: notDeployed
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) => detailOf(e, a, { kind: 'notdeployed', defined: n.has(a.toLowerCase()) })),
             deployedNotDefined: deployedNotDefined
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) =>
                 detailOf(e, a, {
@@ -1365,7 +1369,7 @@ function initDenetim(app) {
                 }),
               ),
             definedNotDeployed: definedNotDeployed
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) => detailOf(e, a, { kind: 'nopackage' })),
           },
@@ -1393,7 +1397,7 @@ function initDenetim(app) {
           // BULGU DARALDI: intranet uygulamasinin INTERNETE ACIK sunucuda tanimli
           // olmasi. Intranet sunucusunda olmasi artik NORMALDIR, bulgu degildir.
           intranetInNginx: inNginx.intranet.length,
-          intranetInNginxList: inNginx.intranet.sort(sortTr).slice(0, CAP),
+          intranetInNginxList: inNginx.intranet.toSorted(sortTr).slice(0, CAP),
           // Route tipi passthrough/reencrypt DISINDA olanlar (edge, tls yok).
           otherTotal: bucket.diger.length,
           otherInNginx: inNginx.diger.length,
@@ -1402,7 +1406,7 @@ function initDenetim(app) {
           unknownInNginx: inNginx.bilinmiyor.length,
           // nginx'te var ama OpenShift SPA listesinde yok.
           onlyNginxCount: onlyNginx.length,
-          onlyNginx: onlyNginx.sort(sortTr).slice(0, CAP),
+          onlyNginx: onlyNginx.toSorted(sortTr).slice(0, CAP),
           // Kapsam YALNIZCA internet kumesi uzerinden: intranet uygulamalarini paydaya
           // katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
           coverage:
@@ -1709,7 +1713,7 @@ function initDenetim(app) {
         return res
           .status(400)
           .json({ ok: false, message: 'İstisna notu zorunlu (neden istisna?).' });
-      const by = (getRequestUser(req) || {}).username || null;
+      const by = getRequestUser(req)?.username || null;
       try {
         const ex = await db.query(`SELECT 1 FROM nginx_audit_exceptions WHERE host = $1`, [host]);
         if (ex.rows.length) {
@@ -1752,7 +1756,7 @@ function initDenetim(app) {
           return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
         const g = et.dogrula(req.body || {});
         if (g.hata) return res.status(400).json({ ok: false, message: g.hata });
-        const by = (getRequestUser(req) || {}).username || null;
+        const by = getRequestUser(req)?.username || null;
         try {
           await et.etiketYaz(db, host, g, by);
           responseCache.clear();
@@ -1781,7 +1785,7 @@ function initDenetim(app) {
           responseCache.clear();
           try {
             require('./index.cjs').auditPortal(req, 'nginx_host_label_clear', {
-              username: (getRequestUser(req) || {}).username,
+              username: getRequestUser(req)?.username,
               result: 'ok',
               detail: JSON.stringify({ host }),
             });
@@ -1807,7 +1811,7 @@ function initDenetim(app) {
         nginxAuditWarm.run().catch(() => {});
         try {
           require('./index.cjs').auditPortal(req, 'nginx_audit_exception_clear', {
-            username: (getRequestUser(req) || {}).username,
+            username: getRequestUser(req)?.username,
             result: 'ok',
             detail: JSON.stringify({ host }),
           });
@@ -2347,7 +2351,12 @@ function initDenetim(app) {
           scanDate,
           host,
           serversOlculdu,
-          ...ue.upstreamDetayi(u.recordset || [], l.recordset || [], s.recordset || [], serversOlculdu),
+          ...ue.upstreamDetayi(
+            u.recordset || [],
+            l.recordset || [],
+            s.recordset || [],
+            serversOlculdu,
+          ),
         });
       }
 
@@ -2383,7 +2392,8 @@ function initDenetim(app) {
       }
 
       if (ara) {
-        if (ara.length < 2) return res.status(400).json({ ok: false, message: 'Arama en az 2 karakter.' });
+        if (ara.length < 2)
+          return res.status(400).json({ ok: false, message: 'Arama en az 2 karakter.' });
         const like = '%' + ara.replace(/[[%_]/g, (c) => '[' + c + ']') + '%';
         params.push({ name: 'ara', type: sql.NVarChar(120), value: like });
         const r = await query(
@@ -2393,7 +2403,11 @@ function initDenetim(app) {
               AND (name LIKE @ara OR server LIKE @ara${serversOlculdu ? ' OR servers LIKE @ara' : ''})`,
           params,
         );
-        const satirlar = ue.aramaSonucu(es.ayir(r.recordset || [], (x) => x.host), ara, serversOlculdu);
+        const satirlar = ue.aramaSonucu(
+          es.ayir(r.recordset || [], (x) => x.host),
+          ara,
+          serversOlculdu,
+        );
         return res.json({
           ok: true,
           hazir: true,
@@ -2524,7 +2538,7 @@ function initDenetim(app) {
     const teamRefs = opts.teamRefs || null;
     // Ayrinti verisi ve ekip referansi YOKSA (eski veri ve Deployment Scripts): 2026-11-14
     // oncesi algoritma BIREBIR (kullanici karari) - eskiSapmaRaporu.
-    const dolu = (m) => !!(m && m.size);
+    const dolu = (m) => !!m?.size;
     if (!dolu(details) && !dolu(teamRefs)) {
       return eskiSapmaRaporu(raw, scripts, majorityOverride);
     }
@@ -2533,13 +2547,13 @@ function initDenetim(app) {
     const cellOf = (r, sc) => {
       const host = String(r.host).trim();
       const rawv = r[sc.key] ? String(r[sc.key]).trim() : '';
-      const d = details ? (details.get(host) || {})[sc.key] || null : null;
+      const d = details ? details.get(host)?.[sc.key] || null : null;
       return {
         host,
         raw: rawv || null,
-        norm: d && d.norm ? String(d.norm).trim() : null,
+        norm: d?.norm ? String(d.norm).trim() : null,
         hasCr: !!(d && (d.hasCr === true || d.hasCr === 1)),
-        state: d && d.state ? String(d.state).trim().toUpperCase() : null,
+        state: d?.state ? String(d.state).trim().toUpperCase() : null,
       };
     };
     const isUnreadable = (c) => c.state === 'UNREADABLE' || c.state === 'ERROR';
@@ -2561,10 +2575,10 @@ function initDenetim(app) {
         const c = cellOf(r, sc);
         if (c.raw && c.norm && !m.has(c.raw)) m.set(c.raw, c.norm);
       }
-      const t = teamRefs && teamRefs.get(sc.key);
-      if (t && t.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
-      const kr = asReference(majorityOverride && majorityOverride.get(sc.key));
-      if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
+      const t = teamRefs?.get(sc.key);
+      if (t?.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
+      const kr = asReference(majorityOverride?.get(sc.key));
+      if (kr?.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
       return m;
     };
     const cellsOf = (sc) => {
@@ -2613,14 +2627,12 @@ function initDenetim(app) {
       const majority = variants[0] || null;
 
       let ref = null;
-      if (!sc.perServer && majorityOverride && majorityOverride.has(sc.key)) {
+      if (!sc.perServer && majorityOverride?.has(sc.key)) {
         // Ozel sunucular: GENEL envanterin referansi (yoksa null = olculemez, eski anlam).
         ref = asReference(majorityOverride.get(sc.key));
       } else if (!sc.perServer) {
         ref =
-          (teamRefs && teamRefs.get(sc.key) && teamRefs.get(sc.key).norm
-            ? { ...teamRefs.get(sc.key), source: 'ekip' }
-            : null) ||
+          (teamRefs?.get(sc.key)?.norm ? { ...teamRefs.get(sc.key), source: 'ekip' } : null) ||
           (majority ? { raw: majority.hash, norm: majority.norm, source: 'cogunluk' } : null);
       }
       refOf.set(sc.key, ref);
@@ -2644,6 +2656,9 @@ function initDenetim(app) {
         if (k in counts) counts[k] += 1;
         if (crRisk(c, sc)) crlfHosts.push(c.host);
       }
+      let deviatingCount = counts.deviation;
+      if (sc.perServer)
+        deviatingCount = majority ? variants.slice(1).reduce((a, v) => a + v.count, 0) : 0;
       return {
         key: sc.key,
         label: sc.label,
@@ -2651,9 +2666,9 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length - unreadable.length,
         missing: absent.length,
-        missingHosts: absent.sort(varsayilanSira),
+        missingHosts: absent.toSorted(varsayilanSira),
         unreadable: unreadable.length,
-        unreadableHosts: unreadable.sort(varsayilanSira),
+        unreadableHosts: unreadable.toSorted(varsayilanSira),
         variantCount: variants.length,
         rawVariantCount: variants.reduce((a, v) => a + v.rawVariants.length, 0),
         majorityHash: majority ? majority.hash : null,
@@ -2664,12 +2679,8 @@ function initDenetim(app) {
         referenceCount: ref ? counts.ok + counts.format : 0,
         formatOnlyCount: sc.perServer ? 0 : counts.format,
         crlfCount: crlfHosts.length,
-        crlfHosts: crlfHosts.sort(varsayilanSira),
-        deviatingCount: sc.perServer
-          ? majority
-            ? variants.slice(1).reduce((a, v) => a + v.count, 0)
-            : 0
-          : counts.deviation,
+        crlfHosts: crlfHosts.toSorted(varsayilanSira),
+        deviatingCount,
         variants,
       };
     });
@@ -2747,7 +2758,7 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length,
         missing: absent.length,
-        missingHosts: absent.sort(varsayilanSira),
+        missingHosts: absent.toSorted(varsayilanSira),
         unreadable: 0,
         unreadableHosts: [],
         variantCount: variants.length,
@@ -2962,7 +2973,7 @@ function initDenetim(app) {
       const ex = await query(
         `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS d, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS r`,
       );
-      const e = (ex.recordset && ex.recordset[0]) || {};
+      const e = ex.recordset?.[0] || {};
       out.detailExists = !!e.d;
       if (e.d) {
         const dr = await query(
@@ -2993,7 +3004,7 @@ function initDenetim(app) {
       out.details = new Map();
       out.teamRefs = new Map();
       out.detailAvailable = false;
-      out.error = (err && err.message) || String(err);
+      out.error = err?.message || String(err);
     }
     return out;
   }
@@ -3056,7 +3067,7 @@ function initDenetim(app) {
       const ex = await query(
         `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS hwd, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS hwr`,
       );
-      const e = (ex.recordset && ex.recordset[0]) || {};
+      const e = ex.recordset?.[0] || {};
       const params = HOST_WIDE_SCRIPTS.map((sc, i) => ({
         name: `hw${i}`,
         type: sqlTypes.NVarChar,
@@ -3099,7 +3110,7 @@ function initDenetim(app) {
       out.details = new Map();
       out.teamRefs = new Map();
       out.detailAvailable = false;
-      out.error = (err && err.message) || String(err);
+      out.error = err?.message || String(err);
     }
     return out;
   }
@@ -3117,7 +3128,7 @@ function initDenetim(app) {
    *      load_date, scan_date ile scan_date); farkli anlamdaki iki zaman karsilastirilmaz.
    *   3. Degeri olan, sonra kok sirasi (/vhosting8 once).
    */
-  const olculdu = (c) => !!c.raw || !!(c.detail && c.detail.state);
+  const olculdu = (c) => !!c.raw || !!c.detail?.state;
   function hostWideSourceOrder(a, b) {
     if (olculdu(a) !== olculdu(b)) return olculdu(a) ? -1 : 1;
     if (a.date && b.date && a.dateSrc === b.dateSrc && a.date !== b.date) {
@@ -3132,8 +3143,8 @@ function initDenetim(app) {
     if (!other) return null;
     if (chosen.raw && other.raw) {
       if (chosen.raw === other.raw) return null;
-      const n1 = chosen.detail && chosen.detail.norm;
-      const n2 = other.detail && other.detail.norm;
+      const n1 = chosen.detail?.norm;
+      const n2 = other.detail?.norm;
       return n1 && n2 && n1 === n2 ? 'bicim' : 'icerik';
     }
     return chosen.raw || other.raw ? 'durum' : null;
@@ -3148,10 +3159,10 @@ function initDenetim(app) {
         const host = String(r.host).trim();
         // Anahtar buyuk harfle (B7): GBXX ile gbxx ayni sunucudur, tek satir.
         const anahtar = host.toUpperCase();
-        const detail = (src.details.get(`${t.root}|${anahtar}`) || {})[sc.key] || null;
+        const detail = src.details.get(`${t.root}|${anahtar}`)?.[sc.key] || null;
         const raw = r[sc.key] ? String(r[sc.key]).trim() : '';
         const loadDate = r.load_date ? String(r.load_date) : '';
-        const scanDate = (detail && detail.date) || '';
+        const scanDate = detail?.date || '';
         const date = loadDate || scanDate || null;
         let dateSrc = null;
         if (loadDate) dateSrc = 'load_date';
@@ -3201,7 +3212,7 @@ function initDenetim(app) {
         host: hr.host,
         durum,
         hash: m.chosen.raw,
-        norm: (m.chosen.detail && m.chosen.detail.norm) || null,
+        norm: m.chosen.detail?.norm || null,
         kaynak: m.chosen.root,
         tarih: m.chosen.date,
         kokler: m.roots,
@@ -3224,7 +3235,7 @@ function initDenetim(app) {
         detailAvailable: false,
         teamReferenceAvailable: false,
         missingColumns: [],
-        error: (err && err.message) || String(err),
+        error: err?.message || String(err),
       };
     }
     const files = [];
@@ -3283,7 +3294,7 @@ function initDenetim(app) {
   async function readInitAge(query, sqlTypes, table, root, haveLoadDate, detailExists) {
     const out = { loadedAt: null, ageMinutes: null, ageDays: null, ageSource: null };
     const al = (rec, source) => {
-      const r = (rec && rec.recordset && rec.recordset[0]) || {};
+      const r = rec?.recordset?.[0] || {};
       if (!r.t) return false;
       out.loadedAt = String(r.t);
       const m = Number(r.m);

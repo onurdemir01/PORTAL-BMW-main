@@ -28,7 +28,7 @@
 const { varsayilanSira } = require('../util/siralama.cjs');
 
 const SOURCES = {
-  mw:  { table: 'dbo.MWAppsInventory',  label: 'JBoss uygulamalari' },
+  mw: { table: 'dbo.MWAppsInventory', label: 'JBoss uygulamalari' },
   was: { table: 'dbo.WASAppsInventory', label: 'WAS uygulamalari' },
 };
 
@@ -79,13 +79,13 @@ function registerAppEnvs(router) {
       const src = SOURCES[key];
 
       const rs = await query(
-        `SELECT app, env, host, domain FROM ${src.table} WHERE app IS NOT NULL AND app <> ''`
+        `SELECT app, env, host, domain FROM ${src.table} WHERE app IS NOT NULL AND app <> ''`,
       );
       const raw = rs.recordset || [];
 
-      const apps = new Map();        // base -> { base, envs: {ENV: {hosts:Set, rows}} }
+      const apps = new Map(); // base -> { base, envs: {ENV: {hosts:Set, rows}} }
       const nonStandard = new Map(); // app -> { app, reason, hosts:Set, envColumn:Set }
-      const conflicts = new Map();   // app -> { app, base, nameEnv, envColumn, hosts:Set }
+      const conflicts = new Map(); // app -> { app, base, nameEnv, envColumn, hosts:Set }
       // env sutunu ad kuralinda karsiligi OLMAYAN degerler (Alpha, ODM ve hic gorulmemis
       // degerler). Bunlar celiski SAYILMAZ ama gorunmez de kalmamali: adinda son ek
       // olmadigi icin bu uygulamalar matriste PROD kutusuna duser, oysa Alpha/ODM
@@ -102,12 +102,24 @@ function registerAppEnvs(router) {
         const wordHit = WORD_SUFFIX.exec(app);
 
         if (wordHit) {
-          const e = nonStandard.get(app) || { app, reason: `Ortam sözcüğüyle biten ad: ${wordHit[0]}`, hosts: new Set(), envColumn: new Set() };
-          e.hosts.add(host); e.envColumn.add(envCol);
+          const e = nonStandard.get(app) || {
+            app,
+            reason: `Ortam sözcüğüyle biten ad: ${wordHit[0]}`,
+            hosts: new Set(),
+            envColumn: new Set(),
+          };
+          e.hosts.add(host);
+          e.envColumn.add(envCol);
           nonStandard.set(app, e);
         } else if (!p.standard) {
-          const e = nonStandard.get(app) || { app, reason: p.reason, hosts: new Set(), envColumn: new Set() };
-          e.hosts.add(host); e.envColumn.add(envCol);
+          const e = nonStandard.get(app) || {
+            app,
+            reason: p.reason,
+            hosts: new Set(),
+            envColumn: new Set(),
+          };
+          e.hosts.add(host);
+          e.envColumn.add(envCol);
           nonStandard.set(app, e);
         }
 
@@ -123,30 +135,44 @@ function registerAppEnvs(router) {
 
         // Ad <-> env sutunu celiskisi
         const group = Object.hasOwn(COLUMN_ENV_GROUP, envCol)
-          ? COLUMN_ENV_GROUP[envCol] : undefined;
+          ? COLUMN_ENV_GROUP[envCol]
+          : undefined;
         if (group === undefined || group === null) {
           // undefined = hic gorulmemis env degeri, null = bilinen ama ad kuralinin
           // disindaki ortam (Alpha/ODM). Ikisi de celiski degil, ama raporlanir.
-          const u = outOfScope.get(envCol)
-            || { envColumn: envCol, apps: new Set(), known: group === null };
-          u.apps.add(app); outOfScope.set(envCol, u);
+          const u = outOfScope.get(envCol) || {
+            envColumn: envCol,
+            apps: new Set(),
+            known: group === null,
+          };
+          u.apps.add(app);
+          outOfScope.set(envCol, u);
         } else if (!group.includes(p.env)) {
-          const c = conflicts.get(app) || { app, base: p.base, nameEnv: p.env, envColumn: envCol, hosts: new Set() };
-          c.hosts.add(host); conflicts.set(app, c);
+          const c = conflicts.get(app) || {
+            app,
+            base: p.base,
+            nameEnv: p.env,
+            envColumn: envCol,
+            hosts: new Set(),
+          };
+          c.hosts.add(host);
+          conflicts.set(app, c);
         }
       }
 
       const sortTr = (a, b) => a.localeCompare(b, 'tr');
-      const rows = [...apps.values()].map((a) => {
-        const envs = {};
-        for (const e of ENVS) {
-          const v = a.envs[e];
-          envs[e] = v ? { hosts: [...v.hosts].sort(sortTr), rows: v.rows } : null;
-        }
-        const present = ENVS.filter((e) => envs[e]);
-        const missing = ENVS.filter((e) => !envs[e]);
-        return { base: a.base, envs, present, missing, missingCount: missing.length };
-      }).sort((x, y) => x.base.localeCompare(y.base, 'tr'));
+      const rows = [...apps.values()]
+        .map((a) => {
+          const envs = {};
+          for (const e of ENVS) {
+            const v = a.envs[e];
+            envs[e] = v ? { hosts: [...v.hosts].sort(sortTr), rows: v.rows } : null;
+          }
+          const present = ENVS.filter((e) => envs[e]);
+          const missing = ENVS.filter((e) => !envs[e]);
+          return { base: a.base, envs, present, missing, missingCount: missing.length };
+        })
+        .sort((x, y) => x.base.localeCompare(y.base, 'tr'));
 
       // En sik eksik-ortam desenleri (SPA tarafindaki ile ayni fikir).
       const patternMap = new Map();
@@ -172,7 +198,12 @@ function registerAppEnvs(router) {
         patterns,
         rows,
         nonStandard: [...nonStandard.values()]
-          .map((e) => ({ app: e.app, reason: e.reason, hosts: [...e.hosts].sort(sortTr), envColumn: [...e.envColumn].filter(Boolean).sort(varsayilanSira) }))
+          .map((e) => ({
+            app: e.app,
+            reason: e.reason,
+            hosts: [...e.hosts].sort(sortTr),
+            envColumn: [...e.envColumn].filter(Boolean).sort(varsayilanSira),
+          }))
           .sort((a, b) => a.app.localeCompare(b.app, 'tr')),
         conflicts: [...conflicts.values()]
           .map((c) => ({ ...c, hosts: [...c.hosts].sort(sortTr) }))
@@ -182,7 +213,9 @@ function registerAppEnvs(router) {
           .sort((a, b) => b.appCount - a.appCount),
       });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message || 'Uygulama ortam verisi alınamadı.' });
+      res
+        .status(500)
+        .json({ ok: false, message: err.message || 'Uygulama ortam verisi alınamadı.' });
     }
   });
 }

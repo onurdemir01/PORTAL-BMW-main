@@ -11,8 +11,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, DocumentIcon, DocumentPlusIcon, FolderIcon, FolderOpenIcon,
-  MagnifyingGlassIcon, PaperAirplaneIcon, ShieldCheckIcon, ServerStackIcon, ArrowUturnLeftIcon, Squares2X2Icon, ClockIcon, ChartBarIcon, TrashIcon, ScaleIcon, FunnelIcon, QuestionMarkCircleIcon,
+  ArrowPathIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  DocumentIcon,
+  DocumentPlusIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  MagnifyingGlassIcon,
+  PaperAirplaneIcon,
+  ShieldCheckIcon,
+  ServerStackIcon,
+  ArrowUturnLeftIcon,
+  Squares2X2Icon,
+  ClockIcon,
+  ChartBarIcon,
+  TrashIcon,
+  ScaleIcon,
+  FunnelIcon,
+  QuestionMarkCircleIcon,
   BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -41,18 +58,65 @@ import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
 import HelpModal from '@/components/common/HelpModal';
-import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
+import {
+  nginxConsoleApi,
+  type NcHost,
+  type NcTree,
+  type NcTreeDir,
+  type NcFile,
+  type NcCertsResult,
+  type NcAggCert,
+  type NcCert,
+  type NcChange,
+} from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import LoadError from '@/components/common/LoadError';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'yuktesti' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'];
+type Tab =
+  | 'dashboard'
+  | 'instances'
+  | 'config'
+  | 'certs'
+  | 'changes'
+  | 'orphans'
+  | 'drift'
+  | 'cis'
+  | 'ratelimit'
+  | 'rvpsecim'
+  | 'yuktesti'
+  | 'spadiscovery'
+  | 'api'
+  | 'envanter'
+  | 'audit';
+const TABS: readonly Tab[] = [
+  'dashboard',
+  'instances',
+  'config',
+  'changes',
+  'certs',
+  'orphans',
+  'drift',
+  'cis',
+  'ratelimit',
+  'rvpsecim',
+  'yuktesti',
+  'spadiscovery',
+  'api',
+  'envanter',
+  'audit',
+];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
-const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
-const smBtn = (primary = false): React.CSSProperties => (primary
-  ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' }
-  : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
+const SM_BTN =
+  'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+const smBtn = (primary = false): React.CSSProperties =>
+  primary
+    ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' }
+    : {
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      };
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
 // Sekme tanimlari TEK YERDE: hem sekme cubugu hem gorunurluk suzgeci (tab:nginx:<id>) bunu okur.
@@ -86,45 +150,97 @@ const HUB_AUDIT_TABS = [
   { id: 'audit', label: 'Audit' },
 ] as const;
 
-const fmtBytes = (n: number | null | undefined) => (n == null ? '—' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`);
+const fmtBytes = (n: number | null | undefined) =>
+  n == null
+    ? '—'
+    : n >= 1048576
+      ? `${(n / 1048576).toFixed(1)} MB`
+      : n >= 1024
+        ? `${(n / 1024).toFixed(1)} KB`
+        : `${n} B`;
 const shortSha = (s: string | null | undefined) => (s ? s.slice(0, 10) : '—');
 const ageOf = (iso: string | null | undefined) => {
   if (!iso) return null;
   const h = (Date.now() - new Date(iso).getTime()) / 3600000;
-  return h < 1 ? `${Math.max(1, Math.round(h * 60))} dk` : h < 48 ? `${Math.round(h)} sa` : `${Math.round(h / 24)} gün`;
+  return h < 1
+    ? `${Math.max(1, Math.round(h * 60))} dk`
+    : h < 48
+      ? `${Math.round(h)} sa`
+      : `${Math.round(h / 24)} gün`;
 };
-const daysTone = (d: number | null): 'danger' | 'warning' | 'success' | 'neutral' => (d == null ? 'neutral' : d < 0 ? 'danger' : d <= 30 ? 'danger' : d <= 90 ? 'warning' : 'success');
-const daysLabel = (d: number | null) => (d == null ? '?' : d < 0 ? `${-d} gün önce DOLDU` : `${d} gün`);
+const daysTone = (d: number | null): 'danger' | 'warning' | 'success' | 'neutral' =>
+  d == null ? 'neutral' : d < 0 ? 'danger' : d <= 30 ? 'danger' : d <= 90 ? 'warning' : 'success';
+const daysLabel = (d: number | null) =>
+  d == null ? '?' : d < 0 ? `${-d} gün önce DOLDU` : `${d} gün`;
 
 /** Instance group = servis (envanter service / services[0]); yoksa 'diğer'. */
-const groupKey = (h: NcHost | null | undefined) => (h ? (h.service || h.services?.[0] || 'diğer').toUpperCase() : '');
+const groupKey = (h: NcHost | null | undefined) =>
+  h ? (h.service || h.services?.[0] || 'diğer').toUpperCase() : '';
 
 /** Basit satir farki (LCS). 3000 satir ustunde yalniz sayilar. */
 function lineDiff(a: string, b: string): { added: number; removed: number; hunks: string[] } {
   const A = a.replace(/\r\n/g, '\n').split('\n');
   const B = b.replace(/\r\n/g, '\n').split('\n');
   if (A.length * B.length > 9_000_000) {
-    const sa = new Set(A), sb = new Set(B);
-    return { added: B.filter((l) => !sa.has(l)).length, removed: A.filter((l) => !sb.has(l)).length, hunks: ['(dosya büyük — satır satır fark gösterilmiyor)'] };
+    const sa = new Set(A),
+      sb = new Set(B);
+    return {
+      added: B.filter((l) => !sa.has(l)).length,
+      removed: A.filter((l) => !sb.has(l)).length,
+      hunks: ['(dosya büyük — satır satır fark gösterilmiyor)'],
+    };
   }
-  const n = A.length, m = B.length;
+  const n = A.length,
+    m = B.length;
   const dp: Uint16Array[] = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
   const out: string[] = [];
-  let i = 0, j = 0, added = 0, removed = 0;
+  let i = 0,
+    j = 0,
+    added = 0,
+    removed = 0;
   while (i < n && j < m) {
-    if (A[i] === B[j]) { out.push('  ' + A[i]); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push('- ' + A[i]); i++; removed++; }
-    else { out.push('+ ' + B[j]); j++; added++; }
+    if (A[i] === B[j]) {
+      out.push('  ' + A[i]);
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push('- ' + A[i]);
+      i++;
+      removed++;
+    } else {
+      out.push('+ ' + B[j]);
+      j++;
+      added++;
+    }
   }
-  while (i < n) { out.push('- ' + A[i++]); removed++; }
-  while (j < m) { out.push('+ ' + B[j++]); added++; }
+  while (i < n) {
+    out.push('- ' + A[i++]);
+    removed++;
+  }
+  while (j < m) {
+    out.push('+ ' + B[j++]);
+    added++;
+  }
   // Yalniz degisen satirlar + 2 satir baglam
   const keep = new Set<number>();
-  out.forEach((l, k) => { if (l[0] !== ' ') for (let c = k - 2; c <= k + 2; c++) keep.add(c); });
+  out.forEach((l, k) => {
+    if (l[0] !== ' ') for (let c = k - 2; c <= k + 2; c++) keep.add(c);
+  });
   const hunks: string[] = [];
   let last = -2;
-  out.forEach((l, k) => { if (!keep.has(k)) { return; } if (k !== last + 1 && hunks.length) { hunks.push('…'); } hunks.push(l); last = k; });
+  out.forEach((l, k) => {
+    if (!keep.has(k)) {
+      return;
+    }
+    if (k !== last + 1 && hunks.length) {
+      hunks.push('…');
+    }
+    hunks.push(l);
+    last = k;
+  });
   return { added, removed, hunks };
 }
 
@@ -157,8 +273,15 @@ export default function NginxConsolePage() {
     setHostsLoading(true);
     try {
       const r = await nginxConsoleApi.hosts();
-      if (r.ok) { setHosts(r.hosts); setHostsErr(null); } else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
-    } catch (e) { setHostsErr(e instanceof Error ? e.message : String(e)); } finally { setHostsLoading(false); }
+      if (r.ok) {
+        setHosts(r.hosts);
+        setHostsErr(null);
+      } else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
+    } catch (e) {
+      setHostsErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHostsLoading(false);
+    }
   }, []);
   useAsyncEffect(async () => {
     if (tab === 'dashboard' || tab === 'instances') await loadHosts();
@@ -167,20 +290,36 @@ export default function NginxConsolePage() {
     if (!list.length) return;
     try {
       const r = await nginxConsoleApi.refresh(list, false);
-      if (!r.ok) { toast.error(r.message || 'Başlatılamadı.'); return; }
+      if (!r.ok) {
+        toast.error(r.message || 'Başlatılamadı.');
+        return;
+      }
       toast.success(`Dokum başlatıldı (job ${r.jobId}).`);
       if (r.jobId != null) {
         let done = false;
-        addJob({ title: `Nginx dokum · ${list.length} sunucu #${r.jobId}`, fetchStatus: async () => {
-          const s = await nginxConsoleApi.jobStatus(r.awxServerId, r.jobId as number);
-          if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-          if (TERMINAL.has(s.status) && !done) { done = true; void loadHosts(); }
-          return { status: s.status, output: s.output || '', result: s.result };
-        } });
+        addJob({
+          title: `Nginx dokum · ${list.length} sunucu #${r.jobId}`,
+          fetchStatus: async () => {
+            const s = await nginxConsoleApi.jobStatus(r.awxServerId, r.jobId as number);
+            if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
+            if (TERMINAL.has(s.status) && !done) {
+              done = true;
+              void loadHosts();
+            }
+            return { status: s.status, output: s.output || '', result: s.result };
+          },
+        });
       }
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
   };
-  const go = (t: Tab, host?: string) => { if (host) { setFocusHost(host.toUpperCase()); } setTab(t); };
+  const go = (t: Tab, host?: string) => {
+    if (host) {
+      setFocusHost(host.toUpperCase());
+    }
+    setTab(t);
+  };
 
   // SEKME BAZLI GORUNURLUK (2026-09-23, kullanici: "istedigim kullanicilar yalniz istedigim
   // sekmeleri gorsun"). Varsayilan ACIK; Admin > Nginx Hub Erisimi bir kisiyi/grubu secilen
@@ -204,19 +343,46 @@ export default function NginxConsolePage() {
   // HANGI IS BESLIYOR (kullanici, 2026-09-22): Nginx Hub'da uc ayri kaynak yan yana duruyor;
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
-    dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
-    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', yuktesti: 'yuktesti', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
+    dashboard: 'console',
+    instances: 'console',
+    config: 'console',
+    changes: 'console',
+    certs: 'console',
+    orphans: 'console',
+    drift: 'console',
+    audit: 'audit',
+    cis: 'cis',
+    ratelimit: 'api',
+    rvpsecim: 'rvpstatic',
+    yuktesti: 'yuktesti',
+    spadiscovery: 'spa',
+    api: 'api',
+    envanter: 'inventory',
   };
   // ESKI SUNUCU NOTU (2026-11-12): sekmenin verisini getiren uc(lar) kac eski sunucuyu gizledi.
   const ESKI_KAYNAK: Record<Tab, readonly EskiKaynak[]> = {
-    dashboard: ['hosts'], instances: ['hosts'], config: ['hosts'], changes: ['changes'], certs: ['certs'],
-    orphans: ['orphans'], drift: ['drift'], audit: ['audit'], cis: ['cis'], ratelimit: ['ratelimit'], rvpsecim: [],
-    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter', 'upstream'],
+    dashboard: ['hosts'],
+    instances: ['hosts'],
+    config: ['hosts'],
+    changes: ['changes'],
+    certs: ['certs'],
+    orphans: ['orphans'],
+    drift: ['drift'],
+    audit: ['audit'],
+    cis: ['cis'],
+    ratelimit: ['ratelimit'],
+    rvpsecim: [],
+    yuktesti: [],
+    spadiscovery: ['spa', 'spaKesif'],
+    api: ['api', 'apiLocations'],
+    envanter: ['envanter', 'upstream'],
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
     const times = hosts.map((h) => h.seenAt || h.dumpedAt).filter(Boolean) as string[];
-    if (!times.length) { return null; }
+    if (!times.length) {
+      return null;
+    }
     times.sort((a, b) => a.localeCompare(b));
     return fmtDateTime(times.pop() as string);
   }, [hosts]);
@@ -225,58 +391,135 @@ export default function NginxConsolePage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2"><ServerStackIcon className="w-6 h-6" style={{ color: 'var(--nginx-green)' }} /> <span className="nginx-hub-label"><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span></h1>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <ServerStackIcon className="w-6 h-6" style={{ color: 'var(--nginx-green)' }} />{' '}
+            <span className="nginx-hub-label">
+              <span>Nginx</span> <span className="nginx-hub-word">Hub</span>
+            </span>
+          </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir; zamanlanmış tarama yalnız değişen sunucuları döker (parmak izi), "Yenile" tam dokum alır.
+            Tüm nginx sunucularının konfigürasyon ağacı, dosya içerikleri ve sertifikaları; tek
+            dosya değişikliği push (nginx -t, geri alma, reload). Veriler Ansible dokumundan gelir;
+            zamanlanmış tarama yalnız değişen sunucuları döker (parmak izi), "Yenile" tam dokum
+            alır.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${hubTabs.length ? '' : 'hidden'}`} style={{ background: 'var(--bg-elevated)' }}>
+          <div
+            className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${hubTabs.length ? '' : 'hidden'}`}
+            style={{ background: 'var(--bg-elevated)' }}
+          >
             {hubTabs.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`}
+                style={{
+                  background: tab === t.id ? 'var(--bg-surface)' : 'transparent',
+                  color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}
+              >
                 <t.icon className="w-4 h-4" /> {t.label}
               </button>
             ))}
           </div>
           {/* Denetim sekmeleri: ayri grup, ayni gorsel dil (kullanici, 2026-09-22) */}
-          <div className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${auditTabs.length ? '' : 'hidden'}`} style={{ background: 'var(--bg-elevated)' }} aria-label="Nginx denetim bölümleri">
+          <div
+            className={`flex gap-1 rounded-lg p-0.5 flex-wrap ${auditTabs.length ? '' : 'hidden'}`}
+            style={{ background: 'var(--bg-elevated)' }}
+            aria-label="Nginx denetim bölümleri"
+          >
             {auditTabs.map((t) => (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`} style={{ background: tab === t.id ? 'var(--bg-surface)' : 'transparent', color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`}
+                style={{
+                  background: tab === t.id ? 'var(--bg-surface)' : 'transparent',
+                  color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}
+              >
                 <ShieldCheckIcon className="w-4 h-4" /> {t.label}
               </button>
             ))}
           </div>
-          <button onClick={() => setShowHelp(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Denetim bölümleri nasıl okunur?" aria-label="Nasıl kullanılır?">?</button>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+            title="Denetim bölümleri nasıl okunur?"
+            aria-label="Nasıl kullanılır?"
+          >
+            ?
+          </button>
         </div>
       </div>
       {visibleIds.length === 0 && (
-        <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
-          Bu sayfada size açık bir bölüm yok. Erişim için yöneticinize başvurun (Admin &gt; Nginx Hub Erişimi).
+        <div
+          className="rounded-xl border px-4 py-3 text-sm"
+          style={{
+            borderColor: 'var(--border-subtle)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          Bu sayfada size açık bir bölüm yok. Erişim için yöneticinize başvurun (Admin &gt; Nginx
+          Hub Erişimi).
         </div>
       )}
       {visibleIds.includes(tab) && (
-        <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' && !hostsErr ? lastDump : undefined} />
+        <SourceNote
+          source={SOURCE_OF[tab]}
+          scanDate={SOURCE_OF[tab] === 'console' && !hostsErr ? lastDump : undefined}
+        />
       )}
       {visibleIds.includes(tab) && <EskiSunucuNotu kaynaklar={ESKI_KAYNAK[tab]} />}
       {(tab === 'dashboard' || tab === 'instances') && hostsErr ? (
-        <LoadError compact title="Nginx sunucu listesi okunamadı" message={hostsErr} onRetry={loadHosts} retrying={hostsLoading} testId="nc-hosts-hata" />
+        <LoadError
+          compact
+          title="Nginx sunucu listesi okunamadı"
+          message={hostsErr}
+          onRetry={loadHosts}
+          retrying={hostsLoading}
+          testId="nc-hosts-hata"
+        />
       ) : (
         <>
-          {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
-          {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={isAdmin ? refreshHosts : undefined} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+          {tab === 'dashboard' && canSee('tab:nginx:dashboard') && (
+            <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />
+          )}
+          {tab === 'instances' && canSee('tab:nginx:instances') && (
+            <InstancesTab
+              hosts={hosts}
+              loading={hostsLoading}
+              onRefreshHosts={isAdmin ? refreshHosts : undefined}
+              onOpen={(h) => go('config', h)}
+              onReload={loadHosts}
+            />
+          )}
           {/* Eski sunucu temizligi (2026-11-12): yalniz Admin; sunucu da requireAdmin ile kapali. */}
-          {tab === 'instances' && isAdmin && canSee('tab:nginx:instances') && <EskiSunucuTemizligi />}
+          {tab === 'instances' && isAdmin && canSee('tab:nginx:instances') && (
+            <EskiSunucuTemizligi />
+          )}
         </>
       )}
-      {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}
+      {tab === 'config' && canSee('tab:nginx:config') && (
+        <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />
+      )}
       {tab === 'changes' && canSee('tab:nginx:changes') && <ChangesTab />}
       {tab === 'certs' && canSee('tab:nginx:certs') && <CertsTab />}
-      {tab === 'orphans' && canSee('tab:nginx:orphans') && <OrphansTab isAdmin={isAdmin} onOpen={(h) => go('config', h)} />}
+      {tab === 'orphans' && canSee('tab:nginx:orphans') && (
+        <OrphansTab isAdmin={isAdmin} onOpen={(h) => go('config', h)} />
+      )}
       {tab === 'drift' && canSee('tab:nginx:drift') && <DriftTab onOpen={(h) => go('config', h)} />}
       {tab === 'rvpsecim' && canSee('tab:nginx:rvpsecim') && <RvpSecimTab />}
-      {tab === 'cis' && canSee('tab:nginx:cis') && <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />}
+      {tab === 'cis' && canSee('tab:nginx:cis') && (
+        <CisTab isAdmin={isAdmin} onOpenHost={(h) => go('config', h)} />
+      )}
       {tab === 'ratelimit' && canSee('tab:nginx:ratelimit') && <RateLimitTab />}
-      {tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin} kullaniciAdi={user?.username ?? null} />}
+      {tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && (
+        <YukTestiTab isAdmin={isAdmin} kullaniciAdi={user?.username ?? null} />
+      )}
       {tab === 'spadiscovery' && (canSee('tab:nginx:spadiscovery') || canSee('tab:nginx:spa')) && (
         <NginxSpaBirlesik
           kesifGorunur={canSee('tab:nginx:spadiscovery')}
@@ -286,13 +529,24 @@ export default function NginxConsolePage() {
       {tab === 'api' && canSee('tab:nginx:api') && <NginxApiEnvanteri />}
       {tab === 'envanter' && canSee('tab:nginx:envanter') && <NginxEnvanteri />}
       {tab === 'audit' && canSee('tab:nginx:audit') && <NginxAudit />}
-      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Nginx Hub — Denetim bölümleri" sections={NGINX_DENETIM_HELP} />
+      <HelpModal
+        open={showHelp}
+        onClose={() => setShowHelp(false)}
+        title="Nginx Hub — Denetim bölümleri"
+        sections={NGINX_DENETIM_HELP}
+      />
     </div>
   );
 }
 
 // ── Konfigurasyon ─────────────────────────────────────────────────────────────────────
-function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialHost?: string | null }) {
+function ConfigTab({
+  isAdmin,
+  initialHost = null,
+}: {
+  isAdmin: boolean;
+  initialHost?: string | null;
+}) {
   const { addJob } = useJobTracker();
   const [hosts, setHosts] = useState<NcHost[]>([]);
   const [hostsErr, setHostsErr] = useState('');
@@ -312,22 +566,42 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
   // Publish hedefleri (NIM "instance group"): varsayilan yalniz acik sunucu; ayni servisin
   // dokumu olan diger sunuculari da secilebilir. Host basina beklenen sha karsilastirmadan gelir.
   const [pubHosts, setPubHosts] = useState<Set<string>>(new Set());
-  const [pubShas, setPubShas] = useState<Record<string, { sha256: string | null; exists: boolean }>>({});
+  const [pubShas, setPubShas] = useState<
+    Record<string, { sha256: string | null; exists: boolean }>
+  >({});
   const [histOpen, setHistOpen] = useState(false);
-  const [compare, setCompare] = useState<{ path: string; rows: { host: string; exists: boolean; sha256: string | null; mtime: string | null }[]; variants: number } | null>(null);
+  const [compare, setCompare] = useState<{
+    path: string;
+    rows: { host: string; exists: boolean; sha256: string | null; mtime: string | null }[];
+    variants: number;
+  } | null>(null);
 
   const loadHosts = useCallback(async () => {
     try {
       const r = await nginxConsoleApi.hosts();
-      if (r.ok) { setHosts(r.hosts); setHostsErr(r.inventoryError ? `Envanter okunamadı (${r.inventoryError}); yalnız dokumu olan sunucular listelendi.` : ''); }
-      else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
-    } catch (e) { setHostsErr(e instanceof Error ? e.message : String(e)); }
+      if (r.ok) {
+        setHosts(r.hosts);
+        setHostsErr(
+          r.inventoryError
+            ? `Envanter okunamadı (${r.inventoryError}); yalnız dokumu olan sunucular listelendi.`
+            : '',
+        );
+      } else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
+    } catch (e) {
+      setHostsErr(e instanceof Error ? e.message : String(e));
+    }
   }, []);
-  useAsyncEffect(async () => { await loadHosts(); }, [loadHosts]);
+  useAsyncEffect(async () => {
+    await loadHosts();
+  }, [loadHosts]);
 
   const loadTree = useCallback(async (h: string) => {
     setTreeLoading(true);
-    try { setTree(await nginxConsoleApi.tree(h)); } finally { setTreeLoading(false); }
+    try {
+      setTree(await nginxConsoleApi.tree(h));
+    } finally {
+      setTreeLoading(false);
+    }
   }, []);
   useAsyncEffect(async () => {
     if (!cur) return;
@@ -346,8 +620,15 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
   const openFile = async (p: string) => {
     if (!cur) return;
     const f = await nginxConsoleApi.file(cur, p);
-    if (!f.ok) { toast.error(f.message || 'Dosya okunamadı.'); return; }
-    setFile(f); setDraft(f.content || ''); setMode('update'); setNewPath(''); setHistOpen(false);
+    if (!f.ok) {
+      toast.error(f.message || 'Dosya okunamadı.');
+      return;
+    }
+    setFile(f);
+    setDraft(f.content || '');
+    setMode('update');
+    setNewPath('');
+    setHistOpen(false);
   };
 
   // Servis -> sunucular
@@ -355,7 +636,17 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
     const needle = q.trim().toLowerCase();
     const g = new Map<string, NcHost[]>();
     for (const h of hosts) {
-      if (needle && !(h.host.toLowerCase().includes(needle) || [h.service, ...(h.services || [])].some((s) => (s || '').toLowerCase().includes(needle)) || (h.env || '').includes(needle))) continue;
+      if (
+        needle &&
+        !(
+          h.host.toLowerCase().includes(needle) ||
+          [h.service, ...(h.services || [])].some((s) =>
+            (s || '').toLowerCase().includes(needle),
+          ) ||
+          (h.env || '').includes(needle)
+        )
+      )
+        continue;
       const key = groupKey(h);
       if (!g.has(key)) g.set(key, []);
       g.get(key)!.push(h);
@@ -363,7 +654,11 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
     return [...g.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [hosts, q]);
 
-  function trackJob(title: string, r: { jobId: number | null; awxServerId: number }, onDone?: () => void) {
+  function trackJob(
+    title: string,
+    r: { jobId: number | null; awxServerId: number },
+    onDone?: () => void,
+  ) {
     if (r.jobId == null) return;
     let done = false;
     addJob({
@@ -371,227 +666,692 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
       fetchStatus: async () => {
         const s = await nginxConsoleApi.jobStatus(r.awxServerId, r.jobId as number);
         if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-        if (TERMINAL.has(s.status) && !done) { done = true; onDone?.(); }
+        if (TERMINAL.has(s.status) && !done) {
+          done = true;
+          onDone?.();
+        }
         return { status: s.status, output: s.output || '', result: s.result };
       },
     });
   }
 
   // Onaylar Portal'in kendi penceresinde (tarayici confirm'i YOK — kullanici, 2026-09-19)
-  const [ask, setAsk] = useState<{ title: string; body: React.ReactNode; okLabel: string; onOk: () => void } | null>(null);
+  const [ask, setAsk] = useState<{
+    title: string;
+    body: React.ReactNode;
+    okLabel: string;
+    onOk: () => void;
+  } | null>(null);
   const refresh = async (list: string[], all = false, confirmed = false) => {
     if (!all && !list.length) return;
     if (!confirmed && all) {
-      setAsk({ title: 'Tüm filoyu yenile', okLabel: 'Başlat', onOk: () => refresh([], true, true), body: <>Tüm nginx sunucuları envanterden keşfedilip dokumu alınacak (<b>{hosts.length}</b> sunucu). Sunucu başına birkaç saniye; filo geneli AWX forks ayarına göre dakikalar sürebilir. İş penceresinden izlenebilir.</> });
+      setAsk({
+        title: 'Tüm filoyu yenile',
+        okLabel: 'Başlat',
+        onOk: () => refresh([], true, true),
+        body: (
+          <>
+            Tüm nginx sunucuları envanterden keşfedilip dokumu alınacak (<b>{hosts.length}</b>{' '}
+            sunucu). Sunucu başına birkaç saniye; filo geneli AWX forks ayarına göre dakikalar
+            sürebilir. İş penceresinden izlenebilir.
+          </>
+        ),
+      });
       return;
     }
     if (!confirmed && !all && list.length > 20) {
-      setAsk({ title: `${list.length} sunucuyu yenile`, okLabel: 'Başlat', onOk: () => refresh(list, false, true), body: <>{list.length} sunucunun dokumu alınacak. Devam edilsin mi?</> });
+      setAsk({
+        title: `${list.length} sunucuyu yenile`,
+        okLabel: 'Başlat',
+        onOk: () => refresh(list, false, true),
+        body: <>{list.length} sunucunun dokumu alınacak. Devam edilsin mi?</>,
+      });
       return;
     }
     setBusy(true);
     try {
       const r = await nginxConsoleApi.refresh(all ? [] : list, all);
-      if (!r.ok) { toast.error(r.message || 'Başlatılamadı.'); return; }
+      if (!r.ok) {
+        toast.error(r.message || 'Başlatılamadı.');
+        return;
+      }
       toast.success(`Dokum başlatıldı (job ${r.jobId}) — bitince liste kendini yeniler.`);
-      trackJob(all ? `Nginx dokum · TÜM filo #${r.jobId}` : `Nginx dokum · ${list.length} sunucu #${r.jobId}`, r, () => { void loadHosts(); if (cur && (all || list.includes(cur))) void loadTree(cur); });
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+      trackJob(
+        all
+          ? `Nginx dokum · TÜM filo #${r.jobId}`
+          : `Nginx dokum · ${list.length} sunucu #${r.jobId}`,
+        r,
+        () => {
+          void loadHosts();
+          if (cur && (all || list.includes(cur))) void loadTree(cur);
+        },
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Onay penceresi acilirken: hedef = acik sunucu; ayni servisin diger sunucularinda bu dosya var mi/sha ne?
   const openConfirm = async () => {
     if (!cur) return;
     const p = mode === 'create' ? newPath.trim() : file?.path || '';
-    const group = hosts.filter((h) => h.dumpedAt && groupKey(h) === groupKey(curHost)).map((h) => h.host);
+    const group = hosts
+      .filter((h) => h.dumpedAt && groupKey(h) === groupKey(curHost))
+      .map((h) => h.host);
     setPubHosts(new Set([cur]));
     try {
       const r = await nginxConsoleApi.compare(p, group.length ? group : [cur]);
-      if (r.ok) setPubShas(Object.fromEntries(r.rows.map((x) => [x.host, { sha256: x.sha256, exists: x.exists }])));
-    } catch { setPubShas({}); }
+      if (r.ok)
+        setPubShas(
+          Object.fromEntries(r.rows.map((x) => [x.host, { sha256: x.sha256, exists: x.exists }])),
+        );
+    } catch {
+      setPubShas({});
+    }
     setConfirm(true);
   };
 
   const doPush = async (force = false) => {
-    if (!cur) { return; }
+    if (!cur) {
+      return;
+    }
     const p = mode === 'create' ? newPath.trim() : file?.path || '';
     const targets = [...pubHosts];
     const expectedSha: Record<string, string> = {};
-    for (const h of targets) { const sha = h === cur && file ? file.sha256 : pubShas[h]?.sha256; if (sha) { expectedSha[h] = sha; } }
+    for (const h of targets) {
+      const sha = h === cur && file ? file.sha256 : pubShas[h]?.sha256;
+      if (sha) {
+        expectedSha[h] = sha;
+      }
+    }
     setBusy(true);
     try {
-      const r = await nginxConsoleApi.push({ hosts: targets, path: p, mode, content: draft, expectedSha, force });
+      const r = await nginxConsoleApi.push({
+        hosts: targets,
+        path: p,
+        mode,
+        content: draft,
+        expectedSha,
+        force,
+      });
       if (!r.ok) {
         if (r.conflicts?.length) {
-          setAsk({ title: 'Ön kontrol uyarısı', okLabel: 'Yine de yayınla (force)', onOk: () => { void doPush(true); }, body: <><div>{r.message}</div><div className="mt-1" style={{ color: 'var(--text-muted)' }}>Force ile sunucudaki mevcut hal üzerine yazılır; yedek yine alınır.</div></> });
+          setAsk({
+            title: 'Ön kontrol uyarısı',
+            okLabel: 'Yine de yayınla (force)',
+            onOk: () => {
+              void doPush(true);
+            },
+            body: (
+              <>
+                <div>{r.message}</div>
+                <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Force ile sunucudaki mevcut hal üzerine yazılır; yedek yine alınır.
+                </div>
+              </>
+            ),
+          });
           return;
         }
-        toast.error(r.message || 'Publish başlatılamadı.'); return;
+        toast.error(r.message || 'Publish başlatılamadı.');
+        return;
       }
       setConfirm(false);
-      toast.success(`Publish başlatıldı (job ${r.jobId}, ${targets.length} sunucu) — sonuç iş penceresinde; bitince dosya yeniden okunur.`);
-      trackJob(`Nginx publish · ${p.split('/').pop()} → ${targets.length === 1 ? targets[0] : targets.length + ' sunucu'} #${r.jobId}`, r, async () => { await loadTree(cur); if (mode === 'create') { setMode('update'); await openFile(p); } else await openFile(p); void loadHosts(); });
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+      toast.success(
+        `Publish başlatıldı (job ${r.jobId}, ${targets.length} sunucu) — sonuç iş penceresinde; bitince dosya yeniden okunur.`,
+      );
+      trackJob(
+        `Nginx publish · ${p.split('/').pop()} → ${targets.length === 1 ? targets[0] : targets.length + ' sunucu'} #${r.jobId}`,
+        r,
+        async () => {
+          await loadTree(cur);
+          if (mode === 'create') {
+            setMode('update');
+            await openFile(p);
+          } else await openFile(p);
+          void loadHosts();
+        },
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const dirty = mode === 'create' ? draft.trim().length > 0 : !!file && draft !== (file.content || '');
-  const diff = useMemo(() => (confirm ? lineDiff(mode === 'create' ? '' : file?.content || '', draft) : null), [confirm, draft, file, mode]);
+  const dirty =
+    mode === 'create' ? draft.trim().length > 0 : !!file && draft !== (file.content || '');
+  const diff = useMemo(
+    () => (confirm ? lineDiff(mode === 'create' ? '' : file?.content || '', draft) : null),
+    [confirm, draft, file, mode],
+  );
   const curHost = hosts.find((h) => h.host === cur) || null;
-  const groupHosts = useMemo(() => hosts.filter((h) => h.dumpedAt && h.host !== cur && groupKey(h) === groupKey(curHost)), [hosts, cur, curHost]);
+  const groupHosts = useMemo(
+    () => hosts.filter((h) => h.dumpedAt && h.host !== cur && groupKey(h) === groupKey(curHost)),
+    [hosts, cur, curHost],
+  );
 
   return (
     <div className="grid gap-3 grid-cols-1 xl:[grid-template-columns:minmax(16rem,20rem)_minmax(16rem,22rem)_1fr]">
       {/* Sol: sunucular */}
-      <Panel dense title={<span className="flex items-center gap-2">Sunucular <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>{hosts.length}</span></span>}>
+      <Panel
+        dense
+        title={
+          <span className="flex items-center gap-2">
+            Sunucular{' '}
+            <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>
+              {hosts.length}
+            </span>
+          </span>
+        }
+      >
         <div className="p-2 space-y-2">
           <div className="relative">
-            <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sunucu ara" placeholder="sunucu / servis / ortam" className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }} />
+            <MagnifyingGlassIcon
+              className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Sunucu ara"
+              placeholder="sunucu / servis / ortam"
+              className="w-full pl-8 pr-2 py-1.5 text-xs border rounded-lg"
+              style={{ borderColor: 'var(--border)' }}
+            />
           </div>
           {/* Dokum araclari: baslik satirinda DEGIL, arama kutusunun altinda kendi satirinda */}
           {/* Dokum yenileme AWX isi baslatir: yalniz Admin (salt okunur erisimde gizli). */}
-          {isAdmin && <div className="flex items-center gap-1.5 flex-wrap">
-            <button disabled={busy || checked.size === 0} onClick={() => refresh([...checked])} className={SM_BTN} style={smBtn(true)} title="Seçili sunucuların dokumunu Ansible ile yenile (sunucu başına saniyeler)">
-              <ArrowPathIcon className="w-3.5 h-3.5" />Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
-            </button>
-            <button disabled={busy} onClick={() => refresh([], true)} className={SM_BTN} style={smBtn()} title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk">Tüm filo</button>
-            {checked.size > 0 && <button onClick={() => setChecked(new Set())} className={SM_BTN} style={smBtn()} title="seçimi temizle">Temizle</button>}
-          </div>}
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                disabled={busy || checked.size === 0}
+                onClick={() => refresh([...checked])}
+                className={SM_BTN}
+                style={smBtn(true)}
+                title="Seçili sunucuların dokumunu Ansible ile yenile (sunucu başına saniyeler)"
+              >
+                <ArrowPathIcon className="w-3.5 h-3.5" />
+                Seçilileri yenile{checked.size ? ` (${checked.size})` : ''}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => refresh([], true)}
+                className={SM_BTN}
+                style={smBtn()}
+                title="Tüm nginx filosu envanterden keşfedilir (nginx_audit ile aynı betik) — 30-40 dk"
+              >
+                Tüm filo
+              </button>
+              {checked.size > 0 && (
+                <button
+                  onClick={() => setChecked(new Set())}
+                  className={SM_BTN}
+                  style={smBtn()}
+                  title="seçimi temizle"
+                >
+                  Temizle
+                </button>
+              )}
+            </div>
+          )}
           {hostsErr && <div className="text-[11px] text-amber-700">{hostsErr}</div>}
           <div className="max-h-[70vh] overflow-y-auto space-y-1">
             {groups.map(([svc, list]) => {
               const open = openSvc.has(svc) || !!q;
               const allChecked = list.every((h) => checked.has(h.host));
               return (
-                <div key={svc} className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+                <div
+                  key={svc}
+                  className="rounded-lg border"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
                   <div className="flex items-center gap-1 px-2 py-1">
-                    <button onClick={() => setOpenSvc((s) => { const n = new Set(s); n.has(svc) ? n.delete(svc) : n.add(svc); return n; })} className="flex items-center gap-1 text-xs font-semibold flex-1 text-left">
-                      {open ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}{svc}
-                      <span className="text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>{list.length}</span>
-                    </button>
-                    <input type="checkbox" checked={allChecked} onChange={(e) => setChecked((s) => { const n = new Set(s); list.forEach((h) => (e.target.checked ? n.add(h.host) : n.delete(h.host))); return n; })} title="servisin tüm sunucularını seç" />
-                  </div>
-                  {open && list.map((h) => (
-                    // Sunucuyu SECEN kisim gercek bir dugme (klavyeyle odaklanir, Enter / Space ile
-                    // calisir); onay kutusu dugmenin icine giremeyecegi icin yaninda. Dolgu dugmede
-                    // (py-1 pr-2) ve satirda (pl-2): satir eskisiyle ayni olcude.
-                    <div key={h.host} className={`flex items-center gap-1.5 pl-2 text-xs ${cur === h.host ? 'font-semibold' : ''}`} style={{ background: cur === h.host ? 'var(--bg-elevated)' : undefined }}>
-                      <input type="checkbox" checked={checked.has(h.host)} onClick={(e) => e.stopPropagation()} onChange={(e) => setChecked((s) => { const n = new Set(s); e.target.checked ? n.add(h.host) : n.delete(h.host); return n; })} />
-                      <button type="button" className="flex flex-1 min-w-0 items-center gap-1.5 py-1 pr-2 text-left cursor-pointer" aria-current={cur === h.host ? 'true' : undefined} onClick={() => setCur(h.host)}>
-                      <span className="font-mono flex-1 truncate" title={`${h.host}${h.ip ? ' · ' + h.ip : ''}${h.nginxVersion ? ' · nginx ' + h.nginxVersion : ''}`}>{h.host}</span>
-                      {h.env && <span className="text-[9px] uppercase px-1 rounded border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>{h.env}</span>}
-                      {h.dumpedAt ? (
-                        <span className={`w-2 h-2 rounded-full ${h.nginxT === 'fail' ? 'bg-red-500' : 'bg-green-500'}`} title={`dokum ${ageOf(h.dumpedAt)} önce · nginx -t ${h.nginxT || '?'}${h.certMinDays != null ? ` · en yakın sertifika ${daysLabel(h.certMinDays)}` : ''}`} />
+                    <button
+                      onClick={() =>
+                        setOpenSvc((s) => {
+                          const n = new Set(s);
+                          n.has(svc) ? n.delete(svc) : n.add(svc);
+                          return n;
+                        })
+                      }
+                      className="flex items-center gap-1 text-xs font-semibold flex-1 text-left"
+                    >
+                      {open ? (
+                        <ChevronDownIcon className="w-3.5 h-3.5" />
                       ) : (
-                        <span className="w-2 h-2 rounded-full bg-gray-300" title="dokum yok — Yenile" />
+                        <ChevronRightIcon className="w-3.5 h-3.5" />
                       )}
-                      </button>
-                    </div>
-                  ))}
+                      {svc}
+                      <span
+                        className="text-[10px] font-normal"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {list.length}
+                      </span>
+                    </button>
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={(e) =>
+                        setChecked((s) => {
+                          const n = new Set(s);
+                          list.forEach((h) =>
+                            e.target.checked ? n.add(h.host) : n.delete(h.host),
+                          );
+                          return n;
+                        })
+                      }
+                      title="servisin tüm sunucularını seç"
+                    />
+                  </div>
+                  {open &&
+                    list.map((h) => (
+                      // Sunucuyu SECEN kisim gercek bir dugme (klavyeyle odaklanir, Enter / Space ile
+                      // calisir); onay kutusu dugmenin icine giremeyecegi icin yaninda. Dolgu dugmede
+                      // (py-1 pr-2) ve satirda (pl-2): satir eskisiyle ayni olcude.
+                      <div
+                        key={h.host}
+                        className={`flex items-center gap-1.5 pl-2 text-xs ${cur === h.host ? 'font-semibold' : ''}`}
+                        style={{ background: cur === h.host ? 'var(--bg-elevated)' : undefined }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked.has(h.host)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) =>
+                            setChecked((s) => {
+                              const n = new Set(s);
+                              e.target.checked ? n.add(h.host) : n.delete(h.host);
+                              return n;
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="flex flex-1 min-w-0 items-center gap-1.5 py-1 pr-2 text-left cursor-pointer"
+                          aria-current={cur === h.host ? 'true' : undefined}
+                          onClick={() => setCur(h.host)}
+                        >
+                          <span
+                            className="font-mono flex-1 truncate"
+                            title={`${h.host}${h.ip ? ' · ' + h.ip : ''}${h.nginxVersion ? ' · nginx ' + h.nginxVersion : ''}`}
+                          >
+                            {h.host}
+                          </span>
+                          {h.env && (
+                            <span
+                              className="text-[9px] uppercase px-1 rounded border"
+                              style={{
+                                borderColor: 'var(--border-subtle)',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              {h.env}
+                            </span>
+                          )}
+                          {h.dumpedAt ? (
+                            <span
+                              className={`w-2 h-2 rounded-full ${h.nginxT === 'fail' ? 'bg-red-500' : 'bg-green-500'}`}
+                              title={`dokum ${ageOf(h.dumpedAt)} önce · nginx -t ${h.nginxT || '?'}${h.certMinDays != null ? ` · en yakın sertifika ${daysLabel(h.certMinDays)}` : ''}`}
+                            />
+                          ) : (
+                            <span
+                              className="w-2 h-2 rounded-full bg-gray-300"
+                              title="dokum yok — Yenile"
+                            />
+                          )}
+                        </button>
+                      </div>
+                    ))}
                 </div>
               );
             })}
-            {groups.length === 0 && <div className="text-xs p-2" style={{ color: 'var(--text-muted)' }}>Sunucu yok.</div>}
+            {groups.length === 0 && (
+              <div className="text-xs p-2" style={{ color: 'var(--text-muted)' }}>
+                Sunucu yok.
+              </div>
+            )}
           </div>
         </div>
       </Panel>
 
       {/* Orta: agac */}
-      <Panel dense title={cur ? <span className="font-mono">{cur}</span> : 'Konfigürasyon ağacı'}
-        actions={cur && (
-          <div className="flex items-center gap-1">
-            <button disabled={busy} onClick={() => refresh([cur])} className={SM_BTN} style={smBtn()} title="Bu sunucunun dokumunu yenile"><ArrowPathIcon className="w-3.5 h-3.5" />Yenile</button>
-            {isAdmin && <button disabled={busy || !tree?.dumped} onClick={() => { setNewModal(true); }} className={SM_BTN} style={smBtn()} title="Bu sunucuda yeni konfigürasyon dosyası"><DocumentPlusIcon className="w-3.5 h-3.5" />Yeni dosya</button>}
-          </div>
-        )}>
+      <Panel
+        dense
+        title={cur ? <span className="font-mono">{cur}</span> : 'Konfigürasyon ağacı'}
+        actions={
+          cur && (
+            <div className="flex items-center gap-1">
+              <button
+                disabled={busy}
+                onClick={() => refresh([cur])}
+                className={SM_BTN}
+                style={smBtn()}
+                title="Bu sunucunun dokumunu yenile"
+              >
+                <ArrowPathIcon className="w-3.5 h-3.5" />
+                Yenile
+              </button>
+              {isAdmin && (
+                <button
+                  disabled={busy || !tree?.dumped}
+                  onClick={() => {
+                    setNewModal(true);
+                  }}
+                  className={SM_BTN}
+                  style={smBtn()}
+                  title="Bu sunucuda yeni konfigürasyon dosyası"
+                >
+                  <DocumentPlusIcon className="w-3.5 h-3.5" />
+                  Yeni dosya
+                </button>
+              )}
+            </div>
+          )
+        }
+      >
         <div className="p-2 max-h-[75vh] overflow-auto text-xs">
           {!cur && <div style={{ color: 'var(--text-muted)' }}>Soldan bir sunucu seçin.</div>}
           {cur && treeLoading && <LoadingLogo compact />}
           {cur && tree && !tree.dumped && <div className="text-amber-700">{tree.message}</div>}
           {cur && tree?.dumped && (
             <>
-              <div className="mb-2 flex flex-wrap gap-2 items-center" style={{ color: 'var(--text-muted)' }}>
-                <span>dokum {fmtDateTime(tree.dumpedAt || null)} ({ageOf(tree.dumpedAt)} önce)</span>
-                <Pill tone={tree.nginxT?.status === 'ok' ? 'success' : 'danger'} title={tree.nginxT?.output}>nginx -t {tree.nginxT?.status}</Pill>
-                <span>{tree.fileCount} dosya · {tree.certs?.length || 0} sertifika</span>
+              <div
+                className="mb-2 flex flex-wrap gap-2 items-center"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <span>
+                  dokum {fmtDateTime(tree.dumpedAt || null)} ({ageOf(tree.dumpedAt)} önce)
+                </span>
+                <Pill
+                  tone={tree.nginxT?.status === 'ok' ? 'success' : 'danger'}
+                  title={tree.nginxT?.output}
+                >
+                  nginx -t {tree.nginxT?.status}
+                </Pill>
+                <span>
+                  {tree.fileCount} dosya · {tree.certs?.length || 0} sertifika
+                </span>
                 {curHost?.service && (
-                  <span title={curHost.etiket ? `Elle etiket (Envanter) · conf.d: ${curHost.etiket.oto.join(', ') || '—'}` : undefined}>
-                    servis {(curHost.services?.length ? curHost.services.filter((s) => s !== 'too_many') : [curHost.service]).join(', ') || curHost.service}
+                  <span
+                    title={
+                      curHost.etiket
+                        ? `Elle etiket (Envanter) · conf.d: ${curHost.etiket.oto.join(', ') || '—'}`
+                        : undefined
+                    }
+                  >
+                    servis{' '}
+                    {(curHost.services?.length
+                      ? curHost.services.filter((s) => s !== 'too_many')
+                      : [curHost.service]
+                    ).join(', ') || curHost.service}
                     {curHost.etiket ? ' (elle)' : ''}
                   </span>
                 )}
               </div>
-              {tree.tree && <TreeNode node={tree.tree} depth={0} onOpen={openFile} current={file?.path || null} defaultOpen />}
+              {tree.tree && (
+                <TreeNode
+                  node={tree.tree}
+                  depth={0}
+                  onOpen={openFile}
+                  current={file?.path || null}
+                  defaultOpen
+                />
+              )}
             </>
           )}
         </div>
       </Panel>
 
       {/* Sag: editor */}
-      <Panel dense title={
-        mode === 'create' ? <span title={newPath}>Yeni dosya · <span className="font-mono text-[11px]">{newPath.split('/').pop()}</span></span> : file ? <span className="font-mono text-[12px]" title={file.path}>{file.path.split('/').pop()}</span> : 'Dosya'
-      } actions={(file || mode === 'create') && (
-        <div className="flex items-center gap-1">
-          {file && mode === 'update' && (
-            <>
-              <button onClick={async () => { const r = await nginxConsoleApi.compare(file.path); if (r.ok) setCompare(r); }} className={SM_BTN} style={smBtn()} title="Bu yol diğer sunucularda aynı mı?">Diğer sunucularda</button>
-              <button onClick={() => setHistOpen((o) => !o)} className={SM_BTN} style={smBtn(histOpen)} title="Bu dosyanın sürüm geçmişi (Git gibi)"><ClockIcon className="w-3.5 h-3.5" />Geçmiş</button>
-            </>
-          )}
-          <button disabled={!dirty} onClick={() => { if (mode === 'create') { setMode('update'); setDraft(file?.content || ''); } else setDraft(file?.content || ''); }} className={SM_BTN} style={smBtn()}><ArrowUturnLeftIcon className="w-3.5 h-3.5" />Geri al</button>
-          {isAdmin && <button disabled={!dirty || busy} onClick={openConfirm} className={SM_BTN} style={smBtn(true)} title="Sunucuya yayınla: kilit → yedek → yaz → nginx -t → reload"><PaperAirplaneIcon className="w-3.5 h-3.5" />Yayınla (Publish)</button>}
-        </div>
-      )}>
+      <Panel
+        dense
+        title={
+          mode === 'create' ? (
+            <span title={newPath}>
+              Yeni dosya · <span className="font-mono text-[11px]">{newPath.split('/').pop()}</span>
+            </span>
+          ) : file ? (
+            <span className="font-mono text-[12px]" title={file.path}>
+              {file.path.split('/').pop()}
+            </span>
+          ) : (
+            'Dosya'
+          )
+        }
+        actions={
+          (file || mode === 'create') && (
+            <div className="flex items-center gap-1">
+              {file && mode === 'update' && (
+                <>
+                  <button
+                    onClick={async () => {
+                      const r = await nginxConsoleApi.compare(file.path);
+                      if (r.ok) setCompare(r);
+                    }}
+                    className={SM_BTN}
+                    style={smBtn()}
+                    title="Bu yol diğer sunucularda aynı mı?"
+                  >
+                    Diğer sunucularda
+                  </button>
+                  <button
+                    onClick={() => setHistOpen((o) => !o)}
+                    className={SM_BTN}
+                    style={smBtn(histOpen)}
+                    title="Bu dosyanın sürüm geçmişi (Git gibi)"
+                  >
+                    <ClockIcon className="w-3.5 h-3.5" />
+                    Geçmiş
+                  </button>
+                </>
+              )}
+              <button
+                disabled={!dirty}
+                onClick={() => {
+                  if (mode === 'create') {
+                    setMode('update');
+                    setDraft(file?.content || '');
+                  } else setDraft(file?.content || '');
+                }}
+                className={SM_BTN}
+                style={smBtn()}
+              >
+                <ArrowUturnLeftIcon className="w-3.5 h-3.5" />
+                Geri al
+              </button>
+              {isAdmin && (
+                <button
+                  disabled={!dirty || busy}
+                  onClick={openConfirm}
+                  className={SM_BTN}
+                  style={smBtn(true)}
+                  title="Sunucuya yayınla: kilit → yedek → yaz → nginx -t → reload"
+                >
+                  <PaperAirplaneIcon className="w-3.5 h-3.5" />
+                  Yayınla (Publish)
+                </button>
+              )}
+            </div>
+          )
+        }
+      >
         <div className="p-2">
-          {!file && mode !== 'create' && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Ağaçtan bir dosya seçin{isAdmin ? ' ya da "Yeni dosya" oluşturun' : ''}.</div>}
+          {!file && mode !== 'create' && (
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Ağaçtan bir dosya seçin{isAdmin ? ' ya da "Yeni dosya" oluşturun' : ''}.
+            </div>
+          )}
           {(file || mode === 'create') && (
             <>
               {file && mode === 'update' && (
-                <div className="mb-1 text-[11px] flex flex-wrap gap-3" style={{ color: 'var(--text-muted)' }}>
+                <div
+                  className="mb-1 text-[11px] flex flex-wrap gap-3"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   <span className="font-mono break-all">{file.path}</span>
-                  <span>sha {shortSha(file.sha256)}</span><span>{fmtBytes(file.size)}</span><span>değişim {file.mtime || '—'}</span>
+                  <span>sha {shortSha(file.sha256)}</span>
+                  <span>{fmtBytes(file.size)}</span>
+                  <span>değişim {file.mtime || '—'}</span>
                   {dirty && <Pill tone="warning">değişti — push'lanmadı</Pill>}
                   {file.tooLarge && <Pill tone="danger">512 KB üstü — içerik dokumde yok</Pill>}
                 </div>
               )}
               {histOpen && file && mode === 'update' && cur && (
-                <FileHistory host={cur} path={file.path} currentSha={file.sha256} isAdmin={isAdmin} onRestore={(content) => { setDraft(content); setHistOpen(false); toast.success('Sürüm editöre alındı — yayınlamak için "Yayınla (Publish)".'); }} />
+                <FileHistory
+                  host={cur}
+                  path={file.path}
+                  currentSha={file.sha256}
+                  isAdmin={isAdmin}
+                  onRestore={(content) => {
+                    setDraft(content);
+                    setHistOpen(false);
+                    toast.success('Sürüm editöre alındı — yayınlamak için "Yayınla (Publish)".');
+                  }}
+                />
               )}
-              <textarea value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={!isAdmin || !!file?.tooLarge} spellCheck={false} className="w-full font-mono text-[12px] leading-5 p-2 border rounded-lg" style={{ minHeight: histOpen ? '40vh' : '65vh', borderColor: 'var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', tabSize: 4 }} />
-              {!isAdmin && <div className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Salt okunur — değişiklik yalnız Admin.</div>}
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                readOnly={!isAdmin || !!file?.tooLarge}
+                spellCheck={false}
+                className="w-full font-mono text-[12px] leading-5 p-2 border rounded-lg"
+                style={{
+                  minHeight: histOpen ? '40vh' : '65vh',
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-base)',
+                  color: 'var(--text-primary)',
+                  tabSize: 4,
+                }}
+              />
+              {!isAdmin && (
+                <div className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Salt okunur — değişiklik yalnız Admin.
+                </div>
+              )}
             </>
           )}
         </div>
       </Panel>
 
       {/* Onay */}
-      <Modal open={confirm} onClose={() => setConfirm(false)} title={`Publish · ${mode === 'create' ? 'yeni dosya' : 'değişiklik'}`} subtitle={mode === 'create' ? newPath : file?.path} size="lg"
-        footer={<div className="flex justify-end gap-2"><button onClick={() => setConfirm(false)} className="px-3 py-1.5 text-xs rounded-lg border" style={{ borderColor: 'var(--border)' }}>İptal</button><button disabled={busy || pubHosts.size === 0} onClick={() => doPush(false)} className="btn-primary px-3 py-1.5 text-xs rounded-lg disabled:opacity-40">Yayınla ({pubHosts.size} sunucu)</button></div>}>
+      <Modal
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={`Publish · ${mode === 'create' ? 'yeni dosya' : 'değişiklik'}`}
+        subtitle={mode === 'create' ? newPath : file?.path}
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirm(false)}
+              className="px-3 py-1.5 text-xs rounded-lg border"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              İptal
+            </button>
+            <button
+              disabled={busy || pubHosts.size === 0}
+              onClick={() => doPush(false)}
+              className="btn-primary px-3 py-1.5 text-xs rounded-lg disabled:opacity-40"
+            >
+              Yayınla ({pubHosts.size} sunucu)
+            </button>
+          </div>
+        }
+      >
         <div className="space-y-2 text-xs">
           {/* Hedefler: acik sunucu + ayni servisin (instance group) diger sunuculari */}
           <div className="rounded-lg border p-2" style={{ borderColor: 'var(--border-subtle)' }}>
-            <div className="font-semibold mb-1">Hedef sunucular <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— {groupKey(curHost)} grubu</span></div>
+            <div className="font-semibold mb-1">
+              Hedef sunucular{' '}
+              <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
+                — {groupKey(curHost)} grubu
+              </span>
+            </div>
             <div className="flex flex-wrap gap-2">
               {[curHost, ...groupHosts].filter(Boolean).map((h) => {
-                const hh = h as NcHost; const st = pubShas[hh.host];
+                const hh = h as NcHost;
+                const st = pubShas[hh.host];
                 const mySha = hh.host === cur && file ? file.sha256 : st?.sha256;
                 const same = !!mySha && !!file && mode === 'update' && mySha === file.sha256;
                 return (
-                  <label key={hh.host} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border cursor-pointer" style={{ borderColor: 'var(--border-subtle)' }} title={st ? (st.exists ? `sha ${shortSha(st.sha256)}${same ? ' (aynı)' : ' (FARKLI sürüm)'}` : 'dosya bu sunucuda yok') : ''}>
-                    <input type="checkbox" checked={pubHosts.has(hh.host)} onChange={(e) => setPubHosts((sset) => { const n = new Set(sset); e.target.checked ? n.add(hh.host) : n.delete(hh.host); return n; })} />
+                  <label
+                    key={hh.host}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg border cursor-pointer"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                    title={
+                      st
+                        ? st.exists
+                          ? `sha ${shortSha(st.sha256)}${same ? ' (aynı)' : ' (FARKLI sürüm)'}`
+                          : 'dosya bu sunucuda yok'
+                        : ''
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={pubHosts.has(hh.host)}
+                      onChange={(e) =>
+                        setPubHosts((sset) => {
+                          const n = new Set(sset);
+                          e.target.checked ? n.add(hh.host) : n.delete(hh.host);
+                          return n;
+                        })
+                      }
+                    />
                     <span className="font-mono">{hh.host}</span>
-                    {hh.host !== cur && st && (st.exists ? <Pill tone={same ? 'success' : 'warning'}>{same ? 'aynı' : 'farklı'}</Pill> : <Pill tone={mode === 'create' ? 'neutral' : 'danger'}>{mode === 'create' ? 'yeni' : 'yok'}</Pill>)}
+                    {hh.host !== cur &&
+                      st &&
+                      (st.exists ? (
+                        <Pill tone={same ? 'success' : 'warning'}>{same ? 'aynı' : 'farklı'}</Pill>
+                      ) : (
+                        <Pill tone={mode === 'create' ? 'neutral' : 'danger'}>
+                          {mode === 'create' ? 'yeni' : 'yok'}
+                        </Pill>
+                      ))}
                   </label>
                 );
               })}
             </div>
-            {groupHosts.length > 0 && <div className="mt-1" style={{ color: 'var(--text-muted)' }}>"farklı": o sunucudaki dosya buradakinden başka bir sürüm — üzerine yazılır. "yok": update ile publish edilemez (önce create).</div>}
+            {groupHosts.length > 0 && (
+              <div className="mt-1" style={{ color: 'var(--text-muted)' }}>
+                "farklı": o sunucudaki dosya buradakinden başka bir sürüm — üzerine yazılır. "yok":
+                update ile publish edilemez (önce create).
+              </div>
+            )}
           </div>
-          <div>Sunucuda sırayla: deployment kilidi → yedek (<Code>conf.d/.console_backup/</Code>) → yaz → <Code>nginx -t</Code> (düşerse GERİ ALINIR) → <Code>nginx -s reload</Code> → dokum yenilenir. Canlı log sağ alttaki iş penceresinde.</div>
+          <div>
+            Sunucuda sırayla: deployment kilidi → yedek (<Code>conf.d/.console_backup/</Code>) → yaz
+            → <Code>nginx -t</Code> (düşerse GERİ ALINIR) → <Code>nginx -s reload</Code> → dokum
+            yenilenir. Canlı log sağ alttaki iş penceresinde.
+          </div>
           {diff && (
             <>
-              <div><Pill tone="success">+{diff.added}</Pill> <Pill tone="danger">−{diff.removed}</Pill> satır</div>
-              <pre className="max-h-[40vh] overflow-auto p-2 rounded-lg border font-mono text-[11px] leading-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                {diff.hunks.map((l, i) => (<div key={i} style={{ color: l.startsWith('+') ? 'var(--status-success)' : l.startsWith('-') ? 'var(--status-danger)' : undefined }}>{l}</div>))}
+              <div>
+                <Pill tone="success">+{diff.added}</Pill> <Pill tone="danger">−{diff.removed}</Pill>{' '}
+                satır
+              </div>
+              <pre
+                className="max-h-[40vh] overflow-auto p-2 rounded-lg border font-mono text-[11px] leading-4"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+              >
+                {diff.hunks.map((l, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      color: l.startsWith('+')
+                        ? 'var(--status-success)'
+                        : l.startsWith('-')
+                          ? 'var(--status-danger)'
+                          : undefined,
+                    }}
+                  >
+                    {l}
+                  </div>
+                ))}
               </pre>
             </>
           )}
@@ -599,21 +1359,87 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
       </Modal>
 
       {/* Yeni dosya */}
-      <NewFileModal open={newModal} onClose={() => setNewModal(false)} host={cur} prefix={tree?.prefix || '/usr/nginx'} hosts={hosts.filter((h) => h.dumpedAt)} onCreate={(p, content) => { setMode('create'); setNewPath(p); setFile(null); setDraft(content); setNewModal(false); }} />
+      <NewFileModal
+        open={newModal}
+        onClose={() => setNewModal(false)}
+        host={cur}
+        prefix={tree?.prefix || '/usr/nginx'}
+        hosts={hosts.filter((h) => h.dumpedAt)}
+        onCreate={(p, content) => {
+          setMode('create');
+          setNewPath(p);
+          setFile(null);
+          setDraft(content);
+          setNewModal(false);
+        }}
+      />
 
       {/* Portal ici onay penceresi (tarayici confirm'i yerine) */}
-      <Modal open={!!ask} onClose={() => setAsk(null)} title={ask?.title} size="sm"
-        footer={<div className="flex justify-end gap-2"><button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>İptal</button><button onClick={() => { const a = ask; setAsk(null); a?.onOk(); }} className={SM_BTN} style={smBtn(true)}>{ask?.okLabel}</button></div>}>
+      <Modal
+        open={!!ask}
+        onClose={() => setAsk(null)}
+        title={ask?.title}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setAsk(null)} className={SM_BTN} style={smBtn()}>
+              İptal
+            </button>
+            <button
+              onClick={() => {
+                const a = ask;
+                setAsk(null);
+                a?.onOk();
+              }}
+              className={SM_BTN}
+              style={smBtn(true)}
+            >
+              {ask?.okLabel}
+            </button>
+          </div>
+        }
+      >
         <div className="text-xs">{ask?.body}</div>
       </Modal>
 
       {/* Karsilastirma */}
-      <Modal open={!!compare} onClose={() => setCompare(null)} title="Diğer sunucularda" subtitle={compare?.path} size="lg">
+      <Modal
+        open={!!compare}
+        onClose={() => setCompare(null)}
+        title="Diğer sunucularda"
+        subtitle={compare?.path}
+        size="lg"
+      >
         {compare && (
           <div className="text-xs space-y-2">
-            <div>{compare.rows.filter((r) => r.exists).length} sunucuda var · {compare.variants} farklı sürüm</div>
-            <table className="w-full"><thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}><th className="py-1">Sunucu</th><th>sha</th><th>değişim</th></tr></thead>
-              <tbody>{compare.rows.map((r) => (<tr key={r.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}><td className="py-1 font-mono">{r.host}</td><td className="font-mono">{r.exists ? shortSha(r.sha256) : <span className="text-red-600">yok</span>}</td><td>{r.mtime || ''}</td></tr>))}</tbody></table>
+            <div>
+              {compare.rows.filter((r) => r.exists).length} sunucuda var · {compare.variants} farklı
+              sürüm
+            </div>
+            <table className="w-full">
+              <thead>
+                <tr className="text-left" style={{ color: 'var(--text-muted)' }}>
+                  <th className="py-1">Sunucu</th>
+                  <th>sha</th>
+                  <th>değişim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compare.rows.map((r) => (
+                  <tr
+                    key={r.host}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    <td className="py-1 font-mono">{r.host}</td>
+                    <td className="font-mono">
+                      {r.exists ? shortSha(r.sha256) : <span className="text-red-600">yok</span>}
+                    </td>
+                    <td>{r.mtime || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Modal>
@@ -621,23 +1447,60 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
   );
 }
 
-function TreeNode({ node, depth, onOpen, current, defaultOpen = false }: { node: NcTreeDir; depth: number; onOpen: (p: string) => void; current: string | null; defaultOpen?: boolean }) {
+function TreeNode({
+  node,
+  depth,
+  onOpen,
+  current,
+  defaultOpen = false,
+}: {
+  node: NcTreeDir;
+  depth: number;
+  onOpen: (p: string) => void;
+  current: string | null;
+  defaultOpen?: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen || depth < 2);
   return (
     <div>
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 py-0.5 w-full text-left hover:underline" style={{ paddingLeft: depth * 12 }}>
-        {open ? <FolderOpenIcon className="w-3.5 h-3.5 text-amber-600" /> : <FolderIcon className="w-3.5 h-3.5 text-amber-600" />}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 py-0.5 w-full text-left hover:underline"
+        style={{ paddingLeft: depth * 12 }}
+      >
+        {open ? (
+          <FolderOpenIcon className="w-3.5 h-3.5 text-amber-600" />
+        ) : (
+          <FolderIcon className="w-3.5 h-3.5 text-amber-600" />
+        )}
         <span className="font-semibold">{node.name}</span>
-        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{node.files.length}</span>
+        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          {node.files.length}
+        </span>
       </button>
       {open && (
         <>
-          {node.dirs.map((d) => <TreeNode key={d.path} node={d} depth={depth + 1} onOpen={onOpen} current={current} />)}
+          {node.dirs.map((d) => (
+            <TreeNode key={d.path} node={d} depth={depth + 1} onOpen={onOpen} current={current} />
+          ))}
           {node.files.map((f) => (
-            <button key={f.path} onClick={() => onOpen(f.path)} className={`flex items-center gap-1 py-0.5 w-full text-left rounded ${current === f.path ? 'font-semibold' : ''}`} style={{ paddingLeft: (depth + 1) * 12, background: current === f.path ? 'var(--bg-elevated)' : undefined }} title={`${fmtBytes(f.size)} · ${f.mtime} · sha ${shortSha(f.sha256)}`}>
+            <button
+              key={f.path}
+              onClick={() => onOpen(f.path)}
+              className={`flex items-center gap-1 py-0.5 w-full text-left rounded ${current === f.path ? 'font-semibold' : ''}`}
+              style={{
+                paddingLeft: (depth + 1) * 12,
+                background: current === f.path ? 'var(--bg-elevated)' : undefined,
+              }}
+              title={`${fmtBytes(f.size)} · ${f.mtime} · sha ${shortSha(f.sha256)}`}
+            >
               <DocumentIcon className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
-              <span className="font-mono truncate" title={f.name}>{f.name}</span>
-              <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>{fmtBytes(f.size)}</span>
+              <span className="font-mono truncate" title={f.name}>
+                {f.name}
+              </span>
+              <span className="ml-auto text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                {fmtBytes(f.size)}
+              </span>
             </button>
           ))}
         </>
@@ -646,12 +1509,46 @@ function TreeNode({ node, depth, onOpen, current, defaultOpen = false }: { node:
   );
 }
 
-function NewFileModal({ open, onClose, host, prefix, hosts, onCreate }: { open: boolean; onClose: () => void; host: string | null; prefix: string; hosts: NcHost[]; onCreate: (path: string, content: string) => void }) {
+function NewFileModal({
+  open,
+  onClose,
+  host,
+  prefix,
+  hosts,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  host: string | null;
+  prefix: string;
+  hosts: NcHost[];
+  onCreate: (path: string, content: string) => void;
+}) {
   if (!open) return null;
-  return <NewFileModalBody onClose={onClose} host={host} prefix={prefix} hosts={hosts} onCreate={onCreate} />;
+  return (
+    <NewFileModalBody
+      onClose={onClose}
+      host={host}
+      prefix={prefix}
+      hosts={hosts}
+      onCreate={onCreate}
+    />
+  );
 }
 
-function NewFileModalBody({ onClose, host, prefix, hosts, onCreate }: { onClose: () => void; host: string | null; prefix: string; hosts: NcHost[]; onCreate: (path: string, content: string) => void }) {
+function NewFileModalBody({
+  onClose,
+  host,
+  prefix,
+  hosts,
+  onCreate,
+}: {
+  onClose: () => void;
+  host: string | null;
+  prefix: string;
+  hosts: NcHost[];
+  onCreate: (path: string, content: string) => void;
+}) {
   const [p, setP] = useState(`${prefix}/conf.d/application-confs/`);
   const [srcHost, setSrcHost] = useState('');
   const [srcTree, setSrcTree] = useState<NcTree | null>(null);
@@ -659,39 +1556,125 @@ function NewFileModalBody({ onClose, host, prefix, hosts, onCreate }: { onClose:
   const [content, setContent] = useState('');
   const handleSrcHostChange = async (nextHost: string) => {
     setSrcHost(nextHost);
-    if (!nextHost) { setSrcTree(null); return; }
+    if (!nextHost) {
+      setSrcTree(null);
+      return;
+    }
     setSrcTree(await nginxConsoleApi.tree(nextHost));
   };
-  const srcFiles = useMemo(() => { const out: string[] = []; const walk = (n: NcTreeDir) => { n.files.forEach((f) => out.push(f.path)); n.dirs.forEach(walk); }; if (srcTree?.tree) walk(srcTree.tree); return out; }, [srcTree]);
-  const valid = /^\/usr\/nginx\/(conf\.d|conf)\/.+/.test(p) && !p.endsWith('/') && !p.includes('..');
+  const srcFiles = useMemo(() => {
+    const out: string[] = [];
+    const walk = (n: NcTreeDir) => {
+      n.files.forEach((f) => out.push(f.path));
+      n.dirs.forEach(walk);
+    };
+    if (srcTree?.tree) walk(srcTree.tree);
+    return out;
+  }, [srcTree]);
+  const valid =
+    /^\/usr\/nginx\/(conf\.d|conf)\/.+/.test(p) && !p.endsWith('/') && !p.includes('..');
   return (
-    <Modal open onClose={onClose} title={`${host} · yeni konfigürasyon dosyası`} size="lg"
-      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border" style={{ borderColor: 'var(--border)' }}>İptal</button><button disabled={!valid} onClick={() => onCreate(p.trim(), content)} className="btn-primary px-3 py-1.5 text-xs rounded-lg disabled:opacity-40">Editöre al</button></div>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`${host} · yeni konfigürasyon dosyası`}
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded-lg border"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            İptal
+          </button>
+          <button
+            disabled={!valid}
+            onClick={() => onCreate(p.trim(), content)}
+            className="btn-primary px-3 py-1.5 text-xs rounded-lg disabled:opacity-40"
+          >
+            Editöre al
+          </button>
+        </div>
+      }
+    >
       <div className="space-y-3 text-xs">
-        <label className="block">Dosya yolu (yalnız <Code>/usr/nginx/conf.d/</Code> ve <Code>/usr/nginx/conf/</Code> altı)
-          <input value={p} onChange={(e) => setP(e.target.value)} className="mt-1 w-full font-mono px-2 py-1.5 border rounded-lg" style={{ borderColor: valid ? 'var(--border)' : 'var(--status-danger)' }} />
+        <label className="block">
+          Dosya yolu (yalnız <Code>/usr/nginx/conf.d/</Code> ve <Code>/usr/nginx/conf/</Code> altı)
+          <input
+            value={p}
+            onChange={(e) => setP(e.target.value)}
+            className="mt-1 w-full font-mono px-2 py-1.5 border rounded-lg"
+            style={{ borderColor: valid ? 'var(--border)' : 'var(--status-danger)' }}
+          />
         </label>
-        <div className="rounded-lg border p-2 space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
-          <div className="font-semibold">Başlangıç içeriği: başka sunucudan kopyala (isteğe bağlı)</div>
+        <div
+          className="rounded-lg border p-2 space-y-2"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          <div className="font-semibold">
+            Başlangıç içeriği: başka sunucudan kopyala (isteğe bağlı)
+          </div>
           <div className="flex gap-2">
-            <select value={srcHost} onChange={(e) => { void handleSrcHostChange(e.target.value); }} className="px-2 py-1 border rounded-lg" style={{ borderColor: 'var(--border)' }}>
+            <select
+              value={srcHost}
+              onChange={(e) => {
+                void handleSrcHostChange(e.target.value);
+              }}
+              className="px-2 py-1 border rounded-lg"
+              style={{ borderColor: 'var(--border)' }}
+            >
               <option value="">— sunucu —</option>
-              {hosts.map((h) => <option key={h.host} value={h.host}>{h.host}{h.service ? ` (${h.service})` : ''}</option>)}
+              {hosts.map((h) => (
+                <option key={h.host} value={h.host}>
+                  {h.host}
+                  {h.service ? ` (${h.service})` : ''}
+                </option>
+              ))}
             </select>
-            <select value={srcPath} disabled={!srcFiles.length} onChange={async (e) => { setSrcPath(e.target.value); if (e.target.value && srcHost) { const f = await nginxConsoleApi.file(srcHost, e.target.value); if (f.ok && f.content != null) { setContent(f.content); if (p.endsWith('/')) setP(p + e.target.value.split('/').pop()); } } }} className="flex-1 px-2 py-1 border rounded-lg font-mono" style={{ borderColor: 'var(--border)' }}>
+            <select
+              value={srcPath}
+              disabled={!srcFiles.length}
+              onChange={async (e) => {
+                setSrcPath(e.target.value);
+                if (e.target.value && srcHost) {
+                  const f = await nginxConsoleApi.file(srcHost, e.target.value);
+                  if (f.ok && f.content != null) {
+                    setContent(f.content);
+                    if (p.endsWith('/')) setP(p + e.target.value.split('/').pop());
+                  }
+                }
+              }}
+              className="flex-1 px-2 py-1 border rounded-lg font-mono"
+              style={{ borderColor: 'var(--border)' }}
+            >
               <option value="">— dosya —</option>
-              {srcFiles.map((f) => <option key={f} value={f}>{f.replace(prefix + '/', '')}</option>)}
+              {srcFiles.map((f) => (
+                <option key={f} value={f}>
+                  {f.replace(prefix + '/', '')}
+                </option>
+              ))}
             </select>
           </div>
         </div>
-        <textarea value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} placeholder="# içerik (boş bırakıp editörde de yazabilirsiniz)" className="w-full font-mono text-[12px] p-2 border rounded-lg" style={{ minHeight: '30vh', borderColor: 'var(--border)' }} />
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          spellCheck={false}
+          placeholder="# içerik (boş bırakıp editörde de yazabilirsiniz)"
+          className="w-full font-mono text-[12px] p-2 border rounded-lg"
+          style={{ minHeight: '30vh', borderColor: 'var(--border)' }}
+        />
       </div>
     </Modal>
   );
 }
 
 // ── Gecmis (Git benzeri) ────────────────────────────────────────────────────────────
-const SOURCE_TR: Record<string, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' }> = {
+const SOURCE_TR: Record<
+  string,
+  { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'info' }
+> = {
   'portal-publish': { label: 'Portal publish', tone: 'success' },
   server: { label: 'sunucuda değişti', tone: 'warning' },
   'first-seen': { label: 'ilk görülme', tone: 'neutral' },
@@ -700,68 +1683,198 @@ const SOURCE_TR: Record<string, { label: string; tone: 'success' | 'warning' | '
 const fmtWhen = (c: NcChange) => fmtDateTime(c.dumpTime || c.seenAt);
 
 /** Iki sha arasindaki fark: blob'lari ceker, lineDiff ile gosterir. */
-function DiffView({ oldSha, newSha, labels }: { oldSha: string | null; newSha: string | null; labels?: [string, string] }) {
+function DiffView({
+  oldSha,
+  newSha,
+  labels,
+}: {
+  oldSha: string | null;
+  newSha: string | null;
+  labels?: [string, string];
+}) {
   const [state, setState] = useState<{ a: string; b: string } | null>(null);
   const [err, setErr] = useState('');
   useAsyncEffect(async () => {
-    setState(null); setErr('');
+    setState(null);
+    setErr('');
     try {
-      const [a, b] = await Promise.all([oldSha ? nginxConsoleApi.blob(oldSha) : Promise.resolve({ ok: true, content: '' }), newSha ? nginxConsoleApi.blob(newSha) : Promise.resolve({ ok: true, content: '' })]);
-      if (!a.ok || !b.ok) { setErr((a as { message?: string }).message || (b as { message?: string }).message || 'İçerik alınamadı.'); return; }
+      const [a, b] = await Promise.all([
+        oldSha ? nginxConsoleApi.blob(oldSha) : Promise.resolve({ ok: true, content: '' }),
+        newSha ? nginxConsoleApi.blob(newSha) : Promise.resolve({ ok: true, content: '' }),
+      ]);
+      if (!a.ok || !b.ok) {
+        setErr(
+          (a as { message?: string }).message ||
+            (b as { message?: string }).message ||
+            'İçerik alınamadı.',
+        );
+        return;
+      }
       setState({ a: a.content || '', b: b.content || '' });
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
   }, [oldSha, newSha]);
   if (err) return <div className="text-xs text-amber-700">{err}</div>;
-  if (!state) return <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Fark hesaplanıyor…</div>;
+  if (!state)
+    return (
+      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        Fark hesaplanıyor…
+      </div>
+    );
   const d = lineDiff(state.a, state.b);
   return (
     <div className="text-xs space-y-1">
       <div className="flex gap-2 items-center">
-        <Pill tone="danger">−{d.removed}</Pill><Pill tone="success">+{d.added}</Pill>
-        {labels && <span style={{ color: 'var(--text-muted)' }}>{labels[0]} → {labels[1]}</span>}
-        {d.added === 0 && d.removed === 0 && <span style={{ color: 'var(--text-muted)' }}>içerik aynı</span>}
+        <Pill tone="danger">−{d.removed}</Pill>
+        <Pill tone="success">+{d.added}</Pill>
+        {labels && (
+          <span style={{ color: 'var(--text-muted)' }}>
+            {labels[0]} → {labels[1]}
+          </span>
+        )}
+        {d.added === 0 && d.removed === 0 && (
+          <span style={{ color: 'var(--text-muted)' }}>içerik aynı</span>
+        )}
       </div>
-      <pre className="max-h-[45vh] overflow-auto p-2 rounded-lg border font-mono text-[11px] leading-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-        {d.hunks.map((l, i) => (<div key={i} style={{ color: l.startsWith('+') ? 'var(--status-success)' : l.startsWith('-') ? 'var(--status-danger)' : undefined }}>{l}</div>))}
+      <pre
+        className="max-h-[45vh] overflow-auto p-2 rounded-lg border font-mono text-[11px] leading-4"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+      >
+        {d.hunks.map((l, i) => (
+          <div
+            key={i}
+            style={{
+              color: l.startsWith('+')
+                ? 'var(--status-success)'
+                : l.startsWith('-')
+                  ? 'var(--status-danger)'
+                  : undefined,
+            }}
+          >
+            {l}
+          </div>
+        ))}
       </pre>
     </div>
   );
 }
 
-function FileHistory({ host, path, currentSha, isAdmin, onRestore }: { host: string; path: string; currentSha: string; isAdmin: boolean; onRestore: (content: string) => void }) {
+function FileHistory({
+  host,
+  path,
+  currentSha,
+  isAdmin,
+  onRestore,
+}: {
+  host: string;
+  path: string;
+  currentSha: string;
+  isAdmin: boolean;
+  onRestore: (content: string) => void;
+}) {
   const [versions, setVersions] = useState<NcChange[] | null>(null);
-  const [sel, setSel] = useState<{ a: string | null; b: string | null; la: string; lb: string } | null>(null);
+  const [sel, setSel] = useState<{
+    a: string | null;
+    b: string | null;
+    la: string;
+    lb: string;
+  } | null>(null);
   useAsyncEffect(async () => {
-    setVersions(null); setSel(null);
+    setVersions(null);
+    setSel(null);
     const r = await nginxConsoleApi.history(host, path);
     setVersions(r.ok ? r.versions : []);
   }, [host, path]);
   const restore = async (sha: string) => {
     const r = await nginxConsoleApi.blob(sha);
-    if (!r.ok) { toast.error(r.message || 'İçerik yok.'); return; }
+    if (!r.ok) {
+      toast.error(r.message || 'İçerik yok.');
+      return;
+    }
     onRestore(r.content);
   };
   return (
-    <div className="mb-2 rounded-lg border p-2 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-      <div className="text-xs font-semibold flex items-center gap-2"><ClockIcon className="w-3.5 h-3.5" /> Sürüm geçmişi <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— yalnız değişiklikler kayıtlıdır (Git gibi); "fark" = önceki sürümle</span></div>
+    <div
+      className="mb-2 rounded-lg border p-2 space-y-2"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+    >
+      <div className="text-xs font-semibold flex items-center gap-2">
+        <ClockIcon className="w-3.5 h-3.5" /> Sürüm geçmişi{' '}
+        <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
+          — yalnız değişiklikler kayıtlıdır (Git gibi); "fark" = önceki sürümle
+        </span>
+      </div>
       {versions === null && <LoadingLogo compact />}
-      {versions && versions.length === 0 && <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Henüz kayıt yok — ilk dokumdan sonra oluşur.</div>}
+      {versions && versions.length === 0 && (
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Henüz kayıt yok — ilk dokumdan sonra oluşur.
+        </div>
+      )}
       {versions && versions.length > 0 && (
         <div className="max-h-48 overflow-auto">
           <table className="w-full text-[11px]">
-            <thead><tr className="text-left" style={{ color: 'var(--text-muted)' }}><th className="py-0.5 pr-2">Zaman</th><th className="pr-2">Kaynak</th><th className="pr-2">Kim</th><th className="pr-2">sha</th><th className="pr-2">Boyut</th><th></th></tr></thead>
+            <thead>
+              <tr className="text-left" style={{ color: 'var(--text-muted)' }}>
+                <th className="py-0.5 pr-2">Zaman</th>
+                <th className="pr-2">Kaynak</th>
+                <th className="pr-2">Kim</th>
+                <th className="pr-2">sha</th>
+                <th className="pr-2">Boyut</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
               {versions.map((v) => (
                 <tr key={v.id} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                  <td className="py-0.5 pr-2 whitespace-nowrap">{fmtWhen(v)}{v.pending && <span title="dokum henüz doğrulamadı"> ⏳</span>}</td>
-                  <td className="pr-2"><Pill tone={SOURCE_TR[v.source]?.tone || 'neutral'}>{SOURCE_TR[v.source]?.label || v.source}</Pill></td>
-                  <td className="pr-2">{v.requester || v.fileOwner || '—'}{v.jobId ? <span style={{ color: 'var(--text-muted)' }}> · job {v.jobId}</span> : ''}</td>
-                  <td className="pr-2 font-mono">{shortSha(v.newSha256)}{v.newSha256 === currentSha && <Pill tone="info">şu anki</Pill>}</td>
+                  <td className="py-0.5 pr-2 whitespace-nowrap">
+                    {fmtWhen(v)}
+                    {v.pending && <span title="dokum henüz doğrulamadı"> ⏳</span>}
+                  </td>
+                  <td className="pr-2">
+                    <Pill tone={SOURCE_TR[v.source]?.tone || 'neutral'}>
+                      {SOURCE_TR[v.source]?.label || v.source}
+                    </Pill>
+                  </td>
+                  <td className="pr-2">
+                    {v.requester || v.fileOwner || '—'}
+                    {v.jobId ? (
+                      <span style={{ color: 'var(--text-muted)' }}> · job {v.jobId}</span>
+                    ) : (
+                      ''
+                    )}
+                  </td>
+                  <td className="pr-2 font-mono">
+                    {shortSha(v.newSha256)}
+                    {v.newSha256 === currentSha && <Pill tone="info">şu anki</Pill>}
+                  </td>
                   <td className="pr-2 tabular-nums">{fmtBytes(v.size)}</td>
                   <td className="whitespace-nowrap">
-                    {v.oldSha256 && v.newSha256 && <button className="underline mr-2" onClick={() => setSel({ a: v.oldSha256, b: v.newSha256, la: 'önceki', lb: fmtWhen(v) })}>fark</button>}
-                    {v.newSha256 && v.newSha256 !== currentSha && <button className="underline mr-2" onClick={() => setSel({ a: v.newSha256, b: currentSha, la: fmtWhen(v), lb: 'şu anki' })}>şu ankiyle</button>}
-                    {isAdmin && v.newSha256 && v.hasNew && v.newSha256 !== currentSha && <button className="underline" onClick={() => restore(v.newSha256!)}>bu sürüme dön</button>}
+                    {v.oldSha256 && v.newSha256 && (
+                      <button
+                        className="underline mr-2"
+                        onClick={() =>
+                          setSel({ a: v.oldSha256, b: v.newSha256, la: 'önceki', lb: fmtWhen(v) })
+                        }
+                      >
+                        fark
+                      </button>
+                    )}
+                    {v.newSha256 && v.newSha256 !== currentSha && (
+                      <button
+                        className="underline mr-2"
+                        onClick={() =>
+                          setSel({ a: v.newSha256, b: currentSha, la: fmtWhen(v), lb: 'şu anki' })
+                        }
+                      >
+                        şu ankiyle
+                      </button>
+                    )}
+                    {isAdmin && v.newSha256 && v.hasNew && v.newSha256 !== currentSha && (
+                      <button className="underline" onClick={() => restore(v.newSha256!)}>
+                        bu sürüme dön
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -777,66 +1890,189 @@ function FileHistory({ host, path, currentSha, isAdmin, onRestore }: { host: str
 function ChangesTab() {
   const [rows, setRows] = useState<NcChange[] | null>(null);
   const [q, setQ] = useState('');
-  const [src, setSrc] = useState<'all' | 'server' | 'portal-publish' | 'deleted' | 'first-seen'>('all');
+  const [src, setSrc] = useState<'all' | 'server' | 'portal-publish' | 'deleted' | 'first-seen'>(
+    'all',
+  );
   const [days, setDays] = useState(7);
   const [sel, setSel] = useState<NcChange | null>(null);
   const load = useCallback(async () => {
     setRows(null);
     const since = new Date(Date.now() - days * 86400000).toISOString();
-    const r = await nginxConsoleApi.changes({ source: src === 'all' ? undefined : src, since, limit: 500 });
+    const r = await nginxConsoleApi.changes({
+      source: src === 'all' ? undefined : src,
+      since,
+      limit: 500,
+    });
     setRows(r.ok ? r.changes : []);
   }, [src, days]);
-  useAsyncEffect(async () => { await load(); }, [load]);
+  useAsyncEffect(async () => {
+    await load();
+  }, [load]);
   const list = useMemo(() => {
     if (!rows) return [];
     const n = q.trim().toLowerCase();
-    return n ? rows.filter((c) => [c.host, c.path, c.requester, c.fileOwner].some((x) => String(x || '').toLowerCase().includes(n))) : rows;
+    return n
+      ? rows.filter((c) =>
+          [c.host, c.path, c.requester, c.fileOwner].some((x) =>
+            String(x || '')
+              .toLowerCase()
+              .includes(n),
+          ),
+        )
+      : rows;
   }, [rows, q]);
   return (
     <div className="space-y-3">
       <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-        Filo genelinde konfigürasyon değişiklikleri — dokumlardan üretilir, yalnız sha'sı değişen dosya için bir kayıt. <b>sunucuda değişti</b> = Portal dışından (elle) yapılan değişiklik; <b>Portal publish</b> = kim, hangi job.
+        Filo genelinde konfigürasyon değişiklikleri — dokumlardan üretilir, yalnız sha'sı değişen
+        dosya için bir kayıt. <b>sunucuda değişti</b> = Portal dışından (elle) yapılan değişiklik;{' '}
+        <b>Portal publish</b> = kim, hangi job.
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Değişiklik ara" placeholder="sunucu / dosya / kim" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-72" style={{ borderColor: 'var(--border)' }} />
+          <MagnifyingGlassIcon
+            className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--text-muted)' }}
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Değişiklik ara"
+            placeholder="sunucu / dosya / kim"
+            className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-72"
+            style={{ borderColor: 'var(--border)' }}
+          />
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([['all', 'Hepsi'], ['server', 'Sunucuda değişti'], ['portal-publish', 'Portal publish'], ['deleted', 'Silindi'], ['first-seen', 'İlk görülme']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setSrc(id)} className={`px-2.5 py-1 text-xs rounded-md ${src === id ? 'shadow-sm' : ''}`} style={{ background: src === id ? 'var(--bg-surface)' : 'transparent', color: src === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</button>
+          {(
+            [
+              ['all', 'Hepsi'],
+              ['server', 'Sunucuda değişti'],
+              ['portal-publish', 'Portal publish'],
+              ['deleted', 'Silindi'],
+              ['first-seen', 'İlk görülme'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setSrc(id)}
+              className={`px-2.5 py-1 text-xs rounded-md ${src === id ? 'shadow-sm' : ''}`}
+              style={{
+                background: src === id ? 'var(--bg-surface)' : 'transparent',
+                color: src === id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Zaman aralığı" className="px-2 py-1 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>
-          {[1, 7, 30, 90, 365].map((d) => <option key={d} value={d}>son {d} gün</option>)}
+        <select
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+          aria-label="Zaman aralığı"
+          className="px-2 py-1 text-xs border rounded-lg"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          {[1, 7, 30, 90, 365].map((d) => (
+            <option key={d} value={d}>
+              son {d} gün
+            </option>
+          ))}
         </select>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{list.length} kayıt</span>
-        <button onClick={load} className={`${SM_BTN} ml-auto`} style={smBtn()}><ArrowPathIcon className="w-3.5 h-3.5" /> Yenile</button>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {list.length} kayıt
+        </span>
+        <button onClick={load} className={`${SM_BTN} ml-auto`} style={smBtn()}>
+          <ArrowPathIcon className="w-3.5 h-3.5" /> Yenile
+        </button>
       </div>
-      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div
+        className="overflow-x-auto rounded-xl border"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <table className="w-full text-xs">
-          <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-            <th className="px-3 py-2">Zaman</th><th className="px-3 py-2">Sunucu</th><th className="px-3 py-2">Dosya</th><th className="px-3 py-2">Kaynak</th><th className="px-3 py-2">Kim</th><th className="px-3 py-2">sha</th><th className="px-3 py-2"></th>
-          </tr></thead>
+          <thead>
+            <tr
+              className="text-left"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              <th className="px-3 py-2">Zaman</th>
+              <th className="px-3 py-2">Sunucu</th>
+              <th className="px-3 py-2">Dosya</th>
+              <th className="px-3 py-2">Kaynak</th>
+              <th className="px-3 py-2">Kim</th>
+              <th className="px-3 py-2">sha</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
           <tbody>
             {list.map((c) => (
-              <tr key={c.id} className="border-t hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }}>
+              <tr
+                key={c.id}
+                className="border-t hover:bg-[var(--bg-elevated)]"
+                style={{ borderColor: 'var(--border-subtle)' }}
+              >
                 <td className="px-3 py-1.5 whitespace-nowrap">{fmtWhen(c)}</td>
                 <td className="px-3 py-1.5 font-mono">{c.host}</td>
-                <td className="px-3 py-1.5 font-mono break-all">{c.path.replace('/usr/nginx/', '')}</td>
-                <td className="px-3 py-1.5"><Pill tone={SOURCE_TR[c.source]?.tone || 'neutral'}>{SOURCE_TR[c.source]?.label || c.source}</Pill></td>
-                <td className="px-3 py-1.5">{c.requester || c.fileOwner || '—'}{c.jobId ? <span style={{ color: 'var(--text-muted)' }}> · job {c.jobId}</span> : ''}</td>
-                <td className="px-3 py-1.5 font-mono">{shortSha(c.oldSha256)} → {shortSha(c.newSha256)}</td>
-                <td className="px-3 py-1.5">{(c.hasOld || c.hasNew) && c.source !== 'first-seen' && <button className="underline" onClick={() => setSel(c)}>fark</button>}</td>
+                <td className="px-3 py-1.5 font-mono break-all">
+                  {c.path.replace('/usr/nginx/', '')}
+                </td>
+                <td className="px-3 py-1.5">
+                  <Pill tone={SOURCE_TR[c.source]?.tone || 'neutral'}>
+                    {SOURCE_TR[c.source]?.label || c.source}
+                  </Pill>
+                </td>
+                <td className="px-3 py-1.5">
+                  {c.requester || c.fileOwner || '—'}
+                  {c.jobId ? (
+                    <span style={{ color: 'var(--text-muted)' }}> · job {c.jobId}</span>
+                  ) : (
+                    ''
+                  )}
+                </td>
+                <td className="px-3 py-1.5 font-mono">
+                  {shortSha(c.oldSha256)} → {shortSha(c.newSha256)}
+                </td>
+                <td className="px-3 py-1.5">
+                  {(c.hasOld || c.hasNew) && c.source !== 'first-seen' && (
+                    <button className="underline" onClick={() => setSel(c)}>
+                      fark
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            {rows && list.length === 0 && <TableEmptyRow colSpan={7} title="Kayıt yok." description="Değişiklik kayıtları ilk dokumdan sonra oluşur." />}
-            {rows === null && <tr><td colSpan={7}><LoadingLogo compact /></td></tr>}
+            {rows && list.length === 0 && (
+              <TableEmptyRow
+                colSpan={7}
+                title="Kayıt yok."
+                description="Değişiklik kayıtları ilk dokumdan sonra oluşur."
+              />
+            )}
+            {rows === null && (
+              <tr>
+                <td colSpan={7}>
+                  <LoadingLogo compact />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-      <Modal open={!!sel} onClose={() => setSel(null)} title={sel ? `${sel.host} · ${sel.path.split('/').pop()}` : ''} subtitle={sel ? `${sel.path} · ${SOURCE_TR[sel.source]?.label || sel.source} · ${fmtWhen(sel)}${sel.requester ? ' · ' + sel.requester : ''}` : undefined} size="wide">
-        {sel && <DiffView oldSha={sel.oldSha256} newSha={sel.newSha256} labels={['önceki', 'sonraki']} />}
+      <Modal
+        open={!!sel}
+        onClose={() => setSel(null)}
+        title={sel ? `${sel.host} · ${sel.path.split('/').pop()}` : ''}
+        subtitle={
+          sel
+            ? `${sel.path} · ${SOURCE_TR[sel.source]?.label || sel.source} · ${fmtWhen(sel)}${sel.requester ? ' · ' + sel.requester : ''}`
+            : undefined
+        }
+        size="wide"
+      >
+        {sel && (
+          <DiffView oldSha={sel.oldSha256} newSha={sel.newSha256} labels={['önceki', 'sonraki']} />
+        )}
       </Modal>
     </div>
   );
@@ -847,7 +2083,9 @@ function CertsTab() {
   const [data, setData] = useState<NcCertsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [only, setOnly] = useState<'all' | 'expiring' | 'expired' | 'missing' | 'self' | 'unused'>('all');
+  const [only, setOnly] = useState<'all' | 'expiring' | 'expired' | 'missing' | 'self' | 'unused'>(
+    'all',
+  );
   const [sel, setSel] = useState<NcAggCert | null>(null);
   // Hata govdesi veri sanilip `data.certs.filter`da cokuyordu (2026-11-07): okunamadi ayri.
   const [err, setErr] = useState<string | null>(null);
@@ -855,10 +2093,23 @@ function CertsTab() {
     setLoading(true);
     try {
       const r = await nginxConsoleApi.certs();
-      if (r.ok) { setData(r); setErr(null); } else { setData(null); setErr(r.message || 'Sertifika listesi alınamadı.'); }
-    } catch (e) { setData(null); setErr(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); }
+      if (r.ok) {
+        setData(r);
+        setErr(null);
+      } else {
+        setData(null);
+        setErr(r.message || 'Sertifika listesi alınamadı.');
+      }
+    } catch (e) {
+      setData(null);
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
-  useAsyncEffect(async () => { await load(); }, [load]);
+  useAsyncEffect(async () => {
+    await load();
+  }, [load]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -871,15 +2122,55 @@ function CertsTab() {
       // kullanilmayan: nginx'in yukledigi hicbir conf'ta gecmiyor (yalniz yedek/eski dosyada ya da hic)
       if (only === 'unused' && (c.loadedUseCount ?? c.useCount) !== 0) return false;
       if (!needle) return true;
-      return [c.cn, c.issuerCn, c.subject, c.issuer, ...(c.san || []), ...c.hosts.map((h) => h.host), ...c.hosts.map((h) => h.path), ...c.hosts.flatMap((h) => h.uses.map((u) => u.serverName + ' ' + u.conf))].some((x) => String(x || '').toLowerCase().includes(needle));
+      return [
+        c.cn,
+        c.issuerCn,
+        c.subject,
+        c.issuer,
+        ...(c.san || []),
+        ...c.hosts.map((h) => h.host),
+        ...c.hosts.map((h) => h.path),
+        ...c.hosts.flatMap((h) => h.uses.map((u) => u.serverName + ' ' + u.conf)),
+      ].some((x) =>
+        String(x || '')
+          .toLowerCase()
+          .includes(needle),
+      );
     });
   }, [data, q, only]);
 
   const csv = () => {
-    const head = ['cn', 'issuer', 'notAfter', 'kalan_gun', 'keybits', 'sigalg', 'sunucu_sayisi', 'kullanim', 'sunucular', 'san'];
-    const body = rows.map((c) => [c.cn || '', c.issuerCn || c.issuer || '', c.notAfter ? c.notAfter.slice(0, 10) : '', c.daysLeft ?? '', c.keybits ?? '', c.sigalg || '', c.hostCount, c.useCount, c.hosts.map((h) => h.host).join(' '), (c.san || []).join(' ')]);
-    const text = [head, ...body].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' })); a.download = `nginx_sertifikalar_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    const head = [
+      'cn',
+      'issuer',
+      'notAfter',
+      'kalan_gun',
+      'keybits',
+      'sigalg',
+      'sunucu_sayisi',
+      'kullanim',
+      'sunucular',
+      'san',
+    ];
+    const body = rows.map((c) => [
+      c.cn || '',
+      c.issuerCn || c.issuer || '',
+      c.notAfter ? c.notAfter.slice(0, 10) : '',
+      c.daysLeft ?? '',
+      c.keybits ?? '',
+      c.sigalg || '',
+      c.hostCount,
+      c.useCount,
+      c.hosts.map((h) => h.host).join(' '),
+      (c.san || []).join(' '),
+    ]);
+    const text = [head, ...body]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' }));
+    a.download = `nginx_sertifikalar_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
   };
 
   return (
@@ -887,51 +2178,203 @@ function CertsTab() {
       {data && (
         <div className="grid gap-3 md:grid-cols-7">
           <Tile n={data.summary.total} l="sertifika" />
-          <Tile n={data.summary.expired} l="süresi dolmuş" tone="danger" onClick={() => setOnly('expired')} />
-          <Tile n={data.summary.within30} l="≤ 30 gün" tone="danger" onClick={() => setOnly('expiring')} />
-          <Tile n={data.summary.within90} l="31–90 gün" tone="warning" onClick={() => setOnly('expiring')} />
-          <Tile n={data.summary.missing} l="dosyası yok" tone="danger" onClick={() => setOnly('missing')} />
-          <Tile n={data.summary.unused ?? 0} l="kullanılmayan" tone="warning" onClick={() => setOnly('unused')} />
+          <Tile
+            n={data.summary.expired}
+            l="süresi dolmuş"
+            tone="danger"
+            onClick={() => setOnly('expired')}
+          />
+          <Tile
+            n={data.summary.within30}
+            l="≤ 30 gün"
+            tone="danger"
+            onClick={() => setOnly('expiring')}
+          />
+          <Tile
+            n={data.summary.within90}
+            l="31–90 gün"
+            tone="warning"
+            onClick={() => setOnly('expiring')}
+          />
+          <Tile
+            n={data.summary.missing}
+            l="dosyası yok"
+            tone="danger"
+            onClick={() => setOnly('missing')}
+          />
+          <Tile
+            n={data.summary.unused ?? 0}
+            l="kullanılmayan"
+            tone="warning"
+            onClick={() => setOnly('unused')}
+          />
           <Tile n={data.hostsScanned} l="taranan sunucu" />
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
-          <MagnifyingGlassIcon className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sertifika ara" placeholder="CN / imzalayan / sunucu / server_name / dosya" className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80" style={{ borderColor: 'var(--border)' }} />
+          <MagnifyingGlassIcon
+            className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--text-muted)' }}
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Sertifika ara"
+            placeholder="CN / imzalayan / sunucu / server_name / dosya"
+            className="pl-8 pr-2 py-1.5 text-xs border rounded-lg w-80"
+            style={{ borderColor: 'var(--border)' }}
+          />
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
-          {([['all', 'Hepsi'], ['expiring', '≤ 90 gün'], ['expired', 'Dolmuş'], ['missing', 'Dosyası yok'], ['self', 'Self-signed'], ['unused', 'Kullanılmayan']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setOnly(id)} className={`px-2.5 py-1 text-xs rounded-md ${only === id ? 'shadow-sm' : ''}`} style={{ background: only === id ? 'var(--bg-surface)' : 'transparent', color: only === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</button>
+          {(
+            [
+              ['all', 'Hepsi'],
+              ['expiring', '≤ 90 gün'],
+              ['expired', 'Dolmuş'],
+              ['missing', 'Dosyası yok'],
+              ['self', 'Self-signed'],
+              ['unused', 'Kullanılmayan'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setOnly(id)}
+              className={`px-2.5 py-1 text-xs rounded-md ${only === id ? 'shadow-sm' : ''}`}
+              style={{
+                background: only === id ? 'var(--bg-surface)' : 'transparent',
+                color: only === id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {label}
+            </button>
           ))}
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{rows.length} sertifika</span>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {rows.length} sertifika
+        </span>
         <div className="ml-auto flex gap-2">
-          <button onClick={csv} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}>CSV</button>
-          <button onClick={load} className="px-2.5 py-1.5 text-xs border rounded-lg" style={{ borderColor: 'var(--border)' }}><ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} /> Yenile</button>
+          <button
+            onClick={csv}
+            className="px-2.5 py-1.5 text-xs border rounded-lg"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            CSV
+          </button>
+          <button
+            onClick={load}
+            className="px-2.5 py-1.5 text-xs border rounded-lg"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} />{' '}
+            Yenile
+          </button>
         </div>
       </div>
-      {err && <LoadError compact title="Sertifikalar okunamadı" message={err} onRetry={load} retrying={loading} testId="nc-certs-hata" />}
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Kaynak: sunucuların son dokumu (Konfigürasyon sekmesinde "Yenile"). Aynı sertifika = aynı SHA-256 parmak izi; farklı sunuculardaki kopyalar tek satırda toplanır. Liste conf'larda geçen sertifikalar + <code>ssl/</code> altındaki sertifika dosyalarıdır; "kullanılmıyor" = nginx'in yüklediği hiçbir conf'ta geçmiyor (ayrıntı: Kullanılmayan sekmesi).</div>
-      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      {err && (
+        <LoadError
+          compact
+          title="Sertifikalar okunamadı"
+          message={err}
+          onRetry={load}
+          retrying={loading}
+          testId="nc-certs-hata"
+        />
+      )}
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        Kaynak: sunucuların son dokumu (Konfigürasyon sekmesinde "Yenile"). Aynı sertifika = aynı
+        SHA-256 parmak izi; farklı sunuculardaki kopyalar tek satırda toplanır. Liste conf'larda
+        geçen sertifikalar + <code>ssl/</code> altındaki sertifika dosyalarıdır; "kullanılmıyor" =
+        nginx'in yüklediği hiçbir conf'ta geçmiyor (ayrıntı: Kullanılmayan sekmesi).
+      </div>
+      <div
+        className="overflow-x-auto rounded-xl border"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <table className="w-full text-xs">
-          <thead><tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-            <th className="px-3 py-2">Sertifika (CN)</th><th className="px-3 py-2">İmzalayan</th><th className="px-3 py-2">Bitiş</th><th className="px-3 py-2">Kalan</th><th className="px-3 py-2">Anahtar</th><th className="px-3 py-2 text-right">Sunucu</th><th className="px-3 py-2 text-right" title="nginx -T'nin yüklediği conf'lardaki kullanım / toplam referans">Kullanım</th><th className="px-3 py-2 text-right">SAN</th>
-          </tr></thead>
+          <thead>
+            <tr
+              className="text-left"
+              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              <th className="px-3 py-2">Sertifika (CN)</th>
+              <th className="px-3 py-2">İmzalayan</th>
+              <th className="px-3 py-2">Bitiş</th>
+              <th className="px-3 py-2">Kalan</th>
+              <th className="px-3 py-2">Anahtar</th>
+              <th className="px-3 py-2 text-right">Sunucu</th>
+              <th
+                className="px-3 py-2 text-right"
+                title="nginx -T'nin yüklediği conf'lardaki kullanım / toplam referans"
+              >
+                Kullanım
+              </th>
+              <th className="px-3 py-2 text-right">SAN</th>
+            </tr>
+          </thead>
           <tbody>
             {rows.map((c, i) => (
-              <tr key={(c.fingerprint || 'x') + i} onClick={() => setSel(c)} className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]" style={{ borderColor: 'var(--border-subtle)' }}>
-                <td className="px-3 py-1.5"><div className="font-semibold">{c.cn || (c.exists ? c.subject : 'DOSYA YOK')}</div><div className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>{c.hosts[0]?.path}{c.hosts.length > 1 && new Set(c.hosts.map((h) => h.path)).size > 1 ? ' (+farklı yollar)' : ''}</div></td>
-                <td className="px-3 py-1.5">{c.selfSigned ? <Pill tone="warning">self-signed</Pill> : (c.issuerCn || c.issuer || '—')}</td>
-                <td className="px-3 py-1.5 tabular-nums">{c.notAfter ? c.notAfter.slice(0, 10) : '—'}</td>
-                <td className="px-3 py-1.5"><Pill tone={daysTone(c.daysLeft)}>{daysLabel(c.daysLeft)}</Pill></td>
-                <td className="px-3 py-1.5">{c.keybits ? `${c.keybits} bit` : ''} <span style={{ color: 'var(--text-muted)' }}>{c.sigalg || ''}</span></td>
+              <tr
+                key={(c.fingerprint || 'x') + i}
+                onClick={() => setSel(c)}
+                className="border-t cursor-pointer hover:bg-[var(--bg-elevated)]"
+                style={{ borderColor: 'var(--border-subtle)' }}
+              >
+                <td className="px-3 py-1.5">
+                  <div className="font-semibold">
+                    {c.cn || (c.exists ? c.subject : 'DOSYA YOK')}
+                  </div>
+                  <div className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                    {c.hosts[0]?.path}
+                    {c.hosts.length > 1 && new Set(c.hosts.map((h) => h.path)).size > 1
+                      ? ' (+farklı yollar)'
+                      : ''}
+                  </div>
+                </td>
+                <td className="px-3 py-1.5">
+                  {c.selfSigned ? (
+                    <Pill tone="warning">self-signed</Pill>
+                  ) : (
+                    c.issuerCn || c.issuer || '—'
+                  )}
+                </td>
+                <td className="px-3 py-1.5 tabular-nums">
+                  {c.notAfter ? c.notAfter.slice(0, 10) : '—'}
+                </td>
+                <td className="px-3 py-1.5">
+                  <Pill tone={daysTone(c.daysLeft)}>{daysLabel(c.daysLeft)}</Pill>
+                </td>
+                <td className="px-3 py-1.5">
+                  {c.keybits ? `${c.keybits} bit` : ''}{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>{c.sigalg || ''}</span>
+                </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.hostCount}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{(c.loadedUseCount ?? c.useCount) === 0 ? <Pill tone="warning">kullanılmıyor</Pill> : (c.loadedUseCount != null && c.loadedUseCount !== c.useCount ? <span title={`${c.loadedUseCount} yüklü conf'ta; ${c.useCount - c.loadedUseCount} referans yalnız yüklenmeyen dosyada`}>{c.loadedUseCount}<span style={{ color: 'var(--text-muted)' }}> / {c.useCount}</span></span> : c.useCount)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  {(c.loadedUseCount ?? c.useCount) === 0 ? (
+                    <Pill tone="warning">kullanılmıyor</Pill>
+                  ) : c.loadedUseCount != null && c.loadedUseCount !== c.useCount ? (
+                    <span
+                      title={`${c.loadedUseCount} yüklü conf'ta; ${c.useCount - c.loadedUseCount} referans yalnız yüklenmeyen dosyada`}
+                    >
+                      {c.loadedUseCount}
+                      <span style={{ color: 'var(--text-muted)' }}> / {c.useCount}</span>
+                    </span>
+                  ) : (
+                    c.useCount
+                  )}
+                </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{c.san?.length || 0}</td>
               </tr>
             ))}
-            {!loading && !err && rows.length === 0 && <TableEmptyRow colSpan={8} title={data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok.'} description={data?.hostsScanned ? undefined : 'Konfigürasyon sekmesinden sunucuları yenileyin.'} />}
+            {!loading && !err && rows.length === 0 && (
+              <TableEmptyRow
+                colSpan={8}
+                title={data?.hostsScanned ? 'Eşleşen sertifika yok.' : 'Henüz dokum yok.'}
+                description={
+                  data?.hostsScanned ? undefined : 'Konfigürasyon sekmesinden sunucuları yenileyin.'
+                }
+              />
+            )}
           </tbody>
         </table>
       </div>
@@ -940,41 +2383,118 @@ function CertsTab() {
   );
 }
 
-function Tile({ n, l, tone, onClick }: { n: number; l: string; tone?: 'danger' | 'warning'; onClick?: () => void }) {
+function Tile({
+  n,
+  l,
+  tone,
+  onClick,
+}: {
+  n: number;
+  l: string;
+  tone?: 'danger' | 'warning';
+  onClick?: () => void;
+}) {
   return (
-    <button onClick={onClick} className="rounded-xl border p-3 text-left" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-      <div className="text-2xl font-semibold tabular-nums" style={{ color: tone === 'danger' && n > 0 ? 'var(--status-danger)' : tone === 'warning' && n > 0 ? 'var(--status-warning)' : undefined }}>{fmtNumber(n)}</div>
-      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{l}</div>
+    <button
+      onClick={onClick}
+      className="rounded-xl border p-3 text-left"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
+      <div
+        className="text-2xl font-semibold tabular-nums"
+        style={{
+          color:
+            tone === 'danger' && n > 0
+              ? 'var(--status-danger)'
+              : tone === 'warning' && n > 0
+                ? 'var(--status-warning)'
+                : undefined,
+        }}
+      >
+        {fmtNumber(n)}
+      </div>
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        {l}
+      </div>
     </button>
   );
 }
 
 function CertModal({ cert, onClose }: { cert: NcAggCert | null; onClose: () => void }) {
   return (
-    <Modal open={!!cert} onClose={onClose} title={cert?.cn || cert?.subject || 'Sertifika'} subtitle={cert?.fingerprint || undefined} size="wide">
+    <Modal
+      open={!!cert}
+      onClose={onClose}
+      title={cert?.cn || cert?.subject || 'Sertifika'}
+      subtitle={cert?.fingerprint || undefined}
+      size="wide"
+    >
       {cert && (
         <div className="grid gap-4 md:grid-cols-2 text-xs">
           <div className="space-y-1">
-            <Row k="Subject" v={cert.subject} /><Row k="İmzalayan (issuer)" v={cert.issuer} />
-            <Row k="Geçerlilik" v={`${cert.notBefore ? cert.notBefore.slice(0, 10) : '?'} → ${cert.notAfter ? cert.notAfter.slice(0, 10) : '?'}`} extra={<Pill tone={daysTone(cert.daysLeft)}>{daysLabel(cert.daysLeft)}</Pill>} />
-            <Row k="Seri" v={cert.serial} /><Row k="Parmak izi (SHA-256)" v={cert.fingerprint} mono />
+            <Row k="Subject" v={cert.subject} />
+            <Row k="İmzalayan (issuer)" v={cert.issuer} />
+            <Row
+              k="Geçerlilik"
+              v={`${cert.notBefore ? cert.notBefore.slice(0, 10) : '?'} → ${cert.notAfter ? cert.notAfter.slice(0, 10) : '?'}`}
+              extra={<Pill tone={daysTone(cert.daysLeft)}>{daysLabel(cert.daysLeft)}</Pill>}
+            />
+            <Row k="Seri" v={cert.serial} />
+            <Row k="Parmak izi (SHA-256)" v={cert.fingerprint} mono />
             <Row k="Anahtar / imza" v={`${cert.keybits || '?'} bit · ${cert.sigalg || '?'}`} />
-            <Row k="Zincir" v={cert.chain > 1 ? `${cert.chain} sertifika: ${cert.chainSubjects.join(' ← ')}` : 'tek sertifika (zincir dosyada yok)'} />
+            <Row
+              k="Zincir"
+              v={
+                cert.chain > 1
+                  ? `${cert.chain} sertifika: ${cert.chainSubjects.join(' ← ')}`
+                  : 'tek sertifika (zincir dosyada yok)'
+              }
+            />
             <Row k="Self-signed" v={cert.selfSigned ? 'EVET' : 'hayır'} />
-            <div><div className="font-semibold mb-1">SAN ({cert.san?.length || 0})</div><div className="flex flex-wrap gap-1">{(cert.san || []).map((s) => <span key={s} className="font-mono px-1.5 py-0.5 rounded border text-[10px]" style={{ borderColor: 'var(--border-subtle)' }}>{s}</span>)}</div></div>
+            <div>
+              <div className="font-semibold mb-1">SAN ({cert.san?.length || 0})</div>
+              <div className="flex flex-wrap gap-1">
+                {(cert.san || []).map((s) => (
+                  <span
+                    key={s}
+                    className="font-mono px-1.5 py-0.5 rounded border text-[10px]"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
           <div>
-            <div className="font-semibold mb-1">Sunucular ({cert.hostCount}) ve kullanıldığı konfigürasyonlar ({cert.useCount})</div>
+            <div className="font-semibold mb-1">
+              Sunucular ({cert.hostCount}) ve kullanıldığı konfigürasyonlar ({cert.useCount})
+            </div>
             <div className="max-h-[55vh] overflow-auto space-y-2">
               {cert.hosts.map((h) => (
-                <div key={h.host + h.path} className="rounded-lg border p-2" style={{ borderColor: 'var(--border-subtle)' }}>
-                  <div className="flex items-center gap-2"><span className="font-mono font-semibold">{h.host}</span><span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>{h.path}</span></div>
-                  {h.uses.length === 0 && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>hiçbir konfigürasyonda referans yok (yetim dosya)</div>}
+                <div
+                  key={h.host + h.path}
+                  className="rounded-lg border p-2"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-semibold">{h.host}</span>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      {h.path}
+                    </span>
+                  </div>
+                  {h.uses.length === 0 && (
+                    <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      hiçbir konfigürasyonda referans yok (yetim dosya)
+                    </div>
+                  )}
                   {h.uses.map((u, i) => (
                     <div key={i} className="ml-2 mt-1 text-[11px] flex flex-wrap gap-2">
                       <span className="font-mono">{u.conf.replace('/usr/nginx/', '')}</span>
                       <span style={{ color: 'var(--text-muted)' }}>server_name {u.serverName}</span>
-                      <Pill tone={u.keyState === 'present' ? 'success' : 'danger'}>key {u.keyState === 'present' ? 'var' : 'YOK'}</Pill>
+                      <Pill tone={u.keyState === 'present' ? 'success' : 'danger'}>
+                        key {u.keyState === 'present' ? 'var' : 'YOK'}
+                      </Pill>
                     </div>
                   ))}
                 </div>
@@ -986,8 +2506,27 @@ function CertModal({ cert, onClose }: { cert: NcAggCert | null; onClose: () => v
     </Modal>
   );
 }
-function Row({ k, v, mono, extra }: { k: string; v: string | null | undefined; mono?: boolean; extra?: React.ReactNode }) {
-  return <div className="flex gap-2"><span className="w-36 shrink-0" style={{ color: 'var(--text-muted)' }}>{k}</span><span className={`break-all ${mono ? 'font-mono' : ''}`}>{v || '—'} {extra}</span></div>;
+function Row({
+  k,
+  v,
+  mono,
+  extra,
+}: {
+  k: string;
+  v: string | null | undefined;
+  mono?: boolean;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-36 shrink-0" style={{ color: 'var(--text-muted)' }}>
+        {k}
+      </span>
+      <span className={`break-all ${mono ? 'font-mono' : ''}`}>
+        {v || '—'} {extra}
+      </span>
+    </div>
+  );
 }
 // NcCert tipi tree ucunda kullaniliyor (sunucu bazli sertifika listesi) — ileride sunucu paneline eklenecek
 export type { NcCert as _NcCertRef };

@@ -6,6 +6,8 @@
 //   NO3 avatar ortak onbellege girmez (private)
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -59,8 +61,10 @@ test('NO3 avatar ortak onbellege girmez', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const kaynak = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  const i = kaynak.indexOf('"/api/nobetci/today/avatar"');
-  const govde = kaynak.slice(i, kaynak.indexOf('app.get("/api/nobetci/list"', i));
-  assert.match(govde, /"Cache-Control", "private, max-age=300"/);
-  assert.doesNotMatch(govde, /"Cache-Control", "public/);
+  const i = konum(kaynak, '"/api/nobetci/today/avatar"');
+  assert.ok(i >= 0, 'avatar ucu yok');
+  const govde = kaynak.slice(i, konum(kaynak, 'app.get("/api/nobetci/list"', i));
+  assert.match(govde, esnek(/"Cache-Control", "private, max-age=300"/));
+  // Kor bekci olmasin: kod tek tirnakla yazilir (Prettier); desen tirnaktan bagimsiz.
+  assert.doesNotMatch(govde, esnek(/"Cache-Control", "public/));
 });

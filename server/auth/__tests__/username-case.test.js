@@ -15,6 +15,7 @@
 // UC4 yetki kurallari zaten harf duyarsiz (yazarken de okurken de) - bu KORUNMALI
 // UC5 LDAP arama ucu: en az 3 karakter, admin'e kapali degil ama admin'e ozel, tavanli
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -77,7 +78,8 @@ test('UC4: yetki kurallari harf duyarsiz - yazarken ve okurken', () => {
   );
   assert.ok(
     visibility.includes("const usernameLower = ((user && user.username) || '').toLowerCase();") ||
-      visibility.includes("const usernameLower = ((user?.username) || '').toLowerCase();"),
+      visibility.includes("const usernameLower = ((user?.username) || '').toLowerCase();") ||
+      visibility.includes("const usernameLower = (user?.username || '').toLowerCase();"),
     'kullanici adi karsilastirma icin kucultulmuyor',
   );
 });

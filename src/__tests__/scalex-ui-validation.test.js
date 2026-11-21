@@ -2,6 +2,7 @@
 // dogrulamasi. Bu depodaki diger UI bekcileriyle ayni yontem: kaynak metni uzerinde
 // yapisal denetim (React calistirici yok, ama bu sinif hatalarin cogu yapisal).
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -208,13 +209,13 @@ test('U11 iki mod kartinin sinif dizesi AYNI', () => {
   // yakalanmasi mumkun degil.
   const cards = [
     ...OPERATION.matchAll(
-      /onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}[^`]*?className=\{`([^`]+)`\}/g,
+      /onClick=\{\(\) => setMode\(["'](dry_run|apply)["']\)\}[^`]*?className=\{`([^`]+)`\}/g,
     ),
   ];
   assert.equal(cards.length, 2, 'iki mod karti bulunamadi');
   const norm = (s) =>
     s
-      .replace(/mode === "\w+"/, 'MODE')
+      .replace(/mode === ["']\w+["']/, 'MODE')
       .replace(/\s+/g, ' ')
       .trim();
   assert.equal(
@@ -997,7 +998,7 @@ test('Y4 BAKILAMAYAN tip kullaniciya OZET, yoneticiye TAM LISTE', () => {
   );
   assert.doesNotMatch(
     code,
-    /\{unreadableKinds\.length > 0 &&/,
+    esnek(/\{unreadableKinds\.length > 0 &&/),
     'ozet `askable` yerine tum bakilamayan tiplere baglanmis',
   );
   // TAM KAYNAK ADI kullanici ekraninda da korunur: kullanici ayrintiyi acarsa
@@ -1046,10 +1047,14 @@ test('Y7 ayni ad farkli tipte oldugunda secim IZIN VERILIR; her cluster kendi ti
   const page = codeOnly(PAGE);
   // Yeni sozlesme: UI name-only secer; cluster basina kind haritasi AWX'e gider.
   // Playbook ayni cluster icindeki belirsizligi `auto` taramasiyla cozer.
-  assert.doesNotMatch(code, /const kindBlocked = isKindBlocked\(w\)/, 'eski tip kilidi hala var');
   assert.doesNotMatch(
     code,
-    /farklı bir tip seçildi/,
+    esnek(/const kindBlocked = isKindBlocked\(w\)/),
+    'eski tip kilidi hala var',
+  );
+  assert.doesNotMatch(
+    code,
+    esnek(/farklı bir tip seçildi/),
     'kullanici artik farkli tip yuzunden engellenmiyor',
   );
   assert.match(
@@ -1069,7 +1074,7 @@ test('Z1 secim kimligi KOSULSUZ AD — geri donuste secim kaybolmaz', () => {
   // diyen tutarsizliga yol aciyordu.
   assert.doesNotMatch(
     code,
-    /ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/,
+    esnek(/ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/),
     'secim kimligi hala KOSULLU',
   );
   assert.match(
@@ -1172,7 +1177,10 @@ test('HS10 hafiza `WorkloadStep`e GERCEKTEN geciriliyor', () => {
   const kod = codeOnly(PAGE).replace(/\s+/g, ' ');
   const i = kod.indexOf('<WorkloadStep');
   assert.ok(i > 0, 'WorkloadStep render edilmiyor');
-  const blok = kod.slice(i, kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600);
+  const blok = kod.slice(
+    i,
+    kod.indexOf('/>', i) > 0 ? kod.indexOf('onSubmit={(v) => {', i) : i + 600,
+  );
   assert.match(blok, /autoScanMemo=\{autoScanMemo\}/, 'hafiza bilesene GECIRILMIYOR');
 });
 
@@ -1230,7 +1238,10 @@ test('OSU4 iptal BASARISIZ olabilir ve ekran bunu SOYLER', () => {
   // Sunucu 409 doner: kayit bu arada tetiklenmis olabilir. Bunu basari gibi
   // gostermek kullaniciya YALAN soylemek olurdu.
   const govde = codeOnly(PANEL);
-  const iptal = govde.slice(govde.indexOf('async function iptal'), govde.indexOf('async function guncelle'));
+  const iptal = govde.slice(
+    govde.indexOf('async function iptal'),
+    govde.indexOf('async function guncelle'),
+  );
   assert.match(iptal, /if \(!r\.ok\) setError/, 'iptal basarisizligi YUTULUYOR');
   assert.match(iptal, /await load\(\)/, 'liste tazelenmiyor — ekran bayat kalir');
 });

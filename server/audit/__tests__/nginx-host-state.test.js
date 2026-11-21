@@ -69,6 +69,11 @@ test('HS3 eski sema: run_state kolonu yoksa is DUSMEZ', async () => {
   assert.equal(h.runState, '?');
 
   // Iki sorgu da duserse: bos harita, is patlamaz.
-  const bos = await hs.loadHostStates({ query: async () => { throw new Error('yok'); }, sql });
+  const bos = await hs.loadHostStates({
+    query: async () => {
+      throw new Error('yok');
+    },
+    sql,
+  });
   assert.equal(bos.size, 0);
 });

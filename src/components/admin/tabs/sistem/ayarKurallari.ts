@@ -33,7 +33,12 @@ export const katla = (s: string) =>
  * Arama eslesmesi: etiket, anahtar, aciklama ve grup adi. Deger yalniz GIZLI DEGILSE
  * aranir — maskeli onizlemenin icinde arama, gizli degerin parcalarini tahmin ettirebilir.
  */
-export function eslesir(m: EnvVarMeta, cv: ConfigValue | undefined, grupAd: string, q: string): boolean {
+export function eslesir(
+  m: EnvVarMeta,
+  cv: ConfigValue | undefined,
+  grupAd: string,
+  q: string,
+): boolean {
   const aranan = katla(q.trim());
   if (!aranan) return true;
   const alanlar = [m.label, m.key, m.description, grupAd];
@@ -224,7 +229,8 @@ export function onayGerekce(
   if (!cv.masked && cv.defined && bos) gerekceler.push('bosaltma');
   // Kritik anahtarda "Portal'a sabitle" de (deger ayni, kaynak ortam dosyasi) onaydan gecer:
   // deger degismese de ortam dosyasindaki sonraki duzeltme artik etkisiz kalir.
-  if (m.kritik && (yeni !== (cv.masked ? '' : cv.value) || sabitlenebilir(cv))) gerekceler.push('kritik');
+  if (m.kritik && (yeni !== (cv.masked ? '' : cv.value) || sabitlenebilir(cv)))
+    gerekceler.push('kritik');
   const tehlike = tehlikeliDeger(m.key, yeni) !== null;
   if (tehlike) gerekceler.push('tehlikeliDeger');
   if (gerekceler.length === 0) return null;

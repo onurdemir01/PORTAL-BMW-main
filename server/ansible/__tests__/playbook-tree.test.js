@@ -1,6 +1,6 @@
 // server/ansible/__tests__/playbook-tree.test.js — AWX agaci AYNASI.
 //
-// NEDEN VAR: `server/ansible/bmw_portal/` klasoru AWX projesindeki `bmw_portal/`
+// NEDEN VAR: `server/ansible/playbooks/bmw_portal/` klasoru AWX projesindeki `bmw_portal/`
 // ile BIREBIR AYNI olmali — klasor oldugu gibi kopyalanabilsin diye. Ama asil
 // sebep kozmetik degil:
 //

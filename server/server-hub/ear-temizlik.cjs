@@ -94,15 +94,15 @@ function kur(deps) {
   _d = deps || null;
 }
 
-const db = () => (_d && _d.db) || require('../db/index.cjs');
-const hostRe = () => (_d && _d.HOST_RE) || HOST_RE_VARSAYILAN;
+const db = () => _d?.db || require('../db/index.cjs');
+const hostRe = () => _d?.HOST_RE || HOST_RE_VARSAYILAN;
 
 async function isDurumu(serverId, jobId) {
   try {
     if (_d && typeof _d.isDurumu === 'function') return await _d.isDurumu(serverId, jobId);
     return await require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId);
   } catch (e) {
-    console.warn(`[EarTemizlik] is #${jobId} okunamadi:`, e && e.message);
+    console.warn(`[EarTemizlik] is #${jobId} okunamadi:`, e?.message);
     return null;
   }
 }
@@ -114,12 +114,12 @@ function envanterKosu(opts) {
 
 function sonucOku(st) {
   const { extractStatsKey } = require('../opsx/index.cjs');
-  return extractStatsKey(st && st.artifacts, 'server_hub_fix_result') || null;
+  return extractStatsKey(st?.artifacts, 'server_hub_fix_result') || null;
 }
 
 function denetim(req, detail) {
   try {
-    if (_d && _d.audit) _d.audit(req, detail);
+    if (_d?.audit) _d.audit(req, detail);
   } catch {
     // denetim kaydi yazilamadi: islem yine tamam
   }
@@ -140,7 +140,7 @@ const kullanici = (req) => M(req.session?.user?.username || 'unknown', 128);
 // ── ADAYLAR ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Production / ortami bilinmeyen sunucu prod sayilir (fail-closed). */
-const prodMu = (h) => !h || h.envGroup !== 'Non-Production';
+const prodMu = (h) => h?.envGroup !== 'Non-Production';
 
 /** Bulgu {kok, ad, jboss} temizlige uygun mu; degilse nedeni. */
 function bicimEngeli(kok, ad, jboss) {
@@ -154,7 +154,7 @@ function bicimEngeli(kok, ad, jboss) {
 /** Ayni kok/ad Uygulama Envanteri'nde domain.xml deployment'ina bagliysa engel metni. */
 function xmlEngeli(h, kok, ad) {
   const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
-  return ul.some((u) => u && u.kok === kok && u.ad === ad && u.xml && u.xml.durum === 'VAR')
+  return ul.some((u) => u && u.kok === kok && u.ad === ad && u.xml?.durum === 'VAR')
     ? ENGEL_XML
     : null;
 }
@@ -170,11 +170,11 @@ function kullanimEngeli(h, kok, ad, now) {
   const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
   const u = ul.find((x) => x && x.kok === kok && x.ad === ad);
   if (!u) return `${OLCULEMEDI_EKI} (envanter kaydı bulunamadı)`;
-  const k = u.kullanim || (u.xml && u.xml.kullanim) || null;
-  const kk = kullanimKaniti(k, h.ear && h.ear.taranma, now);
+  const k = u.kullanim || u.xml?.kullanim || null;
+  const kk = kullanimKaniti(k, h.ear?.taranma, now);
   if (kk.aktif) return `${ENGEL_KULLANIM} (${kk.metin})`;
   if (kk.olculemedi)
-    return `${OLCULEMEDI_EKI}${kk.neden ? ` (${kk.neden})` : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
+    return `${OLCULEMEDI_EKI}${kk.neden ? ' (' + kk.neden + ')' : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
   return null;
 }
 
@@ -185,8 +185,8 @@ function kullanimEngeli(h, kok, ad, now) {
 function kullanimUyarisi(h, kok, ad, now) {
   const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
   const u = ul.find((x) => x && x.kok === kok && x.ad === ad);
-  if (!u || !u.xml || u.xml.durum !== 'JVM_YOK') return null;
-  const kk = kullanimKaniti(u.kullanim || u.xml.kullanim, h.ear && h.ear.taranma, now);
+  if (u?.xml?.durum !== 'JVM_YOK') return null;
+  const kk = kullanimKaniti(u.kullanim || u.xml.kullanim, h.ear?.taranma, now);
   if (kk.aktif || kk.olculemedi) return null;
   return kk.kor ? `dizin kullanımı kısmen görüldü: ${kk.kor}` : null;
 }
@@ -194,9 +194,9 @@ function kullanimUyarisi(h, kok, ad, now) {
 /** Taze degerlendirmeden EAR_WAR_YOK adaylari (kayit alani bos). */
 function adaylariTuret(a, now = Date.now()) {
   const out = [];
-  for (const h of (a && a.hosts) || []) {
+  for (const h of a?.hosts || []) {
     for (const f of h.findings || []) {
-      if (!f || f.code !== 'EAR_WAR_YOK' || !f.ear) continue;
+      if (f?.code !== 'EAR_WAR_YOK' || !f.ear) continue;
       const kok = String(f.ear.kok || '');
       const ad = String(f.ear.ad || '');
       const jboss = Number(f.ear.jboss);
@@ -207,7 +207,7 @@ function adaylariTuret(a, now = Date.now()) {
         kok,
         ad,
         jboss,
-        envanterTarihi: (h.ear && h.ear.taranma) || null,
+        envanterTarihi: h.ear?.taranma || null,
         engel:
           bicimEngeli(kok, ad, jboss) || xmlEngeli(h, kok, ad) || kullanimEngeli(h, kok, ad, now),
         kullanimUyarisi: kullanimUyarisi(h, kok, ad, now),
@@ -283,7 +283,7 @@ function kayitSatiri(r) {
 
 async function kayitOku(id) {
   const { rows } = await db().query(`SELECT * FROM server_hub_ear_temizlik WHERE id = $1`, [id]);
-  return rows && rows[0] ? rows[0] : null;
+  return rows?.[0] ? rows[0] : null;
 }
 
 /**
@@ -305,7 +305,7 @@ async function gecis(id, eski, yeni, alanlar = {}) {
     `UPDATE server_hub_ear_temizlik SET ${set.join(', ')} WHERE id = $1 AND durum = $2`,
     p,
   );
-  return r && r.rowCount === 1;
+  return r?.rowCount === 1;
 }
 
 /**
@@ -323,7 +323,7 @@ async function aktifKayit(host, kok, ad) {
     `SELECT TOP 1 * FROM server_hub_ear_temizlik WHERE host = $1 AND kok = $2 AND ad = $3 AND durum IN (${IN(AKTIF)}) ORDER BY id DESC`,
     [host, kok, ad],
   );
-  return rows && rows[0] ? rows[0] : null;
+  return rows?.[0] ? rows[0] : null;
 }
 
 // ── AWX SONUCLARI ────────────────────────────────────────────────────────────────────────────────
@@ -449,8 +449,8 @@ async function envanterBaslat(host, idler, kim) {
       baslatan: kim,
       req: sozdeIstek(kim),
     });
-    kosuId = k && k.id != null ? Number(k.id) : null;
-    const ph = k && k.ilkParti && k.ilkParti.hata;
+    kosuId = k?.id != null ? Number(k.id) : null;
+    const ph = k?.ilkParti?.hata;
     // ilkParti.hata: AWX isi baslatilamadi (gecici: poller yeniden dener / son deneme: tarama sonucsuz biter).
     if (ph)
       not = k.ilkParti.yenidenDenenecek
@@ -460,9 +460,9 @@ async function envanterBaslat(host, idler, kim) {
   } catch (e) {
     // Yalniz 'kosu_calisiyor' baska kosu demektir; diger 409'lar (sablon / limit yapilandirmasi) gercek hata.
     not =
-      e && e.code === 'kosu_calisiyor'
+      e?.code === 'kosu_calisiyor'
         ? ENVANTER_SURUYOR
-        : `Uygulama Envanteri taraması başlatılamadı (${M(e && e.message, 200)}); uyarı bir sonraki taramada kalkar`;
+        : `Uygulama Envanteri taraması başlatılamadı (${M(e?.message, 200)}); uyarı bir sonraki taramada kalkar`;
   }
   for (const id of idler)
     await db().query(
@@ -496,7 +496,7 @@ async function envanterKontrol(host) {
       `UPDATE server_hub_ear_temizlik SET envanter_notu = $3, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'SILINDI' AND envanter_notu = $2`,
       [r.id, ENVANTER_BEKLIYOR, ENVANTER_BASLATILIYOR],
     );
-    if (u && u.rowCount === 1) alinan.push(r);
+    if (u?.rowCount === 1) alinan.push(r);
   }
   if (!alinan.length) return;
   const son = alinan.at(-1);
@@ -597,7 +597,7 @@ async function baslat(r, sonuc) {
     `UPDATE server_hub_ear_temizlik SET durum = 'SILINIYOR', onaylayan = $2, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND sil_istendi_at IS NOT NULL`,
     [r.id, kim],
   );
-  if (!al || al.rowCount !== 1) return false;
+  if (al?.rowCount !== 1) return false;
   const bekleyen = _istekler.get(r.id);
   const req = bekleyen || sozdeIstek(kim);
   const plan = planOku(r.plan_json);
@@ -611,7 +611,7 @@ async function baslat(r, sonuc) {
       ...(r.toplu_id ? { topluId: r.toplu_id } : {}),
     });
   } catch (e) {
-    if (e && e.launchBelirsiz) {
+    if (e?.launchBelirsiz) {
       const not = `AWX yanıtı belirsiz — silme işi açılmış olabilir; tekrar denenmez, AWX'ten kontrol edin (${M(e.message, 300)})`;
       await gecis(r.id, 'SILINIYOR', 'BELIRSIZ', { sonuc: M(not, 1000) });
       denetim(req, { op: 'ear_temizlik_sonuc', faz: 'sil', ...ozet, durum: 'BELIRSIZ' });
@@ -625,7 +625,7 @@ async function baslat(r, sonuc) {
       sonuc.set(r.id, { hata: e });
     } else {
       // Yanit bekleyen yok (toplu / kuyruktan sonradan): kayit kapanir, neden kayitta gorunur.
-      const not = `silme işi başlatılamadı: ${M(e && e.message, 300)} — yeniden ön kontrol çalıştırın`;
+      const not = `silme işi başlatılamadı: ${M(e?.message, 300)} — yeniden ön kontrol çalıştırın`;
       await db().query(
         `UPDATE server_hub_ear_temizlik SET durum = 'HATA', sonuc = $2, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'SILINIYOR' AND sil_job_id IS NULL`,
         [r.id, M(not, 1000)],
@@ -655,11 +655,11 @@ async function baslat(r, sonuc) {
     );
     sonuc.set(r.id, { basladi: true });
   } catch (e) {
-    console.error(`[EarTemizlik] kayit #${r.id} silme isi #${j.jobId} yazilamadi:`, e && e.message);
+    console.error(`[EarTemizlik] kayit #${r.id} silme isi #${j.jobId} yazilamadi:`, e?.message);
     sonuc.set(r.id, {
       hata: hata(
         502,
-        `Silme işi #${j.jobId ?? '?'} AWX'te başlatıldı ama kayda yazılamadı (${M(e && e.message, 200)}) — tekrar denemeyin; sonucu AWX'ten izleyin (kayıt ${NUMARASIZ_DK} dk sonra BELIRSIZ olur).`,
+        `Silme işi #${j.jobId ?? '?'} AWX'te başlatıldı ama kayda yazılamadı (${M(e?.message, 200)}) — tekrar denemeyin; sonucu AWX'ten izleyin (kayıt ${NUMARASIZ_DK} dk sonra BELIRSIZ olur).`,
         'kayit_yazilamadi',
       ),
     });
@@ -678,7 +678,7 @@ async function siraEskit() {
       `UPDATE server_hub_ear_temizlik SET durum = 'PLAN_ESKIDI', sonuc = $2, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND sil_istendi_at IS NOT NULL`,
       [r.id, SIRA_ESKIDI_NOTU],
     );
-    if (!u || u.rowCount !== 1) continue;
+    if (u?.rowCount !== 1) continue;
     hostlar.add(r.host);
     denetim(sozdeIstek(r.sil_isteyen || r.olusturan), {
       op: 'ear_temizlik_sonuc',
@@ -721,7 +721,7 @@ async function kuyrukTuru(sonuc) {
       } catch (e) {
         console.warn(
           '[EarTemizlik] kuyruk: degerlendirme okunamadi, baslatma ertelendi:',
-          e && e.message,
+          e?.message,
         );
         return;
       }
@@ -743,12 +743,12 @@ async function siradanDusur(r, a, sonuc) {
     bulguKapisi(a, r);
     return true;
   } catch (e) {
-    const not = `sırada iken yeniden denetlendi: ${M(e && e.message, 300)}`;
+    const not = `sırada iken yeniden denetlendi: ${M(e?.message, 300)}`;
     const u = await db().query(
       `UPDATE server_hub_ear_temizlik SET durum = 'IPTAL', sonuc = $2, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND sil_istendi_at IS NOT NULL`,
       [r.id, M(not, 1000)],
     );
-    if (u && u.rowCount === 1) {
+    if (u?.rowCount === 1) {
       denetim(sozdeIstek(r.sil_isteyen || r.olusturan), {
         op: 'ear_temizlik_sonuc',
         faz: 'sira',
@@ -836,9 +836,9 @@ async function onKontrol(req, body, degerlendirme) {
       `INSERT INTO server_hub_ear_temizlik (host, kok, ad, jboss, ortam, prod, durum, olusturan) VALUES ($1, $2, $3, $4, $5, $6, 'PLANLANIYOR', $7) RETURNING id`,
       [host, kok, ad, aday.jboss, aday.ortam, aday.prod ? 1 : 0, kullanici(req)],
     );
-    id = r.rows && r.rows[0] && r.rows[0].id;
+    id = r.rows?.[0]?.id;
   } catch (e) {
-    if (/UX_shet_aktif|duplicate key|UNIQUE/i.test(String(e && e.message)))
+    if (/UX_shet_aktif|duplicate key|UNIQUE/i.test(String(e?.message)))
       throw hata(
         409,
         `${kok}/${ad} için başka bir kayıt az önce açıldı — sayfayı yenileyin.`,
@@ -858,11 +858,10 @@ async function onKontrol(req, body, degerlendirme) {
       ad,
     });
   } catch (e) {
-    const not =
-      e && e.launchBelirsiz
-        ? 'AWX yanıtı belirsiz (salt okunur ön kontrol; yeniden deneyin)'
-        : 'ön kontrol başlatılamadı';
-    await gecis(id, 'PLANLANIYOR', 'PLAN_HATA', { sonuc: M(`${not}: ${e && e.message}`, 1000) });
+    const not = e?.launchBelirsiz
+      ? 'AWX yanıtı belirsiz (salt okunur ön kontrol; yeniden deneyin)'
+      : 'ön kontrol başlatılamadı';
+    await gecis(id, 'PLANLANIYOR', 'PLAN_HATA', { sonuc: M(`${not}: ${e?.message}`, 1000) });
     throw e;
   }
   await db().query(
@@ -962,7 +961,7 @@ async function sil(req, id, body) {
   if (!(await silIste(id, r.plan_job_id, kim, null))) {
     await eskit();
     const g = await kayitOku(id);
-    if (g && g.durum === 'PLAN_ESKIDI')
+    if (g?.durum === 'PLAN_ESKIDI')
       throw hata(
         409,
         `Ön kontrol ${PLAN_GECERLILIK_DK} dakikadan eski — yeniden ön kontrol çalıştırın.`,
@@ -980,21 +979,21 @@ async function sil(req, id, body) {
     sonuc = await kuyrukIlerlet();
   } catch (e) {
     // Silme istendi ve kayitta: kuyruk hatasi istegi dusurmez (yurutucu / GET devam ettirir); kayit sirada doner.
-    console.error(`[EarTemizlik] kayit #${id} icin kuyruk ilerletilemedi:`, e && e.message);
+    console.error(`[EarTemizlik] kayit #${id} icin kuyruk ilerletilemedi:`, e?.message);
   } finally {
     _istekler.delete(id);
   }
   const s = sonuc.get(id);
-  if (s && s.hata) throw s.hata;
+  if (s?.hata) throw s.hata;
   const kayit = kayitSatiri(await kayitOku(id));
   // Kuyruk hatasi sonucu yuttuysa ve istek geri alindiysa (PLAN_HAZIR, sirada degil) basari denmez.
-  if (kayit && kayit.durum === 'PLAN_HAZIR' && !kayit.sirada)
+  if (kayit?.durum === 'PLAN_HAZIR' && !kayit.sirada)
     throw hata(
       502,
       `Kayıt #${id} için silme işi başlatılamadı — kayıt hazır ön kontrole döndü; yeniden deneyin.`,
       'baslatilamadi',
     );
-  if (kayit && kayit.sirada)
+  if (kayit?.sirada)
     denetim(req, {
       op: 'ear_temizlik_sil',
       id,
@@ -1025,9 +1024,9 @@ async function iptal(req, id) {
   denetim(req, {
     op: 'ear_temizlik_iptal',
     id,
-    host: r && r.host,
-    kok: r && r.kok,
-    ad: r && r.ad,
+    host: r?.host,
+    kok: r?.kok,
+    ad: r?.ad,
     ...(sirada ? { sirada: true } : {}),
   });
   if (sirada && r) await envanterKontrol(r.host);
@@ -1047,12 +1046,11 @@ async function liste(fresh) {
     ),
   ]);
   const birlesik = new Map();
-  for (const r of [...((son && son.rows) || []), ...((aktif && aktif.rows) || [])])
-    birlesik.set(Number(r.id), r);
+  for (const r of [...(son?.rows || []), ...(aktif?.rows || [])]) birlesik.set(Number(r.id), r);
   const kayitlar = [...birlesik.values()]
     .sort((x, y) => Number(y.id) - Number(x.id))
     .map(kayitSatiri);
-  const adaylar = a && a.tableMissing ? [] : adaylariTuret(a);
+  const adaylar = a?.tableMissing ? [] : adaylariTuret(a);
   for (const x of adaylar)
     x.kayit = kayitlar.find((k) => k.host === x.host && k.kok === x.kok && k.ad === x.ad) || null;
   return { planGecerlilikDk: PLAN_GECERLILIK_DK, adaylar, kayitlar };
@@ -1091,7 +1089,7 @@ function topluListe(liste, ad) {
 
 /** POST toplu/on-kontrol: her aday icin ayri on kontrol (kismi basari serbest). */
 async function topluOnKontrol(req, body) {
-  const liste = topluListe(body && body.adaylar, 'Aday listesi');
+  const liste = topluListe(body?.adaylar, 'Aday listesi');
   // Oge basina girdi denetimi (kismi basari): gecersiz oge sonuclarda ok:false; tekillik gecerli ogeler uzerinde.
   const girdiler = liste.map((x) => {
     const o = x && typeof x === 'object' ? x : {};
@@ -1124,7 +1122,7 @@ async function topluOnKontrol(req, body) {
       sonuclar.push({ ...g, ok: true, id: k.id });
     } catch (e) {
       hatalar.push(e);
-      sonuclar.push({ ...g, ok: false, message: M(e && e.message, 500) });
+      sonuclar.push({ ...g, ok: false, message: M(e?.message, 500) });
     }
   }
   const basarili = sonuclar.filter((x) => x.ok).length;
@@ -1146,13 +1144,15 @@ async function topluOnKontrol(req, body) {
     // AWX'e ulasilamadi: 5xx ya da durum kodu olmayan belirsiz launch (ag kopmasi) -> 5xx (HTTP'de 424).
     const awxHatasi = (e) => !!e && (Number(e.status) >= 500 || !!e.launchBelirsiz);
     const awx = hatalar.every(awxHatasi);
-    const e = awx
-      ? hata(
-          Number(hatalar[0].status) >= 500 ? Number(hatalar[0].status) : 502,
-          `Hiçbir ön kontrol başlatılamadı (AWX: ${M(hatalar[0].message, 200)}).`,
-          'toplu_awx',
-        )
-      : hata(409, 'Hiçbir ön kontrol başlatılamadı.', 'toplu_hicbiri');
+    let e;
+    if (awx) {
+      const durum = Number(hatalar[0].status);
+      e = hata(
+        durum >= 500 ? durum : 502,
+        `Hiçbir ön kontrol başlatılamadı (AWX: ${M(hatalar[0].message, 200)}).`,
+        'toplu_awx',
+      );
+    } else e = hata(409, 'Hiçbir ön kontrol başlatılamadı.', 'toplu_hicbiri');
     throw Object.assign(e, { ek });
   }
   return ek;
@@ -1163,9 +1163,9 @@ async function topluOnKontrol(req, body) {
  * istegi + ortak toplu_id -> kuyruk. CAS'i kaybeden kayit (arada degisti) yanitta kaybedenler'de.
  */
 async function topluSil(req, body) {
-  const liste = topluListe(body && body.kayitlar, 'Kayıt listesi');
+  const liste = topluListe(body?.kayitlar, 'Kayıt listesi');
   const ogeler = liste.map((x) => {
-    const id = Number(x && x.id);
+    const id = Number(x?.id);
     if (!Number.isInteger(id) || id <= 0)
       throw hata(400, 'Geçersiz kayıt numarası.', 'gecersiz_id');
     return { id, planJobId: x.planJobId };
@@ -1173,11 +1173,11 @@ async function topluSil(req, body) {
   if (new Set(ogeler.map((x) => x.id)).size !== ogeler.length)
     throw hata(400, 'Aynı kayıt listede birden fazla kez var.', 'toplu_tekrar');
   const beklenen = `${ogeler.length} EAR SIL`;
-  if (String((body && body.onayMetni) ?? '') !== beklenen)
+  if (String(body?.onayMetni ?? '') !== beklenen)
     throw hata(409, `Onay için tam "${beklenen}" yazılmalı.`, 'onay_metni');
   await eskit();
   const { rows } = await db().query(
-    `SELECT * FROM server_hub_ear_temizlik WHERE id IN (${ogeler.map((_, i) => `$${i + 1}`).join(', ')}) ORDER BY id`,
+    `SELECT * FROM server_hub_ear_temizlik WHERE id IN (${ogeler.map((_, i) => '$' + (i + 1)).join(', ')}) ORDER BY id`,
     ogeler.map((x) => x.id),
   );
   const kayitlar = new Map((rows || []).map((r) => [Number(r.id), r]));
@@ -1190,7 +1190,7 @@ async function topluSil(req, body) {
       silKapilari(r, { planJobId: o.planJobId }, false);
       bulguKapisi(a, r);
     } catch (e) {
-      reddedilenler.push({ id: o.id, message: M(e && e.message, 500) });
+      reddedilenler.push({ id: o.id, message: M(e?.message, 500) });
     }
   }
   if (reddedilenler.length)
@@ -1218,10 +1218,7 @@ async function topluSil(req, body) {
       if (await silIste(o.id, kayitlar.get(o.id).plan_job_id, kim, topluId)) isaretli.push(o.id);
       else kaybedenler.push(o.id);
     } catch (e) {
-      console.error(
-        `[EarTemizlik] toplu ${topluId} kayit #${o.id} isaretlenemedi:`,
-        e && e.message,
-      );
+      console.error(`[EarTemizlik] toplu ${topluId} kayit #${o.id} isaretlenemedi:`, e?.message);
       isaretHatasi = e;
       kaybedenler.push(o.id);
     }
@@ -1263,9 +1260,9 @@ async function topluSil(req, body) {
   try {
     sonuc = await kuyrukIlerlet();
   } catch (e) {
-    console.error(`[EarTemizlik] toplu ${topluId} kuyruk ilerletilemedi:`, e && e.message);
+    console.error(`[EarTemizlik] toplu ${topluId} kuyruk ilerletilemedi:`, e?.message);
   }
-  const baslatilan = isaretli.filter((id) => (sonuc.get(id) || {}).basladi).length;
+  const baslatilan = isaretli.filter((id) => sonuc.get(id)?.basladi).length;
   let sirada = isaretli.length - baslatilan;
   try {
     const { rows: sonra } = await db().query(
@@ -1274,7 +1271,7 @@ async function topluSil(req, body) {
     );
     sirada = (sonra || []).filter(siradaMi).length;
   } catch (e) {
-    console.error(`[EarTemizlik] toplu ${topluId} sayilamadi:`, e && e.message);
+    console.error(`[EarTemizlik] toplu ${topluId} sayilamadi:`, e?.message);
   }
   return { topluId, sirada, baslatilan, ...(kaybedenler.length ? { kaybedenler } : {}) };
 }
@@ -1287,14 +1284,14 @@ async function topluIptal(req, topluId) {
     `SELECT * FROM server_hub_ear_temizlik WHERE toplu_id = $1 ORDER BY id`,
     [t],
   );
-  if (!rows || !rows.length) throw hata(404, `Toplu işlem ${t} yok.`, 'toplu_yok');
+  if (!rows?.length) throw hata(404, `Toplu işlem ${t} yok.`, 'toplu_yok');
   const iptalEdilen = [];
   for (const r of rows.filter(siradaMi)) {
     const u = await db().query(
       `UPDATE server_hub_ear_temizlik SET durum = 'IPTAL', updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND sil_istendi_at IS NOT NULL AND toplu_id = $2`,
       [r.id, t],
     );
-    if (u && u.rowCount === 1) iptalEdilen.push(r);
+    if (u?.rowCount === 1) iptalEdilen.push(r);
   }
   const { rows: sonra } = await db().query(
     `SELECT * FROM server_hub_ear_temizlik WHERE toplu_id = $1 ORDER BY id`,
@@ -1337,9 +1334,7 @@ async function yurutucuTuru() {
 function startPoller() {
   if (_timer) return;
   _timer = setInterval(() => {
-    yurutucuTuru().catch((e) =>
-      console.warn('[EarTemizlik] yurutucu turu hatasi:', e && e.message),
-    );
+    yurutucuTuru().catch((e) => console.warn('[EarTemizlik] yurutucu turu hatasi:', e?.message));
   }, YURUTUCU_SN * 1000);
   if (_timer.unref) _timer.unref();
   console.log(`[EarTemizlik] yurutucu basladi (${YURUTUCU_SN} sn)`);
@@ -1356,7 +1351,7 @@ function mount(router, deps) {
     if (status >= 500) {
       console.error(
         `[EarTemizlik] ${req.method} ${req.originalUrl || req.path} ${status}:`,
-        err && err.message,
+        err?.message,
       );
       if (req.method !== 'GET' && req.method !== 'HEAD')
         return res.status(424).json({
@@ -1442,7 +1437,7 @@ function mount(router, deps) {
       return res.status(400).json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
     try {
       const kayit = await sil(req, id, req.body);
-      res.json({ ok: true, kayit, sirada: !!(kayit && kayit.sirada) });
+      res.json({ ok: true, kayit, sirada: !!kayit?.sirada });
     } catch (err) {
       gonder(req, res, err);
     }

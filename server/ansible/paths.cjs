@@ -5,7 +5,7 @@
 // guncellenmesi gerekiyordu; biri unutulunca test "dosya yok" diye degil,
 // SESSIZCE "kontrol edilecek dosya yok" diye yesil kaliyordu.
 //
-// AGAC AWX REPOSUNUN AYNASIDIR. `server/ansible/bmw_portal/` klasoru, AWX
+// AGAC AWX REPOSUNUN AYNASIDIR. `server/ansible/playbooks/bmw_portal/` klasoru, AWX
 // projesindeki `bmw_portal/` ile BIREBIR AYNI yapidadir — klasor oldugu gibi
 // kopyalanabilir. Bu, kozmetik bir tercih degil:
 //
@@ -27,7 +27,7 @@ const path = require('node:path');
 const ANSIBLE_DIR = __dirname;
 
 /** AWX'e kopyalanan agacin koku. Bu klasorun ICERIGI `bmw_portal/` olur. */
-const AWX_TREE = path.join(ANSIBLE_DIR, 'bmw_portal');
+const AWX_TREE = path.join(ANSIBLE_DIR, 'playbooks', 'bmw_portal');
 
 /**
  * AWX'e KOPYALANMAYAN, yalnizca portal/AI tanilama icin duran playbook'lar.

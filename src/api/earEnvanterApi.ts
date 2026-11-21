@@ -20,7 +20,8 @@ export interface EarPlan {
   /** Sonraki 3 çalışma (UTC ISO); plan kapalıysa boş. */
   sonraki: string[];
 }
-export type EarPlanAlani = 'acik' | 'birim' | 'aralik' | 'gun' | 'sira' | 'saat' | 'kip' | 'kapsam' | 'baslangic';
+export type EarPlanAlani =
+  'acik' | 'birim' | 'aralik' | 'gun' | 'sira' | 'saat' | 'kip' | 'kapsam' | 'baslangic';
 export interface EarOrtamSayisi {
   ortam: string;
   sunucu: number;
@@ -99,7 +100,13 @@ export interface EarXmlEslesme {
     yontem: 'YOL' | 'AD';
     gruplar: { ad: string; acik: boolean }[];
   }[];
-  jvmler: { ad: string; grup: string; auto_start: boolean; deployment_acik: boolean; kurulum: string }[];
+  jvmler: {
+    ad: string;
+    grup: string;
+    auto_start: boolean;
+    deployment_acik: boolean;
+    kurulum: string;
+  }[];
   /** Tarayıcı sürüm 4 (JVM_YOK EAR'lar): dizin kullanımı; null / yok = ölçülmedi (eski tarayıcı). */
   kullanim?: EarKullanim | null;
 }
@@ -311,14 +318,10 @@ export interface EarAgac {
 }
 
 export type EarKarar =
-  | 'AYNI'
-  | 'FARKLI_KUTUPHANE'
-  | 'AYNI_SURUM_FARKLI_DOSYA'
-  | 'FARKLI_YAPI'
-  | 'EKSIK_TARAMA'
-  | 'TEK';
+  'AYNI' | 'FARKLI_KUTUPHANE' | 'AYNI_SURUM_FARKLI_DOSYA' | 'FARKLI_YAPI' | 'EKSIK_TARAMA' | 'TEK';
 /** Kütüphane ve yapı ayrı sonuçlardır; karar ikisinin en kötüsüdür. */
-export type EarKutuphaneSonucu = 'AYNI' | 'FARKLI' | 'AYNI_SURUM_FARKLI_DOSYA' | 'KARSILASTIRILAMADI';
+export type EarKutuphaneSonucu =
+  'AYNI' | 'FARKLI' | 'AYNI_SURUM_FARKLI_DOSYA' | 'KARSILASTIRILAMADI';
 export type EarYapiSonucu = 'AYNI' | 'FARKLI' | 'KARSILASTIRILAMADI';
 export type EarEslenikTuru = 'ORTAM_ICI' | 'ORTAMLAR_ARASI' | 'NESIL' | 'ORTAM_YOK';
 export interface EarDegisken {
@@ -544,7 +547,11 @@ export const earApi = {
       `${BASE}/warlar${sorguDizgisi({ ...p })}`,
     ),
   /** Açılır liste: ilk 200 değer + sayı; öteki süzgeçlere göre daralır. */
-  degerler: (gorunum: 'uygulamalar' | 'warlar' | 'kutuphaneler', kolon: string, p: { ara?: string; f?: string; q?: string }) =>
+  degerler: (
+    gorunum: 'uygulamalar' | 'warlar' | 'kutuphaneler',
+    kolon: string,
+    p: { ara?: string; f?: string; q?: string },
+  ) =>
     al<{ ok: boolean; degerler: { deger: string | null; sayi: number }[]; farkli: number }>(
       `${BASE}/degerler/${yol(gorunum)}/${yol(kolon)}${sorguDizgisi({ ...p })}`,
     ),

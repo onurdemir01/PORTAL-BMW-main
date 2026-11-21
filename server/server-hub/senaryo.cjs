@@ -234,12 +234,13 @@ function vhostTrafigi(d, t = TAZE) {
     return {
       olcum: 'OLCULEMEDI',
       bayat: true,
-      metin: `${d.ad}: yalnız tekrar eden istek ölçümü bayat (${[shOlcul && sh > 0 && !t.sh ? ('Server Hub ' + (t.shTarih || '?')) : '', wOk && !t.ue ? ('access log ' + (t.ueTarih || '?')) : ''].filter(Boolean).join(', ')} taraması)`,
+      metin: `${d.ad}: yalnız tekrar eden istek ölçümü bayat (${[shOlcul && sh > 0 && !t.sh ? 'Server Hub ' + (t.shTarih || '?') : '', wOk && !t.ue ? 'access log ' + (t.ueTarih || '?') : ''].filter(Boolean).join(', ')} taraması)`,
     };
   if (yalnizTekrar) {
-    const uriler = [
-      ...new Set([...(d.veri.shTekrarUri || []), ...((l && l.tekrar_uriler) || [])]),
-    ].slice(0, 3);
+    const uriler = [...new Set([...(d.veri.shTekrarUri || []), ...(l?.tekrar_uriler || [])])].slice(
+      0,
+      3,
+    );
     return {
       olcum: 'TEKRAR',
       uriler,
@@ -249,26 +250,26 @@ function vhostTrafigi(d, t = TAZE) {
   if ((shOlcul && sh > 0) || wOk)
     return {
       olcum: 'VAR',
-      metin: `${d.ad}: ${shOlcul && sh > 0 ? ("Server Hub 7 gün " + sh) : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? ("access log " + wSayi) : ''} gerçek istek`,
+      metin: `${d.ad}: ${shOlcul && sh > 0 ? 'Server Hub 7 gün ' + sh : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? 'access log ' + wSayi : ''} gerçek istek`,
     };
-  const wTam = l && l.durum === 'OLCULDU' && wSayi === 0;
-  const shSifir = shOlcul && sh === 0 && !(l && l.durum === 'KISMI');
+  const wTam = l?.durum === 'OLCULDU' && wSayi === 0;
+  const shSifir = shOlcul && sh === 0 && !(l?.durum === 'KISMI');
   if ((wTam && t.ue) || (shSifir && t.sh))
     return {
       olcum: 'YOK',
-      hc: (l && l.hc_7g) || d.veri.shHc24s || 0,
-      hcIstemci: (l && l.hc_istemcileri) || [],
-      metin: `${d.ad}: 7 gündür gerçek istek yok${l && l.hc_7g ? (" (yalnız " + l.hc_7g + " sağlık kontrolü)") : ''}`,
+      hc: l?.hc_7g || d.veri.shHc24s || 0,
+      hcIstemci: l?.hc_istemcileri || [],
+      metin: `${d.ad}: 7 gündür gerçek istek yok${l?.hc_7g ? ' (yalnız ' + l.hc_7g + ' sağlık kontrolü)' : ''}`,
     };
   if (wTam || shSifir)
     return {
       olcum: 'OLCULEMEDI',
       bayat: true,
-      metin: `${d.ad}: sıfır trafik ölçümü bayat (${[wTam ? ("access log " + (t.ueTarih || '?')) : '', shSifir ? ("Server Hub " + (t.shTarih || '?')) : ''].filter(Boolean).join(', ')} taraması)`,
+      metin: `${d.ad}: sıfır trafik ölçümü bayat (${[wTam ? 'access log ' + (t.ueTarih || '?') : '', shSifir ? 'Server Hub ' + (t.shTarih || '?') : ''].filter(Boolean).join(', ')} taraması)`,
     };
   return {
     olcum: 'OLCULEMEDI',
-    metin: `${d.ad}: ${l ? ("access log " + l.durum) : 'access log yok'}${shOlcul ? '' : ', Server Hub ölçemedi'}`,
+    metin: `${d.ad}: ${l ? 'access log ' + l.durum : 'access log yok'}${shOlcul ? '' : ', Server Hub ölçemedi'}`,
   };
 }
 
@@ -286,7 +287,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
   /** Sunucunun kaynak tazeligi: Server Hub (assess fresh) ve Uygulama Envanteri tarama ani. */
   const tazelikOf = (host) => {
     const s = g.dugumler.get(`sunucu:${host}`);
-    const v = (s && s.veri) || {};
+    const v = s?.veri || {};
     const ueMs = v.ueTaranma ? Date.parse(v.ueTaranma) : Number.NaN;
     return {
       sh: !!s && s.kaynaklar.includes('server_hub') && v.taze !== false,
@@ -310,14 +311,14 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     );
     const vhostlar = [...new Set(guclu.map((e) => e.kaynak))]
       .map((k) => g.dugumler.get(k))
-      .filter((x) => x && x.tur === 'vhost');
+      .filter((x) => x?.tur === 'vhost');
     const trafikler = vhostlar.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) }));
     // KULLANIM KANITI celiskili eslemeden de toplanir: eslemesi tartismali olsa da gercek istek alan bir
     // vhost'un arkasindaki kopya "kullanilmiyor" sayilamaz (guvenli taraf). Retire kosullari celiskisiz kenarla.
     const celiskiliVhost = gelen
       .filter((e) => GUVEN[e.guven] >= GUVEN.GUCLU && e.durum === 'CELISKI')
       .map((e) => g.dugumler.get(e.kaynak))
-      .filter((x) => x && x.tur === 'vhost' && !vhostlar.includes(x));
+      .filter((x) => x?.tur === 'vhost' && !vhostlar.includes(x));
     const calisiyor = d.tur === 'jvm' ? d.veri.calisiyor : null;
     const host = d.veri.host;
 
@@ -327,10 +328,13 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const zayifVhost = gelen
       .filter((e) => GUVEN[e.guven] < GUVEN.GUCLU)
       .map((e) => g.dugumler.get(e.kaynak))
-      .filter((x) => x && x.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x));
+      .filter((x) => x?.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x));
     const trafikVar = [
       ...trafikler,
-      ...[...celiskiliVhost, ...new Set(zayifVhost)].map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
+      ...[...celiskiliVhost, ...new Set(zayifVhost)].map((v) => ({
+        v,
+        t: vhostTrafigi(v, tazelikOf(v.veri.host)),
+      })),
     ].filter((x) => x.t.olcum === 'VAR');
     for (const x of trafikVar) maddeler.push(madde('WEB_TRAFIK_VAR', x.t.metin, x.v.anahtar));
     if (trafikVar.length && calisiyor === false)
@@ -400,9 +404,14 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const tekrarli = trafikler.filter((x) => x.t.olcum === 'TEKRAR');
     if (tekrarli.length && !trafikVar.length)
       maddeler.push(
-        madde('WEB_YALNIZ_TEKRAR', tekrarli.map((x) => x.t.metin).join('; '), tekrarli[0].v.anahtar, {
-          uriler: [...new Set(tekrarli.flatMap((x) => x.t.uriler))].slice(0, 5),
-        }),
+        madde(
+          'WEB_YALNIZ_TEKRAR',
+          tekrarli.map((x) => x.t.metin).join('; '),
+          tekrarli[0].v.anahtar,
+          {
+            uriler: [...new Set(tekrarli.flatMap((x) => x.t.uriler))].slice(0, 5),
+          },
+        ),
       );
     if (yok.length && !trafikVar.length) {
       const hc = yok.filter((x) => x.t.hc > 0);
@@ -454,8 +463,8 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       const dep = deploymentOf(ax.h, ax.j);
       if (dep && ['YOK', 'KAPALI', 'FAILED'].includes(dep))
         maddeler.push(madde('DEPLOY_SORUNU', `deployment ${dep}`, d.anahtar));
-      const ocp = ax.j.capraz && ax.j.capraz.ocp;
-      if (ocp && ocp.aday) maddeler.push(madde('OCP_TASINMIS', null, d.anahtar));
+      const ocp = ax.j.capraz?.ocp;
+      if (ocp?.aday) maddeler.push(madde('OCP_TASINMIS', null, d.anahtar));
       for (const r of ax.j.retirement || [])
         maddeler.push(
           madde(
@@ -553,7 +562,9 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       grupKk.get(gk).kk.push(x);
     }
     for (const [gk, gr] of grupKk) {
-      const gs = Object.fromEntries(KARARLAR.map((k) => [k, gr.kk.filter((x) => x.karar === k).length]));
+      const gs = Object.fromEntries(
+        KARARLAR.map((k) => [k, gr.kk.filter((x) => x.karar === k).length]),
+      );
       // Ortami ya da nesli bilinmeyen grup RETIRE_ADAYI olamaz (hangi kurulum / ortam oldugu belirsiz).
       let gKarar = topluKarar(gs, gr.kk.length);
       if (gKarar === 'RETIRE_ADAYI' && (!gr.ortam || gr.nesil === '?')) gKarar = 'KARAR_VERILEMEZ';
@@ -595,7 +606,11 @@ function grupImzasi(gk, karar, kk) {
     gk,
     karar,
     k: kk
-      .map((x) => ({ a: x.anahtar, k: x.karar, m: [...new Set(x.maddeler.map((m) => m.kod))].sort(varsayilanSira) }))
+      .map((x) => ({
+        a: x.anahtar,
+        k: x.karar,
+        m: [...new Set(x.maddeler.map((m) => m.kod))].sort(varsayilanSira),
+      }))
       .sort((a, b) => a.a.localeCompare(b.a)),
   });
   return require('node:crypto').createHash('sha256').update(govde).digest('hex').slice(0, 32);
@@ -603,7 +618,12 @@ function grupImzasi(gk, karar, kk) {
 
 /** Kopya kararlarindan toplu karar: hepsi aday ise aday; kullanim kanit her zaman kazanir. */
 function topluKarar(say, n) {
-  if (say.RETIRE_ADAYI === n) return 'RETIRE_ADAYI'; if (say.KULLANIMDA) return 'KULLANIMDA'; if (say.KARAR_VERILEMEZ) return 'KARAR_VERILEMEZ'; if (say.SUPHELI) return 'SUPHELI'; if (say.RETIRE_ADAYI) return 'SUPHELI'; return 'SORUN_YOK';
+  if (say.RETIRE_ADAYI === n) return 'RETIRE_ADAYI';
+  if (say.KULLANIMDA) return 'KULLANIMDA';
+  if (say.KARAR_VERILEMEZ) return 'KARAR_VERILEMEZ';
+  if (say.SUPHELI) return 'SUPHELI';
+  if (say.RETIRE_ADAYI) return 'SUPHELI';
+  return 'SORUN_YOK';
 }
 
 function uygulamaOzeti(karar, say, n) {

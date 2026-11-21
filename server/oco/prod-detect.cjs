@@ -20,7 +20,14 @@ function isProductionRequest(extraVars) {
   if (!extraVars || typeof extraVars !== 'object') return false;
   for (const [k, v] of Object.entries(extraVars)) {
     if (!ENV_KEYS.includes(String(k).trim().toLowerCase())) continue;
-    if (PROD_VALUES.includes(String(v ?? '').trim().toLowerCase())) return true;
+    if (
+      PROD_VALUES.includes(
+        String(v ?? '')
+          .trim()
+          .toLowerCase(),
+      )
+    )
+      return true;
   }
   return false;
 }
@@ -36,7 +43,9 @@ function readEnvLabel(vars) {
   if (!vars || typeof vars !== 'object') return '';
   for (const [k, v] of Object.entries(vars)) {
     if (!ENV_KEYS.includes(String(k).trim().toLowerCase())) continue;
-    const label = String(v ?? '').trim().toLowerCase();
+    const label = String(v ?? '')
+      .trim()
+      .toLowerCase();
     if (label) return label;
   }
   return '';

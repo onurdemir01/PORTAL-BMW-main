@@ -11,6 +11,8 @@
 // tarafta); sorun sessiz olmasiydi.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -18,7 +20,8 @@ const path = require('node:path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 const API = fs.readFileSync(
-  path.join(__dirname, '..', '..', '..', 'src', 'api', 'selfServiceApi.ts'), 'utf8'
+  path.join(__dirname, '..', '..', '..', 'src', 'api', 'selfServiceApi.ts'),
+  'utf8',
 );
 
 test('sinir tek yerde tanimli (iki ucta ayrisamaz)', () => {
@@ -43,13 +46,14 @@ test('sinir MSSQL parametre tavaninin ALTINDA', () => {
 });
 
 test('istemci tipi kesme bilgisini TASIYOR', () => {
-  assert.match(API, /truncated\?: number; maxItems\?: number;/);
+  assert.match(API, esnek(/truncated\?: number; maxItems\?: number;/));
 });
 
 test('arayuz kesmeyi GORUNUR kiliyor', () => {
   for (const f of ['IpCheckSection.tsx', 'OpenshiftCheckSection.tsx']) {
     const ui = fs.readFileSync(
-      path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', f), 'utf8'
+      path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', f),
+      'utf8',
     );
     assert.match(ui, /summary\.truncated \?/, `${f}: kesme kullaniciya gosterilmiyor`);
     assert.match(ui, /DEĞERLENDİRİLMEDİ/, `${f}: uyari metni yok`);
@@ -59,8 +63,14 @@ test('arayuz kesmeyi GORUNUR kiliyor', () => {
 test('mutasyonlar admin kapisindan geciyor, salt-okunur sorgular MUAF', () => {
   // /ip-check ve /openshift-check POST ama gercek bir MUTASYON DEGIL — muafiyet
   // BILINCLI. Muafiyetin yanlislikla baska uclara genislemesine karsi bekci.
-  const m = SRC.match(/if \(req\.path === "([^"]+)" \|\| req\.path === "([^"]+)" \|\| req\.path === "([^"]+)"\) return next\(\);/);
+  const m = SRC.match(
+    /if \(\s*req\.path === ["']([^"']+)["'] \|\|\s*req\.path === ["']([^"']+)["'] \|\|\s*req\.path === ["']([^"']+)["']\s*\)\s*return next\(\);/,
+  );
   assert.ok(m, 'admin-gate muafiyeti bulunamadi');
-  assert.deepEqual([m[1], m[2], m[3]].sort(), ['/ip-check', '/openshift-check', '/server-ip-check']);
+  assert.deepEqual([m[1], m[2], m[3]].sort(), [
+    '/ip-check',
+    '/openshift-check',
+    '/server-ip-check',
+  ]);
   assert.match(SRC, /return requireAdmin\(req, res, next\);/);
 });

@@ -20,7 +20,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { varsayilanSira } = require('../util/siralama.cjs');
+const { varsayilanSira, kucukBuyuk } = require('../util/siralama.cjs');
 
 const db = () => require('../db/index.cjs');
 const alim = () => require('./ear-envanter-alim.cjs');
@@ -51,7 +51,6 @@ const ortamOf = (v) =>
     .toUpperCase();
 const kopyaAnahtari = (k) => `${k.host}|${k.kok}|${k.ad}`;
 const iz32 = (v) => crypto.createHash('sha256').update(v).digest('hex').slice(0, 32);
-const kucukBuyuk = (a, b) => { if (a < b) return -1; if (a > b) return 1; return 0; };
 
 function hata(status, message, code) {
   return Object.assign(new Error(message), { status, code });
@@ -80,11 +79,18 @@ function imzalar(warlar, earSet, surumHaritasi) {
 function karsilastir(kopyalar) {
   if (kopyalar.some((k) => k.durum !== 'TAM'))
     return { kutuphane: 'KARSILASTIRILAMADI', yapi: 'KARSILASTIRILAMADI', karar: 'EKSIK_TARAMA' };
-  const kutuphane =
-    (() => { if (new Set(kopyalar.map((k) => k.tamImza)).size === 1) return 'AYNI'; if (new Set(kopyalar.map((k) => k.surumImza)).size === 1) return 'AYNI_SURUM_FARKLI_DOSYA'; return 'FARKLI'; })();
+  const kutuphane = (() => {
+    if (new Set(kopyalar.map((k) => k.tamImza)).size === 1) return 'AYNI';
+    if (new Set(kopyalar.map((k) => k.surumImza)).size === 1) return 'AYNI_SURUM_FARKLI_DOSYA';
+    return 'FARKLI';
+  })();
   const yapi = new Set(kopyalar.map((k) => k.yapi_izi || '')).size === 1 ? 'AYNI' : 'FARKLI';
-  const karar =
-    (() => { if (kutuphane === 'FARKLI') return 'FARKLI_KUTUPHANE'; if (kutuphane === 'AYNI_SURUM_FARKLI_DOSYA') return 'AYNI_SURUM_FARKLI_DOSYA'; if (yapi === 'FARKLI') return 'FARKLI_YAPI'; return 'AYNI'; })();
+  const karar = (() => {
+    if (kutuphane === 'FARKLI') return 'FARKLI_KUTUPHANE';
+    if (kutuphane === 'AYNI_SURUM_FARKLI_DOSYA') return 'AYNI_SURUM_FARKLI_DOSYA';
+    if (yapi === 'FARKLI') return 'FARKLI_YAPI';
+    return 'AYNI';
+  })();
   return { kutuphane, yapi, karar };
 }
 
@@ -236,7 +242,9 @@ function analizEt(kopyalar, { tumu = false } = {}) {
     const cogunluk = d.liste[0] ? d.liste[0].harf : null;
     const ortamDetay = ortamlar.map((o) => {
       const oks = ks.filter((k) => ortamOf(k.ortam) === o);
-      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort(varsayilanSira);
+      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort(
+        varsayilanSira,
+      );
       return {
         ortam: o,
         hostlar: [...new Set(oks.map((k) => k.host))].sort(varsayilanSira),
@@ -414,10 +422,10 @@ function yapiFarki(a, b) {
   }
   for (const yol of B.keys()) if (!A.has(yol)) yalnizB.push(yol);
   return {
-    yalnizA: yalnizA.sort(varsayilanSira),
-    yalnizB: yalnizB.sort(varsayilanSira),
-    tipFarkli: tipFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
-    boyutFarkli: boyutFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
+    yalnizA: yalnizA.toSorted(varsayilanSira),
+    yalnizB: yalnizB.toSorted(varsayilanSira),
+    tipFarkli: tipFarkli.toSorted((x, y) => kucukBuyuk(x.yol, y.yol)),
+    boyutFarkli: boyutFarkli.toSorted((x, y) => kucukBuyuk(x.yol, y.yol)),
   };
 }
 
@@ -525,7 +533,7 @@ async function veriImzasi() {
   const { rows } = await db().query(
     `SELECT COUNT(*) AS n, MAX(id) AS m FROM ear_envanter_hostlari WHERE veri_var = 1`,
   );
-  const r = (rows && rows[0]) || {};
+  const r = rows?.[0] || {};
   return `${Number(r.n || 0)}:${Number(r.m || 0)}`;
 }
 
@@ -535,7 +543,7 @@ async function analiz({ kosu } = {}) {
   if (k) return { ...analizEt(await kopyalariOku({ kosu: k }), { tumu: true }), imza: null };
   const imza = await veriImzasi();
   if (_onbellek.imza === imza && _onbellek.deger) return _onbellek.deger;
-  if (_ucus && _ucus.imza === imza) return _ucus.p;
+  if (_ucus?.imza === imza) return _ucus.p;
   const p = (async () => {
     const deger = { ...analizEt(await kopyalariOku({}), { tumu: true }), imza };
     _onbellek = { imza, deger };
@@ -545,7 +553,7 @@ async function analiz({ kosu } = {}) {
   try {
     return await p;
   } finally {
-    if (_ucus && _ucus.p === p) _ucus = null;
+    if (_ucus?.p === p) _ucus = null;
   }
 }
 

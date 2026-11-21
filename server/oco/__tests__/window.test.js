@@ -13,7 +13,7 @@ const at = (s) => parseOcoDate(s);
 test('parseOcoDate: dd.MM.yyyy HH:mm:ss ayristirilir', () => {
   const d = parseOcoDate('25.08.2026 22:00:00');
   assert.strictEqual(d.getFullYear(), 2026);
-  assert.strictEqual(d.getMonth(), 7);      // Agustos
+  assert.strictEqual(d.getMonth(), 7); // Agustos
   assert.strictEqual(d.getDate(), 25);
   assert.strictEqual(d.getHours(), 22);
 });
@@ -34,7 +34,8 @@ test('parseOcoDate: gecersiz gun KAYDIRILMAZ, null doner', () => {
 
 test('esit tarihler: pencere 2 SAAT olur', () => {
   const w = evaluateWindow({
-    startDate: '25.08.2026 22:00:00', endDate: '25.08.2026 22:00:00',
+    startDate: '25.08.2026 22:00:00',
+    endDate: '25.08.2026 22:00:00',
     now: at('25.08.2026 21:00:00'),
   });
   assert.strictEqual(w.ok, true);
@@ -48,7 +49,9 @@ test('esit tarihler: pencere 2 SAAT olur', () => {
 test('esit tarihler: 2 saatin ICINDE hemen calistirilabilir', () => {
   for (const nowStr of ['25.08.2026 22:00:00', '25.08.2026 23:59:59', '26.08.2026 00:00:00']) {
     const w = evaluateWindow({
-      startDate: '25.08.2026 22:00:00', endDate: '25.08.2026 22:00:00', now: at(nowStr),
+      startDate: '25.08.2026 22:00:00',
+      endDate: '25.08.2026 22:00:00',
+      now: at(nowStr),
     });
     assert.strictEqual(w.phase, 'inside', nowStr);
     assert.strictEqual(w.canRunNow, true, nowStr);
@@ -57,7 +60,8 @@ test('esit tarihler: 2 saatin ICINDE hemen calistirilabilir', () => {
 
 test('esit tarihler: 2 saati ASARSA kacirilmis sayilir', () => {
   const w = evaluateWindow({
-    startDate: '25.08.2026 22:00:00', endDate: '25.08.2026 22:00:00',
+    startDate: '25.08.2026 22:00:00',
+    endDate: '25.08.2026 22:00:00',
     now: at('26.08.2026 00:00:01'),
   });
   assert.strictEqual(w.phase, 'expired');
@@ -71,7 +75,7 @@ test('farkli tarihler: verilen ARALIK baz alinir, 2 saat kurali UYGULANMAZ', () 
   const inside = evaluateWindow({ ...args, now: at('26.08.2026 01:30:00') });
   assert.strictEqual(inside.equal, false);
   assert.strictEqual(inside.windowEndText, '26.08.2026 02:00:00');
-  assert.strictEqual(inside.phase, 'inside');   // 2 saat kurali olsaydi 00:00'da bitecekti
+  assert.strictEqual(inside.phase, 'inside'); // 2 saat kurali olsaydi 00:00'da bitecekti
 
   const after = evaluateWindow({ ...args, now: at('26.08.2026 02:00:01') });
   assert.strictEqual(after.phase, 'expired');
@@ -79,7 +83,9 @@ test('farkli tarihler: verilen ARALIK baz alinir, 2 saat kurali UYGULANMAZ', () 
 
 test('bitis okunamazsa baslangica ESIT sayilir (sinirsiz izin YOK)', () => {
   const w = evaluateWindow({
-    startDate: '25.08.2026 22:00:00', endDate: null, now: at('26.08.2026 00:00:01'),
+    startDate: '25.08.2026 22:00:00',
+    endDate: null,
+    now: at('26.08.2026 00:00:01'),
   });
   assert.strictEqual(w.equal, true);
   assert.strictEqual(w.phase, 'expired');
@@ -87,7 +93,9 @@ test('bitis okunamazsa baslangica ESIT sayilir (sinirsiz izin YOK)', () => {
 
 test('bozuk aralik (bitis < baslangic) reddedilir', () => {
   const w = evaluateWindow({
-    startDate: '25.08.2026 22:00:00', endDate: '25.08.2026 20:00:00', now: at('25.08.2026 21:00:00'),
+    startDate: '25.08.2026 22:00:00',
+    endDate: '25.08.2026 20:00:00',
+    now: at('25.08.2026 21:00:00'),
   });
   assert.strictEqual(w.ok, false);
   assert.strictEqual(w.reason, 'INVALID_RANGE');
@@ -118,20 +126,37 @@ test('extractPlannedInterruption: gercek OCO cevabindan alanlari cikarir', () =>
 });
 
 test('extractPlannedInterruption: Result yoksa null', () => {
-  assert.strictEqual(extractPlannedInterruption({ GetChangeOrderByWfInstanceIdResult: { Result: null } }), null);
+  assert.strictEqual(
+    extractPlannedInterruption({ GetChangeOrderByWfInstanceIdResult: { Result: null } }),
+    null,
+  );
   assert.strictEqual(extractPlannedInterruption({}), null);
 });
 
 test('production tespiti: env/ortam x prod/production, harf duyarsiz', () => {
-  for (const ev of [{ env: 'prod' }, { env: 'production' }, { ortam: 'prod' }, { ortam: 'production' },
-                    { ENV: 'PROD' }, { Ortam: 'Production' }, { env: '  prod  ' }]) {
+  for (const ev of [
+    { env: 'prod' },
+    { env: 'production' },
+    { ortam: 'prod' },
+    { ortam: 'production' },
+    { ENV: 'PROD' },
+    { Ortam: 'Production' },
+    { env: '  prod  ' },
+  ]) {
     assert.strictEqual(isProductionRequest(ev), true, JSON.stringify(ev));
   }
 });
 
 test('production tespiti: baska deger/alan PRODUCTION SAYILMAZ', () => {
-  for (const ev of [{ env: 'test' }, { env: 'qa' }, { env: 'preprod' }, { environment: 'prod' },
-                    { ortamx: 'prod' }, {}, null]) {
+  for (const ev of [
+    { env: 'test' },
+    { env: 'qa' },
+    { env: 'preprod' },
+    { environment: 'prod' },
+    { ortamx: 'prod' },
+    {},
+    null,
+  ]) {
     assert.strictEqual(isProductionRequest(ev), false, JSON.stringify(ev));
   }
 });
@@ -144,7 +169,11 @@ test('parseOcoDate: WCF "/Date(ms+0300)/" bicimi epoch milisaniyeden okunur', ()
   const d = parseOcoDate('/Date(1789605000000+0300)/');
   assert.ok(d instanceof Date);
   assert.equal(d.getTime(), 1789605000000);
-  assert.equal(parseOcoDate('/Date(1789605000000)/').getTime(), 1789605000000, 'dilimsiz bicim de okunur');
+  assert.equal(
+    parseOcoDate('/Date(1789605000000)/').getTime(),
+    1789605000000,
+    'dilimsiz bicim de okunur',
+  );
   assert.equal(parseOcoDate('/Date(abc)/'), null);
   // dilim eki hesaba KATILMAZ: +0300 ile -0500 ayni ani verir
   assert.equal(parseOcoDate('/Date(1789605000000-0500)/').getTime(), 1789605000000);
@@ -157,22 +186,38 @@ test('extractPlannedInterruption: PlannedStartDate/PlannedEndDate ONCELIKLI, Pla
         PlannedStartDate: '/Date(1789605000000+0300)/',
         PlannedEndDate: '/Date(1789614000000+0300)/',
         // ikisi birden varsa Planned* kazanir
-        PlannedInterruption: { InterruptionStartDate: '01.01.2020 00:00:00', InterruptionEndDate: '01.01.2020 00:00:00' },
+        PlannedInterruption: {
+          InterruptionStartDate: '01.01.2020 00:00:00',
+          InterruptionEndDate: '01.01.2020 00:00:00',
+        },
       },
     },
   };
   const a = extractPlannedInterruption(planned);
   assert.equal(a.source, 'planned');
   assert.equal(a.startDate, '/Date(1789605000000+0300)/');
-  const w = evaluateWindow({ startDate: a.startDate, endDate: a.endDate, now: new Date(1789605000000 + 60000) });
+  const w = evaluateWindow({
+    startDate: a.startDate,
+    endDate: a.endDate,
+    now: new Date(1789605000000 + 60000),
+  });
   assert.equal(w.ok, true);
   assert.equal(w.phase, 'inside');
-  assert.equal(w.equal, false, 'baslangic != bitis: verilen aralik (2.5 saat), 2 saat kurali uygulanmaz');
+  assert.equal(
+    w.equal,
+    false,
+    'baslangic != bitis: verilen aralik (2.5 saat), 2 saat kurali uygulanmaz',
+  );
   assert.equal(w.windowEnd.getTime(), 1789614000000);
 
   const legacy = {
     GetChangeOrderByWfInstanceIdResult: {
-      Result: { PlannedInterruption: { InterruptionStartDate: '25.08.2026 22:00:00', InterruptionEndDate: '25.08.2026 22:00:00' } },
+      Result: {
+        PlannedInterruption: {
+          InterruptionStartDate: '25.08.2026 22:00:00',
+          InterruptionEndDate: '25.08.2026 22:00:00',
+        },
+      },
     },
   };
   const b = extractPlannedInterruption(legacy);
@@ -180,7 +225,19 @@ test('extractPlannedInterruption: PlannedStartDate/PlannedEndDate ONCELIKLI, Pla
   assert.equal(b.startDate, '25.08.2026 22:00:00');
 
   // Planned* bos dizgeyse yedege duser; hicbiri yoksa null
-  const empty = { GetChangeOrderByWfInstanceIdResult: { Result: { PlannedStartDate: '', PlannedInterruption: { InterruptionStartDate: '25.08.2026 22:00:00' } } } };
+  const empty = {
+    GetChangeOrderByWfInstanceIdResult: {
+      Result: {
+        PlannedStartDate: '',
+        PlannedInterruption: { InterruptionStartDate: '25.08.2026 22:00:00' },
+      },
+    },
+  };
   assert.equal(extractPlannedInterruption(empty).source, 'interruption');
-  assert.equal(extractPlannedInterruption({ GetChangeOrderByWfInstanceIdResult: { Result: { Subject: 'x' } } }), null);
+  assert.equal(
+    extractPlannedInterruption({
+      GetChangeOrderByWfInstanceIdResult: { Result: { Subject: 'x' } },
+    }),
+    null,
+  );
 });

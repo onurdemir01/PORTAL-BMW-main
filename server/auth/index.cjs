@@ -6,20 +6,20 @@
 // hepsi ayni ~430 satirlik dosyada, ayni /api/auth mount noktasinda yasiyordu. Disa donuk
 // sozlesme (requireAuth/requireAdmin/getRequestUser/getRequestRole) DEGISMEDI — initAuth(app)
 // hala TEK cagridir, yalniz kendi icinde 4 alt-router'i sirayla mount eder.
-const express = require("express");
-const session = require("express-session");
-const { authenticate, clearCache } = require("./ldap.cjs");
-const { getRequestUser, getRequestRole, oturumYok } = require("./utils.cjs");
-const roleStore = require("./role-store.cjs");
-const { initPresenceRoutes, removePresence } = require("./presence-routes.cjs");
-const { initVisibilityRoutes } = require("./visibility-routes.cjs");
-const { initRolesRoutes } = require("./roles-routes.cjs");
-const sessionPolicy = require("./session-policy.cjs");
-const oturumCerezi = require("./oturum-cerezi.cjs");
-const oturumBelirteci = require("./oturum-belirteci.cjs");
-const { normalizeLoginInput, checkPassword } = require("./login-input.cjs");
-const loginThrottle = require("./login-throttle.cjs");
-const { initSessionsRoutes, esanliSiniriUygula } = require("./sessions-routes.cjs");
+const express = require('express');
+const session = require('express-session');
+const { authenticate } = require('./ldap.cjs');
+const { getRequestUser, getRequestRole, oturumYok } = require('./utils.cjs');
+const roleStore = require('./role-store.cjs');
+const { initPresenceRoutes, removePresence } = require('./presence-routes.cjs');
+const { initVisibilityRoutes } = require('./visibility-routes.cjs');
+const { initRolesRoutes } = require('./roles-routes.cjs');
+const sessionPolicy = require('./session-policy.cjs');
+const oturumCerezi = require('./oturum-cerezi.cjs');
+const oturumBelirteci = require('./oturum-belirteci.cjs');
+const { normalizeLoginInput, checkPassword } = require('./login-input.cjs');
+const loginThrottle = require('./login-throttle.cjs');
+const { initSessionsRoutes, esanliSiniriUygula } = require('./sessions-routes.cjs');
 
 // OTURUM SESSION_SECRET'E BAGLI DEGILDIR (2026-10-03, kullanici: "buna bagimli bir sey
 // olmamali" — uretimde rastgele uretiliyor, her seferinde degisebiliyor). Oturumun kimligi
@@ -31,7 +31,8 @@ const { initSessionsRoutes, esanliSiniriUygula } = require("./sessions-routes.cj
 // kullanilmaz (eskiden gelistirmede sabit bir dize vardi, uretimde bos ise surec
 // aciliyordu). Tanimliysa bu surumden ONCE acilmis eski bicimli cerezleri dogrulamaya
 // yarar; onlar en gec mutlak sure sonunda biter.
-const SESSION_SECRET = process.env.SESSION_SECRET || require("node:crypto").randomBytes(32).toString("hex");
+const SESSION_SECRET =
+  process.env.SESSION_SECRET || require('node:crypto').randomBytes(32).toString('hex');
 
 // ── Auth init ────────────────────────────────────────────────────────────────
 function initAuth(app) {
@@ -40,21 +41,21 @@ function initAuth(app) {
   // MemoryStore kullanilir (test/gelistirme). Store yuklenemezse guvenli sekilde
   // MemoryStore'a duser (uygulama calismaya devam eder).
   let sessionStore;
-  if (process.env.SESSION_STORE !== "memory") {
+  if (process.env.SESSION_STORE !== 'memory') {
     try {
-      sessionStore = require("./mssql-session-store.cjs").createMssqlSessionStore(session);
-      console.log("[Auth] MSSQL session store aktif (restart-dayanikli).");
+      sessionStore = require('./mssql-session-store.cjs').createMssqlSessionStore(session);
+      console.log('[Auth] MSSQL session store aktif (restart-dayanikli).');
     } catch (err) {
-      console.warn("[Auth] MSSQL session store yuklenemedi — MemoryStore fallback:", err.message);
+      console.warn('[Auth] MSSQL session store yuklenemedi — MemoryStore fallback:', err.message);
     }
   }
   // Bellek store'unda oturumlar SUREC bellegindedir: her yeniden baslatma HERKESI atar.
   // Uretimde bu sessiz kalmamali — "sik atiyor" sikayetinin en pahali kaynagi olurdu.
-  if (!sessionStore && process.env.NODE_ENV === "production") {
+  if (!sessionStore && process.env.NODE_ENV === 'production') {
     console.error(
-      "[Auth] UYARI: uretimde oturumlar BELLEKTE tutuluyor (SESSION_STORE=memory ya da MSSQL " +
-      "store yuklenemedi). Her yeniden baslatmada tum kullanicilar oturumdan duser. " +
-      "Cozum: SESSION_STORE satirini kaldirin (varsayilan MSSQL)."
+      '[Auth] UYARI: uretimde oturumlar BELLEKTE tutuluyor (SESSION_STORE=memory ya da MSSQL ' +
+        'store yuklenemedi). Her yeniden baslatmada tum kullanicilar oturumdan duser. ' +
+        'Cozum: SESSION_STORE satirini kaldirin (varsayilan MSSQL).',
     );
   }
 
@@ -79,9 +80,9 @@ function initAuth(app) {
       cookie: {
         secure: oturumCerezi.cookieSecure(),
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: 'lax',
       },
-    })
+    }),
   );
   app.use(sessionPolicy.oturumYaptirimi());
 
@@ -92,28 +93,38 @@ function initAuth(app) {
   // ozel audit'lenir (body'de sifre var — generic middleware'e girmesin); prefs kisisel
   // UI durumu oldugu icin gurultu yaratmamak adina haric.
   try {
-    router.use(require("../audit/index.cjs").auditMutations("auth", {
-      exclude: ["/login", "/logout", "/prefs"],
-    }));
-  } catch { /* audit yoksa yoksay */ }
+    router.use(
+      require('../audit/index.cjs').auditMutations('auth', {
+        exclude: ['/login', '/logout', '/prefs'],
+      }),
+    );
+  } catch {
+    /* audit yoksa yoksay */
+  }
 
   // ── Login ──────────────────────────────────────────────────────────────────
-  router.post("/login", async (req, res) => {
+  router.post('/login', async (req, res) => {
     const { username, password, remember } = req.body || {};
     // Faz C (2026-10-02): girdi TEK yerde normalize edilir (login-input.cjs) —
     // `KURUM\ad`, `ad@kurum`, Turkce I, gorunmez karakter. Hata mesaji kullaniciya aynen.
-    const girdi = normalizeLoginInput(username, { searchAttr: process.env.AUTH_LDAP_SEARCH_ATTR || "sAMAccountName" });
-    if (!girdi.ok) return res.status(400).json({ ok: false, code: girdi.code, error: girdi.message });
+    const girdi = normalizeLoginInput(username, {
+      searchAttr: process.env.AUTH_LDAP_SEARCH_ATTR || 'sAMAccountName',
+    });
+    if (!girdi.ok)
+      return res.status(400).json({ ok: false, code: girdi.code, error: girdi.message });
     const sifreDurumu = checkPassword(password);
-    if (!sifreDurumu.ok) return res.status(400).json({ ok: false, code: sifreDurumu.code, error: sifreDurumu.message });
+    if (!sifreDurumu.ok)
+      return res
+        .status(400)
+        .json({ ok: false, code: sifreDurumu.code, error: sifreDurumu.message });
 
     // Kullanici basina geri cekilme: esik asildiysa AD'ye HIC gidilmez (AD kilidi korunur).
     const kilit = loginThrottle.kontrol(girdi.username);
     if (!kilit.ok) {
-      res.setHeader("Retry-After", String(kilit.retryAfter));
+      res.setHeader('Retry-After', String(kilit.retryAfter));
       return res.status(429).json({
         ok: false,
-        code: "cok_deneme",
+        code: 'cok_deneme',
         retryAfter: kilit.retryAfter,
         error: `Çok fazla hatalı deneme. ${kilit.retryAfter} saniye sonra tekrar deneyin.`,
       });
@@ -126,10 +137,10 @@ function initAuth(app) {
     if (tekrar > 0) {
       return res.status(401).json({
         ok: false,
-        code: "kimlik_tekrar",
+        code: 'kimlik_tekrar',
         error:
-          "Kullanıcı adı veya şifre hatalı. Aynı şifreyi az önce denediniz; hesabınızın " +
-          "kilitlenmemesi için yeniden gönderilmedi. Şifrenizi kontrol edin.",
+          'Kullanıcı adı veya şifre hatalı. Aynı şifreyi az önce denediniz; hesabınızın ' +
+          'kilitlenmemesi için yeniden gönderilmedi. Şifrenizi kontrol edin.',
       });
     }
 
@@ -150,70 +161,84 @@ function initAuth(app) {
 
       // Kullanici profili: portal_users'a MERGE (last_login/login_count) — best-effort,
       // login'i bloklamaz (bkz. server/auth/users.cjs).
-      require('./users.cjs').recordLogin(user).catch(() => {});
+      require('./users.cjs')
+        .recordLogin(user)
+        .catch(() => {});
       // Denetim kaydi: basarili giris (portal_audit_logs).
       try {
         require('../audit/index.cjs').auditPortal(req, 'login', {
-          username: user.username, detail: `authSource=${user.authSource} role=${user.role}`,
+          username: user.username,
+          detail: `authSource=${user.authSource} role=${user.role}`,
         });
-      } catch { /* audit yoksa yoksay */ }
+      } catch {
+        /* audit yoksa yoksay */
+      }
 
       req.session.regenerate((err) => {
-        if (err) return res.status(500).json({ ok: false, error: "Oturum başlatılamadı." });
+        if (err) return res.status(500).json({ ok: false, error: 'Oturum başlatılamadı.' });
         req.session.user = {
-          username:   user.username,
+          username: user.username,
           displayName: user.displayName,
-          mail:       user.mail,
-          role:       user.role,
+          mail: user.mail,
+          role: user.role,
           authSource: user.authSource,
-          photoUrl:   user.photoUrl || null,
+          photoUrl: user.photoUrl || null,
           // AD GRUP UYELIKLERI (`memberOf`, normalize + 200 ile sinirli — bkz. ldap.cjs).
           // Yetki katmani (`logx/v2/restrictions.cjs`) grup grant'larini BURADAN okur;
           // oturuma yazilmadigi surece `normalizedGroups` her istekte bos Set doner ve
           // hicbir grup grant'i eslesmezdi — ozellik bastan sona olu kalirdi.
           // LDAP kapaliysa / yerel kullanicida bos dizi: kullanici adi grant'lari
           // etkilenmez, mevcut davranis birebir korunur.
-          groups:     Array.isArray(user.groups) ? user.groups : [],
-          loginAt:    new Date().toISOString(),
+          groups: Array.isArray(user.groups) ? user.groups : [],
+          loginAt: new Date().toISOString(),
         };
         // Oturum kunyesi: bosta kalma / mutlak sure buradan sayilir. "Beni hatirla"
         // yalnizca Admin acik biraktiysa (SESSION_REMEMBER_DAYS > 0) gecerlidir.
         const pol = sessionPolicy.policy();
-        req.session.meta = sessionPolicy.yeniMeta(req, { remember: remember === true && pol.rememberEnabled });
+        req.session.meta = sessionPolicy.yeniMeta(req, {
+          remember: remember === true && pol.rememberEnabled,
+        });
         sessionPolicy.cerezAyarla(req.session, pol);
         req.session.save(async (saveErr) => {
-          if (saveErr) return res.status(500).json({ ok: false, error: "Oturum kaydedilemedi." });
+          if (saveErr) return res.status(500).json({ ok: false, error: 'Oturum kaydedilemedi.' });
           // Esanli oturum siniri (Admin acarsa): en eski oturumlar kapatilir, kullaniciya soylenir.
           const closedOthers = await esanliSiniriUygula(req, user.username).catch(() => 0);
           res.json({
-            ok:          true,
+            ok: true,
             closedOthers,
-            session:     sessionPolicy.oturumOzeti(req.session, pol),
-            username:    user.username,
-            role:        user.role,
+            session: sessionPolicy.oturumOzeti(req.session, pol),
+            username: user.username,
+            role: user.role,
             displayName: user.displayName,
-            mail:        user.mail || "",
-            authSource:  user.authSource || "local",
-            photoUrl:    user.photoUrl || null,
+            mail: user.mail || '',
+            authSource: user.authSource || 'local',
+            photoUrl: user.photoUrl || null,
           });
         });
       });
     } catch (err) {
-      const code = err.code && typeof err.code === "string" && !/^E[A-Z]+$/.test(err.code) ? err.code : "kimlik";
+      const code =
+        err.code && typeof err.code === 'string' && !/^E[A-Z]+$/.test(err.code)
+          ? err.code
+          : 'kimlik';
       const status = Number.isInteger(err.status) ? err.status : 401;
       // Yalnizca KIMLIK hatasi sayilir: sunucuya ulasilamamasi ya da kilitli hesap
       // kullanicinin deneme hakkini yememeli.
       let sayac = null;
-      if (code === "kimlik") sayac = loginThrottle.hataKaydet(girdi.username, password);
+      if (code === 'kimlik') sayac = loginThrottle.hataKaydet(girdi.username, password);
       // Denetim kaydi: basarisiz giris denemesi (sebep kodu; sifre ASLA yazilmaz).
       try {
         require('../audit/index.cjs').auditPortal(req, 'login_failed', {
-          username: girdi.username, result: 'fail', detail: `code=${code} ${err.message}`,
+          username: girdi.username,
+          result: 'fail',
+          detail: `code=${code} ${err.message}`,
         });
-      } catch { /* yoksay */ }
+      } catch {
+        /* yoksay */
+      }
       let mesaj = err.message;
       if (sayac?.retryAfter) {
-        res.setHeader("Retry-After", String(sayac.retryAfter));
+        res.setHeader('Retry-After', String(sayac.retryAfter));
         mesaj += ` Çok fazla hatalı deneme: ${sayac.retryAfter} saniye bekleyin.`;
       } else if (sayac?.kalan > 0 && sayac.kalan <= 2) {
         mesaj += ` (${sayac.kalan} deneme hakkınız kaldı, sonra kısa bir bekleme uygulanır.)`;
@@ -228,12 +253,15 @@ function initAuth(app) {
   });
 
   // ── Logout ─────────────────────────────────────────────────────────────────
-  router.post("/logout", (req, res) => {
+  router.post('/logout', (req, res) => {
     const username = req.session?.user?.username;
-    try { require('../audit/index.cjs').auditPortal(req, 'logout', { username }); } catch { /* yoksay */ }
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'logout', { username });
+    } catch {
+      /* yoksay */
+    }
     req.session.destroy(() => {
       if (username) {
-        clearCache(username);
         removePresence(username);
       }
       oturumCerezi.cerezleriSil(res, COOKIE_NAME);
@@ -242,9 +270,9 @@ function initAuth(app) {
   });
 
   // ── Me ─────────────────────────────────────────────────────────────────────
-  router.get("/me", (req, res) => {
+  router.get('/me', (req, res) => {
     if (!req.session?.user) {
-      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+      return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     }
     res.json({ ok: true, user: req.session.user });
   });
@@ -252,22 +280,22 @@ function initAuth(app) {
   // ── Oturum saati (istemci geri sayimi) ──────────────────────────────────────
   // GET etkinlik SAYILMAZ (session-policy ARKA_PLAN_YOLLARI): istemcinin saatini
   // tazelemesi oturumu sonsuza dek acik tutmamali. "Surdur" POST /session/extend'dir.
-  router.get("/session", (req, res) => {
+  router.get('/session', (req, res) => {
     if (!req.session?.user) {
-      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+      return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     }
     res.json(sessionPolicy.oturumOzeti(req.session));
   });
 
-  router.post("/session/extend", (req, res) => {
+  router.post('/session/extend', (req, res) => {
     if (!req.session?.user) {
-      return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+      return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     }
     res.json(sessionPolicy.uzat(req, res));
   });
 
   // Giris ekrani "beni hatirla" kutusunu gostermeli mi (oturumsuz okunur; sir yok).
-  router.get("/session-policy", (_req, res) => {
+  router.get('/session-policy', (_req, res) => {
     const p = sessionPolicy.policy();
     res.json({
       ok: true,
@@ -284,11 +312,11 @@ function initAuth(app) {
   // ── Kullanici tercihleri (portal_user_preferences) ──────────────────────────
   // UI durumu (tema, envanter kolon secimi/filtre/siralama, aktif admin sekmesi...)
   // kullanici basina DB'de tutulur — restart ve tarayici degisiminde aynen korunur.
-  const usersDb = require("./users.cjs");
+  const usersDb = require('./users.cjs');
 
-  router.get("/prefs", async (req, res) => {
+  router.get('/prefs', async (req, res) => {
     const me = req.session?.user;
-    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     try {
       res.json({ ok: true, prefs: await usersDb.getPrefs(me.username) });
     } catch (e) {
@@ -298,12 +326,12 @@ function initAuth(app) {
   });
 
   // PUT /prefs — body: { prefs: { key: value, silinecek: null } } (null → tercihi siler)
-  router.put("/prefs", async (req, res) => {
+  router.put('/prefs', async (req, res) => {
     const me = req.session?.user;
-    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     const prefs = req.body?.prefs;
-    if (!prefs || typeof prefs !== "object" || Array.isArray(prefs)) {
-      return res.status(400).json({ ok: false, error: "prefs objesi gerekli." });
+    if (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) {
+      return res.status(400).json({ ok: false, error: 'prefs objesi gerekli.' });
     }
     try {
       const written = await usersDb.setPrefs(me.username, prefs);
@@ -311,7 +339,11 @@ function initAuth(app) {
       // okunuyor (bkz. server/index.cjs readThemePrefCached). Yazdiktan sonra
       // onbellegi ACIKCA dusur — aksi halde kullanici temayi degistirip TAM SAYFA
       // yenilerse 30 sn boyunca eski tema bir an gorunurdu.
-      try { req.app?.locals?.invalidateThemePref?.(me.username); } catch { /* yoksay */ }
+      try {
+        req.app?.locals?.invalidateThemePref?.(me.username);
+      } catch {
+        /* yoksay */
+      }
       res.json({ ok: true, written });
     } catch (e) {
       res.status(500).json({ ok: false, error: `Tercih kaydedilemedi: ${e.message}` });
@@ -322,20 +354,28 @@ function initAuth(app) {
   // Kullanici: "Admin'ler istedigi zaman sadece kendi tetiklemelerinde Smart onayini
   // kapatabilsin; deneme yapacagimiz zaman tekrar acip akisi test edebiliyor olalim."
   // Karar ve kapsam: server/ansible/admin-smart-atla.cjs. Degisiklik denetime yazilir.
-  router.get("/smart-atla", requireAdmin, async (req, res) => {
-    const { adminSmartAtliyor } = require("../ansible/admin-smart-atla.cjs");
+  router.get('/smart-atla', requireAdmin, async (req, res) => {
+    const { adminSmartAtliyor } = require('../ansible/admin-smart-atla.cjs');
     res.json({ ok: true, atla: await adminSmartAtliyor(req) });
   });
-  router.put("/smart-atla", requireAdmin, async (req, res) => {
-    const { ANAHTAR, adminSmartAtliyor } = require("../ansible/admin-smart-atla.cjs");
+  router.put('/smart-atla', requireAdmin, async (req, res) => {
+    const { ANAHTAR, adminSmartAtliyor } = require('../ansible/admin-smart-atla.cjs');
     const atla = req.body?.atla === true;
     try {
-      await usersDb.setPref(req.session.user.username, ANAHTAR, atla ? "1" : null, { korunanaIzin: true });
+      await usersDb.setPref(req.session.user.username, ANAHTAR, atla ? '1' : null, {
+        korunanaIzin: true,
+      });
       try {
-        require("../audit/index.cjs").auditPortal(req, atla ? "smart_onayi_admin_kapatti" : "smart_onayi_admin_acti", {
-          detail: JSON.stringify({ kim: req.session.user.username }),
-        });
-      } catch { /* denetim best-effort */ }
+        require('../audit/index.cjs').auditPortal(
+          req,
+          atla ? 'smart_onayi_admin_kapatti' : 'smart_onayi_admin_acti',
+          {
+            detail: JSON.stringify({ kim: req.session.user.username }),
+          },
+        );
+      } catch {
+        /* denetim best-effort */
+      }
       res.json({ ok: true, atla: await adminSmartAtliyor(req) });
     } catch (e) {
       res.status(500).json({ ok: false, error: `Kaydedilemedi: ${e.message}` });
@@ -346,27 +386,33 @@ function initAuth(app) {
   // Kimlik sizdirmaz; yalnizca oturum/cookie/proxy durumunu doner. Prod'da secure-cookie'nin
   // neden set edilmedigini (X-Forwarded-Proto eksikligi) ve MemoryStore proses-izolasyonunu
   // (cookie VAR ama hasSession=false) teshis eder.
-  router.get("/session-debug", requireAdmin, (req, res) => {
+  router.get('/session-debug', requireAdmin, (req, res) => {
     res.json({
       ok: true,
       hasSession: !!req.session?.user,
       sessionUser: req.session?.user ? req.session.user.username : null,
       cookieName: COOKIE_NAME,
       connectSidPresent: !!oturumCerezi.istektekiOturumCerezi(req),
-      reqSecure: req.secure,                                   // trust proxy sonrasi
-      xForwardedProto: req.headers["x-forwarded-proto"] || null,
+      reqSecure: req.secure, // trust proxy sonrasi
+      xForwardedProto: req.headers['x-forwarded-proto'] || null,
       nodeEnv: process.env.NODE_ENV || null,
       // Eskiden `SESSION_STORE === "mssql"` soruluyordu: varsayilan (bos) MSSQL iken de
       // "memory" diyordu — teshis ekrani yanlis yola gonderiyordu.
-      sessionStore: sessionStore ? "mssql" : "memory",
+      sessionStore: sessionStore ? 'mssql' : 'memory',
       sessionPolicy: sessionPolicy.policy(),
-      cookieSecureConfigured: process.env.NODE_ENV === "production",
-      hint: (() => { if (!req.session?.user && !!oturumCerezi.istektekiOturumCerezi(req)) return "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir."; if (process.env.NODE_ENV === "production" && req.headers["x-forwarded-proto"] !== "https") return "Prod'da X-Forwarded-Proto=https YOK → secure cookie set edilmez → login sonrası 401. Ters-proxy header'ı göndermeli."; return "OK / ek teşhis gerekmez."; })(),
+      cookieSecureConfigured: process.env.NODE_ENV === 'production',
+      hint: (() => {
+        if (!req.session?.user && !!oturumCerezi.istektekiOturumCerezi(req))
+          return "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir.";
+        if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] !== 'https')
+          return "Prod'da X-Forwarded-Proto=https YOK → secure cookie set edilmez → login sonrası 401. Ters-proxy header'ı göndermeli.";
+        return 'OK / ek teşhis gerekmez.';
+      })(),
     });
   });
 
-  app.use("/api/auth", router);
-  console.log("[Auth] module mounted at /api/auth");
+  app.use('/api/auth', router);
+  console.log('[Auth] module mounted at /api/auth');
 
   // Presence/avatar (/api/users), sayfa+element gorunurlugu (/api/visibility) ve rol
   // override CRUD'u (/api/roles) artik ayri router dosyalarinda yasiyor — requireAuth/
@@ -383,15 +429,19 @@ function initAuth(app) {
 // (server/tasks, server/links, server/inventory bunlari `require("../auth/index.cjs")` ile cekiyor).
 function requireAuth(req, res, next) {
   if (getRequestUser(req)) return next();
-  oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
+  oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı. Lütfen giriş yapın.' });
 }
 
 // Tek, paylasilan admin guard'i — moduller kendi `role==='Admin'` kontrollerini yeniden
 // yazmak yerine bunu kullanir (tutarli + secret-kapili header ile guvenli).
 function requireAdmin(req, res, next) {
   const u = getRequestUser(req);
-  if (!u) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı. Lütfen giriş yapın." });
-  if (u.role !== "Admin") return res.status(403).json({ ok: false, error: "Bu işlem için yönetici yetkisi gerekli." });
+  if (!u)
+    return oturumYok(res)
+      .status(401)
+      .json({ ok: false, error: 'Oturum bulunamadı. Lütfen giriş yapın.' });
+  if (u.role !== 'Admin')
+    return res.status(403).json({ ok: false, error: 'Bu işlem için yönetici yetkisi gerekli.' });
   next();
 }
 

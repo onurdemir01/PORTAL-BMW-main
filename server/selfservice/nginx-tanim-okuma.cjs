@@ -59,7 +59,8 @@ function opsiyonelKolonEksikMi(err) {
   const kayitlar = [];
   while (bekleyen.length) {
     const hata = bekleyen.pop();
-    if (!hata || (typeof hata !== 'object' && typeof hata !== 'function') || gorulen.has(hata)) continue;
+    if (!hata || (typeof hata !== 'object' && typeof hata !== 'function') || gorulen.has(hata))
+      continue;
     gorulen.add(hata);
     kayitlar.push(hata);
     if (hata.originalError) bekleyen.push(hata.originalError);
@@ -69,13 +70,17 @@ function opsiyonelKolonEksikMi(err) {
   }
   // Bir hata zincirindeki baglanti / yetki / baska SQL hatasi, 207 kaydiyla maskelenemez.
   if (kayitlar.some((hata) => U(hata.code) && U(hata.code) !== 'EREQUEST')) return false;
-  if (kayitlar.some((hata) => Number.isFinite(Number(hata.number)) && Number(hata.number) !== 207)) return false;
+  if (kayitlar.some((hata) => Number.isFinite(Number(hata.number)) && Number(hata.number) !== 207))
+    return false;
   return kayitlar.some((hata) => {
-    const kolonlar = [...T(hata.message).matchAll(/Invalid column name ['"]([^'"]+)['"]/gi)]
-      .map((m) => T(m[1]).toLowerCase());
-    return Number(hata.number) === 207
-      && kolonlar.length > 0
-      && kolonlar.every((kolon) => OPSIYONEL_AUDIT_KOLONLARI.has(kolon));
+    const kolonlar = [...T(hata.message).matchAll(/Invalid column name ['"]([^'"]+)['"]/gi)].map(
+      (m) => T(m[1]).toLowerCase(),
+    );
+    return (
+      Number(hata.number) === 207 &&
+      kolonlar.length > 0 &&
+      kolonlar.every((kolon) => OPSIYONEL_AUDIT_KOLONLARI.has(kolon))
+    );
   });
 }
 
@@ -128,7 +133,9 @@ function tanimTablosu(rows, { env, service, namespace, application, groups }) {
         .map((c) => ({ ...c, sunucular: c.sunucular.sort((a, b) => a.host.localeCompare(b.host)) }))
         .sort((a, b) => T(a.application).localeCompare(T(b.application)));
       // ayni location'a sunucular arasinda FARKLI uygulama cevap veriyorsa isaretlenir
-      const farkli = new Set(cevaplar.map((c) => `${T(c.application).toLowerCase()}|${T(c.namespace).toLowerCase()}`));
+      const farkli = new Set(
+        cevaplar.map((c) => `${T(c.application).toLowerCase()}|${T(c.namespace).toLowerCase()}`),
+      );
       return { location, cevaplar, tutarsiz: farkli.size > 1 };
     })
     .sort((a, b) => a.location.localeCompare(b.location));
@@ -143,7 +150,7 @@ async function satirlariOku(query, sql, E, S) {
   const tarihR = await query(
     `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
   );
-  const tarih = (tarihR.recordset?.[0]?.d) || null;
+  const tarih = tarihR.recordset?.[0]?.d || null;
   if (!tarih) return { tarih: null, rows: [] };
   const where = `scan_date = @d AND UPPER(env) = @e AND UPPER(service) = @s`;
   const p = [...params, { name: 'd', type: sql.NVarChar(10), value: tarih }];
@@ -177,10 +184,24 @@ async function nginxTanimlari({ env, service, namespace, application }, deps = {
   try {
     okunan = await satirlariOku(query, sql, E, S);
   } catch (err) {
-    return { ok: true, durum: 'olculemedi', sebep: `Tanım taraması okunamadı: ${err.message}`, env: E, service: S, satirlar: [] };
+    return {
+      ok: true,
+      durum: 'olculemedi',
+      sebep: `Tanım taraması okunamadı: ${err.message}`,
+      env: E,
+      service: S,
+      satirlar: [],
+    };
   }
   if (!okunan.tarih)
-    return { ok: true, durum: 'olculemedi', sebep: 'Tanım taraması (Nginx_Config_Audit) henüz hiç koşmadı.', env: E, service: S, satirlar: [] };
+    return {
+      ok: true,
+      durum: 'olculemedi',
+      sebep: 'Tanım taraması (Nginx_Config_Audit) henüz hiç koşmadı.',
+      env: E,
+      service: S,
+      satirlar: [],
+    };
   const t = tanimTablosu(okunan.rows, { env: E, service: S, namespace, application, groups });
   return {
     ok: true,
@@ -195,4 +216,11 @@ async function nginxTanimlari({ env, service, namespace, application }, deps = {
   };
 }
 
-module.exports = { yerelOkumaOf, yerelOkumaMi, eylemReadMi, tanimTablosu, nginxTanimlari, PLAYBOOK_RE };
+module.exports = {
+  yerelOkumaOf,
+  yerelOkumaMi,
+  eylemReadMi,
+  tanimTablosu,
+  nginxTanimlari,
+  PLAYBOOK_RE,
+};

@@ -185,11 +185,11 @@ function mcHedefHostlari(kurulum, sunucuAd, ipMap) {
   if (!s) return null;
   const g = kurulum.gruplar.find((x) => x.ad === s.grup) || {};
   const p = kurulum.profiller.find((x) => x.ad === g.profil);
-  if (!p || !p.modcluster) return null;
+  if (!p?.modcluster) return null;
   const sg = kurulum.soket_gruplari.find((x) => x.ad === (s.soket_grubu || g.soket_grubu));
   const hostlar = new Set();
   for (const ad of p.modcluster.proxies || []) {
-    const o = sg && sg.outbound.find((x) => x.ad === ad);
+    const o = sg?.outbound.find((x) => x.ad === ad);
     if (o) {
       const h = hedefSunucusu(o.host, '', ipMap);
       if (h) hostlar.add(h);
@@ -220,7 +220,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
   for (const h of hosts)
     for (const ip of h.ips || []) ipSatir.push({ host: kisa(h.host), ip: ip.ip });
   for (const [host, v] of vh)
-    for (const ip of (v.web && v.web.ipler) || []) ipSatir.push({ host: kisa(host), ip });
+    for (const ip of v.web?.ipler || []) ipSatir.push({ host: kisa(host), ip });
   const ipMap = ipSahipleri(ipSatir);
   for (const [ip, sahipler] of ipMap) {
     g.dugum(A.ip(ip), 'ip', ip, { sahipSayisi: sahipler.size, kayan: sahipler.size > 1 });
@@ -404,7 +404,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
         }
       }
     }
-    for (const s of (v.was && v.was.sunucular) || []) {
+    for (const s of v.was?.sunucular || []) {
       if (s.tur && s.tur !== 'APPLICATION_SERVER') continue;
       const wk = A.was(host, s.ad);
       g.dugum(wk, 'was', s.ad, { host: kisa(host), uygulamalar: s.uygulamalar }, 'was');
@@ -574,7 +574,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
             });
             if (!tutar) continue;
             const c = k.was.clusterlar.find((x) => x.ad === r.cluster);
-            for (const s of (c && c.sunucular) || [])
+            for (const s of c?.sunucular || [])
               hedefBagla(
                 vk,
                 host,
@@ -595,7 +595,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
       for (const k of kurulumlar.filter((x) => x.faz)) {
         for (const s of k.sunucular) {
           const mc = mcHedefHostlari(k, s.ad, ipMap);
-          if (!mc || !mc.hostlar.has(kisa(m.host))) continue;
+          if (!mc?.hostlar.has(kisa(m.host))) continue;
           const adTutar = mc.balancer
             ? mc.balancer === m.balancer
             : L(tabanAd(s.ad)) === m.balancer;
@@ -619,7 +619,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
   // ── Celiski: ayni vhost icin Server Hub (KESIN) ve config FARKLI hedef kumeleri ──────────────────
   for (const [vk, sh] of shHedef) {
     const cf = configHedef.get(vk);
-    if (!cf || !cf.size) continue;
+    if (!cf?.size) continue;
     const ortak = [...sh].some((x) => cf.has(x));
     if (ortak) continue;
     for (const e of g.komsuKenarlar(vk))
@@ -629,7 +629,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
 
   // ── Baglanti goruntusu: uzak IP -> cagiran sunucu ───────────────────────────────────────────────
   for (const [host, v] of vh) {
-    if (!v.baglanti || v.baglanti.durum !== 'OLCULDU') continue;
+    if (v.baglanti?.durum !== 'OLCULDU') continue;
     for (const p of v.baglanti.portlar) {
       const hedefler = portHedefleri(host, p.port).map((x) => x.hedef);
       // Yapilandirilmis portlardan BIRI dinleniyorsa dugum "dinleniyor"; hicbiri dinlenmiyorsa false.
@@ -642,7 +642,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
       for (const u of p.uzaklar) {
         const sahip = (() => {
           if (/^127\.|^::1$/.test(u.ip)) return host;
-          if (ipMap.get(u.ip) && ipMap.get(u.ip).size === 1) return [...ipMap.get(u.ip)][0];
+          if (ipMap.get(u.ip)?.size === 1) return [...ipMap.get(u.ip)][0];
           return null;
         })();
         const kaynak = sahip ? A.sunucu(sahip) : A.ip(u.ip);

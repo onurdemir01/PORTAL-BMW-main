@@ -29,7 +29,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { pythonBul, ansiblePythonu } = require('./fixtures/python-bul.cjs');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'ear_envanter');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'ear_envanter');
 const PLAYBOOK = path.join(DIR, 'ear_envanter.yml');
 const METIN = fs.readFileSync(PLAYBOOK, 'utf8');
 const KOD = METIN.split('\n')
@@ -171,18 +171,48 @@ test(
       assert.equal(g.become_method, 'dzdo', `${g.name}: dzdo`);
     }
     // FAZ 2 varsayilan KAPALI ve yalniz paket alindiysa; cikti ayni dosyaya tarama paketinden SONRA.
-    assert.deepEqual(dep.when, ['ear_deployment_kontrol | default(false) | bool', 'ear_ozet.paket | bool']);
-    assert.match(dep['ansible.builtin.raw'], /bash -s <<'EAR_DEPLOYMENT_SON'\n/, 'heredoc tirnakli olmali');
-    assert.match(dep['ansible.builtin.raw'], /\{\{ lookup\('ansible\.builtin\.file', 'files\/deployment_oku\.sh'\) \}\}\nEAR_DEPLOYMENT_SON/);
+    assert.deepEqual(dep.when, [
+      'ear_deployment_kontrol | default(false) | bool',
+      'ear_ozet.paket | bool',
+    ]);
+    assert.match(
+      dep['ansible.builtin.raw'],
+      /bash -s <<'EAR_DEPLOYMENT_SON'\n/,
+      'heredoc tirnakli olmali',
+    );
+    assert.match(
+      dep['ansible.builtin.raw'],
+      /\{\{ lookup\('ansible\.builtin\.file', 'files\/deployment_oku\.sh'\) \}\}\nEAR_DEPLOYMENT_SON/,
+    );
     // FAZ W varsayilan KAPALI ve yalniz paket alindiysa; httpd calistirilmaz, yalniz web_tara.py (salt okunur).
-    assert.deepEqual(web.when, ['ear_web_kontrol | default(false) | bool', 'ear_ozet.paket | bool']);
-    assert.match(web['ansible.builtin.raw'], /"\$P" -B - <<'EAR_WEB_SON'\n/, 'heredoc tirnakli olmali');
-    assert.match(web['ansible.builtin.raw'], /\{\{ lookup\('ansible\.builtin\.file', 'files\/web_tara\.py'\) \}\}\nEAR_WEB_SON/);
+    assert.deepEqual(web.when, [
+      'ear_web_kontrol | default(false) | bool',
+      'ear_ozet.paket | bool',
+    ]);
+    assert.match(
+      web['ansible.builtin.raw'],
+      /"\$P" -B - <<'EAR_WEB_SON'\n/,
+      'heredoc tirnakli olmali',
+    );
+    assert.match(
+      web['ansible.builtin.raw'],
+      /\{\{ lookup\('ansible\.builtin\.file', 'files\/web_tara\.py'\) \}\}\nEAR_WEB_SON/,
+    );
     // Aday kok listesi ('/etc/httpd' gibi yollar) disinda komut metninde web ikilisi / istek araci yok.
     const komut = web['ansible.builtin.raw'].replace(/EAR_WEB_KOKLER=\{\{[^}]*\}\}/, '');
-    assert.ok(/EAR_WEB_KOKLER=/.test(web['ansible.builtin.raw']) && !/httpd|apachectl|curl|wget/.test(komut), 'Faz W web sunucusu ikilisi / istek calistirmaz');
-    assert.equal(web.become_user, "{{ ear_web_okuyan if (ear_web_okuyan | length) > 0 else omit }}");
-    assert.equal(tarama.vars.ear_web_okuyan, "{{ ear_web_okuma_kullanicisi | default('', true) or ear_okuyan }}");
+    assert.ok(
+      /EAR_WEB_KOKLER=/.test(web['ansible.builtin.raw']) &&
+        !/httpd|apachectl|curl|wget/.test(komut),
+      'Faz W web sunucusu ikilisi / istek calistirmaz',
+    );
+    assert.equal(
+      web.become_user,
+      '{{ ear_web_okuyan if (ear_web_okuyan | length) > 0 else omit }}',
+    );
+    assert.equal(
+      tarama.vars.ear_web_okuyan,
+      "{{ ear_web_okuma_kullanicisi | default('', true) or ear_okuyan }}",
+    );
     assert.equal(
       copy['ansible.builtin.copy'].content,
       "{{ ear_tarama.stdout }}{{ ear_deployment.stdout | default('') }}{{ ear_web.stdout | default('') }}",
@@ -240,7 +270,10 @@ function kabukKomutu(kokler) {
       .replace(/EAR_KOKLER=\{\{[^}]*\}\}/, `EAR_KOKLER='${kokler}'`)
       // Faz A: WAS kokleri test makinesinde yok; baglanti goruntusu varsayilan KAPALI (0).
       .replace(/EAR_WAS=\{\{[^}]*\}\}/, "EAR_WAS='/yok/was'")
-      .replace(/EAR_BAGLANTI=\{\{ '1' if \(ear_baglanti_kontrol \| default\(false\) \| bool\) else '0' \}\}/, 'EAR_BAGLANTI=0')
+      .replace(
+        /EAR_BAGLANTI=\{\{ '1' if \(ear_baglanti_kontrol \| default\(false\) \| bool\) else '0' \}\}/,
+        'EAR_BAGLANTI=0',
+      )
       .replace(/\{\{ ear_kip[^}]*\}\}/, 'OZET')
       .replace(/\{\{ ([a-z_]+) \| default\((\d+)\) \| int \}\}/g, '$2')
   );
@@ -440,19 +473,24 @@ test(
     assert.equal(Number(ozet.kosu_no), 0);
     assert.equal(Number(ozet.playbook_surum), 2);
     assert.equal(ozet.limit, 'HOSTA,HOSTB,hostc.ornek.local,HOSTX');
-    assert.equal(Number(ozet.beklenen), 4, 'beklenen = Limit\'teki host sayisi');
+    assert.equal(Number(ozet.beklenen), 4, "beklenen = Limit'teki host sayisi");
     assert.equal(Number(ozet.sonuc_alinan), 3);
     const durum = Object.fromEntries(ozet.hostlar.map((h) => [h.host, h.durum]));
-    assert.deepEqual(durum, { HOSTA: 'SONUC', HOSTB: 'SONUC', HOSTC: 'SONUC', HOSTX: 'ULASILAMADI' });
+    assert.deepEqual(durum, {
+      HOSTA: 'SONUC',
+      HOSTB: 'SONUC',
+      HOSTC: 'SONUC',
+      HOSTX: 'ULASILAMADI',
+    });
     const raw = path.join(cikti, 'awx-777', 'raw');
     assert.deepEqual(fs.readdirSync(raw).sort(), ['HOSTA.out', 'HOSTB.out', 'HOSTC.out']);
-    assert.ok(!fs.existsSync(path.join(raw, 'HOSTD.out')), "Limit disindaki host taranmamali");
+    assert.ok(!fs.existsSync(path.join(raw, 'HOSTD.out')), 'Limit disindaki host taranmamali');
     assert.ok(!fs.existsSync(path.join(cikti, 'kosu-0')), 'Limit kipinde kosu-<n> dizini acilmaz');
   },
 );
 
 test(
-  'EP7 Limit bos ve hedefler yok: is ilk play\'de durur, hicbir sey taranmaz',
+  "EP7 Limit bos ve hedefler yok: is ilk play'de durur, hicbir sey taranmaz",
   { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
   () => {
     const { inv, cikti } = limitOrtami('ear-ep7-');
@@ -472,7 +510,7 @@ test(
 );
 
 test(
-  'EP8 TUZAK: Portal kipi + dolu Limit -> localhost play\'leri atlanir, is hicbir sey yapmadan biter',
+  "EP8 TUZAK: Portal kipi + dolu Limit -> localhost play'leri atlanir, is hicbir sey yapmadan biter",
   { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
   () => {
     // AWX envanterinde localhost satiri yoktur: ortuk localhost `all` ile de eslesmez.
@@ -510,7 +548,11 @@ test(
       ear_dep_sure: 30,
     };
     const r = oynat(inv, [], ev);
-    assert.equal(r.status, 0, `ansible-playbook kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`);
+    assert.equal(
+      r.status,
+      0,
+      `ansible-playbook kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`,
+    );
     const ozet = ozetOku(r);
     assert.equal(Number(ozet.sonuc_alinan), 2);
     const buf = fs.readFileSync(path.join(cikti, 'kosu-9', 'raw', 'HOSTA.out'));
@@ -553,20 +595,35 @@ test(
       ear_web_kokler: '/yok/ihs',
     };
     const r = oynat(inv, [], ev);
-    assert.equal(r.status, 0, `ansible-playbook kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`);
+    assert.equal(
+      r.status,
+      0,
+      `ansible-playbook kod ${r.status}\n${r.stdout.slice(-1500)}\n${r.stderr.slice(-800)}`,
+    );
     const buf = fs.readFileSync(path.join(cikti, 'kosu-11', 'raw', 'HOSTA.out'));
     const p = buf.indexOf('@@EAR_ENVANTER_BITTI@@');
     const d = buf.indexOf('@@EAR_DEPLOYMENT_BITTI@@');
     const w = buf.indexOf('@@EAR_WEB_BASLA@@');
-    assert.ok(p > 0 && d > p && w > d, 'web blogu tarama paketi ve deployment blogundan SONRA olmali');
-    assert.deepEqual(alim.paketCoz(buf).uygulamalar.map((u) => u.ad), ['APP.ear'], 'tarama paketi etkilenmez');
+    assert.ok(
+      p > 0 && d > p && w > d,
+      'web blogu tarama paketi ve deployment blogundan SONRA olmali',
+    );
+    assert.deepEqual(
+      alim.paketCoz(buf).uygulamalar.map((u) => u.ad),
+      ['APP.ear'],
+      'tarama paketi etkilenmez',
+    );
     const web = alim.webCoz(buf);
     assert.ok(['WEB_YOK', 'OLCULEMEDI'].includes(web.durum), `web durumu: ${web.durum}`);
     assert.equal(web.surum, 1);
     // Kapali (varsayilan): blok yok.
     const r2 = oynat(inv, [], { ...ev, ear_kosu_no: 12, ear_web_kontrol: false });
     assert.equal(r2.status, 0);
-    assert.equal(alim.webCoz(fs.readFileSync(path.join(cikti, 'kosu-12', 'raw', 'HOSTA.out'))), null, 'kapaliyken web blogu yazildi');
+    assert.equal(
+      alim.webCoz(fs.readFileSync(path.join(cikti, 'kosu-12', 'raw', 'HOSTA.out'))),
+      null,
+      'kapaliyken web blogu yazildi',
+    );
     // Gecersiz Faz W girdisi ilk play'de durur.
     const r3 = oynat(inv, [], { ...ev, ear_kosu_no: 13, ear_web_hc: 'hc.html;id' });
     assert.notEqual(r3.status, 0, 'gecersiz ear_web_hc kabul edildi');

@@ -2,14 +2,22 @@
 // (cluster-index, terminal-host-map, env-suffix-map) için ortak, jenerik satır-CRUD tablosu.
 // InventoryTab.tsx'in form deseninden (rounded-lg border, black focus ring) esinlenir ama
 // düşük-trafikli admin config ekranları için kasıtlı olarak daha kompakttır.
-import React, { useMemo, useState } from "react";
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon, CheckIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { TableEmptyRow } from "@/components/common/EmptyState";
+import React, { useMemo, useState } from 'react';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  XMarkIcon,
+  CheckIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+} from '@heroicons/react/24/outline';
+import { TableEmptyRow } from '@/components/common/EmptyState';
 
 export interface ColumnDef<T> {
   key: keyof T;
   label: string;
-  type?: "text" | "checkbox" | "number";
+  type?: 'text' | 'checkbox' | 'number';
   placeholder?: string;
   // Hücre BOŞ olduğunda okuma modunda gösterilecek açıklama (ör. devreye girecek fallback
   // değeri). Boş string dönerse "—" gösterilir. Yalnızca görüntüdür, kayda etki etmez.
@@ -50,8 +58,17 @@ interface Props<T extends { id: number }> {
 
 const SEARCH_MIN_ROWS = 8;
 
-export default function SimpleCrudTable<T extends { id: number }>({ columns, rows, emptyRow, onCreate, onUpdate, onDelete, rowActions, searchable = true }: Props<T>) {
-  const [query, setQuery] = useState("");
+export default function SimpleCrudTable<T extends { id: number }>({
+  columns,
+  rows,
+  emptyRow,
+  onCreate,
+  onUpdate,
+  onDelete,
+  rowActions,
+  searchable = true,
+}: Props<T>) {
+  const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<T>>(emptyRow);
@@ -64,7 +81,13 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
   const visibleRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => columns.some((c) => String(r[c.key] ?? "").toLowerCase().includes(q)));
+    return rows.filter((r) =>
+      columns.some((c) =>
+        String(r[c.key] ?? '')
+          .toLowerCase()
+          .includes(q),
+      ),
+    );
   }, [rows, columns, query]);
 
   function startEdit(row: T) {
@@ -103,7 +126,7 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
       <tr className="bg-blue-50/60">
         {columns.map((col) => (
           <td key={String(col.key)} className="px-3 py-2">
-            {col.type === "checkbox" ? (
+            {col.type === 'checkbox' ? (
               <input
                 type="checkbox"
                 checked={!!form[col.key]}
@@ -113,18 +136,23 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
             ) : (
               <>
                 <input
-                  type={col.type === "number" ? "number" : "text"}
+                  type={col.type === 'number' ? 'number' : 'text'}
                   list={col.suggestions?.length ? `sct-${String(col.key)}` : undefined}
-                  value={String(form[col.key] ?? "")}
+                  value={String(form[col.key] ?? '')}
                   placeholder={col.placeholder}
                   onChange={(e) =>
-                    setForm((prev) => ({ ...prev, [col.key]: col.type === "number" ? Number(e.target.value) : e.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      [col.key]: col.type === 'number' ? Number(e.target.value) : e.target.value,
+                    }))
                   }
                   className="w-full min-w-[7rem] px-2 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
                 />
                 {col.suggestions?.length ? (
                   <datalist id={`sct-${String(col.key)}`}>
-                    {col.suggestions.map((s) => <option key={s} value={s} />)}
+                    {col.suggestions.map((s) => (
+                      <option key={s} value={s} />
+                    ))}
                   </datalist>
                 ) : null}
               </>
@@ -132,10 +160,17 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
           </td>
         ))}
         <td className="px-3 py-2 text-right whitespace-nowrap">
-          <button onClick={save} disabled={saving} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-50"
+          >
             <CheckIcon className="w-4 h-4" />
           </button>
-          <button onClick={cancel} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+          <button
+            onClick={cancel}
+            className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition"
+          >
             <XMarkIcon className="w-4 h-4" />
           </button>
         </td>
@@ -150,13 +185,22 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
             kutusu ekrani doldurup hicbir sey kazandirmaz. */}
         {searchable && rows.length >= SEARCH_MIN_ROWS ? (
           <span className="relative flex-1 max-w-xs">
-            <MagnifyingGlassIcon aria-hidden="true"
-              className="pointer-events-none absolute left-2.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400" />
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
-              aria-label="Tabloda ara" placeholder={`${rows.length} kayıt içinde ara…`}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition" />
+            <MagnifyingGlassIcon
+              aria-hidden="true"
+              className="pointer-events-none absolute left-2.5 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Tabloda ara"
+              placeholder={`${rows.length} kayıt içinde ara…`}
+              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black focus:ring-1 focus:ring-black transition"
+            />
           </span>
-        ) : <span />}
+        ) : (
+          <span />
+        )}
         {!adding && editingId === null && (
           <button
             onClick={startAdd}
@@ -172,7 +216,9 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
           <thead>
             <tr className="bg-gray-50 text-gray-500 text-xs font-medium">
               {columns.map((col) => (
-                <th key={String(col.key)} className="text-left px-3 py-2">{col.label}</th>
+                <th key={String(col.key)} className="text-left px-3 py-2">
+                  {col.label}
+                </th>
               ))}
               <th className="px-3 py-2" />
             </tr>
@@ -186,38 +232,51 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                 <tr key={row.id} className="hover:bg-gray-50/50 transition-colors">
                   {columns.map((col) => {
                     const raw = row[col.key];
-                    const isEmpty = raw === null || raw === undefined || raw === "";
+                    const isEmpty = raw === null || raw === undefined || raw === '';
                     const warning = isEmpty ? null : col.valueWarning?.(row);
                     return (
                       <td
                         key={String(col.key)}
-                        title={col.truncate ? String(raw ?? "") : undefined}
-                        className={`px-3 py-2 text-gray-700 ${col.truncate ? "max-w-[14rem] truncate" : ""}`}
+                        title={col.truncate ? String(raw ?? '') : undefined}
+                        className={`px-3 py-2 text-gray-700 ${col.truncate ? 'max-w-[14rem] truncate' : ''}`}
                       >
-                        {col.type === "checkbox"
-                          ? (raw ? "✓" : "—")
-                          : isEmpty && col.emptyHint
-                            ? <span className="text-gray-400 italic">{col.emptyHint(row) || "—"}</span>
-                            : <>
-                                {String(raw ?? "")}
-                                {!isEmpty && warning && (
-                                  <span
-                                    className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5
+                        {col.type === 'checkbox' ? (
+                          raw ? (
+                            '✓'
+                          ) : (
+                            '—'
+                          )
+                        ) : isEmpty && col.emptyHint ? (
+                          <span className="text-gray-400 italic">{col.emptyHint(row) || '—'}</span>
+                        ) : (
+                          <>
+                            {String(raw ?? '')}
+                            {!isEmpty && warning && (
+                              <span
+                                className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5
                                                text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200
                                                align-middle whitespace-nowrap"
-                                  >
-                                    <ExclamationTriangleIcon className="w-3 h-3 shrink-0" aria-hidden="true" />
-                                    {warning}
-                                  </span>
-                                )}
-                              </>}
+                              >
+                                <ExclamationTriangleIcon
+                                  className="w-3 h-3 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                {warning}
+                              </span>
+                            )}
+                          </>
+                        )}
                       </td>
                     );
                   })}
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {rowActions?.(row)}
-                    <button onClick={() => startEdit(row)} aria-label="Satırı düzenle" title="Düzenle"
-                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                    <button
+                      onClick={() => startEdit(row)}
+                      aria-label="Satırı düzenle"
+                      title="Düzenle"
+                      className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition"
+                    >
                       <PencilIcon className="w-3.5 h-3.5" />
                     </button>
                     {confirmDelete === row.id ? (
@@ -237,25 +296,37 @@ export default function SimpleCrudTable<T extends { id: number }>({ columns, row
                         >
                           Emin misin?
                         </button>
-                        <button onClick={() => setConfirmDelete(null)} aria-label="Silmeyi iptal et" title="İptal"
-                          className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition">
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          aria-label="Silmeyi iptal et"
+                          title="İptal"
+                          className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg transition"
+                        >
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>
                       </>
                     ) : (
-                      <button onClick={() => setConfirmDelete(row.id)} aria-label="Satırı sil" title="Sil"
-                        className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition">
+                      <button
+                        onClick={() => setConfirmDelete(row.id)}
+                        aria-label="Satırı sil"
+                        title="Sil"
+                        className="p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition"
+                      >
                         <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </td>
                 </tr>
-              )
+              ),
             )}
             {visibleRows.length === 0 && !adding && (
-              <TableEmptyRow colSpan={columns.length + 1}
-                title={query.trim() ? "Aramaya uyan kayıt yok." : "Kayıt yok."}
-                description={query.trim() ? `“${query.trim()}” için eşleşme bulunamadı.` : undefined} />
+              <TableEmptyRow
+                colSpan={columns.length + 1}
+                title={query.trim() ? 'Aramaya uyan kayıt yok.' : 'Kayıt yok.'}
+                description={
+                  query.trim() ? `“${query.trim()}” için eşleşme bulunamadı.` : undefined
+                }
+              />
             )}
           </tbody>
         </table>

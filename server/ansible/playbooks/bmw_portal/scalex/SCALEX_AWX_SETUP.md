@@ -48,7 +48,7 @@ Bu nedenle AWX proje kökünde aşağıdaki yapı korunmalıdır:
 Kopyalama komutu (portal deposunun kökünden çalıştırılır):
 
 ```bash
-cp -r server/ansible/bmw_portal/scalex/scalex_app <AWX_PROJECT_DIR>/bmw_portal/scalex/
+cp -r server/ansible/playbooks/bmw_portal/scalex/scalex_app <AWX_PROJECT_DIR>/bmw_portal/scalex/
 ```
 
 > Bu iki yol **birebir** böyle olmalıdır. Playbook `vars_files` ile

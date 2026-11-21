@@ -65,8 +65,22 @@ function ozet(o: Partial<EarOzet> = {}): EarOzet {
     },
     zamanlayici: { acik: false, metin: 'planlar kapalı', sonraki: null },
     planlar: [
-      { ad: 'P1', acik: false, kip: 'OZET', kapsam: 'FILO', metin: 'Her 4 haftada bir · Pazar 02:00 (TR) · ÖZET · tüm filo', sonraki: [] },
-      { ad: 'P2', acik: false, kip: 'TAM', kapsam: 'FILO', metin: 'Her 2 ayda bir · ayın ilk Pazarı 03:00 (TR) · TAM · tüm filo', sonraki: [] },
+      {
+        ad: 'P1',
+        acik: false,
+        kip: 'OZET',
+        kapsam: 'FILO',
+        metin: 'Her 4 haftada bir · Pazar 02:00 (TR) · ÖZET · tüm filo',
+        sonraki: [],
+      },
+      {
+        ad: 'P2',
+        acik: false,
+        kip: 'TAM',
+        kapsam: 'FILO',
+        metin: 'Her 2 ayda bir · ayın ilk Pazarı 03:00 (TR) · TAM · tüm filo',
+        sonraki: [],
+      },
     ],
     template: { anahtar: 'server_hub_ear_envanter', tanimli: true },
     dizin: '/sw/ORNEK/ear',
@@ -253,7 +267,10 @@ describe('Uygulama Envanteri sekmesi', () => {
     const tablo = screen.getByRole('table');
     const kismi = within(tablo).getByText('kısmi · sınır');
     expect(kismi.closest('[data-ton]')).toHaveAttribute('data-ton', 'uyari');
-    expect(within(tablo).getAllByText('tam')[0].closest('[data-ton]')).toHaveAttribute('data-ton', 'iyi');
+    expect(within(tablo).getAllByText('tam')[0].closest('[data-ton]')).toHaveAttribute(
+      'data-ton',
+      'iyi',
+    );
     fireEvent.click(within(tablo).getAllByText('ORNEKPANEL.ear')[0]);
     await waitFor(() => expect(m.uygulama).toHaveBeenCalledWith(7, 'APPSRV01', 0));
     const pencere = await screen.findByRole('dialog');
@@ -268,7 +285,25 @@ describe('Uygulama Envanteri sekmesi', () => {
   });
 
   it('EU9 seçimle tarama çalışan koşu varken açılmaz', async () => {
-    const aktif = { id: 12, kip: 'OZET', kaynak: 'ELLE', kapsam: 'FILO', durum: 'CALISIYOR', beklenen: 2, tam: 0, kismi: 0, kok_yok: 0, basarisiz: 0, parti_sayisi: 1, baslatan: 'ayse', hata: null, created_at: '2026-11-04T10:00:00Z', finished_at: null, alinan: 0, partiler: [] };
+    const aktif = {
+      id: 12,
+      kip: 'OZET',
+      kaynak: 'ELLE',
+      kapsam: 'FILO',
+      durum: 'CALISIYOR',
+      beklenen: 2,
+      tam: 0,
+      kismi: 0,
+      kok_yok: 0,
+      basarisiz: 0,
+      parti_sayisi: 1,
+      baslatan: 'ayse',
+      hata: null,
+      created_at: '2026-11-04T10:00:00Z',
+      finished_at: null,
+      alinan: 0,
+      partiler: [],
+    };
     m.ozet.mockResolvedValue(ozet({ aktif } as Partial<EarOzet>));
     render(<EarEnvanterTab />);
     await screen.findAllByText('APPSRV02');
@@ -293,7 +328,9 @@ describe('Uygulama Envanteri sekmesi', () => {
     expect(m.planYaz).not.toHaveBeenCalled();
     const pencere = await screen.findByRole('dialog');
     fireEvent.click(within(pencere).getByRole('button', { name: 'Aç' }));
-    await waitFor(() => expect(m.planYaz).toHaveBeenCalledWith('p1', { acik: 'ACIK', aralik: '2' }));
+    await waitFor(() =>
+      expect(m.planYaz).toHaveBeenCalledWith('p1', { acik: 'ACIK', aralik: '2' }),
+    );
     // Plan alanları genel tabloda tekrar görünmez.
     expect(screen.queryByText('Plan 1: açık')).toBeNull();
     expect(screen.getByText('TAM parti boyutu')).toBeInTheDocument();
@@ -301,7 +338,13 @@ describe('Uygulama Envanteri sekmesi', () => {
 
   it('EU6 ORTAM kapsamında ortam seçilmeden kaydedilmez; ay biriminde ayın kaçıncı günü sorulur', async () => {
     m.ozet.mockResolvedValue(ozet());
-    m.ortamlar.mockResolvedValue({ ok: true, ortamlar: [{ ortam: 'PROD', sunucu: 40 }, { ortam: 'TEST', sunucu: 12 }] });
+    m.ortamlar.mockResolvedValue({
+      ok: true,
+      ortamlar: [
+        { ortam: 'PROD', sunucu: 40 },
+        { ortam: 'TEST', sunucu: 12 },
+      ],
+    });
     m.planYaz.mockResolvedValue({ ok: true, plan: 'p1', degisen: [], planlar: [] });
     render(<EarEnvanterTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Ayarlar' }));
@@ -353,7 +396,13 @@ describe('EU4 Şimdi tara', () => {
 
     m.tara.mockReset();
     m.tara.mockResolvedValue({ ok: true, id: 4, beklenen: 900, partiSayisi: 18 });
-    m.kapsamOnizleme.mockResolvedValue({ ok: true, kapsam: 'FILO', sunucu: 900, parti: 18, ornek: [] });
+    m.kapsamOnizleme.mockResolvedValue({
+      ok: true,
+      kapsam: 'FILO',
+      sunucu: 900,
+      parti: 18,
+      ornek: [],
+    });
     render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} />);
     const pencereler = screen.getAllByRole('dialog');
     const p = pencereler[pencereler.length - 1];
@@ -371,7 +420,13 @@ describe('EU4 Şimdi tara', () => {
   it('ortam ve yalnız sorunlular', async () => {
     m.tara.mockReset();
     m.tara.mockResolvedValue({ ok: true, id: 5, beklenen: 12, partiSayisi: 1 });
-    m.ortamlar.mockResolvedValue({ ok: true, ortamlar: [{ ortam: 'PROD', sunucu: 40 }, { ortam: 'TEST', sunucu: 12 }] });
+    m.ortamlar.mockResolvedValue({
+      ok: true,
+      ortamlar: [
+        { ortam: 'PROD', sunucu: 40 },
+        { ortam: 'TEST', sunucu: 12 },
+      ],
+    });
     m.kapsamOnizleme.mockImplementation(async (k: string, o: string[]) =>
       k === 'SORUNLU'
         ? { ok: true, kapsam: k, sunucu: 0, parti: 0, ornek: [] }
@@ -383,7 +438,9 @@ describe('EU4 Şimdi tara', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: /Başlat/ })).toBeDisabled();
     fireEvent.click(screen.getByLabelText(/Ortam seç/));
-    expect(await screen.findByText('En az bir ortam seçin.', { selector: 'div[aria-live]' })).toBeInTheDocument();
+    expect(
+      await screen.findByText('En az bir ortam seçin.', { selector: 'div[aria-live]' }),
+    ).toBeInTheDocument();
     fireEvent.click(await screen.findByLabelText('Şimdi tara ortam TEST'));
     expect(await screen.findByText('12 sunucu · 1 parti')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: /Onaylıyorum/ }));
@@ -396,7 +453,13 @@ describe('EU4 Şimdi tara', () => {
   it('web sunucuları ve filo + web kapsamı (Faz W)', async () => {
     m.tara.mockReset();
     m.tara.mockResolvedValue({ ok: true, id: 6, beklenen: 8, partiSayisi: 1 });
-    m.kapsamOnizleme.mockImplementation(async (k: string) => ({ ok: true, kapsam: k, sunucu: k === 'WEB' ? 8 : 60, parti: 1, ornek: [] }));
+    m.kapsamOnizleme.mockImplementation(async (k: string) => ({
+      ok: true,
+      kapsam: k,
+      sunucu: k === 'WEB' ? 8 : 60,
+      parti: 1,
+      ornek: [],
+    }));
     render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} />);
     fireEvent.click(screen.getByLabelText(/Web sunucuları/));
     expect(await screen.findByText('8 sunucu · 1 parti')).toBeInTheDocument();
@@ -411,7 +474,13 @@ describe('EU4 Şimdi tara', () => {
   });
 
   it('satır seçiminden gelen liste hazır açılır', () => {
-    render(<TaraPenceresi onClose={vi.fn()} onBasladi={vi.fn()} baslangicListesi={['APPSRV01', 'APPSRV02']} />);
+    render(
+      <TaraPenceresi
+        onClose={vi.fn()}
+        onBasladi={vi.fn()}
+        baslangicListesi={['APPSRV01', 'APPSRV02']}
+      />,
+    );
     expect(screen.getByLabelText('Sunucu listesi')).toHaveValue('APPSRV01\nAPPSRV02');
     expect(screen.getByText('2 sunucu')).toBeInTheDocument();
   });
@@ -467,6 +536,8 @@ describe('EU7 sekme kaydı', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'ServerHubPage.tsx'), 'utf8');
     expect(src).toMatch(/\{ id: 'envanter', label: 'Uygulama Envanteri' \}/);
     // Sekme ziyaret edilince kurulur ve acik kalir (SekmeKabi; 2026-11-05 hiz).
-    expect(src).toMatch(/acilan\.has\('envanter'\) && \(\s*<SekmeKabi id="envanter" etkin=\{tab\}>\s*<EarEnvanterTab \/>/);
+    expect(src).toMatch(
+      /acilan\.has\('envanter'\) && \(\s*<SekmeKabi id="envanter" etkin=\{tab\}>\s*<EarEnvanterTab \/>/,
+    );
   });
 });

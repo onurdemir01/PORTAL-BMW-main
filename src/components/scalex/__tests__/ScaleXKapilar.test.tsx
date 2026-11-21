@@ -299,11 +299,18 @@ describe('önizleme kapı durumunu sunucunun kararıyla gösterir', () => {
   // SAYILAR SUNUCUDAN (2026-10-14). Kapatmada "şu süre geçilirse başarısız" ekranda `× 2`
   // diye hesaplanıyordu; admin çarpanı değiştirince AWX'e giden eşik başka, ekran başka
   // bir süre söylüyordu. Hedef tavanı ve yazılı onay eşiği ise ekrana hiç gelmiyordu.
-  const ayarli = (kurgu: string, ek: { b?: Partial<ScaleXPreview['blastRadius']>; v?: ScaleXPreview['verification'] }) => {
+  const ayarli = (
+    kurgu: string,
+    ek: { b?: Partial<ScaleXPreview['blastRadius']>; v?: ScaleXPreview['verification'] },
+  ) => {
     const o = K[kurgu].onizleme;
     K.__ayarli = {
       ...K[kurgu],
-      onizleme: { ...o, blastRadius: { ...o.blastRadius, ...ek.b }, ...(ek.v ? { verification: ek.v } : {}) },
+      onizleme: {
+        ...o,
+        blastRadius: { ...o.blastRadius, ...ek.b },
+        ...(ek.v ? { verification: ek.v } : {}),
+      },
     };
     return '__ayarli';
   };
@@ -311,7 +318,9 @@ describe('önizleme kapı durumunu sunucunun kararıyla gösterir', () => {
   it('kapatmada başarısız sayılma süresi sunucunun eşiğidir (admin çarpanı), ekranın `× 2` hesabı değil', async () => {
     // Gerçek yanıt (fabrika çarpanı 2): 300 sn → 10 dk.
     const { unmount } = onizlemeCiz('basladi_smart_kapali');
-    expect(await screen.findByTestId('scalex-fail-esigi')).toHaveTextContent('10 dk içinde 0 olmazsa başarısız sayılır');
+    expect(await screen.findByTestId('scalex-fail-esigi')).toHaveTextContent(
+      '10 dk içinde 0 olmazsa başarısız sayılır',
+    );
     unmount();
     // Admin çarpanı 3: sunucu 900 sn diyor; ekran 10 dk DEMEZ.
     onizlemeCiz(ayarli('basladi_smart_kapali', { v: { warnSeconds: 300, failSeconds: 900 } }));
@@ -340,17 +349,29 @@ describe('önizleme kapı durumunu sunucunun kararıyla gösterir', () => {
   });
 
   it('hedef tavanı aşılınca sınırın kendisi yazılır (Admin > Sistem değeri)', async () => {
-    onizlemeCiz(ayarli('basladi_smart_kapali', { b: { targets: 60, exceedsMaxTargets: true, maxTargets: 40 } }));
+    onizlemeCiz(
+      ayarli('basladi_smart_kapali', {
+        b: { targets: 60, exceedsMaxTargets: true, maxTargets: 40 },
+      }),
+    );
     const uyari = await screen.findByText(/tek işlemde izin verilen sınırın/);
-    expect(uyari).toHaveTextContent('Bu seçim 60 hedef üretiyor ve tek işlemde izin verilen sınırın (40 hedef) üzerinde.');
+    expect(uyari).toHaveTextContent(
+      'Bu seçim 60 hedef üretiyor ve tek işlemde izin verilen sınırın (40 hedef) üzerinde.',
+    );
     expect(screen.getByRole('button', { name: 'Çalıştır' })).toBeDisabled();
   });
 
   it('yazılı onay istenirken eşik yazılır (Admin > Sistem değeri)', async () => {
-    onizlemeCiz(ayarli('basladi_smart_kapali', { b: { targets: 8, requiresWrittenConfirm: true, writtenConfirmThreshold: 7 } }));
+    onizlemeCiz(
+      ayarli('basladi_smart_kapali', {
+        b: { targets: 8, requiresWrittenConfirm: true, writtenConfirmThreshold: 7 },
+      }),
+    );
     await screen.findByLabelText(/Onaylamak için namespace adını yaz:/);
     const etiket = document.querySelector('label[for="scalex-written"]');
-    expect(etiket).toHaveTextContent("Bu işlem 8 hedefi etkiliyor ve ortam prod (prod'da 7 hedefin üstü yazılı onay ister).");
+    expect(etiket).toHaveTextContent(
+      "Bu işlem 8 hedefi etkiliyor ve ortam prod (prod'da 7 hedefin üstü yazılı onay ister).",
+    );
   });
 });
 
@@ -529,7 +550,12 @@ describe('alt paneller katlanır ve sayaçlıdır', () => {
     api.stopped.mockResolvedValue({
       ok: true,
       hiddenCount: 0,
-      items: ['ns-a', 'ns-b', 'ns-c'].map((ns, i) => ({ ...DURDURULMUS, id: 100 + i, namespace: ns, appName: `app-${i}` })),
+      items: ['ns-a', 'ns-b', 'ns-c'].map((ns, i) => ({
+        ...DURDURULMUS,
+        id: 100 + i,
+        namespace: ns,
+        appName: `app-${i}`,
+      })),
     });
     render(<ScaleXPage />);
     await waitFor(() => expect(api.config).toHaveBeenCalled());
@@ -609,7 +635,15 @@ describe('alt paneller katlanır ve sayaçlıdır', () => {
       ok: true,
       scope: 'all',
       items: {
-        items: [{ id: 1, status: 'SCHEDULED', ocoNumber: '111', username: 'ayse', runAt: '2026-10-14T20:00:00Z' }],
+        items: [
+          {
+            id: 1,
+            status: 'SCHEDULED',
+            ocoNumber: '111',
+            username: 'ayse',
+            runAt: '2026-10-14T20:00:00Z',
+          },
+        ],
         total: 1,
       },
     });
@@ -715,46 +749,78 @@ describe('işlem seçimi ile önizleme tek adımda', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Durdur/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Uygula/ }));
     await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '300' })),
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ verificationTimeout: '300' }),
+      ),
     );
     rerender(<OperationStep {...ortak} limits={admin} onChange={onChange} />);
     await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '600' })),
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ verificationTimeout: '600' }),
+      ),
     );
   });
 
   it('kullanıcının yazdığı bekleme süresi admin varsayılanı değişse de KORUNUR', async () => {
     const onChange = vi.fn();
-    const { rerender } = render(<OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={onChange} />);
+    const { rerender } = render(
+      <OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={onChange} />,
+    );
     fireEvent.click(screen.getByRole('button', { name: /^Durdur/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Uygula/ }));
     fireEvent.click(screen.getByRole('button', { name: /Gelişmiş/ }));
-    fireEvent.change(screen.getByLabelText(/Sonucu ne kadar bekleyelim/), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText(/Sonucu ne kadar bekleyelim/), {
+      target: { value: '120' },
+    });
     rerender(
-      <OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, timeoutDefault: '600' }} onChange={onChange} />,
+      <OperationStep
+        {...ortak}
+        limits={{ ...SCALEX_FALLBACK_LIMITS, timeoutDefault: '600' }}
+        onChange={onChange}
+      />,
     );
     await waitFor(() =>
-      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ verificationTimeout: '120' })),
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ verificationTimeout: '120' }),
+      ),
     );
   });
 
   // KAPATMA EŞİĞİ ADMIN ÇARPANINDAN (2026-10-14). Eskiden `× 2` sabitti.
   const yardim = () => document.getElementById('scalex-timeout-help')?.textContent ?? '';
   it('kapatmada başarısız sayılma süresi admin çarpanıyla hesaplanır', () => {
-    const { rerender } = render(<OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={vi.fn()} />);
+    const { rerender } = render(
+      <OperationStep {...ortak} limits={SCALEX_FALLBACK_LIMITS} onChange={vi.fn()} />,
+    );
     expect(yardim()).toContain('10 dk geçilirse başarısız sayılır');
-    rerender(<OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 3 }} onChange={vi.fn()} />);
+    rerender(
+      <OperationStep
+        {...ortak}
+        limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 3 }}
+        onChange={vi.fn()}
+      />,
+    );
     expect(yardim()).toContain('15 dk geçilirse başarısız sayılır');
     expect(yardim()).not.toContain('10 dk');
   });
 
   it('çarpan 1 ise "uyar ama bekle" denmez; ayar okunamadıysa süre vaat edilmez', () => {
     const { rerender } = render(
-      <OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 1 }} onChange={vi.fn()} />,
+      <OperationStep
+        {...ortak}
+        limits={{ ...SCALEX_FALLBACK_LIMITS, failMultiplier: 1 }}
+        onChange={vi.fn()}
+      />,
     );
     expect(yardim()).toContain('Kapatırken bu süre içinde 0 olmazsa başarısız sayılır.');
     expect(yardim()).not.toContain('0 olana kadar beklenir');
-    rerender(<OperationStep {...ortak} limits={{ ...SCALEX_FALLBACK_LIMITS, stale: true }} onChange={vi.fn()} />);
+    rerender(
+      <OperationStep
+        {...ortak}
+        limits={{ ...SCALEX_FALLBACK_LIMITS, stale: true }}
+        onChange={vi.fn()}
+      />,
+    );
     expect(yardim()).toContain('şu an okunamadı');
     expect(yardim()).not.toMatch(/dk geçilirse/);
   });

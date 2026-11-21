@@ -121,16 +121,23 @@ async function _tickBody() {
     // BASLAMAZ (talep artik PENDING degil, poller bir daha bakmaz) - yeniden talep acmali.
     const islemKurali = deadlineKaynak === 'islem';
     if (timeoutMinutes != null && ageMinutes > timeoutMinutes) {
-      const sonBaslamaMesaji = pencereKapandi && ticket?.pendingLaunch?.pencereBekle === true
-        ? sonBaslamaTimeoutMetni(ticket, deadline)
-        : null;
+      const sonBaslamaMesaji =
+        pencereKapandi && ticket?.pendingLaunch?.pencereBekle === true
+          ? sonBaslamaTimeoutMetni(ticket, deadline)
+          : null;
       await store
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
           errorMessage:
             sonBaslamaMesaji ||
-            (() => { if (pencereKapandi) return `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`; if (islemKurali) return `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`; return `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`; })(),
+            (() => {
+              if (pencereKapandi)
+                return `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`;
+              if (islemKurali)
+                return `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`;
+              return `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`;
+            })(),
           resolved: true,
           expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
         })
@@ -182,7 +189,9 @@ async function _tickBody() {
         if (!ticket.approvedAt) {
           await store
             .markApproved(ticket.id, status.stateName)
-            .catch((e) => console.warn(`[Smart] ticket #${ticket.id} onay ani yazilamadi:`, e.message));
+            .catch((e) =>
+              console.warn(`[Smart] ticket #${ticket.id} onay ani yazilamadi:`, e.message),
+            );
         }
         continue;
       }
@@ -217,7 +226,9 @@ async function _tickBody() {
             resolved: true,
             expected: 'LAUNCHING',
           });
-          console.log(`[Smart] ticket #${ticket.id} onaylandi -> is ${outcome.runAtText || ''} zamanlandi (AWX schedule ${outcome.awxScheduleId || '?'}).`);
+          console.log(
+            `[Smart] ticket #${ticket.id} onaylandi -> is ${outcome.runAtText || ''} zamanlandi (AWX schedule ${outcome.awxScheduleId || '?'}).`,
+          );
           continue;
         }
         await store.markState(ticket.id, {

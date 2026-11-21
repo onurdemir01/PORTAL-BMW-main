@@ -90,9 +90,12 @@ export const MaskRulesSection: React.FC = () => {
     }
   }, []);
 
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await load();
+    },
+    [load],
+  );
 
   const columns: ColumnDef<MaskRuleRow>[] = [
     { key: 'name', label: 'Ad', placeholder: 'tc_kimlik' },
@@ -106,20 +109,23 @@ export const MaskRulesSection: React.FC = () => {
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-        <strong>Bu kurallar bugün yalnızca AI analiz yolunda uygulanıyor.</strong> İndirilen
-        arşive <em>uygulanmıyor</em> — yani buraya kural yazmak indirilen log dosyalarını
-        maskelemez. Teslim yoluna bağlanması ayrı bir iş.
+        <strong>Bu kurallar bugün yalnızca AI analiz yolunda uygulanıyor.</strong> İndirilen arşive{' '}
+        <em>uygulanmıyor</em> — yani buraya kural yazmak indirilen log dosyalarını maskelemez.
+        Teslim yoluna bağlanması ayrı bir iş.
       </div>
       <p className="text-xs text-[var(--text-muted)]">
         Desen sunucuda <code>new RegExp(desen, bayrak)</code> ile <strong>derlenerek</strong> ve
-        <strong> hız açısından sınanarak</strong> doğrulanır: derlenmeyen ya da felaket geri
-        izleme riski taşıyan (ör. <code>(\w+\s?)+$</code>) kural kaydedilmez, çünkü maskeleme
-        sırasında bütün portalı kilitleyebilir. Bayrağa <code>g</code> her zaman eklenir (yoksa
-        satırdaki yalnız ilk eşleşme maskelenirdi). Kayıttan sonra maskeleyici önbelleği
-        yeniden yüklenir — değişiklik <strong>anında</strong> etkilidir.
+        <strong> hız açısından sınanarak</strong> doğrulanır: derlenmeyen ya da felaket geri izleme
+        riski taşıyan (ör. <code>(\w+\s?)+$</code>) kural kaydedilmez, çünkü maskeleme sırasında
+        bütün portalı kilitleyebilir. Bayrağa <code>g</code> her zaman eklenir (yoksa satırdaki
+        yalnız ilk eşleşme maskelenirdi). Kayıttan sonra maskeleyici önbelleği yeniden yüklenir —
+        değişiklik <strong>anında</strong> etkilidir.
       </p>
       {reddedilen.length > 0 && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           <strong>Şu kurallar güvenlik denetiminden geçmediği için uygulanmıyor:</strong>
           <ul className="mt-1 list-disc pl-5">
             {reddedilen.map((r) => (
@@ -131,7 +137,10 @@ export const MaskRulesSection: React.FC = () => {
         </div>
       )}
       {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           {err}
         </div>
       )}
@@ -141,7 +150,14 @@ export const MaskRulesSection: React.FC = () => {
         <SimpleCrudTable<MaskRuleRow>
           columns={columns}
           rows={rows}
-          emptyRow={{ name: '', pattern: '', flags: 'g', replacement: '', sort_order: 0, enabled: true }}
+          emptyRow={{
+            name: '',
+            pattern: '',
+            flags: 'g',
+            replacement: '',
+            sort_order: 0,
+            enabled: true,
+          }}
           onCreate={async (d) => {
             await logxV2Api.admin.createMaskRule(d);
             await load();
@@ -162,7 +178,10 @@ export const MaskRulesSection: React.FC = () => {
 
 /** Sihirbazin takildigi yeri gosteren durumlar — bunlar "devam ediyor" demek. */
 const SURUYOR = new Set([
-  'discovering', 'namespace_discovering', 'app_discovering', 'transferring',
+  'discovering',
+  'namespace_discovering',
+  'app_discovering',
+  'transferring',
 ]);
 
 /**
@@ -196,9 +215,12 @@ export const RequestsSection: React.FC = () => {
     }
   }, [state, platform]);
 
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await load();
+    },
+    [load],
+  );
 
   const durumlar = React.useMemo(
     () => [...new Set(rows.map((r) => r.state).filter(Boolean))],
@@ -226,10 +248,16 @@ export const RequestsSection: React.FC = () => {
         >
           <option value="">tüm durumlar</option>
           {durumlar.map((d) => (
-            <option key={d} value={d}>{d}</option>
+            <option key={d} value={d}>
+              {d}
+            </option>
           ))}
         </select>
-        <button type="button" onClick={load} className="text-xs text-[var(--accent)] hover:underline">
+        <button
+          type="button"
+          onClick={load}
+          className="text-xs text-[var(--accent)] hover:underline"
+        >
           Yenile
         </button>
         <button
@@ -238,10 +266,25 @@ export const RequestsSection: React.FC = () => {
           onClick={() =>
             downloadCsv(
               'logx_istekler',
-              ['İstek', 'Kullanıcı', 'Platform', 'Durum', 'Hata', 'Oluşturma', 'Güncelleme', 'Son kullanma'],
+              [
+                'İstek',
+                'Kullanıcı',
+                'Platform',
+                'Durum',
+                'Hata',
+                'Oluşturma',
+                'Güncelleme',
+                'Son kullanma',
+              ],
               rows.map((r) => [
-                r.id, r.username, r.platform, r.state, r.errorMessage,
-                r.createdAt, r.updatedAt, r.expiresAt,
+                r.id,
+                r.username,
+                r.platform,
+                r.state,
+                r.errorMessage,
+                r.createdAt,
+                r.updatedAt,
+                r.expiresAt,
               ]),
             )
           }
@@ -253,7 +296,10 @@ export const RequestsSection: React.FC = () => {
       </div>
 
       {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           {err}
         </div>
       )}
@@ -287,7 +333,9 @@ export const RequestsSection: React.FC = () => {
               )}
               {rows.map((r) => (
                 <tr key={r.id} className="align-top">
-                  <td className="py-1.5 pr-3 font-mono text-[var(--text-muted)]">{r.id.slice(0, 8)}</td>
+                  <td className="py-1.5 pr-3 font-mono text-[var(--text-muted)]">
+                    {r.id.slice(0, 8)}
+                  </td>
                   <td className="py-1.5 pr-3">{r.username}</td>
                   <td className="py-1.5 pr-3">{r.platform}</td>
                   <td className="py-1.5 pr-3">
@@ -351,7 +399,9 @@ export const PlaybookReadinessPanel: React.FC = () => {
   return (
     <div className="border border-[var(--border)] rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold text-[var(--text-secondary)]">Playbook hazırlık durumu</h4>
+        <h4 className="text-xs font-semibold text-[var(--text-secondary)]">
+          Playbook hazırlık durumu
+        </h4>
         <button
           onClick={load}
           disabled={loading}

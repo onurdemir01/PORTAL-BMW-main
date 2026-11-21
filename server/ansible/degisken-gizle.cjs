@@ -16,17 +16,23 @@
 'use strict';
 
 // Adi sir olduguna isaret eden degisken. Yanlis pozitif ZARARSIZ: degisken ekranda gorunmez,
-// AWX sablondaki degeri kullanmaya devam eder.
-const SIR_ANAHTARI =
-  /pass(word|wd|phrase)?|parola|sifre|secret|token|api[_-]?key|private[_-]?key|credential|webhook|(?:(?:^|[_-])pwd(?:[_-]|$))|(?:(?:^|[_-])key$)/i;
+// AWX sablondaki degeri kullanmaya devam eder. Biri adin herhangi bir yerinde eslesirse sirdir.
+const SIR_ANAHTARI = [
+  // adin icinde gecen sozcuk ('pass': password, passwd, passphrase da)
+  /pass|parola|sifre|secret|token|api[_-]?key|private[_-]?key|credential|webhook/i,
+  // ayri parca olarak pwd (db_pwd_x) ya da sonda key (ssh_key)
+  /(?:^|[_-])(?:pwd(?:[_-]|$)|key$)/i,
+];
+const sirAnahtariMi = (ad) => SIR_ANAHTARI.some((d) => d.test(ad));
 
 // Adi masum ama DEGERI sir tasiyan degisken.
 const SIR_DEGERI = [
   /\b(pwd|password|parola|sifre)\s*=\s*[^;\s"']+/i, // baglanti dizgisi: ...;PWD=...
-  /(?:^|[\s;|&"'])(?:export\s+)?[A-Za-z0-9_]*(?:password|passwd|pwd|parola|sifre|secret|token|api[_-]?key)[A-Za-z0-9_]*\s*=\s*[^\s"';]+/i, // export PGPASSWORD=..., MY_TOKEN=...
+  // MY_TOKEN=..., export PGPASSWORD=... (export'tan sonraki bosluk da ayirici)
+  /(?:^|[\s;|&"'])\w*(?:password|passwd|pwd|parola|sifre|secret|token|api[_-]?key)\w*\s*=\s*[^\s"';]+/i,
   /:\/\/[^/\s:@]+:[^@\s/]+@/, // kullanici:parola@host
-  /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/i,
-  /\bBasic\s+[A-Za-z0-9+/]{8,}={0,2}\b/i, // Basic <base64>
+  /\bBearer\s+[\w.~+/-]{16,}/i,
+  /\bBasic\s+[a-z0-9+/]{8,}={0,2}\b/i, // Basic <base64>
   /[?&](sig|signature|token|access_token|api[_-]?key|code)=[^&\s"']{8,}/i, // imzali adres
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /--(password|passwd|pwd|token|secret|api-key)[= ]\S+/i, // komut satiri bayragi
@@ -39,7 +45,7 @@ function icindeSirVar(deger) {
   if (deger === null || deger === undefined) return false;
   if (Array.isArray(deger)) return deger.some(icindeSirVar);
   if (typeof deger === 'object')
-    return Object.entries(deger).some(([k, v]) => SIR_ANAHTARI.test(k) || icindeSirVar(v));
+    return Object.entries(deger).some(([k, v]) => sirAnahtariMi(k) || icindeSirVar(v));
   return degerSirMi(deger);
 }
 
@@ -48,7 +54,7 @@ function nesnedenAyikla(obj) {
   const nesne = {};
   const gizlenen = [];
   for (const [k, v] of Object.entries(obj || {})) {
-    if (SIR_ANAHTARI.test(k) || icindeSirVar(v)) gizlenen.push(k);
+    if (sirAnahtariMi(k) || icindeSirVar(v)) gizlenen.push(k);
     else nesne[k] = v;
   }
   return { nesne, gizlenen };
@@ -80,11 +86,11 @@ function yamldanAyikla(metin) {
       .slice(1)
       .some((s) =>
         [...s.matchAll(/(?:^|[{\[, \t])["']?([A-Za-z_][\w.-]*)["']?[ \t]*:/g)].some((m) =>
-          SIR_ANAHTARI.test(m[1]),
+          sirAnahtariMi(m[1]),
         ),
       );
     if (b.anahtar) {
-      if (SIR_ANAHTARI.test(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);
+      if (sirAnahtariMi(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);
       else kalan.push(govde);
     } else if (
       degerSirMi(govde) ||
@@ -105,8 +111,9 @@ function yamldanAyikla(metin) {
  * @returns {{ metin: string, gizlenen: string[] }}
  */
 function awxDegiskenleriniAyikla(ham) {
-  const metin =
-    typeof ham === 'string' ? ham : ham && typeof ham === 'object' ? JSON.stringify(ham) : '';
+  let metin = '';
+  if (typeof ham === 'string') metin = ham;
+  else if (ham && typeof ham === 'object') metin = JSON.stringify(ham);
   if (!metin.trim()) return { metin: '', gizlenen: [] };
   if (metin.trim().startsWith('{')) {
     let obj = null;
@@ -136,6 +143,6 @@ module.exports = {
   awxDegiskenleriniAyikla,
   sablonDegiskenAlanlari,
   nesnedenAyikla,
-  SIR_ANAHTARI,
+  sirAnahtariMi,
   SIR_DEGERI,
 };

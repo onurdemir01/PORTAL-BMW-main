@@ -1,6 +1,6 @@
 // server/ansible/__tests__/playbook-revision.test.js — AWX'TEKI KOPYA BAYAT MI?
 //
-// NEDEN VAR: `server/ansible/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
+// NEDEN VAR: `server/ansible/playbooks/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
 // Kopyalanmadiginda AWX ESKI surumu kosar, ama portalda gorunen hata repodaki
 // (coktan duzeltilmis) koda ait olur — teshis saatlerce YANLIS YERDE aranir.
 //
@@ -208,14 +208,14 @@ test('PV7 `--check` damga bayatladiginda GERCEKTEN 1 doner', () => {
       'scripts/playbook-rev.cjs',
       'server/ansible/paths.cjs',
       'server/ansible/playbook-revisions.json',
-      ...Object.keys(MANIFEST).map((k) => `server/ansible/bmw_portal/${k}`),
+      ...Object.keys(MANIFEST).map((k) => `server/ansible/playbooks/bmw_portal/${k}`),
     ]) {
       const dst = path.join(tmp, rel);
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       fs.copyFileSync(path.join(ROOT, rel), dst);
     }
     // Playbook'u degistir, damgayi ELLEME: tam da yakalanmasi gereken hal.
-    const hedef = path.join(tmp, 'server/ansible/bmw_portal', Object.keys(MANIFEST)[0]);
+    const hedef = path.join(tmp, 'server/ansible/playbooks/bmw_portal', Object.keys(MANIFEST)[0]);
     fs.writeFileSync(hedef, fs.readFileSync(hedef, 'utf8') + '\n# sessiz bir degisiklik\n');
 
     let code = 0;

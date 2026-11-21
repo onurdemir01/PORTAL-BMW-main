@@ -29,9 +29,15 @@ const OpsXWizardPage = lazyWithRetry(() => import('@/components/opsx/OpsXWizardP
 const NginxConsolePage = lazyWithRetry(() => import('@/components/nginx_console/NginxConsolePage'));
 const ServerHubPage = lazyWithRetry(() => import('@/components/server_hub/ServerHubPage'));
 // BMW Hub menusundeki ayri sayfalar (2026-11-13): IP/Sunucu Sorgu, OCP Uygulama Sorgu, Yuk Testi.
-const IpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.IpSorguPage })));
-const OcpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.OcpSorguPage })));
-const YukTestiPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.YukTestiPage })));
+const IpSorguPage = lazyWithRetry(() =>
+  import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.IpSorguPage })),
+);
+const OcpSorguPage = lazyWithRetry(() =>
+  import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.OcpSorguPage })),
+);
+const YukTestiPage = lazyWithRetry(() =>
+  import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.YukTestiPage })),
+);
 // Reboot Kontrolu ve Retirement (2026-11-13): BMW Hub sayfasindaki sekmeden ayri menu sayfasina.
 const RebootKontroluPage = lazyWithRetry(() => import('@/components/bmw_hub/RebootKontroluPage'));
 const RetirementPage = lazyWithRetry(() => import('@/components/bmw_hub/RetirementPage'));
@@ -130,7 +136,14 @@ export default function App() {
               <Route path="/opsx" element={<OpsXWizardPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="NginxConsole" />}>
-              <Route path="/nginx-console" element={<TasinanSekme param="tab" deger="yuktesti" hedef="/yuk-testi"><NginxConsolePage /></TasinanSekme>} />
+              <Route
+                path="/nginx-console"
+                element={
+                  <TasinanSekme param="tab" deger="yuktesti" hedef="/yuk-testi">
+                    <NginxConsolePage />
+                  </TasinanSekme>
+                }
+              />
             </Route>
             <Route element={<PageVisibilityRoute pageId="ServerHub" />}>
               <Route path="/server-hub" element={<ServerHubPage />} />
@@ -146,7 +159,23 @@ export default function App() {
               </Route>
             </Route>
             <Route element={<PageVisibilityRoute pageId="BmwHub" />}>
-              <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>} />
+              <Route
+                path="/bmw-hub"
+                element={
+                  <TasinanSekme
+                    param="sekme"
+                    deger={['ip', 'ocp', 'reboot', 'retirement']}
+                    hedef={{
+                      ip: '/ip-sorgu',
+                      ocp: '/ocp-sorgu',
+                      reboot: '/reboot-kontrolu',
+                      retirement: '/retirement',
+                    }}
+                  >
+                    <BmwHubPage />
+                  </TasinanSekme>
+                }
+              />
             </Route>
             <Route element={<PageVisibilityRoute pageId="RebootKontrolu" />}>
               <Route path="/reboot-kontrolu" element={<RebootKontroluPage />} />

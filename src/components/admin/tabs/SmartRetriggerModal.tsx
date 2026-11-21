@@ -4,11 +4,7 @@
 // yeni OCO numarası ya da ayrı onay kutusuyla "pencere dışında hemen çalıştır".
 import { useState } from 'react';
 import { ArrowPathIcon, ExclamationTriangleIcon, PlayIcon } from '@heroicons/react/24/outline';
-import {
-  ansibleApi,
-  type AdminSmartTicket,
-  type SmartRetriggerCheck,
-} from '@/api/ansibleApi';
+import { ansibleApi, type AdminSmartTicket, type SmartRetriggerCheck } from '@/api/ansibleApi';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useEscIleKapat } from '@/components/common/pencereKlavye';
@@ -17,7 +13,10 @@ import { fmtDateTime as fmt } from '@/utils/datetime';
 const SMART_ROZET: Record<string, { label: string; className: string }> = {
   onayli: { label: 'Smart onaylı', className: 'bg-green-50 text-green-700 border-green-200' },
   bekliyor: { label: 'Smart onayı yok', className: 'bg-amber-50 text-amber-700 border-amber-200' },
-  bilinmiyor: { label: 'Smart onaylı değil', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  bilinmiyor: {
+    label: 'Smart onaylı değil',
+    className: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
   reddedildi: { label: 'Smart reddetti', className: 'bg-red-50 text-red-700 border-red-200' },
   okunamadi: { label: 'Smart okunamadı', className: 'bg-red-50 text-red-700 border-red-200' },
 };
@@ -142,13 +141,16 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
         {/* SMART DURUMU */}
         <div className="border border-gray-200 rounded-xl px-3 py-2 space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-gray-700">Smart kaydının şimdiki durumu</span>
+            <span className="text-xs font-semibold text-gray-700">
+              Smart kaydının şimdiki durumu
+            </span>
             <button
               onClick={loadCheck}
               disabled={checking || sending}
               className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-700 disabled:opacity-50"
             >
-              <ArrowPathIcon className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} /> Yeniden sorgula
+              <ArrowPathIcon className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} /> Yeniden
+              sorgula
             </button>
           </div>
           {checking && <p className="text-xs text-gray-400">Smart sorgulanıyor…</p>}
@@ -168,7 +170,9 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
                 <span className="text-[11px] text-gray-400 ml-2">{smart.stateName}</span>
               )}
               {smart.statusCode && (
-                <span className="text-[11px] text-gray-400 ml-1 font-mono">(kod {smart.statusCode})</span>
+                <span className="text-[11px] text-gray-400 ml-1 font-mono">
+                  (kod {smart.statusCode})
+                </span>
               )}
               <p className={`text-xs ${smart.engel ? 'text-red-600' : 'text-gray-600'}`}>
                 {smart.message}
@@ -182,9 +186,11 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
           <div className="border border-gray-200 rounded-xl px-3 py-2 space-y-2">
             <div className="text-xs font-semibold text-gray-700">Kesinti penceresi</div>
             <p className="text-xs text-gray-500">
-              Talebin OCO kaydı{' '}
-              <span className="font-mono">{check.oco?.ocoNumber || '—'}</span>
-              {check.oco?.windowEndIso && <> · pencere {fmt(check.oco.windowEndIso)} tarihinde kapandı</>}.
+              Talebin OCO kaydı <span className="font-mono">{check.oco?.ocoNumber || '—'}</span>
+              {check.oco?.windowEndIso && (
+                <> · pencere {fmt(check.oco.windowEndIso)} tarihinde kapandı</>
+              )}
+              .
             </p>
             <label className="flex items-start gap-2 text-xs cursor-pointer">
               <input
@@ -224,7 +230,9 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
               />
               <span className="font-semibold text-gray-800">
                 Pencere dışında hemen çalıştır
-                <span className="block font-normal text-gray-500">Production'da OCO penceresi dışında değişiklik demektir.</span>
+                <span className="block font-normal text-gray-500">
+                  Production'da OCO penceresi dışında değişiklik demektir.
+                </span>
               </span>
             </label>
             {mode === 'pencereDisi' && (
@@ -247,8 +255,12 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
         {/* GEREKCE */}
         {!checking && check?.ok && !engel && (
           <div>
-            <label htmlFor="ss-retrigger-not" className="block text-xs font-semibold text-gray-700 mb-1">
-              Gerekçe <span className="font-normal text-gray-400">(zorunlu, en az {notEnAz} karakter)</span>
+            <label
+              htmlFor="ss-retrigger-not"
+              className="block text-xs font-semibold text-gray-700 mb-1"
+            >
+              Gerekçe{' '}
+              <span className="font-normal text-gray-400">(zorunlu, en az {notEnAz} karakter)</span>
             </label>
             <textarea
               id="ss-retrigger-not"

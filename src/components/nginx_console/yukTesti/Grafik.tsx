@@ -9,11 +9,21 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { ondalik, type AdimBirimi } from './yukTestiOrtak';
 
-export interface GrafikNoktasi { x: number; y: number | null; durum: string | null; etiket: string }
+export interface GrafikNoktasi {
+  x: number;
+  y: number | null;
+  durum: string | null;
+  etiket: string;
+}
 
 const YUKSEKLIK = 196;
 const KENAR = { sol: 46, sag: 14, ust: 12, alt: 30 };
-const DURUM_ADI: Record<string, string> = { GECERLI: 'geçerli', DOYMA: 'doyma', GECERSIZ: 'geçersiz', HATALI: 'hatalı' };
+const DURUM_ADI: Record<string, string> = {
+  GECERLI: 'geçerli',
+  DOYMA: 'doyma',
+  GECERSIZ: 'geçersiz',
+  HATALI: 'hatalı',
+};
 
 /** 0'dan baslayan "guzel" eksen: adim 1 / 2 / 2,5 / 5 x 10^n, en cok ~5 cizgi. */
 export function eksenAdimlari(enBuyuk: number): number[] {
@@ -22,7 +32,8 @@ export function eksenAdimlari(enBuyuk: number): number[] {
   const us = 10 ** Math.floor(Math.log10(kaba));
   const adim = [1, 2, 2.5, 5, 10].map((k) => k * us).find((a) => a >= kaba) as number;
   const out: number[] = [];
-  for (let v = 0; v <= enBuyuk * 1.12 + adim * 0.5 && out.length < 8; v += adim) out.push(Number(v.toPrecision(12)));
+  for (let v = 0; v <= enBuyuk * 1.12 + adim * 0.5 && out.length < 8; v += adim)
+    out.push(Number(v.toPrecision(12)));
   if (out[out.length - 1] < enBuyuk) out.push(Number((out[out.length - 1] + adim).toPrecision(12)));
   return out;
 }
@@ -42,13 +53,44 @@ export function useGenislik(varsayilan = 420) {
 
 function Isaret({ durum, x, y }: { durum: string | null; x: number; y: number }) {
   const halka = { stroke: 'var(--bg-surface)', strokeWidth: 2 };
-  if (durum === 'GECERSIZ' || durum === 'HATALI') return <circle cx={x} cy={y} r={4.5} fill="var(--bg-surface)" stroke="var(--status-danger)" strokeWidth={2} />;
-  if (durum === 'DOYMA') return <path d={`M${x} ${y - 6}L${x + 6} ${y}L${x} ${y + 6}L${x - 6} ${y}Z`} fill="var(--status-warning)" {...halka} />;
+  if (durum === 'GECERSIZ' || durum === 'HATALI')
+    return (
+      <circle
+        cx={x}
+        cy={y}
+        r={4.5}
+        fill="var(--bg-surface)"
+        stroke="var(--status-danger)"
+        strokeWidth={2}
+      />
+    );
+  if (durum === 'DOYMA')
+    return (
+      <path
+        d={`M${x} ${y - 6}L${x + 6} ${y}L${x} ${y + 6}L${x - 6} ${y}Z`}
+        fill="var(--status-warning)"
+        {...halka}
+      />
+    );
   return <circle cx={x} cy={y} r={5} fill="var(--accent)" {...halka} />;
 }
 
-export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1, bos = 'Ölçülmüş değer yok.', xBirimi = 'istek/sn', bicim }: {
-  baslik: string; birim: string; noktalar: GrafikNoktasi[]; cizgi: { x: number; y: number | null }[]; basamak?: number; bos?: string;
+export default function HizGrafigi({
+  baslik,
+  birim,
+  noktalar,
+  cizgi,
+  basamak = 1,
+  bos = 'Ölçülmüş değer yok.',
+  xBirimi = 'istek/sn',
+  bicim,
+}: {
+  baslik: string;
+  birim: string;
+  noktalar: GrafikNoktasi[];
+  cizgi: { x: number; y: number | null }[];
+  basamak?: number;
+  bos?: string;
   xBirimi?: AdimBirimi;
   /** Ipucu / ozet deger metni (birim dahil; 2026-11-03 CPU-ms "3,92 ms"); yoksa ondalik(y, basamak) + birim. */
   bicim?: (y: number) => string;
@@ -78,54 +120,170 @@ export default function HizGrafigi({ baslik, birim, noktalar, cizgi, basamak = 1
     const n = ayni(noktalar[k].x);
     return n > 1 ? (yerler[k] - (n - 1) / 2) * Math.min(11, 22 / (n - 1)) : 0;
   };
-  const yol = cizgi.filter((c) => c.y != null).sort((a, b) => a.x - b.x).map((c, i) => `${i ? 'L' : 'M'}${px(c.x).toFixed(1)} ${py(c.y as number).toFixed(1)}`).join('');
+  const yol = cizgi
+    .filter((c) => c.y != null)
+    .sort((a, b) => a.x - b.x)
+    .map((c, i) => `${i ? 'L' : 'M'}${px(c.x).toFixed(1)} ${py(c.y as number).toFixed(1)}`)
+    .join('');
   const ozet = olcu.length
     ? `${baslik}: ${xler.map((x) => `${x} ${xBirimi} ${cizgi.find((c) => c.x === x)?.y != null ? degerMetni(cizgi.find((c) => c.x === x)?.y as number) : 'ölçülmedi'}`).join(', ')}`
     : `${baslik}: ${bos}`;
   const u = uzerinde != null ? noktalar[uzerinde] : null;
-  const yIpucu = (n: GrafikNoktasi) => `${n.etiket}: ${n.y == null ? 'ölçülmedi' : degerMetni(n.y)}${n.durum ? ` · ${DURUM_ADI[n.durum] || n.durum}` : ''}`;
+  const yIpucu = (n: GrafikNoktasi) =>
+    `${n.etiket}: ${n.y == null ? 'ölçülmedi' : degerMetni(n.y)}${n.durum ? ` · ${DURUM_ADI[n.durum] || n.durum}` : ''}`;
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{baslik}</span>
-        <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{birim} · yatay: {xBirimi}</span>
+        <span className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {baslik}
+        </span>
+        <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+          {birim} · yatay: {xBirimi}
+        </span>
       </figcaption>
       <div ref={ref} className="relative w-full">
         {!olcu.length ? (
-          <div className="flex items-center justify-center rounded-lg border border-dashed text-[12px]" style={{ height: YUKSEKLIK, borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>{bos}</div>
+          <div
+            className="flex items-center justify-center rounded-lg border border-dashed text-[12px]"
+            style={{
+              height: YUKSEKLIK,
+              borderColor: 'var(--border)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {bos}
+          </div>
         ) : (
-          <svg width={genislik} height={YUKSEKLIK} role="img" aria-label={ozet} className="block max-w-full" onMouseLeave={() => setUzerinde(null)}>
+          <svg
+            width={genislik}
+            height={YUKSEKLIK}
+            role="img"
+            aria-label={ozet}
+            className="block max-w-full"
+            onMouseLeave={() => setUzerinde(null)}
+          >
             {yAdim.map((v) => (
               <g key={v}>
-                <line x1={KENAR.sol} x2={genislik - KENAR.sag} y1={py(v)} y2={py(v)} stroke={v === 0 ? 'var(--border)' : 'var(--border-subtle)'} strokeWidth={1} />
-                <text x={KENAR.sol - 6} y={py(v)} dy="0.32em" textAnchor="end" fontSize={11} fill="var(--text-secondary)" style={{ fontVariantNumeric: 'tabular-nums' }}>{ondalik(v, v % 1 ? 1 : 0)}</text>
+                <line
+                  x1={KENAR.sol}
+                  x2={genislik - KENAR.sag}
+                  y1={py(v)}
+                  y2={py(v)}
+                  stroke={v === 0 ? 'var(--border)' : 'var(--border-subtle)'}
+                  strokeWidth={1}
+                />
+                <text
+                  x={KENAR.sol - 6}
+                  y={py(v)}
+                  dy="0.32em"
+                  textAnchor="end"
+                  fontSize={11}
+                  fill="var(--text-secondary)"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {ondalik(v, v % 1 ? 1 : 0)}
+                </text>
               </g>
             ))}
             {xler.map((x) => (
-              <text key={x} x={px(x)} y={YUKSEKLIK - KENAR.alt + 16} textAnchor="middle" fontSize={11} fill="var(--text-secondary)" style={{ fontVariantNumeric: 'tabular-nums' }}>{x}</text>
+              <text
+                key={x}
+                x={px(x)}
+                y={YUKSEKLIK - KENAR.alt + 16}
+                textAnchor="middle"
+                fontSize={11}
+                fill="var(--text-secondary)"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {x}
+              </text>
             ))}
-            {yol && <path d={yol} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} />}
-            {noktalar.map((n, k) => (n.y == null ? null : <Isaret key={k} durum={n.durum} x={px(n.x) + kaydir(k)} y={py(n.y)} />))}
-            {noktalar.map((n, k) => (n.y == null ? null : (
-              <circle key={`h${k}`} cx={px(n.x) + kaydir(k)} cy={py(n.y)} r={11} fill="transparent" onMouseEnter={() => setUzerinde(k)}>
-                <title>{yIpucu(n)}</title>
-              </circle>
-            )))}
+            {yol && (
+              <path
+                d={yol}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                opacity={0.85}
+              />
+            )}
+            {noktalar.map((n, k) =>
+              n.y == null ? null : (
+                <Isaret key={k} durum={n.durum} x={px(n.x) + kaydir(k)} y={py(n.y)} />
+              ),
+            )}
+            {noktalar.map((n, k) =>
+              n.y == null ? null : (
+                <circle
+                  key={`h${k}`}
+                  cx={px(n.x) + kaydir(k)}
+                  cy={py(n.y)}
+                  r={11}
+                  fill="transparent"
+                  onMouseEnter={() => setUzerinde(k)}
+                >
+                  <title>{yIpucu(n)}</title>
+                </circle>
+              ),
+            )}
           </svg>
         )}
         {u && u.y != null && (
-          <div role="presentation" className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] leading-4 shadow-sm"
-            style={{ left: Math.min(Math.max(px(u.x) - 60, 0), genislik - 150), top: Math.max(py(u.y) - 44, 0), background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+          <div
+            role="presentation"
+            className="pointer-events-none absolute z-10 whitespace-nowrap rounded-md border px-2 py-1 text-[11px] leading-4 shadow-sm"
+            style={{
+              left: Math.min(Math.max(px(u.x) - 60, 0), genislik - 150),
+              top: Math.max(py(u.y) - 44, 0),
+              background: 'var(--bg-surface)',
+              borderColor: 'var(--border)',
+              color: 'var(--text-primary)',
+            }}
+          >
             {yIpucu(u)}
           </div>
         )}
       </div>
       {olcu.length > 0 && (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }} aria-hidden>
-          <span className="inline-flex items-center gap-1"><svg width="12" height="12"><Isaret durum="GECERLI" x={6} y={6} /></svg>geçerli</span>
-          <span className="inline-flex items-center gap-1"><svg width="14" height="14"><Isaret durum="DOYMA" x={7} y={7} /></svg>doyma</span>
-          <span className="inline-flex items-center gap-1"><svg width="12" height="12"><Isaret durum="GECERSIZ" x={6} y={6} /></svg>geçersiz</span>
-          <span className="inline-flex items-center gap-1"><svg width="16" height="8"><line x1="1" x2="15" y1="4" y2="4" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" /></svg>ortalama</span>
+        <div
+          className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]"
+          style={{ color: 'var(--text-secondary)' }}
+          aria-hidden
+        >
+          <span className="inline-flex items-center gap-1">
+            <svg width="12" height="12">
+              <Isaret durum="GECERLI" x={6} y={6} />
+            </svg>
+            geçerli
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <svg width="14" height="14">
+              <Isaret durum="DOYMA" x={7} y={7} />
+            </svg>
+            doyma
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <svg width="12" height="12">
+              <Isaret durum="GECERSIZ" x={6} y={6} />
+            </svg>
+            geçersiz
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <svg width="16" height="8">
+              <line
+                x1="1"
+                x2="15"
+                y1="4"
+                y2="4"
+                stroke="var(--accent)"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+            ortalama
+          </span>
         </div>
       )}
     </figure>

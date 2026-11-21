@@ -88,7 +88,8 @@ export default function OnbellekPaneli() {
         const r = await okJson<{ ok?: boolean; error?: string; message?: string }>(
           await fetch(e.uc, { method: 'POST' }),
         );
-        if (r && r.ok === false) throw new Error(r.message || r.error || 'Sunucu temizlemeyi reddetti.');
+        if (r && r.ok === false)
+          throw new Error(r.message || r.error || 'Sunucu temizlemeyi reddetti.');
       }
       sonuc = { ok: true, metin: 'Temizlendi', zaman: fmtTime(new Date()) };
       toast.success(`${e.etiket} temizlendi.`);
@@ -131,12 +132,19 @@ export default function OnbellekPaneli() {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[13px] font-medium text-[var(--text-primary)]">{e.etiket}</span>
-                  <Rozet ton={e.kapsam === 'tarayici' ? 'grey' : 'blue'}>{KAPSAM_ETIKETI[e.kapsam]}</Rozet>
+                  <span className="text-[13px] font-medium text-[var(--text-primary)]">
+                    {e.etiket}
+                  </span>
+                  <Rozet ton={e.kapsam === 'tarayici' ? 'grey' : 'blue'}>
+                    {KAPSAM_ETIKETI[e.kapsam]}
+                  </Rozet>
                 </div>
                 <p className="mt-0.5 text-xs text-[var(--text-secondary)]">{e.aciklama}</p>
                 {/* Canli bolge hep DOM'da (icerikle eklenen bolge cogu zaman duyurulmaz). */}
-                <p role="status" className={s ? 'mt-1.5 flex flex-wrap items-center gap-1.5 text-xs' : 'sr-only'}>
+                <p
+                  role="status"
+                  className={s ? 'mt-1.5 flex flex-wrap items-center gap-1.5 text-xs' : 'sr-only'}
+                >
                   {s &&
                     (s.ok ? (
                       <>
@@ -145,7 +153,8 @@ export default function OnbellekPaneli() {
                       </>
                     ) : (
                       <span className="text-[var(--status-danger-text)]">
-                        {s.metin} <span className="text-[var(--text-muted)] tabular-nums">{s.zaman}</span>
+                        {s.metin}{' '}
+                        <span className="text-[var(--text-muted)] tabular-nums">{s.zaman}</span>
                       </span>
                     ))}
                 </p>

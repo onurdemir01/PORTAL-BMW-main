@@ -60,5 +60,58 @@
     "**/__init__.py",
     "**/vite.config.mjs",
     "**/vitest.config.mjs"
-  ]
+  ],
+  "profil": {
+    "aciklama": "Kurumun 'GT way' profili disa aktarilamiyor (2026-11-20 karari: bulgulardan turetilir). K15 her dilde 'Portal Kurumsal' profilini her kosuda bu listeden sifirdan kurar: yerlesik varsayilan profilin ('Sonar way'; 26.x'te 'Sonar way core') bug / zafiyet / hotspot kurallari + asagidaki, kurumun bulgu verdigi kurallar (parametreleriyle). Kapi kod kokusunda ve hotspot'ta mutlak (0); K15'te gerekceli inceleme kaydi uygulanmaz (kurum onu gormez). Kurumsal taramada yeni bir kural bulgu verirse buraya eklenir; ayni kurallar commit aninda ESLint'te (eslint.config.js KURUM_JS / KURUM_TS). Yerel sunucuda etkinlesemeyen kural K15'i durdurur.",
+    "kaynak": "Kurumsal is #52 (2026-11-20) SonarQube bulgu listesi (kural anahtarlari ve iletilerdeki esikler).",
+    "kurallar": {
+      "js": [
+        "javascript:S1481",
+        "javascript:S2681",
+        "javascript:S3358",
+        "javascript:S3516",
+        "javascript:S3782",
+        "javascript:S3800",
+        "javascript:S3972",
+        "javascript:S4030",
+        "javascript:S4043",
+        "javascript:S4138",
+        "javascript:S4624",
+        "javascript:S5443",
+        {
+          "kural": "javascript:S5843",
+          "parametreler": {
+            "threshold": "20"
+          }
+        },
+        "javascript:S5869",
+        "javascript:S6582",
+        "javascript:S6644",
+        "javascript:S6653",
+        "javascript:S6671"
+      ],
+      "ts": ["typescript:S1940", "typescript:S2681", "typescript:S2871", "typescript:S4043"],
+      "py": [
+        {
+          "kural": "python:S107",
+          "parametreler": {
+            "max": "7"
+          }
+        },
+        {
+          "kural": "python:S3776",
+          "parametreler": {
+            "threshold": "15"
+          }
+        }
+      ],
+      "docker": ["docker:S6470"],
+      "web": ["Web:AvoidCommentedOutCodeCheck"]
+    },
+    "yereldeYok": {
+      "plsql:S1192": "Topluluk surumunde PL/SQL cozumleyicisi yok. Tek bulgu (kod icindeki SQL sabiti) duzeltildi.",
+      "docker:S6505": "SonarQube 26.11 Community'de bu kural yok. Dockerfile'daki her npm kurulumu --ignore-scripts ile; bekci KK15.",
+      "ansible:S2612, ansible:S5332": "Topluluk surumunde Ansible cozumleyicisi yok; playbook'lar kuruma gitmez (server/ansible/playbooks/, teslim.cjs KURUMA_GITMEYEN)."
+    }
+  }
 }

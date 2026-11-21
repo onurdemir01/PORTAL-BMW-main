@@ -62,7 +62,10 @@ beforeEach(() => {
   m.playbookReadiness.mockResolvedValue({ ok: true, rows: [] });
   m.createRequest.mockResolvedValue({ ok: true, requestId: 'r1' });
   m.legacyHosts.mockResolvedValue({ ok: true, hosts: [] });
-  m.getClusterTree.mockResolvedValue({ ok: true, tree: { PROD: { ark: ['gbocpprod1', 'gbocpprod2'] } } });
+  m.getClusterTree.mockResolvedValue({
+    ok: true,
+    tree: { PROD: { ark: ['gbocpprod1', 'gbocpprod2'] } },
+  });
   m.selectClusters.mockResolvedValue({ ok: true, terminalHost: 't' });
   m.inventoryApps.mockResolvedValue({
     cached: true,
@@ -117,12 +120,16 @@ describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
       stale: false,
     });
     ac('/logx?platform=openshift&app=app-1&env=prod&tenant=ARK&namespace=ns-b&cluster=gbocpprod2');
-    const arama = (await screen.findByPlaceholderText(/Ara veya listede olmayan/)) as HTMLInputElement;
+    const arama = (await screen.findByPlaceholderText(
+      /Ara veya listede olmayan/,
+    )) as HTMLInputElement;
     expect(screen.getAllByTitle('ns-b').length).toBeGreaterThan(0);
     expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', ['gbocpprod2']);
     expect(m.createRequest).toHaveBeenCalledTimes(1);
     expect(arama.value).toBe('app-1');
-    await waitFor(() => expect(m.inventoryApps).toHaveBeenCalledWith('PROD', 'ark', ['gbocpprod2'], 'ns-b'));
+    await waitFor(() =>
+      expect(m.inventoryApps).toHaveBeenCalledWith('PROD', 'ark', ['gbocpprod2'], 'ns-b'),
+    );
     expect(screen.queryByTestId('logx-ondolum-uyari')).toBeNull();
   });
 
@@ -131,12 +138,20 @@ describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
     m.getRequest.mockImplementation(async () =>
       istek('openshift', m.selectClusters.mock.calls.length ? secili : null),
     );
-    m.inventoryNamespaces.mockResolvedValue({ cached: true, items: ['ns-a'], fetchedAt: null, stale: false });
+    m.inventoryNamespaces.mockResolvedValue({
+      cached: true,
+      items: ['ns-a'],
+      fetchedAt: null,
+      stale: false,
+    });
     ac('/logx?platform=openshift&app=app-1&env=PROD&tenant=ark&namespace=gizli-ns');
     const uyari = await screen.findByTestId('logx-ondolum-uyari');
     expect(uyari.textContent).toMatch(/gizli-ns/);
     // Cluster verilmedi: tenant'ın bütün cluster'ları seçilir.
-    expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', ['gbocpprod1', 'gbocpprod2']);
+    expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', [
+      'gbocpprod1',
+      'gbocpprod2',
+    ]);
     expect(await screen.findByText('Namespace Seçimi')).toBeTruthy();
   });
 

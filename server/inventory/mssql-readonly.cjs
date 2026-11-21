@@ -54,7 +54,12 @@ function poolMin() {
 }
 
 function isConfigured() {
-  return !!(process.env.MSSQL_RO_USER && process.env.MSSQL_RO_PASSWORD && process.env.MSSQL_SERVER && process.env.MSSQL_DATABASE);
+  return !!(
+    process.env.MSSQL_RO_USER &&
+    process.env.MSSQL_RO_PASSWORD &&
+    process.env.MSSQL_SERVER &&
+    process.env.MSSQL_DATABASE
+  );
 }
 
 function closeQuietly(pool) {
@@ -63,7 +68,9 @@ function closeQuietly(pool) {
       const r = pool.close();
       if (r && typeof r.catch === 'function') r.catch(() => {});
     }
-  } catch { /* yoksay */ }
+  } catch {
+    /* yoksay */
+  }
 }
 
 // Yavas sorgu gunlugu: cagiran (inventory/index.cjs) `pool.request().query(...)`
@@ -86,11 +93,23 @@ function instrumentPool(pool) {
         if (!p || typeof p.then !== 'function') return p;
         return p.then(
           (result) => {
-            reportQueryTiming({ pool: 'tbmwans-ro', waitNs: 0n, queryNs: process.hrtime.bigint() - t0, result, sqlText: command });
+            reportQueryTiming({
+              pool: 'tbmwans-ro',
+              waitNs: 0n,
+              queryNs: process.hrtime.bigint() - t0,
+              result,
+              sqlText: command,
+            });
             return result;
           },
           (err) => {
-            reportQueryTiming({ pool: 'tbmwans-ro', waitNs: 0n, queryNs: process.hrtime.bigint() - t0, sqlText: command, failed: true });
+            reportQueryTiming({
+              pool: 'tbmwans-ro',
+              waitNs: 0n,
+              queryNs: process.hrtime.bigint() - t0,
+              sqlText: command,
+              failed: true,
+            });
             throw err;
           },
         );
@@ -148,7 +167,9 @@ async function getReadOnlyPool() {
   if (_connecting) return _connecting;
   if (Date.now() - _lastErrorAt < RETRY_COOLDOWN_MS) return null;
   if (!isConfigured()) return null;
-  _connecting = connectOnce().finally(() => { _connecting = null; });
+  _connecting = connectOnce().finally(() => {
+    _connecting = null;
+  });
   return _connecting;
 }
 

@@ -1,6 +1,7 @@
 // server/nginx-migration/__tests__/nginx-migration-launch.test.js
 // "Tanim olustur": extra_vars sozlesmesi (playbook girdi kapisiyla ayni) ve anti-tamper.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const { test } = require('node:test');
 // BICIMLENDIRICIDEN BAGIMSIZ OKUMA: prettier tek satirlik ifadeleri cok satira
 // bolunce dizgi arayan bekciler DAVRANIS degismeden kirmiziya donuyordu (10. kez,
@@ -336,7 +337,7 @@ test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirl
   assert.match(pathq.sql, /finished_at = COALESCE/);
   calls.length = 0;
   await syncJobStatusToTracking(db, 77, 'running');
-  for (const c of calls) assert.doesNotMatch(c.sql, /finished_at = COALESCE/); // canli durumda bitis yazilmaz
+  for (const c of calls) assert.doesNotMatch(c.sql, esnek(/finished_at = COALESCE/)); // canli durumda bitis yazilmaz
   calls.length = 0;
   await syncJobStatusToTracking(db, null, 'running');
   assert.equal(calls.length, 0);
@@ -344,7 +345,7 @@ test('JT2 syncJobStatusToTracking: config_job_id ve delete_job_id eslesen satirl
 
 test("JT3 kaynak sozlesme: job.id okunmaz, job-status ucu var, /tracking uzlastirir, kolonlar seed'de", () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  assert.doesNotMatch(src, /job\?\.id \|\| null/);
+  assert.doesNotMatch(src, esnek(/job\?\.id \|\| null/));
   assert.match(src, /router\.get\('\/job-status\/:jobId'/);
   assert.match(
     src,

@@ -253,11 +253,18 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
                   aria-labelledby={`${satirId}-${sira}-ad`}
                   aria-describedby={`${satirId}-${sira}-sayi`}
                 />
-                <span id={`${satirId}-${sira}-ad`} className="font-mono truncate text-[var(--text-primary)]" title={ns}>
+                <span
+                  id={`${satirId}-${sira}-ad`}
+                  className="font-mono truncate text-[var(--text-primary)]"
+                  title={ns}
+                >
                   {ns}
                 </span>
               </span>
-              <span id={`${satirId}-${sira}-sayi`} className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+              <span
+                id={`${satirId}-${sira}-sayi`}
+                className="text-xs text-[var(--text-muted)] whitespace-nowrap"
+              >
                 <span
                   className={typeof count === 'number' ? undefined : 'italic'}
                   title={countTitle}

@@ -47,7 +47,14 @@ test('T1 saglik kontrolu yuke SAYILMAZ (ekran bunu soyluyor)', () => {
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 const gec = (_req, _res, next) => next();
 
@@ -167,7 +174,10 @@ const hucre = (j, app = 'kart-app-v1') => j.rows.find((r) => r.application === a
 
 test('T2 uc durum: aktif / atil / BILINMIYOR - olculemeyen "yuk yok" sayilmaz', async () => {
   const cfg = [CFG('H1'), CFG('H2')];
-  const aktif = await getir({ config: cfg, trafik: [LOAD('H1', { req_7d: 12, req_24h: 3 }), LOAD('H2')] });
+  const aktif = await getir({
+    config: cfg,
+    trafik: [LOAD('H1', { req_7d: 12, req_24h: 3 }), LOAD('H2')],
+  });
   assert.equal(hucre(aktif).traffic.state, 'active');
 
   // 7 gunun tamami, iki mirror da okundu, istek yok -> gercekten atil.
@@ -208,7 +218,10 @@ test('T4 tablo yoksa ekran calisir: trafik sessizce gosterilmez', async () => {
 test('T5 kisa pencere (gunluk rotasyon) ve first_seen yok -> idle DEGIL', async () => {
   const cfg = [CFG('H1'), CFG('H2')];
   // Tum donmus dosyalar okundu, sampled=0, ama veri ~3 gun.
-  const rot = await getir({ config: cfg, trafik: [LOAD('H1', { first_seen: ROT3 }), LOAD('H2', { first_seen: ROT3 })] });
+  const rot = await getir({
+    config: cfg,
+    trafik: [LOAD('H1', { first_seen: ROT3 }), LOAD('H2', { first_seen: ROT3 })],
+  });
   const t = hucre(rot).traffic;
   assert.equal(t.state, 'unknown', '3 gunluk olcum "7 gundur yuk yok - atil aday" gosterildi');
   assert.deepEqual(t.kismi, ['pencere']);
@@ -226,14 +239,19 @@ test('T5 kisa pencere (gunluk rotasyon) ve first_seen yok -> idle DEGIL', async 
   assert.equal(kolonsuz.trafficStats.ready, true, 'kolon yokken trafik sorgusu dustu');
   assert.equal(hucre(kolonsuz).traffic.state, 'unknown', 'pencere bilinmeden "yuk yok" denmis');
   assert.deepEqual(hucre(kolonsuz).traffic.kismi, ['pencere-bilinmiyor']);
-  const trf = SORGULAR.find((s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'));
+  const trf = SORGULAR.find(
+    (s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'),
+  );
   assert.match(trf, /CAST\(NULL AS NVARCHAR\(20\)\) AS first_seen/);
 });
 
 test('T6 okunamayan mirror (LOADERR host|vhost) hucreye ULASIR -> idle DEGIL', async () => {
   // Eskiden LOADERR satiri (service/env/location NULL) '||' anahtarina yaziliyordu: H2
   // okunamazken H1'in 0'i "yuk yok" gosteriliyordu.
-  const j = await getir({ config: [CFG('H1'), CFG('H2')], trafik: [LOAD('H1'), LOADERR('H2', 'GLOMO-PROD')] });
+  const j = await getir({
+    config: [CFG('H1'), CFG('H2')],
+    trafik: [LOAD('H1'), LOADERR('H2', 'GLOMO-PROD')],
+  });
   const t = hucre(j).traffic;
   assert.equal(t.state, 'unknown', 'okunamayan mirror sessizce yok sayildi');
   assert.equal(t.unknownHosts, 1);
@@ -245,17 +263,35 @@ test('T6 okunamayan mirror (LOADERR host|vhost) hucreye ULASIR -> idle DEGIL', a
 
 test('T7 host kipi satirlari ve kovalar hucreye yazilmaz, "olcum var" saymaz', async () => {
   const hk = [
-    { ...LOAD('H1', { service: null, env: null, location: '@kart.irp.local', req_7d: 900 }), vhost: 'kart-app-v1-kart-prod' },
+    {
+      ...LOAD('H1', { service: null, env: null, location: '@kart.irp.local', req_7d: 900 }),
+      vhost: 'kart-app-v1-kart-prod',
+    },
     { ...LOAD('H1', { service: null, env: null, location: '@_', req_7d: 240 }), vhost: '_' },
-    { ...LOAD('H1', { service: null, env: null, location: '@', req_7d: null, error: "server_name'de tam ad yok" }), vhost: 'wild' },
+    {
+      ...LOAD('H1', {
+        service: null,
+        env: null,
+        location: '@',
+        req_7d: null,
+        error: "server_name'de tam ad yok",
+      }),
+      vhost: 'wild',
+    },
   ];
   const yalniz = await getir({ config: [CFG('H1')], trafik: hk });
-  assert.equal(yalniz.trafficStats.ready, false, 'yalniz host kipi satiri "yuk olcumu var" sayildi');
+  assert.equal(
+    yalniz.trafficStats.ready,
+    false,
+    'yalniz host kipi satiri "yuk olcumu var" sayildi',
+  );
   assert.equal(hucre(yalniz).traffic, null);
   const karisik = await getir({ config: [CFG('H1')], trafik: [...hk, LOAD('H1')] });
   assert.equal(hucre(karisik).traffic.state, 'idle');
   assert.equal(hucre(karisik).traffic.req7, 0, 'host kipi / kova sayisi location tanimina eklendi');
-  const trf = SORGULAR.find((s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'));
+  const trf = SORGULAR.find(
+    (s) => s.includes('FROM dbo.Nginx_Spa_Traffic') && s.includes('req_7d'),
+  );
   assert.match(trf, /location NOT LIKE '@%'/, 'host kipi satirlari SQL de suzulmuyor');
 });
 
@@ -307,7 +343,10 @@ test('T9 ekran: kisa pencere etiketi ortak modulden, "yuk ?" yalniz log okunamay
   // bagimsiz (guard-text normalize): prettier satir bolse / tirnak degistirse de tutar.
   const { normalize } = require('../../util/guard-text.cjs');
   const ui = normalize(PAGE);
-  assert.match(ui, /import \{[^}]*\bkismiEtiket\b[^}]*\} from '@\/components\/denetim\/yukPencere'/);
+  assert.match(
+    ui,
+    /import \{[^}]*\bkismiEtiket\b[^}]*\} from '@\/components\/denetim\/yukPencere'/,
+  );
   assert.match(ui, /label: kismi \|\| 'yük \?'/, 'rozet kisa pencereyi "yuk ?" diye gosteriyor');
   // Sunucu kurali TEK yerde: denetim.cjs kendi esik/pencere hesabini yapmamali.
   assert.ok(!/sampled \? 'unknown' : 'idle'/.test(normalize(SRC)), 'eski karar geri gelmis');

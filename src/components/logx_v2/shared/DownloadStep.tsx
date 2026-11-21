@@ -10,11 +10,15 @@
 // uygulama) başına bir arşiv. Dosya adı `<cluster>__<namespace>__<uygulama>__<id>.zip`
 // biçimindedir. `downloads` doluysa her arşiv ayrı satır olarak listelenir; tek arşiv
 // varsa görünüm eskisiyle aynıdır.
-import React, { useState } from "react";
-import { ArrowDownTrayIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { logxV2Api, type DownloadInfo } from "@/api/logxV2Api";
-import { fmtSize } from "@/components/logx_v2/shared/logFileMeta";
-import { fmtTime } from "@/utils/datetime";
+import React, { useState } from 'react';
+import {
+  ArrowDownTrayIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/outline';
+import { logxV2Api, type DownloadInfo } from '@/api/logxV2Api';
+import { fmtSize } from '@/components/logx_v2/shared/logFileMeta';
+import { fmtTime } from '@/utils/datetime';
 
 function useBlobDownload() {
   const [busy, setBusy] = useState(false);
@@ -26,17 +30,19 @@ function useBlobDownload() {
     setError(null);
     let url: string | null = null;
     try {
-      const res = await fetch(logxV2Api.downloadUrl(item.token), { credentials: "include" });
+      const res = await fetch(logxV2Api.downloadUrl(item.token), { credentials: 'include' });
       if (!res.ok) {
         // Backend JSON hata döner (401/403/404/410) — mesajı göster.
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as { message?: string }).message || `İndirme başarısız (HTTP ${res.status}).`);
+        throw new Error(
+          (data as { message?: string }).message || `İndirme başarısız (HTTP ${res.status}).`,
+        );
       }
       const blob = await res.blob();
       url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
+      const a = document.createElement('a');
       a.href = url;
-      a.download = item.filename || "logs.zip";
+      a.download = item.filename || 'logs.zip';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -54,15 +60,23 @@ function useBlobDownload() {
 const DownloadButton: React.FC<{ item: DownloadInfo; compact?: boolean }> = ({ item, compact }) => {
   const { busy, error, run } = useBlobDownload();
   return (
-    <div className={compact ? "flex items-center gap-3 w-full" : "flex flex-col items-center gap-3"}>
+    <div
+      className={compact ? 'flex items-center gap-3 w-full' : 'flex flex-col items-center gap-3'}
+    >
       {compact && (
-        <span className="text-xs text-[var(--text-secondary)] truncate flex-1 text-left" title={item.filename}>
+        <span
+          className="text-xs text-[var(--text-secondary)] truncate flex-1 text-left"
+          title={item.filename}
+        >
           {item.filename}
           {/* BOYUT (2026-08-28): `sizeBytes` API'de VARDI ama hicbir yerde
               gosterilmiyordu. Indirme `res.blob()` ile TAMAMEN bellege alindigi icin
               kullanicinin ne kadarlik bir dosyaya bastigini ONCEDEN bilmesi gerekir. */}
           {item.sizeBytes ? (
-            <span className="text-[var(--text-muted)] tabular-nums"> · {fmtSize(item.sizeBytes)}</span>
+            <span className="text-[var(--text-muted)] tabular-nums">
+              {' '}
+              · {fmtSize(item.sizeBytes)}
+            </span>
           ) : null}
         </span>
       )}
@@ -72,7 +86,7 @@ const DownloadButton: React.FC<{ item: DownloadInfo; compact?: boolean }> = ({ i
         className="btn-primary active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
       >
         <ArrowDownTrayIcon className="w-4 h-4" />
-        {busy ? "İndiriliyor…" : error ? "Tekrar Dene" : "İndir (.zip)"}
+        {busy ? 'İndiriliyor…' : error ? 'Tekrar Dene' : 'İndir (.zip)'}
       </button>
       {error && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700 max-w-md text-left">
@@ -104,7 +118,10 @@ const DownloadStep: React.FC<Props> = ({ download, downloads, onRestart, eksik }
   return (
     <div className="flex flex-col items-center justify-center py-10 gap-4 text-center">
       {eksik ? (
-        <ExclamationTriangleIcon aria-hidden="true" className="w-12 h-12 text-[var(--status-warning)]" />
+        <ExclamationTriangleIcon
+          aria-hidden="true"
+          className="w-12 h-12 text-[var(--status-warning)]"
+        />
       ) : (
         <CheckCircleIcon className="w-12 h-12 text-emerald-500" />
       )}
@@ -113,8 +130,8 @@ const DownloadStep: React.FC<Props> = ({ download, downloads, onRestart, eksik }
           {multi
             ? `Log arşivleriniz hazır (${items.length} adet)`
             : eksik
-              ? "Log dosyanız hazır — ama EKSİK"
-              : "Log dosyanız hazır"}
+              ? 'Log dosyanız hazır — ama EKSİK'
+              : 'Log dosyanız hazır'}
         </p>
         {multi ? (
           <p className="text-xs text-[var(--text-muted)] mt-1">
@@ -122,13 +139,20 @@ const DownloadStep: React.FC<Props> = ({ download, downloads, onRestart, eksik }
             dosya adı hangi arşivin neye ait olduğunu söyler.
             {(() => {
               const total = items.reduce((n, it) => n + (it.sizeBytes || 0), 0);
-              return total > 0 ? <> Toplam <strong>{fmtSize(total)}</strong>.</> : null;
+              return total > 0 ? (
+                <>
+                  {' '}
+                  Toplam <strong>{fmtSize(total)}</strong>.
+                </>
+              ) : null;
             })()}
           </p>
         ) : (
           <p className="text-xs text-[var(--text-muted)] mt-1">
             {items[0]?.filename}
-            {items[0]?.sizeBytes ? <span className="tabular-nums"> · {fmtSize(items[0].sizeBytes)}</span> : null}
+            {items[0]?.sizeBytes ? (
+              <span className="tabular-nums"> · {fmtSize(items[0].sizeBytes)}</span>
+            ) : null}
           </p>
         )}
       </div>
@@ -171,7 +195,10 @@ const DownloadStep: React.FC<Props> = ({ download, downloads, onRestart, eksik }
       <p className="text-xs text-[var(--text-muted)]">
         Bu bağlantı {fmtTime(items[0]?.expiresAt)} itibarıyla sona erecek.
       </p>
-      <button onClick={onRestart} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-2">
+      <button
+        onClick={onRestart}
+        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline mt-2"
+      >
         Yeni bir istek başlat
       </button>
     </div>

@@ -12,11 +12,15 @@ function runTsc() {
   const tscPkg = require.resolve('typescript/package.json', { paths: [ROOT] });
   const tscBin = path.join(path.dirname(tscPkg), 'bin', 'tsc');
   try {
-    const out = execFileSync(process.execPath, [tscBin, '-p', 'tsconfig.server-check.json', '--noEmit'], {
-      cwd: ROOT,
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024,
-    });
+    const out = execFileSync(
+      process.execPath,
+      [tscBin, '-p', 'tsconfig.server-check.json', '--noEmit'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+        maxBuffer: 16 * 1024 * 1024,
+      },
+    );
     return { status: 0, output: out || '' };
   } catch (err) {
     const output = `${err.stdout || ''}\n${err.stderr || ''}`;
@@ -42,7 +46,9 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`[check:server] OK - 0 fatal diagnostics in server/**/*.cjs (${totalErrors} non-fatal strict=false notices).`);
+  console.log(
+    `[check:server] OK - 0 fatal diagnostics in server/**/*.cjs (${totalErrors} non-fatal strict=false notices).`,
+  );
 }
 
 main();

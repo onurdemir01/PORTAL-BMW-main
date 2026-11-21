@@ -308,7 +308,7 @@ test('VC8: sunucu sozlesmesi - chart/surum sunucuda cozulur, olculemezse UYGULAN
   bekle('crypto_hub_chart_ref', 'chart extra var olarak gonderilmiyor');
   bekle('crypto_hub_expect_version', 'kosan surum betige bildirilmiyor');
   bekle('chartRefOf(tenant)', 'chart katalogdan cozulmuyor');
-  bekle('versions.running', 'kosan surum taramadan okunmuyor');
+  assert.match(kod, /versions\??\.running/, 'kosan surum taramadan okunmuyor');
   // OLCULEMEDIYSE UYGULAMA YOK: "ayni surum" guvencesi verilemeyecegi icin durulur.
   bekle('ÖLÇÜLEMEDİ', 'kosan surum olculemediginde islem yine baslatiliyor');
   // AWX isi helm'den ONCE olmemeli.
@@ -419,7 +419,8 @@ test('CM4: sunucu sozlesmesi - yalniz data, merge patch, eslesme sunucuda', () =
   assert.ok(kod.includes('crypto_hub_cm_patch_b64'), 'patch base64 ile tasinmiyor');
   // ESLESME SUNUCUDA: istemci shared/ altindan import edemiyor; iki kopya eskirdi.
   assert.ok(
-    kod.includes('rolloutHedefleri(tenant && tenant.app, c.name)'),
+    kod.includes('rolloutHedefleri(tenant && tenant.app, c.name)') ||
+      kod.includes('rolloutHedefleri(tenant?.app, c.name)'),
     'rollout eslesmesi sunucuda cozulmuyor',
   );
 });

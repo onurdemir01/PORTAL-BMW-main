@@ -450,7 +450,7 @@ async function transfer(requestRow, selected) {
     // UZAK host'ta olusturulacak yedek dizin (bkz. downloads.remoteFallbackDir). Portalin
     // okuma tarafi (stagingRoots) hem bunu hem yerel ingest dizinini tarar — eskiden yalniz
     // yerel dizini tariyordu ve fallback'e dusen arsiv asla servis edilemiyordu.
-    fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
+    fallback_dir: require('./downloads.cjs').uzakFallbackDiziniZorunlu(),
     archive_name: archiveName,
   });
 

@@ -476,7 +476,11 @@ function spaTrafikDurumu(idx, key, defs) {
     else if (pencere < PENCERE_TAM_SA) kismi.push('pencere');
   }
   const o = {
-    state: (() => { if (req7 > 0) return 'active'; if (kismi.length) return 'unknown'; return 'idle'; })(),
+    state: (() => {
+      if (req7 > 0) return 'active';
+      if (kismi.length) return 'unknown';
+      return 'idle';
+    })(),
     req24,
     req7,
     hc24,
@@ -533,7 +537,11 @@ function spaTrafikBirlesik(list, tanimSunucu) {
       firstSeen = t.firstSeen || null;
     }
   }
-  const state = (() => { if (xs.some((t) => t.state === 'active')) return 'active'; if (olculmeyen || xs.some((t) => t.state === 'unknown')) return 'unknown'; return 'idle'; })();
+  const state = (() => {
+    if (xs.some((t) => t.state === 'active')) return 'active';
+    if (olculmeyen || xs.some((t) => t.state === 'unknown')) return 'unknown';
+    return 'idle';
+  })();
   const o = {
     state,
     req24: top('req24'),
@@ -580,10 +588,18 @@ function servisOfVhost(vhost) {
   return m?.[1] ? m[1] : String(vhost || '');
 }
 /** Location yazimi tek bicim: iki tarayici bosluklari farkli birakabilir ("=  /x" / "= /x"). */
-const locNorm = (x) => String(x || '').replace(/\s+/g, ' ').trim();
+const locNorm = (x) =>
+  String(x || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 // nginx -T davranisi (Nginx_Audit_Locations.behaviour) -> "Tum location'lar" sinifi. proxy
 // satirlari hedefe gore ayrica siniflanir (spa / spa-disi / cozulemedi).
-const DAVRANIS_SINIFI = { static: 'statik', return: 'yonlendirme', rewrite: 'yonlendirme', deny: 'erisim-engeli' };
+const DAVRANIS_SINIFI = {
+  static: 'statik',
+  return: 'yonlendirme',
+  rewrite: 'yonlendirme',
+  deny: 'erisim-engeli',
+};
 
 function buildMigration({
   proxyRows,
@@ -620,8 +636,14 @@ function buildMigration({
     const host = H(r.host);
     const vhost = auditVhost(r.conf_file, r.srv_conf);
     if (!host || !vhost || !locNorm(r.location)) continue;
-    auditLoc.push({ host, vhost, service: servisOfVhost(vhost), location: locNorm(r.location),
-      behaviour: L(r.behaviour), target: String(r.proxy_target || '').trim() });
+    auditLoc.push({
+      host,
+      vhost,
+      service: servisOfVhost(vhost),
+      location: locNorm(r.location),
+      behaviour: L(r.behaviour),
+      target: String(r.proxy_target || '').trim(),
+    });
   }
   const groupNew = new Set(groups.flatMap((g) => g.newHosts.map(H)));
   for (const a of auditLoc) if (groupNew.has(a.host)) newLocEkle(a.host, a.service, a.location);
@@ -680,9 +702,18 @@ function buildMigration({
       const kaynak = bilgi.kaynak || 'config';
       const yeni = !tumLoc.has(k);
       if (yeni) {
-        tumLoc.set(k, { service, location, oldHosts: new Set(), targets: new Set(),
-          written: new Set(), siniflar: new Set(), apps: new Set(), defs: [],
-          kaynaklar: new Set(), davranislar: new Set() });
+        tumLoc.set(k, {
+          service,
+          location,
+          oldHosts: new Set(),
+          targets: new Set(),
+          written: new Set(),
+          siniflar: new Set(),
+          apps: new Set(),
+          defs: [],
+          kaynaklar: new Set(),
+          davranislar: new Set(),
+        });
       }
       const t = tumLoc.get(k);
       t.oldHosts.add(host);
@@ -695,7 +726,8 @@ function buildMigration({
       if (bilgi.target) t.targets.add(bilgi.target);
       if (bilgi.written) t.written.add(bilgi.written);
       t.siniflar.add(bilgi.sinif);
-      if (bilgi.namespace && bilgi.application) t.apps.add(bilgi.namespace + '/' + bilgi.application);
+      if (bilgi.namespace && bilgi.application)
+        t.apps.add(bilgi.namespace + '/' + bilgi.application);
     };
 
     for (const r of proxyRows || []) {
@@ -703,7 +735,13 @@ function buildMigration({
       if (!oldSet.has(host)) continue;
       // proxy_pass'te yazan ad (FQDN ya da ciplak upstream adi) - ekranda "yazim" olarak gorunur
       const written = hostOf(r.upstream_name);
-      const form = (() => { if (written) { if (written.includes('.')) return 'fqdn'; return 'upstream'; } return 'none'; })();
+      const form = (() => {
+        if (written) {
+          if (written.includes('.')) return 'fqdn';
+          return 'upstream';
+        }
+        return 'none';
+      })();
       // Gercek arka uc: upstream server satiri > proxy_ssl_name > yazilan ad
       let target = upsServer.get(host + '|' + written) || '';
       let targetSource = 'upstream-server';
@@ -750,9 +788,15 @@ function buildMigration({
         // (LOADERR host|vhost) ya da o gun satiri yoksa "istek yok" DENMEZ.
         row.paths.get(pk).defs.push({ host, vhost: r.vhost });
         tumEkle(svc, loc, host, r.vhost, {
-          target, written,
-          sinif: (() => { if (map === apps) return 'spa'; if (map === unresolved) return 'cozulemedi'; return 'spa-disi'; })(),
-          namespace: extra.namespace, application: extra.application,
+          target,
+          written,
+          sinif: (() => {
+            if (map === apps) return 'spa';
+            if (map === unresolved) return 'cozulemedi';
+            return 'spa-disi';
+          })(),
+          namespace: extra.namespace,
+          application: extra.application,
         });
       };
 
@@ -793,8 +837,11 @@ function buildMigration({
       const host = H(r.host);
       if (!oldSet.has(host)) continue;
       tumEkle(r.service || r.vhost, r.location, host, r.vhost, {
-        target: String(r.include_name || ''), written: '', sinif: 'include',
-        namespace: r.namespace ? L(r.namespace) : null, application: r.application ? L(r.application) : null,
+        target: String(r.include_name || ''),
+        written: '',
+        sinif: 'include',
+        namespace: r.namespace ? L(r.namespace) : null,
+        application: r.application ? L(r.application) : null,
       });
     }
     // nginx -T: config taramasinin goremedigi tanimlar (ic ice if/limit_except blogu, tek satirlik
@@ -807,12 +854,21 @@ function buildMigration({
         const written = hostOf(a.target);
         const target = upsServer.get(a.host + '|' + written) || written;
         const res = resolveTarget(target, routeByAddress, ocpByLabel, routeByLabel);
-        const ad = !(res.namespace && res.application) && isSpaLabel(target) ? deriveFromName(target) : null;
+        const ad =
+          !(res.namespace && res.application) && isSpaLabel(target) ? deriveFromName(target) : null;
         Object.assign(bilgi, {
-          target, written,
-          sinif: (() => { if (res.namespace && res.application) { if (isSpaApp(res.application)) return 'spa'; return 'spa-disi'; } if (isSpaLabel(target)) return 'cozulemedi'; return 'spa-disi'; })(),
-          namespace: res.namespace || (ad?.namespace) || null,
-          application: res.application || (ad?.application) || null,
+          target,
+          written,
+          sinif: (() => {
+            if (res.namespace && res.application) {
+              if (isSpaApp(res.application)) return 'spa';
+              return 'spa-disi';
+            }
+            if (isSpaLabel(target)) return 'cozulemedi';
+            return 'spa-disi';
+          })(),
+          namespace: res.namespace || ad?.namespace || null,
+          application: res.application || ad?.application || null,
         });
       } else {
         bilgi.sinif = DAVRANIS_SINIFI[a.behaviour] || 'diger';
@@ -828,8 +884,12 @@ function buildMigration({
       const have = newLoc.get(locKey(svc, loc)) || new Set();
       const on = newHosts.filter((h) => have.has(h));
       const known = newHosts.filter((h) => newLocHosts.has(h) || scannedHosts.has(h));
-      const status =
-        (() => { if (known.length === 0) return 'not-scanned'; if (on.length === newHosts.length) return 'defined'; if (on.length === 0) return 'none'; return 'partial'; })();
+      const status = (() => {
+        if (known.length === 0) return 'not-scanned';
+        if (on.length === newHosts.length) return 'defined';
+        if (on.length === 0) return 'none';
+        return 'partial';
+      })();
       return { newHosts: on, newStatus: status };
     };
     const finish = (row) => ({
@@ -874,8 +934,12 @@ function buildMigration({
       // hazir: TARANAN her yeni sunucuda hys+app var. Taranmamis sunucu (2026-09-21: AP32-35 yeni
       // eklendi, ilk tarama gelene kadar) hazirligi ENGELLEMEZ — aksi halde tum liste "kismi"ye
       // dusup ozet %0 gosteriyordu; taranmayanlar grupta ayrica (newHostsScanned) gorunur.
-      const status =
-        (() => { if (scanned === 0) return 'not-scanned'; if (readyHosts === scanned) return 'ready'; if (readyHosts === 0) return 'missing'; return 'partial'; })();
+      const status = (() => {
+        if (scanned === 0) return 'not-scanned';
+        if (readyHosts === scanned) return 'ready';
+        if (readyHosts === 0) return 'missing';
+        return 'partial';
+      })();
       return { ...finish(row), perHost, readyHosts, scannedHosts: scanned, status };
     });
     const order = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
@@ -933,8 +997,12 @@ function buildMigration({
         ...newLocStatus(t.service, t.location),
         traffic: spaTrafikDurumu(trafIdx, t.service + '|' + t.location, t.defs),
       }))
-      .sort((a, b) => durumSirasi[a.newStatus] - durumSirasi[b.newStatus]
-        || a.service.localeCompare(b.service) || a.location.localeCompare(b.location));
+      .sort(
+        (a, b) =>
+          durumSirasi[a.newStatus] - durumSirasi[b.newStatus] ||
+          a.service.localeCompare(b.service) ||
+          a.location.localeCompare(b.location),
+      );
     // YALNIZ YENI SUNUCULARDA olan location'lar (eski sunucularda o vhost'ta yok): tasima acigi
     // DEGIL, sayimlara girmez; ama "tanim var, ekranda yok" sorusunun cevabi olabilir (yeni
     // sunucuya dogrudan eklenmis ya da eskide farkli yazilmis). Yalniz eski sunucularda da bulunan
@@ -946,11 +1014,24 @@ function buildMigration({
       const service = k.slice(0, k.indexOf('|'));
       if (!eskiServisler.has(service)) continue;
       const location = k.slice(k.indexOf('|') + 1);
-      yalnizYeni.push({ service, location, oldHosts: [], targets: [], written: [], siniflar: [],
-        apps: [], kaynaklar: [], davranislar: [], eskide: false,
-        ...newLocStatus(service, location), traffic: null });
+      yalnizYeni.push({
+        service,
+        location,
+        oldHosts: [],
+        targets: [],
+        written: [],
+        siniflar: [],
+        apps: [],
+        kaynaklar: [],
+        davranislar: [],
+        eskide: false,
+        ...newLocStatus(service, location),
+        traffic: null,
+      });
     }
-    yalnizYeni.sort((a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location));
+    yalnizYeni.sort(
+      (a, b) => a.service.localeCompare(b.service) || a.location.localeCompare(b.location),
+    );
     locations.push(...yalnizYeni);
 
     out.push({
@@ -1028,94 +1109,98 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       .catch(() => null),
   ]);
 
-  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes, auditLocResult] = await Promise.all([
-    proxyDate && proxyColumnsReady
-      ? query(
-          `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
+  const [proxy, ups, routes, ocp, dirs, newLocs, traffic, oldIncludes, auditLocResult] =
+    await Promise.all([
+      proxyDate && proxyColumnsReady
+        ? query(
+            `SELECT host, vhost, service, location_path AS location, upstream_name, target_url
              FROM dbo.Nginx_Config_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
               AND kind = 'proxy' AND host IN (${oldIn.sqlText})`,
-          oldIn.params,
-        ).then((r) => r.recordset || [])
-      : Promise.resolve([]),
-    // nginx_audit (nginx -T) upstream server host'u. Tablo yoksa yedek yok, is durmaz.
-    query(
-      `SELECT host, name, server FROM dbo.Nginx_Audit_Upstreams
+            oldIn.params,
+          ).then((r) => r.recordset || [])
+        : Promise.resolve([]),
+      // nginx_audit (nginx -T) upstream server host'u. Tablo yoksa yedek yok, is durmaz.
+      query(
+        `SELECT host, name, server FROM dbo.Nginx_Audit_Upstreams
         WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
           AND host IN (${oldIn.sqlText})`,
-      oldIn.params,
-    )
-      .then((r) => r.recordset || [])
-      .catch(() => []),
-    // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; proxy_pass hedefi ARK disi
-    // bir route / uygulamaya cozulmez.
-    query(
-      `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkIn.sqlText})`,
-      arkIn.params,
-    )
-      .then((r) => r.recordset || [])
-      .catch(() => []),
-    query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkIn.sqlText})`, arkIn.params)
-      .then((r) => r.recordset || [])
-      .catch(() => []),
-    dirDate
-      ? query(
-          `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
+        oldIn.params,
+      )
+        .then((r) => r.recordset || [])
+        .catch(() => []),
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; proxy_pass hedefi ARK disi
+      // bir route / uygulamaya cozulmez.
+      query(
+        `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkIn.sqlText})`,
+        arkIn.params,
+      )
+        .then((r) => r.recordset || [])
+        .catch(() => []),
+      query(
+        `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkIn.sqlText})`,
+        arkIn.params,
+      )
+        .then((r) => r.recordset || [])
+        .catch(() => []),
+      dirDate
+        ? query(
+            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists
              FROM dbo.Nginx_Intranet_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
               AND host IN (${newIn.sqlText})`,
-          newIn.params,
-        ).then((r) => r.recordset || [])
-      : Promise.resolve([]),
-    // YENI sunuculardaki location tanimlari (spa include'u ya da proxy) - ilerleme
-    // location uzerinden izlenir (2026-09-17). kind kolonu yoksa satirlarin hepsi spa'dir.
-    proxyDate
-      ? query(
-          `SELECT host, service, vhost, location_path AS location
+            newIn.params,
+          ).then((r) => r.recordset || [])
+        : Promise.resolve([]),
+      // YENI sunuculardaki location tanimlari (spa include'u ya da proxy) - ilerleme
+      // location uzerinden izlenir (2026-09-17). kind kolonu yoksa satirlarin hepsi spa'dir.
+      proxyDate
+        ? query(
+            `SELECT host, service, vhost, location_path AS location
              FROM dbo.Nginx_Config_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
               AND host IN (${newIn.sqlText})`,
-          newIn.params,
-        )
-          .then((r) => r.recordset || [])
-          .catch(() => [])
-      : Promise.resolve([]),
-    // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
-    // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
-    trfSema?.trf
-      ? query(spaTrafikSorgusu(!!trfSema.fs, ` AND host IN (${oldIn.sqlText})`), oldIn.params)
-          .then((r) => r.recordset || [])
-          .catch(() => [])
-      : Promise.resolve([]),
-    // ESKI sunucularda zaten include (application-confs) deseninde duran location'lar - tum
-    // location listesi icin (2026-10-18). Okunamazsa liste yalniz proxy satirlariyla kalir.
-    proxyDate && proxyColumnsReady
-      ? query(
-          `SELECT host, vhost, service, location_path AS location, include_name, application, namespace
+            newIn.params,
+          )
+            .then((r) => r.recordset || [])
+            .catch(() => [])
+        : Promise.resolve([]),
+      // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
+      // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
+      trfSema?.trf
+        ? query(spaTrafikSorgusu(!!trfSema.fs, ` AND host IN (${oldIn.sqlText})`), oldIn.params)
+            .then((r) => r.recordset || [])
+            .catch(() => [])
+        : Promise.resolve([]),
+      // ESKI sunucularda zaten include (application-confs) deseninde duran location'lar - tum
+      // location listesi icin (2026-10-18). Okunamazsa liste yalniz proxy satirlariyla kalir.
+      proxyDate && proxyColumnsReady
+        ? query(
+            `SELECT host, vhost, service, location_path AS location, include_name, application, namespace
              FROM dbo.Nginx_Config_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
               AND (kind IS NULL OR kind = 'spa') AND host IN (${oldIn.sqlText})`,
-          oldIn.params,
-        )
-          .then((r) => r.recordset || [])
-          .catch(() => [])
-      : Promise.resolve([]),
-    // nginx -T location'lari (eski + yeni sunucular) ve server blogunun dosyasi (location baska
-    // bir dosyadan include edildiyse vhost server blogundan bulunur).
-    auditDate
-      ? query(
-          `SELECT l.host, l.conf_file, l.location, l.behaviour, l.proxy_target, s.conf_file AS srv_conf
+            oldIn.params,
+          )
+            .then((r) => r.recordset || [])
+            .catch(() => [])
+        : Promise.resolve([]),
+      // nginx -T location'lari (eski + yeni sunucular) ve server blogunun dosyasi (location baska
+      // bir dosyadan include edildiyse vhost server blogundan bulunur).
+      auditDate
+        ? query(
+            `SELECT l.host, l.conf_file, l.location, l.behaviour, l.proxy_target, s.conf_file AS srv_conf
              FROM dbo.Nginx_Audit_Locations l
              LEFT JOIN dbo.Nginx_Audit_Servers s
                ON s.scan_date = l.scan_date AND s.host = l.host AND s.seq = l.srv_seq
             WHERE l.scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Locations)
               AND l.host IN (${oldIn.sqlText}, ${newIn.sqlText})`,
-          [...oldIn.params, ...newIn.params],
-        )
-          .then((r) => ({ ready: true, rows: r.recordset || [] }))
-          .catch(() => ({ ready: false, rows: [] }))
-      : Promise.resolve({ ready: false, rows: [] }),
-  ]);
+            [...oldIn.params, ...newIn.params],
+          )
+            .then((r) => ({ ready: true, rows: r.recordset || [] }))
+            .catch(() => ({ ready: false, rows: [] }))
+        : Promise.resolve({ ready: false, rows: [] }),
+    ]);
 
   const auditLocs = auditLocResult.rows;
 

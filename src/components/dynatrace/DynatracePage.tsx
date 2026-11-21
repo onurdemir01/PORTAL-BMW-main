@@ -136,7 +136,9 @@ function extractDtUrl(text: string | undefined, problemId: string): string | nul
   if (!text) return null;
   const m = text.match(/https?:\/\/\S+problemdetails;pid=\S*/i);
   if (!m) return null;
-  return m[0].replace(/<problemId>|%3CproblemId%3E/gi, problemId).replace(/(?<![.,)\s])[.,)\s]+$/, '');
+  return m[0]
+    .replace(/<problemId>|%3CproblemId%3E/gi, problemId)
+    .replace(/(?<![.,)\s])[.,)\s]+$/, '');
 }
 
 function fmtEpoch(ms: unknown): string {
@@ -220,11 +222,17 @@ function ProblemDetailBody({ text }: { text: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <ProblemDetailRow label="Problem ID">{String(json.displayId || json.problemId || '—')}</ProblemDetailRow>
+        <ProblemDetailRow label="Problem ID">
+          {String(json.displayId || json.problemId || '—')}
+        </ProblemDetailRow>
         <ProblemDetailRow label="Etki seviyesi">{String(json.impactLevel || '—')}</ProblemDetailRow>
-        {zones.length > 0 && <ProblemDetailRow label="Yönetim bölgesi">{zones.join(', ')}</ProblemDetailRow>}
+        {zones.length > 0 && (
+          <ProblemDetailRow label="Yönetim bölgesi">{zones.join(', ')}</ProblemDetailRow>
+        )}
         <ProblemDetailRow label="Başlangıç">{fmtEpoch(json.startTime)}</ProblemDetailRow>
-        {Number(json.endTime) > 0 && <ProblemDetailRow label="Bitiş">{fmtEpoch(json.endTime)}</ProblemDetailRow>}
+        {Number(json.endTime) > 0 && (
+          <ProblemDetailRow label="Bitiş">{fmtEpoch(json.endTime)}</ProblemDetailRow>
+        )}
       </div>
 
       {rootCause && (
@@ -471,7 +479,11 @@ function ProblemsTab({ env }: { env: string }) {
                   className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0 gap-2"
                   style={{ borderColor: 'var(--border)' }}
                 >
-                  <span id="dt-problem-detay-baslik" className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                  <span
+                    id="dt-problem-detay-baslik"
+                    className="text-sm font-bold"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     Problem Detayı
                   </span>
                   <div className="flex items-center gap-2">

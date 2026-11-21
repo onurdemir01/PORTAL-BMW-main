@@ -9,17 +9,21 @@
 // 2. YÖNLENDİRME YOK. "Önce kontrol et" ile "Uygula" EŞİT ağırlıkta iki seçenektir:
 //    "Önerilen" rozeti yok, biri önceden seçili gelmiyor, renk/boyut farkı yok. Ekran
 //    ne olacağını ANLATIR, kullanıcı adına karar VERMEZ.
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDownIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import type { ScaleXAction, ScaleXMode, ScaleXWorkload } from "@/api/scalexApi";
-import type { ScaleXLimits } from "@/hooks/useScaleXLimits";
-import Collapse from "@/components/common/Collapse";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import type { ScaleXAction, ScaleXMode, ScaleXWorkload } from '@/api/scalexApi';
+import type { ScaleXLimits } from '@/hooks/useScaleXLimits';
+import Collapse from '@/components/common/Collapse';
 
 /** Bu adımda verilen kararların tamamı. */
 export interface ScaleXIslemSecimi {
-  action: ScaleXAction; executionMode: ScaleXMode;
-  targetReplicas?: string; verificationTimeout: string;
-  allowPartial: boolean; mailCc: string; hpaPin: boolean;
+  action: ScaleXAction;
+  executionMode: ScaleXMode;
+  targetReplicas?: string;
+  verificationTimeout: string;
+  allowPartial: boolean;
+  mailCc: string;
+  hpaPin: boolean;
 }
 
 interface Props {
@@ -40,9 +44,13 @@ interface Props {
    * olmalidir — dolu gelirse ekran on-secili gorunur ve notr sunum bozulurdu.
    */
   previous?: {
-    action: ScaleXAction | null; executionMode: ScaleXMode | null;
-    targetReplicas?: string; verificationTimeout: string;
-    allowPartial: boolean; mailCc: string; hpaPin: boolean;
+    action: ScaleXAction | null;
+    executionMode: ScaleXMode | null;
+    targetReplicas?: string;
+    verificationTimeout: string;
+    allowPartial: boolean;
+    mailCc: string;
+    hpaPin: boolean;
   };
   /** SUNUCUDAN gelen sinirlar; verilmezse asagidaki fabrika degerleri kullanilir. */
   limits?: ScaleXLimits;
@@ -51,15 +59,15 @@ interface Props {
 // Her işlem TEK CÜMLEYLE ne yaptığını söyler — kullanıcı adını okuyup tahmin etmesin.
 const ACTION_INFO: Record<ScaleXAction, { label: string; text: string }> = {
   stop: {
-    label: "Durdur",
+    label: 'Durdur',
     text: "Replica sayısını 0 yapar. Önceki değer cluster'da saklanır, istediğinde geri alabilirsin. HPA'ya dokunulmaz.",
   },
   restore: {
-    label: "Geri Al",
-    text: "Daha önce durdurulan uygulamayı saklanan replica sayısına döndürür. Yalnızca kayıtlı durumu olan uygulamalar için seçilebilir.",
+    label: 'Geri Al',
+    text: 'Daha önce durdurulan uygulamayı saklanan replica sayısına döndürür. Yalnızca kayıtlı durumu olan uygulamalar için seçilebilir.',
   },
   scale: {
-    label: "Ölçekle",
+    label: 'Ölçekle',
     text: "Replica sayısını verdiğin değere çeker. Artırma da azaltma da olabilir. HPA'ya dokunulmaz.",
   },
 };
@@ -80,14 +88,14 @@ const ACTION_INFO: Record<ScaleXAction, { label: string; text: string }> = {
 // ekranindan degistirebiliyor ve degisiklik ANINDA gecerli oluyor. Ekran sayiyi
 // elde tutsaydi, admin varsayilani 600 yaptiginda kullanici hala "30-3600 arasi"
 // gorur, girdigi degeri sunucu reddeder ve sebebi hicbir yerde yazmazdi.
-export const TIMEOUT_DEFAULT = "300";
+export const TIMEOUT_DEFAULT = '300';
 export const TIMEOUT_MIN = 30;
 export const TIMEOUT_MAX = 3600;
 
 /** "300" -> "5 dk", "90" -> "1 dk 30 sn" — kullanici saniyeyi zihninde cevirmesin. */
 export function humanSeconds(raw: string): string {
   const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return "";
+  if (!Number.isFinite(n) || n <= 0) return '';
   const m = Math.floor(n / 60);
   const s = n % 60;
   if (!m) return `${s} sn`;
@@ -102,15 +110,22 @@ export function humanSeconds(raw: string): string {
  */
 export function kapatmaMetni(timeout: string, limits?: ScaleXLimits): string {
   if (!limits || limits.stale) {
-    return "uyarı yazılır ama 0 olana kadar beklenir; başarısız sayılma süresi yönetici ayarından gelir (şu an okunamadı).";
+    return 'uyarı yazılır ama 0 olana kadar beklenir; başarısız sayılma süresi yönetici ayarından gelir (şu an okunamadı).';
   }
-  if (limits.failMultiplier <= 1) return "bu süre içinde 0 olmazsa başarısız sayılır.";
+  if (limits.failMultiplier <= 1) return 'bu süre içinde 0 olmazsa başarısız sayılır.';
   const sure = humanSeconds(String(Number(timeout) * limits.failMultiplier));
   return `uyarı yazılır ama 0 olana kadar beklenir; ${sure} geçilirse başarısız sayılır.`;
 }
 
 const OperationStep: React.FC<Props> = ({
-  apps, workloads, clusterCount, busy, onSubmit, onChange, previous, limits,
+  apps,
+  workloads,
+  clusterCount,
+  busy,
+  onSubmit,
+  onChange,
+  previous,
+  limits,
 }) => {
   const gomulu = !!onChange;
   // SINIRLAR SUNUCUDAN; gelmediyse fabrika degerleri (eski davranis).
@@ -125,28 +140,26 @@ const OperationStep: React.FC<Props> = ({
   const [action, setAction] = useState<ScaleXAction | null>(previous?.action ?? null);
   // Önceden seçili DEĞİL — kullanıcı bilinçli olarak seçsin (bkz. dosya başı, kural 2).
   const [mode, setMode] = useState<ScaleXMode | null>(previous?.executionMode ?? null);
-  const [replicas, setReplicas] = useState(previous?.targetReplicas ?? "");
+  const [replicas, setReplicas] = useState(previous?.targetReplicas ?? '');
   // VARSAYILAN ADMIN AYARINI IZLER (2026-10-14). Eskiden ilk render'daki deger donduruluyordu:
   // sinirlar (`/config`) adim acildiktan SONRA gelirse alan fabrika degerinde (300) kalir,
   // is admin'in varsayilaniyla degil o degerle calisirdi. Kullanici alana yazana kadar
   // deger HER render'da guncel varsayilandan turetilir; yazdigi an onun degeri kalir.
-  const [timeoutGirilen, setTimeoutValue] = useState<string | null>(previous?.verificationTimeout ?? null);
+  const [timeoutGirilen, setTimeoutValue] = useState<string | null>(
+    previous?.verificationTimeout ?? null,
+  );
   const timeout = timeoutGirilen ?? tDefault;
   const [allowPartial, setAllowPartial] = useState(previous?.allowPartial ?? true);
   // Sunucu ayni araligi bagimsiz dogrular; bu yalnizca erken geri bildirim ve
   // "Devam" dugmesini kapatmak icin.
   const timeoutNum = Number(timeout);
-  const timeoutBad =
-    !/^[0-9]{1,7}$/.test(timeout.trim()) || timeoutNum < tMin || timeoutNum > tMax;
-  const [mailCc, setMailCc] = useState(previous?.mailCc ?? "");
+  const timeoutBad = !/^[0-9]{1,7}$/.test(timeout.trim()) || timeoutNum < tMin || timeoutNum > tMax;
+  const [mailCc, setMailCc] = useState(previous?.mailCc ?? '');
   // HPA sabitleme ONCEDEN SECILI DEGIL: HPA'ya dokunmak politikanin tersi, kullanici
   // bilinçli olarak istemeli.
   const [hpaPin, setHpaPin] = useState(previous?.hpaPin ?? false);
 
-  const picked = useMemo(
-    () => workloads.filter((w) => apps.includes(w.name)),
-    [workloads, apps]
-  );
+  const picked = useMemo(() => workloads.filter((w) => apps.includes(w.name)), [workloads, apps]);
   // `Geri Al` YALNIZCA kayıtlı durumu olan uygulamalarda seçilebilir. Bugün bu, iş
   // çalıştıktan SONRA `STATE;FAIL` ("Run stop first") olarak öğreniliyor.
   // TEKILLESTIRME SART: `picked` (cluster × uygulama) satirlarindan geliyor, yani ayni
@@ -161,10 +174,9 @@ const OperationStep: React.FC<Props> = ({
   // listesinde mavi "geri alınabilir" rozeti gorunurken burada "geri alınamaz" yazmasi
   // kullaniciyi iki ekran arasinda birakiyordu; hangi cluster oldugunu SOYLUYORUZ.
   const partiallyRestorable = notRestorable.filter((n) =>
-    picked.some((w) => w.name === n && w.restorable));
-  const blockingClusters = [...new Set(
-    picked.filter((w) => !w.restorable).map((w) => w.cluster)
-  )];
+    picked.some((w) => w.name === n && w.restorable),
+  );
+  const blockingClusters = [...new Set(picked.filter((w) => !w.restorable).map((w) => w.cluster))];
   const alreadyStopped = uniq(picked.filter((w) => w.specReplicas === 0));
   const withHpa = uniq(picked.filter((w) => w.hasHpa));
 
@@ -177,26 +189,30 @@ const OperationStep: React.FC<Props> = ({
   //     KİLİTLER — yani "geri al" hiçbir şeyi ayağa kaldırmaz. O yüzden sabitleme
   //     yalnızca hedefi BİLİNEN ve >= 1 olan geri almalarda sunulur.
   const restoreTargets = picked.map((w) => w.previousReplicas);
-  const restoreTargetsKnown = restoreTargets.length > 0
-    && restoreTargets.every((n) => typeof n === "number" && n >= 1);
-  const pinRelevant = (action === "scale" && /^[1-9][0-9]*$/.test(replicas))
-    || (action === "restore" && restoreTargetsKnown);
-  const pinOffered = pinRelevant && withHpa.length > 0 && mode === "apply";
+  const restoreTargetsKnown =
+    restoreTargets.length > 0 && restoreTargets.every((n) => typeof n === 'number' && n >= 1);
+  const pinRelevant =
+    (action === 'scale' && /^[1-9][0-9]*$/.test(replicas)) ||
+    (action === 'restore' && restoreTargetsKnown);
+  const pinOffered = pinRelevant && withHpa.length > 0 && mode === 'apply';
   // `Ölçekle` ile 0, geri alınacak kayıt BIRAKMAZ (playbook durumu yalnızca `Durdur`
   // dalında saklar). İki yol da 0'a götürürken birinin hafızası olması, diğerinin
   // olmaması bir tuzaktı — sunucu da ayrıca reddediyor.
-  const scaleToZero = action === "scale" && replicas.trim() === "0";
-  const replicasValid = action !== "scale" || (/^[0-9]+$/.test(replicas) && !scaleToZero);
+  const scaleToZero = action === 'scale' && replicas.trim() === '0';
+  const replicasValid = action !== 'scale' || (/^[0-9]+$/.test(replicas) && !scaleToZero);
   // `timeoutBad` de kapiya girer: gecersiz bir saniye degeri sunucuda 400 doner,
   // kullaniciyi oraya kadar goturmenin anlami yok.
   const canSubmit =
-    !!action && !!mode && replicasValid && !timeoutBad && !(action === "restore" && restoreBlocked);
+    !!action && !!mode && replicasValid && !timeoutBad && !(action === 'restore' && restoreBlocked);
 
   const secim: ScaleXIslemSecimi | null = canSubmit
     ? {
-        action: action!, executionMode: mode!,
-        ...(action === "scale" ? { targetReplicas: replicas } : {}),
-        verificationTimeout: timeout, allowPartial, mailCc: mailCc.trim(),
+        action: action!,
+        executionMode: mode!,
+        ...(action === 'scale' ? { targetReplicas: replicas } : {}),
+        verificationTimeout: timeout,
+        allowPartial,
+        mailCc: mailCc.trim(),
         hpaPin: pinOffered && hpaPin,
       }
     : null;
@@ -217,10 +233,12 @@ const OperationStep: React.FC<Props> = ({
   const gelismisGorunur = !gomulu || gelismisAcik || timeoutBad;
   // Varsayılandan farklı bırakılan ayarlar kapalıyken de söylenir (sessiz ayar olmasın).
   const gelismisOzeti = [
-    timeout !== tDefault ? `bekleme ${humanSeconds(timeout) || timeout}` : "",
-    mailCc.trim() ? "rapor CC" : "",
-    clusterCount > 1 && !allowPartial ? "hepsi ya da hiçbiri" : "",
-  ].filter(Boolean).join(" · ");
+    timeout !== tDefault ? `bekleme ${humanSeconds(timeout) || timeout}` : '',
+    mailCc.trim() ? 'rapor CC' : '',
+    clusterCount > 1 && !allowPartial ? 'hepsi ya da hiçbiri' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-6">
@@ -228,21 +246,30 @@ const OperationStep: React.FC<Props> = ({
         <p className="text-xs font-medium text-[var(--text-muted)] mb-2">İşlem</p>
         <div className="grid gap-2 sm:grid-cols-3">
           {(Object.keys(ACTION_INFO) as ScaleXAction[]).map((a) => {
-            const disabled = busy || (a === "restore" && restoreBlocked);
+            const disabled = busy || (a === 'restore' && restoreBlocked);
             const active = action === a;
             return (
               <button
-                key={a} type="button" disabled={disabled} onClick={() => setAction(a)}
+                key={a}
+                type="button"
+                disabled={disabled}
+                onClick={() => setAction(a)}
                 // SECILI DURUM EKRAN OKUYUCUYA ILETILMELI: secim yalnizca kenarlik ve
                 // arka plan RENGIYLE anlatiliyordu. Yikici bir araçta "hangi işlem
                 // seçili" bilgisini göremeyen kullanıcı, kör bir onaya sürüklenir.
                 aria-pressed={active}
                 className={`text-left rounded-xl border p-3 transition-colors ${
-                  active ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-                } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                  active
+                    ? 'border-[var(--accent)] bg-[var(--accent-bg)]'
+                    : 'border-[var(--border)] hover:border-[var(--border-strong)]'
+                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <span className="block text-sm font-semibold text-[var(--text-primary)]">{ACTION_INFO[a].label}</span>
-                <span className="block mt-1 text-xs text-[var(--text-muted)]">{ACTION_INFO[a].text}</span>
+                <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                  {ACTION_INFO[a].label}
+                </span>
+                <span className="block mt-1 text-xs text-[var(--text-muted)]">
+                  {ACTION_INFO[a].text}
+                </span>
               </button>
             );
           })}
@@ -262,14 +289,23 @@ const OperationStep: React.FC<Props> = ({
             </summary>
             <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900">
               <span>
-                <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(", ")}</strong> için
-                portalda kayıtlı durum yok
-                {blockingClusters.length > 0 && <> (<span className="font-mono">{blockingClusters.join(", ")}</span>)</>}.
-                {partiallyRestorable.length > 0 && (
-                  <> <strong>{partiallyRestorable.join(", ")}</strong> bazı cluster'larda geri
-                  alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.</>
+                <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(', ')}</strong>{' '}
+                için portalda kayıtlı durum yok
+                {blockingClusters.length > 0 && (
+                  <>
+                    {' '}
+                    (<span className="font-mono">{blockingClusters.join(', ')}</span>)
+                  </>
                 )}
-                {" "}Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
+                .
+                {partiallyRestorable.length > 0 && (
+                  <>
+                    {' '}
+                    <strong>{partiallyRestorable.join(', ')}</strong> bazı cluster'larda geri
+                    alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.
+                  </>
+                )}{' '}
+                Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
               </span>
             </p>
           </details>
@@ -278,26 +314,42 @@ const OperationStep: React.FC<Props> = ({
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>
-              <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(", ")}</strong> için
+              <strong>Geri Al</strong> seçilemiyor: <strong>{notRestorable.join(', ')}</strong> için
               portalda kayıtlı durum yok
-              {blockingClusters.length > 0 && <> (<span className="font-mono">{blockingClusters.join(", ")}</span>)</>}.
-              {partiallyRestorable.length > 0 && (
-                <> <strong>{partiallyRestorable.join(", ")}</strong> bazı cluster'larda geri
-                alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.</>
+              {blockingClusters.length > 0 && (
+                <>
+                  {' '}
+                  (<span className="font-mono">{blockingClusters.join(', ')}</span>)
+                </>
               )}
-              {" "}Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
+              .
+              {partiallyRestorable.length > 0 && (
+                <>
+                  {' '}
+                  <strong>{partiallyRestorable.join(', ')}</strong> bazı cluster'larda geri
+                  alınabilir, hepsinde değil — bu yüzden işlem tümü için kapalı.
+                </>
+              )}{' '}
+              Geri almak için bir önceki adıma dönüp bu uygulamaları seçimden çıkarın.
             </span>
           </div>
         )}
       </div>
 
-      {action === "scale" && (
+      {action === 'scale' && (
         <div>
-          <label htmlFor="scalex-replicas" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+          <label
+            htmlFor="scalex-replicas"
+            className="block text-xs font-medium text-[var(--text-muted)] mb-1.5"
+          >
             Hedef replica sayısı
           </label>
           <input
-            id="scalex-replicas" type="number" min={0} value={replicas} disabled={busy}
+            id="scalex-replicas"
+            type="number"
+            min={0}
+            value={replicas}
+            disabled={busy}
             onChange={(e) => setReplicas(e.target.value)}
             className="w-40 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                        text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
@@ -308,38 +360,43 @@ const OperationStep: React.FC<Props> = ({
               alabilirsiniz. "Ölçekle" ile 0 verildiğinde geri alınacak bir kayıt oluşmaz.
             </p>
           )}
-          {!replicasValid && !scaleToZero && replicas !== "" && (
+          {!replicasValid && !scaleToZero && replicas !== '' && (
             <p className="mt-1 text-xs text-red-600">1 veya daha büyük bir tam sayı girin.</p>
           )}
         </div>
       )}
 
-      {action === "stop" && alreadyStopped.length > 0 && (
+      {action === 'stop' && alreadyStopped.length > 0 && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>{alreadyStopped.join(", ")} zaten 0 replica ile çalışıyor.</span>
+          <span>{alreadyStopped.join(', ')} zaten 0 replica ile çalışıyor.</span>
         </div>
       )}
 
-      {withHpa.length > 0 && action === "stop" && (
+      {withHpa.length > 0 && action === 'stop' && (
         <p className="text-xs text-[var(--text-muted)]">
-          {withHpa.join(", ")} için HPA tanımlı. <strong>Sorun değil:</strong> replica 0 olduğunda
-          Kubernetes HPA'yı devre dışı bırakır, uygulama 0'da kalır. HPA'ya dokunulmaz ve iş
-          bunu çalıştıktan sonra doğrular.
+          {withHpa.join(', ')} için HPA tanımlı. <strong>Sorun değil:</strong> replica 0 olduğunda
+          Kubernetes HPA'yı devre dışı bırakır, uygulama 0'da kalır. HPA'ya dokunulmaz ve iş bunu
+          çalıştıktan sonra doğrular.
         </p>
       )}
 
-      {withHpa.length > 0 && action !== "stop" && (
+      {withHpa.length > 0 && action !== 'stop' && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2 text-xs text-amber-900">
           <p>
-            <strong>{withHpa.join(", ")} için HPA tanımlı.</strong> Replica 1'in üstüne çıktığı anda
-            HPA devreye girer ve 15–60 saniye içinde kendi hesabına döner —{" "}
+            <strong>{withHpa.join(', ')} için HPA tanımlı.</strong> Replica 1'in üstüne çıktığı anda
+            HPA devreye girer ve 15–60 saniye içinde kendi hesabına döner —{' '}
             <strong>verdiğin değer kalıcı olmayabilir.</strong>
           </p>
           {pinOffered && (
             <label className="flex items-start gap-2 cursor-pointer">
-              <input type="checkbox" className="mt-0.5" checked={hpaPin} disabled={busy}
-                onChange={(e) => setHpaPin(e.target.checked)} />
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={hpaPin}
+                disabled={busy}
+                onChange={(e) => setHpaPin(e.target.checked)}
+              />
               <span>
                 HPA'yı bu işlem süresince <strong>geçici olarak sabitle</strong>
                 <span className="block mt-0.5 text-amber-800">
@@ -361,21 +418,35 @@ const OperationStep: React.FC<Props> = ({
               oldugudur ("Önce kontrol et" mi, "Uygula" mı) ve yalnizca renkle
               anlatiliyordu. `disabled` gorunumu de islem kartlariyla ayni tutuldu —
               ayni ekranda iki farkli devre disi gorunumu vardi. */}
-          <button type="button" disabled={busy} onClick={() => setMode("dry_run")}
-            aria-pressed={mode === "dry_run"}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setMode('dry_run')}
+            aria-pressed={mode === 'dry_run'}
             className={`text-left rounded-xl border p-3 transition-colors ${
-              mode === "dry_run" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-            } ${busy ? "opacity-50 cursor-not-allowed" : ""}`}>
-            <span className="block text-sm font-semibold text-[var(--text-primary)]">Önce kontrol et</span>
+              mode === 'dry_run'
+                ? 'border-[var(--accent)] bg-[var(--accent-bg)]'
+                : 'border-[var(--border)] hover:border-[var(--border-strong)]'
+            } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className="block text-sm font-semibold text-[var(--text-primary)]">
+              Önce kontrol et
+            </span>
             <span className="block mt-1 text-xs text-[var(--text-muted)]">
               Bağlantı, yetki ve hedefler denetlenir. Hiçbir şey değiştirilmez.
             </span>
           </button>
-          <button type="button" disabled={busy} onClick={() => setMode("apply")}
-            aria-pressed={mode === "apply"}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setMode('apply')}
+            aria-pressed={mode === 'apply'}
             className={`text-left rounded-xl border p-3 transition-colors ${
-              mode === "apply" ? "border-[var(--accent)] bg-[var(--accent-bg)]" : "border-[var(--border)] hover:border-[var(--border-strong)]"
-            } ${busy ? "opacity-50 cursor-not-allowed" : ""}`}>
+              mode === 'apply'
+                ? 'border-[var(--accent)] bg-[var(--accent-bg)]'
+                : 'border-[var(--border)] hover:border-[var(--border-strong)]'
+            } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
             <span className="block text-sm font-semibold text-[var(--text-primary)]">Uygula</span>
             <span className="block mt-1 text-xs text-[var(--text-muted)]">
               Değişiklik gerçekten yapılır. Prod ortamında onay adımları devreye girer.
@@ -387,88 +458,119 @@ const OperationStep: React.FC<Props> = ({
       {/* Dugme ve icerik TEK sarmalayicida: kapaliyken icerik sifir yukseklikte kalir ama
           ust kapsayicinin `space-y` boslugu bos bir satir daha acardi. */}
       <div>
-      {gomulu && (
-        <button
-          type="button"
-          onClick={() => setGelismisAcik((v) => !v)}
-          aria-expanded={gelismisGorunur}
-          aria-controls="scalex-gelismis"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-        >
-          <ChevronDownIcon
-            aria-hidden="true"
-            className={`w-3.5 h-3.5 transition-transform ${gelismisGorunur ? "rotate-180" : ""}`}
-          />
-          Gelişmiş
-          {!gelismisGorunur && gelismisOzeti && (
-            <span className="font-normal text-[var(--text-muted)]">— {gelismisOzeti}</span>
-          )}
-        </button>
-      )}
-      <Collapse open={gelismisGorunur}>
-        <div
-          id="scalex-gelismis"
-          className={`space-y-6 ${gomulu ? "pt-4" : ""}`}
-          {...(gelismisGorunur ? {} : { inert: true })}
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label htmlFor="scalex-timeout" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-                Sonucu ne kadar bekleyelim? (saniye)
-              </label>
-              <input id="scalex-timeout" type="number" inputMode="numeric"
-                min={tMin} max={tMax} step={30}
-                value={timeout} disabled={busy}
-                onChange={(e) => setTimeoutValue(e.target.value)}
-                aria-describedby="scalex-timeout-help"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
-                           text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-              {timeoutBad ? (
-                <p className="mt-1 text-xs text-red-600">
-                  {tMin}–{tMax} arası bir saniye değeri girin.
-                </p>
-              ) : (
-                <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
-                  {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır ve iş
-                  başarılı biter. <strong>Kapatırken</strong> {kapatmaMetni(timeout, limits)}
-                </p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="scalex-cc" className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
-                Rapor CC (isteğe bağlı)
-              </label>
-              <input id="scalex-cc" type="text" value={mailCc} disabled={busy} placeholder="ekip@garantibbva.com.tr"
-                onChange={(e) => setMailCc(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
+        {gomulu && (
+          <button
+            type="button"
+            onClick={() => setGelismisAcik((v) => !v)}
+            aria-expanded={gelismisGorunur}
+            aria-controls="scalex-gelismis"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            <ChevronDownIcon
+              aria-hidden="true"
+              className={`w-3.5 h-3.5 transition-transform ${gelismisGorunur ? 'rotate-180' : ''}`}
+            />
+            Gelişmiş
+            {!gelismisGorunur && gelismisOzeti && (
+              <span className="font-normal text-[var(--text-muted)]">— {gelismisOzeti}</span>
+            )}
+          </button>
+        )}
+        <Collapse open={gelismisGorunur}>
+          <div
+            id="scalex-gelismis"
+            className={`space-y-6 ${gomulu ? 'pt-4' : ''}`}
+            {...(gelismisGorunur ? {} : { inert: true })}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="scalex-timeout"
+                  className="block text-xs font-medium text-[var(--text-muted)] mb-1.5"
+                >
+                  Sonucu ne kadar bekleyelim? (saniye)
+                </label>
+                <input
+                  id="scalex-timeout"
+                  type="number"
+                  inputMode="numeric"
+                  min={tMin}
+                  max={tMax}
+                  step={30}
+                  value={timeout}
+                  disabled={busy}
+                  onChange={(e) => setTimeoutValue(e.target.value)}
+                  aria-describedby="scalex-timeout-help"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
+                           text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                {timeoutBad ? (
+                  <p className="mt-1 text-xs text-red-600">
+                    {tMin}–{tMax} arası bir saniye değeri girin.
+                  </p>
+                ) : (
+                  <p id="scalex-timeout-help" className="mt-1 text-xs text-[var(--text-muted)]">
+                    {humanSeconds(timeout)} · <strong>Açarken</strong> bu süre dolunca uyarı yazılır
+                    ve iş başarılı biter. <strong>Kapatırken</strong>{' '}
+                    {kapatmaMetni(timeout, limits)}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="scalex-cc"
+                  className="block text-xs font-medium text-[var(--text-muted)] mb-1.5"
+                >
+                  Rapor CC (isteğe bağlı)
+                </label>
+                <input
+                  id="scalex-cc"
+                  type="text"
+                  value={mailCc}
+                  disabled={busy}
+                  placeholder="ekip@garantibbva.com.tr"
+                  onChange={(e) => setMailCc(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                            text-[var(--text-primary)] placeholder-[var(--text-muted)]
-                           focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
-              <p className="mt-1 text-xs text-[var(--text-muted)]">Rapor her durumda sana gönderilir.</p>
+                           focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                  Rapor her durumda sana gönderilir.
+                </p>
+              </div>
             </div>
-          </div>
 
-          {clusterCount > 1 && (
-            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-              <input type="checkbox" className="mt-1" checked={allowPartial} disabled={busy}
-                onChange={(e) => setAllowPartial(e.target.checked)} />
-              {/* Baslik etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
-              <span className="text-[var(--text-primary)]">
-                Bir hedef başarısız olursa diğerlerine devam et
-                <span className="block text-xs text-[var(--text-muted)] mt-0.5">
-                  Kapatırsan “hepsi ya da hiçbiri” çalışır: tek bir ön kontrol hatası tüm işlemi iptal eder
-                  ve cluster'da hiçbir değişiklik olmaz.
+            {clusterCount > 1 && (
+              <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={allowPartial}
+                  disabled={busy}
+                  onChange={(e) => setAllowPartial(e.target.checked)}
+                />
+                {/* Baslik etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+                <span className="text-[var(--text-primary)]">
+                  Bir hedef başarısız olursa diğerlerine devam et
+                  <span className="block text-xs text-[var(--text-muted)] mt-0.5">
+                    Kapatırsan “hepsi ya da hiçbiri” çalışır: tek bir ön kontrol hatası tüm işlemi
+                    iptal eder ve cluster'da hiçbir değişiklik olmaz.
+                  </span>
                 </span>
-              </span>
-            </label>
-          )}
-        </div>
-      </Collapse>
+              </label>
+            )}
+          </div>
+        </Collapse>
       </div>
 
       {!gomulu && (
         <div className="flex justify-end border-t border-[var(--border)] pt-4">
-          <button type="button" className="btn-primary" disabled={busy || !secim}
-            onClick={() => secim && onSubmit?.(secim)}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy || !secim}
+            onClick={() => secim && onSubmit?.(secim)}
+          >
             Önizle
           </button>
         </div>

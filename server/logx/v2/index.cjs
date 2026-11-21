@@ -147,15 +147,20 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
       // durumunda bu dizi yoktur; o zaman eski tekil staged_path/filename alanlari
       // kullanilir — iki durum da tek kod yolundan gecsin diye once normalize edilir.
       const art = jobAfter.artifacts || {};
-      const files =
-        (() => { if (Array.isArray(art.staged_files) && art.staged_files.length) return art.staged_files.filter((f) => f && f.staged_path); if (art.staged_path) return [
-                {
-                  staged_path: art.staged_path,
-                  filename: art.filename,
-                  size_bytes: art.size_bytes,
-                  is_fallback: art.is_fallback,
-                },
-              ]; return []; })();
+      const files = (() => {
+        if (Array.isArray(art.staged_files) && art.staged_files.length)
+          return art.staged_files.filter((f) => f?.staged_path);
+        if (art.staged_path)
+          return [
+            {
+              staged_path: art.staged_path,
+              filename: art.filename,
+              size_bytes: art.size_bytes,
+              is_fallback: art.is_fallback,
+            },
+          ];
+        return [];
+      })();
       if (files.length) {
         // Ayni arsiv icin ikinci kez token uretmeyi onle: iki es zamanli /jobs/:id/status
         // poll'u ayni terminal gecisini yakalayabilir (index.cjs:47 guard'i yarisa acik).
@@ -211,6 +216,13 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
 }
 
 function initLogXv2(app) {
+  // Uzak yedek teslim dizininin kodda varsayilani yok (kurumsal is #52): eksikse acilista soylenir,
+  // ilk transfer de acik hatayla durur (downloads.uzakFallbackDiziniZorunlu).
+  if (!require('./downloads.cjs').remoteFallbackDir())
+    console.warn(
+      '[LogX v2] UYARI: LOGX_STAGING_FALLBACK_DIR ayarli degil; LogX transferleri baslamaz ' +
+        '(Admin > Sistem ya da .env: uzak hostta yazilabilir mutlak dizin).',
+    );
   // Maskeleme kurallarini DB'den yukle (basarisizsa masker sabit setiyle devam eder).
   require('../masker.cjs')
     .loadMaskRules()
@@ -221,7 +233,9 @@ function initLogXv2(app) {
   // "playbook kaydi tanimli degil" gibi bilincli redler ekrana HIC ulasmiyordu. `ok:false`
   // 403 / 404 -> 409; kullanici eylemlerinde (GET disi) 501 -> 409, 502 / 503 / 504 -> 424.
   // Asil kod `upstreamStatus`ta. 401, 500 ve GET'teki 5xx DEGISMEZ (bkz. util/nginx-red.cjs).
-  router.use(require('../../util/nginx-red.cjs').nginxRedCevirici({ onek: 'logx', eylem5xx: true }));
+  router.use(
+    require('../../util/nginx-red.cjs').nginxRedCevirici({ onek: 'logx', eylem5xx: true }),
+  );
   // /admin CRUD'lari portal_audit_logs'a yazilir (LogX akis audit'i logx_audit_logs'ta kalir).
   try {
     router.use('/admin', require('../../audit/index.cjs').auditMutations('logx_admin'));
@@ -257,7 +271,9 @@ function initLogXv2(app) {
   // yerinde dursun. Ama kullanilmayan bir yukleme ucunu acik birakmak, olmayan
   // bir ozellik icin acik saldiri yuzeyi tasimak demektir.
   if (process.env.LOGX_V2_INGEST_ENABLED === '1') {
-    console.warn('[LogX v2] A4 ingest ucu ACIK (LOGX_V2_INGEST_ENABLED=1) — kimlik dogrulamasiz yukleme yolu.');
+    console.warn(
+      '[LogX v2] A4 ingest ucu ACIK (LOGX_V2_INGEST_ENABLED=1) — kimlik dogrulamasiz yukleme yolu.',
+    );
     // MUAFIYET GEREKCESI: kimlik = tek-kullanimlik token; kaynak host'un portal
     // oturumu yoktur, bu yuzden requireAuth'tan ONCE mount edilir (bkz. ingest.cjs).
     router.post('/ingest/:token', asyncRoute(ingest.handleIngestRoute));
@@ -291,7 +307,8 @@ function initLogXv2(app) {
     // gizlenir, SAYISI soylenir (`hiddenFiles`).
     if (request.platform === 'legacy' && Array.isArray(result?.hosts)) {
       const etiketler = new Set();
-      for (const h of result.hosts) for (const f of h.files || []) etiketler.add(restrictions.envKey(f.environment));
+      for (const h of result.hosts)
+        for (const f of h.files || []) etiketler.add(restrictions.envKey(f.environment));
       etiketler.delete('');
       const kapali = new Set();
       for (const e of etiketler) {
@@ -300,7 +317,9 @@ function initLogXv2(app) {
       if (!kapali.size) return result;
       let gizli = 0;
       const hosts = result.hosts.map((h) => {
-        const files = (h.files || []).filter((f) => !kapali.has(restrictions.envKey(f.environment)));
+        const files = (h.files || []).filter(
+          (f) => !kapali.has(restrictions.envKey(f.environment)),
+        );
         gizli += (h.files || []).length - files.length;
         return { ...h, files };
       });
@@ -469,7 +488,9 @@ function initLogXv2(app) {
       for (const h of sonuc?.hosts || [])
         for (const f of h.files || []) etiket.set(`${h.host}::${f.path}`, f.environment);
       const ortamlar = new Set(
-        (req.body?.selected || []).map((x) => restrictions.envKey(etiket.get(`${x?.host}::${x?.path}`))),
+        (req.body?.selected || []).map((x) =>
+          restrictions.envKey(etiket.get(`${x?.host}::${x?.path}`)),
+        ),
       );
       ortamlar.delete('');
       for (const e of ortamlar) await restrictions.assertEnvAllowed(e, currentUser(req));
@@ -735,7 +756,7 @@ function initLogXv2(app) {
         const karar = await restrictions
           .evaluate('ocp_namespace', resourceKey, currentUser(req))
           .catch(() => null);
-        if (!karar || !karar.allowed) {
+        if (!karar?.allowed) {
           const restriction = karar
             ? await restrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows)
             : undefined;
@@ -747,9 +768,7 @@ function initLogXv2(app) {
             fetchedAt: null,
             stale: false,
             source: null,
-            ...(restriction
-              ? { restriction, message: restrictions.denyMessage(restriction) }
-              : {}),
+            ...(restriction ? { restriction, message: restrictions.denyMessage(restriction) } : {}),
           });
         }
       }
@@ -1283,8 +1302,7 @@ function initLogXv2(app) {
       const username = String(req.query.username || '').trim();
       const resourceType = String(req.query.resourceType || '').trim();
       const resourceKey = String(req.query.resourceKey || '').trim();
-      if (!username)
-        return res.status(400).json({ ok: false, message: 'username gerekli.' });
+      if (!username) return res.status(400).json({ ok: false, message: 'username gerekli.' });
       const hedef = { username, role: 'User', groups: [] };
       let kimlikKaynagi = null;
       let kimlikUyarisi = null;
@@ -1296,7 +1314,8 @@ function initLogXv2(app) {
           hedef.groups = Array.isArray(ldap.groups) ? ldap.groups : [];
           kimlikKaynagi = 'ldap';
         } else {
-          kimlikUyarisi = "Kullanıcı LDAP'ta bulunamadı — gruplar BOŞ varsayıldı, sonuç eksik olabilir.";
+          kimlikUyarisi =
+            "Kullanıcı LDAP'ta bulunamadı — gruplar BOŞ varsayıldı, sonuç eksik olabilir.";
         }
       } catch (err) {
         kimlikUyarisi = `LDAP okunamadı (${err.message}) — gruplar BOŞ varsayıldı, sonuç eksik olabilir.`;
@@ -1311,7 +1330,11 @@ function initLogXv2(app) {
           aciklama: v.sebep || (v.gorunur ? 'görünür' : 'gizli'),
         });
       } catch (err) {
-        adimlar.push({ ad: 'LogX sayfa görünürlüğü', izin: null, aciklama: `okunamadı: ${err.message}` });
+        adimlar.push({
+          ad: 'LogX sayfa görünürlüğü',
+          izin: null,
+          aciklama: `okunamadı: ${err.message}`,
+        });
       }
       let env = String(req.query.env || '').trim();
       if (!env && resourceType === 'ocp_namespace') env = resourceKey.split('/')[1] || '';
@@ -1322,7 +1345,9 @@ function initLogXv2(app) {
           adimlar.push({
             ad,
             izin: true,
-            aciklama: karar.rows.length ? 'kısıtlı, kullanıcı izinli' : 'kısıtlama yok (herkese açık)',
+            aciklama: karar.rows.length
+              ? 'kısıtlı, kullanıcı izinli'
+              : 'kısıtlama yok (herkese açık)',
           });
         } else {
           const d = await restrictions.redAyrintisi(tip, anahtar, karar.rows);
@@ -1390,7 +1415,8 @@ function initLogXv2(app) {
         etiket.get(k).add(kaynak);
       };
       for (const r of await adminData.listClusterIndex().catch(() => [])) ekle(r.env, 'ocp');
-      for (const r of await adminData.listEnvSuffixMap().catch(() => [])) ekle(r.env_label, 'legacy');
+      for (const r of await adminData.listEnvSuffixMap().catch(() => []))
+        ekle(r.env_label, 'legacy');
       res.json({
         ok: true,
         labels: [...etiket.entries()]

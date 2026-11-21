@@ -68,14 +68,22 @@ test('Tip bilgisi YOKSA guvenli tarafa duser (CAST)', () => {
 // buildAdvancedWhereClause'un urettigi metni ve BAGLANAN parametre tiplerini yakalar.
 function fakeReq() {
   const bound = [];
-  return { bound, input(name, type, value) { bound.push({ name, type, value }); return this; } };
+  return {
+    bound,
+    input(name, type, value) {
+      bound.push({ name, type, value });
+      return this;
+    },
+  };
 }
 
 test('Gelismis filtre: metin kolonu CAST siz, parametre tipi kolonla esli', () => {
   const req = fakeReq();
   const where = buildAdvancedWhereClause(
     { mode: 'AND', filters: [{ col: 'kod', op: 'equals', value: 'ABC' }] },
-    ['kod'], req, types,
+    ['kod'],
+    req,
+    types,
   );
   assert.equal(where, '[kod] = @af0');
   assert.equal(req.bound[0].type.type, sql.VarChar().type, 'varchar kolon -> VarChar parametre');
@@ -85,7 +93,9 @@ test('Gelismis filtre: sayisal kolon CAST li kalir', () => {
   const req = fakeReq();
   const where = buildAdvancedWhereClause(
     { mode: 'AND', filters: [{ col: 'sayi', op: 'contains', value: '7' }] },
-    ['sayi'], req, types,
+    ['sayi'],
+    req,
+    types,
   );
   assert.equal(where, 'CAST([sayi] AS NVARCHAR(MAX)) LIKE @af0');
 });
@@ -94,7 +104,8 @@ test('Gelismis filtre: colTypes verilmezse ESKI davranis (geriye donuk uyum)', (
   const req = fakeReq();
   const where = buildAdvancedWhereClause(
     { mode: 'AND', filters: [{ col: 'ad', op: 'equals', value: 'x' }] },
-    ['ad'], req,
+    ['ad'],
+    req,
   );
   assert.equal(where, 'CAST([ad] AS NVARCHAR(MAX)) = @af0');
 });
@@ -102,7 +113,12 @@ test('Gelismis filtre: colTypes verilmezse ESKI davranis (geriye donuk uyum)', (
 test('isNull/isNotNull kolonu HIC sarmaz (zaten sargable idi)', () => {
   const req = fakeReq();
   assert.equal(
-    buildAdvancedWhereClause({ mode: 'AND', filters: [{ col: 'ad', op: 'isNull' }] }, ['ad'], req, types),
+    buildAdvancedWhereClause(
+      { mode: 'AND', filters: [{ col: 'ad', op: 'isNull' }] },
+      ['ad'],
+      req,
+      types,
+    ),
     '[ad] IS NULL',
   );
 });

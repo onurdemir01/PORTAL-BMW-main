@@ -14,16 +14,26 @@ export default function RetirementPage() {
   // Server Hub (Bulgular / Uygulama 360 / Retirement Analizi) "Retirement kaydı aç" buraya location.state ile
   // gelir; her yeni istek kayıt formunu bir kez açar, durum hemen temizlenir (yenileme / geri tuşu formu tekrar
   // açmasın). URL'e uygulama adı yazılmaz.
-  const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
-  const gelen = (location.state as { retireOneri?: { uygulama: string; not: string } } | null)?.retireOneri;
+  const [retireOneri, setRetireOneri] = useState<{
+    uygulama: string;
+    not: string;
+    no: number;
+  } | null>(null);
+  const gelen = (location.state as { retireOneri?: { uygulama: string; not: string } } | null)
+    ?.retireOneri;
   // Render sırasında ayar (effect'te setState yok): her yeni geçiş (location.key) bir kez işlenir.
   const [islenenKey, setIslenenKey] = useState<string | null>(null);
   if (gelen?.uygulama && location.key !== islenenKey) {
     setIslenenKey(location.key);
-    setRetireOneri((o) => ({ uygulama: gelen.uygulama, not: gelen.not || '', no: (o ? o.no : 0) + 1 }));
+    setRetireOneri((o) => ({
+      uygulama: gelen.uygulama,
+      not: gelen.not || '',
+      no: (o ? o.no : 0) + 1,
+    }));
   }
   useEffect(() => {
-    if (gelen?.uygulama) void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (gelen?.uygulama)
+      void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [gelen, location.pathname, location.search, navigate]);
   return (
     <div className="space-y-5">

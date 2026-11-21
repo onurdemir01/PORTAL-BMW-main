@@ -8,22 +8,27 @@
 // job'ı (bmw_portal/java_app_check/java_app_check.yml) tetiklenir, iş bitene kadar
 // beklenir, seçili host'larda application adına uyan server-config'ler HOST BAZINDA
 // gruplu, GÜNCEL STARTED/STOPPED durumlarıyla listelenir.
-import { kurulumDizini } from "@/utils/jboss";
-import React, { useMemo, useState } from "react";
-import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { opsxApi, type OpsxServerConfig, type OpsxServerConfigSelection, type OpsxOperation } from "@/api/opsxApi";
+import { kurulumDizini } from '@/utils/jboss';
+import React, { useMemo, useState } from 'react';
+import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import {
+  opsxApi,
+  type OpsxServerConfig,
+  type OpsxServerConfigSelection,
+  type OpsxOperation,
+} from '@/api/opsxApi';
 
-const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
 function cfgKey(host: string, name: string): string {
   return `${host}::${name}`;
 }
 
 const OPERATION_LABELS: Record<string, string> = {
-  restart: "Restart Et",
-  stop: "Durdur",
-  start: "Başlat",
+  restart: 'Restart Et',
+  stop: 'Durdur',
+  start: 'Başlat',
 };
 
 // Buton metni ("Başlat") ile soru cümlesindeki fiil çekimi ("başlatılsın") Türkçe'de
@@ -31,9 +36,9 @@ const OPERATION_LABELS: Record<string, string> = {
 // edilsin?" gibi dilbilgisine aykırı bir cümle üretiyordu. Soru için ayrı, doğru
 // çekimlenmiş metin.
 const OPERATION_QUESTION_VERBS: Record<string, string> = {
-  restart: "yeniden başlatılsın",
-  stop: "durdurulsun",
-  start: "başlatılsın",
+  restart: 'yeniden başlatılsın',
+  stop: 'durdurulsun',
+  start: 'başlatılsın',
 };
 
 // 2026-08-17 (kullanici istegi): zaten durmus bir JVM'e "durdur", zaten calisan bir
@@ -42,8 +47,8 @@ const OPERATION_QUESTION_VERBS: Record<string, string> = {
 // secimi en bastan ENGELLEMEK daha net). "restart" HER durumda anlamli kabul edilir
 // (durmus bir JVM'i "restart" etmek "baslat" ile ayni sonucu verir).
 function isEligible(status: string, operation: OpsxOperation): boolean {
-  if (operation === "stop") return status !== "stopped";
-  if (operation === "start") return status !== "running";
+  if (operation === 'stop') return status !== 'stopped';
+  if (operation === 'start') return status !== 'running';
   return true;
 }
 
@@ -63,59 +68,66 @@ const ServerConfigSelectStep: React.FC<{
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [nonce, setNonce] = useState(0);
 
-  const hostsKey = hosts.join(",");
-  const hostMajorsKey = (hostMajors || []).join(",");
+  const hostsKey = hosts.join(',');
+  const hostMajorsKey = (hostMajors || []).join(',');
 
   // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
-  useAsyncEffect(async (alive) => {
-    const targetHosts = hostsKey ? hostsKey.split(",") : [];
-    const targetMajors = hostMajorsKey ? hostMajorsKey.split(",") : undefined;
-    setLoading(true);
-    setError(null);
-    setConfigs([]);
-    setSelected(new Set());
+  useAsyncEffect(
+    async (alive) => {
+      const targetHosts = hostsKey ? hostsKey.split(',') : [];
+      const targetMajors = hostMajorsKey ? hostMajorsKey.split(',') : undefined;
+      setLoading(true);
+      setError(null);
+      setConfigs([]);
+      setSelected(new Set());
 
-    try {
-      const init = await opsxApi.discoverLegacyServerConfigs(application, targetHosts, targetMajors);
-      if (!alive()) return;
-      if (init.jobId == null) {
-        setError(init.message || "JVM keşfi işi başlatılamadı.");
-        return;
-      }
-
-      while (alive()) {
-        const r = await opsxApi.legacyServerConfigStatus(init.awxServerId, init.jobId);
+      try {
+        const init = await opsxApi.discoverLegacyServerConfigs(
+          application,
+          targetHosts,
+          targetMajors,
+        );
         if (!alive()) return;
-        if (!TERMINAL.has(r.status)) {
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-          continue;
+        if (init.jobId == null) {
+          setError(init.message || 'JVM keşfi işi başlatılamadı.');
+          return;
         }
-        if (r.serverConfigs) {
-          setConfigs(r.serverConfigs);
-          // Bir host'ta TAM 1 JVM bulunduysa ön-işaretli gelir — kullanıcı yine de
-          // "Devam Et"e basmalı, adım hiçbir zaman otomatik atlanmaz.
-          const byHost = new Map<string, OpsxServerConfig[]>();
-          for (const c of r.serverConfigs) {
-            (byHost.get(c.host) || byHost.set(c.host, []).get(c.host)!).push(c);
+
+        while (alive()) {
+          const r = await opsxApi.legacyServerConfigStatus(init.awxServerId, init.jobId);
+          if (!alive()) return;
+          if (!TERMINAL.has(r.status)) {
+            await new Promise((resolve) => window.setTimeout(resolve, 3000));
+            continue;
           }
-          const preselected = new Set<string>();
-          for (const list of byHost.values()) {
-            if (list.length === 1 && isEligible(list[0].status, operation)) {
-              preselected.add(cfgKey(list[0].host, list[0].serverConfig));
+          if (r.serverConfigs) {
+            setConfigs(r.serverConfigs);
+            // Bir host'ta TAM 1 JVM bulunduysa ön-işaretli gelir — kullanıcı yine de
+            // "Devam Et"e basmalı, adım hiçbir zaman otomatik atlanmaz.
+            const byHost = new Map<string, OpsxServerConfig[]>();
+            for (const c of r.serverConfigs) {
+              (byHost.get(c.host) || byHost.set(c.host, []).get(c.host)!).push(c);
             }
+            const preselected = new Set<string>();
+            for (const list of byHost.values()) {
+              if (list.length === 1 && isEligible(list[0].status, operation)) {
+                preselected.add(cfgKey(list[0].host, list[0].serverConfig));
+              }
+            }
+            setSelected(preselected);
+          } else {
+            setError(r.message || 'JVM listesi alınamadı.');
           }
-          setSelected(preselected);
-        } else {
-          setError(r.message || "JVM listesi alınamadı.");
+          return;
         }
-        return;
+      } catch (err: unknown) {
+        if (alive()) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive()) setLoading(false);
       }
-    } catch (err: unknown) {
-      if (alive()) setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (alive()) setLoading(false);
-    }
-  }, [application, hostsKey, hostMajorsKey, operation, nonce]);
+    },
+    [application, hostsKey, hostMajorsKey, operation, nonce],
+  );
 
   const grouped = useMemo(() => {
     const g: Record<string, OpsxServerConfig[]> = {};
@@ -127,13 +139,20 @@ const ServerConfigSelectStep: React.FC<{
     setSelected((prev) => {
       const next = new Set(prev);
       const k = cfgKey(host, name);
-      if (next.has(k)) next.delete(k); else next.add(k);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
       return next;
     });
   }
 
   function selectAll() {
-    setSelected(new Set(configs.filter((c) => isEligible(c.status, operation)).map((c) => cfgKey(c.host, c.serverConfig))));
+    setSelected(
+      new Set(
+        configs
+          .filter((c) => isEligible(c.status, operation))
+          .map((c) => cfgKey(c.host, c.serverConfig)),
+      ),
+    );
   }
 
   function clearAll() {
@@ -154,9 +173,12 @@ const ServerConfigSelectStep: React.FC<{
       <div className="py-8 text-center space-y-2">
         <ArrowPathIcon className="w-5 h-5 mx-auto animate-spin text-[var(--text-muted)]" />
         <p className="text-sm text-[var(--text-muted)]">
-          <span className="font-mono text-[var(--text-primary)]">{application}</span> için seçili sunucularda JVM'ler taranıyor…
+          <span className="font-mono text-[var(--text-primary)]">{application}</span> için seçili
+          sunucularda JVM'ler taranıyor…
         </p>
-        <p className="text-xs text-[var(--text-muted)]">Bunun için bir Ansible işi çalıştırılıyor, birkaç saniye sürebilir.</p>
+        <p className="text-xs text-[var(--text-muted)]">
+          Bunun için bir Ansible işi çalıştırılıyor, birkaç saniye sürebilir.
+        </p>
       </div>
     );
   }
@@ -181,7 +203,10 @@ const ServerConfigSelectStep: React.FC<{
       <div className="space-y-3">
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>Seçili sunucularda <strong>{application}</strong> adına uyan bir JVM (server-config) bulunamadı.</span>
+          <span>
+            Seçili sunucularda <strong>{application}</strong> adına uyan bir JVM (server-config)
+            bulunamadı.
+          </span>
         </div>
         <button onClick={() => setNonce((n) => n + 1)} className="btn-secondary w-full text-sm">
           <ArrowPathIcon className="w-4 h-4" />
@@ -195,17 +220,28 @@ const ServerConfigSelectStep: React.FC<{
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--text-secondary)]">Hangi JVM'(ler) {OPERATION_QUESTION_VERBS[operation] || `${operation} edilsin`}?</p>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Hangi JVM'(ler) {OPERATION_QUESTION_VERBS[operation] || `${operation} edilsin`}?
+          </p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Uygulama: <span className="font-mono text-[var(--text-primary)]">{application}</span>
-            {" · "}bir sunucuda birden fazla JVM bulunabilir — hangisinde işlem yapmak istediğinizi seçin, isterseniz tümünü de seçebilirsiniz
+            {' · '}bir sunucuda birden fazla JVM bulunabilir — hangisinde işlem yapmak istediğinizi
+            seçin, isterseniz tümünü de seçebilirsiniz
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button onClick={selectAll} disabled={busy} className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50">
+          <button
+            onClick={selectAll}
+            disabled={busy}
+            className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+          >
             Tümünü Seç
           </button>
-          <button onClick={clearAll} disabled={busy} className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50">
+          <button
+            onClick={clearAll}
+            disabled={busy}
+            className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+          >
             Temizle
           </button>
         </div>
@@ -215,75 +251,87 @@ const ServerConfigSelectStep: React.FC<{
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>
-            Şu sunucularda uyan JVM bulunamadı, işlem uygulanamayacak:{" "}
-            {hosts.filter((h) => !grouped[h.toUpperCase()]?.length).join(", ")}
+            Şu sunucularda uyan JVM bulunamadı, işlem uygulanamayacak:{' '}
+            {hosts.filter((h) => !grouped[h.toUpperCase()]?.length).join(', ')}
           </span>
         </div>
       )}
 
       <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-        {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((host) => {
-          const multiple = grouped[host].length > 1;
-          return (
-          <div key={host}>
-            <div className="flex items-baseline justify-between gap-2">
-              <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
-              {multiple && (
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  {grouped[host].length} JVM bulundu — hangisinde işlem yapmak istediğinizi seçin (tümü de seçilebilir)
-                </span>
-              )}
-            </div>
-            <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
-              {grouped[host].map((c) => {
-                const running = c.status === "running";
-                const eligible = isEligible(c.status, operation);
-                return (
-                  <label
-                    key={c.serverConfig}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] ${eligible ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
-                    title={eligible ? undefined : (operation === "stop" ? "Zaten durmuş — durdurma işlemi anlamsız, seçilemez." : "Zaten çalışıyor — başlatma işlemi anlamsız, seçilemez.")}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(cfgKey(c.host, c.serverConfig))}
-                      onChange={() => toggle(c.host, c.serverConfig)}
-                      disabled={busy || !eligible}
-                      className="rounded"
-                    />
-                    <span className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal" title={c.serverConfig}>{c.serverConfig}</span>
-                    {!eligible && (
-                      <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
-                        {operation === "stop" ? "zaten durmuş" : "zaten çalışıyor"}
-                      </span>
-                    )}
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 bg-gray-50 text-gray-500 border-gray-200">
-                      {kurulumDizini(c.jbossMajor) || `JBoss ${c.jbossMajor}`}
+        {Object.keys(grouped)
+          .sort((a, b) => a.localeCompare(b))
+          .map((host) => {
+            const multiple = grouped[host].length > 1;
+            return (
+              <div key={host}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
+                  {multiple && (
+                    <span className="text-[10px] text-[var(--text-muted)]">
+                      {grouped[host].length} JVM bulundu — hangisinde işlem yapmak istediğinizi
+                      seçin (tümü de seçilebilir)
                     </span>
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
-                        running ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-50 text-gray-500 border-gray-200"
-                      }`}
-                    >
-                      {running ? "Çalışıyor" : "Durdurulmuş"}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-          );
-        })}
+                  )}
+                </div>
+                <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">
+                  {grouped[host].map((c) => {
+                    const running = c.status === 'running';
+                    const eligible = isEligible(c.status, operation);
+                    return (
+                      <label
+                        key={c.serverConfig}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--bg-elevated)] ${eligible ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                        title={
+                          eligible
+                            ? undefined
+                            : operation === 'stop'
+                              ? 'Zaten durmuş — durdurma işlemi anlamsız, seçilemez.'
+                              : 'Zaten çalışıyor — başlatma işlemi anlamsız, seçilemez.'
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(cfgKey(c.host, c.serverConfig))}
+                          onChange={() => toggle(c.host, c.serverConfig)}
+                          disabled={busy || !eligible}
+                          className="rounded"
+                        />
+                        <span
+                          className="flex-1 text-sm text-[var(--text-primary)] font-mono break-all whitespace-normal"
+                          title={c.serverConfig}
+                        >
+                          {c.serverConfig}
+                        </span>
+                        {!eligible && (
+                          <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">
+                            {operation === 'stop' ? 'zaten durmuş' : 'zaten çalışıyor'}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 bg-gray-50 text-gray-500 border-gray-200">
+                          {kurulumDizini(c.jbossMajor) || `JBoss ${c.jbossMajor}`}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                            running
+                              ? 'bg-green-50 text-green-700 border-green-100'
+                              : 'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}
+                        >
+                          {running ? 'Çalışıyor' : 'Durdurulmuş'}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-[var(--text-muted)]">{selected.size} JVM seçildi</span>
-        <button
-          onClick={submit}
-          disabled={selected.size === 0 || busy}
-          className="btn-primary"
-        >
-          {OPERATION_LABELS[operation] || "Devam Et"}
+        <button onClick={submit} disabled={selected.size === 0 || busy} className="btn-primary">
+          {OPERATION_LABELS[operation] || 'Devam Et'}
         </button>
       </div>
     </div>

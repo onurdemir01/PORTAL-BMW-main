@@ -2,16 +2,26 @@
 
 FROM node:22.23.4-alpine AS builder
 WORKDIR /build
+# Paketlerin kurulum betikleri hicbir npm komutunda calismaz (tedarik zinciri; Sonar docker:S6505).
+ENV npm_config_ignore_scripts=true
 
 COPY package.json package-lock.json ./
 COPY gelistirme/package.json gelistirme/package-lock.json ./gelistirme/
 COPY scripts/ ./scripts/
 
-RUN npm ci --prefix gelistirme --ignore-scripts --no-audit --no-fund \
+RUN npm ci --ignore-scripts --prefix=gelistirme --no-audit --no-fund \
   && rm -rf node_modules \
   && ln -s gelistirme/node_modules node_modules
 
-COPY . .
+# Yalniz derlemenin ve paketin okudugu yollar (scripts/paket.cjs DAHIL + vite girdileri). `COPY . .`
+# baglamdaki her seyi alirdi (Sonar docker:S6470); .dockerignore ikinci kat olarak kalir.
+COPY index.html vite.config.ts tsconfig.json tsconfig.server-check.json README.md .env.example ./
+COPY src/ ./src/
+COPY public/ ./public/
+COPY shared/ ./shared/
+COPY server/ ./server/
+COPY deploy/ ./deploy/
+COPY docs/ ./docs/
 
 RUN npm run build \
   && npm run paket -- --cikti /out/app --derleme-yok
@@ -25,7 +35,7 @@ ENV NODE_ENV=production \
     LOG_TO_STDOUT=1
 
 COPY --from=builder /out/app/package.json /out/app/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+RUN npm ci --ignore-scripts --omit=dev --no-audit --no-fund \
   && npm cache clean --force \
   && mkdir -p /tmp/bmw-logs \
   && chown node:node /tmp/bmw-logs

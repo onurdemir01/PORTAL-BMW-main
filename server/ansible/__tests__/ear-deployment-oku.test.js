@@ -22,6 +22,7 @@ const alim = require('../../server-hub/ear-envanter-alim.cjs');
 const BETIK = path.join(
   __dirname,
   '..',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'files',

@@ -15,12 +15,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SH = fs.readFileSync(path.join(__dirname, '..', '..', 'deploy', 'run.sh'), 'utf8');
-const kod = SH.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+const kod = SH.split('\n')
+  .filter((l) => !/^\s*#/.test(l))
+  .join('\n');
 
 test('RK1 node u baslatan komut kilit fd sini kapatir (devralip kilidi tutmaz)', () => {
-  const m = /nohup \$SETSID_BIN node "\$ROOT_DIR\/server\/index\.cjs" "\$ENV_NAME" \\\n([^\n]*)/.exec(kod);
+  const m =
+    /nohup \$SETSID_BIN node "\$ROOT_DIR\/server\/index\.cjs" "\$ENV_NAME" \\\n([^\n]*)/.exec(kod);
   assert.ok(m, 'node baslatma satiri bulunamadi (bekci kor kalmasin diye FAIL)');
-  assert.match(m[1], /\s200>&-\s*&\s*$/, 'node kilit fd sini devraliyor - sonraki her restart kilitte duser');
+  assert.match(
+    m[1],
+    /\s200>&-\s*&\s*$/,
+    'node kilit fd sini devraliyor - sonraki her restart kilitte duser',
+  );
 });
 
 test('RK2 kapatilan fd, run_locked in kilit icin actigi fd ile ayni', () => {

@@ -20,6 +20,7 @@ Tek kaynak: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
 - Sonar'a dokunan değişiklikte `npm run kapi:sonar` da koşturulur.
 - Kancalar commit ve push anında hızlı kapıları kendisi koşturur. `--no-verify` yasaktır.
 - CI'da `verify` ve `sonar` yeşil olmadan ve onaylayıcı onayı olmadan merge yoktur.
+- `main`'e PR'sız commit gitmez: her değişiklik PR'dan geçer (K16 PR'sız commit'i ve 8–120 dışı konu satırını CI'da kırmızı yapar).
 
 ## Yasak uygulamalar
 

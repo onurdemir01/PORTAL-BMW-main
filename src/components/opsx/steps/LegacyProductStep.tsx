@@ -5,19 +5,22 @@
 // birimi (server-config / application server) ve sunucu uçları farklı. WAS akışı
 // JBoss sihirbazının içine karıştırılsaydı JBoss'a özgü çoklu seçim ekranları WAS'a
 // sızardı; WAS'ta TOPLU İŞLEM YOK (tek sunucu + tek JVM).
-import React from "react";
-import { ServerStackIcon, CpuChipIcon } from "@heroicons/react/24/outline";
+import React from 'react';
+import { ServerStackIcon, CpuChipIcon } from '@heroicons/react/24/outline';
 
-export type LegacyProduct = "jboss" | "was";
+export type LegacyProduct = 'jboss' | 'was';
 
-const LegacyProductStep: React.FC<{ onSelect: (p: LegacyProduct) => void; busy?: boolean }> = ({ onSelect, busy }) => (
+const LegacyProductStep: React.FC<{ onSelect: (p: LegacyProduct) => void; busy?: boolean }> = ({
+  onSelect,
+  busy,
+}) => (
   <div className="py-6">
     <p className="text-sm text-[var(--text-secondary)] text-center mb-6">
       Uygulamanız hangi uygulama sunucusunda çalışıyor?
     </p>
     <div className="grid grid-cols-2 gap-4">
       <button
-        onClick={() => onSelect("jboss")}
+        onClick={() => onSelect('jboss')}
         disabled={busy}
         className="flex flex-col items-center gap-3 p-6 border border-[var(--border)] rounded-2xl hover:border-[var(--accent)] hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
       >
@@ -28,7 +31,7 @@ const LegacyProductStep: React.FC<{ onSelect: (p: LegacyProduct) => void; busy?:
         </span>
       </button>
       <button
-        onClick={() => onSelect("was")}
+        onClick={() => onSelect('was')}
         disabled={busy}
         className="flex flex-col items-center gap-3 p-6 border border-[var(--border)] rounded-2xl hover:border-[var(--accent)] hover:shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
       >

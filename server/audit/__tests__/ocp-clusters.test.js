@@ -24,7 +24,10 @@ test('kume VERIDEN cikarilir - o ortamda namespace barindiran cluster"lar', () =
     [app({ prod: [{ cluster: 'p1' }, { cluster: 'p2' }] }), app({ prod: [{ cluster: 'p1' }] })],
     ENVS,
   );
-  assert.deepEqual(out.prod.map((c) => c.cluster), ['p1', 'p2']);
+  assert.deepEqual(
+    out.prod.map((c) => c.cluster),
+    ['p1', 'p2'],
+  );
   assert.deepEqual(out.dev, [], 'veride hic dev yoksa kume BOS - uydurulmaz');
 });
 
@@ -54,13 +57,24 @@ test('AYNI cluster"da birden fazla namespace: uygulama BIR kez sayilir', () => {
 
 test('ortamlar birbirine karismaz', () => {
   const out = envClustersFromApps(
-    [app({ prod: [{ cluster: 'ortak' }], test: [{ cluster: 'ortak' }, { cluster: 'yalniz-test' }] })],
+    [
+      app({
+        prod: [{ cluster: 'ortak' }],
+        test: [{ cluster: 'ortak' }, { cluster: 'yalniz-test' }],
+      }),
+    ],
     ENVS,
   );
   // AYNI cluster iki ortamda da gorunebilir - bu NORMALDIR, ocp-platforms.cjs'te
   // belgelenen gercek durum budur.
-  assert.deepEqual(out.prod.map((c) => c.cluster), ['ortak']);
-  assert.deepEqual(out.test.map((c) => c.cluster), ['ortak', 'yalniz-test']);
+  assert.deepEqual(
+    out.prod.map((c) => c.cluster),
+    ['ortak'],
+  );
+  assert.deepEqual(
+    out.test.map((c) => c.cluster),
+    ['ortak', 'yalniz-test'],
+  );
 });
 
 test('ilgilenilmeyen ortam sessizce ATILIR (cokme yok)', () => {
@@ -71,11 +85,7 @@ test('ilgilenilmeyen ortam sessizce ATILIR (cokme yok)', () => {
 
 test('bozuk/eksik kayitlar cokertmez', () => {
   const out = envClustersFromApps(
-    [
-      app({ prod: [{ cluster: '' }, { cluster: null }, { cluster: 'gecerli' }] }),
-      app(null),
-      null,
-    ],
+    [app({ prod: [{ cluster: '' }, { cluster: null }, { cluster: 'gecerli' }] }), app(null), null],
     ENVS,
   );
   assert.deepEqual(out.prod, [{ cluster: 'gecerli', apps: 1 }], 'bos cluster adi sayilmaz');
@@ -115,7 +125,12 @@ test('RK1 resmi listeli ortamda n = resmi liste (0 uygulamali cluster dahil); li
   assert.deepEqual(ENV_CLUSTERS.ark.qa, ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2']);
   assert.equal(ENV_CLUSTERS.ark.prod.length, 5);
   const apps = [
-    { envs: { qa: [{ cluster: 'gbocpqa1' }, { cluster: 'gbocptest4' }], edu: [{ cluster: 'gbocpedu1' }] } },
+    {
+      envs: {
+        qa: [{ cluster: 'gbocpqa1' }, { cluster: 'gbocptest4' }],
+        edu: [{ cluster: 'gbocpedu1' }],
+      },
+    },
     { envs: { qa: [{ cluster: 'gbocpqa1' }] } },
   ];
   const { kumeler, kaynak } = envClustersResmi(apps, ['qa', 'edu'], ENV_CLUSTERS.ark);

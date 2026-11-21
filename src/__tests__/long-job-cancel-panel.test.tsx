@@ -78,12 +78,34 @@ const tick = (over: Record<string, unknown> = {}) => ({
   config: { enabled: true, thresholdMinutes: 60, cancelQueued: false, templateCount: 2 },
   configError: null,
   usingLastGoodConfig: false,
-  servers: [{ serverId: 1, serverName: 'maestro2', ok: true, error: null, running: 3, queued: 0, truncated: false }],
+  servers: [
+    {
+      serverId: 1,
+      serverName: 'maestro2',
+      ok: true,
+      error: null,
+      running: 3,
+      queued: 0,
+      truncated: false,
+    },
+  ],
   jobsTotal: 3,
   jobs: [
     job({}),
-    job({ jobId: 701, decision: 'still_running', reason: 'İPTAL İSTENDİ AMA DURMADI', problem: true }),
-    job({ jobId: 702, templateId: 99, jobName: 'envanter', decision: 'not_listed', reason: 'İzin listesinde değil', problem: false }),
+    job({
+      jobId: 701,
+      decision: 'still_running',
+      reason: 'İPTAL İSTENDİ AMA DURMADI',
+      problem: true,
+    }),
+    job({
+      jobId: 702,
+      templateId: 99,
+      jobName: 'envanter',
+      decision: 'not_listed',
+      reason: 'İzin listesinde değil',
+      problem: false,
+    }),
   ],
   attempts: [],
   ...over,
@@ -96,18 +118,59 @@ const STATUS = {
   lastTick: tick(),
   lastDryRun: null,
   attempts: [
-    { at: '2026-10-03T10:00:00Z', serverName: 'maestro2', kind: 'job', jobId: 700, jobName: 'nginx_config_audit', outcome: 'failed', ok: false, message: 'AWX 403', teams: 'gonderildi' },
-    { at: '2026-10-03T09:00:00Z', serverName: 'maestro2', kind: 'job', jobId: 650, jobName: 'nginx_config_audit', outcome: 'stopped', ok: true, message: 'doğrulandı', teams: null },
+    {
+      at: '2026-10-03T10:00:00Z',
+      serverName: 'maestro2',
+      kind: 'job',
+      jobId: 700,
+      jobName: 'nginx_config_audit',
+      outcome: 'failed',
+      ok: false,
+      message: 'AWX 403',
+      teams: 'gonderildi',
+    },
+    {
+      at: '2026-10-03T09:00:00Z',
+      serverName: 'maestro2',
+      kind: 'job',
+      jobId: 650,
+      jobName: 'nginx_config_audit',
+      outcome: 'stopped',
+      ok: true,
+      message: 'doğrulandı',
+      teams: null,
+    },
   ],
   open: { awaitingVerify: 0, stillRunning: 1, failed: 1 },
-  watcher: { started: true, pollIntervalSeconds: 300, inFlight: false, lastTickStartedAt: null, lastTickFinishedAt: null, lastTickError: null },
+  watcher: {
+    started: true,
+    pollIntervalSeconds: 300,
+    inFlight: false,
+    lastTickStartedAt: null,
+    lastTickFinishedAt: null,
+    lastTickError: null,
+  },
   teamsConfigured: true,
 };
 const PERMS = {
   ok: true,
   permissions: [
-    { serverId: 1, templateId: 42, kind: 'job', name: 'nginx_config_audit', state: 'no_admin', message: 'EDEMEZ' },
-    { serverId: 1, templateId: 43, kind: 'job', name: 'olculemeyen', state: 'unknown', message: 'Ölçülemedi' },
+    {
+      serverId: 1,
+      templateId: 42,
+      kind: 'job',
+      name: 'nginx_config_audit',
+      state: 'no_admin',
+      message: 'EDEMEZ',
+    },
+    {
+      serverId: 1,
+      templateId: 43,
+      kind: 'job',
+      name: 'olculemeyen',
+      state: 'unknown',
+      message: 'Ölçülemedi',
+    },
   ],
 };
 
@@ -117,7 +180,18 @@ const TOKENS = {
   readError: null,
   measured: true,
   servers: [
-    { serverId: 1, serverName: 'maestro2', serverKnown: true, defined: false, owner: null, setBy: null, setAt: null, lastVerify: null, invalid: false, invalidInfo: null },
+    {
+      serverId: 1,
+      serverName: 'maestro2',
+      serverKnown: true,
+      defined: false,
+      owner: null,
+      setBy: null,
+      setAt: null,
+      lastVerify: null,
+      invalid: false,
+      invalidInfo: null,
+    },
   ],
 };
 const TANIMLI = {
@@ -129,7 +203,14 @@ const TANIMLI = {
   ownerIsSuperuser: false,
   setBy: 'admin_ayse',
   setAt: '2026-10-03T09:00:00Z',
-  lastVerify: { at: '2026-10-03T09:00:00Z', ok: true, httpStatus: 200, result: 'gecerli', message: null, by: 'admin_ayse' },
+  lastVerify: {
+    at: '2026-10-03T09:00:00Z',
+    ok: true,
+    httpStatus: 200,
+    result: 'gecerli',
+    message: null,
+    by: 'admin_ayse',
+  },
   invalid: false,
   invalidInfo: null,
 };
@@ -138,7 +219,14 @@ const SIR = 'KISISEL-onur-9e8d7c6b5a41';
 let calls: { url: string; method: string; body?: string }[] = [];
 function mockFetch(over: Partial<Record<string, Route>> = {}) {
   const routes: Record<string, Route> = {
-    'GET /api/ansible/longjob-cancel': () => json({ ok: true, config: CFG, configError: null, usingLastGoodConfig: false, teamsConfigured: true }),
+    'GET /api/ansible/longjob-cancel': () =>
+      json({
+        ok: true,
+        config: CFG,
+        configError: null,
+        usingLastGoodConfig: false,
+        teamsConfigured: true,
+      }),
     'GET /api/ansible/longjob-cancel/templates': () => json(TEMPLATES),
     'GET /api/ansible/longjob-cancel/status': () => json(STATUS),
     'GET /api/ansible/longjob-cancel/permissions': () => json(PERMS),
@@ -148,7 +236,14 @@ function mockFetch(over: Partial<Record<string, Route>> = {}) {
         ok: true,
         result: tick({
           dryRun: true,
-          jobs: [job({ jobId: 900, decision: 'would_cancel', reason: 'gerçek taramada İPTAL EDİLİR', problem: false })],
+          jobs: [
+            job({
+              jobId: 900,
+              decision: 'would_cancel',
+              reason: 'gerçek taramada İPTAL EDİLİR',
+              problem: false,
+            }),
+          ],
         }),
       }),
     'PUT /api/ansible/longjob-cancel': (_u, init) =>
@@ -195,17 +290,25 @@ describe('LongJobCancelPanel', () => {
     expect(den.querySelector('tr[data-problem="1"]')?.className).toMatch(/bg-red-50/);
     expect(den.querySelector('tr[data-problem="0"]')?.className).not.toMatch(/bg-red/);
     // özet bandı
-    expect(screen.getByText(/1 iş İPTAL EDİLEMEDİ ve AWX'te çalışmaya devam ediyor/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 iş İPTAL EDİLEMEDİ ve AWX'te çalışmaya devam ediyor/),
+    ).toBeInTheDocument();
   });
 
   it('P2 yetki rozeti: no_admin → "Admin YOK", unknown → "yetki ölçülemedi" (YOK değil)', async () => {
     render(<LongJobCancelPanel summary={[]} />);
     const c42 = await screen.findByTestId('ljc-chip-1:job:42');
-    await waitFor(() => expect(within(c42).getByText(/Admin YOK/)).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(within(c42).getByText(/Admin YOK/)).toBeInTheDocument(), {
+      timeout: 3000,
+    });
     const c43 = screen.getByTestId('ljc-chip-1:job:43');
     expect(within(c43).getByText('yetki ölçülemedi')).toBeInTheDocument();
     expect(within(c43).queryByText(/Admin YOK/)).toBeNull();
-    expect(calls.some((c) => c.url.includes('/permissions?t=') && decodeURIComponent(c.url).includes('1:42:job'))).toBe(true);
+    expect(
+      calls.some(
+        (c) => c.url.includes('/permissions?t=') && decodeURIComponent(c.url).includes('1:42:job'),
+      ),
+    ).toBe(true);
   });
 
   it('P3 "Şimdi kontrol et (kuru)" POST /dry-run çağırır ve sonucu ayrı başlıkla gösterir', async () => {
@@ -215,7 +318,9 @@ describe('LongJobCancelPanel', () => {
     const kuru = await screen.findByTestId('ljc-dry');
     expect(within(kuru).getByText(/hiçbir iş iptal EDİLMEDİ/)).toBeInTheDocument();
     expect(within(kuru).getByText('iptal edilirdi (kuru)')).toBeInTheDocument();
-    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual(['/api/ansible/longjob-cancel/dry-run']);
+    expect(calls.filter((c) => c.method === 'POST').map((c) => c.url)).toEqual([
+      '/api/ansible/longjob-cancel/dry-run',
+    ]);
   });
 
   it('P4 workflow template seçilir; PUT kind:workflow + cancelQueued taşır; yetki uyarısı gösterilir ama kayıt yapılır', async () => {
@@ -223,7 +328,9 @@ describe('LongJobCancelPanel', () => {
     const wf = await screen.findByLabelText('workflow gece_bakim_wf');
     fireEvent.click(wf);
     fireEvent.click(screen.getByLabelText(/Kuyrukta takılı işler/));
-    await waitFor(() => expect((screen.getByTestId('ljc-save') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect((screen.getByTestId('ljc-save') as HTMLButtonElement).disabled).toBe(false),
+    );
     fireEvent.click(screen.getByTestId('ljc-save'));
     const m = await screen.findByTestId('ljc-msg');
     expect(m.textContent).toMatch(/Kaydedildi/);
@@ -231,21 +338,36 @@ describe('LongJobCancelPanel', () => {
     const put = calls.find((c) => c.method === 'PUT');
     const body = JSON.parse(put?.body || '{}');
     expect(body.cancelQueued).toBe(true);
-    expect(body.templates).toContainEqual({ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' });
+    expect(body.templates).toContainEqual({
+      serverId: 1,
+      templateId: 55,
+      kind: 'workflow',
+      name: 'gece_bakim_wf',
+    });
   });
 
   it('P5 yapılandırma okunamadı bandı; izleyici başlatılmamışsa kırmızı bant; config alınamazsa Kaydet kapalı', async () => {
     mockFetch({
       'GET /api/ansible/longjob-cancel': () =>
-        json({ ok: true, config: CFG, configError: { at: 'x', message: 'Failed to connect' }, usingLastGoodConfig: true }),
-      'GET /api/ansible/longjob-cancel/status': () => json({ ...STATUS, watcher: { ...STATUS.watcher, started: false } }),
+        json({
+          ok: true,
+          config: CFG,
+          configError: { at: 'x', message: 'Failed to connect' },
+          usingLastGoodConfig: true,
+        }),
+      'GET /api/ansible/longjob-cancel/status': () =>
+        json({ ...STATUS, watcher: { ...STATUS.watcher, started: false } }),
     });
     const { unmount } = render(<LongJobCancelPanel summary={[]} />);
-    expect(await screen.findByText(/Yapılandırma okunamadı \(DB\): Failed to connect/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Yapılandırma okunamadı \(DB\): Failed to connect/),
+    ).toBeInTheDocument();
     expect(await screen.findByText(/İzleyici BAŞLATILMAMIŞ/)).toBeInTheDocument();
     unmount();
 
-    mockFetch({ 'GET /api/ansible/longjob-cancel': () => json({ ok: false, message: 'DB yok' }, 503) });
+    mockFetch({
+      'GET /api/ansible/longjob-cancel': () => json({ ok: false, message: 'DB yok' }, 503),
+    });
     render(<LongJobCancelPanel summary={[]} />);
     expect(await screen.findByText(/Yapılandırma alınamadı: DB yok/)).toBeInTheDocument();
     expect((screen.getByTestId('ljc-save') as HTMLButtonElement).disabled).toBe(true);
@@ -268,14 +390,32 @@ describe('LongJobCancelPanel', () => {
         json({
           ok: true,
           permissions: [
-            { serverId: 1, templateId: 42, kind: 'job', name: 'nginx_config_audit', state: 'admin', tokenScope: 'unknown', message: 'x' },
-            { serverId: 1, templateId: 43, kind: 'job', name: 'olculemeyen', state: 'admin', tokenScope: 'write', message: 'y' },
+            {
+              serverId: 1,
+              templateId: 42,
+              kind: 'job',
+              name: 'nginx_config_audit',
+              state: 'admin',
+              tokenScope: 'unknown',
+              message: 'x',
+            },
+            {
+              serverId: 1,
+              templateId: 43,
+              kind: 'job',
+              name: 'olculemeyen',
+              state: 'admin',
+              tokenScope: 'write',
+              message: 'y',
+            },
           ],
         }),
     });
     render(<LongJobCancelPanel summary={[]} />);
     const c42 = await screen.findByTestId('ljc-chip-1:job:42');
-    await waitFor(() => expect(within(c42).getByText('Admin ✓')).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(within(c42).getByText('Admin ✓')).toBeInTheDocument(), {
+      timeout: 3000,
+    });
     expect(within(c42).getByText('token kapsamı ölçülemedi')).toBeInTheDocument();
     const c43 = screen.getByTestId('ljc-chip-1:job:43');
     expect(within(c43).getByText('Admin ✓')).toBeInTheDocument();
@@ -289,12 +429,39 @@ describe('LongJobCancelPanel', () => {
           ...STATUS,
           lastTick: tick({ verify: { asked: 1, measured: 0, unmeasured: 1 } }),
           scanHealth: [
-            { serverId: 1, serverName: 'maestro2', kind: 'workflow', fails: 3, since: 'x', alerted: true, lastError: 'AWX HTTP 401: Invalid token.', threshold: 3 },
+            {
+              serverId: 1,
+              serverName: 'maestro2',
+              kind: 'workflow',
+              fails: 3,
+              since: 'x',
+              alerted: true,
+              lastError: 'AWX HTTP 401: Invalid token.',
+              threshold: 3,
+            },
           ],
           open: { ...STATUS.open, scanFailing: 1 },
           attempts: [
-            { at: '2026-10-03T10:05:00Z', serverName: 'maestro2', kind: 'workflow', outcome: 'scan_failed', ok: false, message: 'OTOMATİK İPTAL ÇALIŞMIYOR', teams: 'gonderildi' },
-            { at: '2026-10-03T10:00:00Z', serverName: 'maestro2', kind: 'job', jobId: 650, jobName: 'nginx_config_audit', outcome: 'finished', ok: true, message: 'kendiliğinden bitti', teams: null },
+            {
+              at: '2026-10-03T10:05:00Z',
+              serverName: 'maestro2',
+              kind: 'workflow',
+              outcome: 'scan_failed',
+              ok: false,
+              message: 'OTOMATİK İPTAL ÇALIŞMIYOR',
+              teams: 'gonderildi',
+            },
+            {
+              at: '2026-10-03T10:00:00Z',
+              serverName: 'maestro2',
+              kind: 'job',
+              jobId: 650,
+              jobName: 'nginx_config_audit',
+              outcome: 'finished',
+              ok: true,
+              message: 'kendiliğinden bitti',
+              teams: null,
+            },
           ],
         }),
     });
@@ -314,7 +481,8 @@ describe('LongJobCancelPanel', () => {
   it("P9 iptal token'ı yalnız yazılır: PUT {token}; kayıttan sonra kutu boşalır ve değer ekranda görünmez", async () => {
     let tanimli = false;
     mockFetch({
-      'GET /api/ansible/longjob-cancel/tokens': () => json({ ...TOKENS, servers: [tanimli ? TANIMLI : TOKENS.servers[0]] }),
+      'GET /api/ansible/longjob-cancel/tokens': () =>
+        json({ ...TOKENS, servers: [tanimli ? TANIMLI : TOKENS.servers[0]] }),
       'PUT /api/ansible/longjob-cancel/tokens/1': () => {
         tanimli = true;
         return json({ ok: true, owner: 'onurdemir3', ownerIsSuperuser: false, token: TANIMLI });
@@ -333,12 +501,20 @@ describe('LongJobCancelPanel', () => {
     fireEvent.click(within(row).getByText('Kaydet'));
     const m = await screen.findByTestId('ljc-token-msg-1');
     expect(m.textContent).toMatch(/token sahibi onurdemir3/);
-    const put = calls.find((c) => c.method === 'PUT' && c.url === '/api/ansible/longjob-cancel/tokens/1');
+    const put = calls.find(
+      (c) => c.method === 'PUT' && c.url === '/api/ansible/longjob-cancel/tokens/1',
+    );
     expect(JSON.parse(put?.body || '{}')).toEqual({ token: SIR });
     expect(put?.url).not.toContain(SIR);
-    await waitFor(() => expect(within(screen.getByTestId('ljc-token-row-1')).getByText('tanımlı')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId('ljc-token-row-1')).getByText('tanımlı'),
+      ).toBeInTheDocument(),
+    );
     const row2 = screen.getByTestId('ljc-token-row-1');
-    expect((within(row2).getByLabelText("maestro2 iptal token'ı") as HTMLInputElement).value).toBe('');
+    expect((within(row2).getByLabelText("maestro2 iptal token'ı") as HTMLInputElement).value).toBe(
+      '',
+    );
     expect(row2.textContent).toMatch(/Token sahibi: onurdemir3/);
     expect(row2.textContent).toMatch(/giren: admin_ayse/);
     expect(row2.textContent).toMatch(/son doğrulama: geçerli/);
@@ -352,7 +528,13 @@ describe('LongJobCancelPanel', () => {
       'POST /api/ansible/longjob-cancel/tokens/1/verify': () =>
         json({
           ok: true,
-          result: { ok: false, measured: true, owner: 'onurdemir3', httpStatus: 401, message: "İPTAL TOKEN'I GEÇERSİZ (AWX 401)" },
+          result: {
+            ok: false,
+            measured: true,
+            owner: 'onurdemir3',
+            httpStatus: 401,
+            message: "İPTAL TOKEN'I GEÇERSİZ (AWX 401)",
+          },
           token: TANIMLI,
         }),
     });
@@ -360,31 +542,59 @@ describe('LongJobCancelPanel', () => {
     const row = await screen.findByTestId('ljc-token-row-1');
     fireEvent.click(within(row).getByText('Sil'));
     // Portal ici onay penceresi (2026-11-08; eskiden window.confirm): Iptal -> silme yok.
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }),
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
     fireEvent.click(within(row).getByText('Sil'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sil' }));
     await waitFor(() =>
-      expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/ansible/longjob-cancel/tokens/1')).toBe(true),
+      expect(
+        calls.some(
+          (c) => c.method === 'DELETE' && c.url === '/api/ansible/longjob-cancel/tokens/1',
+        ),
+      ).toBe(true),
     );
-    await waitFor(() => expect((within(screen.getByTestId('ljc-token-row-1')).getByText('Doğrula') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect(
+        (within(screen.getByTestId('ljc-token-row-1')).getByText('Doğrula') as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
     fireEvent.click(within(screen.getByTestId('ljc-token-row-1')).getByText('Doğrula'));
-    await waitFor(() => expect(screen.getByTestId('ljc-token-msg-1').textContent).toMatch(/İPTAL TOKEN'I GEÇERSİZ/));
-    expect(calls.some((c) => c.method === 'POST' && c.url === '/api/ansible/longjob-cancel/tokens/1/verify')).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByTestId('ljc-token-msg-1').textContent).toMatch(/İPTAL TOKEN'I GEÇERSİZ/),
+    );
+    expect(
+      calls.some(
+        (c) => c.method === 'POST' && c.url === '/api/ansible/longjob-cancel/tokens/1/verify',
+      ),
+    ).toBe(true);
   });
 
   it('P11 şifreleme anahtarı yoksa kırmızı not ve Kaydet kapalı', async () => {
-    mockFetch({ 'GET /api/ansible/longjob-cancel/tokens': () => json({ ...TOKENS, encryptionKeyConfigured: false }) });
+    mockFetch({
+      'GET /api/ansible/longjob-cancel/tokens': () =>
+        json({ ...TOKENS, encryptionKeyConfigured: false }),
+    });
     render(<LongJobCancelPanel summary={[]} />);
-    expect((await screen.findByTestId('ljc-token-nokey')).textContent).toMatch(/ENV_OVERRIDES_ENCRYPTION_KEY tanımlı değil/);
+    expect((await screen.findByTestId('ljc-token-nokey')).textContent).toMatch(
+      /ENV_OVERRIDES_ENCRYPTION_KEY tanımlı değil/,
+    );
     const row = screen.getByTestId('ljc-token-row-1');
-    expect((within(row).getByLabelText("maestro2 iptal token'ı") as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (within(row).getByLabelText("maestro2 iptal token'ı") as HTMLInputElement).disabled,
+    ).toBe(true);
     expect((within(row).getByText('Kaydet') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("P12 Durum: İPTAL TOKEN'I GEÇERSİZ bandı ve token satırında rozet", async () => {
-    const gecersiz = { ...TANIMLI, invalid: true, invalidInfo: { at: 'x', httpStatus: 401, message: 'AWX 401' } };
+    const gecersiz = {
+      ...TANIMLI,
+      invalid: true,
+      invalidInfo: { at: 'x', httpStatus: 401, message: 'AWX 401' },
+    };
     mockFetch({
       'GET /api/ansible/longjob-cancel/tokens': () => json({ ...TOKENS, servers: [gecersiz] }),
       'GET /api/ansible/longjob-cancel/status': () =>
@@ -421,20 +631,34 @@ describe('LongJobCancelPanel', () => {
               tokenOwner: 'onurdemir3',
               message: 'x',
             },
-            { serverId: 1, templateId: 43, kind: 'job', name: 'olculemeyen', state: 'no_admin', via: 'cancel_token', tokenOwner: 'onurdemir3', message: 'y' },
+            {
+              serverId: 1,
+              templateId: 43,
+              kind: 'job',
+              name: 'olculemeyen',
+              state: 'no_admin',
+              via: 'cancel_token',
+              tokenOwner: 'onurdemir3',
+              message: 'y',
+            },
           ],
         });
       },
-      'PUT /api/ansible/longjob-cancel/tokens/1': () => json({ ok: true, owner: 'onurdemir3', token: TANIMLI }),
+      'PUT /api/ansible/longjob-cancel/tokens/1': () =>
+        json({ ok: true, owner: 'onurdemir3', token: TANIMLI }),
     });
     render(<LongJobCancelPanel summary={[]} />);
     const c42 = await screen.findByTestId('ljc-chip-1:job:42');
-    await waitFor(() => expect(within(c42).getByText("onurdemir3 token'ı")).toBeInTheDocument(), { timeout: 3000 });
+    await waitFor(() => expect(within(c42).getByText("onurdemir3 token'ı")).toBeInTheDocument(), {
+      timeout: 3000,
+    });
     const c43 = screen.getByTestId('ljc-chip-1:job:43');
     expect(c43.textContent).toContain('Admin YOK (onurdemir3)');
     const once = n;
     const row = await screen.findByTestId('ljc-token-row-1');
-    fireEvent.change(within(row).getByLabelText("maestro2 iptal token'ı"), { target: { value: SIR } });
+    fireEvent.change(within(row).getByLabelText("maestro2 iptal token'ı"), {
+      target: { value: SIR },
+    });
     fireEvent.click(within(row).getByText('Kaydet'));
     await waitFor(() => expect(n).toBeGreaterThan(once), { timeout: 3000 });
   });
@@ -449,10 +673,14 @@ describe('LongJobCancelPanel', () => {
       addressChanged: true,
       addressMessage: msg,
     };
-    mockFetch({ 'GET /api/ansible/longjob-cancel/tokens': () => json({ ...TOKENS, servers: [degisti] }) });
+    mockFetch({
+      'GET /api/ansible/longjob-cancel/tokens': () => json({ ...TOKENS, servers: [degisti] }),
+    });
     render(<LongJobCancelPanel summary={[]} />);
     const row = await screen.findByTestId('ljc-token-row-1');
-    expect(within(row).getByTestId('ljc-token-invalid-1').textContent).toBe('ADRES DEĞİŞTİ — token gönderilmiyor');
+    expect(within(row).getByTestId('ljc-token-invalid-1').textContent).toBe(
+      'ADRES DEĞİŞTİ — token gönderilmiyor',
+    );
     expect(row.textContent).toContain('bağlı AWX adresi: https://awx-eski.example/api/v2');
     expect(within(row).getByTestId('ljc-token-address-1').textContent).toBe(msg);
     expect(row.textContent).not.toMatch(/İPTAL TOKEN'I GEÇERSİZ/);

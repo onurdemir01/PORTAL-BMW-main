@@ -125,8 +125,13 @@ const DEFAULTS = Object.freeze({
 const KEY_FIELDS = Object.freeze({
   legacy: ['applicationKey', 'operationKey'],
   openshift: [
-    'ocClusterKey', 'ocInputKey',
-    'terminalHostKey', 'terminalHostsKey', 'namespaceKey', 'appNameKey', 'clustersKey',
+    'ocClusterKey',
+    'ocInputKey',
+    'terminalHostKey',
+    'terminalHostsKey',
+    'namespaceKey',
+    'appNameKey',
+    'clustersKey',
   ],
 });
 
@@ -204,11 +209,13 @@ function normalizeSmart(raw, onceki) {
 /** Blob'un HAM halini okur (normalize etmeden). Kismi kayit icin gerekli. */
 async function readRawBlob() {
   try {
-    const { rows } = await db().query(
-      `SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]
-    );
+    const { rows } = await db().query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      BLOB_NAME,
+    ]);
     if (rows.length) return JSON.parse(rows[0].data);
-  } catch { /* okunamadiysa bos */ }
+  } catch {
+    /* okunamadiysa bos */
+  }
   return null;
 }
 
@@ -216,12 +223,13 @@ async function writeBlob(obj) {
   const json = JSON.stringify(obj);
   const upd = await db().query(
     `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
-    [json, BLOB_NAME]
+    [json, BLOB_NAME],
   );
   if (!upd.rowCount) {
-    await db().query(
-      `INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, json]
-    );
+    await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+      BLOB_NAME,
+      json,
+    ]);
   }
 }
 
@@ -229,11 +237,13 @@ async function getConfig() {
   if (_cache) return _cache;
   let parsed = null;
   try {
-    const { rows } = await db().query(
-      `SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]
-    );
+    const { rows } = await db().query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      BLOB_NAME,
+    ]);
     if (rows.length) parsed = JSON.parse(rows[0].data);
-  } catch { /* okunamadiysa varsayilana dus */ }
+  } catch {
+    /* okunamadiysa varsayilana dus */
+  }
 
   _cache = {
     legacy: normalizePlatform('legacy', parsed?.legacy, DEFAULTS.legacy),
@@ -256,7 +266,7 @@ async function saveConfig(input) {
   };
   await writeBlob(next);
   invalidate();
-  return (await getConfig());
+  return await getConfig();
 }
 
 /**
@@ -306,7 +316,9 @@ function smartPublic(smart) {
   return out;
 }
 
-function invalidate() { _cache = null; }
+function invalidate() {
+  _cache = null;
+}
 
 // "key: value" satirlarini nesneye cevirir. Bilincli olarak BASIT: tam YAML parser
 // eklemek (yeni bagimlilik + genis saldiri yuzeyi) bu ihtiyac icin gereksiz.
@@ -318,18 +330,36 @@ function parseExtraVarLines(text) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const idx = trimmed.indexOf(':');
-    if (idx <= 0) { rejected.push(trimmed); continue; }
+    if (idx <= 0) {
+      rejected.push(trimmed);
+      continue;
+    }
     const key = trimmed.slice(0, idx).trim();
     const value = trimmed.slice(idx + 1).trim();
-    if (!SAFE_KEY.test(key)) { rejected.push(trimmed); continue; }
+    if (!SAFE_KEY.test(key)) {
+      rejected.push(trimmed);
+      continue;
+    }
     out[key] = value;
   }
   return { vars: out, rejected };
 }
 
 module.exports = {
-  getConfig, saveConfig, invalidate, parseExtraVarLines,
-  saveSmartConfig, smartPublic, normalizeSmart,
-  DEFAULTS, KEY_FIELDS, CLUSTER_LIST_STYLES, BLOB_NAME,
-  SMART_PLATFORMS, SMART_DEFAULTS, SMART_KEY_RE, SMART_TOKEN_RE, SMART_METADATA_MAX,
+  getConfig,
+  saveConfig,
+  invalidate,
+  parseExtraVarLines,
+  saveSmartConfig,
+  smartPublic,
+  normalizeSmart,
+  DEFAULTS,
+  KEY_FIELDS,
+  CLUSTER_LIST_STYLES,
+  BLOB_NAME,
+  SMART_PLATFORMS,
+  SMART_DEFAULTS,
+  SMART_KEY_RE,
+  SMART_TOKEN_RE,
+  SMART_METADATA_MAX,
 };

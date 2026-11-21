@@ -71,7 +71,8 @@ function decryptSecretValue(stored) {
   // etiketi (4 bayta kadar) kabul eder; sahte bir degerin dogrulamayi tahminle gecme olasiligi buyur.
   // Sifreleme her zaman 16 baytlik etiket yazar; baska uzunluk bozuk / kurcalanmis kayittir.
   const etiket = Buffer.from(payload.tag, 'base64');
-  if (etiket.length !== GCM_ETIKET) throw new Error('Sifreli deger bozuk: dogrulama etiketi uzunlugu gecersiz');
+  if (etiket.length !== GCM_ETIKET)
+    throw new Error('Sifreli deger bozuk: dogrulama etiketi uzunlugu gecersiz');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'), {
     authTagLength: GCM_ETIKET,
   });

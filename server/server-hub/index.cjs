@@ -272,7 +272,7 @@ async function loadLatest() {
         ? [`t.[id] AS [${CIFT.ID_KOLON}]`]
         : [];
     return query(
-      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek, ...idEk].join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => 't.[' + c + ']'), ...ek, ...idEk].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -418,7 +418,7 @@ async function loadLatest() {
  */
 async function loadJvmAgir(host, opts) {
   const { query, sql } = require('../inventory/mssql.cjs');
-  let kol = opts && opts.kol ? await opts.kol : null;
+  let kol = opts?.kol ? await opts.kol : null;
   if (!kol) kol = await shKolonlari(query);
   if (!kol.ok) return new Map();
   const var_ = kol.cols.get('dbo.server_hub_jvms') || new Set();
@@ -471,7 +471,7 @@ function semaKisaOnbellek() {
   _semaBellek = kayit;
   kayit.p.then(
     (k) => {
-      if (!k || !k.ok) {
+      if (!k?.ok) {
         if (_semaBellek === kayit) _semaBellek = null;
       }
     },
@@ -486,7 +486,7 @@ function semaKisaOnbellek() {
 // yanitina) yazilir; sayi DEGISTIGINDE bir kez loglanir (her 60 sn'lik tazelemede ayni satir tekrar etmez).
 let _sonCiftLog = '';
 function ciftSatirYayinla(value, data) {
-  const c = (data && data.ciftSatir) || { toplam: 0, tablolar: {} };
+  const c = data?.ciftSatir || { toplam: 0, tablolar: {} };
   value.ciftSatir = c;
   if (value.summary) value.summary.ciftSatir = c;
   const imza = JSON.stringify(c);
@@ -502,7 +502,7 @@ function ciftSatirYayinla(value, data) {
 
 /** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
 function hesapla() {
-  if (_ucus && _ucus.nesil === _nesil) return _ucus.p;
+  if (_ucus?.nesil === _nesil) return _ucus.p;
   const nesil = _nesil;
   const p = (async () => {
     const t0 = Date.now();
@@ -552,10 +552,10 @@ function hesapla() {
   _ucus = { nesil, p };
   p.then(
     () => {
-      if (_ucus && _ucus.p === p) _ucus = null;
+      if (_ucus?.p === p) _ucus = null;
     },
     () => {
-      if (_ucus && _ucus.p === p) _ucus = null;
+      if (_ucus?.p === p) _ucus = null;
     },
   );
   return p;
@@ -573,7 +573,7 @@ async function getAssessment(fresh, olcum) {
     return _cache.value;
   }
   if (!fresh && _cache.value && yas < BAYAT_MS) {
-    hesapla().catch((e) => console.warn('[ServerHub] arka plan tazelemesi dustu:', e && e.message));
+    hesapla().catch((e) => console.warn('[ServerHub] arka plan tazelemesi dustu:', e?.message));
     if (olcum) Object.assign(olcum, { kaynak: 'bayat' });
     return _cache.value;
   }
@@ -592,8 +592,8 @@ function sureBasligi(res, o) {
 
 /** /overview rollback alani (EK-1). Sema bilinmiyorsa v3 sayimi yapilamaz: geri alma YOK. */
 function rollbackBilgisi(a) {
-  const sv = (a.summary && a.summary.scanVersion) || null;
-  if (a.schemaUnknown || (sv && sv.schemaUnknown))
+  const sv = a.summary?.scanVersion || null;
+  if (a.schemaUnknown || sv?.schemaUnknown)
     return {
       allowed: false,
       v3Hosts: null,
@@ -671,7 +671,7 @@ function hostDetail(h, agir) {
     findings: h.findings.map((f) => ({
       ...f,
       text: maskText(f.text),
-      dogrulama: (KODLAR.get(f.code) || {}).dogrulama || null,
+      dogrulama: KODLAR.get(f.code)?.dogrulama || null,
     })),
     init: h.init,
     jboss: h.jboss.map((b) => ({
@@ -780,7 +780,7 @@ async function launch(req, keyName, templateName, extraVars, detail, hazir) {
       anketBellegi: true,
     });
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
     throw e;
   }
@@ -946,9 +946,8 @@ async function retirementAnalizi(hedefler) {
       ana: k
         ? (
             k.maddeler.find((m) => m.etki === 'ENGELLER') ||
-            k.maddeler.find((m) => m.etki === 'EKSIK') ||
-            {}
-          ).kod || null
+            k.maddeler.find((m) => m.etki === 'EKSIK')
+          )?.kod || null
         : null,
     };
   });
@@ -1341,7 +1340,8 @@ function initServerHub(app) {
     if (plan === confirmed)
       return res.status(400).json({
         ok: false,
-        message: 'Önce plan (plan: true) ya da onaylı uygulama (confirmed: true) gerekli — ikisi birden olmaz.',
+        message:
+          'Önce plan (plan: true) ya da onaylı uygulama (confirmed: true) gerekli — ikisi birden olmaz.',
       });
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
@@ -1385,19 +1385,23 @@ function initServerHub(app) {
         if (tj && confirmed) {
           const kilit = await surenIsKilidi(host, gen, jvm);
           if (kilit)
-            return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+            return res
+              .status(409)
+              .json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
         }
         const k = xmlKapatKapisi(tj ? _autoStart.uygulaJvm(h, tj) : tj, { host, jvm, gen });
         if (k) redler.push(k.message);
       }
-      if (redler.length)
+      if (redler.length) {
+        const fazlasi = redler.length > 5 ? ` · +${redler.length - 5}` : '';
         return res.status(400).json({
           ok: false,
           message:
             redler.length === 1
               ? redler[0]
-              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${redler.length > 5 ? ` · +${redler.length - 5}` : ''}`,
+              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${fazlasi}`,
         });
+      }
       const birakanlar = confirmed ? jvms.map((jvm) => _autoStart.rezervasyon(host, gen, jvm)) : [];
       let r;
       try {
@@ -1631,7 +1635,7 @@ function initServerHub(app) {
       const { karsilastir } = require('./karsilastirma.cjs');
       res.json({
         ok: true,
-        latestScan: h.a && h.a.latestScan ? h.a.latestScan : null,
+        latestScan: h.a?.latestScan ? h.a.latestScan : null,
         ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }),
       });
     } catch (e) {

@@ -1,14 +1,24 @@
 // src/components/app_hub/ortak.tsx — Application Hub ortak parçaları: bölüm çerçevesi, JVM
 // parametre görüntüleyici, kapasite hücresi, kaynak notu, durum hapı.
 import React, { useState } from 'react';
-import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import {
+  ClipboardDocumentIcon,
+  CheckIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+} from '@heroicons/react/24/outline';
 import type { JbossRetirement, Kapasite, KaynakDurumu } from '@/api/appHubApi';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 
-export const TIP_AD: Record<string, string> = { jboss: 'JBoss', was: 'WebSphere', ocp: 'OpenShift' };
+export const TIP_AD: Record<string, string> = {
+  jboss: 'JBoss',
+  was: 'WebSphere',
+  ocp: 'OpenShift',
+};
 
 export function TipHap({ tip }: { tip: string }) {
-  const renk = tip === 'ocp' ? 'var(--status-danger)' : tip === 'was' ? 'var(--status-info)' : 'var(--ah-hue)';
+  const renk =
+    tip === 'ocp' ? 'var(--status-danger)' : tip === 'was' ? 'var(--status-info)' : 'var(--ah-hue)';
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
@@ -19,7 +29,15 @@ export function TipHap({ tip }: { tip: string }) {
   );
 }
 
-export function Hap({ ton, children, title }: { ton: 'iyi' | 'uyari' | 'kritik' | 'notr' | 'bilgi'; children: React.ReactNode; title?: string }) {
+export function Hap({
+  ton,
+  children,
+  title,
+}: {
+  ton: 'iyi' | 'uyari' | 'kritik' | 'notr' | 'bilgi';
+  children: React.ReactNode;
+  title?: string;
+}) {
   const t = {
     iyi: { fg: 'var(--status-success)', bg: 'var(--status-success-bg)' },
     uyari: { fg: 'var(--status-warning-text)', bg: 'var(--status-warning-bg)' },
@@ -28,13 +46,20 @@ export function Hap({ ton, children, title }: { ton: 'iyi' | 'uyari' | 'kritik' 
     bilgi: { fg: 'var(--status-info)', bg: 'var(--status-info-bg)' },
   }[ton];
   return (
-    <span title={title} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ color: t.fg, background: t.bg, border: `1px solid ${t.fg}` }}>
+    <span
+      title={title}
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap"
+      style={{ color: t.fg, background: t.bg, border: `1px solid ${t.fg}` }}
+    >
       {children}
     </span>
   );
 }
 
-type RetirementliJvm = { calisiyor: boolean | null | undefined; retirement?: JbossRetirement | null };
+type RetirementliJvm = {
+  calisiyor: boolean | null | undefined;
+  retirement?: JbossRetirement | null;
+};
 
 /**
  * Retirement'ın JVM'e etkisi — sunucu satırı, ortam özeti ve JVM hapı için TEK kural (2026-11-16).
@@ -84,7 +109,10 @@ export function CalismaHap({
   const rd = retireDurumu({ calisiyor, retirement });
   if (retirement && rd === 'retire')
     return (
-      <Hap ton="notr" title={`${retirementMetni(retirement)}: JVM Retirement ile durduruldu (beklenen kapanma)`}>
+      <Hap
+        ton="notr"
+        title={`${retirementMetni(retirement)}: JVM Retirement ile durduruldu (beklenen kapanma)`}
+      >
         Retire edildi
       </Hap>
     );
@@ -94,7 +122,10 @@ export function CalismaHap({
     if (calisiyor === true) durumAd = 'Çalışıyor';
     else if (calisiyor === false) durumAd = 'Kapalı';
     return (
-      <Hap ton="kritik" title={`${retirementMetni(retirement)} ama STOP sonrası Server Hub taramasında: ${neden} (Retirement kaydıyla çelişki)`}>
+      <Hap
+        ton="kritik"
+        title={`${retirementMetni(retirement)} ama STOP sonrası Server Hub taramasında: ${neden} (Retirement kaydıyla çelişki)`}
+      >
         {durumAd} · Retirement ile çelişki
       </Hap>
     );
@@ -111,20 +142,53 @@ export function CalismaHap({
   if (calisiyor === true) return <Hap ton="iyi">Çalışıyor</Hap>;
   if (calisiyor === false)
     return (
-      <Hap ton="kritik" title={retirementOkunamadi ? 'Retirement kayıtları okunamadı: bu JVM Retirement ile durdurulmuş olabilir (bilinmiyor)' : undefined}>
+      <Hap
+        ton="kritik"
+        title={
+          retirementOkunamadi
+            ? 'Retirement kayıtları okunamadı: bu JVM Retirement ile durdurulmuş olabilir (bilinmiyor)'
+            : undefined
+        }
+      >
         Kapalı
       </Hap>
     );
-  return <Hap ton="notr" title="Server Hub taramasında çalışma durumu ölçülemedi">Ölçülemedi</Hap>;
+  return (
+    <Hap ton="notr" title="Server Hub taramasında çalışma durumu ölçülemedi">
+      Ölçülemedi
+    </Hap>
+  );
 }
 
-export function Bolum({ baslik, aciklama, sag, children }: { baslik: string; aciklama?: React.ReactNode; sag?: React.ReactNode; children: React.ReactNode }) {
+export function Bolum({
+  baslik,
+  aciklama,
+  sag,
+  children,
+}: {
+  baslik: string;
+  aciklama?: React.ReactNode;
+  sag?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="card p-0 overflow-hidden">
-      <header className="flex flex-wrap items-start justify-between gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+      <header
+        className="flex flex-wrap items-start justify-between gap-2 px-4 py-3"
+        style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      >
         <div>
-          <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>{baslik}</h2>
-          {aciklama && <p className="mt-0.5 text-[12px]" style={{ color: 'var(--text-muted)' }}>{aciklama}</p>}
+          <h2
+            className="text-[15px] font-semibold"
+            style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+          >
+            {baslik}
+          </h2>
+          {aciklama && (
+            <p className="mt-0.5 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              {aciklama}
+            </p>
+          )}
         </div>
         {sag && <div className="flex items-center gap-2">{sag}</div>}
       </header>
@@ -134,16 +198,31 @@ export function Bolum({ baslik, aciklama, sag, children }: { baslik: string; aci
 }
 
 /** Kaynak okunamadıysa bölümün başında açık uyarı: "yok" ile "okunamadı" ayrı. */
-export function KaynakUyarisi({ kaynaklar, adlar }: { kaynaklar: Record<string, KaynakDurumu>; adlar: Record<string, string> }) {
+export function KaynakUyarisi({
+  kaynaklar,
+  adlar,
+}: {
+  kaynaklar: Record<string, KaynakDurumu>;
+  adlar: Record<string, string>;
+}) {
   const hatali = Object.entries(kaynaklar || {}).filter(([, v]) => v && v.hata);
   if (!hatali.length) return null;
   return (
-    <div className="rounded px-3 py-2 text-[12px] space-y-1" role="alert" style={{ background: 'var(--status-warning-bg)', color: 'var(--status-warning-text)', border: '1px solid var(--status-warning)' }}>
+    <div
+      className="rounded px-3 py-2 text-[12px] space-y-1"
+      role="alert"
+      style={{
+        background: 'var(--status-warning-bg)',
+        color: 'var(--status-warning-text)',
+        border: '1px solid var(--status-warning)',
+      }}
+    >
       {hatali.map(([k, v]) => (
         <div key={k} className="flex items-start gap-1.5">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0" />
           <span>
-            <strong>{adlar[k] || k} okunamadı.</strong> Bu bölümdeki boşluk "yok" anlamına gelmez. <span className="opacity-80">({String(v.hata).slice(0, 200)})</span>
+            <strong>{adlar[k] || k} okunamadı.</strong> Bu bölümdeki boşluk "yok" anlamına gelmez.{' '}
+            <span className="opacity-80">({String(v.hata).slice(0, 200)})</span>
           </span>
         </div>
       ))}
@@ -156,7 +235,8 @@ export function KapasiteHucresi({ k }: { k: Kapasite | null }) {
   return (
     <div className="leading-tight tabular-nums text-[12px]">
       <div style={{ color: 'var(--text-primary)' }}>
-        {k.cpu != null ? `${k.cpu} vCPU` : '? vCPU'} · {k.bellekGb != null ? `${fmtNumber(k.bellekGb)} GB` : '? GB'}
+        {k.cpu != null ? `${k.cpu} vCPU` : '? vCPU'} ·{' '}
+        {k.bellekGb != null ? `${fmtNumber(k.bellekGb)} GB` : '? GB'}
       </div>
       {(k.os || k.osSurum) && (
         <div style={{ color: 'var(--text-muted)' }}>
@@ -192,7 +272,11 @@ function Kopyala({ metin }: { metin: string }) {
         }
       }}
     >
-      {tamam ? <CheckIcon className="w-3.5 h-3.5" /> : <ClipboardDocumentIcon className="w-3.5 h-3.5" />}
+      {tamam ? (
+        <CheckIcon className="w-3.5 h-3.5" />
+      ) : (
+        <ClipboardDocumentIcon className="w-3.5 h-3.5" />
+      )}
       {tamam ? 'Kopyalandı' : 'Kopyala'}
     </button>
   );
@@ -203,7 +287,17 @@ function Kopyala({ metin }: { metin: string }) {
  * diye kategorilendirme istemiyorum"). Yalnız parola / anahtar adlı -D değerleri "***" gelir.
  * `bosMetin`: argüman yoksa ne söyleneceği (ölçülmedi ile toplanmadı farklıdır).
  */
-export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string | null | undefined; bosMetin: React.ReactNode; baslik?: string; aciklama?: string }) {
+export function JvmArglari({
+  args,
+  bosMetin,
+  baslik,
+  aciklama,
+}: {
+  args: string | null | undefined;
+  bosMetin: React.ReactNode;
+  baslik?: string;
+  aciklama?: string;
+}) {
   const tok = argBol(args);
   if (!tok.length) {
     return (
@@ -216,7 +310,11 @@ export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {baslik && <span className="text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{baslik}</span>}
+        {baslik && (
+          <span className="text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+            {baslik}
+          </span>
+        )}
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {tok.length} parametre{gizli ? ` · ${gizli} parola değeri gizli` : ''}
         </span>
@@ -258,14 +356,41 @@ export function Sayi({ v, birim }: { v: number | null | undefined; birim?: strin
   );
 }
 
-export function OzetKutusu({ etiket, deger, alt }: { etiket: string; deger: React.ReactNode; alt?: React.ReactNode }) {
+export function OzetKutusu({
+  etiket,
+  deger,
+  alt,
+}: {
+  etiket: string;
+  deger: React.ReactNode;
+  alt?: React.ReactNode;
+}) {
   return (
     <div className="card px-4 py-3 min-w-0">
-      <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{etiket}</div>
-      <div className="mt-1 truncate" title={typeof deger === 'string' ? deger : undefined} style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+      <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+        {etiket}
+      </div>
+      <div
+        className="mt-1 truncate"
+        title={typeof deger === 'string' ? deger : undefined}
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '1.35rem',
+          fontWeight: 500,
+          color: 'var(--text-primary)',
+        }}
+      >
         {deger}
       </div>
-      {alt && <div className="mt-0.5 text-[11px] truncate" title={typeof alt === 'string' ? alt : undefined} style={{ color: 'var(--text-muted)' }}>{alt}</div>}
+      {alt && (
+        <div
+          className="mt-0.5 text-[11px] truncate"
+          title={typeof alt === 'string' ? alt : undefined}
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {alt}
+        </div>
+      )}
     </div>
   );
 }

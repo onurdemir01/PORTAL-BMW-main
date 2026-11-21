@@ -23,7 +23,9 @@ async function oku<T>(res: Response): Promise<T> {
 
 export const sessionsApi = {
   async list(): Promise<OturumSatiri[]> {
-    return (await oku<{ sessions: OturumSatiri[] }>(await fetch('/api/auth/sessions'))).sessions ?? [];
+    return (
+      (await oku<{ sessions: OturumSatiri[] }>(await fetch('/api/auth/sessions'))).sessions ?? []
+    );
   },
   async revoke(id: string): Promise<number> {
     const r = await oku<{ revoked: number }>(
@@ -32,21 +34,27 @@ export const sessionsApi = {
     return r.revoked;
   },
   async revokeOthers(): Promise<number> {
-    const r = await oku<{ revoked: number }>(await fetch('/api/auth/sessions?scope=others', { method: 'DELETE' }));
+    const r = await oku<{ revoked: number }>(
+      await fetch('/api/auth/sessions?scope=others', { method: 'DELETE' }),
+    );
     return r.revoked;
   },
   admin: {
     async list(username: string): Promise<OturumSatiri[]> {
       return (
-        await oku<{ sessions: OturumSatiri[] }>(
-          await fetch(`/api/auth/sessions/admin/${encodeURIComponent(username)}`),
-        )
-      ).sessions ?? [];
+        (
+          await oku<{ sessions: OturumSatiri[] }>(
+            await fetch(`/api/auth/sessions/admin/${encodeURIComponent(username)}`),
+          )
+        ).sessions ?? []
+      );
     },
     async revoke(username: string, id?: string): Promise<number> {
       const q = id ? `?id=${encodeURIComponent(id)}` : '';
       const r = await oku<{ revoked: number }>(
-        await fetch(`/api/auth/sessions/admin/${encodeURIComponent(username)}${q}`, { method: 'DELETE' }),
+        await fetch(`/api/auth/sessions/admin/${encodeURIComponent(username)}${q}`, {
+          method: 'DELETE',
+        }),
       );
       return r.revoked;
     },

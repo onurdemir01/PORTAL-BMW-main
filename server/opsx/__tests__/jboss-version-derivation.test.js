@@ -30,7 +30,7 @@ test('J7: cift kurulumlu host + yalniz JBoss 8 isaretlendi -> jboss8', () => {
   assert.equal(
     deriveJbossVersion(DUAL, ['GBCJAP01'], ['8']),
     'jboss8',
-    'kullanici JBoss 8 dedi; JBoss 7 kurulumuna islem gitmemeli'
+    'kullanici JBoss 8 dedi; JBoss 7 kurulumuna islem gitmemeli',
   );
   assert.equal(deriveJbossVersion(DUAL, ['GBCJAP01'], ['7']), 'jboss7');
 });
@@ -52,7 +52,7 @@ test('J10: secilen sunuculardaki kurulumlarda olmayan major reddedilir', () => {
   assert.throws(
     () => deriveJbossVersion(DUAL, ['GBCJAP02'], ['7']),
     (err) => err.status === 400 && /bulunmayan JBoss/i.test(err.message),
-    'istemcinin uydurdugu major 400 ile reddedilmeli'
+    'istemcinin uydurdugu major 400 ile reddedilmeli',
   );
 });
 
@@ -65,23 +65,29 @@ test('J11: hostMajors gonderilmezse envanterden turetilir (eski istemci)', () =>
   assert.equal(
     deriveJbossVersion(DUAL, ['GBCJAP01'], undefined),
     'all',
-    'cift kurulumlu host tek majore cokuyor — eski Map hatasi geri gelmis'
+    'cift kurulumlu host tek majore cokuyor — eski Map hatasi geri gelmis',
   );
 });
 
 test('J11b: JBoss olmayan uygulama (WAS) null doner — extra_var hic gonderilmez', () => {
-  const was = [{ host: 'WASHOST01', jbossVersion: 'NF' }, { host: 'WASHOST02', jbossVersion: '' }];
+  const was = [
+    { host: 'WASHOST01', jbossVersion: 'NF' },
+    { host: 'WASHOST02', jbossVersion: '' },
+  ];
   assert.equal(deriveJbossVersion(was, ['WASHOST01', 'WASHOST02'], undefined), null);
   // Bos dizi de "iddia yok" sayilmali (ekran hicbir major isaretlemediyse).
   assert.equal(deriveJbossVersion(was, ['WASHOST01'], []), null);
 });
 
 test('J11c: 7/8 disindaki majorler (9, 6) yok sayilir', () => {
-  const odd = [{ host: 'H1', jbossVersion: '9.0.1' }, { host: 'H1', jbossVersion: '8.0.7' }];
+  const odd = [
+    { host: 'H1', jbossVersion: '9.0.1' },
+    { host: 'H1', jbossVersion: '8.0.7' },
+  ];
   assert.equal(
     deriveJbossVersion(odd, ['H1'], undefined),
     'jboss8',
-    'taninmayan major turetmeye karismamali'
+    'taninmayan major turetmeye karismamali',
   );
 });
 
@@ -91,12 +97,26 @@ test('J11c: 7/8 disindaki majorler (9, 6) yok sayilir', () => {
 // /usr/jboss, "8" kolu = /usr/jboss8), kol da oradan okunmali.
 const { kurulumKolu } = require('../index.cjs');
 const GBJBOP18 = [
-  { host: 'GBJBOP18', jbossVersion: '8.0', appPath: '/vhosting/GBCCSECURETRACKER.ear', kurulum: '7' },
-  { host: 'GBJBOP18', jbossVersion: '8.1', appPath: '/vhosting8/GBCCSECURETRACKER.ear', kurulum: '8' },
+  {
+    host: 'GBJBOP18',
+    jbossVersion: '8.0',
+    appPath: '/vhosting/GBCCSECURETRACKER.ear',
+    kurulum: '7',
+  },
+  {
+    host: 'GBJBOP18',
+    jbossVersion: '8.1',
+    appPath: '/vhosting8/GBCCSECURETRACKER.ear',
+    kurulum: '8',
+  },
 ];
 
 test('J12: kol app_path dizininden; app_path yok/NF ise urun surumune dusulur', () => {
-  assert.equal(kurulumKolu('/vhosting/GBCCSECURETRACKER.ear', '8.0'), '7', '/usr/jboss altindaki JBoss 8 "8" koluna gidiyor');
+  assert.equal(
+    kurulumKolu('/vhosting/GBCCSECURETRACKER.ear', '8.0'),
+    '7',
+    '/usr/jboss altindaki JBoss 8 "8" koluna gidiyor',
+  );
   assert.equal(kurulumKolu('/vhosting8/GBCCSECURETRACKER.ear', '8.1'), '8');
   assert.equal(kurulumKolu('/VHOSTING8/X.ear', '7.3'), '8', 'kasa');
   assert.equal(kurulumKolu('NF', '8.1.2'), '8');
@@ -105,7 +125,11 @@ test('J12: kol app_path dizininden; app_path yok/NF ise urun surumune dusulur', 
 });
 
 test('J13: standart disi sunucuda /usr/jboss kurulumu AYRI hedeflenir', () => {
-  assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7']), 'jboss7', '/usr/jboss secildi, /usr/jboss8 kolu gitti');
+  assert.equal(
+    deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7']),
+    'jboss7',
+    '/usr/jboss secildi, /usr/jboss8 kolu gitti',
+  );
   assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['8']), 'jboss8');
   assert.equal(deriveJbossVersion(GBJBOP18, ['GBJBOP18'], ['7', '8']), 'all');
 });

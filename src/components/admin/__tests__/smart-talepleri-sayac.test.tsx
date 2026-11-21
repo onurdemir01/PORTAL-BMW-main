@@ -49,8 +49,20 @@ describe('Admin > Smart Talepleri zaman asimi sayaci', () => {
       summary: { PENDING: 1, LAUNCHED: 1 },
       serverNow: SUNUCU,
       tickets: [
-        satir({ id: 1, status: 'PENDING', templateName: 'JBoss restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'oco' }),
-        satir({ id: 2, status: 'LAUNCHED', templateName: 'Log temizle', jobId: 55, resolvedAt: '2026-10-15T08:05:30.000Z' }),
+        satir({
+          id: 1,
+          status: 'PENDING',
+          templateName: 'JBoss restart',
+          deadline: '2026-10-15T08:30:00.000Z',
+          deadlineKaynak: 'oco',
+        }),
+        satir({
+          id: 2,
+          status: 'LAUNCHED',
+          templateName: 'Log temizle',
+          jobId: 55,
+          resolvedAt: '2026-10-15T08:05:30.000Z',
+        }),
       ],
     });
     render(<SmartTicketsTab />);
@@ -70,7 +82,15 @@ describe('Admin > Smart Talepleri zaman asimi sayaci', () => {
       offset: 0,
       summary: { PENDING: 1 },
       serverNow: SUNUCU,
-      tickets: [satir({ id: 1, status: 'PENDING', templateName: 'JBoss restart', deadline: '2026-10-15T08:30:00.000Z', deadlineKaynak: 'genel' })],
+      tickets: [
+        satir({
+          id: 1,
+          status: 'PENDING',
+          templateName: 'JBoss restart',
+          deadline: '2026-10-15T08:30:00.000Z',
+          deadlineKaynak: 'genel',
+        }),
+      ],
     });
     render(<SmartTicketsTab />);
     const metin = () => {

@@ -79,7 +79,7 @@ function tazelenecekler(kayitlar, clusters, simdi = Date.now()) {
  */
 async function kaydetYetenekler(parsed, { save, scannedBy, awxJobId }) {
   let yazilan = 0;
-  for (const c of (parsed && parsed.capabilities) || []) {
+  for (const c of parsed?.capabilities || []) {
     if (!c.cluster || !c.scanned) continue;
     await save({
       env: parsed.environment,
@@ -115,7 +115,7 @@ async function izleVeKaydet({ serverId, jobId, scannedBy, deps }) {
       status = null;
       console.warn('[ScaleX] arka plan taramasi durumu okunamadi:', e.message);
     }
-    if (status && status.finished) {
+    if (status?.finished) {
       const parsed = deps.parse(status.artifacts);
       return {
         finished: true,

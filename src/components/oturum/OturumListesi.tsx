@@ -4,7 +4,11 @@
 // ve Admin > Kullanıcılar (bir kullanicinin oturumlari). Kendi listesinde "bu oturum"
 // kapatilamaz (Cikis bunun icin var); admin kullanicinin tum oturumlarini kapatabilir.
 import React, { useCallback, useEffect, useState } from 'react';
-import { ComputerDesktopIcon, DevicePhoneMobileIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import {
+  ComputerDesktopIcon,
+  DevicePhoneMobileIcon,
+  ArrowPathIcon,
+} from '@heroicons/react/24/outline';
 import { sessionsApi, type OturumSatiri } from '@/api/sessionsApi';
 import { fmtDateTime, fmtRelative } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -59,9 +63,14 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
     setBilgi('');
     try {
       let n: number;
-      if (adminKullanici) n = await sessionsApi.admin.revoke(adminKullanici, hepsi ? undefined : id || undefined);
+      if (adminKullanici)
+        n = await sessionsApi.admin.revoke(adminKullanici, hepsi ? undefined : id || undefined);
       else n = hepsi ? await sessionsApi.revokeOthers() : await sessionsApi.revoke(id!);
-      setBilgi(n ? `${n} oturum kapatıldı. O cihazlarda bir sonraki işlemde yeniden giriş istenecek.` : 'Kapatılacak oturum yoktu.');
+      setBilgi(
+        n
+          ? `${n} oturum kapatıldı. O cihazlarda bir sonraki işlemde yeniden giriş istenecek.`
+          : 'Kapatılacak oturum yoktu.',
+      );
       await yukle();
     } catch (e) {
       setHata((e as Error).message);
@@ -80,7 +89,11 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
             ? `${adminKullanici} kullanıcısının açık oturumları.`
             : 'Hesabınızla açık olan oturumlar. Tanımadığınız bir cihaz görürseniz kapatın ve şifrenizi değiştirin.'}
         </p>
-        <button type="button" className="btn-secondary inline-flex items-center gap-1" onClick={() => void yukle()}>
+        <button
+          type="button"
+          className="btn-secondary inline-flex items-center gap-1"
+          onClick={() => void yukle()}
+        >
           <ArrowPathIcon className="w-4 h-4" aria-hidden="true" /> Yenile
         </button>
       </div>
@@ -116,7 +129,10 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
               satirlar.map((s, i) => (
                 <tr key={s.id || i} className="border-t" style={{ borderColor: 'var(--border)' }}>
                   <td className="px-3 py-2" title={s.ua}>
-                    <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+                    <span
+                      className="inline-flex items-center gap-1.5"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
                       {mobilMi(s.device) ? (
                         <DevicePhoneMobileIcon className="w-4 h-4" aria-hidden="true" />
                       ) : (
@@ -125,12 +141,18 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
                       {s.device}
                     </span>
                     {s.current && (
-                      <span className="ml-2 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold" style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}>
+                      <span
+                        className="ml-2 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold"
+                        style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
+                      >
                         Bu oturum
                       </span>
                     )}
                     {s.remember && (
-                      <span className="ml-2 text-[0.6875rem]" style={{ color: 'var(--text-muted)' }}>
+                      <span
+                        className="ml-2 text-[0.6875rem]"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         hatırlanıyor
                       </span>
                     )}
@@ -141,7 +163,11 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
                   <td className="px-3 py-2" style={{ color: 'var(--text-secondary)' }}>
                     {fmtDateTime(s.createdAt)}
                   </td>
-                  <td className="px-3 py-2" style={{ color: 'var(--text-secondary)' }} title={fmtDateTime(s.lastSeenAt)}>
+                  <td
+                    className="px-3 py-2"
+                    style={{ color: 'var(--text-secondary)' }}
+                    title={fmtDateTime(s.lastSeenAt)}
+                  >
                     {fmtRelative(s.lastSeenAt)}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -164,7 +190,12 @@ const OturumListesi: React.FC<Props> = ({ adminKullanici }) => {
       </div>
 
       {digerSayisi > 0 && (
-        <button type="button" className="btn-primary" disabled={mesgul !== null} onClick={() => void kapat(null, true)}>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={mesgul !== null}
+          onClick={() => void kapat(null, true)}
+        >
           {mesgul === '*'
             ? 'Kapatılıyor…'
             : adminKullanici

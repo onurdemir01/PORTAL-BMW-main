@@ -101,17 +101,20 @@ test('OW1 onay sonrasi zamanlama kaydi GERCEKTEN yazilir (var olmayan tabloya gi
       runAt: new Date('2026-10-08T22:00:00Z'),
     });
     assert.equal(yazildi, true, 'kayit guncellenmedi');
-    assert.equal(satirlar[0].status, 'AWX_SCHEDULED', 'kayit PENDING_APPROVAL\'da takili kaldi');
+    assert.equal(satirlar[0].status, 'AWX_SCHEDULED', "kayit PENDING_APPROVAL'da takili kaldi");
     assert.equal(satirlar[0].awx_schedule_id, 9, 'AWX schedule id yazilmadi');
   });
 });
 
-test('OW2 IPTAL EDILMIS kayit AWX_SCHEDULED\'a geri dondurulmez', async () => {
+test("OW2 IPTAL EDILMIS kayit AWX_SCHEDULED'a geri dondurulmez", async () => {
   // Kosulsuz `WHERE id = $1` yazmak, kullanicinin iptalini EZERDI - kardes
   // fonksiyonlarda (claimForLaunch, update, markApprovedLaunched) ayni desen var.
   const satirlar = [{ id: 77, status: 'CANCELLED' }];
   await storeIle(satirlar, async (store) => {
-    const yazildi = await store.markAwxScheduledAfterApproval(77, { awxScheduleId: 9, runAt: new Date() });
+    const yazildi = await store.markAwxScheduledAfterApproval(77, {
+      awxScheduleId: 9,
+      runAt: new Date(),
+    });
     assert.equal(yazildi, false, 'iptal edilmis kayit icin true donuldu');
     assert.equal(satirlar[0].status, 'CANCELLED', 'iptal EZILDI');
   });
@@ -175,9 +178,16 @@ async function kapiIle({ phase }, fn) {
     ocoWindow: {
       extractPlannedInterruption: () => ({ startDate: 'x', endDate: 'y' }),
       evaluateWindow: () => ({
-        ok: true, phase, equal: false,
-        startText: 's', endText: 'e', windowStartText: 'ws', windowEndText: 'we',
-        windowStart, windowEnd, message: 'm',
+        ok: true,
+        phase,
+        equal: false,
+        startText: 's',
+        endText: 'e',
+        windowStartText: 'ws',
+        windowEndText: 'we',
+        windowStart,
+        windowEnd,
+        message: 'm',
       }),
     },
     ocoStore: {
@@ -189,7 +199,10 @@ async function kapiIle({ phase }, fn) {
     },
     smartClient: { createTicket: async () => ({ ticketId: 'WF-1' }) },
     smartStore: {
-      createTicket: async (a) => { cagrilar.push(a); return { id: 42 }; },
+      createTicket: async (a) => {
+        cagrilar.push(a);
+        return { id: 42 };
+      },
     },
     audit: { auditPortal: () => {} },
     smartGate: { isSmartRequired: () => true },
@@ -243,7 +256,8 @@ test('OW5 pencere ACIKKEN acilan Smart biletine kesinti penceresi GOMULUR', asyn
     assert.equal(cagrilar.length, 1, 'bilet kaydi olusmadi');
     const pl = cagrilar[0].pendingLaunch;
     assert.equal(
-      pl.ocoWindowEndIso, w.windowEnd.toISOString(),
+      pl.ocoWindowEndIso,
+      w.windowEnd.toISOString(),
       'pencere SONU pakete girmedi - bilet sinirsiz bekler',
     );
     assert.equal(pl.ocoWindowStartIso, w.windowStart.toISOString(), 'pencere BASI pakete girmedi');
@@ -273,6 +287,14 @@ test('OW7 pencere ACILMADIYSA eski davranis korunur (bilet simdi acilir, is zama
     assert.equal(cagrilar[0].pendingLaunch.ocoWindowEndIso, w.windowEnd.toISOString());
   });
   // Kaynak duzeyinde: `before` dalinda pencere atamalari HALA duruyor mu.
-  assert.match(GATES_SRC, /pendingLaunch\.ocoWindowStartIso\s*=/, 'before dali pencere basini yazmiyor');
-  assert.match(GATES_SRC, /pendingLaunch\.ocoWindowEndIso\s*=/, 'before dali pencere sonunu yazmiyor');
+  assert.match(
+    GATES_SRC,
+    /pendingLaunch\.ocoWindowStartIso\s*=/,
+    'before dali pencere basini yazmiyor',
+  );
+  assert.match(
+    GATES_SRC,
+    /pendingLaunch\.ocoWindowEndIso\s*=/,
+    'before dali pencere sonunu yazmiyor',
+  );
 });

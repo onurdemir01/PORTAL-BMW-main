@@ -84,7 +84,9 @@ export function OcoRozetleri({ r, kapandi }: { r: OcoRow; kapandi: boolean }) {
         </Chip>
       )}
       {r.iliski?.includes('acan') && (
-        <Chip tone="var(--accent)" title="Ekibimizin açtığı OCO">açtığımız</Chip>
+        <Chip tone="var(--accent)" title="Ekibimizin açtığı OCO">
+          açtığımız
+        </Chip>
       )}
       {r.iliski?.includes('sorumlu') && (
         <Chip tone="var(--status-success)" title="Değişikliği yapacak sorumlu ekip biziz">
@@ -111,12 +113,19 @@ export function OcoDetay({ r, className }: { r: OcoRow; className: string }) {
   return (
     <div className={className}>
       {m && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="oco-manuel-bilgi">
+        <div
+          className="flex flex-wrap items-center gap-2 text-[11px]"
+          style={{ color: 'var(--text-muted)' }}
+          data-testid="oco-manuel-bilgi"
+        >
           <span>
             Elle ekleyen {m.olusturan || '—'}
             {m.olusturmaAt && <> · {fmtDateTime(m.olusturmaAt)}</>}
             {m.guncelleyen && m.guncellemeAt && m.guncellemeAt !== m.olusturmaAt && (
-              <> · son değişiklik {m.guncelleyen}, {fmtDateTime(m.guncellemeAt)}</>
+              <>
+                {' '}
+                · son değişiklik {m.guncelleyen}, {fmtDateTime(m.guncellemeAt)}
+              </>
             )}
           </span>
           {eylem && m.duzenleyebilir && (
@@ -125,7 +134,11 @@ export function OcoDetay({ r, className }: { r: OcoRow; className: string }) {
                 type="button"
                 onClick={() => eylem.duzenle(m)}
                 className="inline-flex items-center gap-1 h-6 px-2 rounded-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                }}
               >
                 <PencilSquareIcon className="h-3.5 w-3.5" /> Düzenle
               </button>
@@ -133,7 +146,11 @@ export function OcoDetay({ r, className }: { r: OcoRow; className: string }) {
                 type="button"
                 onClick={() => eylem.sil(m)}
                 className="inline-flex items-center gap-1 h-6 px-2 rounded-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                style={{ borderColor: 'var(--status-danger)', background: 'var(--bg-surface)', color: 'var(--status-danger)' }}
+                style={{
+                  borderColor: 'var(--status-danger)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--status-danger)',
+                }}
               >
                 <TrashIcon className="h-3.5 w-3.5" /> Sil
               </button>

@@ -22,12 +22,18 @@ import path from 'node:path';
 import KurallarTab from '@/components/server_hub/KurallarTab';
 import { LimitNotu, sunucuAdlari, limitAsildi } from '@/components/server_hub/sunucuLimiti';
 import type { ShKurallar } from '@/api/serverHubApi';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const mockKurallar = vi.hoisted(() => vi.fn());
 const mockSeviye = vi.hoisted(() => vi.fn());
 const mockLimit = vi.hoisted(() => vi.fn());
 vi.mock('@/api/serverHubApi', () => ({
-  serverHubApi: { kurallar: mockKurallar, seviyeDegistir: mockSeviye, limitDegistir: mockLimit, limitler: vi.fn() },
+  serverHubApi: {
+    kurallar: mockKurallar,
+    seviyeDegistir: mockSeviye,
+    limitDegistir: mockLimit,
+    limitler: vi.fn(),
+  },
 }));
 
 function veri(o: Partial<ShKurallar> = {}): ShKurallar {
@@ -45,8 +51,25 @@ function veri(o: Partial<ShKurallar> = {}): ShKurallar {
         ad: 'Auto-start ↔ çalışma durumu',
         neTaranir: 'JVM çalışma durumu ile auto-start uyumlu mu.',
         ciktilar: [
-          { kod: 'REBOOT_RISK', kosul: 'JVM çalışıyor ama auto-start kapalı.', varsayilan: 'danger', gecerli: 'warning', degistiren: 'ayse', zaman: '2026-10-20T08:00:00Z', aciklama: 'test ortamı', bulgu: 3, sunucu: 2 },
-          { kod: 'STOPPED_AUTOSTART_ON', kosul: 'JVM kapalı ama auto-start açık.', varsayilan: 'warning', gecerli: 'warning', bulgu: 0, sunucu: 0 },
+          {
+            kod: 'REBOOT_RISK',
+            kosul: 'JVM çalışıyor ama auto-start kapalı.',
+            varsayilan: 'danger',
+            gecerli: 'warning',
+            degistiren: 'ayse',
+            zaman: '2026-10-20T08:00:00Z',
+            aciklama: 'test ortamı',
+            bulgu: 3,
+            sunucu: 2,
+          },
+          {
+            kod: 'STOPPED_AUTOSTART_ON',
+            kosul: 'JVM kapalı ama auto-start açık.',
+            varsayilan: 'warning',
+            gecerli: 'warning',
+            bulgu: 0,
+            sunucu: 0,
+          },
           { kod: null, kosul: 'Çalışıyor + auto-start açık.', varsayilan: 'ok', gecerli: 'ok' },
         ],
       },
@@ -57,16 +80,52 @@ function veri(o: Partial<ShKurallar> = {}): ShKurallar {
         ad: 'Web sunucu sözdizimi',
         neTaranir: 'apachectl -t / nginx -t.',
         ciktilar: [
-          { kod: 'SYNTAX_FAIL', kosul: 'Sözdizimi hatası doğrulandı.', varsayilan: 'danger', gecerli: 'danger', bulgu: null, sunucu: null },
+          {
+            kod: 'SYNTAX_FAIL',
+            kosul: 'Sözdizimi hatası doğrulandı.',
+            varsayilan: 'danger',
+            gecerli: 'danger',
+            bulgu: null,
+            sunucu: null,
+          },
           { kod: null, kosul: 'Sözdizimi doğru.', varsayilan: 'ok', gecerli: 'ok' },
         ],
       },
     ],
     limitler: [
-      { ad: 'tara', etiket: 'Şimdi tara', aciklama: 'server_hub_scan', varsayilan: 50, ust: 1000, gecerli: 50, degistiren: null, zaman: null, not: '' },
-      { ad: 'reboot', etiket: 'Reboot Kontrolü', aciklama: 'reboot_check', varsayilan: 50, ust: 500, gecerli: 120, degistiren: 'veli', zaman: '2026-10-19T08:00:00Z', not: 'patch günü' },
+      {
+        ad: 'tara',
+        etiket: 'Şimdi tara',
+        aciklama: 'server_hub_scan',
+        varsayilan: 50,
+        ust: 1000,
+        gecerli: 50,
+        degistiren: null,
+        zaman: null,
+        not: '',
+      },
+      {
+        ad: 'reboot',
+        etiket: 'Reboot Kontrolü',
+        aciklama: 'reboot_check',
+        varsayilan: 50,
+        ust: 500,
+        gecerli: 120,
+        degistiren: 'veli',
+        zaman: '2026-10-19T08:00:00Z',
+        not: 'patch günü',
+      },
     ],
-    gecmis: [{ anahtar: 'seviye:REBOOT_RISK', eski: 'danger', yeni: 'warning', aciklama: 'test ortamı', degistiren: 'ayse', zaman: '2026-10-20T08:00:00Z' }],
+    gecmis: [
+      {
+        anahtar: 'seviye:REBOOT_RISK',
+        eski: 'danger',
+        yeni: 'warning',
+        aciklama: 'test ortamı',
+        degistiren: 'ayse',
+        zaman: '2026-10-20T08:00:00Z',
+      },
+    ],
     ...o,
   };
 }
@@ -83,18 +142,29 @@ describe('Server Hub › Kurallar & Limitler', () => {
   it('KT1 maddeler, çıktılar, seviyeler, sayılar; sorun yok bulgu üretmez; ölçülemedi "—"', async () => {
     render(<KurallarTab />);
     expect(await screen.findByText('Auto-start ↔ çalışma durumu')).toBeTruthy();
-    expect(screen.getByText('Ne taranır: JVM çalışma durumu ile auto-start uyumlu mu.')).toBeTruthy();
+    expect(
+      screen.getByText('Ne taranır: JVM çalışma durumu ile auto-start uyumlu mu.'),
+    ).toBeTruthy();
     const rr = satir('REBOOT_RISK');
     expect(within(rr).getByText('kritik')).toBeTruthy();
-    expect((within(rr).getByLabelText('REBOOT_RISK seviyesi') as HTMLSelectElement).value).toBe('warning');
+    expect((within(rr).getByLabelText('REBOOT_RISK seviyesi') as HTMLSelectElement).value).toBe(
+      'warning',
+    );
     expect(within(rr).getByText('3 bulgu · 2 sunucu')).toBeTruthy();
     expect(within(satir('STOPPED_AUTOSTART_ON')).getByText('0 bulgu · 0 sunucu')).toBeTruthy();
-    expect(within(satir('SYNTAX_FAIL')).getByTitle('Son tarama okunamadı — ölçülemedi').textContent).toBe('—');
+    expect(
+      within(satir('SYNTAX_FAIL')).getByTitle('Son tarama okunamadı — ölçülemedi').textContent,
+    ).toBe('—');
     expect(screen.getAllByText('bulgu üretilmez')).toHaveLength(2);
     const ok = screen.getByText('Çalışıyor + auto-start açık.').closest('tr') as HTMLElement;
     expect(within(ok).queryByRole('combobox')).toBeNull();
     const etki = screen.getByLabelText('Seviyelerin etkisi');
-    for (const t of ['Sunucu durumu kritik olur', 'Sunucu durumu uyarı olur', 'en fazla “bilgi”', 'Bulgu listede kalır ama sayılmaz'])
+    for (const t of [
+      'Sunucu durumu kritik olur',
+      'Sunucu durumu uyarı olur',
+      'en fazla “bilgi”',
+      'Bulgu listede kalır ama sayılmaz',
+    ])
       expect(etki.textContent).toContain(t);
     expect(screen.getByText(/Açılış Hazırlığı ve özet kartları/)).toBeTruthy();
   });
@@ -102,15 +172,23 @@ describe('Server Hub › Kurallar & Limitler', () => {
   it('KT2 seviye değiştirme: açıklama + Kaydet; İptal göndermez', async () => {
     render(<KurallarTab />);
     await screen.findByText('STOPPED_AUTOSTART_ON');
-    fireEvent.change(screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi'), { target: { value: 'info' } });
+    fireEvent.change(screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi'), {
+      target: { value: 'info' },
+    });
     fireEvent.click(screen.getByText('İptal'));
     expect(mockSeviye).not.toHaveBeenCalled();
-    expect((screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi') as HTMLSelectElement).value).toBe('warning');
-    fireEvent.change(screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi'), { target: { value: 'info' } });
+    expect(
+      (screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi') as HTMLSelectElement).value,
+    ).toBe('warning');
+    fireEvent.change(screen.getByLabelText('STOPPED_AUTOSTART_ON seviyesi'), {
+      target: { value: 'info' },
+    });
     const aciklama = screen.getByLabelText('STOPPED_AUTOSTART_ON değişiklik açıklaması');
     fireEvent.change(aciklama, { target: { value: 'gürültü' } });
     fireEvent.click(within(aciklama.closest('tr') as HTMLElement).getByText('Kaydet'));
-    await waitFor(() => expect(mockSeviye).toHaveBeenCalledWith('STOPPED_AUTOSTART_ON', 'info', 'gürültü'));
+    await waitFor(() =>
+      expect(mockSeviye).toHaveBeenCalledWith('STOPPED_AUTOSTART_ON', 'info', 'gürültü'),
+    );
     await waitFor(() => expect(mockKurallar).toHaveBeenCalledTimes(2));
     expect(mockKurallar).toHaveBeenLastCalledWith(true);
   });
@@ -133,10 +211,14 @@ describe('Server Hub › Kurallar & Limitler', () => {
     expect(screen.getByText('Auto-start ↔ çalışma durumu')).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Yalnız seviyesi değiştirilenler/));
     // kod küçük harfle aranabilmeli (Türkçe "I" → "ı" tuzağı)
-    fireEvent.change(screen.getByLabelText('Madde, kod ya da koşul ara'), { target: { value: 'syntax_fail' } });
+    fireEvent.change(screen.getByLabelText('Madde, kod ya da koşul ara'), {
+      target: { value: 'syntax_fail' },
+    });
     expect(screen.queryByText('Auto-start ↔ çalışma durumu')).toBeNull();
     expect(screen.getByText('Web sunucu sözdizimi')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Madde, kod ya da koşul ara'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Madde, kod ya da koşul ara'), {
+      target: { value: '' },
+    });
     fireEvent.change(screen.getByLabelText('Alana göre süz'), { target: { value: 'jvm' } });
     expect(screen.queryByText('Web sunucu sözdizimi')).toBeNull();
   });
@@ -153,15 +235,22 @@ describe('Server Hub › Kurallar & Limitler', () => {
     expect(within(tr).getByText('1 ile 500 arasında bir tam sayı girin.')).toBeTruthy();
     expect(kaydet.disabled).toBe(true);
     fireEvent.change(reboot, { target: { value: '200' } });
-    fireEvent.change(within(tr).getByLabelText('Reboot Kontrolü limit açıklaması'), { target: { value: 'büyük patch' } });
+    fireEvent.change(within(tr).getByLabelText('Reboot Kontrolü limit açıklaması'), {
+      target: { value: 'büyük patch' },
+    });
     fireEvent.click(kaydet);
     await waitFor(() => expect(mockLimit).toHaveBeenCalledWith('reboot', 200, 'büyük patch'));
     unmount();
     mockKurallar.mockResolvedValue(veri({ okunamadi: true, hata: 'baglanti yok' }));
     render(<KurallarTab />);
     expect(await screen.findByText(/Server Hub ayarları okunamadı \(baglanti yok\)/)).toBeTruthy();
-    expect((screen.getByLabelText('REBOOT_RISK seviyesi') as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByLabelText('Şimdi tara tek seferde en fazla sunucu') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText('REBOOT_RISK seviyesi') as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByLabelText('Şimdi tara tek seferde en fazla sunucu') as HTMLInputElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it('KT6 geçmiş', async () => {
@@ -176,14 +265,20 @@ describe('Server Hub › Kurallar & Limitler', () => {
 
 describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
   it('ayrıştırma, gösterge ve aşım', () => {
-    expect(sunucuAdlari('gbapp01, GBAPP02.fw.garanti.com.tr:8080\ngbapp01;  gbapp03 gbapp04:8080')).toEqual(['GBAPP01', 'GBAPP02', 'GBAPP03', 'GBAPP04']);
+    expect(
+      sunucuAdlari('gbapp01, GBAPP02.fw.garanti.com.tr:8080\ngbapp01;  gbapp03 gbapp04:8080'),
+    ).toEqual(['GBAPP01', 'GBAPP02', 'GBAPP03', 'GBAPP04']);
     expect(limitAsildi({ enCok: null, tahmini: false }, 9999)).toBe(false);
     expect(limitAsildi({ enCok: 2, tahmini: false }, 3)).toBe(true);
     const { rerender } = render(<LimitNotu limit={{ enCok: 50, tahmini: false }} sayi={12} />);
-    expect(screen.getByTestId('sunucu-limiti').textContent).toBe('12 / 50 sunucu · tek seferde en fazla 50');
+    expect(screen.getByTestId('sunucu-limiti').textContent).toBe(
+      '12 / 50 sunucu · tek seferde en fazla 50',
+    );
     rerender(<LimitNotu limit={{ enCok: 50, tahmini: true }} sayi={53} />);
     const t = screen.getByTestId('sunucu-limiti');
-    expect(t.textContent).toMatch(/53 \/ 50 sunucu .* \(varsayılan; güncel limit okunamadı\) — 3 fazla; listeyi bölün ya da Admin Kurallar & Limitler'den artırsın/);
+    expect(t.textContent).toMatch(
+      /53 \/ 50 sunucu .* \(varsayılan; güncel limit okunamadı\) — 3 fazla; listeyi bölün ya da Admin Kurallar & Limitler'den artırsın/,
+    );
     expect(t.getAttribute('style')).toContain('--status-danger-text');
   });
 
@@ -203,19 +298,38 @@ describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
     expect(rk).not.toMatch(/hosts\.length > 50/);
     expect(sh).toMatch(/\{ id: 'kurallar', label: 'Kurallar & Limitler' \}/);
     // Sekme ziyaret edilince kurulur ve acik kalir (SekmeKabi; 2026-11-05 hiz).
-    expect(sh).toMatch(/acilan\.has\('kurallar'\) && \(\s*<SekmeKabi id="kurallar" etkin=\{tab\}>\s*<KurallarTab \/>/);
+    expect(sh).toMatch(
+      /acilan\.has\('kurallar'\) && \(\s*<SekmeKabi id="kurallar" etkin=\{tab\}>\s*<KurallarTab \/>/,
+    );
     // sınır aşılınca düğme kilitli (sunucu da reddeder; ekran önceden söyler)
-    expect(sh).toMatch(/disabled=\{busy \|\| !metin\.trim\(\) \|\| limitAsildi\(hazirlikLimiti, girilen\)\}/);
+    expect(sh).toMatch(
+      /disabled=\{busy \|\| !metin\.trim\(\) \|\| limitAsildi\(hazirlikLimiti, girilen\)\}/,
+    );
     expect(sh).toMatch(/const girilen = sunucuAdlari\(metin\)\.length;/);
-    expect(rk).toMatch(/disabled=\{!hosts\.length \|\| limitAsildi\(rebootLimiti, hosts\.length\) \|\| busy\}/);
+    expect(rk).toMatch(
+      /disabled=\{!hosts\.length \|\| limitAsildi\(rebootLimiti, hosts\.length\) \|\| busy\}/,
+    );
   });
 
   it('rapor seviye değişikliğini gizlemez: bant, bulgu işareti, "sorun yok" süzgeci', () => {
     const sh = fs.readFileSync(path.resolve(__dirname, '..', 'ServerHubPage.tsx'), 'utf8');
     expect(sh).toMatch(/<SeviyeAyarBandi ayar=\{data\.ayar\} \/>/);
     expect(sh).toMatch(/bulgu kodunun seviyesi Admin tarafından değiştirildi/);
-    expect(sh).toMatch(/Server Hub ayarları okunamadı: bu raporda varsayılan seviyeler uygulandı\./);
-    expect((sh.match(/<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} ortam=\{f\.ortamTavani\} prod=\{f\.prodSeverity\} \/>/g) || []).length).toBe(2);
+    expect(sh).toMatch(
+      /Server Hub ayarları okunamadı: bu raporda varsayılan seviyeler uygulandı\./,
+    );
+    expect(
+      (
+        sh.match(
+          new RegExp(
+            esnek(
+              /<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} ortam=\{f\.ortamTavani\} prod=\{f\.prodSeverity\} \/>/,
+            ).source,
+            'g',
+          ),
+        ) || []
+      ).length,
+    ).toBe(2);
     expect(sh).toMatch(/<option value="ok">sorun yok \(seviyesi değiştirilen\)<\/option>/);
   });
 });

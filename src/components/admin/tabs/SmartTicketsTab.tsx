@@ -60,8 +60,18 @@ function duration(a: string, b?: string | null) {
 }
 
 const CSV_KOLONLARI = [
-  'id', 'externalTicketId', 'username', 'status', 'smartStateName', 'module',
-  'templateName', 'flowKey', 'jobId', 'createdAt', 'resolvedAt', 'errorMessage',
+  'id',
+  'externalTicketId',
+  'username',
+  'status',
+  'smartStateName',
+  'module',
+  'templateName',
+  'flowKey',
+  'jobId',
+  'createdAt',
+  'resolvedAt',
+  'errorMessage',
 ] as const;
 
 export default function SmartTicketsTab() {
@@ -74,7 +84,10 @@ export default function SmartTicketsTab() {
   // NEDEN alindiMs (2026-10-15 denetim): OCO paneline gidip donunce tablo saklanmis yanitla
   // yeniden kurulur (liste yeniden cekilmez); kayma yanitin GELDIGI andan olculmezse kalan sure
   // yanitin yasi kadar fazla gorunur.
-  const [sunucuSaati, setSunucuSaati] = useState<{ serverNow: string | null; alindiMs: number } | null>(null);
+  const [sunucuSaati, setSunucuSaati] = useState<{
+    serverNow: string | null;
+    alindiMs: number;
+  } | null>(null);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -274,7 +287,12 @@ export default function SmartTicketsTab() {
               aria-label="Smart kayıt no, servis ya da parametre ara"
               className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg w-64"
             />
-            <Select sizeVariant="sm" aria-label="Duruma göre süz" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select
+              sizeVariant="sm"
+              aria-label="Duruma göre süz"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+            >
               <option value="">Tüm durumlar</option>
               {Object.entries(STATUS_META).map(([k, m]) => (
                 <option key={k} value={k}>
@@ -390,7 +408,9 @@ export default function SmartTicketsTab() {
                             </div>
                           )}
                           {t.status === 'PENDING' && t.approvedAt && (
-                            <div className="text-[10px] text-gray-400 mt-0.5">Onaylandı, pencere bekleniyor</div>
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              Onaylandı, pencere bekleniyor
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
@@ -571,7 +591,9 @@ export default function SmartTicketsTab() {
                 className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4"
               >
                 <div>
-                  <h3 id={iptalBaslikId} className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
+                  <h3 id={iptalBaslikId} className="text-sm font-bold text-gray-900">
+                    Talebi iptal et
+                  </h3>
                   <p className="text-xs text-gray-500 mt-1">
                     <span className="font-mono">{cancelTarget.username}</span> kullanıcısının{' '}
                     <span className="font-semibold">
@@ -599,7 +621,10 @@ export default function SmartTicketsTab() {
                 </div>
 
                 <div>
-                  <label htmlFor={iptalNotuId} className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label
+                    htmlFor={iptalNotuId}
+                    className="block text-xs font-semibold text-gray-700 mb-1"
+                  >
                     İptal notu <span className="font-normal text-gray-400">(opsiyonel)</span>
                   </label>
                   <textarea

@@ -13,6 +13,8 @@
 //   ST12 oncekiBaglariEkle
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -47,7 +49,10 @@ test('ST1 eslestir: tam ad, trim, harf duyarli; 0/2+ aday; elle secim; cakisma',
   assert.equal(m.get('b').toT, null, 'harf farki eslesmemeli (kullanici: ayni ad)');
   assert.equal(m.get('b').neden, 'ad_yok');
   assert.equal(m.get('c').neden, 'birden_fazla_aday');
-  assert.deepEqual(m.get('c').adaylar.map((x) => x.id), [12, 13]);
+  assert.deepEqual(
+    m.get('c').adaylar.map((x) => x.id),
+    [12, 13],
+  );
   assert.equal(m.get('d').neden, 'ad_yok');
   assert.equal(m.get('e').toT, 11);
   assert.equal(m.get('e').eslesme, 'elle');
@@ -61,12 +66,32 @@ test('ST1 eslestir: tam ad, trim, harf duyarli; 0/2+ aday; elle secim; cakisma',
 
 test('ST2 surveyFarki: secenek bicimi esit, kritik/bilgi ayrimi, parola varsayilani karsilastirilmaz', () => {
   const k = [
-    { variable: 'env', type: 'multiplechoice', choices: ['dev', 'prod'], required: true, default: 'dev', question_name: 'Ortam' },
-    { variable: 'pwd', type: 'password', required: true, default: '$encrypted$', question_name: 'Parola' },
+    {
+      variable: 'env',
+      type: 'multiplechoice',
+      choices: ['dev', 'prod'],
+      required: true,
+      default: 'dev',
+      question_name: 'Ortam',
+    },
+    {
+      variable: 'pwd',
+      type: 'password',
+      required: true,
+      default: '$encrypted$',
+      question_name: 'Parola',
+    },
     { variable: 'app', type: 'text', required: false, default: '', question_name: 'Uygulama' },
   ];
   const h = [
-    { variable: 'env', type: 'multiplechoice', choices: 'dev\nprod\ntest', required: true, default: 'dev', question_name: 'Ortam secimi' },
+    {
+      variable: 'env',
+      type: 'multiplechoice',
+      choices: 'dev\nprod\ntest',
+      required: true,
+      default: 'dev',
+      question_name: 'Ortam secimi',
+    },
     { variable: 'pwd', type: 'password', required: true, default: '', question_name: 'Parola' },
     { variable: 'app', type: 'text', required: false, default: '', question_name: 'Uygulama' },
   ];
@@ -75,7 +100,11 @@ test('ST2 surveyFarki: secenek bicimi esit, kritik/bilgi ayrimi, parola varsayil
   const env = f.satirlar.find((s) => s.variable === 'env');
   assert.equal(env.etiket, 'farkli');
   assert.deepEqual(env.farklar.sort(), ['choices', 'question_name']);
-  assert.equal(f.satirlar.find((s) => s.variable === 'pwd').etiket, 'ayni', 'parola varsayilani karsilastirmaya girdi');
+  assert.equal(
+    f.satirlar.find((s) => s.variable === 'pwd').etiket,
+    'ayni',
+    'parola varsayilani karsilastirmaya girdi',
+  );
   assert.equal(f.parolaSoru, 1);
 
   const h2 = [
@@ -89,10 +118,19 @@ test('ST2 surveyFarki: secenek bicimi esit, kritik/bilgi ayrimi, parola varsayil
   assert.equal(f2.satirlar.find((s) => s.variable === 'app').etiket, 'yalniz_kaynakta');
   assert.equal(f2.satirlar.find((s) => s.variable === 'yeni').etiket, 'yalniz_hedefte');
   // required false -> true ve varsayilan yok: kritik
-  const f3 = T.surveyFarki([{ variable: 'x', type: 'text', required: false }], [{ variable: 'x', type: 'text', required: true }]);
+  const f3 = T.surveyFarki(
+    [{ variable: 'x', type: 'text', required: false }],
+    [{ variable: 'x', type: 'text', required: true }],
+  );
   assert.equal(f3.kritikVar, true);
   // hash parola varsayilanindan bagimsiz
-  assert.equal(T.surveyHash(true, k), T.surveyHash(true, k.map((x) => (x.type === 'password' ? { ...x, default: '' } : x))));
+  assert.equal(
+    T.surveyHash(true, k),
+    T.surveyHash(
+      true,
+      k.map((x) => (x.type === 'password' ? { ...x, default: '' } : x)),
+    ),
+  );
   assert.notEqual(T.surveyHash(true, k), T.surveyHash(false, k));
 });
 
@@ -105,15 +143,36 @@ test('ST3 surveyModu ve karar tablosu; undefined = OLCULEMEDI', () => {
   assert.equal(T.surveyModu(null, []), 'OLCULEMEDI');
   const bos = T.surveyKarari('AWX', 'EXTRA_VARS', { survey_enabled: true }, [], null);
   assert.deepEqual([bos.cip, bos.eylem], ['SURVEY_BOS', 'yaz']);
-  const kapat = T.surveyKarari('TASARIMCI', 'AWX', { survey_enabled: true }, [{ variable: 'a' }], null);
+  const kapat = T.surveyKarari(
+    'TASARIMCI',
+    'AWX',
+    { survey_enabled: true },
+    [{ variable: 'a' }],
+    null,
+  );
   assert.deepEqual([kapat.cip, kapat.eylem], ['SURVEY_FARKLI', 'kapat']);
-  const kapali = T.surveyKarari('AWX', 'TASARIMCI', { survey_enabled: false }, [{ variable: 'a' }], { kritikVar: false });
-  assert.deepEqual([kapali.cip, kapali.eylem], ['SURVEY_FARKLI', 'yaz'], 'hedefte survey kapaliysa yaz/ac');
-  const temiz = T.surveyKarari('AWX', 'AWX', { survey_enabled: true }, [{ variable: 'a' }], { kritikVar: false });
+  const kapali = T.surveyKarari(
+    'AWX',
+    'TASARIMCI',
+    { survey_enabled: false },
+    [{ variable: 'a' }],
+    { kritikVar: false },
+  );
+  assert.deepEqual(
+    [kapali.cip, kapali.eylem],
+    ['SURVEY_FARKLI', 'yaz'],
+    'hedefte survey kapaliysa yaz/ac',
+  );
+  const temiz = T.surveyKarari('AWX', 'AWX', { survey_enabled: true }, [{ variable: 'a' }], {
+    kritikVar: false,
+  });
   assert.equal(temiz.cip, null);
   assert.equal(T.surveyKarari('OLCULEMEDI', 'AWX', {}, [], null).olculemedi, true);
   // Oncelik
-  assert.deepEqual(T.durumBelirle({ eslesmeYok: true, engelVar: true }).cipler, ['ESLESME_YOK', 'ENGEL']);
+  assert.deepEqual(T.durumBelirle({ eslesmeYok: true, engelVar: true }).cipler, [
+    'ESLESME_YOK',
+    'ENGEL',
+  ]);
   assert.equal(T.durumBelirle({ surveyCip: 'SURVEY_BOS', uyumsuz: true }).durum, 'SURVEY_BOS');
   assert.equal(T.durumBelirle({}).durum, 'HAZIR');
 });
@@ -132,7 +191,13 @@ function sahteAwx(geriOkuma) {
 test('ST4 surveyYaz: sira, geri okuma, parola temizligi', async () => {
   const spec = [
     { variable: 'env', type: 'text', default: 'dev', required: true, question_name: 'E' },
-    { variable: 'pwd', type: 'password', default: '$encrypted$', required: true, question_name: 'P' },
+    {
+      variable: 'pwd',
+      type: 'password',
+      default: '$encrypted$',
+      required: true,
+      question_name: 'P',
+    },
   ];
   const temiz = T.parolaTemizle(spec);
   const a = sahteAwx({ spec: temiz, enabled: true });
@@ -150,7 +215,10 @@ test('ST4 surveyYaz: sira, geri okuma, parola temizligi', async () => {
   );
   assert.equal(r.ok, true);
   // Hedefte parola varsayilani yok (geri okuma temiz spec'i dondurur) -> '' gider.
-  assert.ok(!JSON.stringify(a.cagrilar[1].body).includes('$encrypted$'), '$encrypted$ hedefe yazildi');
+  assert.ok(
+    !JSON.stringify(a.cagrilar[1].body).includes('$encrypted$'),
+    '$encrypted$ hedefe yazildi',
+  );
   assert.equal(a.cagrilar[2].body.survey_enabled, true);
   // Geri okunan farkli -> ok:false
   const b = sahteAwx({ spec: [temiz[0]], enabled: true });
@@ -164,7 +232,10 @@ test('ST4 surveyYaz: sira, geri okuma, parola temizligi', async () => {
   const d = sahteAwx({ spec: [], enabled: false });
   const r4 = await T.surveyKapat(d.istek, 5);
   assert.equal(r4.ok, true);
-  assert.deepEqual(d.cagrilar.filter((x) => x.method !== 'GET').map((x) => x.method), ['PATCH']);
+  assert.deepEqual(
+    d.cagrilar.filter((x) => x.method !== 'GET').map((x) => x.method),
+    ['PATCH'],
+  );
 });
 
 test('ST4b runner yazicisi yalniz verilen sunucuya, ss-tasima.surveyYaz uzerinden yazar', () => {
@@ -173,7 +244,10 @@ test('ST4b runner yazicisi yalniz verilen sunucuya, ss-tasima.surveyYaz uzerinde
   assert.ok(i > 0, 'yazici yok');
   const govde = src.slice(i, i + 700);
   assert.match(govde, /const server = getServerById\(serverId\);/);
-  assert.match(govde, /require\('\.\/ss-tasima\.cjs'\)\.surveyYaz\(istek, templateId, spec, opts\)/);
+  assert.match(
+    govde,
+    /require\('\.\/ss-tasima\.cjs'\)\.surveyYaz\(istek, templateId, spec, opts\)/,
+  );
   // Tasima modulu awxRequestToServer'a dogrudan erismez.
   const rot = fs.readFileSync(path.join(__dirname, '..', 'ss-tasima-rotalari.cjs'), 'utf8');
   assert.doesNotMatch(rot, /awxRequestToServer/);
@@ -202,26 +276,45 @@ test('ST5 ortak dogrulayici eski /ss/custom mesajlarini aynen verir', () => {
     ilk({ outputFilter: { enabled: true, contains: '' } }),
     'Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.',
   );
-  assert.equal(ilk({ customSurveyFields: [{ name: '' }] }), 'Her özel alanın bir değişken adı olmalı.');
+  assert.equal(
+    ilk({ customSurveyFields: [{ name: '' }] }),
+    'Her özel alanın bir değişken adı olmalı.',
+  );
   assert.equal(
     ilk({ customSurveyFields: [{ name: '1a', label: 'x' }] }),
     'Geçersiz değişken adı: "1a" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.',
   );
   assert.equal(
-    ilk({ customSurveyFields: [{ name: 'a', label: 'A' }, { name: 'a', label: 'B' }] }),
+    ilk({
+      customSurveyFields: [
+        { name: 'a', label: 'A' },
+        { name: 'a', label: 'B' },
+      ],
+    }),
     'Değişken adı tekrar ediyor: "a"',
   );
-  assert.equal(ilk({ customSurveyFields: [{ name: 'a', label: ' ' }] }), '"a" alanının bir görünen adı (label) olmalı.');
+  assert.equal(
+    ilk({ customSurveyFields: [{ name: 'a', label: ' ' }] }),
+    '"a" alanının bir görünen adı (label) olmalı.',
+  );
   assert.equal(
     ilk({ customSurveyFields: [{ name: 'a', label: 'A', type: 'multiplechoice', choices: [] }] }),
     '"A" bir seçim alanı ama hiç seçeneği yok.',
   );
   assert.equal(
-    ilk({ customSurveyFields: [{ name: 'a', label: 'A', dependsOn: { conditions: [{ field: 'yok', equals: 'x' }] } }] }),
+    ilk({
+      customSurveyFields: [
+        { name: 'a', label: 'A', dependsOn: { conditions: [{ field: 'yok', equals: 'x' }] } },
+      ],
+    }),
     '"A" tanımsız bir alana bağlı: "yok"',
   );
   assert.equal(
-    ilk({ customSurveyFields: [{ name: 'a', label: 'A', dependsOn: { conditions: [{ field: 'a', equals: 'x' }] } }] }),
+    ilk({
+      customSurveyFields: [
+        { name: 'a', label: 'A', dependsOn: { conditions: [{ field: 'a', equals: 'x' }] } },
+      ],
+    }),
     '"A" kendi kendine bağlı olamaz.',
   );
   assert.equal(
@@ -234,18 +327,39 @@ test('ST5 ortak dogrulayici eski /ss/custom mesajlarini aynen verir', () => {
   assert.equal(d.fieldOverrides[0].choicesSource, undefined);
   // Route artik ortak dogrulayiciyi cagiriyor; satir-ici kopya geri gelmedi.
   const src = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
-  assert.match(src, /require\('\.\/ss-ozellestirme-dogrulama\.cjs'\)\.dogrula\(specFields, data\)/);
-  assert.doesNotMatch(src, /const seenNames = new Set\(\);/, 'satir-ici dogrulama kopyasi geri geldi');
+  assert.match(
+    src,
+    esnek(/require\('\.\/ss-ozellestirme-dogrulama\.cjs'\)\.dogrula\(specFields, data\)/),
+  );
+  assert.doesNotMatch(
+    src,
+    esnek(/const seenNames = new Set\(\);/),
+    'satir-ici dogrulama kopyasi geri geldi',
+  );
 });
 
 test('ST5b ozellestirmeUyumu: yetim alan, Smart degiskeni, launch secenegi, ask_variables, playbook', () => {
   const hedefSpec = [{ variable: 'env', type: 'text', default: 'dev' }];
-  const k = { playbook: 'nginx_ops/nginx_ops.yml', ask_limit_on_launch: true, ask_variables_on_launch: true };
-  const h = { playbook: 'baska.yml', ask_limit_on_launch: false, ask_variables_on_launch: false, extra_vars: '' };
+  const k = {
+    playbook: 'nginx_ops/nginx_ops.yml',
+    ask_limit_on_launch: true,
+    ask_variables_on_launch: true,
+  };
+  const h = {
+    playbook: 'baska.yml',
+    ask_limit_on_launch: false,
+    ask_variables_on_launch: false,
+    extra_vars: '',
+  };
   const u = T.ozellestirmeUyumu(
     {
       fieldOverrides: [{ fieldName: 'app', hidden: false }],
-      smartApproval: { enabled: true, flowKey: 'F', metadataFields: 'application: {{extraVars.app_code}}\nenv: {{ extraVars.env }}', skipWhen: 'op: read' },
+      smartApproval: {
+        enabled: true,
+        flowKey: 'F',
+        metadataFields: 'application: {{extraVars.app_code}}\nenv: {{ extraVars.env }}',
+        skipWhen: 'op: read',
+      },
       launchOptionOverrides: { limit: { hidden: false, default: 'x' } },
       rawExtraVars: 'a: 1',
     },
@@ -259,18 +373,25 @@ test('ST5b ozellestirmeUyumu: yetim alan, Smart degiskeni, launch secenegi, ask_
   assert.match(metin, /Prompt on launch > Variables/);
   assert.match(metin, /nginx_ops/);
   assert.match(u.uyarilar.join('\n'), /istisna kuralı "op"/);
-  const temiz = T.ozellestirmeUyumu({ fieldOverrides: [{ fieldName: 'env' }] }, {
-    hedefSpec,
-    hedefDetail: { playbook: 'a.yml' },
-    kaynakDetail: { playbook: 'a.yml' },
-    kaynakModu: 'AWX',
-  });
+  const temiz = T.ozellestirmeUyumu(
+    { fieldOverrides: [{ fieldName: 'env' }] },
+    {
+      hedefSpec,
+      hedefDetail: { playbook: 'a.yml' },
+      kaynakDetail: { playbook: 'a.yml' },
+      kaynakModu: 'AWX',
+    },
+  );
   assert.deepEqual(temiz.hatalar, []);
 });
 
 test('ST6 engel sorgulari template kapsamli ve parametreli; okunamayan = engel', async () => {
   for (const e of T.ENGELLER) {
-    assert.match(e.sql, /awx_server_id = \$1 AND awx_template_id = \$2/, `${e.anahtar} template ile daraltilmamis`);
+    assert.match(
+      e.sql,
+      /awx_server_id = \$1 AND awx_template_id = \$2/,
+      `${e.anahtar} template ile daraltilmamis`,
+    );
     assert.doesNotMatch(e.sql.replace(/\$\d/g, ''), /=\s*\d/, `${e.anahtar} SQL metninde sayi var`);
   }
   assert.match(T.ENGELLER.find((e) => e.anahtar === 'oco').sql, /'AWX_SCHEDULED'/);
@@ -283,8 +404,15 @@ test('ST6 engel sorgulari template kapsamli ve parametreli; okunamayan = engel',
     },
   };
   const r = await T.engelleriSay(db, 2, 77);
-  assert.deepEqual(r.engeller.map((e) => [e.anahtar, e.adet]), [['smart', 2]]);
-  assert.deepEqual(r.okunamayan.map((e) => e.anahtar), ['oco'], 'okunamayan sorgu sifir sayildi');
+  assert.deepEqual(
+    r.engeller.map((e) => [e.anahtar, e.adet]),
+    [['smart', 2]],
+  );
+  assert.deepEqual(
+    r.okunamayan.map((e) => e.anahtar),
+    ['oco'],
+    'okunamayan sorgu sifir sayildi',
+  );
   assert.deepEqual(sorgular[0], [2, 77]);
   for (const sql of [T.TASIMA_SQL, T.GERI_AL_SQL]) {
     assert.match(sql, /BEGIN TRAN;/);
@@ -294,13 +422,23 @@ test('ST6 engel sorgulari template kapsamli ve parametreli; okunamayan = engel',
 });
 
 test('ST11 gomulu kimlik taramasi', () => {
-  assert.deepEqual(T.gomuluKimlikTara({ fieldOverrides: [{ fieldName: 'a', templateId: 5 }] }), ['fieldOverrides[0].templateId']);
+  assert.deepEqual(T.gomuluKimlikTara({ fieldOverrides: [{ fieldName: 'a', templateId: 5 }] }), [
+    'fieldOverrides[0].templateId',
+  ]);
   assert.deepEqual(T.gomuluKimlikTara({ x: { awx_server_id: 2 } }), ['x.awx_server_id']);
   assert.deepEqual(
     T.gomuluKimlikTara({
-      smartApproval: { enabled: true, flowKey: 'F', metadataFields: 'a: b', skipWhen: 'x: y', integrationKey: 'k' },
+      smartApproval: {
+        enabled: true,
+        flowKey: 'F',
+        metadataFields: 'a: b',
+        skipWhen: 'x: y',
+        integrationKey: 'k',
+      },
       ocoCheck: { enabled: true, environments: ['prod'] },
-      fieldOverrides: [{ fieldName: 'h', choicesSource: { source: 'nginx-hosts', params: { env: 'env' } } }],
+      fieldOverrides: [
+        { fieldName: 'h', choicesSource: { source: 'nginx-hosts', params: { env: 'env' } } },
+      ],
     }),
     [],
   );
@@ -313,8 +451,22 @@ test('ST12 oncekiBaglariEkle: TASINDI kaynagi, GERI_ALINDI iki ucu; guncel bag h
     { id: 'c', awxServerId: 2, awxTemplateId: 21 },
   ];
   const out = T.oncekiBaglariEkle(items, [
-    { item_id: 'a', status: 'TASINDI', from_server: 2, from_template: 10, to_server: 3, to_template: 30 },
-    { item_id: 'b', status: 'GERI_ALINDI', from_server: 2, from_template: 20, to_server: 3, to_template: 31 },
+    {
+      item_id: 'a',
+      status: 'TASINDI',
+      from_server: 2,
+      from_template: 10,
+      to_server: 3,
+      to_template: 30,
+    },
+    {
+      item_id: 'b',
+      status: 'GERI_ALINDI',
+      from_server: 2,
+      from_template: 20,
+      to_server: 3,
+      to_template: 31,
+    },
   ]);
   assert.deepEqual(out[0].oncekiBaglar, [{ awxServerId: 2, awxTemplateId: 10 }]);
   assert.deepEqual(out[1].oncekiBaglar, [{ awxServerId: 3, awxTemplateId: 31 }]);
@@ -322,14 +474,21 @@ test('ST12 oncekiBaglariEkle: TASINDI kaynagi, GERI_ALINDI iki ucu; guncel bag h
   const src = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
   const i = src.indexOf('async function reloadSsItemsCache()');
   const govde = src.slice(i, i + 1400);
-  assert.match(govde, /catch \(e\) \{\s*console\.warn\(/, 'tasima kaydi okunamazsa kart listesi de dusuyor');
+  assert.match(
+    govde,
+    /catch \(e\) \{\s*console\.warn\(/,
+    'tasima kaydi okunamazsa kart listesi de dusuyor',
+  );
   assert.match(govde, /oncekiBaglariEkle\(items, gocler\)/);
 });
 
 test('ST13 tablo + filtreli tekil indeks + sekme seed', () => {
   const s = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
   assert.match(s, /CREATE TABLE ansible_ss_migrations \(/);
-  assert.match(s, /CREATE UNIQUE INDEX UX_ss_migrations_acik ON ansible_ss_migrations \(item_id\) WHERE status IN \('HAZIRLIK','TASINDI'\)/);
+  assert.match(
+    s,
+    /CREATE UNIQUE INDEX UX_ss_migrations_acik ON ansible_ss_migrations \(item_id\) WHERE status IN \('HAZIRLIK','TASINDI'\)/,
+  );
   assert.match(s, /element_key: 'admintab:sstasima'/);
 });
 
@@ -343,7 +502,11 @@ test('ST14 surveyFarki kritiklik: tur, eksik secenek, fazla soru, siki min/max, 
   assert.equal(kritik(t, { ...t, type: 'textarea' }), true, 'tur degisimi kritik degil');
   const mc = { variable: 'x', type: 'multiplechoice', choices: ['a', 'b'] };
   assert.equal(kritik(mc, { ...mc, choices: ['a'] }), true, 'eksik secenek kritik degil');
-  assert.equal(T.surveyFarki([t], [t, { variable: 'y', type: 'text' }]).kritikVar, true, 'hedefte fazla soru kritik degil');
+  assert.equal(
+    T.surveyFarki([t], [t, { variable: 'y', type: 'text' }]).kritikVar,
+    true,
+    'hedefte fazla soru kritik degil',
+  );
   // Siki sinir kritik, gevsek sinir bilgi
   const i = { variable: 'n', type: 'integer', min: 0, max: 100 };
   assert.equal(kritik(i, { ...i, max: 10 }), true, 'max daralmasi kritik degil');
@@ -352,12 +515,24 @@ test('ST14 surveyFarki kritiklik: tur, eksik secenek, fazla soru, siki min/max, 
   assert.equal(kritik(i, { ...i, max: 1000 }), false, 'max genislemesi kritik sayildi');
   assert.equal(kritik(t, { ...t, max: 5 }), true, 'text max daralmasi kritik degil');
   // required: kaynak zorunlu -> hedef degil kritik
-  assert.equal(kritik({ ...t, required: true }, { ...t, required: false }), true, 'gevsek required kritik degil');
+  assert.equal(
+    kritik({ ...t, required: true }, { ...t, required: false }),
+    true,
+    'gevsek required kritik degil',
+  );
   // Normalizasyon: float "1.0" == 1, multiselect sirasiz, secenek kirpilmaz
   const f = { variable: 'f', type: 'float', default: '1.0' };
-  assert.equal(T.surveyFarki([f], [{ ...f, default: 1 }]).satirlar[0].etiket, 'ayni', 'sayisal varsayilan yanlis alarm');
+  assert.equal(
+    T.surveyFarki([f], [{ ...f, default: 1 }]).satirlar[0].etiket,
+    'ayni',
+    'sayisal varsayilan yanlis alarm',
+  );
   const ms = { variable: 'm', type: 'multiselect', choices: ['a', 'b'], default: 'a\nb' };
-  assert.equal(T.surveyFarki([ms], [{ ...ms, default: ['b', 'a'] }]).satirlar[0].etiket, 'ayni', 'multiselect sira farki alarm verdi');
+  assert.equal(
+    T.surveyFarki([ms], [{ ...ms, default: ['b', 'a'] }]).satirlar[0].etiket,
+    'ayni',
+    'multiselect sira farki alarm verdi',
+  );
   assert.equal(kritik({ ...mc, choices: [' a', 'b'] }, mc), true, "' a' ile 'a' ayni sayildi");
 });
 
@@ -372,14 +547,19 @@ test('ST15 parola varsayilani: hedefte doluysa $encrypted$ ile korunur, yoksa bo
     { variable: 'yeni_pwd', type: 'password', default: '' },
   ];
   const h = T.parolaHazirla(spec, hedefOnceki);
-  assert.equal(h.spec.find((x) => x.variable === 'pwd').default, '$encrypted$', 'hedef parola varsayilani silinecekti');
+  assert.equal(
+    h.spec.find((x) => x.variable === 'pwd').default,
+    '$encrypted$',
+    'hedef parola varsayilani silinecekti',
+  );
   assert.equal(h.spec.find((x) => x.variable === 'yeni_pwd').default, '');
   assert.deepEqual([h.korunan, h.elle], [['pwd'], ['yeni_pwd']]);
   // surveyYaz: POST govdesinde koruma
   const cagrilar = [];
   const istek = async (method, p, body) => {
     cagrilar.push({ method, p, body });
-    if (method === 'GET' && /survey_spec/.test(p)) return { spec: cagrilar.length === 1 ? hedefOnceki : h.spec };
+    if (method === 'GET' && /survey_spec/.test(p))
+      return { spec: cagrilar.length === 1 ? hedefOnceki : h.spec };
     if (method === 'GET') return { survey_enabled: true };
     return null;
   };
@@ -400,7 +580,8 @@ test('ST15 parola varsayilani: hedefte doluysa $encrypted$ ile korunur, yoksa bo
   const yok = [];
   const bos = async (method, p, body) => {
     yok.push({ method, body });
-    if (method === 'GET' && yok.length === 1) throw Object.assign(new Error('yok'), { status: 404 });
+    if (method === 'GET' && yok.length === 1)
+      throw Object.assign(new Error('yok'), { status: 404 });
     if (method === 'GET' && /survey_spec/.test(p)) return { spec: T.parolaTemizle(spec) };
     if (method === 'GET') return { survey_enabled: true };
     return null;
@@ -410,18 +591,33 @@ test('ST15 parola varsayilani: hedefte doluysa $encrypted$ ile korunur, yoksa bo
 
 test('ST16 transaction SQL yapisal bekcileri (THROW kodlari, durum filtreleri, arsiv, hedef silme)', () => {
   const t = T.TASIMA_SQL;
-  for (const k of ['51001', '51002', '51003', '51004']) assert.match(t, new RegExp(`THROW ${k},`), `TASIMA_SQL ${k} yok`);
+  for (const k of ['51001', '51002', '51003', '51004'])
+    assert.match(t, new RegExp(`THROW ${k},`), `TASIMA_SQL ${k} yok`);
   assert.match(t, /IF @@ROWCOUNT <> 1 THROW 51001/);
-  assert.match(t, /WHERE item_id = \$5 AND status = 'HAZIRLIK';/, "kayit UPDATE'i HAZIRLIK ile sinirli degil");
+  assert.match(
+    t,
+    /WHERE item_id = \$5 AND status = 'HAZIRLIK';/,
+    "kayit UPDATE'i HAZIRLIK ile sinirli degil",
+  );
   // Kaynak satir kilitli karsilastirma
-  assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)\s+WHERE awx_server_id = \$1 AND template_id = \$2 AND data = \$7\)/);
+  assert.match(
+    t,
+    /WITH \(UPDLOCK, HOLDLOCK\)\s+WHERE awx_server_id = \$1 AND template_id = \$2 AND data = \$7\)/,
+  );
   // Iki dalda da hedef satir once arsivlenir
-  const arsiv = t.match(/INSERT INTO ansible_ss_customizations_history[^;]*FROM ansible_ss_customizations WHERE awx_server_id = \$3 AND template_id = \$4;/g) || [];
+  const arsiv =
+    t.match(
+      /INSERT INTO ansible_ss_customizations_history[^;]*FROM ansible_ss_customizations WHERE awx_server_id = \$3 AND template_id = \$4;/g,
+    ) || [];
   assert.equal(arsiv.length, 2, 'hedef ayar arsivi eksik');
   // Kaynakta ayar yoksa hedef satir silinir (bayat ayar yapismaz)
-  assert.match(t, /ELSE\s+BEGIN[\s\S]*DELETE FROM ansible_ss_customizations WHERE awx_server_id = \$3 AND template_id = \$4;\s+END;/);
+  assert.match(
+    t,
+    /ELSE\s+BEGIN[\s\S]*DELETE FROM ansible_ss_customizations WHERE awx_server_id = \$3 AND template_id = \$4;\s+END;/,
+  );
   const g = T.GERI_AL_SQL;
-  for (const k of ['51011', '51012', '51013', '51014']) assert.match(g, new RegExp(`THROW ${k},`), `GERI_AL_SQL ${k} yok`);
+  for (const k of ['51011', '51012', '51013', '51014'])
+    assert.match(g, new RegExp(`THROW ${k},`), `GERI_AL_SQL ${k} yok`);
   assert.match(g, /IF @@ROWCOUNT <> 1 THROW 51014/);
   assert.match(g, /WHERE id = \$6 AND item_id = \$5 AND status = 'TASINDI';/);
   assert.match(g, /oco_scheduled_launches WITH \(UPDLOCK, HOLDLOCK\)[\s\S]*THROW 51013/);
@@ -432,16 +628,34 @@ test('ST16 transaction SQL yapisal bekcileri (THROW kodlari, durum filtreleri, a
 test('ST17 kartBagIhlalleri, ayniSunucu, istemciKaydi', () => {
   const tas = [{ item_id: 'a', to_server: 3, to_template: 30 }];
   assert.deepEqual(T.kartBagIhlalleri([{ id: 'a', awxServerId: 3, awxTemplateId: 30 }], tas), []);
-  assert.equal(T.kartBagIhlalleri([{ id: 'a', title: 'A', awxServerId: 2, awxTemplateId: 20 }], tas).length, 1, 'bayat liste tasimayi geri aldi');
-  assert.deepEqual(T.kartBagIhlalleri([{ id: 'b', awxServerId: 2, awxTemplateId: 20 }], tas), [], 'silinen / baska kart engellendi');
-  assert.equal(T.ayniSunucu({ id: 2, url: 'https://m2.local' }, { id: 4, url: 'https://M2.local/' }), true, 'ayni host farkli id ayri sayildi');
-  assert.equal(T.ayniSunucu({ id: 2, url: 'https://m2.local' }, { id: 3, url: 'https://m3.local' }), false);
+  assert.equal(
+    T.kartBagIhlalleri([{ id: 'a', title: 'A', awxServerId: 2, awxTemplateId: 20 }], tas).length,
+    1,
+    'bayat liste tasimayi geri aldi',
+  );
+  assert.deepEqual(
+    T.kartBagIhlalleri([{ id: 'b', awxServerId: 2, awxTemplateId: 20 }], tas),
+    [],
+    'silinen / baska kart engellendi',
+  );
+  assert.equal(
+    T.ayniSunucu({ id: 2, url: 'https://m2.local' }, { id: 4, url: 'https://M2.local/' }),
+    true,
+    'ayni host farkli id ayri sayildi',
+  );
+  assert.equal(
+    T.ayniSunucu({ id: 2, url: 'https://m2.local' }, { id: 3, url: 'https://m3.local' }),
+    false,
+  );
   assert.equal(T.ayniSunucu({ id: 2 }, { id: 3 }), false);
   const k = T.istemciKaydi({
     id: 1,
     status: 'TASINDI',
     onceki: { hedefCustom: { gizli: 's3cr3t' } },
-    uygulanan: { kaynakCustom: { fieldOverrides: [{ fieldName: 'p', defaultValue: 's3cr3t' }] }, kaynakCustomHash: 'h' },
+    uygulanan: {
+      kaynakCustom: { fieldOverrides: [{ fieldName: 'p', defaultValue: 's3cr3t' }] },
+      kaynakCustomHash: 'h',
+    },
     hedefSurveyOnceki: { spec: [] },
   });
   assert.ok(!JSON.stringify(k).includes('s3cr3t'), 'gizli ayar istemciye gidiyor');
@@ -453,18 +667,39 @@ test('ST18 runner: liste yazim korumasi, onbellek silme, deneme denetimi redakte
   const src = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
   const i = src.indexOf('async function writeSsItems(');
   const govde = src.slice(i, i + 3600);
-  assert.match(govde, /if \(!ilkGoc && _ssItems === null\)/, 'dosya yedeginden yazim engellenmiyor');
+  assert.match(
+    govde,
+    /if \(!ilkGoc && _ssItems === null\)/,
+    'dosya yedeginden yazim engellenmiyor',
+  );
   assert.match(govde, /if \(_ssItemsKirli\)/, 'kirli onbellek yazimi engellenmiyor');
-  assert.match(govde, /const ihlal = require\('\.\/ss-tasima\.cjs'\)\.kartBagIhlalleri\(items, tasinanlar\);\s+if \(ihlal\.length\) \{\s+throw yazimHatasi\(/, 'tasinmis kart bag korumasi yok');
+  assert.match(
+    govde,
+    /const ihlal = require\('\.\/ss-tasima\.cjs'\)\.kartBagIhlalleri\(items, tasinanlar\);\s+if \(ihlal\.length\) \{\s+throw yazimHatasi\(/,
+    'tasinmis kart bag korumasi yok',
+  );
   // Koruma DELETE'ten once calisir
-  assert.ok(govde.indexOf('kartBagIhlalleri') < govde.indexOf('DELETE FROM ansible_ss_items'), 'koruma yazimdan sonra');
+  assert.ok(
+    govde.indexOf('kartBagIhlalleri') < govde.indexOf('DELETE FROM ansible_ss_items'),
+    'koruma yazimdan sonra',
+  );
   assert.match(govde, /WHERE status = 'TASINDI'/);
   assert.match(src, /await writeSsItems\(legacy, \{ ilkGoc: true \}\)/);
-  assert.match(src, /_ssItems = require\('\.\/ss-tasima\.cjs'\)\.oncekiBaglariEkle\(items, gocler\);\s+_ssItemsKirli = false;/);
-  assert.match(src, /else _ssCustom\.delete\(customKey\(serverId, templateId\)\);\s+\},\s+ssItemsKirliIsaretle,/);
+  assert.match(
+    src,
+    /_ssItems = require\('\.\/ss-tasima\.cjs'\)\.oncekiBaglariEkle\(items, gocler\);\s+_ssItemsKirli = false;/,
+  );
+  assert.match(
+    src,
+    /else _ssCustom\.delete\(customKey\(serverId, templateId\)\);\s+\},\s+ssItemsKirliIsaretle,/,
+  );
   const b = src.indexOf("auditPortal(req, 'selfservice_test_scenario_run'");
   const d = src.slice(b, b + 500);
-  assert.match(d, /extraVars: redactExtraVarsForHistory\(extraVars, specFields, overrides\)/, 'deneme denetimi gizli alanlari duz yaziyor');
+  assert.match(
+    d,
+    /extraVars: redactExtraVarsForHistory\(extraVars, specFields, overrides\)/,
+    'deneme denetimi gizli alanlari duz yaziyor',
+  );
 });
 
 // 2026-11-14 gerilemesi: kararliJson'un anahtar siralamasi `localeCompare`e cevrilmisti. Plan
@@ -476,7 +711,18 @@ test('ST-HASH kararliJson anahtar sirasi kod birimi sirasi; ozet sabit', () => {
   const { kararliJson, sha } = require('../ss-tasima.cjs');
   // Buyuk / kucuk harf, rakam, alt cizgi, tire ve Turkce harf: kod birimi sirasi ile yerel
   // siralamanin AYRISTIGI anahtarlar.
-  const veri = { Zeta: 1, alfa: 2, _x: 3, 10: 4, 9: 5, 'ı': 6, 'İ': 7, B: { z: 1, A: 2, 'ç': 3 }, 'a-b': 8, ab: 9 }; // ascii-ok
+  const veri = {
+    Zeta: 1,
+    alfa: 2,
+    _x: 3,
+    10: 4,
+    9: 5,
+    ı: 6,
+    İ: 7,
+    B: { z: 1, A: 2, ç: 3 },
+    'a-b': 8,
+    ab: 9,
+  }; // ascii-ok
   const BEKLENEN =
     '{"10":4,"9":5,"B":{"A":2,"z":1,"ç":3},"Zeta":1,"_x":3,"a-b":8,"ab":9,"alfa":2,"İ":7,"ı":6}'; // ascii-ok
   assert.equal(kararliJson(veri), BEKLENEN);
@@ -487,5 +733,8 @@ test('ST-HASH kararliJson anahtar sirasi kod birimi sirasi; ozet sabit', () => {
   assert.equal(sha(ters), sha(veri));
   // Yerel ayara bagli siralama BU metni vermez (bekci kor degil).
   const yerel = Object.keys(veri).sort((a, b) => a.localeCompare(b));
-  assert.notDeepEqual(yerel, Object.keys(veri).sort((a, b) => Number(a > b) - Number(a < b)));
+  assert.notDeepEqual(
+    yerel,
+    Object.keys(veri).sort((a, b) => Number(a > b) - Number(a < b)),
+  );
 });

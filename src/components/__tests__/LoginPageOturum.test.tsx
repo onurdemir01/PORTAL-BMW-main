@@ -20,9 +20,15 @@ function Konum() {
   return <p data-testid="konum">{l.pathname + l.search + l.hash}</p>;
 }
 
-function kur({ rememberEnabled = true, login = vi.fn(async () => {}), from, isAuthenticated = false }: any = {}) {
-  window.fetch = vi.fn(async () =>
-    new Response(JSON.stringify({ ok: true, rememberEnabled, rememberDays: 7 }), { status: 200 }),
+function kur({
+  rememberEnabled = true,
+  login = vi.fn(async () => {}),
+  from,
+  isAuthenticated = false,
+}: any = {}) {
+  window.fetch = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ ok: true, rememberEnabled, rememberDays: 7 }), { status: 200 }),
   ) as unknown as typeof fetch;
   render(
     <AuthContext.Provider value={{ login, isAuthenticated } as any}>
@@ -127,13 +133,23 @@ describe('LoginPage oturum', () => {
   });
 
   it('LP8 baska sekmede giris: oturum sonradan gelince form kapanir, donus adresi korunur', async () => {
-    window.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true, rememberEnabled: true, rememberDays: 7 }), { status: 200 }),
+    window.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, rememberEnabled: true, rememberDays: 7 }), {
+          status: 200,
+        }),
     ) as unknown as typeof fetch;
     const login = vi.fn(async () => {});
     const Sarmal = ({ girisli }: { girisli: boolean }) => (
       <AuthContext.Provider value={{ login, isAuthenticated: girisli } as any}>
-        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: { pathname: '/logx', search: '?x=1', hash: '' } } }]}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/login',
+              state: { from: { pathname: '/logx', search: '?x=1', hash: '' } },
+            },
+          ]}
+        >
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="*" element={<Konum />} />

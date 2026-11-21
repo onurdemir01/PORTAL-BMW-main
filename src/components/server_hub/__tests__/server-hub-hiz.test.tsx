@@ -122,7 +122,9 @@ describe('Server Hub hızı', () => {
     fireEvent.click(screen.getByRole('button', { name: /Sonraki/ }));
     expect(screen.getByText('APPSRV0199')).toBeInTheDocument();
     expect(screen.queryByText('APPSRV0000')).toBeNull();
-    fireEvent.change(screen.getByPlaceholderText('sunucu ya da bulgu ara'), { target: { value: 'APPSRV00' } });
+    fireEvent.change(screen.getByPlaceholderText('sunucu ya da bulgu ara'), {
+      target: { value: 'APPSRV00' },
+    });
     await waitFor(() => expect(screen.getByText('1–100 / 100')).toBeInTheDocument());
     expect(screen.getByText('APPSRV0000')).toBeInTheDocument();
     expect(await screen.findByText(/100 \/ 700 sunucu/)).toBeInTheDocument();

@@ -14,9 +14,11 @@ const ocoClient = require('../../oco/client.cjs');
 const smartStore = require('../../smart/store.cjs');
 
 const uclar = {};
-const kaydet = (metot) => (yol, ...fn) => {
-  if (typeof yol === 'string') uclar[`${metot} ${yol}`] = fn[fn.length - 1];
-};
+const kaydet =
+  (metot) =>
+  (yol, ...fn) => {
+    if (typeof yol === 'string') uclar[`${metot} ${yol}`] = fn[fn.length - 1];
+  };
 const app = new Proxy({}, { get: (_, k) => (k === 'use' ? () => {} : kaydet(k)) });
 
 function cagir(uc, req) {
@@ -63,7 +65,10 @@ test('OU1 /ss/oco/validate: sihirbazin hesapladigi ISO alanlari doner, ocoPencer
   t.mock.method(ocoClient, 'getChangeOrder', async () => ({
     payload: {
       GetChangeOrderByWfInstanceIdResult: {
-        Result: { PlannedStartDate: `/Date(${basMs}+0300)/`, PlannedEndDate: `/Date(${sonMs}+0300)/` },
+        Result: {
+          PlannedStartDate: `/Date(${basMs}+0300)/`,
+          PlannedEndDate: `/Date(${sonMs}+0300)/`,
+        },
       },
     },
     result: { Subject: 'Node gecisi' },
@@ -88,7 +93,12 @@ test('OU2 /ss/smart-tickets/mine: approvedAt ve son tarih ekrana gider', async (
   const son = new Date(Date.now() + 3600000).toISOString();
   t.mock.method(smartStore, 'listByUsername', async () => [
     bilet({
-      pendingLaunch: { ...bilet().pendingLaunch, sonBaslamaIso: son, ocoWindowEndIso: son, pencereBekle: true },
+      pendingLaunch: {
+        ...bilet().pendingLaunch,
+        sonBaslamaIso: son,
+        ocoWindowEndIso: son,
+        pencereBekle: true,
+      },
     }),
     bilet({ id: 2, approvedAt: null }),
   ]);

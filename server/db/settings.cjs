@@ -15,7 +15,8 @@ const db = require('./index.cjs');
 async function getSetting(key, fallback = null) {
   try {
     const { rows } = await db.query(
-      `SELECT setting_value FROM portal_settings WHERE setting_key = $1`, [String(key)]
+      `SELECT setting_value FROM portal_settings WHERE setting_key = $1`,
+      [String(key)],
     );
     return rows.length ? rows[0].setting_value : fallback;
   } catch (e) {
@@ -29,7 +30,8 @@ async function getSetting(key, fallback = null) {
 // yanlis olurdu).
 async function getSettingStrict(key) {
   const { rows } = await db.query(
-    `SELECT setting_value FROM portal_settings WHERE setting_key = $1`, [String(key)]
+    `SELECT setting_value FROM portal_settings WHERE setting_key = $1`,
+    [String(key)],
   );
   return rows.length ? rows[0].setting_value : null;
 }
@@ -43,22 +45,22 @@ async function setSetting(key, value, { description = null, updatedBy = null } =
     `UPDATE portal_settings SET setting_value = $1, description = COALESCE($2, description),
        updated_by = COALESCE($3, updated_by), updated_at = GETUTCDATE()
      WHERE setting_key = $4`,
-    [v, description, updatedBy, k]
+    [v, description, updatedBy, k],
   );
   if (!upd.rowCount) {
     await db.query(
       `INSERT INTO portal_settings (setting_key, setting_value, description, updated_by)
        VALUES ($1, $2, $3, $4)`,
-      [k, v, description, updatedBy]
+      [k, v, description, updatedBy],
     );
   }
   return { key: k, value: v };
 }
 
 async function deleteSetting(key) {
-  const { rowCount } = await db.query(
-    `DELETE FROM portal_settings WHERE setting_key = $1`, [String(key)]
-  );
+  const { rowCount } = await db.query(`DELETE FROM portal_settings WHERE setting_key = $1`, [
+    String(key),
+  ]);
   return rowCount > 0;
 }
 

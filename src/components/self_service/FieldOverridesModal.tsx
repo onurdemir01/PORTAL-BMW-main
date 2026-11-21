@@ -106,7 +106,10 @@ function ChoicesSourceEditor({
   const kaynakId = useId();
   return (
     <div className="rounded-lg border border-dashed border-[var(--border)] p-2 space-y-1.5 bg-[var(--bg-elevated)]/40">
-      <label htmlFor={kaynakId} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+      <label
+        htmlFor={kaynakId}
+        className="block text-[11px] font-semibold text-[var(--text-secondary)]"
+      >
         Seçenek kaynağı (serbest metin yerine envanterden liste)
       </label>
       <Select
@@ -150,7 +153,10 @@ function ChoicesSourceEditor({
                 value={bound}
                 error={!!p.required && !bound}
                 onChange={(e) =>
-                  onChange({ ...value!, params: { ...(value?.params || {}), [p.name]: e.target.value } })
+                  onChange({
+                    ...value!,
+                    params: { ...(value?.params || {}), [p.name]: e.target.value },
+                  })
                 }
               >
                 <option value="">— form alanı seçin —</option>
@@ -166,20 +172,25 @@ function ChoicesSourceEditor({
       {info &&
         (info.options || []).map((o) => (
           <div key={o.name} className="flex items-center gap-2">
-            <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">{o.label}</span>
+            <span className="text-[11px] text-[var(--text-muted)] whitespace-nowrap">
+              {o.label}
+            </span>
             <TextInput
               value={value?.options?.[o.name] ?? o.default ?? ''}
               placeholder={o.default || ''}
               onChange={(e) =>
-                onChange({ ...value!, options: { ...(value?.options || {}), [o.name]: e.target.value } })
+                onChange({
+                  ...value!,
+                  options: { ...(value?.options || {}), [o.name]: e.target.value },
+                })
               }
             />
           </div>
         ))}
       {info && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          Kullanıcı listeden seçer; sunucu launch'ta değeri kaynağa karşı yeniden doğrular.
-          Kaynak cevap vermezse iş başlamaz.
+          Kullanıcı listeden seçer; sunucu launch'ta değeri kaynağa karşı yeniden doğrular. Kaynak
+          cevap vermezse iş başlamaz.
         </p>
       )}
     </div>
@@ -292,10 +303,7 @@ function groupsOf(dep: SurveyField['dependsOn']): SurveyFieldConditionGroup[] {
 // Kurulan koşulu düz Türkçe bir cümleye çevirir. Boolean kurucularda en sık yapılan hata,
 // kullanıcının kurduğu ifadenin sandığından farklı olmasıdır (VE/VEYA önceliği); bu özet
 // admin'e ne kaydedeceğini kaydetmeden ÖNCE gösterir.
-function describeDependsOn(
-  dep: SurveyField['dependsOn'],
-  allFields: SurveyField[],
-): string {
+function describeDependsOn(dep: SurveyField['dependsOn'], allFields: SurveyField[]): string {
   const labelOf = (name: string) => {
     const trimmed = (name || '').trim();
     if (!trimmed) return '(alan seçilmedi)';
@@ -425,18 +433,25 @@ export default function FieldOverridesModal({
   );
   const [smartMetaErr, setSmartMetaErr] = useState('');
   // Onizleme (2026-09-18): ornek survey degerleri (satir basina alan: deger) -> render sonucu
-  const [previewVars, setPreviewVars] = useState('action: create\nenv: test\nservice: GLOMO\napplication: odeme-app-v1\nnamespace: digital-ch-test\ninput_path: /odeme/');
+  const [previewVars, setPreviewVars] = useState(
+    'action: create\nenv: test\nservice: GLOMO\napplication: odeme-app-v1\nnamespace: digital-ch-test\ninput_path: /odeme/',
+  );
   const [previewOut, setPreviewOut] = useState<Record<string, string> | null>(null);
   const [previewErr, setPreviewErr] = useState('');
   const [previewBusy, setPreviewBusy] = useState(false);
   async function runPreview() {
-    setPreviewBusy(true); setPreviewErr(''); setPreviewOut(null);
+    setPreviewBusy(true);
+    setPreviewErr('');
+    setPreviewOut(null);
     try {
       const extraVars: Record<string, unknown> = {};
       for (const line of previewVars.split('\n')) {
-        const i = line.indexOf(':'); if (i < 0) continue;
-        const k = line.slice(0, i).trim(); const v = line.slice(i + 1).trim();
-        if (k) extraVars[k] = v.includes(',') && /path/i.test(k) ? v.split(',').map((x) => x.trim()) : v;
+        const i = line.indexOf(':');
+        if (i < 0) continue;
+        const k = line.slice(0, i).trim();
+        const v = line.slice(i + 1).trim();
+        if (k)
+          extraVars[k] = v.includes(',') && /path/i.test(k) ? v.split(',').map((x) => x.trim()) : v;
       }
       const r = await ansibleApi.smartMetadataPreview({
         metadataFields: smartApproval.metadataFields,
@@ -444,9 +459,13 @@ export default function FieldOverridesModal({
         templateName: item.title,
         ...(smartBaglami ? { [smartBaglami.ad]: smartBaglami.degerler } : {}),
       });
-      if (r.ok && r.metadata) setPreviewOut(r.metadata); else setPreviewErr(r.message || 'Önizleme alınamadı.');
-    } catch (e: unknown) { setPreviewErr(e instanceof Error ? e.message : String(e)); }
-    finally { setPreviewBusy(false); }
+      if (r.ok && r.metadata) setPreviewOut(r.metadata);
+      else setPreviewErr(r.message || 'Önizleme alınamadı.');
+    } catch (e: unknown) {
+      setPreviewErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreviewBusy(false);
+    }
   }
   const [loading, setLoading] = useState(true);
   // KAYIT KILIDI (2026-09-16 olayi): mevcut ayarlar okunamadiysa ekran BOS acilir ve
@@ -501,14 +520,17 @@ export default function FieldOverridesModal({
           // Kaydetme KILITLI: bos ekranla mevcut ayari ezmek yerine kullaniciya soyle.
           setLoadFailed(true);
           setErr(
-            'Mevcut ayarlar okunamadı (' + (customRes.message || 'sunucu hatası') +
-            '). Kaydetme kilitlendi — sayfayı yenileyip tekrar deneyin; mevcut ayarlar silinmedi.',
+            'Mevcut ayarlar okunamadı (' +
+              (customRes.message || 'sunucu hatası') +
+              '). Kaydetme kilitlendi — sayfayı yenileyip tekrar deneyin; mevcut ayarlar silinmedi.',
           );
         } else {
           setLoadFailed(false);
         }
         setSurveyEnabled(specRes.surveyEnabled);
-        setKodlaBagliAdlar(new Set((specRes.fields || []).filter((f) => f.kodlaBagli).map((f) => f.name)));
+        setKodlaBagliAdlar(
+          new Set((specRes.fields || []).filter((f) => f.kodlaBagli).map((f) => f.name)),
+        );
         setLaunchOptions(specRes.launchOptions);
         setAskVariables(specRes.askVariables);
         const existingOverrides = customRes.ok ? customRes.customization?.fieldOverrides || [] : [];
@@ -525,7 +547,10 @@ export default function FieldOverridesModal({
               label: f.label,
               // Kaynağa bağlı alan sunucudan 'multiplechoice' gelir; admin ekranı AWX'teki
               // asıl tipi (metin) bilmeli ki kaynak kapatılınca doğru davransın.
-              type: (existing?.choicesSource?.source || f.kodlaBagli) && f.type === 'multiplechoice' ? 'text' : f.type,
+              type:
+                (existing?.choicesSource?.source || f.kodlaBagli) && f.type === 'multiplechoice'
+                  ? 'text'
+                  : f.type,
               required: f.required,
               description: f.description,
               defaultValue: f.defaultValue || '',
@@ -586,7 +611,14 @@ export default function FieldOverridesModal({
     }
   }
   async function restore(h: CustomizationHistoryItem) {
-    if (!(await onayla({ baslik: 'Sürümü geri yükle', metin: `${fmtWhen(h.savedAt)} tarihli sürümü geri yüklemek istiyor musunuz? Mevcut hâl de geçmişe yazılır.`, onayMetni: 'Geri yükle' }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Sürümü geri yükle',
+        metin: `${fmtWhen(h.savedAt)} tarihli sürümü geri yüklemek istiyor musunuz? Mevcut hâl de geçmişe yazılır.`,
+        onayMetni: 'Geri yükle',
+      }))
+    )
+      return;
     setRestoring(h.id);
     setErr('');
     try {
@@ -821,7 +853,10 @@ export default function FieldOverridesModal({
     patchGroups(fieldIndex, (gs) =>
       gs.map((g, gi) =>
         gi === groupIndex
-          ? { ...g, conditions: g.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c)) }
+          ? {
+              ...g,
+              conditions: g.conditions.map((c, ci) => (ci === condIndex ? { ...c, ...patch } : c)),
+            }
           : g,
       ),
     );
@@ -830,7 +865,9 @@ export default function FieldOverridesModal({
     patchGroups(fieldIndex, (gs) =>
       gs
         .map((g, gi) =>
-          gi === groupIndex ? { ...g, conditions: g.conditions.filter((_, ci) => ci !== condIndex) } : g,
+          gi === groupIndex
+            ? { ...g, conditions: g.conditions.filter((_, ci) => ci !== condIndex) }
+            : g,
         )
         // Son kosulu silinen grup kendiliginden kalkar; tek grup kaldiysa korunur ki
         // "Koşullu göster" isaretliyken hic grup kalmasin.
@@ -841,7 +878,9 @@ export default function FieldOverridesModal({
     patchGroups(fieldIndex, (gs) => [...gs, { mode: 'any', conditions: [{ ...EMPTY_CONDITION }] }]);
   }
   function removeGroup(fieldIndex: number, groupIndex: number) {
-    patchGroups(fieldIndex, (gs) => (gs.length <= 1 ? gs : gs.filter((_, gi) => gi !== groupIndex)));
+    patchGroups(fieldIndex, (gs) =>
+      gs.length <= 1 ? gs : gs.filter((_, gi) => gi !== groupIndex),
+    );
   }
   function setGroupMode(fieldIndex: number, groupIndex: number, mode: 'all' | 'any') {
     patchGroups(fieldIndex, (gs) => gs.map((g, gi) => (gi === groupIndex ? { ...g, mode } : g)));
@@ -882,7 +921,9 @@ export default function FieldOverridesModal({
 
   async function save() {
     if (erisim && erisim.mode === 'ekipler' && erisim.groups.length === 0) {
-      setErr('"Seçili ekipler" seçili ama hiç ekip eklenmedi — en az bir LDAP grubu ekleyin ya da başka bir seçenek seçin.');
+      setErr(
+        '"Seçili ekipler" seçili ama hiç ekip eklenmedi — en az bir LDAP grubu ekleyin ya da başka bir seçenek seçin.',
+      );
       return;
     }
     if (invalidHidden) {
@@ -992,11 +1033,15 @@ export default function FieldOverridesModal({
       if (ssErisimItem && erisim && erisimDegisti) {
         // Alan ayarlari yazildi; erisim ayri uca gider. Duserse pencere ACIK kalir ve neyin
         // kaydedilip neyin kaydedilmedigi soylenir (yari kayit sessiz kalmasin).
-        const a = await ansibleApi
-          .saveSsAccess(ssErisimItem.id, erisim)
-          .catch((e: unknown) => ({ ok: false, message: e instanceof Error ? e.message : String(e), item: null }));
+        const a = await ansibleApi.saveSsAccess(ssErisimItem.id, erisim).catch((e: unknown) => ({
+          ok: false,
+          message: e instanceof Error ? e.message : String(e),
+          item: null,
+        }));
         if (!a.ok) {
-          setErr(`Alan ayarları kaydedildi, erişim kaydedilemedi: ${a.message || 'bilinmeyen hata'}`);
+          setErr(
+            `Alan ayarları kaydedildi, erişim kaydedilemedi: ${a.message || 'bilinmeyen hata'}`,
+          );
           return;
         }
         onErisimKaydedildi?.(a.item || null);
@@ -1070,20 +1115,28 @@ export default function FieldOverridesModal({
                 <LoadingLogo compact />
               ) : history.length === 0 ? (
                 <p className="text-[11px] text-[var(--text-muted)]">
-                  Bu servis için kayıtlı geçmiş yok (geçmiş, bu sürümden sonraki her kayıtta birikir).
+                  Bu servis için kayıtlı geçmiş yok (geçmiş, bu sürümden sonraki her kayıtta
+                  birikir).
                 </p>
               ) : (
                 history.map((h) => (
-                  <div key={h.id} className="flex items-center justify-between gap-2 text-[11px] border-t border-[var(--border-subtle)] py-1">
+                  <div
+                    key={h.id}
+                    className="flex items-center justify-between gap-2 text-[11px] border-t border-[var(--border-subtle)] py-1"
+                  >
                     <span className="min-w-0">
                       <b>{fmtWhen(h.savedAt)}</b>
                       {h.savedBy ? ` · ${h.savedBy}` : ''}
                       {h.reason && h.reason !== 'save' ? ` · ${h.reason}` : ''}
                       {' · '}
                       {h.customSurveyFields} tasarımcı alanı, {h.fieldOverrides} AWX alan ayarı
-                      {h.smart ? ' · Smart' : ''}{h.oco ? ' · OCO' : ''}
+                      {h.smart ? ' · Smart' : ''}
+                      {h.oco ? ' · OCO' : ''}
                       {h.customFieldNames.length > 0 && (
-                        <span className="block font-mono text-[10px] text-[var(--text-muted)] truncate" title={h.customFieldNames.join(', ')}>
+                        <span
+                          className="block font-mono text-[10px] text-[var(--text-muted)] truncate"
+                          title={h.customFieldNames.join(', ')}
+                        >
                           {h.customFieldNames.join(', ')}
                         </span>
                       )}
@@ -1212,7 +1265,10 @@ export default function FieldOverridesModal({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor={`${alanId}-ozel-${i}-ad`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label
+                          htmlFor={`${alanId}-ozel-${i}-ad`}
+                          className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                        >
                           Görünen Ad (label)
                         </label>
                         <TextInput
@@ -1224,7 +1280,10 @@ export default function FieldOverridesModal({
                         />
                       </div>
                       <div>
-                        <label htmlFor={`${alanId}-ozel-${i}-degisken`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label
+                          htmlFor={`${alanId}-ozel-${i}-degisken`}
+                          className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                        >
                           Değişken Adı (extra_vars key)
                         </label>
                         <TextInput
@@ -1242,7 +1301,10 @@ export default function FieldOverridesModal({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor={`${alanId}-ozel-${i}-tip`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label
+                          htmlFor={`${alanId}-ozel-${i}-tip`}
+                          className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                        >
                           Tip
                         </label>
                         <Select
@@ -1278,22 +1340,28 @@ export default function FieldOverridesModal({
                     </div>
 
                     {kodlaBagliAdlar.has(f.name.trim()) && (
-                      <p className="text-xs text-[var(--text-secondary)]" data-testid="kodla-bagli-tasarimci-alani">
-                        Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde gösterilir ve o zaman
-                        zorunludur; API Generator envanterindeki API konfigürasyonlarından seçilir (serbest metin
-                        girilemez). Buradaki seçenek kaynağı ve koşullu gösterim ayarları bu alan için kullanılmaz.
+                      <p
+                        className="text-xs text-[var(--text-secondary)]"
+                        data-testid="kodla-bagli-tasarimci-alani"
+                      >
+                        Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde
+                        gösterilir ve o zaman zorunludur; API Generator envanterindeki API
+                        konfigürasyonlarından seçilir (serbest metin girilemez). Buradaki seçenek
+                        kaynağı ve koşullu gösterim ayarları bu alan için kullanılmaz.
                       </p>
                     )}
 
-                    {!kodlaBagliAdlar.has(f.name.trim()) && SOURCE_BINDABLE_CUSTOM.has(f.type) && choiceSources.length > 0 && (
-                      <ChoicesSourceEditor
-                        value={f.choicesSource}
-                        sources={choiceSources}
-                        fieldNames={customFields.map((x) => x.name.trim())}
-                        selfName={f.name.trim()}
-                        onChange={(v) => updateCustomField(i, { choicesSource: v })}
-                      />
-                    )}
+                    {!kodlaBagliAdlar.has(f.name.trim()) &&
+                      SOURCE_BINDABLE_CUSTOM.has(f.type) &&
+                      choiceSources.length > 0 && (
+                        <ChoicesSourceEditor
+                          value={f.choicesSource}
+                          sources={choiceSources}
+                          fieldNames={customFields.map((x) => x.name.trim())}
+                          selfName={f.name.trim()}
+                          onChange={(v) => updateCustomField(i, { choicesSource: v })}
+                        />
+                      )}
 
                     {isChoiceType && !f.choicesSource?.source && (
                       <div className="space-y-1.5">
@@ -1354,7 +1422,10 @@ export default function FieldOverridesModal({
                     </div>
 
                     <div>
-                      <label htmlFor={`${alanId}-ozel-${i}-aciklama`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                      <label
+                        htmlFor={`${alanId}-ozel-${i}-aciklama`}
+                        className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                      >
                         Açıklama (opsiyonel)
                       </label>
                       {/* ÇOK SATIRLI: tek satırlık <input> iken alt alta örnek yazmak
@@ -1373,194 +1444,197 @@ export default function FieldOverridesModal({
                     </div>
 
                     {!kodlaBagliAdlar.has(f.name.trim()) && (
-                    <div className="border-t border-[var(--border)] pt-2">
-                      <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer mb-1.5">
-                        <input
-                          type="checkbox"
-                          checked={f.dependsOn !== undefined}
-                          onChange={(e) =>
-                            updateCustomField(i, {
-                              dependsOn: e.target.checked
-                                ? {
-                                    mode: 'all',
-                                    groups: [
-                                      {
-                                        mode: 'any',
-                                        conditions: [
-                                          { field: '', equals: '', operator: 'equals' as const },
-                                        ],
-                                      },
-                                    ],
-                                  }
-                                : undefined,
-                            })
-                          }
-                        />
-                        Koşullu göster (başka alan(lar)ın değerine bağlı)
-                      </label>
-                      {f.dependsOn !== undefined && (
-                        <div className="space-y-2">
-                          {groupsOf(f.dependsOn).length > 1 && (
-                            <div className="flex items-center gap-3 pb-1">
-                              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                                Gruplar arasi:
-                              </span>
-                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`depends-outer-${i}`}
-                                  checked={f.dependsOn.mode === 'all'}
-                                  onChange={() =>
-                                    updateCustomField(i, {
-                                      dependsOn: { ...f.dependsOn!, mode: 'all' },
-                                    })
-                                  }
-                                />
-                                Tum gruplar (VE)
-                              </label>
-                              <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name={`depends-outer-${i}`}
-                                  checked={f.dependsOn.mode === 'any'}
-                                  onChange={() =>
-                                    updateCustomField(i, {
-                                      dependsOn: { ...f.dependsOn!, mode: 'any' },
-                                    })
-                                  }
-                                />
-                                Herhangi bir grup (VEYA)
-                              </label>
-                            </div>
-                          )}
-
-                          {groupsOf(f.dependsOn).map((g, gi) => (
-                            <div
-                              key={gi}
-                              className="rounded-lg border border-[var(--border)] p-2 space-y-2"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                                    Grup {gi + 1}
-                                  </span>
-                                  <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
-                                    <input
-                                      type="radio"
-                                      name={`depends-mode-${i}-${gi}`}
-                                      checked={g.mode === 'any'}
-                                      onChange={() => setGroupMode(i, gi, 'any')}
-                                    />
-                                    Herhangi biri (VEYA)
-                                  </label>
-                                  <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
-                                    <input
-                                      type="radio"
-                                      name={`depends-mode-${i}-${gi}`}
-                                      checked={g.mode === 'all'}
-                                      onChange={() => setGroupMode(i, gi, 'all')}
-                                    />
-                                    Hepsi (VE)
-                                  </label>
-                                </div>
-                                {groupsOf(f.dependsOn).length > 1 && (
-                                  <button
-                                    onClick={() => removeGroup(i, gi)}
-                                    className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                    title="Grubu kaldır"
-                                  >
-                                    <TrashIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
+                      <div className="border-t border-[var(--border)] pt-2">
+                        <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer mb-1.5">
+                          <input
+                            type="checkbox"
+                            checked={f.dependsOn !== undefined}
+                            onChange={(e) =>
+                              updateCustomField(i, {
+                                dependsOn: e.target.checked
+                                  ? {
+                                      mode: 'all',
+                                      groups: [
+                                        {
+                                          mode: 'any',
+                                          conditions: [
+                                            { field: '', equals: '', operator: 'equals' as const },
+                                          ],
+                                        },
+                                      ],
+                                    }
+                                  : undefined,
+                              })
+                            }
+                          />
+                          Koşullu göster (başka alan(lar)ın değerine bağlı)
+                        </label>
+                        {f.dependsOn !== undefined && (
+                          <div className="space-y-2">
+                            {groupsOf(f.dependsOn).length > 1 && (
+                              <div className="flex items-center gap-3 pb-1">
+                                <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                  Gruplar arasi:
+                                </span>
+                                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`depends-outer-${i}`}
+                                    checked={f.dependsOn.mode === 'all'}
+                                    onChange={() =>
+                                      updateCustomField(i, {
+                                        dependsOn: { ...f.dependsOn!, mode: 'all' },
+                                      })
+                                    }
+                                  />
+                                  Tum gruplar (VE)
+                                </label>
+                                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                                  <input
+                                    type="radio"
+                                    name={`depends-outer-${i}`}
+                                    checked={f.dependsOn.mode === 'any'}
+                                    onChange={() =>
+                                      updateCustomField(i, {
+                                        dependsOn: { ...f.dependsOn!, mode: 'any' },
+                                      })
+                                    }
+                                  />
+                                  Herhangi bir grup (VEYA)
+                                </label>
                               </div>
+                            )}
 
-                              {g.conditions.map((c, ci) => {
-                                const operator = c.operator === 'notEmpty' ? 'notEmpty' : 'equals';
-                                return (
-                                  <div
-                                    key={ci}
-                                    className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center"
-                                  >
-                                    <Select
-                                      value={c.field}
-                                      onChange={(e) =>
-                                        updateCondition(i, gi, ci, { field: e.target.value })
-                                      }
-                                    >
-                                      <option value="">Alan secin...</option>
-                                      {customFields
-                                        .filter((_, oi) => oi !== i)
-                                        .map((other, oi) => (
-                                          <option key={oi} value={other.name}>
-                                            {other.label || other.name || `Alan ${oi + 1}`}
-                                          </option>
-                                        ))}
-                                    </Select>
-                                    <Select
-                                      value={operator}
-                                      onChange={(e) =>
-                                        updateCondition(i, gi, ci, {
-                                          operator:
-                                            e.target.value === 'notEmpty' ? 'notEmpty' : 'equals',
-                                        })
-                                      }
-                                    >
-                                      <option value="equals">su degere esitse</option>
-                                      <option value="notEmpty">herhangi bir deger secilirse</option>
-                                    </Select>
-                                    {operator === 'equals' ? (
-                                      <TextInput
-                                        value={c.equals}
-                                        placeholder="or. deactive"
-                                        onChange={(e) =>
-                                          updateCondition(i, gi, ci, { equals: e.target.value })
-                                        }
+                            {groupsOf(f.dependsOn).map((g, gi) => (
+                              <div
+                                key={gi}
+                                className="rounded-lg border border-[var(--border)] p-2 space-y-2"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                      Grup {gi + 1}
+                                    </span>
+                                    <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`depends-mode-${i}-${gi}`}
+                                        checked={g.mode === 'any'}
+                                        onChange={() => setGroupMode(i, gi, 'any')}
                                       />
-                                    ) : (
-                                      <span className="text-[11px] text-[var(--text-muted)] italic px-1">
-                                        bos birakilmadikca
-                                      </span>
-                                    )}
+                                      Herhangi biri (VEYA)
+                                    </label>
+                                    <label className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)] cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        name={`depends-mode-${i}-${gi}`}
+                                        checked={g.mode === 'all'}
+                                        onChange={() => setGroupMode(i, gi, 'all')}
+                                      />
+                                      Hepsi (VE)
+                                    </label>
+                                  </div>
+                                  {groupsOf(f.dependsOn).length > 1 && (
                                     <button
-                                      onClick={() => removeCondition(i, gi, ci)}
+                                      onClick={() => removeGroup(i, gi)}
                                       className="text-red-400 hover:text-red-600 flex-shrink-0"
-                                      title="Koşulu kaldır"
+                                      title="Grubu kaldır"
                                     >
                                       <TrashIcon className="w-3.5 h-3.5" />
                                     </button>
-                                  </div>
-                                );
-                              })}
+                                  )}
+                                </div>
 
-                              <button
-                                onClick={() => addCondition(i, gi)}
-                                className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
-                              >
-                                <PlusIcon className="w-3 h-3" /> Kosul Ekle
-                              </button>
-                            </div>
-                          ))}
+                                {g.conditions.map((c, ci) => {
+                                  const operator =
+                                    c.operator === 'notEmpty' ? 'notEmpty' : 'equals';
+                                  return (
+                                    <div
+                                      key={ci}
+                                      className="grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center"
+                                    >
+                                      <Select
+                                        value={c.field}
+                                        onChange={(e) =>
+                                          updateCondition(i, gi, ci, { field: e.target.value })
+                                        }
+                                      >
+                                        <option value="">Alan secin...</option>
+                                        {customFields
+                                          .filter((_, oi) => oi !== i)
+                                          .map((other, oi) => (
+                                            <option key={oi} value={other.name}>
+                                              {other.label || other.name || `Alan ${oi + 1}`}
+                                            </option>
+                                          ))}
+                                      </Select>
+                                      <Select
+                                        value={operator}
+                                        onChange={(e) =>
+                                          updateCondition(i, gi, ci, {
+                                            operator:
+                                              e.target.value === 'notEmpty' ? 'notEmpty' : 'equals',
+                                          })
+                                        }
+                                      >
+                                        <option value="equals">su degere esitse</option>
+                                        <option value="notEmpty">
+                                          herhangi bir deger secilirse
+                                        </option>
+                                      </Select>
+                                      {operator === 'equals' ? (
+                                        <TextInput
+                                          value={c.equals}
+                                          placeholder="or. deactive"
+                                          onChange={(e) =>
+                                            updateCondition(i, gi, ci, { equals: e.target.value })
+                                          }
+                                        />
+                                      ) : (
+                                        <span className="text-[11px] text-[var(--text-muted)] italic px-1">
+                                          bos birakilmadikca
+                                        </span>
+                                      )}
+                                      <button
+                                        onClick={() => removeCondition(i, gi, ci)}
+                                        className="text-red-400 hover:text-red-600 flex-shrink-0"
+                                        title="Koşulu kaldır"
+                                      >
+                                        <TrashIcon className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
 
-                          <button
-                            onClick={() => addGroup(i)}
-                            className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
-                          >
-                            <PlusIcon className="w-3 h-3" /> Grup Ekle
-                          </button>
+                                <button
+                                  onClick={() => addCondition(i, gi)}
+                                  className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
+                                >
+                                  <PlusIcon className="w-3 h-3" /> Kosul Ekle
+                                </button>
+                              </div>
+                            ))}
 
-                          <p className="text-[11px] text-[var(--text-secondary)] rounded-md px-2 py-1.5 leading-relaxed border border-dashed border-[var(--border)]">
-                            <span className="font-semibold">Su durumda gosterilir: </span>
-                            {describeDependsOn(f.dependsOn, customFields)}
-                          </p>
-                        </div>
-                      )}
-                      <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                        Her grubun kendi bağlacı vardır; gruplar da yukarıdaki "Gruplar arası"
-                        bağlacıyla birleşir. Örnek: "ortam X VEYA Y VEYA Z" bir gruba, "operasyon
-                        = P" ikinci gruba yazılır ve gruplar arası "VE" seçilir. Koşul
-                        sağlanmazsa alan kullanıcıya hiç sorulmaz ve extra_vars'a eklenmez.
-                      </p>
-                    </div>
+                            <button
+                              onClick={() => addGroup(i)}
+                              className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
+                            >
+                              <PlusIcon className="w-3 h-3" /> Grup Ekle
+                            </button>
+
+                            <p className="text-[11px] text-[var(--text-secondary)] rounded-md px-2 py-1.5 leading-relaxed border border-dashed border-[var(--border)]">
+                              <span className="font-semibold">Su durumda gosterilir: </span>
+                              {describeDependsOn(f.dependsOn, customFields)}
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                          Her grubun kendi bağlacı vardır; gruplar da yukarıdaki "Gruplar arası"
+                          bağlacıyla birleşir. Örnek: "ortam X VEYA Y VEYA Z" bir gruba, "operasyon
+                          = P" ikinci gruba yazılır ve gruplar arası "VE" seçilir. Koşul sağlanmazsa
+                          alan kullanıcıya hiç sorulmaz ve extra_vars'a eklenmez.
+                        </p>
+                      </div>
                     )}
 
                     <div className="flex justify-end">
@@ -1610,10 +1684,13 @@ export default function FieldOverridesModal({
                   <p className="text-xs text-[var(--text-muted)] mb-1.5">{f.description}</p>
                 )}
                 {f.kodlaBagli ? (
-                  <p className="text-xs text-[var(--text-secondary)]" data-testid="kodla-bagli-alan">
-                    Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde gösterilir ve
-                    API Generator envanterindeki API konfigürasyonlarından seçilir (serbest metin girilemez).
-                    Seçenek kaynağı ve görünürlük burada değiştirilemez.
+                  <p
+                    className="text-xs text-[var(--text-secondary)]"
+                    data-testid="kodla-bagli-alan"
+                  >
+                    Bu alan kodla bağlı: işlem rate limit değiştirme ya da okuma seçildiğinde
+                    gösterilir ve API Generator envanterindeki API konfigürasyonlarından seçilir
+                    (serbest metin girilemez). Seçenek kaynağı ve görünürlük burada değiştirilemez.
                   </p>
                 ) : f.hidden ? (
                   <div>
@@ -1762,7 +1839,10 @@ export default function FieldOverridesModal({
             {injectUserInfo.enabled && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor={`${alanId}-eposta`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                  <label
+                    htmlFor={`${alanId}-eposta`}
+                    className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                  >
                     E-posta anahtarı
                   </label>
                   <TextInput
@@ -1774,7 +1854,10 @@ export default function FieldOverridesModal({
                   />
                 </div>
                 <div>
-                  <label htmlFor={`${alanId}-kullanici`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                  <label
+                    htmlFor={`${alanId}-kullanici`}
+                    className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                  >
                     Kullanıcı adı anahtarı
                   </label>
                   <TextInput
@@ -1814,9 +1897,9 @@ export default function FieldOverridesModal({
               ya da “o saatte tekrar gel” seçeneği sunulur, pencere kapandıysa iş başlatılmaz.
             </p>
             <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
-              Ortam, extra_vars içindeki <code>env</code> ya da <code>ortam</code> alanından
-              okunur. Başlangıç ve bitiş saati aynı verilmişse pencere 2 saattir; farklıysa
-              OCO'daki aralık kullanılır.
+              Ortam, extra_vars içindeki <code>env</code> ya da <code>ortam</code> alanından okunur.
+              Başlangıç ve bitiş saati aynı verilmişse pencere 2 saattir; farklıysa OCO'daki aralık
+              kullanılır.
             </p>
 
             {/* ORTAM SECIMI — varsayilan "yalnizca production".
@@ -1924,7 +2007,10 @@ export default function FieldOverridesModal({
             </p>
             {smartApproval.enabled && (
               <div>
-                <label htmlFor={`${alanId}-flow`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                <label
+                  htmlFor={`${alanId}-flow`}
+                  className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                >
                   Smart Flow Key
                 </label>
                 <div className="flex items-center gap-2">
@@ -1947,7 +2033,10 @@ export default function FieldOverridesModal({
                   </button>
                 </div>
 
-                <label htmlFor={`${alanId}-integration`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">
+                <label
+                  htmlFor={`${alanId}-integration`}
+                  className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1"
+                >
                   Integration Key (opsiyonel)
                 </label>
                 <TextInput
@@ -1979,7 +2068,10 @@ export default function FieldOverridesModal({
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2 mt-3 mb-1">
-                  <label htmlFor={`${alanId}-metadata`} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                  <label
+                    htmlFor={`${alanId}-metadata`}
+                    className="block text-[11px] font-semibold text-[var(--text-secondary)]"
+                  >
                     Metadata Eşlemesi
                   </label>
                   <button
@@ -2009,8 +2101,8 @@ export default function FieldOverridesModal({
                 {smartBaglami && (
                   <div className="mb-1 rounded-lg border border-[var(--border)] bg-[var(--bg-inset)] p-2 text-[11px] text-[var(--text-secondary)]">
                     <p className="mb-1">
-                      <strong>Bu modüle özel değişkenler</strong> — işlemin ne olduğunu taşır.
-                      Örnek değerler aşağıda; "Önizle" bunlarla render eder.
+                      <strong>Bu modüle özel değişkenler</strong> — işlemin ne olduğunu taşır. Örnek
+                      değerler aşağıda; "Önizle" bunlarla render eder.
                     </p>
                     <ul className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
                       {Object.entries(smartBaglami.degerler).map(([k, v]) => (
@@ -2049,9 +2141,9 @@ export default function FieldOverridesModal({
                   kabul etmeyebilir. Boş bırakılırsa eski sabit (
                   <code className="font-mono">application</code>/
                   <code className="font-mono">requestedBy</code>) gövde gönderilir.{' '}
-                  <strong>Çok satırlı değer:</strong> <code className="font-mono">ALAN: |</code> yazıp
-                  altına satırları <b>girintili</b> yazın (YAML blok); koşullu satırlar boş kalınca
-                  ardışık boş satırlar tek satıra iner. Satır içinde{' '}
+                  <strong>Çok satırlı değer:</strong> <code className="font-mono">ALAN: |</code>{' '}
+                  yazıp altına satırları <b>girintili</b> yazın (YAML blok); koşullu satırlar boş
+                  kalınca ardışık boş satırlar tek satıra iner. Satır içinde{' '}
                   <code className="font-mono">\n</code> da satır sonu sayılır.
                 </p>
                 <Textarea
@@ -2069,29 +2161,58 @@ export default function FieldOverridesModal({
                 {/* ONIZLEME: eslemeyi ornek degerlerle render et, Smart'a TAM OLARAK ne gidecegini gor */}
                 <div className="mt-2 rounded-lg border border-[var(--border)] p-2 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-semibold text-[var(--text-secondary)]">Önizleme — örnek survey değerleri (satır başına <code className="font-mono">alan: değer</code>)</span>
-                    <button type="button" onClick={runPreview} disabled={previewBusy || !smartApproval.metadataFields.trim()} className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50">
+                    <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                      Önizleme — örnek survey değerleri (satır başına{' '}
+                      <code className="font-mono">alan: değer</code>)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={runPreview}
+                      disabled={previewBusy || !smartApproval.metadataFields.trim()}
+                      className="text-[11px] px-2 py-1 rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                    >
                       {previewBusy ? 'Render ediliyor…' : 'Önizle'}
                     </button>
                   </div>
-                  <Textarea rows={3} className="text-xs font-mono" value={previewVars} onChange={(e) => setPreviewVars(e.target.value)} />
+                  <Textarea
+                    rows={3}
+                    className="text-xs font-mono"
+                    value={previewVars}
+                    onChange={(e) => setPreviewVars(e.target.value)}
+                  />
                   {previewErr && <p className="text-[11px] text-red-500">{previewErr}</p>}
                   {previewOut && (
                     <div className="text-[11px] font-mono rounded bg-[var(--bg-elevated)] p-2 space-y-1">
                       {Object.entries(previewOut).map(([k, v]) => (
-                        <div key={k}><span className="font-semibold">{k}</span>: <span className="whitespace-pre-wrap">{v === '' ? <i className="text-[var(--text-muted)]">(boş)</i> : v}</span></div>
+                        <div key={k}>
+                          <span className="font-semibold">{k}</span>:{' '}
+                          <span className="whitespace-pre-wrap">
+                            {v === '' ? <i className="text-[var(--text-muted)]">(boş)</i> : v}
+                          </span>
+                        </div>
                       ))}
-                      {Object.keys(previewOut).length === 0 && <i className="text-[var(--text-muted)]">hiç alan yok (hepsi # ile yorumda?)</i>}
+                      {Object.keys(previewOut).length === 0 && (
+                        <i className="text-[var(--text-muted)]">
+                          hiç alan yok (hepsi # ile yorumda?)
+                        </i>
+                      )}
                     </div>
                   )}
-                  <p className="text-[10px] text-[var(--text-muted)]">Gösterilen anahtar/değerler Smart'a birebir bu şekilde gider; <code className="font-mono">#</code> ile yorumlanmış satırlar burada da görünmez.</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">
+                    Gösterilen anahtar/değerler Smart'a birebir bu şekilde gider;{' '}
+                    <code className="font-mono">#</code> ile yorumlanmış satırlar burada da
+                    görünmez.
+                  </p>
                 </div>
               </div>
             )}
 
             {smartApproval.enabled && (
               <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                <label htmlFor={`${alanId}-atla`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                <label
+                  htmlFor={`${alanId}-atla`}
+                  className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+                >
                   Onay hangi durumlarda İSTENMESİN? (opsiyonel)
                 </label>
                 <Textarea
@@ -2147,4 +2268,3 @@ export default function FieldOverridesModal({
     </Modal>
   );
 }
-

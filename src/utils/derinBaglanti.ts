@@ -18,7 +18,14 @@
 //     prod Smart onayı sunucuda aynen doğrulanır. Burada yalnız biçim denetlenir.
 //   * Geçersiz değer sessizce yutulmaz: `uyari` dolu döner, sayfa normal akışa düşer.
 
-export const DERIN_BAGLANTI_ANAHTARLARI = ['platform', 'app', 'env', 'tenant', 'namespace', 'cluster'] as const;
+export const DERIN_BAGLANTI_ANAHTARLARI = [
+  'platform',
+  'app',
+  'env',
+  'tenant',
+  'namespace',
+  'cluster',
+] as const;
 
 // Sunucudaki SAFE_MANUAL_APP_RE / SAFE_OCP_NAME_RE ile aynı karakter kümesi.
 const AD_RE = /^[A-Za-z0-9._-]{1,253}$/;
@@ -36,7 +43,8 @@ export type OpsxOnSecim =
   | { platform: 'was'; app: string }
   | ({ platform: 'ocp' } & OcpHedef);
 
-export type LogxOnSecim = { platform: 'legacy'; app: string } | ({ platform: 'openshift' } & OcpHedef);
+export type LogxOnSecim =
+  { platform: 'legacy'; app: string } | ({ platform: 'openshift' } & OcpHedef);
 
 export interface OnSecimOkuma<T> {
   onSecim: T | null;
@@ -59,7 +67,10 @@ function ocpHedefOku(p: URLSearchParams): { hedef: OcpHedef | null; uyari: strin
   if (cluster) hedef.cluster = cluster;
   const eksik = (['app', 'env', 'tenant', 'namespace'] as const).filter((k) => !hedef[k]);
   if (eksik.length) {
-    return { hedef: null, uyari: `Bağlantıda eksik bilgi var (${eksik.join(', ')}) — hedefi elle seçin.` };
+    return {
+      hedef: null,
+      uyari: `Bağlantıda eksik bilgi var (${eksik.join(', ')}) — hedefi elle seçin.`,
+    };
   }
   const bozuk = (Object.entries(hedef) as [string, string][]).filter(([, v]) => !AD_RE.test(v));
   if (bozuk.length) {
@@ -74,7 +85,11 @@ function ocpHedefOku(p: URLSearchParams): { hedef: OcpHedef | null; uyari: strin
 function appOku(p: URLSearchParams): { app: string | null; uyari: string | null } {
   const app = al(p, 'app');
   if (!app) return { app: null, uyari: 'Bağlantıda uygulama adı yok — uygulamayı elle seçin.' };
-  if (!AD_RE.test(app)) return { app: null, uyari: `Bağlantıdaki uygulama adı geçersiz: "${app}" — uygulamayı elle seçin.` };
+  if (!AD_RE.test(app))
+    return {
+      app: null,
+      uyari: `Bağlantıdaki uygulama adı geçersiz: "${app}" — uygulamayı elle seçin.`,
+    };
   return { app, uyari: null };
 }
 

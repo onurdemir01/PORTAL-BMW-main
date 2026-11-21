@@ -52,7 +52,11 @@ export interface KarsilastirmaGrubu {
   eksikFazla: EksikFazla[];
   /** Kesik JVM'lerde bulunmayan, bu yüzden karşılaştırılamayan argümanlar. */
   karsilastirilamadi: { anahtar: string; kesik: string[] }[];
-  sunucuyaOzgu: { anahtar: string; degerler: { uye: string; deger: string }[]; normal: string | null }[];
+  sunucuyaOzgu: {
+    anahtar: string;
+    degerler: { uye: string; deger: string }[];
+    normal: string | null;
+  }[];
   maskeli: string[];
   esitSayisi: number;
   farkSayisi: number;
@@ -81,7 +85,10 @@ export interface JvmKarsilastirmaYaniti {
 export const UYGULAMA_TAVANI = 20;
 
 export const jvmKarsilastirApi = {
-  async karsilastir(g: { uygulamalar: string[]; ortam: string; nesil: NesilSecimi; fresh?: boolean }, signal?: AbortSignal): Promise<JvmKarsilastirmaYaniti> {
+  async karsilastir(
+    g: { uygulamalar: string[]; ortam: string; nesil: NesilSecimi; fresh?: boolean },
+    signal?: AbortSignal,
+  ): Promise<JvmKarsilastirmaYaniti> {
     return okJson(
       await fetch('/api/app-hub/jvm-karsilastir', {
         method: 'POST',

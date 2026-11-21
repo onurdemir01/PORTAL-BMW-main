@@ -21,15 +21,27 @@ beforeEach(() => {
   ocpDir = path.join(tmpRoot, 'ocp');
   fallbackDir = path.join(tmpRoot, 'fallback');
   for (const d of [legacyDir, ocpDir, fallbackDir]) fs.mkdirSync(d, { recursive: true });
-  for (const k of ['LOGX_V2_STAGING_LEGACY_DIR', 'LOGX_V2_STAGING_OCP_DIR', 'LOGX_STAGING_FALLBACK_DIR']) savedEnv[k] = process.env[k];
+  for (const k of [
+    'LOGX_V2_STAGING_LEGACY_DIR',
+    'LOGX_V2_STAGING_OCP_DIR',
+    'LOGX_STAGING_FALLBACK_DIR',
+  ])
+    savedEnv[k] = process.env[k];
   process.env.LOGX_V2_STAGING_LEGACY_DIR = legacyDir;
   process.env.LOGX_V2_STAGING_OCP_DIR = ocpDir;
   process.env.LOGX_STAGING_FALLBACK_DIR = fallbackDir;
 });
 
 afterEach(() => {
-  for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* yoksay */ }
+  for (const [k, v] of Object.entries(savedEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  } catch {
+    /* yoksay */
+  }
 });
 
 test('staged_path yanlış/erişilemez olsa da dosya, staging kökünde filename ile bulunur', () => {

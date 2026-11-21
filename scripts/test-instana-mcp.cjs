@@ -20,8 +20,17 @@ const env = process.argv[2] === 'prod' ? 'prod' : 'nonprod';
 async function main() {
   console.log('── Instana MCP baglanti testi ────────────────────────────');
   console.log('Ortam:            ', env);
-  console.log('URL:              ', process.env.INSTANA_MCP_URL || '(fallback: https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp)');
-  console.log('Token tanimli:    ', instana.isConfigured(env) ? 'evet' : 'HAYIR — .env.local INSTANA_API_TOKEN/BASE_URL kontrol edin');
+  console.log(
+    'URL:              ',
+    process.env.INSTANA_MCP_URL ||
+      '(fallback: https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp)',
+  );
+  console.log(
+    'Token tanimli:    ',
+    instana.isConfigured(env)
+      ? 'evet'
+      : 'HAYIR — .env.local INSTANA_API_TOKEN/BASE_URL kontrol edin',
+  );
   console.log('MCP_TLS_INSECURE: ', process.env.MCP_TLS_INSECURE || '(kapali)');
   console.log('CORP_CA_CERT_PATH:', process.env.CORP_CA_CERT_PATH || '(yok)');
   console.log('');
@@ -44,7 +53,7 @@ async function main() {
   const tools = await instana.listTools(env);
   console.log(`✓ ${tools.length} tool listelendi (${Date.now() - t1}ms):`);
   for (const t of tools) {
-    console.log(`  - ${t.name}${t.description ? (" — " + String(t.description).slice(0, 80)) : ''}`);
+    console.log(`  - ${t.name}${t.description ? ' — ' + String(t.description).slice(0, 80) : ''}`);
   }
 
   console.log('\n✓ TEST BASARILI — Instana MCP akisi uyumlu.');

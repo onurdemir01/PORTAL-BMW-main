@@ -38,10 +38,23 @@ function parseOcoDate(value) {
   const m = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;
   const [, dd, MM, yyyy, HH, mm, ss] = m;
-  const d = new Date(Number(yyyy), Number(MM) - 1, Number(dd), Number(HH), Number(mm), Number(ss || 0), 0);
+  const d = new Date(
+    Number(yyyy),
+    Number(MM) - 1,
+    Number(dd),
+    Number(HH),
+    Number(mm),
+    Number(ss || 0),
+    0,
+  );
   // Tasma kontrolu: "31.02.2026" gibi bir deger JS'te 3 Mart'a KAYAR. Geri okuyup
   // dogrulamazsak gecersiz bir OCO tarihi sessizce baska bir gune oturur.
-  if (d.getFullYear() !== Number(yyyy) || d.getMonth() !== Number(MM) - 1 || d.getDate() !== Number(dd)) return null;
+  if (
+    d.getFullYear() !== Number(yyyy) ||
+    d.getMonth() !== Number(MM) - 1 ||
+    d.getDate() !== Number(dd)
+  )
+    return null;
   return d;
 }
 
@@ -58,7 +71,11 @@ function fmt(d) {
 function evaluateWindow({ startDate, endDate, now = new Date() }) {
   const start = parseOcoDate(startDate);
   if (!start) {
-    return { ok: false, reason: 'PARSE', message: `OCO kaydindaki kesinti baslangic tarihi okunamadi: "${startDate}".` };
+    return {
+      ok: false,
+      reason: 'PARSE',
+      message: `OCO kaydindaki kesinti baslangic tarihi okunamadi: "${startDate}".`,
+    };
   }
   // Bitis okunamazsa baslangica esit SAYILIR (2 saatlik pencere) - "bitis yok" diye
   // sinirsiz izin vermek, kacirilmis bir OCO ile prod'a dokunmak demek olurdu.
@@ -72,7 +89,8 @@ function evaluateWindow({ startDate, endDate, now = new Date() }) {
   // Bozuk kayit: bitis baslangictan ONCE. Pencere hesaplanamaz, izin verilmez.
   if (windowEnd.getTime() < windowStart.getTime()) {
     return {
-      ok: false, reason: 'INVALID_RANGE',
+      ok: false,
+      reason: 'INVALID_RANGE',
       message: `OCO kaydindaki kesinti araligi gecersiz: bitis (${fmt(end)}) baslangictan (${fmt(start)}) once.`,
     };
   }
@@ -87,15 +105,23 @@ function evaluateWindow({ startDate, endDate, now = new Date() }) {
     ok: true,
     equal,
     phase,
-    start, end, windowStart, windowEnd,
+    start,
+    end,
+    windowStart,
+    windowEnd,
     startText: fmt(start),
     endText: fmt(end),
     windowStartText: fmt(windowStart),
     windowEndText: fmt(windowEnd),
     canRunNow: phase === 'inside',
     canSchedule: phase === 'before',
-    message:
-      (() => { if (phase === 'expired') return 'OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz.'; if (phase === 'inside') return `OCO kesinti penceresi AÇIK (${fmt(windowStart)} — ${fmt(windowEnd)}). İşlem şimdi çalıştırılabilir.`; return `OCO'da belirtilen kesinti ${fmt(windowStart)} tarihinde başlıyor.`; })(),
+    message: (() => {
+      if (phase === 'expired')
+        return 'OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz.';
+      if (phase === 'inside')
+        return `OCO kesinti penceresi AÇIK (${fmt(windowStart)} — ${fmt(windowEnd)}). İşlem şimdi çalıştırılabilir.`;
+      return `OCO'da belirtilen kesinti ${fmt(windowStart)} tarihinde başlıyor.`;
+    })(),
   };
 }
 
@@ -120,17 +146,32 @@ function nextRunAt({ windowStart, windowEnd, now = new Date(), graceMs = 60000 }
   }
   const t = now.getTime();
   if (t < ws.getTime()) {
-    return { mode: 'schedule', runAt: ws, text: fmt(ws), reason: `Kesinti penceresi ${fmt(ws)} tarihinde açılıyor; iş o ana zamanlandı.` };
+    return {
+      mode: 'schedule',
+      runAt: ws,
+      text: fmt(ws),
+      reason: `Kesinti penceresi ${fmt(ws)} tarihinde açılıyor; iş o ana zamanlandı.`,
+    };
   }
   if (t <= we.getTime() + graceMs) {
-    return { mode: 'now', runAt: now, text: fmt(now), reason: `Kesinti penceresi açık (${fmt(ws)} — ${fmt(we)}); iş hemen çalıştırılıyor.` };
+    return {
+      mode: 'now',
+      runAt: now,
+      text: fmt(now),
+      reason: `Kesinti penceresi açık (${fmt(ws)} — ${fmt(we)}); iş hemen çalıştırılıyor.`,
+    };
   }
   // PENCERE KAPANDI. "Ertesi gune ertele" BILEREK YAPILMIYOR: OCO kaydi TEK bir kesinti
   // araligi tasir (PlannedStart - PlannedEnd). O aralik bittikten sonra is calistirmak,
   // onayli kesinti penceresinin DISINDA prod'a dokunmak olurdu. Aralik birden cok gunu
   // kapsiyorsa zaten yukaridaki 'now' dali calisir (pencere hala acik). Kullaniciya yeni
   // bir OCO acmasi soylenir.
-  return { mode: 'none', runAt: null, text: '', reason: `OCO kesinti penceresi ${fmt(we)} tarihinde kapandı; iş çalıştırılamaz. Yeni bir OCO kaydı ile tekrar deneyin.` };
+  return {
+    mode: 'none',
+    runAt: null,
+    text: '',
+    reason: `OCO kesinti penceresi ${fmt(we)} tarihinde kapandı; iş çalıştırılamaz. Yeni bir OCO kaydı ile tekrar deneyin.`,
+  };
 }
 
 // OCO cevabinin govdesinden kesinti penceresini cikarir. ONCELIK (kullanici, 2026-09-16):
@@ -168,9 +209,18 @@ function extractPlannedInterruption(payload) {
 // toISOString() KULLANILMAZ, o UTC'ye cevirir ve kesinti saati 3 saat kayardi.
 function toRRuleStamp(d) {
   const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`
-       + `T${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return (
+    `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `T${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+  );
 }
 
 module.exports = {
-  nextRunAt, parseOcoDate, evaluateWindow, extractPlannedInterruption, fmt, toRRuleStamp, EQUAL_DATE_WINDOW_MS };
+  nextRunAt,
+  parseOcoDate,
+  evaluateWindow,
+  extractPlannedInterruption,
+  fmt,
+  toRRuleStamp,
+  EQUAL_DATE_WINDOW_MS,
+};

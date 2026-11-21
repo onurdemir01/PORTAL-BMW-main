@@ -70,7 +70,11 @@ function backTargetFor(s: Step): Step | null {
 
 // Bilinçli retler: ekran işlem adımına döner ve ÖNİZLEMEYİ tazeler (kapının durumu
 // önizlemeden sonra değişmiş demektir; kullanıcı güncel engeli orada okur).
-const KAPI_RET_KODLARI = new Set(['smart_not_configured', 'scalex_not_configured', 'gate_inconsistent']);
+const KAPI_RET_KODLARI = new Set([
+  'smart_not_configured',
+  'scalex_not_configured',
+  'gate_inconsistent',
+]);
 
 function fmtElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -210,7 +214,8 @@ const ScaleXPage: React.FC = () => {
   // geliyor ve izleyicide duruyor. Eskiden sayfa `finished`i gorunce ayni ucu BIR DAHA
   // cagiriyordu ve sonuc o ikinci istek (ciktinin tamami) bitene kadar gorunmuyordu.
   const sonuc: ScaleXRunResult | null =
-    runResult ?? (finished ? ((trackedJob?.result as ScaleXRunResult | null | undefined) ?? null) : null);
+    runResult ??
+    (finished ? ((trackedJob?.result as ScaleXRunResult | null | undefined) ?? null) : null);
   useEffect(() => {
     if (!startedAt) return;
     const initId = window.setTimeout(() => setElapsed(Date.now() - startedAt), 0);
@@ -660,7 +665,11 @@ const ScaleXPage: React.FC = () => {
                 const donulebilir = gecildi && step !== 'done' && !busy;
                 return (
                   <li key={ad} className="flex items-center gap-1">
-                    {i > 0 && <span aria-hidden="true" className="text-[var(--text-muted)]">›</span>}
+                    {i > 0 && (
+                      <span aria-hidden="true" className="text-[var(--text-muted)]">
+                        ›
+                      </span>
+                    )}
                     {donulebilir ? (
                       <button
                         type="button"
@@ -848,8 +857,8 @@ const ScaleXPage: React.FC = () => {
                 <div className="flex items-start gap-2 text-sm text-amber-900">
                   <ClockIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <span>
-                    <strong>OCO penceresi henüz açılmadı</strong> — işlem başlatılmadı,
-                    cluster'a dokunulmadı.
+                    <strong>OCO penceresi henüz açılmadı</strong> — işlem başlatılmadı, cluster'a
+                    dokunulmadı.
                     {pendingSchedule.windowStartText &&
                       ` Pencere ${pendingSchedule.windowStartText} tarihinde açılıyor.`}
                   </span>

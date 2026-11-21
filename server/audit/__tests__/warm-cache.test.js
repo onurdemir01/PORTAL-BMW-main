@@ -7,27 +7,54 @@ const quiet = { warn() {}, log() {} };
 
 test('WC1: ilk istek hesabi bekler, sonrakiler aninda doner; ayni anda gelenler tek hesap paylasir', async () => {
   let n = 0;
-  const c = createWarmCache({ name: 't', ttlMs: 60000, compute: async () => { n += 1; await new Promise((r) => setTimeout(r, 20)); return { ok: true, n }; }, log: quiet });
+  const c = createWarmCache({
+    name: 't',
+    ttlMs: 60000,
+    compute: async () => {
+      n += 1;
+      await new Promise((r) => setTimeout(r, 20));
+      return { ok: true, n };
+    },
+    log: quiet,
+  });
   const [a, b] = await Promise.all([c.get(), c.get()]);
-  assert.equal(n, 1); assert.equal(a.n, 1); assert.equal(b.n, 1);
+  assert.equal(n, 1);
+  assert.equal(a.n, 1);
+  assert.equal(b.n, 1);
   assert.equal(a._cache.stale, false);
-  const d = await c.get(); assert.equal(n, 1); assert.equal(d.n, 1);
+  const d = await c.get();
+  assert.equal(n, 1);
+  assert.equal(d.n, 1);
 });
 
 test('WC2: suresi dolunca bayat deger ANINDA doner, arka planda yenilenir', async () => {
   let n = 0;
-  const c = createWarmCache({ name: 't', ttlMs: 10, compute: async () => { n += 1; return { ok: true, n }; }, log: quiet });
+  const c = createWarmCache({
+    name: 't',
+    ttlMs: 10,
+    compute: async () => {
+      n += 1;
+      return { ok: true, n };
+    },
+    log: quiet,
+  });
   await c.get();
   await new Promise((r) => setTimeout(r, 25));
   const stale = await c.get();
-  assert.equal(stale.n, 1); assert.equal(stale._cache.stale, true);
+  assert.equal(stale.n, 1);
+  assert.equal(stale._cache.stale, true);
   await new Promise((r) => setTimeout(r, 10));
   assert.equal((await c.get()).n, 2);
 });
 
 test('WC3: fresh=1 hesabi bekler ve yeni degeri doner', async () => {
   let n = 0;
-  const c = createWarmCache({ name: 't', ttlMs: 60000, compute: async () => ({ ok: true, n: ++n }), log: quiet });
+  const c = createWarmCache({
+    name: 't',
+    ttlMs: 60000,
+    compute: async () => ({ ok: true, n: ++n }),
+    log: quiet,
+  });
   await c.get();
   assert.equal((await c.get({ fresh: true })).n, 2);
 });
@@ -37,18 +64,35 @@ test('WC3: fresh=1 hesabi bekler ve yeni degeri doner', async () => {
 function saat(bas = 1_000_000) {
   let t = bas;
   const now = () => t;
-  now.ileri = (ms) => { t += ms; };
+  now.ileri = (ms) => {
+    t += ms;
+  };
   return now;
 }
-function belirtecli({ maxAgeMs = 6 * 3600_000, ttlMs = 600_000, tokenFn, seri = null, computeMs = 0, sayac } = {}) {
+function belirtecli({
+  maxAgeMs = 6 * 3600_000,
+  ttlMs = 600_000,
+  tokenFn,
+  seri = null,
+  computeMs = 0,
+  sayac,
+} = {}) {
   const now = saat();
   const st = { n: 0, tk: 'A' };
   const c = createWarmCache({
-    name: 't', ttlMs, maxAgeMs, seri, now, log: quiet,
+    name: 't',
+    ttlMs,
+    maxAgeMs,
+    seri,
+    now,
+    log: quiet,
     token: tokenFn || (async () => st.tk),
     compute: async () => {
       st.n += 1;
-      if (sayac) { sayac.aktif += 1; sayac.enCok = Math.max(sayac.enCok, sayac.aktif); }
+      if (sayac) {
+        sayac.aktif += 1;
+        sayac.enCok = Math.max(sayac.enCok, sayac.aktif);
+      }
       if (computeMs) await new Promise((r) => setTimeout(r, computeMs));
       if (sayac) sayac.aktif -= 1;
       return { ok: true, n: st.n };
@@ -67,7 +111,11 @@ test('WC4: belirtec ayni -> hesap yok, checkedAt ilerler, stale false', async ()
   assert.equal(c.peek().checkedAt, now(), 'checkedAt ilerlemedi');
   const g = await c.get();
   assert.equal(g._cache.stale, false, 'kontrol edilmis deger bayat gosterildi');
-  assert.equal(g._cache.computedAt, new Date(1_000_000).toISOString(), 'computedAt verinin gercek yasini gostermeli');
+  assert.equal(
+    g._cache.computedAt,
+    new Date(1_000_000).toISOString(),
+    'computedAt verinin gercek yasini gostermeli',
+  );
 });
 
 test('WC5: belirtec degisti -> ilk kontrolde bekler, ikinci kontrolde (stabil) 1 kez hesaplar', async () => {
@@ -99,7 +147,12 @@ test('WC6: azami yas asildi, belirtec ayni -> 1 kez hesaplar', async () => {
 
 test('WC7: belirtec okunamazsa yas < maxAgeMs iken hesap yok; yas >= maxAgeMs iken emniyet hesaplar', async () => {
   let hata = false;
-  const { c, st, now } = belirtecli({ tokenFn: async () => { if (hata) throw new Error('db yok'); return 'A'; } });
+  const { c, st, now } = belirtecli({
+    tokenFn: async () => {
+      if (hata) throw new Error('db yok');
+      return 'A';
+    },
+  });
   await c.get();
   hata = true;
   now.ileri(5 * 3600_000);
@@ -142,7 +195,9 @@ test('WC9: seri - ayni seri adli iki onbellegin hesaplari ayni anda calismaz', a
   assert.equal(s2.enCok, 2);
   // Zincirdeki bir hata sonrakini durdurmaz.
   const { _seriyeKoy } = require('../warm-cache.cjs');
-  const p1 = _seriyeKoy('z', async () => { throw new Error('x'); });
+  const p1 = _seriyeKoy('z', async () => {
+    throw new Error('x');
+  });
   const p2 = _seriyeKoy('z', async () => 7);
   await assert.rejects(p1, /x/);
   assert.equal(await p2, 7);
@@ -151,8 +206,14 @@ test('WC9: seri - ayni seri adli iki onbellegin hesaplari ayni anda calismaz', a
 test('WC10: hesap sirasinda belirtec degisirse bir sonraki kontrolde yakalanir', async () => {
   const st = { n: 0, tk: 'A' };
   const c = createWarmCache({
-    name: 't', log: quiet, token: async () => st.tk,
-    compute: async () => { st.n += 1; st.tk = 'B'; return { n: st.n }; },
+    name: 't',
+    log: quiet,
+    token: async () => st.tk,
+    compute: async () => {
+      st.n += 1;
+      st.tk = 'B';
+      return { n: st.n };
+    },
   });
   await c.get();
   assert.equal(c.peek().token, 'A', 'belirtec hesaptan once okunmali');
@@ -166,9 +227,13 @@ test('WC11: hesap ucustayken run() (Admin yazimi) ucusa katilmaz, ardindan TEK e
   const girdi = { v: 1 };
   let n = 0;
   let birak;
-  const kapi = new Promise((r) => { birak = r; });
+  const kapi = new Promise((r) => {
+    birak = r;
+  });
   const c = createWarmCache({
-    name: 't', log: quiet, token: async () => 'A',
+    name: 't',
+    log: quiet,
+    token: async () => 'A',
     compute: async () => {
       n += 1;
       const okunan = girdi.v; // girdiler hesabin BASINDA okunur (allowedQ / excQ gibi)
@@ -198,7 +263,10 @@ test('WC12: maxAgeMs fonksiyon olabilir (eksik girdiyle hesap kisa omurlu)', asy
   let n = 0;
   let eksik = true;
   const c = createWarmCache({
-    name: 't', log: quiet, now, token: async () => 'A',
+    name: 't',
+    log: quiet,
+    now,
+    token: async () => 'A',
     maxAgeMs: (p) => (p && p.eksik ? 10 * 60_000 : 6 * 3600_000),
     compute: async () => ({ n: ++n, eksik }),
   });

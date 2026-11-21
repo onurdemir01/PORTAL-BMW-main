@@ -25,7 +25,15 @@ const ONCELIKLER = [
   { key: 'dusuk', label: 'Düşük' },
 ];
 
-const SINIR = { baslik: 300, aciklama: 8000, kisi: 200, beklenen: 500, kategori: 100, not: 4000, toplu: 200 };
+const SINIR = {
+  baslik: 300,
+  aciklama: 8000,
+  kisi: 200,
+  beklenen: 500,
+  kategori: 100,
+  not: 4000,
+  toplu: 200,
+};
 
 const VARSAYILAN_KATEGORI = 'Otomasyon';
 
@@ -46,17 +54,44 @@ function sade(s) {
 }
 
 const DURUM_ES = {
-  acik: 'acik', yeni: 'acik', open: 'acik', todo: 'acik',
-  devam: 'devam', 'devam ediyor': 'devam', suruyor: 'devam', 'in progress': 'devam', progress: 'devam',
-  bekliyor: 'bekliyor', beklemede: 'bekliyor', bekleniyor: 'bekliyor', blocked: 'bekliyor', waiting: 'bekliyor',
-  tamam: 'tamam', tamamlandi: 'tamam', bitti: 'tamam', done: 'tamam', kapandi: 'tamam',
-  iptal: 'iptal', 'iptal edildi': 'iptal', cancelled: 'iptal', canceled: 'iptal',
+  acik: 'acik',
+  yeni: 'acik',
+  open: 'acik',
+  todo: 'acik',
+  devam: 'devam',
+  'devam ediyor': 'devam',
+  suruyor: 'devam',
+  'in progress': 'devam',
+  progress: 'devam',
+  bekliyor: 'bekliyor',
+  beklemede: 'bekliyor',
+  bekleniyor: 'bekliyor',
+  blocked: 'bekliyor',
+  waiting: 'bekliyor',
+  tamam: 'tamam',
+  tamamlandi: 'tamam',
+  bitti: 'tamam',
+  done: 'tamam',
+  kapandi: 'tamam',
+  iptal: 'iptal',
+  'iptal edildi': 'iptal',
+  cancelled: 'iptal',
+  canceled: 'iptal',
 };
 
 const ONCELIK_ES = {
-  yuksek: 'yuksek', y: 'yuksek', high: 'yuksek', acil: 'yuksek', kritik: 'yuksek',
-  orta: 'orta', o: 'orta', medium: 'orta', normal: 'orta',
-  dusuk: 'dusuk', d: 'dusuk', low: 'dusuk',
+  yuksek: 'yuksek',
+  y: 'yuksek',
+  high: 'yuksek',
+  acil: 'yuksek',
+  kritik: 'yuksek',
+  orta: 'orta',
+  o: 'orta',
+  medium: 'orta',
+  normal: 'orta',
+  dusuk: 'dusuk',
+  d: 'dusuk',
+  low: 'dusuk',
 };
 
 /** Serbest yazilmis durumu anahtara cevirir; taninmazsa null. */
@@ -119,12 +154,14 @@ function isDogrula(girdi, { kismi = false } = {}) {
   if (!kismi || var_('baslik')) {
     const b = metin(g.baslik);
     if (!b) hatalar.push('Başlık gerekli.');
-    else if (b.length > SINIR.baslik) hatalar.push(`Başlık en çok ${SINIR.baslik} karakter olabilir.`);
+    else if (b.length > SINIR.baslik)
+      hatalar.push(`Başlık en çok ${SINIR.baslik} karakter olabilir.`);
     deger.baslik = b;
   }
   if (!kismi || var_('aciklama')) {
     const a = metin(g.aciklama);
-    if (a.length > SINIR.aciklama) hatalar.push(`Açıklama en çok ${SINIR.aciklama} karakter olabilir.`);
+    if (a.length > SINIR.aciklama)
+      hatalar.push(`Açıklama en çok ${SINIR.aciklama} karakter olabilir.`);
     deger.aciklama = a;
   }
   if (!kismi || var_('durum')) {
@@ -144,17 +181,22 @@ function isDogrula(girdi, { kismi = false } = {}) {
   }
   if (!kismi || var_('beklenen')) {
     const s = metin(g.beklenen);
-    if (s.length > SINIR.beklenen) hatalar.push(`"Ne bekleniyor" en çok ${SINIR.beklenen} karakter olabilir.`);
+    if (s.length > SINIR.beklenen)
+      hatalar.push(`"Ne bekleniyor" en çok ${SINIR.beklenen} karakter olabilir.`);
     deger.beklenen = s;
   }
   if (!kismi || var_('kategori')) {
     const s = metin(g.kategori) || VARSAYILAN_KATEGORI;
-    if (s.length > SINIR.kategori) hatalar.push(`Kategori en çok ${SINIR.kategori} karakter olabilir.`);
+    if (s.length > SINIR.kategori)
+      hatalar.push(`Kategori en çok ${SINIR.kategori} karakter olabilir.`);
     deger.kategori = s;
   }
   if (!kismi || var_('sonTarih')) {
     const t = tarihCoz(g.sonTarih);
-    if (t === null) hatalar.push(`Son tarih anlaşılamadı: "${metin(g.sonTarih)}" (örnek: 2026-11-20 ya da 20.11.2026).`);
+    if (t === null)
+      hatalar.push(
+        `Son tarih anlaşılamadı: "${metin(g.sonTarih)}" (örnek: 2026-11-20 ya da 20.11.2026).`,
+      );
     deger.sonTarih = t || '';
   }
   return { deger, hatalar };
@@ -179,9 +221,11 @@ function topluAyristir(text) {
     const aciklama = kalan.join(' | ');
     const hatalar = [];
     const oncelik = oncelikHam ? oncelikCoz(oncelikHam) : 'orta';
-    if (oncelikHam && !oncelik) hatalar.push(`Tanınmayan öncelik: "${oncelikHam}" (yüksek / orta / düşük).`);
+    if (oncelikHam && !oncelik)
+      hatalar.push(`Tanınmayan öncelik: "${oncelikHam}" (yüksek / orta / düşük).`);
     const durum = durumHam ? durumCoz(durumHam) : 'acik';
-    if (durumHam && !durum) hatalar.push(`Tanınmayan durum: "${durumHam}" (açık / devam / beklemede / tamam / iptal).`);
+    if (durumHam && !durum)
+      hatalar.push(`Tanınmayan durum: "${durumHam}" (açık / devam / beklemede / tamam / iptal).`);
     const v = isDogrula({
       baslik,
       sahip,

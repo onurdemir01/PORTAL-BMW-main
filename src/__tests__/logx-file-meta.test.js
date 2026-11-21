@@ -11,7 +11,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const SRC = fs.readFileSync(
-  path.join(__dirname, '..', 'components', 'logx_v2', 'shared', 'logFileMeta.ts'), 'utf8'
+  path.join(__dirname, '..', 'components', 'logx_v2', 'shared', 'logFileMeta.ts'),
+  'utf8',
 );
 
 // TypeScript derleyicisiyle (repo bagimliligi) CommonJS'e cevrilir. Elle regex ile
@@ -25,7 +26,7 @@ function loadModule() {
   // `Blob` tarayici API'si; Node'da ayni baytlari Buffer ile olculur.
   const shim = out.replace(
     'new Blob([JSON.stringify(selected)]).size',
-    "Buffer.byteLength(JSON.stringify(selected), 'utf8')"
+    "Buffer.byteLength(JSON.stringify(selected), 'utf8')",
   );
   new Function('module', 'exports', 'require', 'Buffer', shim)(m, m.exports, require, Buffer);
   return m.exports;
@@ -35,7 +36,7 @@ const L = loadModule();
 
 // ── D1: mtime normalize ─────────────────────────────────────────────────────
 test('D1: saniye epoch (ansible find’in GERCEK ciktisi) dogru cozulur', () => {
-  const sec = 1756300000;                       // 2025-08-27 civari
+  const sec = 1756300000; // 2025-08-27 civari
   assert.equal(L.normalizeMtime(sec), sec * 1000);
 });
 
@@ -63,7 +64,11 @@ test('D1: mtime yoksa DOSYA ADINDAKI tarihe dusulur', () => {
 test('D1: hicbir ipucu yoksa null (uydurma tarih URETILMEZ)', () => {
   assert.equal(L.normalizeMtime(undefined, '/logs/server.log'), null);
   assert.equal(L.normalizeMtime('gecersiz', '/logs/server.log'), null);
-  assert.equal(L.normalizeMtime(0, '/logs/server.log'), null, 'epoch 0 gecerli bir log tarihi degil');
+  assert.equal(
+    L.normalizeMtime(0, '/logs/server.log'),
+    null,
+    'epoch 0 gecerli bir log tarihi degil',
+  );
 });
 
 test('D1: gecersiz ay/gun kabul edilmez', () => {
@@ -85,14 +90,17 @@ test('log tipi dosya adindan cikarilir', () => {
 
 // ── D3: secim siniri ────────────────────────────────────────────────────────
 test('D3: sinir express.json 2MB limitinden TURETILIR (uydurma sayi degil)', () => {
-  assert.equal(L.SELECTION_MAX_BYTES, Math.floor(2 * 1024 * 1024 / 2));
+  assert.equal(L.SELECTION_MAX_BYTES, Math.floor((2 * 1024 * 1024) / 2));
 });
 
 test('D3: olcum GERCEK govde uzerinden yapilir, dosya SAYISI uzerinden degil', () => {
   // Ayni sayida ama COK daha uzun yollu secim, daha buyuk govde uretmeli — sinirin
   // "dosya sayisi" olarak ifade edilememesinin sebebi tam olarak bu.
   const kisa = Array.from({ length: 100 }, (_, i) => ({ host: 'H1', path: `/l/${i}.log` }));
-  const uzun = Array.from({ length: 100 }, (_, i) => ({ host: 'H1', path: `/vhosting/cok/derin/bir/dizin/yapisi/altinda/uygulama/logs/${i}.log` }));
+  const uzun = Array.from({ length: 100 }, (_, i) => ({
+    host: 'H1',
+    path: `/vhosting/cok/derin/bir/dizin/yapisi/altinda/uygulama/logs/${i}.log`,
+  }));
   assert.ok(L.selectionPayloadBytes(uzun) > L.selectionPayloadBytes(kisa) * 2);
 });
 
@@ -106,9 +114,13 @@ test('D3: kademeli basinc — sessizce sinira dayanilmaz', () => {
 
 test('D3: sunucu AYNI turetmeyi kullanir (iki taraf ayrisamaz)', () => {
   const legacy = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'server', 'logx', 'v2', 'legacy.cjs'), 'utf8'
+    path.join(__dirname, '..', '..', 'server', 'logx', 'v2', 'legacy.cjs'),
+    'utf8',
   );
   assert.match(legacy, /const EXPRESS_JSON_LIMIT_BYTES = 2 \* 1024 \* 1024;/);
-  assert.match(legacy, /const TRANSFER_SELECTION_MAX_BYTES = Math\.floor\(EXPRESS_JSON_LIMIT_BYTES \/ 2\);/);
+  assert.match(
+    legacy,
+    /const TRANSFER_SELECTION_MAX_BYTES = Math\.floor\(EXPRESS_JSON_LIMIT_BYTES \/ 2\);/,
+  );
   assert.match(legacy, /code: 'selection_too_large'/);
 });

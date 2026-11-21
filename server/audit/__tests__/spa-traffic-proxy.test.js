@@ -21,7 +21,14 @@ const path = require('node:path');
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 const gec = (_req, _res, next) => next();
 

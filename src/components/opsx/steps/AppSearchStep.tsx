@@ -1,10 +1,10 @@
 // src/components/opsx/steps/AppSearchStep.tsx — uygulama seçimi. LogX'in
 // AppSearchStep'iyle BİREBİR aynı davranış (kullanıcı isteği): aranabilir liste,
 // DB erişilemezse snapshot fallback uyarısı.
-import React, { useEffect, useRef, useState } from "react";
-import { MagnifyingGlassIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { opsxApi } from "@/api/opsxApi";
-import { tekTamEslesme } from "@/utils/derinBaglanti";
+import React, { useEffect, useRef, useState } from 'react';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { opsxApi } from '@/api/opsxApi';
+import { tekTamEslesme } from '@/utils/derinBaglanti';
 import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 // ÖN-DOLUM (Application Hub derin bağlantısı, 2026-11-08): `initialSearch` arama kutusunu doldurur.
@@ -19,22 +19,27 @@ const AppSearchStep: React.FC<{
   initialSearch?: string;
   autoSelectExact?: boolean;
 }> = ({ onSelect, busy, initialSearch, autoSelectExact }) => {
-  const [search, setSearch] = useState(initialSearch ?? "");
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [apps, setApps] = useState<string[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [onDolumNotu, setOnDolumNotu] = useState<string | null>(null);
   // Otomatik seçim YALNIZ ilk aramada denenir; kullanıcı yazmaya başladıysa bir daha asla.
-  const otomatikRef = useRef<string | null>(autoSelectExact && initialSearch ? initialSearch : null);
+  const otomatikRef = useRef<string | null>(
+    autoSelectExact && initialSearch ? initialSearch : null,
+  );
   const onSelectRef = useRef(onSelect);
-  useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(true);
       setError(null);
-      opsxApi.searchApps(search)
+      opsxApi
+        .searchApps(search)
         .then((r) => {
           setApps(r.apps);
           setFallbackMode(r.fallbackMode);
@@ -43,7 +48,10 @@ const AppSearchStep: React.FC<{
           otomatikRef.current = null;
           if (search !== hedef) return;
           const tam = tekTamEslesme(r.apps, hedef);
-          if (tam) { onSelectRef.current(tam); return; }
+          if (tam) {
+            onSelectRef.current(tam);
+            return;
+          }
           setOnDolumNotu(
             r.apps.length === 0
               ? `“${hedef}” envanterde bulunamadı — uygulamayı arayıp seçin.`
@@ -70,7 +78,10 @@ const AppSearchStep: React.FC<{
       {fallbackMode && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>Envanter veritabanına şu an erişilemiyor — son bilinen uygulama listesi (snapshot) gösteriliyor.</span>
+          <span>
+            Envanter veritabanına şu an erişilemiyor — son bilinen uygulama listesi (snapshot)
+            gösteriliyor.
+          </span>
         </div>
       )}
       <div className="relative">
@@ -79,7 +90,10 @@ const AppSearchStep: React.FC<{
           // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
           ref={acilincaOdakla}
           value={search}
-          onChange={(e) => { otomatikRef.current = null; setSearch(e.target.value); }}
+          onChange={(e) => {
+            otomatikRef.current = null;
+            setSearch(e.target.value);
+          }}
           placeholder="Uygulama adı ara..."
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
         />

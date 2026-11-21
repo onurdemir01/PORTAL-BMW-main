@@ -36,7 +36,7 @@ const Module = require('node:module');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const DIZIN = path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub');
+const DIZIN = path.join(ROOT, 'server', 'ansible', 'playbooks', 'bmw_portal', 'app_hub');
 const BETIK = path.join(DIZIN, 'files', 'app_hub_fleet.sh');
 const TEK_BETIK = path.join(DIZIN, 'files', 'app_hub_ocp.sh');
 const PLAYBOOK = path.join(DIZIN, 'app_hub_fleet.yml');

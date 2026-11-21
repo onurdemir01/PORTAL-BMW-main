@@ -12,6 +12,7 @@
 //   AD3 var olmayan ekranlara yönlendiren eski metinler geri gelmez.
 //   AD4 kaldırılan Linkler sayfasının artıkları geri gelmez (Dashboard 403 alıyordu).
 'use strict';
+const { esnek, iceriyor, konum } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -166,11 +167,11 @@ test('AD4 Linkler artiklari yok (Dashboard /api/links cagirmiyor)', () => {
   const dash = kodOnly(oku('src/components/DashboardPage.tsx'));
   assert.doesNotMatch(
     dash,
-    /linksApi|\/api\/links|Favori bağlantılar/,
+    esnek(/linksApi|\/api\/links|Favori bağlantılar/),
     'Dashboard hala Linkler verisini cekiyor (403)',
   );
   const palet = kodOnly(oku('src/components/common/CommandPalette.tsx'));
-  assert.doesNotMatch(palet, /"Linkler"/, 'komut paletinde Linkler var');
+  assert.doesNotMatch(palet, /["']Linkler["']/, 'komut paletinde Linkler var');
   for (const f of ['src/components/ImportantLinksPage.tsx', 'src/api/linksApi.ts']) {
     assert.ok(!fs.existsSync(path.join(ROOT, f)), `${f} geri gelmis`);
   }

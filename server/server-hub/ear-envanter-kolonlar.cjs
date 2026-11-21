@@ -163,7 +163,7 @@ function likeDeseni(s) {
   const t = String(s == null ? '' : s)
     .trim()
     .slice(0, 100);
-  return t ? `%${t.replace(/[\\%_[]/g, (c) => "\\" + c)}%` : '';
+  return t ? `%${t.replace(/[\\%_[]/g, (c) => '\\' + c)}%` : '';
 }
 
 const metinOf = (v) => String(v == null ? '' : v).slice(0, SINIR_METIN);
@@ -186,8 +186,8 @@ function suzgecleriAyristir(gorunum, ham) {
   if (dizi.length > SINIR_SUZGEC)
     throw hata(400, `En çok ${SINIR_SUZGEC} süzgeç uygulanabilir.`, 'cok_suzgec');
   return dizi.map((x) => {
-    const k = String((x?.k) || '');
-    const op = String((x?.op) || '');
+    const k = String(x?.k || '');
+    const op = String(x?.op || '');
     const kol = Object.hasOwn(g.kolonlar, k) ? g.kolonlar[k] : null;
     if (!kol) throw hata(400, `Bilinmeyen kolon: ${k.slice(0, 40)}`, 'gecersiz_kolon');
     if (!ISLECLER.has(op) || !TIP_ISLEC[kol.tip].has(op))
@@ -244,7 +244,11 @@ async function kosullar(gorunum, suzgecler, { ilk, q, eslenikAnahtarlari, haric 
     if (haric && s.k === haric) continue;
     const kol = s.kol;
     if (kol.eslenik) {
-      const anahtarlar = (await (async () => { if (eslenikAnahtarlari) return await eslenikAnahtarlari(kol.eslenik, s.op === 'in' ? s.v : null, s.op); return []; })());
+      const anahtarlar = await (async () => {
+        if (eslenikAnahtarlari)
+          return await eslenikAnahtarlari(kol.eslenik, s.op === 'in' ? s.v : null, s.op);
+        return [];
+      })();
       where.push(
         `CONCAT(u.host, '|', u.kok, '|', u.ad) IN (SELECT value FROM OPENJSON(${p(JSON.stringify(anahtarlar))}))`,
       );

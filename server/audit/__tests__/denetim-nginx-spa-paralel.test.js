@@ -16,7 +16,14 @@ const fs = require('node:fs');
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 const gec = (_req, _res, next) => next();
 
@@ -39,9 +46,19 @@ async function query(text) {
   if (t.includes('FROM dbo.Nginx_Spa_Traffic'))
     return rs([
       {
-        host: 'GBNGXT33', vhost: 'GLOMO-TEST', service: 'GLOMO', env: 'TEST', location: '/kart/',
-        req_24h: 5, req_7d: 40, hc_24h: 1, sampled: 1, last_seen: '20261111100000', error: null,
-        first_seen: '20261101000000', scan_date: GUN,
+        host: 'GBNGXT33',
+        vhost: 'GLOMO-TEST',
+        service: 'GLOMO',
+        env: 'TEST',
+        location: '/kart/',
+        req_24h: 5,
+        req_7d: 40,
+        hc_24h: 1,
+        sampled: 1,
+        last_seen: '20261111100000',
+        error: null,
+        first_seen: '20261101000000',
+        scan_date: GUN,
       },
     ]);
   if (t.includes('MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit')) {
@@ -55,9 +72,19 @@ async function query(text) {
   if (t.includes('FROM dbo.Nginx_Config_Audit'))
     return rs([
       {
-        service: 'GLOMO', env: 'TEST', application: 'kart-app-v1', namespace: 'kart-test',
-        include_name: 'kart-app-v1', location_path: '/kart/', host: 'GBNGXT33', vhost: 'GLOMO-TEST',
-        deploy_mode: 'namespaced', include_exists: 1, app_deployed: 1, in_ocp_inventory: 1, status: 'OK',
+        service: 'GLOMO',
+        env: 'TEST',
+        application: 'kart-app-v1',
+        namespace: 'kart-test',
+        include_name: 'kart-app-v1',
+        location_path: '/kart/',
+        host: 'GBNGXT33',
+        vhost: 'GLOMO-TEST',
+        deploy_mode: 'namespaced',
+        include_exists: 1,
+        app_deployed: 1,
+        in_ocp_inventory: 1,
+        status: 'OK',
       },
     ]);
   if (t.includes("OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid")) {
@@ -66,7 +93,11 @@ async function query(text) {
   }
   return rs([]);
 }
-sahteModul('inventory/mssql.cjs', { query, queryLong: query, sql: new Proxy({}, { get: () => () => 'tip' }) });
+sahteModul('inventory/mssql.cjs', {
+  query,
+  queryLong: query,
+  sql: new Proxy({}, { get: () => () => 'tip' }),
+});
 sahteModul('auth/index.cjs', { requireAuth: gec, requireAdmin: gec, getRequestUser: () => null });
 sahteModul('auth/visibility.cjs', { requireVisiblePrefix: () => gec, requireVisible: () => gec });
 
@@ -120,7 +151,13 @@ test('NP2 tarih yoksa bos yanit; tarih listesi hatasi 500 yapmaz, islenmemis red
   try {
     const { code, body } = await al('/api/denetim/nginx-spa?fresh=1');
     assert.equal(code, 200);
-    assert.deepEqual(body, { ok: true, scanDate: null, services: [], rows: [], availableDates: [] });
+    assert.deepEqual(body, {
+      ok: true,
+      scanDate: null,
+      services: [],
+      rows: [],
+      availableDates: [],
+    });
     await new Promise((ok) => setTimeout(ok, 20));
     assert.deepEqual(redler, [], 'islenmemis red');
     // Tarih VARKEN tarih listesi hatasi eskisi gibi 500.
@@ -145,7 +182,11 @@ test('NP3 spaSinyali sema yoklamasi onbellekte; hata ve tablo yok onbellege girm
   await al('/api/denetim/route-stats?fresh=1');
   await al('/api/denetim/route-stats?fresh=1');
   await al('/api/denetim/route-stats?fresh=1');
-  assert.equal(say(SEMA), 3, 'hata/tablo-yok onbellege alindi ya da gecerli sema onbellege alinmadi');
+  assert.equal(
+    say(SEMA),
+    3,
+    'hata/tablo-yok onbellege alindi ya da gecerli sema onbellege alinmadi',
+  );
 });
 
 test('NP4 SPA Kesfi route envanteri ARK cluster IN suzgecli, JS bekci duruyor', () => {

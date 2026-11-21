@@ -14,17 +14,18 @@
 
 const { ETIKET_KURALLARI } = require('./kural-katalogu.cjs');
 const { etiketle, ozetle } = require('./retire-etiket.cjs');
+const { kucukBuyuk } = require('../util/siralama.cjs');
 
 function kurallarListesi(ayar) {
   return ETIKET_KURALLARI.map((k) => {
-    const m = (ayar.kayitlar || {})[`etiket:${k.kural}`] || null;
+    const m = ayar.kayitlar?.[`etiket:${k.kural}`] || null;
     return {
       kural: k.kural,
       tur: k.tur,
       ad: k.ad,
       kosul: k.kosul,
       varsayilan: k.varsayilan,
-      gecerli: (ayar.etiketler || {})[k.kural] || k.varsayilan,
+      gecerli: ayar.etiketler?.[k.kural] || k.varsayilan,
       degistiren: m ? m.updatedBy : null,
       zaman: m ? m.updatedAt : null,
       aciklama: m ? m.aciklama : '',
@@ -37,7 +38,7 @@ function kurallarListesi(ayar) {
 function kontrolImzasi(kontroller) {
   if (kontroller === null || kontroller === undefined) return 'null';
   if (!(kontroller instanceof Map)) return JSON.stringify(kontroller);
-  return JSON.stringify([...kontroller.entries()].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)));
+  return JSON.stringify([...kontroller.entries()].sort((x, y) => kucukBuyuk(x[0], y[0])));
 }
 
 /**
@@ -67,7 +68,7 @@ function etiketHesabiKur({ getAssessment, ayarlar, kontrol, etiketleFn = etiketl
 }
 
 function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const kim = (req) => req.session?.user?.username || 'unknown';
   const hesap = etiketHesabiKur({ getAssessment, ayarlar, kontrol });
 
   router.get('/retire-etiketleri', async (req, res) => {
@@ -76,7 +77,9 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
       // ?host=X: yalniz o sunucuyu tasiyan etiketler (istemcideki hostEtiketleri ile AYNI suzgec:
       // e.hostlar.includes(host)). ozet filo geneli kalir.
       const host = req.query.host ? String(req.query.host).trim().toUpperCase().slice(0, 64) : '';
-      const liste = host ? sonuc.etiketler.filter((e) => (e.hostlar || []).includes(host)) : sonuc.etiketler;
+      const liste = host
+        ? sonuc.etiketler.filter((e) => (e.hostlar || []).includes(host))
+        : sonuc.etiketler;
       res.json({
         ok: true,
         tableMissing: a.tableMissing === true,
@@ -106,12 +109,10 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
       const { sonuc } = await hesap(false);
       const e = sonuc.etiketler.find((x) => x.anahtar === anahtar);
       if (!e)
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: 'Bu etiket artık yok (son taramada koşul kalktı). Listeyi yenileyin.',
-          });
+        return res.status(409).json({
+          ok: false,
+          message: 'Bu etiket artık yok (son taramada koşul kalktı). Listeyi yenileyin.',
+        });
       res.json({ ok: true, etiket: e });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Etiket ayrıntısı alınamadı.' });

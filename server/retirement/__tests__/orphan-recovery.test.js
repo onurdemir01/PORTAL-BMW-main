@@ -1,4 +1,5 @@
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -173,5 +174,8 @@ test('OR5 route yalniz ID baglar; yeni AWX launch veya claim reset cagirmaz', ()
   assert.match(route, /NOT EXISTS/);
   assert.match(route, /WITH \(UPDLOCK, HOLDLOCK\)/);
   assert.match(route, /\$5 = 'delete' OR record_id <> \$3/);
-  assert.doesNotMatch(route, /launchJob|\blaunch\(|status = 'stop_scheduled'|status = 'stopped'/);
+  assert.doesNotMatch(
+    route,
+    esnek(/launchJob|\blaunch\(|status = 'stop_scheduled'|status = 'stopped'/),
+  );
 });
