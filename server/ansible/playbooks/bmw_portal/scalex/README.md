@@ -28,7 +28,7 @@ AWX_PROJECT_DIR/
 │       └── scalex_app/          ← bu paketten kopyalanır
 │           ├── main.yml         (mutasyon: stop / restore / scale, dry_run + apply)
 │           ├── discovery.yml    (keşif: workloads / state / health — SALT OKUNUR)
-│           ├── openshift_inventory_scalex.yaml   (yedek cluster kataloğu)
+│           ├── openshift_inventory_scalex.ornek.yaml   (yedek cluster kataloğunun KURGUSAL biçimi; gerçeği yalnız AWX'te openshift_inventory_scalex.yaml)
 │           ├── tasks/
 │           └── files/
 │               ├── scalex_runner.sh
@@ -61,7 +61,7 @@ ve iş açılışta düşer.
 
 ## Bu paket, üretimde çalışan `chaos_scale_app`'in devamıdır
 
-Kaynak: `github.com/hknisci/garanti_tasks` → `scale/`. Yapı korundu
+Kaynak: kurum içi görev deposu, `scale/` klasörü. Yapı korundu
 (`main.yml` → `01_prepare` → `02_select_targets` → precheck → strict guard →
 execute → `20_build_report` → `30_send_mail`); portal ile çalışabilmesi için
 eklenenler:

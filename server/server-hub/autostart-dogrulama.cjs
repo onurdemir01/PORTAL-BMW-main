@@ -145,7 +145,7 @@ function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
       status: 400,
       message: `${jvm} (JBoss ${gen}) tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez, iş açılmadı.`,
     };
-  // DOMAIN KAPALI (2026-11-15, uretim GBBFAA01 "Connection refused :9990"): taramada host controller
+  // DOMAIN KAPALI (2026-11-15, uretim ORBFAA01 "Connection refused :9990"): taramada host controller
   // calismiyordu (assess hcKapali -> j.domainKapali). Betik auto-start'i yalniz calisan host controller
   // uzerinden okur / yazar; is acilsa "host controller'a baglanilamadi" ile duserdi. Iki yon de kapali.
   if (j.domainKapali === true)

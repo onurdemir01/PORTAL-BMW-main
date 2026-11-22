@@ -32,7 +32,7 @@ const SAMPLE = {
   overall_status: 'ok',
   hosts: [
     {
-      host: 'GBJBOQ01',
+      host: 'ORJBOQ01',
       status: 'ok',
       ear_dirs: ['/app.ear'],
       meta_raw: '644|was|was|100|1700000000|/app.ear/a.jar',

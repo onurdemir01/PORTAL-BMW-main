@@ -189,7 +189,7 @@ function assertVaultKeyName(value) {
     throw Object.assign(
       new Error(
         'Geçersiz vault anahtarı adı. Ansible değişken adı kurallarına uymalı: ' +
-          'harf veya alt çizgi ile başlar, yalnızca harf/rakam/alt çizgi içerir (ör. uxmid_gar).',
+          'harf veya alt çizgi ile başlar, yalnızca harf/rakam/alt çizgi içerir (ör. svcac_gar).',
       ),
       { status: 400 },
     );

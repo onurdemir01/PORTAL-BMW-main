@@ -109,7 +109,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'Dizin (LDAP)',
     description: 'Kurumsal Active Directory/LDAP bağlantı adresi.',
     required: true,
-    example: 'ldaps://dc.garanti.com.tr',
+    example: 'ldaps://dc.sirket.invalid',
     usedIn: 'server/auth/ldap.cjs',
     kritik: true,
   },
@@ -129,7 +129,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'Ansible (AWX)',
     description: 'Varsayılan (legacy tek-sunucu) AWX/Tower adresi.',
     required: false,
-    example: 'https://awx.garanti.com.tr',
+    example: 'https://awx.sirket.invalid',
     usedIn: 'server/ansible/runner.cjs',
   },
   {
@@ -216,10 +216,21 @@ export const ENV_VARS: EnvVarMeta[] = [
     key: 'NOBETCI_API_URL',
     label: 'Nöbet API URL',
     group: 'Nöbet',
-    description: 'Harici nöbetçi/duty sisteminin (gbnys) API adresi.',
+    description: 'Harici nöbetçi/duty sisteminin API adresi.',
     required: false,
-    example: 'https://gbnys.example.com/api',
+    example: 'https://nobetci.example.invalid/api',
     usedIn: 'server/nobetci/index.cjs',
+  },
+  {
+    key: 'NOBETCI_API_TABAN',
+    label: 'Nöbet API taban adresi',
+    group: 'Nöbet',
+    description:
+      'Nöbetçi servisinin taban adresi; NOBETCI_TEAM_ID verilince liste adresi bundan kurulur. Kurum adresi kodda değil burada.',
+    required: false,
+    example: 'https://nobetci.example.invalid',
+    usedIn: 'server/nobetci/index.cjs',
+    saltOkunur: 'ortam',
   },
   {
     key: 'NOBETCI_TEAM_NAME',
@@ -254,7 +265,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'Nöbet',
     description: 'NOBETCI_API_URL yerine yalnızca host bileşeni gerekiyorsa kullanılır.',
     required: false,
-    example: 'gbnys.example.com',
+    example: 'nobetci.example.invalid',
     usedIn: 'server/nobetci/index.cjs',
   },
   {
@@ -263,7 +274,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'İzleme',
     description: 'Dynatrace Managed MCP sunucu adresi.',
     required: false,
-    example: 'https://dt.garanti.com.tr/mcp',
+    example: 'https://dt.sirket.invalid/mcp',
     usedIn: 'server/dynatrace/index.cjs',
   },
   {
@@ -272,7 +283,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'İzleme',
     description: 'Instana MCP sunucu adresi.',
     required: false,
-    example: 'https://instana.garanti.com.tr/mcp',
+    example: 'https://instana.sirket.invalid/mcp',
     usedIn: 'server/instana/index.cjs',
   },
   {
@@ -548,9 +559,9 @@ export const ENV_VARS: EnvVarMeta[] = [
     label: 'Smart API URL',
     group: 'Smart',
     description:
-      'Kurum içi talep yönetim sistemi (Smart/RFF) taban adresi — ortama göre değişir (SOS02-KL-001-EN): Test gbcalt01.fw.garanti.com.tr:8443, QA gbcadq01.fw.garanti.com.tr:8443, Prod gbca.fw.garanti.com.tr:8443.',
+      'Kurum içi talep yönetim sistemi (Smart/RFF) taban adresi — ortama göre değişir; Test / QA / Prod adresleri SOS02-KL-001-EN belgesinde.',
     required: false,
-    example: 'https://gbca.fw.garanti.com.tr:8443',
+    example: 'https://smart.fw.sirket.invalid:8443',
     usedIn: 'server/smart/client.cjs',
   },
   {
@@ -588,9 +599,9 @@ export const ENV_VARS: EnvVarMeta[] = [
     label: 'Domain',
     group: 'Smart',
     description:
-      'Talep açan kullanıcının login domain bilgisi — SOS02-KL-001-EN örneklerinde sabit "GARANTI".',
+      'Talep açan kullanıcının login domain bilgisi (SOS02-KL-001-EN). Boşsa kurum ayarındaki smart.domain kullanılır; ikisi de yoksa Smart talebi açılmaz.',
     required: false,
-    example: 'GARANTI',
+    example: 'KURUM',
     usedIn: 'server/smart/client.cjs',
   },
   {
@@ -887,7 +898,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     description:
       'Virgüllü liste. Doluysa yalnızca bu soneklerle "ad@sonek" girişi kabul edilir. Boş = hepsi.',
     required: false,
-    example: 'kurum.com.tr',
+    example: 'kurum.invalid',
     usedIn: 'server/auth/login-input.cjs',
     kritik: true,
   },
@@ -898,7 +909,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     description:
       'Durum değiştiren istekler yalnızca portalın kendi adresinden kabul edilir. Portal birden çok adla açılıyorsa (ör. kısa ad + tam ad) diğerlerini virgülle yazın.',
     required: false,
-    example: 'https://portal.kurum.com.tr',
+    example: 'https://portal.kurum.invalid',
     usedIn: 'server/auth/origin-kontrolu.cjs',
     kritik: true,
   },
@@ -919,7 +930,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     label: 'Çerçeveye Gömme İzni',
     group: 'Oturum ve Giriş',
     description:
-      "Portalı iframe içinde gösterebilecek adresler. Boş = yalnızca portalın kendisi ('self'): başka bir sayfa portalı görünmez bir çerçeveye gömüp kullanıcıya tıklatamaz. Başka bir kurumsal sayfa portalı bilerek gömüyorsa adresini yazın (boşlukla ayırın): 'self' https://pano.kurum.com.tr — * = koruma kapalı.",
+      "Portalı iframe içinde gösterebilecek adresler. Boş = yalnızca portalın kendisi ('self'): başka bir sayfa portalı görünmez bir çerçeveye gömüp kullanıcıya tıklatamaz. Başka bir kurumsal sayfa portalı bilerek gömüyorsa adresini yazın (boşlukla ayırın): 'self' https://pano.kurum.invalid — * = koruma kapalı.",
     required: false,
     example: "'self'",
     usedIn: 'server/auth/guvenlik-basliklari.cjs',
@@ -1036,13 +1047,24 @@ export const ENV_VARS: EnvVarMeta[] = [
     saltOkunur: 'opsx',
   },
   {
+    key: 'KURUM_AYAR_DOSYASI',
+    label: 'Kurum ayar dosyası',
+    group: 'Sunucu',
+    description:
+      "Kurumun altyapı envanteri (nginx filosu, OpenShift cluster'ları, Crypto Hub kiracıları, Self Servis uyarıları) için JSON dosyasının yolu. Sunucu adları kodda değil bu dosyada; tanımsızsa listeler boş gelir ve üstte uyarı bandı görünür. Biçim: deploy/kurum-ayari.ornek.json.",
+    required: true,
+    example: '/etc/bmw-portal/kurum-ayari.json',
+    usedIn: 'server/util/kurum-ayari.cjs',
+    saltOkunur: 'ortam',
+  },
+  {
     key: 'NGINX_RVP_ALT_AGLARI',
     label: 'RP Seçimi alt ağları',
     group: 'Sunucu',
     description:
       'Nginx Hub > RP Seçimi tablosundaki alt ağ sütunu. JSON: sunucu adı -> alt ağ (CIDR). Kurum iç ağı olduğu için kodda değil burada; tanımsızsa sütun "—" gösterir.',
     required: false,
-    example: 'JSON nesnesi: "GBNGXD02": "192.0.2.0/24" (biçim .env.example)',
+    example: 'JSON nesnesi: "ORNGXD02": "192.0.2.0/24" (biçim .env.example)',
     usedIn: 'server/util/ic-ag-ayari.cjs',
     saltOkunur: 'ortam',
   },

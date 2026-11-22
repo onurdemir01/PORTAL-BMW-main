@@ -1,7 +1,7 @@
 // server/audit/__tests__/nginx-migration-traffic.test.js — Production Tasimalari'nda yuk gostergesi.
 //
 // Kullanici (2026-09-27): "yuk alip almama gostergesini Production Tasimalari sayfasina da
-// ekler misin? yuk alimini GBRVPP07-08-09-10 sunucularindan kontrol etmelisin."
+// ekler misin? yuk alimini ORRVPP07-08-09-10 sunucularindan kontrol etmelisin."
 //
 // MT1 olcum ESKI sunuculardan alinir; yeni sunucu satiri karismaz
 // MT2 uc durum: active / idle / unknown - olcememek "yuk yok" DEGIL
@@ -15,12 +15,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildMigration, loadMigration, MIGRATION_GROUPS } = require('../nginx-migration.cjs');
+const { buildMigration, loadMigration, migrationGroups } = require('../nginx-migration.cjs');
 
 // GLOMO grubunun eski sunucularindan biri + yeni filodan biri.
-const ESKI = 'GBRVPP07';
-const ESKI2 = 'GBRVPP08';
-const YENI = 'GBNGXP40';
+const ESKI = 'ORRVPP07';
+const ESKI2 = 'ORRVPP08';
+const YENI = 'ORNGXP40';
 // Tarama gunu ve olculen pencerenin basi: TAM = 8 gun (>= 7: "yok" denebilir),
 // ROT3 = gunluk rotasyonlu hostta ~3 gun (2 gun 20 saat).
 const GUN = '2026-10-02';
@@ -42,20 +42,20 @@ function proxy(host, location, target) {
 }
 
 const ROUTES = [
-  { namespace_name: 'glomo-prod', route_address: 'base-app-v0-glomo-prod.apps.fw.garanti.com.tr' },
+  { namespace_name: 'glomo-prod', route_address: 'base-app-v0-glomo-prod.apps.fw.sirket.invalid' },
 ];
 const OCP = [{ namespace: 'glomo-prod', application: 'base-app-v0' }];
 
 function kur(trafficRows) {
   return buildMigration({
-    proxyRows: [proxy(ESKI, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.garanti.com.tr/')],
+    proxyRows: [proxy(ESKI, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.sirket.invalid/')],
     upstreamRows: [],
     routeRows: ROUTES,
     ocpRows: OCP,
     dirRows: [],
     newLocRows: [],
     trafficRows,
-    groups: MIGRATION_GROUPS.filter((g) => g.id === 'glomo'),
+    groups: migrationGroups().filter((g) => g.id === 'glomo'),
   });
 }
 
@@ -254,7 +254,7 @@ test('MT6 kismi olcumde OLCULEN PENCERE bildirilir, yorumlanabilir olur', () => 
 // satiri service/env/location NULL.
 function proxy2(host) {
   return {
-    ...proxy(host, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.garanti.com.tr/'),
+    ...proxy(host, '/base/', 'https://base-app-v0-glomo-prod.apps.fw.sirket.invalid/'),
     vhost: 'GLOMO-PROD',
   };
 }
@@ -267,7 +267,7 @@ function kur2(hosts, trafficRows) {
     dirRows: [],
     newLocRows: [],
     trafficRows,
-    groups: MIGRATION_GROUPS.filter((g) => g.id === 'glomo'),
+    groups: migrationGroups().filter((g) => g.id === 'glomo'),
   });
 }
 const loaderr = (host, vhost) => ({

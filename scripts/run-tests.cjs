@@ -152,5 +152,12 @@ if (canMock) {
 }
 
 console.log(`[test] Node ${process.versions.node} · ${files.length}/${all.length} dosya`);
-const r = spawnSync(process.execPath, [...args, ...files], { cwd: ROOT, stdio: 'inherit' });
+// Testler kurum ayarinin KURGUSAL ornegiyle kosar (server/util/kurum-ayari.cjs; gercek sunucu adlari repoda
+// yok, K17). Ayri bir dosya verilmisse (ornek: belirli bir ayarin testi) o kullanilir.
+const env = {
+  ...process.env,
+  KURUM_AYAR_DOSYASI:
+    process.env.KURUM_AYAR_DOSYASI || path.join(ROOT, 'deploy', 'kurum-ayari.ornek.json'),
+};
+const r = spawnSync(process.execPath, [...args, ...files], { cwd: ROOT, stdio: 'inherit', env });
 process.exit(r.status == null ? 1 : r.status);

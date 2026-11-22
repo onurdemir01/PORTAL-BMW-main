@@ -53,7 +53,7 @@ export const AUDIT_TERMS: AuditTerm[] = [
     body: (
       <>
         Location, tanımlı bir upstream yerine doğrudan bir alan adına gidiyor:{' '}
-        <Code>proxy_pass https://app.apps.fw.garanti.com.tr/</Code>. <b>Çalışır</b>, ama upstream
+        <Code>proxy_pass https://app.apps.fw.sirket.invalid/</Code>. <b>Çalışır</b>, ama upstream
         katmanı <b>atlanmış</b> olur: <Code>resolve</Code> (adres canlı çözülmez — arka uç IP
         değişirse eskisine gider), <Code>keepalive</Code> (her istekte yeni TCP/TLS bağlantısı) ve{' '}
         <Code>zone</Code> devre dışıdır.

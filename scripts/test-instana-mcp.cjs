@@ -22,8 +22,7 @@ async function main() {
   console.log('Ortam:            ', env);
   console.log(
     'URL:              ',
-    process.env.INSTANA_MCP_URL ||
-      '(fallback: https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp)',
+    process.env.INSTANA_MCP_URL || '(tanimli degil: .env INSTANA_MCP_URL)',
   );
   console.log(
     'Token tanimli:    ',

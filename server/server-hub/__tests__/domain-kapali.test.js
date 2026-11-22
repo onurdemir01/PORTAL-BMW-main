@@ -1,7 +1,7 @@
 // server/server-hub/__tests__/domain-kapali.test.js - JBoss DOMAIN KAPALI (2026-11-15).
 //
-// Uretim: Toplu Auto-Start'ta GBBFAA01 JVM'i canli okumada dustu: "host controller'a baglanilamadi ...
-// Connection refused gbbfaa01:9990 - HICBIR SEY DEGISMEDI". Kok neden: gece taramasinda host controller
+// Uretim: Toplu Auto-Start'ta ORBFAA01 JVM'i canli okumada dustu: "host controller'a baglanilamadi ...
+// Connection refused orbfaa01:9990 - HICBIR SEY DEGISMEDI". Kok neden: gece taramasinda host controller
 // calismiyordu; server_hub_scan.sh (PROC_VIS=FULL) CLI'yi acmadi (not "host controller calismiyor, CLI
 // acilmadi"), JVM satirlari host XML'den geldi (hepsi durmus, auto-start XML'den true) -> her JVM icin
 // kritik STOPPED_AUTOSTART_ON + jboss_autostart_off -> toplu "kapat" adayi -> canli okuma basarisiz.
@@ -93,9 +93,9 @@ const sunucu = (r, host) => r.hosts.find((h) => h.host === host);
 const kodlar = (h, kod) => h.findings.filter((f) => f.code === kod);
 
 test('DK1 domain kapali: tek JBOSS_DOMAIN_DOWN (uyari), JVM bazinda STOPPED_AUTOSTART_ON yok, eylem yok; R8 aynen', () => {
-  for (const host of ['GBBFAA01', 'GBBFAP01']) {
+  for (const host of ['ORBFAA01', 'ORBFAP01']) {
     const h = sunucu(assess(kapaliVeri(host)), host);
-    assert.equal(h.envGroup, host === 'GBBFAA01' ? 'Bilinmiyor' : 'Production');
+    assert.equal(h.envGroup, host === 'ORBFAA01' ? 'Bilinmiyor' : 'Production');
     const d = kodlar(h, 'JBOSS_DOMAIN_DOWN');
     assert.equal(d.length, 1, 'sunucu+nesil basina tek bulgu');
     assert.equal(d[0].severity, 'warning');
@@ -133,7 +133,7 @@ test('DK1 domain kapali: tek JBOSS_DOMAIN_DOWN (uyari), JVM bazinda STOPPED_AUTO
 });
 
 test('DK1b domain kapali nesilde calisan + auto-start kapali JVM: REBOOT_RISK kalir ama auto-start eylemi yok', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const d = kapaliVeri(host);
   d.jvms.push(jvm(host, 8, 'kosan', 1, 'false'));
   const h = sunucu(assess(d), host);
@@ -147,7 +147,7 @@ test('DK1b domain kapali nesilde calisan + auto-start kapali JVM: REBOOT_RISK ka
 });
 
 test('DK2 Non-Production: bilgi (varsayilan uyari, ortamTavani); Admin seviyesi ortam inisinden once gelir', () => {
-  const host = 'GBBFAT01';
+  const host = 'ORBFAT01';
   const h = sunucu(assess(kapaliVeri(host)), host);
   assert.equal(h.envGroup, 'Non-Production');
   const [f] = kodlar(h, 'JBOSS_DOMAIN_DOWN');
@@ -173,8 +173,8 @@ test('DK2 Non-Production: bilgi (varsayilan uyari, ortamTavani); Admin seviyesi 
   // Admin prod'da bilgi yapti
   const p = kodlar(
     sunucu(
-      assess(kapaliVeri('GBBFAP01'), { seviyeler: { JBOSS_DOMAIN_DOWN: 'info' } }),
-      'GBBFAP01',
+      assess(kapaliVeri('ORBFAP01'), { seviyeler: { JBOSS_DOMAIN_DOWN: 'info' } }),
+      'ORBFAP01',
     ),
     'JBOSS_DOMAIN_DOWN',
   )[0];
@@ -182,7 +182,7 @@ test('DK2 Non-Production: bilgi (varsayilan uyari, ortamTavani); Admin seviyesi 
 });
 
 test('DK3 BLIND / baska SKIP notu / CLI FAIL "Connection refused" domain kapali sayilmaz', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const durumlar = [
     // BLIND: tarayici CLI'yi yine dener; dustuyse FAIL yazar (bu not yazilmaz)
     {
@@ -218,7 +218,7 @@ test('DK3 BLIND / baska SKIP notu / CLI FAIL "Connection refused" domain kapali 
 });
 
 test('DK4 host controller calisiyor: STOPPED_AUTOSTART_ON + jboss_autostart_off eskisi gibi', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const d = veri(
     host,
     [{ host, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' }],
@@ -233,7 +233,7 @@ test('DK4 host controller calisiyor: STOPPED_AUTOSTART_ON + jboss_autostart_off 
 });
 
 test('DK5 ayni sunucuda JBoss 7 kapali, JBoss 8 acik: yalniz 7 bastirilir; ayni nesilde iki satir tek bulgu', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const d = veri(
     host,
     [
@@ -258,8 +258,8 @@ const DOMAIN_MESAJ =
   'JBoss 8 domain kapalı (taramada host controller çalışmıyordu) — auto-start canlı okunamaz; iş açılmaz. Domain sonradan açıldıysa önce sunucuyu yeniden tarayın.';
 
 test('DK6 Toplu Auto-Start: domain kapali JVM aday degil, dislanan nedeni acik; tek JVM kapisi iki yonde kapali', () => {
-  const host = 'GBBFAA01';
-  const acik = 'GBBFAB01';
+  const host = 'ORBFAA01';
+  const acik = 'ORBFAB01';
   const d = kapaliVeri(host);
   d.hosts.push(hostSatiri(acik));
   d.jboss.push({
@@ -306,7 +306,7 @@ test('DK6 Toplu Auto-Start: domain kapali JVM aday degil, dislanan nedeni acik; 
 });
 
 test('DK7 tutarlilik: Acilis Hazirligi auto-start riski saymaz; Uygulama 360 uyumsuz saymaz', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const A = assess(kapaliVeri(host));
   const r = rebootReadiness(A.hosts, [host]);
   const satir = r.rows[0];
@@ -326,7 +326,7 @@ test('DK7 tutarlilik: Acilis Hazirligi auto-start riski saymaz; Uygulama 360 uyu
 });
 
 test('DK9 metin: JVM satiri yoksa "0 JVM durmus" yazilmaz; auto-start acik yoksa sayi eklenmez', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   // host XML belirsiz (scan "host XML belirsiz: host-master.xml,host-slave.xml"): JVM satiri gelmez
   const bos = sunucu(
     assess(
@@ -360,7 +360,7 @@ test('DK9 metin: JVM satiri yoksa "0 JVM durmus" yazilmaz; auto-start acik yoksa
 });
 
 test('DK10 genel non-prod tavani: Admin uyari->kritik yaptiysa prodSeverity kritik; dokunulmayan kritikte de kritik', () => {
-  const host = 'GBBFAT01';
+  const host = 'ORBFAT01';
   const d = veri(
     host,
     [{ host, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' }],
@@ -383,7 +383,7 @@ test('DK10 genel non-prod tavani: Admin uyari->kritik yaptiysa prodSeverity krit
     ['warning', 'warning', 'danger'],
   );
   // prod sunucuda tavan yok -> prodSeverity yazilmaz
-  const p = 'GBBFAP01';
+  const p = 'ORBFAP01';
   const dp = veri(
     p,
     [{ host: p, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' }],

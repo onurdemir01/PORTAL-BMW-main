@@ -22,24 +22,24 @@ import {
 
 // discover.cjs inPlaceIsaretle ciktisinin bicimi (in-place.test.js IN1/IN5 ile ayni senaryo).
 const elle =
-  'in-place: GBPOSWEBAPI bu sunucuda JBoss 8 kurulumunda da var; ... elle kontrol edilmeli';
+  'in-place: ORPOSWEBAPI bu sunucuda JBoss 8 kurulumunda da var; ... elle kontrol edilmeli';
 const j7: InPlaceHedef = {
-  host: 'GBJEXP05',
-  appName: 'GBPOSWEBAPI',
+  host: 'ORJEXP05',
+  appName: 'ORPOSWEBAPI',
   gen: 7,
   inPlace: true,
   digerSurumler: [8],
   web: [{ elle }, { elle }, {}],
 };
 const j8: InPlaceHedef = {
-  host: 'GBJEXP05',
-  appName: 'GBPOSWEBAPI',
+  host: 'ORJEXP05',
+  appName: 'ORPOSWEBAPI',
   gen: 8,
   inPlace: true,
   digerSurumler: [7],
   web: [],
 };
-const tek: InPlaceHedef = { host: 'GBJEXP06', appName: 'GBPOSWEBAPI', gen: 7, web: [] };
+const tek: InPlaceHedef = { host: 'ORJEXP06', appName: 'ORPOSWEBAPI', gen: 7, web: [] };
 
 describe('Retirement in-place uyarisi', () => {
   it('IP1 yalniz secili ve inPlace === true', () => {
@@ -49,8 +49,8 @@ describe('Retirement in-place uyarisi', () => {
     const l = inPlaceOzeti([j7, tek]);
     expect(l).toHaveLength(1);
     expect(l[0]).toMatchObject({
-      host: 'GBJEXP05',
-      appName: 'GBPOSWEBAPI',
+      host: 'ORJEXP05',
+      appName: 'ORPOSWEBAPI',
       gen: 7,
       diger: [8],
       digerSecili: [],
@@ -59,7 +59,7 @@ describe('Retirement in-place uyarisi', () => {
   });
 
   it('IP2 diger kurulum da seciliyse ayrica soylenir', () => {
-    const l = inPlaceOzeti([j7, { ...j8, host: 'gbjexp05' }]);
+    const l = inPlaceOzeti([j7, { ...j8, host: 'orjexp05' }]);
     expect(l.map((x) => x.digerSecili)).toEqual([[8], [7]]);
   });
 
@@ -122,8 +122,8 @@ describe('Retirement in-place uyarisi', () => {
     );
     expect(container).not.toHaveTextContent('hâlâ çalışıyor mu');
     expect(container).not.toHaveTextContent('diğer kurulumun JVM’ine ve paketine dokunulmaz');
-    // Kismi: GBJEXP05'te iki kurulum secili, GBJEXP09'da yalniz biri -> "seçili olmayan diger kurulum".
-    const j9: InPlaceHedef = { ...j7, host: 'GBJEXP09' };
+    // Kismi: ORJEXP05'te iki kurulum secili, ORJEXP09'da yalniz biri -> "seçili olmayan diger kurulum".
+    const j9: InPlaceHedef = { ...j7, host: 'ORJEXP09' };
     const k = render(<InPlaceUyari hedefler={[j7, j8, j9]} />).container;
     expect(k).toHaveTextContent(
       'kontrol edin: seçili olmayan diğer kurulumun JVM’i hâlâ çalışıyor mu (Server Hub)',

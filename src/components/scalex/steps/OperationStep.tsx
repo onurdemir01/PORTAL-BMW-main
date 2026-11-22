@@ -528,7 +528,7 @@ const OperationStep: React.FC<Props> = ({
                   type="text"
                   value={mailCc}
                   disabled={busy}
-                  placeholder="ekip@garantibbva.com.tr"
+                  placeholder="ekip@ornekbanka.invalid"
                   onChange={(e) => setMailCc(e.target.value)}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]
                            text-[var(--text-primary)] placeholder-[var(--text-muted)]

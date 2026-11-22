@@ -1,6 +1,6 @@
 // server/auth/__tests__/siki-oge-yayilimi.test.js — SY1..SY5 (2026-10-01).
 //
-// URETIM: "Crypto Hub'a halen osmankoz@garantibbva.com.tr giremiyor." Admin ekraninda
+// URETIM: "Crypto Hub'a halen ornekkisi@ornekbanka.invalid giremiyor." Admin ekraninda
 // `navgroup:cryptohub` ogesinde UC kisi kurali duruyordu (ekran goruntusu: "3 kisi kurali")
 // ama kullanici 403 aliyordu.
 //
@@ -64,11 +64,11 @@ const CRYPTO = [
 test('SY1 ata kisi kurali SIKI cocuga da yazilir (uretimdeki 403)', async () => {
   const { mod, yazilan } = yukle([...CRYPTO], []);
   const etkilenen = await mod.propagateToStrictDescendants('navgroup:cryptohub', [
-    { principalType: 'email', principalId: 'osmankoz@garantibbva.com.tr', allow: true },
+    { principalType: 'email', principalId: 'ornekkisi@ornekbanka.invalid', allow: true },
   ]);
   assert.deepEqual(etkilenen, ['CryptoHub']);
   assert.deepEqual(yazilan, [
-    { key: 'CryptoHub', type: 'email', id: 'osmankoz@garantibbva.com.tr' },
+    { key: 'CryptoHub', type: 'email', id: 'ornekkisi@ornekbanka.invalid' },
   ]);
 });
 
@@ -94,12 +94,12 @@ test('SY3 ZATEN VAR OLAN kural tekrar yazilmaz (idempotent)', async () => {
       {
         element_key: 'CryptoHub',
         principal_type: 'email',
-        principal_id: 'osmankoz@garantibbva.com.tr',
+        principal_id: 'ornekkisi@ornekbanka.invalid',
       },
     ],
   );
   const etkilenen = await mod.propagateToStrictDescendants('navgroup:cryptohub', [
-    { principalType: 'email', principalId: 'OsmanKoz@garantibbva.com.tr', allow: true },
+    { principalType: 'email', principalId: 'OrnekKisi@ornekbanka.invalid', allow: true },
   ]);
   assert.deepEqual(etkilenen, [], 'ayni kural ikinci kez yazilmis (buyuk/kucuk harf)');
   assert.deepEqual(yazilan, []);

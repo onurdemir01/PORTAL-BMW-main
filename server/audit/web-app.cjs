@@ -9,10 +9,10 @@
 //                                                 product, alias, env
 //
 // ESLESTIRME KURALLARI (kullanici verdi)
-//   3-tier (genellikle gtdmz.com.tr): uygulama sunucusunun adindaki 5. KARAKTER 'A' ise
-//     web sunucusunda 'W' olur.  DACRAAP01 -> DACRWAP01,  GBCJAP01 -> GBCJWP01
+//   3-tier (genellikle odmz.invalid): uygulama sunucusunun adindaki 5. KARAKTER 'A' ise
+//     web sunucusunda 'W' olur.  DACRAAP01 -> DACRWAP01,  ORCJAP01 -> ORCJWP01
 //     DIKKAT: "ilk A" degil, 5. KONUM. DACRAAP01'de iki 'A' var, yalnizca 5.'si doner.
-//   2-tier (genellikle .fw.garanti.com.tr): web sunucusu uygulamanin KENDI sunucusudur.
+//   2-tier (genellikle .fw.sirket.invalid): web sunucusu uygulamanin KENDI sunucusudur.
 //   Her iki durumda da dogru vhost'u bulmak icin uygulama adi KUCUK HARFLE server_name
 //   icinde aranir.
 //
@@ -32,8 +32,23 @@ const SOURCES = {
 // Ortam son eki (bkz. app-envs.cjs): server_name'de taban ad geciyor olabilir.
 const ENV_SUFFIX = /-[DTQdtq]$/;
 
-const TIER3_DOMAIN = /gtdmz/i;
-const TIER2_DOMAIN = /fw\.garanti/i;
+// Domain -> tier / DNS bolgesi kurum ayarinda (`webUygulama.alanBolgeleri` [{bolge, icerir, tier}], sirali:
+// ilk eslesen kazanir; kurum alan adlari koda yazilmaz, K17). `icerir` alan adinda gecen parca (harf
+// duyarsiz). Ayar yoksa tier 'bilinmiyor', bolge null (Portal cozucusu).
+function alanBolgeleri() {
+  const { deger } = require('../util/kurum-ayari.cjs').bolum('webUygulama.alanBolgeleri');
+  return (Array.isArray(deger) ? deger : [])
+    .filter((x) => typeof x?.bolge === 'string' && typeof x.icerir === 'string' && x.icerir.trim())
+    .map((x) => ({
+      bolge: x.bolge.trim(),
+      icerir: x.icerir.trim().toLowerCase(),
+      tier: typeof x.tier === 'string' ? x.tier : null,
+    }));
+}
+const alanEslesmesi = (domain) => {
+  const d = String(domain || '').toLowerCase();
+  return alanBolgeleri().find((x) => d.includes(x.icerir)) || null;
+};
 
 /**
  * 3-tier kuralina gore web sunucusu adini uretir: 5. KARAKTER 'A' ise 'W' yapilir.
@@ -52,7 +67,7 @@ function webHostOf(host) {
  * Ankara icin 5. harf, toplam 7 harf"). Ad = <harfler><rakamlar>; Pendik 6 harf, Ankara 7 harf
  * (fazladan site harfi A). Tek kural (5. harf A->W) GOJBAB03'ten var olmayan GOJBWB03'u
  * uretiyordu ve web katmani sessizce "eslenemedi" kaliyordu. Adaylar:
- *   1) 5. harf A->W                          GBCJAP01 -> GBCJWP01, DACRAAP01 -> DACRWAP01
+ *   1) 5. harf A->W                          ORCJAP01 -> ORCJWP01, DACRAAP01 -> DACRWAP01
  *   2) 5. harf A->W + SON harf (ortam) -> P  GOJBAB03 -> GOJBWP03 (Pendik, 6 harf)
  *                                            DACRAAB01 -> DACRWAP01 (Ankara, 7 harf)
  * Aday TAHMIN olarak kullanilmaz: yalniz envanterde/taramada VHOST'U OLAN aday secilir ve
@@ -74,9 +89,8 @@ function webHostAdaylari(host) {
 }
 
 function tierOf(domain, host) {
-  const d = String(domain || '');
-  if (TIER3_DOMAIN.test(d)) return '3-tier';
-  if (TIER2_DOMAIN.test(d)) return '2-tier';
+  const tier = alanEslesmesi(domain)?.tier;
+  if (tier) return tier;
   // Domain bos/tanimsizsa host adindan CIKARIM YAPILMAZ; "bilinmiyor" denir ve her iki
   // aday da denenir. Yanlis tier atamak, yanlis web sunucusu gostermek demek olurdu.
   return 'bilinmiyor';
@@ -297,12 +311,9 @@ const { webAppDnsSunuculari } = require('../util/ic-ag-ayari.cjs');
 /** Bolge -> site -> DNS sunuculari; her cagrida ayardan okunur. */
 const dnsBolgeleri = () => webAppDnsSunuculari().bolgeler;
 
-/** Domain -> DNS bolgesi ('gtdmz' | 'fw' | null). */
+/** Domain -> DNS bolgesi (kurum ayarindaki bolge anahtari; WEB_APP_DNS_SUNUCULARI ile ayni) ya da null. */
 function dnsBolgesi(domain) {
-  const d = String(domain || '').toLowerCase();
-  if (/gtdmz/.test(d)) return 'gtdmz';
-  if (/fw\.garanti/.test(d)) return 'fw';
-  return null;
+  return alanEslesmesi(domain)?.bolge || null;
 }
 
 async function tekCozum(ad, sunucular) {
@@ -564,7 +575,7 @@ async function webAppHesapla(key) {
       appHost,
       env: String(a.env || '').trim(),
       domain,
-      // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (gtdmz / fw); null = bilinmiyor.
+      // DNS -> VIP cozumunde hangi bolgenin DNS sunuculari (dmz / fw); null = bilinmiyor.
       dnsBolge: dnsBolgesi(domain),
       tier,
       tierKaynak: topoloji.kaynak,
@@ -573,8 +584,8 @@ async function webAppHesapla(key) {
       matched,
       // Bir uygulama birden fazla vhost'ta servis ediliyor olabilir; hepsi dondurulur.
       // DNS BOLGESI VHOST BASINA (2026-10-16, kullanici: "Ankara IP'lerinin hicbiri cozulememis"):
-      // hangi DNS sunucusuna sorulacagi COZULEN ADIN kendi alanina baglidir (x.gtdmz.com.tr ->
-      // gtdmz). Eskiden yalniz envanterdeki uygulama domain'ine bakiliyordu; domain bos satirlarda
+      // hangi DNS sunucusuna sorulacagi COZULEN ADIN kendi alanina baglidir (x.odmz.invalid ->
+      // dmz). Eskiden yalniz envanterdeki uygulama domain'ine bakiliyordu; domain bos satirlarda
       // bolge null kaliyor, Ankara uyesi Ankara DNS'ine HIC sorulmayip Portal cozucusunun (Pendik)
       // cevabiyla "Ankara VIP'i farkli olabilir" diye gosteriliyordu.
       web: (m.web || []).map((w) => ({

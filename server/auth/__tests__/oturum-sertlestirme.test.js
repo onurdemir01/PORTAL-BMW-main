@@ -210,8 +210,8 @@ test('OS3 koken kontrolu', () => {
     );
     assert.equal(kokenUygunMu(istek('POST', { origin: 'bozuk' })).ok, false);
   });
-  ortam({ PORTAL_ALLOWED_ORIGINS: 'https://portal.kurum.com.tr/, https://ikinci' }, () => {
-    assert.equal(kokenUygunMu(istek('POST', { origin: 'https://portal.kurum.com.tr' })).ok, true);
+  ortam({ PORTAL_ALLOWED_ORIGINS: 'https://portal.kurum.invalid/, https://ikinci' }, () => {
+    assert.equal(kokenUygunMu(istek('POST', { origin: 'https://portal.kurum.invalid' })).ok, true);
     assert.equal(kokenUygunMu(istek('POST', { origin: 'https://IKINCI' })).ok, true);
   });
   ortam({ CORS_ORIGIN: 'http://localhost:3000' }, () => {
@@ -436,7 +436,7 @@ test('OS8 guvenlik basliklari', async () => {
   const fa = (v) => ortam({ PORTAL_FRAME_ANCESTORS: v }, () => cerceveAtalari());
   assert.equal(fa(undefined), "'self'");
   assert.equal(fa(''), "'self'");
-  assert.equal(fa("'self' https://pano.kurum.com.tr"), "'self' https://pano.kurum.com.tr");
+  assert.equal(fa("'self' https://pano.kurum.invalid"), "'self' https://pano.kurum.invalid");
   assert.equal(fa('https://a.kurum, https://b.kurum:8443'), 'https://a.kurum https://b.kurum:8443');
   assert.equal(fa('*'), null, '* = koruma kapali');
   assert.equal(fa("'none' https://x.y"), "'none'", "'none' her seyi ezer");
@@ -482,9 +482,9 @@ test('OS8 guvenlik basliklari', async () => {
   // Koken listesi: CSP yeter; X-Frame-Options EKLENMEZ (mesru cerceveyi engellerdi).
   const l = await al({
     NODE_ENV: 'test',
-    PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr",
+    PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.invalid",
   });
-  assert.equal(l['content-security-policy'], buildCsp("'self' https://pano.kurum.com.tr"));
+  assert.equal(l['content-security-policy'], buildCsp("'self' https://pano.kurum.invalid"));
   assert.equal(l['x-frame-options'], null);
   const k = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: '*' });
   assert.equal(k['content-security-policy'], buildCsp(null));
@@ -546,7 +546,7 @@ test('OS8 guvenlik basliklari', async () => {
 
   // Dogrulama (Admin kaydi).
   assert.equal(
-    oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.com.tr"),
+    oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.invalid"),
     null,
   );
   assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', '*'), null);

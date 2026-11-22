@@ -2,7 +2,7 @@
 // arac_sozlesme.md 2.2, 2.3, 2.7, 3.7, 4.1). araclar.cjs + index.cjs router'i GERCEK; db / AWX / kimlik /
 // gorunurluk / denetim sahte (require.cache). Sahte arac tablosu WHERE / ORDER / TOP'u SQL metninden uygular.
 //
-//   AR1 ortam: derleme listesi (varsayilan / gecersiz atilir / bossa GBLABT02), vekil (varsayilan, 'yok',
+//   AR1 ortam: derleme listesi (varsayilan / gecersiz atilir / bossa ORLABT02), vekil (varsayilan, 'yok',
 //       kucuk harf, kimlik / https / yol -> hata), k6 surumu (1.x -> varsayilan), ZORUNLU sabit ozet env'leri
 //   AR2 aracEkstraDegiskenler TAM 10 anahtar, sira, hepsi metin; aracEkstraDegiskenleriDenetle her kural (bos
 //       arsiv ozeti dahil: D1)
@@ -275,24 +275,24 @@ const tutulan = () =>
     .sort();
 
 test('AR1 ortam: derleme listesi, vekil, k6 surumu, sabit ozetler', () => {
-  assert.deepEqual(ar.derlemeHostlari({}), ['GBLABT02']);
+  assert.deepEqual(ar.derlemeHostlari({}), ['ORLABT02']);
   assert.deepEqual(
-    ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: ' gbngxt34; GBLABT02,GBNGXT34 ' }),
-    ['GBNGXT34', 'GBLABT02'],
+    ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: ' orngxt34; ORLABT02,ORNGXT34 ' }),
+    ['ORNGXT34', 'ORLABT02'],
   );
   assert.equal(
-    ar.varsayilanDerlemeHost({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'GBNGXT34 GBLABT02' }),
-    'GBNGXT34',
+    ar.varsayilanDerlemeHost({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'ORNGXT34 ORLABT02' }),
+    'ORNGXT34',
   );
-  // Uretim, EDU, ortami bilinmeyen ad ve bicimsiz girdi atilir; hepsi atilirsa GBLABT02.
+  // Uretim, EDU, ortami bilinmeyen ad ve bicimsiz girdi atilir; hepsi atilirsa ORLABT02.
   assert.deepEqual(
     ar.derlemeHostlari({
-      NGINX_LOADTEST_DERLEME_HOSTLARI: 'GBNGXP01,GBNGXT51,GBXYZ01,x;y,GBNGWAQ02',
+      NGINX_LOADTEST_DERLEME_HOSTLARI: 'ORNGXP01,ORNGXT51,ORXYZ01,x;y,ORNGWAQ02',
     }),
-    ['GBNGWAQ02'],
+    ['ORNGWAQ02'],
   );
-  assert.deepEqual(ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'GBNGXP01 GBNGXT51' }), [
-    'GBLABT02',
+  assert.deepEqual(ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'ORNGXP01 ORNGXT51' }), [
+    'ORLABT02',
   ]);
   // Vekil.
   // Varsayilan adres YOK (kurum ayari, repoda tutulmaz): tanimsiz -> hata, arac hazirlama kapali.
@@ -394,7 +394,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
   );
   const bosOzetli = ar.aracEkstraDegiskenler({
     aracId: 7,
-    derlemeHost: 'GBLABT02',
+    derlemeHost: 'ORLABT02',
     k6Surum: 'v0.49.0',
     proxy: '',
     kok: '/sw/BMW_PORTAL/nginx_loadtest',
@@ -408,7 +408,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
   ]);
   const ev = ar.aracEkstraDegiskenler({
     aracId: 7,
-    derlemeHost: 'GBLABT02',
+    derlemeHost: 'ORLABT02',
     k6Surum: 'v0.49.0',
     k6ArsivSha256: SHA_K6_ARSIV,
     wrkKaynakSha256: SHA_WRK_KAYNAK,
@@ -421,7 +421,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
   assert.deepEqual(ev, {
     yuk_islem: 'araclar',
     yuk_run_id: '7',
-    yuk_derleme_host: 'GBLABT02',
+    yuk_derleme_host: 'ORLABT02',
     yuk_k6_surum: 'v0.49.0',
     yuk_wrk_surum: '4.2.0',
     yuk_k6_arsiv_sha256: SHA_K6_ARSIV,
@@ -433,7 +433,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
   const den = (ek) => ar.aracEkstraDegiskenleriDenetle({ ...ev, ...ek }, { simdiSn: SIMDI });
   assert.deepEqual(den({}), []);
   for (const ek of [
-    { yuk_derleme_host: 'GBNGXT34' },
+    { yuk_derleme_host: 'ORNGXT34' },
     { yuk_proxy: '' },
     { yuk_k6_arsiv_sha256: 'a'.repeat(64), yuk_wrk_kaynak_sha256: 'b'.repeat(64) },
     { yuk_cikti_kok: '/sw/BMW_PORTAL_DEV/nginx_loadtest' },
@@ -445,10 +445,10 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
     [{ yuk_islem: 'kosu' }, 'yuk_islem'],
     [{ yuk_run_id: 'x' }, 'yuk_run_id'],
     [{ yuk_run_id: 7 }, 'yuk_run_id'],
-    [{ yuk_derleme_host: 'GBNGXP01' }, 'yuk_derleme_host'],
-    [{ yuk_derleme_host: 'GBNGXT51' }, 'yuk_derleme_host'],
-    [{ yuk_derleme_host: 'gblabt02' }, 'yuk_derleme_host'],
-    [{ yuk_derleme_host: 'GBXYZ01' }, 'yuk_derleme_host'],
+    [{ yuk_derleme_host: 'ORNGXP01' }, 'yuk_derleme_host'],
+    [{ yuk_derleme_host: 'ORNGXT51' }, 'yuk_derleme_host'],
+    [{ yuk_derleme_host: 'orlabt02' }, 'yuk_derleme_host'],
+    [{ yuk_derleme_host: 'ORXYZ01' }, 'yuk_derleme_host'],
     [{ yuk_derleme_host: '' }, 'yuk_derleme_host'],
     [{ yuk_k6_surum: 'v1.0.0' }, 'yuk_k6_surum'],
     [{ yuk_k6_surum: 'v0.44.0' }, 'yuk_k6_surum'],
@@ -472,7 +472,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
     [{ yuk_son_epoch: String(SIMDI - 1) }, 'yuk_son_epoch'],
     [{ yuk_son_epoch: String(SIMDI + 1801) }, 'yuk_son_epoch'],
     [{ http_proxy: 'http://h:80' }, 'http_proxy'],
-    [{ limit: 'GBLABT02' }, 'limit'],
+    [{ limit: 'ORLABT02' }, 'limit'],
   ])
     assert.ok(
       den(ek).includes(anahtar),
@@ -496,13 +496,13 @@ test(
       [r.statusCode, r.body.code, r.body.message],
       [400, 'gecersiz_istek', 'Geçersiz derleme makinesi adı.'],
     );
-    r = await istek('POST', '/araclar', { body: { derlemeHost: 'gbngxt34' } });
+    r = await istek('POST', '/araclar', { body: { derlemeHost: 'orngxt34' } });
     assert.deepEqual(
       [r.statusCode, r.body.code, r.body.message],
       [
         409,
         'derleme_host_izinsiz',
-        'GBNGXT34 derleme makinesi izin listesinde değil (NGINX_LOADTEST_DERLEME_HOSTLARI).',
+        'ORNGXT34 derleme makinesi izin listesinde değil (NGINX_LOADTEST_DERLEME_HOSTLARI).',
       ],
     );
     process.env.NGINX_LOADTEST_ARAC_PROXY = 'http://u:p@px:80';
@@ -531,7 +531,7 @@ test(
         (x) =>
           x.eylem === 'nginx_loadtest_araclar_hazirla' &&
           x.result === 'fail' &&
-          x.targetHost === 'GBNGXT34',
+          x.targetHost === 'ORNGXT34',
       ),
     );
     // D1: sabit ozetlerden biri eksik / gecersiz -> 409 arac_ozet_sabit_yok; DB, kilit, satir, AWX YOK (onceki
@@ -609,7 +609,7 @@ test(
       ],
       [
         'RUNNING',
-        'GBLABT02',
+        'ORLABT02',
         'v0.49.0',
         '4.2.0',
         SHA_K6_ARSIV,
@@ -620,12 +620,12 @@ test(
         'onur',
       ],
     );
-    assert.deepEqual(tutulan(), ['A|araclar', 'L|GBLABT02']);
-    for (const k of ['A|araclar', 'L|GBLABT02']) {
+    assert.deepEqual(tutulan(), ['A|araclar', 'L|ORLABT02']);
+    for (const k of ['A|araclar', 'L|ORLABT02']) {
       const kl = D.kilitler.get(k);
       assert.deepEqual(
         [kl.awx_server_id, kl.awx_job_id, kl.bag_turu, kl.target_desc],
-        [3, 950, 'araclar', 'araç hazırlama GBLABT02'],
+        [3, 950, 'araclar', 'araç hazırlama ORLABT02'],
         k,
       );
     }
@@ -645,7 +645,7 @@ test(
       [
         'araclar',
         '7',
-        'GBLABT02',
+        'ORLABT02',
         SHA_K6_ARSIV,
         SHA_WRK_KAYNAK,
         'http://px.kurum.local:3128',
@@ -658,7 +658,7 @@ test(
     assert.deepEqual(JSON.parse(d.detail), {
       aracId: 7,
       islem: 'araclar',
-      derlemeHost: 'GBLABT02',
+      derlemeHost: 'ORLABT02',
       k6Surum: 'v0.49.0',
       wrkSurum: '4.2.0',
       k6ArsivSha256: SHA_K6_ARSIV,
@@ -667,36 +667,36 @@ test(
       awxServerId: 3,
       templateId: 44,
     });
-    assert.match(D.gecmis[0][3], /^Nginx Yük Testi: araç hazırlama A7 GBLABT02$/);
+    assert.match(D.gecmis[0][3], /^Nginx Yük Testi: araç hazırlama A7 ORLABT02$/);
     // Ikinci istek A|araclar'da durur (baska derleme makinesi de olsa; bagli is suruyor).
     D.awx = { status: 'running', artifacts: {} };
-    process.env.NGINX_LOADTEST_DERLEME_HOSTLARI = 'GBLABT02,GBNGXT34';
-    r = await istek('POST', '/araclar', { body: { derlemeHost: 'GBNGXT34' } });
+    process.env.NGINX_LOADTEST_DERLEME_HOSTLARI = 'ORLABT02,ORNGXT34';
+    r = await istek('POST', '/araclar', { body: { derlemeHost: 'ORNGXT34' } });
     assert.deepEqual([r.statusCode, r.body.code, r.body.kilit], [409, 'kilit_dolu', 'A|araclar']);
     assert.equal(
       r.body.message,
-      'Başka bir araç hazırlama işi sürüyor (onur: araç hazırlama GBLABT02, AWX iş #950). İş bitince kilit kendiliğinden bırakılır.',
+      'Başka bir araç hazırlama işi sürüyor (onur: araç hazırlama ORLABT02, AWX iş #950). İş bitince kilit kendiliğinden bırakılır.',
     );
     // Derleme makinesi bir yuk makinesiyse L| kilidi o makinedeki yuk isini bekletir.
     sifirla();
-    process.env.NGINX_LOADTEST_DERLEME_HOSTLARI = 'GBNGXT34';
-    D.kilitler.set('L|GBNGXT34', {
+    process.env.NGINX_LOADTEST_DERLEME_HOSTLARI = 'ORNGXT34';
+    D.kilitler.set('L|ORNGXT34', {
       id: 1,
-      lock_key: 'L|GBNGXT34',
+      lock_key: 'L|ORNGXT34',
       held: 1,
       holder: 'ali',
       lock_id: 'baska',
-      target_desc: 'yük testi GBNGXT33 <- GBNGXT34',
+      target_desc: 'yük testi ORNGXT33 <- ORNGXT34',
     });
     r = await istek('POST', '/araclar', { body: {} });
-    assert.deepEqual([r.statusCode, r.body.code, r.body.kilit], [409, 'kilit_dolu', 'L|GBNGXT34']);
+    assert.deepEqual([r.statusCode, r.body.code, r.body.kilit], [409, 'kilit_dolu', 'L|ORNGXT34']);
     assert.equal(D.kilitler.get('A|araclar').held, 0, 'alinan A|araclar birakilmadi');
     assert.deepEqual([D.launch.length, D.araclar.length], [0, 0]);
     // Env ozetleri buyuk harfli / bosluklu: kucuk harfe cevrilip gonderilir; vekilsiz. Hic set yokken de ayni.
     sifirla();
     ozetEnvKur({ k6: ` ${'AA'.repeat(32)}`, wrk: 'BB'.repeat(32) });
     process.env.NGINX_LOADTEST_ARAC_PROXY = 'yok';
-    r = await istek('POST', '/araclar', { body: { derlemeHost: 'GBLABT02' } });
+    r = await istek('POST', '/araclar', { body: { derlemeHost: 'ORLABT02' } });
     assert.equal(r.statusCode, 200, JSON.stringify(r.body));
     const s2 = D.araclar.find((x) => x.id === r.body.aracId);
     assert.deepEqual(
@@ -724,7 +724,7 @@ test(
     D.launchHata = Object.assign(new Error('socket hang up'), {});
     r = await istek('POST', '/araclar', { body: {} });
     assert.deepEqual([r.statusCode, r.body.code], [424, 'awx_okunamadi']);
-    assert.deepEqual(tutulan(), ['A|araclar', 'L|GBLABT02']);
+    assert.deepEqual(tutulan(), ['A|araclar', 'L|ORLABT02']);
     assert.equal(D.araclar[0].durum, 'FAILED');
     // Son kapi: kok /sw disinda (playbook kurali) -> 409 sinir_asildi, kilit birakilir, AWX'e gitmez.
     sifirla();
@@ -797,7 +797,7 @@ function aracStats(ek = {}, aek = {}) {
     durdur: null,
     araclar: {
       arac_id: 7,
-      derleme_host: 'GBLABT02',
+      derleme_host: 'ORLABT02',
       derleme_rhel: '9',
       derleme_glibc: '2.34',
       derleme_os: 'Red Hat Enterprise Linux 9.4 (Plow)',
@@ -822,7 +822,7 @@ function aracStats(ek = {}, aek = {}) {
   };
 }
 function kilitBagla(jid = 960) {
-  for (const k of ['A|araclar', 'L|GBLABT02'])
+  for (const k of ['A|araclar', 'L|ORLABT02'])
     D.kilitler.set(k, {
       id: D.kilitler.size + 1,
       lock_key: k,
@@ -945,7 +945,7 @@ test(
       [
         'baska derleme makinesi',
         {},
-        { derleme_host: 'GBNGXT34' },
+        { derleme_host: 'ORNGXT34' },
         'araç sonucu eksik ya da bu işe ait değil',
       ],
     ]) {
@@ -969,7 +969,7 @@ test(
         artifacts: {
           nginx_loadtest_result: aracStats({
             durum: 'FAIL',
-            hata: 'derleme makinesi GBLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407>',
+            hata: 'derleme makinesi ORLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407>',
             araclar: null,
           }),
         },
@@ -979,7 +979,7 @@ test(
       [s.durum, s.hata],
       [
         'FAILED',
-        'derleme makinesi GBLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407>',
+        'derleme makinesi ORLABT02: indirme basarisiz (k6 arsivi): Request failed: <urlopen error Tunnel connection failed: 407>',
       ],
     );
     assert.deepEqual(tutulan(), []);
@@ -1003,14 +1003,14 @@ test(
     assert.ok(s.hata.endsWith(' (Ansible deposu güncel değil: araclar kipi yok)'), s.hata);
     // PU1: arsiv sabit ozetle tutmadi (get_url / playbook metni) -> cikis yolu notu; ilgisiz indirme hatasina not YOK.
     for (const hm of [
-      'derleme makinesi GBLABT02: indirme basarisiz (wrk kaynagi): The checksum for /sw/x/indir/wrk.tar.gz did not match ' +
+      'derleme makinesi ORLABT02: indirme basarisiz (wrk kaynagi): The checksum for /sw/x/indir/wrk.tar.gz did not match ' +
         '1'.repeat(64) +
         '; it was ' +
         '2'.repeat(64) +
         '.',
       // Playbook fail_msg metinleri birebir (asagidaki ayna denetimi kaymayi yakalar).
-      "derleme makinesi GBLABT02: k6 checksums dosyasinda k6-v0.49.0-linux-amd64.tar.gz icin tek satir yok ya da Portal'in sabit arsiv ozetiyle (NGINX_LOADTEST_K6_ARSIV_SHA256) farkli; hicbir sey indirilmedi ya da derlenmedi",
-      'derleme makinesi GBLABT02: arsiv ozeti sabit degerden farkli (k6 aaaaaaaaaaaa... / beklenen bbbbbbbbbbbb..., wrk cccccccccccc... / beklenen dddddddddddd...); hicbir sey acilmadi, derlenmedi ya da calistirilmadi',
+      "derleme makinesi ORLABT02: k6 checksums dosyasinda k6-v0.49.0-linux-amd64.tar.gz icin tek satir yok ya da Portal'in sabit arsiv ozetiyle (NGINX_LOADTEST_K6_ARSIV_SHA256) farkli; hicbir sey indirilmedi ya da derlenmedi",
+      'derleme makinesi ORLABT02: arsiv ozeti sabit degerden farkli (k6 aaaaaaaaaaaa... / beklenen bbbbbbbbbbbb..., wrk cccccccccccc... / beklenen dddddddddddd...); hicbir sey acilmadi, derlenmedi ya da calistirilmadi',
     ]) {
       ({ s } = await sonuc(
         {},
@@ -1088,7 +1088,7 @@ test(
     // Iptal: CANCELED; kilit TUTULUR (isten cozulur), uzakta derleme surebilir.
     ({ s } = await sonuc({}, { status: 'canceled', artifacts: {}, jobExplanation: 'iptal' }));
     assert.equal(s.durum, 'CANCELED');
-    assert.deepEqual(tutulan(), ['A|araclar', 'L|GBLABT02']);
+    assert.deepEqual(tutulan(), ['A|araclar', 'L|ORLABT02']);
     assert.equal(
       D.kilitler.get('A|araclar').awx_job_id,
       null,
@@ -1097,7 +1097,7 @@ test(
     // error: FAILED + kilit tutulur.
     ({ s } = await sonuc({}, { status: 'error', artifacts: {} }));
     assert.equal(s.durum, 'FAILED');
-    assert.deepEqual(tutulan(), ['A|araclar', 'L|GBLABT02']);
+    assert.deepEqual(tutulan(), ['A|araclar', 'L|ORLABT02']);
     // Deneme > 3: OKUNAMADI.
     ({ s } = await sonuc(
       { durum: 'FINALIZING', sonuclandirma_denemesi: 3 },
@@ -1163,7 +1163,7 @@ test(
     assert.deepEqual(await ar.araclariSonuclandir(), { bayat: 0, kapanan: 0 });
     assert.deepEqual(
       [D.araclar[0].durum, D.araclar[0].sonuclandirma_denemesi, D.arsiv.length, tutulan()],
-      ['RUNNING', 0, 0, ['A|araclar', 'L|GBLABT02']],
+      ['RUNNING', 0, 0, ['A|araclar', 'L|ORLABT02']],
     );
     olayli(new Date(Date.now() - 11 * 60 * 1000).toISOString());
     assert.deepEqual(await ar.araclariSonuclandir(), { bayat: 0, kapanan: 1 });
@@ -1339,7 +1339,7 @@ test(
     assert.deepEqual(r.body.etkin, {
       id: 3,
       durum: 'DONE',
-      derlemeHost: 'GBLABT02',
+      derlemeHost: 'ORLABT02',
       k6Surum: 'v0.49.0',
       wrkSurum: '4.2.0',
       k6Sha256: SHA_K6,
@@ -1373,8 +1373,8 @@ test(
       [null, 'derleme: make basarisiz (rc 2): x', null],
     );
     assert.deepEqual(r.body.ayar, {
-      derlemeHostlari: ['GBLABT02'],
-      varsayilanDerlemeHost: 'GBLABT02',
+      derlemeHostlari: ['ORLABT02'],
+      varsayilanDerlemeHost: 'ORLABT02',
       k6Surum: 'v0.49.0',
       wrkSurum: '4.2.0',
       proxyTanimli: true,
@@ -1505,7 +1505,7 @@ test(
     assert.equal((await ar.etkinAracSeti(vt)).id, 4);
     const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_araclar_geri_cek' && !x.result);
     assert.ok(d, 'basari denetime yazilmadi');
-    assert.equal(d.targetHost, 'GBLABT02');
+    assert.equal(d.targetHost, 'ORLABT02');
     assert.deepEqual(JSON.parse(d.detail), {
       aracId: 7,
       etkindi: true,

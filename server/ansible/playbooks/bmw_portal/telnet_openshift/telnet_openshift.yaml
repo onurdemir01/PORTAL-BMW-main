@@ -14,7 +14,7 @@
 #
 # ÖNCEKİ YAPI VE NEDEN BIRAKILDI: playbook `hosts: "{{ cluster }}_{{ env }}"` ile envanter
 # grubunu (ör. ark_qa) hedefliyordu. Cluster → jump server eşlemesi AWX envanterinin İÇİNDE
-# gizliydi (envanterde `gbocpqa1` hem GRUP hem HOST olarak tanımlı — Ansible bunu uyarı
+# gizliydi (envanterde `orocpqa1` hem GRUP hem HOST olarak tanımlı — Ansible bunu uyarı
 # olarak basıyor) ve portalın DB'sindeki `ocp_cluster_index.terminal_host` kaydı hiç
 # kullanılmıyordu. Artık eşlemenin tek kaynağı portal.
 #
@@ -22,9 +22,9 @@
 # 1) `'target_host' is undefined` — playbook hedefi `target_host`/`target_port` adlarıyla
 #    okuyordu, portal `ip`/`port` gönderiyordu. Üç host da telnet komutunu hiç çalıştıramadı.
 #    → Hedef her iki addan da türetiliyor; portal da ikisini birden gönderiyor.
-# 2) `gbocptest4` ilk adımda düştü ama görevde `no_log: true` olduğu için SEBEP görünmedi.
+# 2) `orocptest4` ilk adımda düştü ama görevde `no_log: true` olduğu için SEBEP görünmedi.
 #    Aynı hesapla eş zamanlı koşan başka bir job'ın log'unda sebep yazıyor:
-#      error loading config file "/home/uxmid/.kube/config": yaml: line 12: ...
+#      error loading config file "/home/svcac/.kube/config": yaml: line 12: ...
 #    Eş zamanlı `oc login`'ler ORTAK kubeconfig'i bozuyor.
 #    → (a) her birim KENDİ geçici KUBECONFIG'ini kullanır, (b) login ile pod oluşturma AYRI
 #      görevlerdir; `no_log` yalnız parolayı taşıyan login'de kalır, pod hatası okunabilir.
@@ -35,7 +35,7 @@
 #    ada AWX job numarası eklendi.
 #
 # ── PORTALIN GÖNDERDİĞİ extra_vars ─────────────────────────────────────────────────────
-#   terminal_hosts : ["GBARKAP82", ...]           ← jump server'lar (hedef host'lar)
+#   terminal_hosts : ["ORARKAP82", ...]           ← jump server'lar (hedef host'lar)
 #   ocp_clusters   : [{ cluster_name, terminal_host, api_url, credential_key }, ...]
 #   namespaces     : hedef namespace LİSTESİ (ÇOĞUL — bkz. aşağıdaki not)
 #   ip / port      : telnet hedefi (target_host / target_port ile AYNI değerler)
@@ -287,7 +287,7 @@
       changed_when: false
 
     # ESKIDEN BURADA `assert` VARDI VE HOST'U OLDURUYORDU (2026-08-28 duzeltmesi).
-    # Uretimde tam olarak bu yasandi: `gbocpcicd2` icin vault parolasi cozulemedi,
+    # Uretimde tam olarak bu yasandi: `orocpcicd2` icin vault parolasi cozulemedi,
     # assert dustu, TEK bastion oldugu icin play'de ayakta host kalmadi ve Ansible
     # "NO MORE HOSTS LEFT" ile toplayici play'i ATLADI. Sonuc: `telnet_result` HIC
     # yayinlanmadi ve portal "yapilandirilmis sonuc gelmedi" deyip ham log gosterdi —
@@ -444,7 +444,7 @@
           changed_when: false
           # POD HAZIR DEĞİLSE TELNET HİÇ DENENMEZ.
           #
-          # ÜRETİMDE NE OLUYORDU (job 3291766, gbocptest4): `create`/`wait` görevlerinin
+          # ÜRETİMDE NE OLUYORDU (job 3291766, orocptest4): `create`/`wait` görevlerinin
           # ikisi de `failed_when: false` olduğu için pod hiç ayağa kalkmasa bile bu görev
           # yine çalışıyor ve `oc exec` şunu döndürüyordu:
           #     error: unable to upgrade connection: container not found ("telnet-test-...")

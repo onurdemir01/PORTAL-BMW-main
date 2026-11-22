@@ -64,7 +64,7 @@ beforeEach(() => {
   m.legacyHosts.mockResolvedValue({ ok: true, hosts: [] });
   m.getClusterTree.mockResolvedValue({
     ok: true,
-    tree: { PROD: { ark: ['gbocpprod1', 'gbocpprod2'] } },
+    tree: { PROD: { ark: ['orocpprod1', 'orocpprod2'] } },
   });
   m.selectClusters.mockResolvedValue({ ok: true, terminalHost: 't' });
   m.inventoryApps.mockResolvedValue({
@@ -109,7 +109,7 @@ describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
   });
 
   it('LD3 openshift: cluster seçili, namespace seçili, arama uygulama adıyla dolu', async () => {
-    const secili = { env: 'PROD', tenant: 'ark', clusters: ['gbocpprod2'] };
+    const secili = { env: 'PROD', tenant: 'ark', clusters: ['orocpprod2'] };
     m.getRequest.mockImplementation(async () =>
       istek('openshift', m.selectClusters.mock.calls.length ? secili : null),
     );
@@ -119,22 +119,22 @@ describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
       fetchedAt: null,
       stale: false,
     });
-    ac('/logx?platform=openshift&app=app-1&env=prod&tenant=ARK&namespace=ns-b&cluster=gbocpprod2');
+    ac('/logx?platform=openshift&app=app-1&env=prod&tenant=ARK&namespace=ns-b&cluster=orocpprod2');
     const arama = (await screen.findByPlaceholderText(
       /Ara veya listede olmayan/,
     )) as HTMLInputElement;
     expect(screen.getAllByTitle('ns-b').length).toBeGreaterThan(0);
-    expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', ['gbocpprod2']);
+    expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', ['orocpprod2']);
     expect(m.createRequest).toHaveBeenCalledTimes(1);
     expect(arama.value).toBe('app-1');
     await waitFor(() =>
-      expect(m.inventoryApps).toHaveBeenCalledWith('PROD', 'ark', ['gbocpprod2'], 'ns-b'),
+      expect(m.inventoryApps).toHaveBeenCalledWith('PROD', 'ark', ['orocpprod2'], 'ns-b'),
     );
     expect(screen.queryByTestId('logx-ondolum-uyari')).toBeNull();
   });
 
   it('LD4 openshift: namespace listede yoksa seçici açılır, uyarı görünür', async () => {
-    const secili = { env: 'PROD', tenant: 'ark', clusters: ['gbocpprod1', 'gbocpprod2'] };
+    const secili = { env: 'PROD', tenant: 'ark', clusters: ['orocpprod1', 'orocpprod2'] };
     m.getRequest.mockImplementation(async () =>
       istek('openshift', m.selectClusters.mock.calls.length ? secili : null),
     );
@@ -149,8 +149,8 @@ describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
     expect(uyari.textContent).toMatch(/gizli-ns/);
     // Cluster verilmedi: tenant'ın bütün cluster'ları seçilir.
     expect(m.selectClusters).toHaveBeenCalledWith('r1', 'PROD', 'ark', [
-      'gbocpprod1',
-      'gbocpprod2',
+      'orocpprod1',
+      'orocpprod2',
     ]);
     expect(await screen.findByText('Namespace Seçimi')).toBeTruthy();
   });

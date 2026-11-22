@@ -151,7 +151,7 @@ export function DasIcon({
 
 /**
  * GAR — Banka tarafı. Sütunlu banka binası: bankacılık için genel bir işaret.
- * Garanti BBVA'nın resmî logosu DEĞİL; marka dosyası kullanılmıyor.
+ * Kurumun resmî logosu DEĞİL; marka dosyası kullanılmıyor.
  */
 export function GarIcon({ className = 'h-4 w-4', style, title = 'GAR — Banka' }: IconProps) {
   return (

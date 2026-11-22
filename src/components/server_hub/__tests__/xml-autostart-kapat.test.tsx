@@ -54,7 +54,7 @@ import {
   xmlKapatSunucuEngeli,
 } from '@/components/server_hub/XmlAutoStartKapat';
 
-const APP = 'GBCJAP01';
+const APP = 'ORCJAP01';
 const XA = 'jboss_autostart_xml_off';
 const JVM = (name: string, o: Record<string, unknown> = {}) => ({
   gen: 8,
@@ -112,7 +112,7 @@ const planSonucu = () => ({
   plan_only: true,
   xmlplan: [
     'PLAN\tdosya\t/usr/jboss8/AppServer/domain/configuration/host.xml',
-    'PLAN\thost\tgbcjap01',
+    'PLAN\thost\torcjap01',
     'PLAN\tyedek\t/var/tmp/server_hub_backup/<zaman damgasi>/host.xml',
   ],
   items: [
@@ -193,7 +193,7 @@ describe('XU1 yardımcılar', () => {
     expect(xmlKapatSunucuEngeli({ fresh: true })).toBe('');
     const s = xmlSonucunuAyristir(planSonucu());
     expect(s.genel).toEqual({ durum: 'PLAN', mesaj: '2 JVM auto-start true -> false' });
-    expect(s.plan.host).toBe('gbcjap01');
+    expect(s.plan.host).toBe('orcjap01');
     expect(s.ogeler.map((o) => `${o.jvm}:${o.durum}`)).toEqual(['yanlis1:PLAN', 'yanlis2:PLAN']);
     expect(xmlSonucunuAyristir(null)).toEqual({ genel: null, ogeler: [], plan: {} });
   });
@@ -286,7 +286,7 @@ describe('XU4 pencere', () => {
     await isBitir(0, 'successful', planSonucu());
     const sonuc = within(dlg).getByTestId('xml-kapat-sonuc');
     expect(sonuc).toHaveTextContent('/usr/jboss8/AppServer/domain/configuration/host.xml');
-    expect(sonuc).toHaveTextContent('gbcjap01');
+    expect(sonuc).toHaveTextContent('orcjap01');
     expect(sonuc).toHaveTextContent('true (oznitelik yok, JBoss varsayilani) -> false');
     const uygula = within(dlg).getByRole('button', { name: 'Onayla ve uygula' });
     expect(uygula).toBeDisabled();

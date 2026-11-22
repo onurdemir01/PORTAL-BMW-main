@@ -77,7 +77,7 @@ function cozumleIfade(ifade, vars, clusters) {
       target_environment: 'test',
       target_namespace: 'ns1',
       discovery_mode: 'workloads',
-      username: 'uxmid',
+      username: 'svcac',
       ...vars,
     };
     fs.writeFileSync(
@@ -270,7 +270,7 @@ function prepareKosar(vars) {
       target_environment: 'test',
       target_namespace: 'ns1',
       discovery_mode: 'workloads',
-      username: 'uxmid',
+      username: 'svcac',
       ...vars,
     };
     fs.writeFileSync(

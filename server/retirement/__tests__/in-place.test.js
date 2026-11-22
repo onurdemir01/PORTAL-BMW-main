@@ -1,6 +1,6 @@
 // server/retirement/__tests__/in-place.test.js — IN1..IN8 (job_3438186, 2026-10-22, CANLI ETKI).
 //
-// In-place sunucuda (GBPOSWEBAPI ayni sunucuda hem JBoss 7 hem JBoss 8) JBoss 7 retire edilirken JBoss 8
+// In-place sunucuda (ORPOSWEBAPI ayni sunucuda hem JBoss 7 hem JBoss 8) JBoss 7 retire edilirken JBoss 8
 // de etkilendi. Portal tarafinin payi:
 //   - kesif `host|app` ile tekillestiriyordu: IKINCI kurulum satiri atiliyor, hangi surumun gorunecegini
 //     SQL satir sirasi seciyordu (betik bunu yakalayamaz: yol ve surum tutarli);
@@ -27,21 +27,21 @@ const dilim = (bas, son) => {
 };
 
 const r7 = {
-  app: 'GBPOSWEBAPI',
-  host: 'GBJEXP05',
+  app: 'ORPOSWEBAPI',
+  host: 'ORJEXP05',
   env: 'Production',
   domain: 'x',
   jboss_version: '7.4.8',
-  app_path: '/vhosting/GBPOSWEBAPI.ear',
+  app_path: '/vhosting/ORPOSWEBAPI.ear',
   status: 'running',
 };
 const r8 = {
-  app: 'GBPOSWEBAPI',
-  host: 'GBJEXP05',
+  app: 'ORPOSWEBAPI',
+  host: 'ORJEXP05',
   env: 'Production',
   domain: 'x',
   jboss_version: '8.0.0',
-  app_path: '/vhosting8/GBPOSWEBAPI.ear',
+  app_path: '/vhosting8/ORPOSWEBAPI.ear',
   status: 'running',
 };
 
@@ -50,12 +50,12 @@ test('IN1 in-place: iki kurulum IKI hedef, satir sirasindan bagimsiz; ikisi de i
     [r7, r8],
     [r8, r7],
   ]) {
-    const t = buildTargets('GBPOSWEBAPI', sira, [], [], [], []).targets;
+    const t = buildTargets('ORPOSWEBAPI', sira, [], [], [], []).targets;
     assert.deepEqual(
       t.map((x) => [x.host, x.gen, x.appPath]),
       [
-        ['GBJEXP05', 7, '/vhosting/GBPOSWEBAPI.ear'],
-        ['GBJEXP05', 8, '/vhosting8/GBPOSWEBAPI.ear'],
+        ['ORJEXP05', 7, '/vhosting/ORPOSWEBAPI.ear'],
+        ['ORJEXP05', 8, '/vhosting8/ORPOSWEBAPI.ear'],
       ],
       'in-place sunucuda bir kurulum DUSTU ya da sira degisince farkli hedef cikti',
     );
@@ -68,7 +68,7 @@ test('IN1 in-place: iki kurulum IKI hedef, satir sirasindan bagimsiz; ikisi de i
       [[8], [7]],
     );
   }
-  const tek = buildTargets('GBPOSWEBAPI', [r7], [], [], [], []).targets;
+  const tek = buildTargets('ORPOSWEBAPI', [r7], [], [], [], []).targets;
   assert.equal(tek.length, 1);
   assert.ok(!tek[0].inPlace, 'tek kurulumlu sunucu in-place isaretlendi');
 });
@@ -78,7 +78,7 @@ test("IN2 kurulum kolu = paket dizini (betiklerin GEN'i); urun surumu yalniz yol
   assert.equal(
     kolOf('/vhosting/A.ear', '8.0.1'),
     7,
-    'GBJBOP18: /usr/jboss altindaki JBoss 8 urunu 7 kolunda',
+    'ORJBOP18: /usr/jboss altindaki JBoss 8 urunu 7 kolunda',
   );
   assert.equal(kolOf('NF', '7.4.8'), 7);
   assert.equal(kolOf('', '8.1'), 8);
@@ -97,7 +97,7 @@ test('IN4 envanterin NF isareti ve goreli yol paket yolu DEGIL', () => {
   assert.equal(paketYolu('NF'), '');
   assert.equal(paketYolu('vhosting/A.ear'), '');
   assert.equal(paketYolu(' /vhosting/A.ear '), '/vhosting/A.ear');
-  const t = buildTargets('GBPOSWEBAPI', [{ ...r7, app_path: 'NF' }], [], [], [], []).targets[0];
+  const t = buildTargets('ORPOSWEBAPI', [{ ...r7, app_path: 'NF' }], [], [], [], []).targets[0];
   assert.equal(t.appPath, '', "NF AWX'e app_path olarak gidiyordu");
 });
 
@@ -107,8 +107,8 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       host: 'GOJBWP05',
       ip: '',
       port: '443',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/ihs/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/ihs/ORPOSWEBAPI.conf',
       product: 'IHS',
       env: 'PROD',
     },
@@ -117,7 +117,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
   const jvm = [
     {
       host: 'GOJBAP05',
-      jvm: 'GBPOSWEBAPI',
+      jvm: 'ORPOSWEBAPI',
       gen: 7,
       running: 1,
       auto_start: 'true',
@@ -127,7 +127,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
     },
     {
       host: 'GOJBAP05',
-      jvm: 'GBPOSWEBAPI',
+      jvm: 'ORPOSWEBAPI',
       gen: 8,
       running: 1,
       auto_start: 'true',
@@ -139,7 +139,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
   const vh = [
     {
       host: 'GOJBWP05',
-      server_name: 'pos7.garanti.com.tr',
+      server_name: 'pos7.sirket.invalid',
       aliases: '',
       listen: '*:443',
       conf_file: '/ihs/pos7.conf',
@@ -148,17 +148,17 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
     },
     {
       host: 'GOJBWP05',
-      server_name: 'pos8.garanti.com.tr',
+      server_name: 'pos8.sirket.invalid',
       aliases: '',
       listen: '*:443',
-      conf_file: '/rha/GBPOSWEBAPI.conf',
+      conf_file: '/rha/ORPOSWEBAPI.conf',
       product: 'RHA',
-      proxy_targets: '~DYNAMIC,gbposwebapi',
+      proxy_targets: '~DYNAMIC,orposwebapi',
     },
   ];
-  const a7 = { ...r7, host: 'GOJBAP05', domain: 'garanti.com.tr' };
-  const a8 = { ...r8, host: 'GOJBAP05', domain: 'garanti.com.tr' };
-  const t = buildTargets('GBPOSWEBAPI', [a7, a8], certs, jvm, vh, ips).targets;
+  const a7 = { ...r7, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const a8 = { ...r8, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const t = buildTargets('ORPOSWEBAPI', [a7, a8], certs, jvm, vh, ips).targets;
   const yedi = t.find((x) => x.gen === 7);
   const sekiz = t.find((x) => x.gen === 8);
   const otomatik = (x) =>
@@ -172,32 +172,32 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       .map((w) => w.serverName)
       .sort();
   assert.ok(
-    !otomatik(yedi).includes('pos8.garanti.com.tr'),
+    !otomatik(yedi).includes('pos8.sirket.invalid'),
     'JBoss 7 retire JBoss 8 (mod_cluster) vhostunu otomatik kapatacak',
   );
   assert.ok(
-    otomatik(yedi).includes('pos7.garanti.com.tr'),
+    otomatik(yedi).includes('pos7.sirket.invalid'),
     'JBoss 7 AJP vhostu (kendi JVM portu) otomatik kalmali',
   );
   assert.ok(
-    otomatik(sekiz).includes('pos8.garanti.com.tr'),
+    otomatik(sekiz).includes('pos8.sirket.invalid'),
     'JBoss 8 mod_cluster vhostu otomatik kalmali',
   );
   assert.ok(
-    !otomatik(sekiz).includes('pos7.garanti.com.tr'),
+    !otomatik(sekiz).includes('pos7.sirket.invalid'),
     'JBoss 8 retire JBoss 7 AJP vhostunu otomatik kapatacak',
   );
   assert.ok(
-    elle(yedi).includes('gbposwebapi.garanti.com.tr'),
+    elle(yedi).includes('orposwebapi.sirket.invalid'),
     'JBoss 7: yalniz adla eslesen vhost elle isaretlenmedi',
   );
   assert.match(yedi.web.find((w) => w.elle).elle, /in-place: .*elle kontrol edilmeli/);
   assert.ok(
-    !sekiz.web.some((w) => w.serverName === 'gbposwebapi.garanti.com.tr'),
+    !sekiz.web.some((w) => w.serverName === 'orposwebapi.sirket.invalid'),
     'JBoss 8 hedefi IHS vhostunu listeliyor (IN10)',
   );
   // in-place DEGILSE ad eslesmesi eskisi gibi otomatik
-  const tek = buildTargets('GBPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
+  const tek = buildTargets('ORPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
   assert.ok(
     tek.web.every((w) => !w.elle),
     'tek kurulumlu hedefte vhost elle isaretlendi (davranis degismemeli)',
@@ -260,22 +260,22 @@ test('IN8 GERI AL betige app_path gonderir (in-place dogrulamasi)', () => {
 test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; sahipsiz ad eslesmesi elle kalir', () => {
   const { inPlaceIsaretle } = require('../discover.cjs');
   const rha = {
-    host: 'GBJBWT03',
-    serverName: 'gbcorporatebankingservice-d.fw.garanti.com.tr',
+    host: 'ORJBWT03',
+    serverName: 'orcorporatebankingservice-d.fw.sirket.invalid',
     product: 'RHA',
     port: '8543',
-    confFile: '/usr/apache/conf.d/GBCORPORATEBANKINGSERVICE-D.conf',
+    confFile: '/usr/apache/conf.d/ORCORPORATEBANKINGSERVICE-D.conf',
   };
   const ihs = {
-    host: 'GBJBWT03',
-    serverName: 'gbcorporatebankingservice-d.fw.garanti.com.tr',
+    host: 'ORJBWT03',
+    serverName: 'orcorporatebankingservice-d.fw.sirket.invalid',
     product: 'IHS',
     port: '80',
     confFile: 'mod-jk.conf',
   };
   const t7 = {
-    host: 'GBJBAT03',
-    appName: 'GBCORPORATEBANKINGSERVICE-D',
+    host: 'ORJBAT03',
+    appName: 'ORCORPORATEBANKINGSERVICE-D',
     gen: 7,
     web: [
       { ...ihs, kaynak: 'ad' },
@@ -283,8 +283,8 @@ test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; s
     ],
   };
   const t8 = {
-    host: 'GBJBAT03',
-    appName: 'GBCORPORATEBANKINGSERVICE-D',
+    host: 'ORJBAT03',
+    appName: 'ORCORPORATEBANKINGSERVICE-D',
     gen: 8,
     web: [{ ...rha, kaynak: 'ad+mc', mcBalancer: 'x' }],
   };
@@ -319,8 +319,8 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       host: 'GOJBWP05',
       ip: '',
       port: '443',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/ihs/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/ihs/ORPOSWEBAPI.conf',
       product: 'IHS',
       env: 'PROD',
     },
@@ -328,8 +328,8 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       host: 'GOJBWP05',
       ip: '',
       port: '8543',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/usr/apache/conf.d/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/usr/apache/conf.d/ORPOSWEBAPI.conf',
       product: 'RHA',
       env: 'PROD',
     },
@@ -337,8 +337,8 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       host: 'GOJBWP05',
       ip: '',
       port: '9443',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/x/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/x/ORPOSWEBAPI.conf',
       product: '',
       env: 'PROD',
     },
@@ -347,7 +347,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
   const jvm = [
     {
       host: 'GOJBAP05',
-      jvm: 'GBPOSWEBAPI',
+      jvm: 'ORPOSWEBAPI',
       running: 1,
       auto_start: 'true',
       scan_date: '2026-10-27',
@@ -358,7 +358,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
   const vh = [
     {
       host: 'GOJBWP05',
-      server_name: 'ajp-rha.garanti.com.tr',
+      server_name: 'ajp-rha.sirket.invalid',
       aliases: '',
       listen: '*:443',
       conf_file: '/rha/ajp.conf',
@@ -366,8 +366,8 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       proxy_targets: '10.0.0.5:8009',
     },
   ];
-  const a7 = { ...r7, host: 'GOJBAP05', domain: 'garanti.com.tr' };
-  const yedi = buildTargets('GBPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
+  const a7 = { ...r7, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const yedi = buildTargets('ORPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
   assert.deepEqual(
     yedi.web.map((w) => w.product).sort(),
     ['', 'IHS'],
@@ -377,8 +377,8 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
     yedi.webHow,
     /JBoss 7 için 2 Red Hat Apache vhost'u sayılmadı \(JBoss 7 yalnız IBM HTTP Server arkasında çalışır\)/,
   );
-  const a8 = { ...r8, host: 'GOJBAP05', domain: 'garanti.com.tr' };
-  const sekiz = buildTargets('GBPOSWEBAPI', [a8], certs, [], [], []).targets[0];
+  const a8 = { ...r8, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const sekiz = buildTargets('ORPOSWEBAPI', [a8], certs, [], [], []).targets[0];
   assert.deepEqual(
     sekiz.web.map((w) => w.product).sort(),
     ['', 'RHA'],
@@ -386,7 +386,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
   );
   assert.match(sekiz.webHow, /JBoss 8 için 1 IBM HTTP Server vhost'u sayılmadı/);
   const bilinmeyen = buildTargets(
-    'GBPOSWEBAPI',
+    'ORPOSWEBAPI',
     [{ ...a7, jboss_version: '', app_path: '' }],
     certs,
     [],

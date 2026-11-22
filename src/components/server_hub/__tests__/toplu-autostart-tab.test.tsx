@@ -475,7 +475,7 @@ describe('Toplu Auto-Start sekmesi', () => {
 
   it('TT8 başarısız öğeler kümelenir: sayım çipleri, satır etiketi, süzme ve "ne yapılır"', async () => {
     const HC =
-      "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller gbbfaa01:9990, :read-attribute(name=local-host-name)): Connection refused - HICBIR SEY DEGISMEDI";
+      "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller orbfaa01:9990, :read-attribute(name=local-host-name)): Connection refused - HICBIR SEY DEGISMEDI";
     m.topluAutoStartListe.mockResolvedValue({
       ok: true,
       aktif: null,
@@ -489,8 +489,8 @@ describe('Toplu Auto-Start sekmesi', () => {
           dogrulandi: true,
           neden: 'a1 auto-start=true (host=m, CLI ile dogrulandi)',
         }),
-        oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
-        oge(3, 'GBBFAA01', 'h2', 'DUSTU', { neden: HC }),
+        oge(2, 'ORBFAA01', 'h1', 'DUSTU', { neden: HC }),
+        oge(3, 'ORBFAA01', 'h2', 'DUSTU', { neden: HC }),
         oge(4, 'APP02', 'z1', 'DUSTU', {
           neden: 'canlı değer zaten true — tarama eski (z1 auto-start zaten true)',
         }),
@@ -522,10 +522,10 @@ describe('Toplu Auto-Start sekmesi', () => {
 
   it('TT9 kategori seçimi işe bağlı: başka iş gelince seçim düşer, yeni işte kendiliğinden açılmaz', async () => {
     const HC =
-      "canlı okumada: host controller'a baglanilamadi (controller gbbfaa01:9990) - HICBIR SEY DEGISMEDI";
+      "canlı okumada: host controller'a baglanilamadi (controller orbfaa01:9990) - HICBIR SEY DEGISMEDI";
     const ogeleri = () => [
       oge(1, 'APP01', 'a1', 'OK', { neden: 'a1 auto-start=true' }),
-      oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
+      oge(2, 'ORBFAA01', 'h1', 'DUSTU', { neden: HC }),
     ];
     m.topluAutoStartListe.mockResolvedValue({
       ok: true,

@@ -150,7 +150,7 @@ pipeline {
     failure {
       echo "✗ Build ${env.BUILD_NUMBER} BASARISIZ"
       // Bildirim entegrasyonu (placeholder — kurumdaki kanala göre birini açın):
-      // mail to: 'ekip@sirket.com.tr', subject: "BMW Portal build ${env.BUILD_NUMBER} FAILED", body: env.BUILD_URL
+      // mail to: 'ekip@sirket.invalid', subject: "BMW Portal build ${env.BUILD_NUMBER} FAILED", body: env.BUILD_URL
       // slackSend channel: '#bmw-portal', message: "Build FAILED: ${env.BUILD_URL}"
     }
     always { cleanWs(deleteDirs: true, notFailBuild: true) }

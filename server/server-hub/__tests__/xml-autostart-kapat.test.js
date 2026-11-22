@@ -46,7 +46,7 @@ const NOW = Date.now();
 
 // ── XK1 ───────────────────────────────────────────────────────────────────────────────────────────
 test('XK1 xmlKapatKapisi yalniz domain kapali + durmus + auto-start true', () => {
-  const ctx = { host: 'GBCJAP01', jvm: 'app1', gen: 8 };
+  const ctx = { host: 'ORCJAP01', jvm: 'app1', gen: 8 };
   const iyi = {
     name: 'app1',
     gen: 8,
@@ -130,7 +130,7 @@ const dd = (A, host) =>
 test('XK2 JBOSS_DOMAIN_DOWN: hepsi false -> her ortamda bilgi; acik/bilinmeyen varsa uyari; Admin kazanir', () => {
   const HEPSI =
     "JBoss 8 domain kapalı (host controller çalışmıyor) — 2 JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok; JVM bazında auto-start bulgusu üretilmedi";
-  for (const host of ['GBBFAP01', 'GBBFAA01', 'GBBFAT01']) {
+  for (const host of ['ORBFAP01', 'ORBFAA01', 'ORBFAT01']) {
     const f = dd(assessHam(veri(host, ['false', 'false']), { now: NOW }), host);
     assert.equal(f.severity, 'info', host);
     assert.equal(f.text, HEPSI);
@@ -139,35 +139,35 @@ test('XK2 JBOSS_DOMAIN_DOWN: hepsi false -> her ortamda bilgi; acik/bilinmeyen v
     assert.equal(f.defaultSeverity, undefined);
     assert.equal(f.adminSeviye, undefined);
   }
-  const acik = dd(assessHam(veri('GBBFAP01', ['false', 'true']), { now: NOW }), 'GBBFAP01');
+  const acik = dd(assessHam(veri('ORBFAP01', ['false', 'true']), { now: NOW }), 'ORBFAP01');
   assert.equal(acik.severity, 'warning');
   assert.equal(acik.autoStartAcik, 1);
   const bilinmeyen = dd(
-    assessHam(veri('GBBFAP01', ['false', 'unknown']), { now: NOW }),
-    'GBBFAP01',
+    assessHam(veri('ORBFAP01', ['false', 'unknown']), { now: NOW }),
+    'ORBFAP01',
   );
   assert.equal(bilinmeyen.severity, 'warning', 'bilinmeyen auto-start: reboot guvenli denemez');
   // Admin seviyesi kazanir (uyari dediyse hepsi false olsa da uyari)
   const adm = dd(
-    assessHam(veri('GBBFAP01', ['false', 'false']), {
+    assessHam(veri('ORBFAP01', ['false', 'false']), {
       now: NOW,
       seviyeler: { JBOSS_DOMAIN_DOWN: 'warning' },
     }),
-    'GBBFAP01',
+    'ORBFAP01',
   );
   assert.deepEqual([adm.severity, adm.adminSeviye], ['warning', true]);
   const kr = dd(
-    assessHam(veri('GBBFAP01', ['false', 'false']), {
+    assessHam(veri('ORBFAP01', ['false', 'false']), {
       now: NOW,
       seviyeler: { JBOSS_DOMAIN_DOWN: 'danger' },
     }),
-    'GBBFAP01',
+    'ORBFAP01',
   );
   assert.equal(kr.severity, 'danger');
 });
 
 test('XK3 dogrulama katmani: XML isi items; OK/SKIP dogrulanir; bulgu metni / seviye katmandan', () => {
-  const host = 'GBBFAP01';
+  const host = 'ORBFAP01';
   const A = assessHam(veri(host, ['true', 'true', 'false']), { now: NOW });
   const h = A.hosts.find((x) => x.host === host);
   const f0 = dd(A, host);
@@ -242,7 +242,7 @@ test('XK3 dogrulama katmani: XML isi items; OK/SKIP dogrulanir; bulgu metni / se
 });
 
 // ── XK4 / XK5: uclar (gercek initServerHub, sahte DB + AWX) ────────────────────────────────────────
-const APP = 'GBCJAP01';
+const APP = 'ORCJAP01';
 const SEMA = {
   Server_Hub_Hosts: [
     'id',
@@ -590,12 +590,12 @@ test('XK5 red: calisan domain / JVM, plan+confirmed, cift ad, gecersiz girdi; /j
 test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bitince acilir; launch suresince 409', async () => {
   // katman: senkron rezervasyon
   const k = kur();
-  const b1 = k.xmlRezervasyon('gbcjap01', 8);
+  const b1 = k.xmlRezervasyon('orcjap01', 8);
   assert.equal(typeof b1, 'function');
-  assert.equal(k.xmlRezervasyon('GBCJAP01', 8), null, 'ayni sunucu + nesil ikinci rezervasyon');
-  assert.equal(typeof k.xmlRezervasyon('GBCJAP01', 7), 'function', 'baska nesil serbest');
+  assert.equal(k.xmlRezervasyon('ORCJAP01', 8), null, 'ayni sunucu + nesil ikinci rezervasyon');
+  assert.equal(typeof k.xmlRezervasyon('ORCJAP01', 7), 'function', 'baska nesil serbest');
   b1();
-  assert.equal(typeof k.xmlRezervasyon('GBCJAP01', 8), 'function', 'birak sonrasi serbest');
+  assert.equal(typeof k.xmlRezervasyon('ORCJAP01', 8), 'function', 'birak sonrasi serbest');
   k.isKaydetToplu(1, 900, {
     host: APP,
     h: null,

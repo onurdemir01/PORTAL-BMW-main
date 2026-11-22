@@ -12,17 +12,17 @@ const W = (host: string, serverName: string, port = '443'): RtWeb => ({
   confFile: '/c',
 });
 const hedef = {
-  host: 'GBJBOT07',
-  appName: 'GBSVCVOICEORDER-D',
-  web: [W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '443'), W('GBJBOT07', 'gbsvcvoiceorder-d.fw', '80')],
+  host: 'ORJBOT07',
+  appName: 'ORSVCVOICEORDER-D',
+  web: [W('ORJBOT07', 'orsvcvoiceorder-d.fw', '443'), W('ORJBOT07', 'orsvcvoiceorder-d.fw', '80')],
 };
 const kesif = (trafik: RtWeb['trafik']): RtDiscovery => ({
   ok: true,
-  base: 'GBSVCVOICEORDER',
+  base: 'ORSVCVOICEORDER',
   targets: [
     {
-      host: 'gbjbot07',
-      appName: 'GBSVCVOICEORDER-D',
+      host: 'orjbot07',
+      appName: 'ORSVCVOICEORDER-D',
       site: 'Pendik',
       env: 'DEV',
       gen: 7,
@@ -32,7 +32,7 @@ const kesif = (trafik: RtWeb['trafik']): RtDiscovery => ({
       tier: '',
       webHow: '',
       hub: null,
-      web: [{ ...W('GBJBOT07', 'GBSVCVOICEORDER-D.fw'), trafik }],
+      web: [{ ...W('ORJBOT07', 'ORSVCVOICEORDER-D.fw'), trafik }],
     },
   ],
   summary: { total: 1, bySite: { Pendik: 1, Ankara: 0 }, byEnv: {}, webMatched: 1, prod: false },
@@ -48,7 +48,7 @@ describe('STOP onayinda vhost trafigi', () => {
   test('RT2 kesif YOK ya da vhost eslesmedi -> OLCULEMEDI ("yok" DEGIL)', () => {
     expect(stopTrafikOzeti(hedef, null).olculemedi).toBe(1);
     expect(stopTrafikOzeti(hedef, null).yok).toBe(0);
-    const baska = { ...hedef, web: [W('GBJBOT07', 'baska.fw')] };
+    const baska = { ...hedef, web: [W('ORJBOT07', 'baska.fw')] };
     expect(stopTrafikOzeti(baska, kesif({ durum: 'yok', req7: 0 })).olculemedi).toBe(1);
   });
 

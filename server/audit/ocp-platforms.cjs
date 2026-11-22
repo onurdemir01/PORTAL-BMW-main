@@ -7,9 +7,9 @@
 //
 // ── NEDEN ORTAM BURADAN GELMIYOR (kritik tasarim karari, 2026-08-21) ─────────────────
 // yaml'daki gruplar "<platform>_<env>" gorunumunde ama ENV bilgisi GUVENILIR DEGIL:
-//   ark_dev   -> [gbocptest1, gbocptest2, gbocptest4]
-//   ark_test  -> [gbocptest1, gbocptest2, gbocptest4]   <-- ark_dev ile BIREBIR AYNI
-//   ark_qa    -> [gbocpqa1, gbocpqa2, gbocptest4, gbocpankqa2]  <-- gbocptest4 ORTAK
+//   ark_dev   -> [orocptest1, orocptest2, orocptest4]
+//   ark_test  -> [orocptest1, orocptest2, orocptest4]   <-- ark_dev ile BIREBIR AYNI
+//   ark_qa    -> [orocpqa1, orocpqa2, orocptest4, orocpankqa2]  <-- orocptest4 ORTAK
 // Yani ayni cluster hem dev hem test hem qa grubunda olabiliyor; cluster'a bakarak
 // "bu uygulama dev'de mi test'te mi" sorusu YANITLANAMAZ. Gercek veriyle dogrulandi
 // (2026-08-19 envanteri): ark_dev/ark_test cluster kumesinde 11.861 "-dev" ve 11.592
@@ -20,73 +20,55 @@
 // Bu, ARK Openshift SPA Raporu'nda da dogrulanan AYNI kuraldir.
 'use strict';
 
-// platform -> o platforma ait TUM cluster'lar (ortam ayrimi YOK, bilerek birlestirildi)
-const PLATFORM_CLUSTERS = {
-  ark: [
-    'gbocptest1',
-    'gbocptest2',
-    'gbocptest4',
-    'gbocpqa1',
-    'gbocpqa2',
-    'gbocpankqa2',
-    'gbocpprod1',
-    'gbocpprod2',
-    'gbocpankprod2',
-    'gbocpprod4',
-    'gbocpdrcprod1',
-  ],
-  ark_ai: [
-    'gbocparkaiprod1',
-    'gbocparkaiprod2',
-    'gbocpankarkaiprod1',
-    'gbocparkaitest1',
-    'gbocparkaitest2',
-  ],
-  ark_lab: ['gbocplab1', 'gbocplab2'],
-  ark_edu: ['gbocpedu1'],
-  hosting: ['gbocp3rdprod1', 'gbocp3rdprod2', 'gbocpank3rdprod2', 'gbocp3rdtest3', 'gbocp3rdtest4'],
-  'istirak-hosting': [
-    'giocp3rdprod1',
-    'giocp3rdprod2',
-    'giocpank3rdprod2',
-    'giocp3rdtest3',
-    'giocp3rdtest4',
-  ],
-  wyden: [
-    'giocp3rdwyprod1',
-    'giocp3rdwyprod2',
-    'giocpank3rdwyprod1',
-    'giocp3rdwytest1',
-    'giocp3rdwytest2',
-  ],
-  metaco_das: ['daocpprod1', 'daocpprod2', 'daocpankprod1', 'daocptest1'],
-  metaco_gar: ['gbocp3rdcwprod1', 'gbocp3rdcwprod2', 'gbocpank3rdcwprod1', 'gbocp3rdcwtest1'],
-  instana: ['gbocpinsprod2'],
-  cicd: ['gbocpcicd2', 'gbocpcicd3'],
-};
+// KUME ADLARI KOD DISINDA (2026-11-20, kalite kapisi K17): kurum ayarinda (server/util/kurum-ayari.cjs).
+//   ocp.platformKumeleri  {platform: [cluster]}  platform -> o platforma ait TUM cluster'lar (ortam ayrimi
+//                         YOK, bilerek birlestirildi)
+//   ocp.ortamKumeleri     {platform: {ortam: [cluster]}}  RESMI ORTAM -> CLUSTER KUMESI (kullanici,
+//                         2026-10-14). Ortam YINE namespace son ekinden gelir (yukaridaki kural degismedi);
+//                         bu tablo "bir uygulama o ortamin KAC cluster'inda olmali" sorusunun cevabidir:
+//                         hucredeki k/n'deki n veriden degil buradan gelir. Ansible envanterindeki gruplardan
+//                         FARKLI olabilir; kullanicinin verdigi liste esastir. Bir ortamin namespace'i bu
+//                         listenin DISINDAKI bir cluster'da gorulurse "beklenmeyen cluster" olarak ayrica
+//                         gosterilir (sayiya katilmaz).
+// Her cagrida ayardan okunur (ayar nesnesi degismedikce onbellekten). Ayar yoksa bos.
+const { kurumAyari } = require('../util/kurum-ayari.cjs');
 
-// ── RESMI ORTAM -> CLUSTER KUMESI (kullanici, 2026-10-14) ─────────────────────────────
-// Ortam YINE namespace son ekinden gelir (yukaridaki kural degismedi). Bu tablo "bir uygulama o
-// ortamin KAC cluster'inda olmali" sorusunun cevabidir: hucredeki k/n'deki n artik veriden degil
-// buradan gelir. Ansible envanterindeki gruplardan FARKLI (ark_qa'da gbocptest4 var; kullanici: test4 yalniz dev + test);
-// kullanicinin verdigi liste esastir. Bir ortamin namespace'i bu listenin DISINDAKI bir cluster'da
-// gorulurse "beklenmeyen cluster" olarak ayrica gosterilir (sayiya katilmaz).
-const ENV_CLUSTERS = {
-  ark: {
-    dev: ['gbocptest1', 'gbocptest2', 'gbocptest4'],
-    test: ['gbocptest1', 'gbocptest2', 'gbocptest4'],
-    qa: ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2'],
-    prod: ['gbocpprod1', 'gbocpprod2', 'gbocpprod4', 'gbocpankprod2', 'gbocpdrcprod1'],
-  },
-};
+const KUME = /^[a-z][a-z0-9-]{0,62}$/;
+const kumeler = (v) =>
+  (Array.isArray(v) ? v : [])
+    .map((c) => String(c).trim().toLowerCase())
+    .filter((c) => KUME.test(c));
 
-// cluster -> platform (ters indeks)
-const CLUSTER_TO_PLATFORM = new Map();
-for (const [platform, clusters] of Object.entries(PLATFORM_CLUSTERS)) {
-  for (const c of clusters) CLUSTER_TO_PLATFORM.set(c.toLowerCase(), platform);
+// Onbellek ayar nesnesinin KIMLIGINE bagli (kurumAyari dosya degisince yeni nesne verir): WeakMap,
+// eski ayar nesnesi birakilinca girdisi de gider.
+const _onbellek = new WeakMap();
+function ocpAyari() {
+  const { veri } = kurumAyari();
+  const hazir = _onbellek.get(veri);
+  if (hazir) return hazir;
+  const ocp = veri?.ocp && typeof veri.ocp === 'object' ? veri.ocp : {};
+  const platform = {};
+  for (const [p, liste] of Object.entries(ocp.platformKumeleri || {})) platform[p] = kumeler(liste);
+  const ortam = {};
+  for (const [p, ortamlar] of Object.entries(ocp.ortamKumeleri || {})) {
+    if (!ortamlar || typeof ortamlar !== 'object') continue;
+    ortam[p] = {};
+    for (const [e, liste] of Object.entries(ortamlar)) ortam[p][e] = kumeler(liste);
+  }
+  // cluster -> platform (ters indeks)
+  const ters = new Map();
+  for (const [p, liste] of Object.entries(platform)) for (const c of liste) ters.set(c, p);
+  const sonuc = { platform, ortam, ters };
+  _onbellek.set(veri, sonuc);
+  return sonuc;
 }
 
-// EDU (2026-09-17): "-edu" ekli namespace'ler (GBNGXT51 intranet sunucusunun ortami)
+/** @returns {Record<string, string[]>} platform -> cluster listesi */
+const platformKumeleri = () => ocpAyari().platform;
+/** @returns {Record<string, Record<string, string[]>>} platform -> ortam -> cluster listesi */
+const ortamKumeleri = () => ocpAyari().ortam;
+
+// EDU (2026-09-17): "-edu" ekli namespace'ler (ORNGXT51 intranet sunucusunun ortami)
 // onceden null donup SESSIZCE sayilmiyordu; kullanici ortam ozetinde Edu'yu ayri istedi.
 const ENVS = ['dev', 'test', 'qa', 'edu', 'prod'];
 
@@ -100,7 +82,7 @@ function envOfNamespace(ns) {
 }
 
 function platformOfCluster(cluster) {
-  return CLUSTER_TO_PLATFORM.get(String(cluster || '').toLowerCase()) || null;
+  return ocpAyari().ters.get(String(cluster || '').toLowerCase()) || null;
 }
 
-module.exports = { PLATFORM_CLUSTERS, ENV_CLUSTERS, ENVS, envOfNamespace, platformOfCluster };
+module.exports = { platformKumeleri, ortamKumeleri, ENVS, envOfNamespace, platformOfCluster };

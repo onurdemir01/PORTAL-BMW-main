@@ -2,6 +2,7 @@
 // agaci/icerik (Ansible dokumundan, /sw), sertifika envanteri, dokum yenileme ve tek dosya push.
 import { okJson, safeJson } from './http';
 import { eskiGizliKaydet } from './nginxEskiSunucuApi';
+import type { RvpAyari } from '@/components/nginx_console/rvpSecim';
 
 const BASE = '/api/nginx-console';
 
@@ -783,11 +784,16 @@ function listeli<T extends { ok: boolean; message?: string }>(
 }
 
 export const nginxConsoleApi = {
-  /** RP Secimi alt ag sutunu: sunucu adi -> alt ag (ayar NGINX_RVP_ALT_AGLARI; tanimsizsa bos). */
+  /**
+   * RP Secimi kurum verisi: alt ag sutunu (ayar NGINX_RVP_ALT_AGLARI) ve kutularin sunuculari (kurum ayari
+   * nginx.rvp). Tanimsizsa bos; sebebi `hata` / `rvpHata`.
+   */
   rvpAltAglari: (): Promise<{
     ok: boolean;
     altAglar: Record<string, string>;
     hata: string | null;
+    rvp?: RvpAyari;
+    rvpHata?: string | null;
   }> => fetch(`${BASE}/rvp-alt-aglari`).then(okJson),
   // Gercek SPA kesfi (2026-10-01): ad kalibina bakmadan, kabinde nginx kosan uygulamalar.
   // Sunucu 60 sn onbellekler; "Yenile" fresh=1 ile onbellegi atlar. Govdede yazilmayan

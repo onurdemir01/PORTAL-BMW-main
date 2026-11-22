@@ -327,7 +327,7 @@ const INV = new Map();
 const OPSX = {
   extractStatsKey: (a, k) => (a && a[k] && typeof a[k] === 'object' ? a[k] : null),
   metadatahubHostMu: (h) =>
-    ['GBABAT01', 'GBABAT02', 'GBABAP01', 'GBABAP02'].some((x) =>
+    ['ORABAT01', 'ORABAT02', 'ORABAP01', 'ORABAP02'].some((x) =>
       String(h || '')
         .toUpperCase()
         .startsWith(x),
@@ -402,7 +402,7 @@ function filo() {
       H('PRD01', [J('prod1')], { env: 'PROD', envGroup: 'Production' }),
       H('APPX05', [J('envprod')], { env: 'PROD', envGroup: 'Production' }),
       H('NEO01', [J('bilinmez')], { env: 'BILINMIYOR' }),
-      H('GBABAT01', [J('meta')]),
+      H('ORABAT01', [J('meta')]),
       H('BAYAT01', [J('bayat')], { fresh: false }),
       H('SEMA01', [J('sema')], { schemaUnknown: true }),
       H('GIZ01', [J('tanimsiz', { cfgSrc: 'UNAVAILABLE' }), J('olcul', { runningKnown: false })]),
@@ -1521,16 +1521,16 @@ test('TR19 PLAN_HAZIR: 15 dk icinde dokunulmaz; sonra PLAN_ESKIDI, ogeler IPTAL,
 test('TR20 ad kurali: envanter TEST + ad prod -> OpsX ten tek tek', () => {
   const j = J('crm');
   assert.match(
-    T.restartKapisi(A, H('GBJBOP18', [j]), j),
+    T.restartKapisi(A, H('ORJBOP18', [j]), j),
     /sunucu adı kuralına göre prod \(envanter TEST/,
   );
   assert.match(T.restartKapisi(A, H('gojbwp03.dom', [j]), j), /kuralına göre prod/);
-  assert.equal(T.restartKapisi(A, H('GBJBOT18', [j]), j), null);
+  assert.equal(T.restartKapisi(A, H('ORJBOT18', [j]), j), null);
   assert.equal(T.adKuraliProd('APP01'), false);
 });
 
 test('TR-CIFT savunma: ayni sunucuda ayni (gen, JVM) iki kayit -> aday degil, bir kez nedeniyle disarida', async () => {
-  // uretim 2026-11-14: GBSTPQ01/8/GBSTPMAINWEB taramada iki satir
+  // uretim 2026-11-14: ORSTPQ01/8/ORSTPMAINWEB taramada iki satir
   A.hosts.push(H('CIFT01', [J('cift'), J('cift'), J('tek')]));
   INV.set('cift', [{ host: 'CIFT01', kurulum: '8' }]);
   INV.set('tek', [{ host: 'CIFT01', kurulum: '8' }]);

@@ -1617,8 +1617,8 @@ export function NginxEnvanteri() {
             })}
           </div>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            Ortam sunucu adı kalıbından gelir (GBNGXP/GBRVPP = PROD, …Q = QA, …T = TEST, …D = DEV,
-            GBNGXT51 = EDU).
+            Ortam sunucu adı kalıbından gelir (…NGXP / …RVPP = PROD, …Q = QA, …T = TEST, …D = DEV);
+            kalıbın yanılttığı sunucular kurum ayarındaki ortam istisnalarından okunur (ör. EDU).
             {t.envCorrected
               ? ` ${nf(t.envCorrected)} sunucuda tablodaki ortam kalıpla çelişiyordu; kalıp esas alındı.`
               : ''}

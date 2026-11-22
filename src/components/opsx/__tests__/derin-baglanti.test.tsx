@@ -50,12 +50,12 @@ beforeEach(() => {
   Object.values(m).forEach((f) => f.mockReset());
   m.getHosts.mockResolvedValue({
     ok: true,
-    hosts: [{ host: 'GBCJAP01', jbossVersion: '7.4', env: 'TEST' }],
+    hosts: [{ host: 'ORCJAP01', jbossVersion: '7.4', env: 'TEST' }],
   });
   m.wasSearchApps.mockResolvedValue({ ok: true, apps: [] });
   m.getClusters.mockResolvedValue({
     ok: true,
-    tree: { PROD: { ark: ['gbocpprod1', 'gbocpprod2'] } },
+    tree: { PROD: { ark: ['orocpprod1', 'orocpprod2'] } },
   });
   m.getOcpNamespaces.mockResolvedValue({ ok: true, namespaces: ['ns-a', 'ns-b'] });
   m.getOcpApps.mockResolvedValue({ ok: true, apps: ['app-1', 'app-2'] });
@@ -106,19 +106,19 @@ describe('OpsX derin bağlantı (Application Hub ön-seçimi)', () => {
   it('DB4 WAS: uygulama seçili gelir, sunucu listesi açık', async () => {
     m.wasGetHosts.mockResolvedValue({
       ok: true,
-      hosts: [{ host: 'GBWAS01', env: 'TEST', os: 'Linux', selectable: true }],
+      hosts: [{ host: 'ORWAS01', env: 'TEST', os: 'Linux', selectable: true }],
       maxDiscoverHosts: 10,
     });
     ac('/opsx?platform=was&app=WASAPP01');
     expect(await screen.findByText('WAS Uygulama Seçimi')).toBeTruthy();
-    expect(await screen.findByText('GBWAS01')).toBeTruthy();
+    expect(await screen.findByText('ORWAS01')).toBeTruthy();
     expect(screen.getByText('WASAPP01')).toBeTruthy();
     expect(m.wasGetHosts).toHaveBeenCalledWith('WASAPP01');
     expect(screen.getByRole('button', { name: 'Canlı keşfi başlat' })).toBeTruthy();
   });
 
   it('DB5 OCP: hedef önceden seçili ve uygulama eklenmiş; Devam Et açık', async () => {
-    ac('/opsx?platform=ocp&app=app-2&env=prod&tenant=ark&namespace=ns-b&cluster=gbocpprod2');
+    ac('/opsx?platform=ocp&app=app-2&env=prod&tenant=ark&namespace=ns-b&cluster=orocpprod2');
     expect(await screen.findByText('ns-b / app-2')).toBeTruthy();
     expect(m.getOcpNamespaces).toHaveBeenCalledWith('PROD', 'ark');
     expect(m.getOcpApps).toHaveBeenCalledWith('PROD', 'ark', 'ns-b');

@@ -1287,7 +1287,7 @@ test('TA13 onay aninda JVM kapisi: plandan sonra baslayan JVM in KAPAT ogesi dus
 });
 
 test('TA14 savunma: ayni sunucuda ayni (gen, JVM) iki kayit ve gen 7/8 disi -> aday degil, nedeniyle disarida', () => {
-  // uretim 2026-11-14: GBSTPQ01/8/GBSTPMAINWEB taramada iki satir; Portal ikisini birden gonderip reddedildi
+  // uretim 2026-11-14: ORSTPQ01/8/ORSTPMAINWEB taramada iki satir; Portal ikisini birden gonderip reddedildi
   A.hosts.push(
     host('CIFT01', [
       J('cift', { running: true, gen: 8 }),
@@ -1819,7 +1819,7 @@ test('TA21 secim sirasi hostlari karistirsa da uygulama bir hostun tum parcalari
 
 // ── DOMAIN KAPALI - HOST XML (2026-11-15, kullanici: "olur ekle lutfen") ─────────────────────────────────
 //   TX1 adaylar: domain kapali durmus + auto-start true JVM'ler ayri grup (host+gen, prod / bilinmiyor isaretli);
-//       bayat sunucu (GBFSTT01) dislananda AYNI mesajla; kapidan gecemeyen domain kapali JVM'in nedeni bolumu anar
+//       bayat sunucu (ORFSTT01) dislananda AYNI mesajla; kapidan gecemeyen domain kapali JVM'in nedeni bolumu anar
 //   TX2 olustur: CLI + XML karisik 400; prod / bilinmiyor / okunamayan ortam prodOnay olmadan 400 (kayit yok)
 //   TX3 plan: (host, gen) parcasi, extra_vars gen + jvms; PLAN gecer, SKIP / FAIL duser, "istek durduruldu" yeniden
 //       planlanir, ITEM satiri yoksa genel FAIL her ogeye; TX3b yalniz "istek durduruldu" -> duser (dongu yok)
@@ -1835,7 +1835,7 @@ function xmlFilo() {
     host('XNP01', [XJ('a1'), XJ('a2'), XJ('a3'), XJ('b1', { gen: 8 }), XJ('b2', { gen: 8 })]),
     host('XPR01', [XJ('p1'), XJ('p2')], { env: 'PROD', envGroup: 'Production' }),
     host('XBL01', [XJ('u1')], { env: 'BILINMIYOR', envGroup: 'Bilinmiyor' }),
-    host('GBFSTT01', [XJ('s1')], { fresh: false }),
+    host('ORFSTT01', [XJ('s1')], { fresh: false }),
     host('XAC01', [
       XJ('r1', { running: true, autoStart: 'false' }),
       XJ('t1', { cfgSrc: 'UNAVAILABLE' }),
@@ -1897,7 +1897,7 @@ test('TX1 host XML adaylari: domain kapali durmus + auto-start true ayri grup (h
   xmlFilo();
   const { adaylar, dislananlar, xmlAdaylar } = T.adaylariTuret(A, { autoStart: katman });
   assert.ok(
-    !adaylar.some((x) => /^X|^GBFSTT/.test(x.host)),
+    !adaylar.some((x) => /^X|^ORFSTT/.test(x.host)),
     'domain kapali JVM CLI adayi olmamali',
   );
   assert.deepEqual(
@@ -1925,7 +1925,7 @@ test('TX1 host XML adaylari: domain kapali durmus + auto-start true ayri grup (h
     ],
   );
   const neden = Object.fromEntries(dislananlar.map((x) => [x.jvm, x.neden]));
-  assert.match(neden.s1, /^GBFSTT01 taraması bayat/);
+  assert.match(neden.s1, /^ORFSTT01 taraması bayat/);
   assert.doesNotMatch(neden.s1, esnek(/host XML/), 'bayat sunucu nedeni degismemeli');
   assert.match(
     neden.t1,

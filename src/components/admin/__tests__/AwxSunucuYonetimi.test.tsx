@@ -24,7 +24,7 @@ import AwxSunucuYonetimi from '../tabs/AwxSunucuYonetimi';
 const M1 = {
   no: 1,
   name: 'maestro',
-  url: 'https://maestro.fwgaranti.com.tr',
+  url: 'https://maestro.fwsirket.invalid',
   enabled: true,
   lastStatus: 'ok',
   lastCheckedAt: null,
@@ -33,7 +33,7 @@ const M1 = {
 const M2 = {
   no: 2,
   name: 'maestro2',
-  url: 'https://maestro2.fwgaranti.com.tr',
+  url: 'https://maestro2.fwsirket.invalid',
   enabled: true,
   lastStatus: 'ok',
   lastCheckedAt: null,

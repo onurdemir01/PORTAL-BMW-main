@@ -21,7 +21,7 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     application: 'base-app-v0',
     namespace: 'digital-banking-ch-prod',
     inputPath: '/base/',
-    user: { displayName: 'Onur Demir', username: 'odemir', email: 'o@x' },
+    user: { displayName: 'Deneme Kisi', username: 'odemir', email: 'o@x' },
   });
   assert.deepEqual(v, {
     service: 'GLOMO',
@@ -32,7 +32,7 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
     action: 'create',
     app_type: 'spa',
     migration_mode: true,
-    requester_name: 'Onur Demir',
+    requester_name: 'Deneme Kisi',
     requester_email: 'o@x',
   });
   // Playbook'un kapisi (assert) bu degerleri bekler; survey varsayilani karisirsa is duser.
@@ -44,15 +44,15 @@ test('extra_vars: playbookun bekledigi 4 alan + akis sabitleri + requester', () 
 const groups = [
   {
     id: 'glomo',
-    newHosts: ['GBNGXP40'],
+    newHosts: ['ORNGXP40'],
     apps: [
       {
         namespace: 'digital-banking-ch-prod',
         application: 'base-app-v0',
         status: 'partial',
         paths: [
-          { service: 'GLOMO', location: '/base/', hosts: ['GBRVPP07'] },
-          { service: 'GLOMO', location: '/base2/', hosts: ['GBRVPP08'] },
+          { service: 'GLOMO', location: '/base/', hosts: ['ORRVPP07'] },
+          { service: 'GLOMO', location: '/base2/', hosts: ['ORRVPP08'] },
         ],
       },
       {
@@ -653,13 +653,13 @@ test('MG3 yanlis vaat yok: tanimli yol KOSULSUZ reddedilir', () => {
   const tanimli = [
     {
       id: 'glomo',
-      newHosts: ['GBNGXP40'],
+      newHosts: ['ORNGXP40'],
       apps: [
         {
           namespace: 'glomo-prod',
           application: 'var-app-v1',
           status: 'ready',
-          paths: [{ service: 'GLOMO', location: '/v/', hosts: ['GBRVPP07'], newStatus: 'defined' }],
+          paths: [{ service: 'GLOMO', location: '/v/', hosts: ['ORRVPP07'], newStatus: 'defined' }],
         },
       ],
     },

@@ -127,8 +127,9 @@ async function kur(secenek = {}) {
     'server/db/index.cjs': { query: (sqlText, p) => dbSorgu(durum, sqlText, p || []) },
   };
   if (secenek.prodAcik) {
-    const gercek = require('../../../shared/cryptoHubTenants.cjs');
-    sahte['shared/cryptoHubTenants.cjs'] = { ...gercek, isOpen: (t) => !!t };
+    // Sunucu kiracilari server/crypto-hub/kiracilar.cjs'ten alir (kurum ayari baglantisi orada).
+    const gercek = require('../kiracilar.cjs');
+    sahte['server/crypto-hub/kiracilar.cjs'] = { ...gercek, isOpen: (t) => !!t };
   }
 
   const onceki = new Map();
@@ -332,12 +333,12 @@ const ornek = {
     `RESLIVE\t${t}\tDeployment\twydenapp-access-gateway\tapp\tkap\t500m\tYOK\t2\t2Gi`,
     `RESLR\t${t}\t-\t-\t-\t-\tYOK`,
     `RESQUOTA\t${t}\t-\t-\t-\tYOK`,
-    `RESSRC\t${t}\t/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/garanti_values.yaml\tokundu\tdogrulanmadi\t${hex('dosya')}\t1234\tevet\tyalniz resources satirlari doner`,
+    `RESSRC\t${t}\t/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/ornek_values.yaml\tokundu\tdogrulanmadi\t${hex('dosya')}\t1234\tevet\tyalniz resources satirlari doner`,
     `RESFILE\t${t}\taccess-gateway\trequests.cpu\t500m\t44`,
     `RESFILE\t${t}\taccess-gateway\trequests.memory\tYOK\t-`,
     `RESFILE\t${t}\taccess-gateway\tlimits.cpu\t2\t47`,
     `RESFILE\t${t}\taccess-gateway\tlimits.memory\t2Gi\t48`,
-    `RESPEER\t${t}\twyden_qa_h3\t/vhosting/x/clqa2/garanti_values.yaml\ttanimli\t${hex('es')}\tes cluster dosyasi`,
+    `RESPEER\t${t}\twyden_qa_h3\t/vhosting/x/clqa2/ornek_values.yaml\ttanimli\t${hex('es')}\tes cluster dosyasi`,
     `RESEND\t${t}\tresources_get\tok\t-`,
   ],
   plan: ({ t = T, durum = 'ok', kod = '-', riskli = 'hayir', bekleyen = '-' } = {}) => [
@@ -346,7 +347,7 @@ const ornek = {
     `RESEDIT\t${t}\tbirincil\taccess-gateway\tlimits.memory\t2Gi\t3Gi\tdegistir`,
     `RESDIFF\t${t}\tDeployment\twydenapp-access-gateway\tapp\tlimits.memory\t2Gi\t3Gi`,
     `RESAFFECT\t${t}\tDeployment\twydenapp-access-gateway\tRollingUpdate\t2\t${riskli}`,
-    `RESPEER\t${t}\twyden_qa_h3\t/vhosting/x/clqa2/garanti_values.yaml\tyazilir\t${hex('es')}\tayni duzenleme`,
+    `RESPEER\t${t}\twyden_qa_h3\t/vhosting/x/clqa2/ornek_values.yaml\tyazilir\t${hex('es')}\tayni duzenleme`,
     `RESPLAN\t${t}\t${durum}\t${kod}\t${hex('dosya')}\t${hex('yeni')}\t${hex('chart')}\t${bekleyen}\t${riskli}\t${durum === 'ok' ? hex('jeton') : '-'}`,
     `RESEND\t${t}\tresources_plan\t${durum}\t${kod}`,
   ],

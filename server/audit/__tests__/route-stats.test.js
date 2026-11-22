@@ -36,7 +36,7 @@ const R = (ns, route, addr, ip, tt = 'passthrough', cluster = 'ark-prod-1') => (
   termination_type: tt,
   cluster_name: cluster,
 });
-const A = '.apps.fw.garanti.com.tr';
+const A = '.apps.fw.sirket.invalid';
 /** Kesif satiri: dbo.BMW_Spa_Discovery sekli. */
 const S = (cluster, ns, route, isSpa, o = {}) => ({
   cluster,
@@ -60,7 +60,7 @@ test('ortam namespace son ekinden; canli sinyalle SPA/SPA-disi; IP kovalari; coz
     R('glomo-prod', 'x-app-v1', 'x-app-v1-glomo-prod' + A, '10.1.1.1'),
     R('glomo-prod', 'y-app-emb-v2', 'y-app-emb-v2-glomo-prod' + A, '10.1.1.1'),
     R('glomo-prod', 'glomo-api', 'glomo-api-glomo-prod' + A, '10.1.1.2', 'reencrypt'),
-    R('glomo-prod', 'z-app-v3', 'ozel-adres.garanti.com.tr', '', 'edge'),
+    R('glomo-prod', 'z-app-v3', 'ozel-adres.sirket.invalid', '', 'edge'),
     R('glomo-test', 'x-app-v1', 'x-app-v1-glomo-test' + A, '10.2.2.2', 'passthrough', 'ark-test-1'),
     R('sandbox', 'x-app-v1', 'x' + A, '10.9.9.9'),
     R('glomo-prod', 'olculmeyen', '', '10.1.1.3'),
@@ -109,7 +109,7 @@ test('routesOfIp (2026-09-17): IP + ortam suzgeci, canli tur, siralama', () => {
       cluster_name: 'ark-a',
       namespace_name: 'digital-ch-dev',
       route_name: 'odeme',
-      route_address: 'odeme-app-v1-digital-ch-dev.apps-t.fw.garanti.com.tr',
+      route_address: 'odeme-app-v1-digital-ch-dev.apps-t.fw.sirket.invalid',
       resolved_ip: '10.1.1.1',
       termination_type: 'passthrough',
     },
@@ -117,7 +117,7 @@ test('routesOfIp (2026-09-17): IP + ortam suzgeci, canli tur, siralama', () => {
       cluster_name: 'ark-a',
       namespace_name: 'api-dev',
       route_name: 'api',
-      route_address: 'api-svc-api-dev.apps-t.fw.garanti.com.tr',
+      route_address: 'api-svc-api-dev.apps-t.fw.sirket.invalid',
       resolved_ip: '10.1.1.1',
       termination_type: 'reencrypt',
     },
@@ -125,7 +125,7 @@ test('routesOfIp (2026-09-17): IP + ortam suzgeci, canli tur, siralama', () => {
       cluster_name: 'ark-a',
       namespace_name: 'digital-ch-test',
       route_name: 'odeme',
-      route_address: 'odeme-app-v1-digital-ch-test.apps-t.fw.garanti.com.tr',
+      route_address: 'odeme-app-v1-digital-ch-test.apps-t.fw.sirket.invalid',
       resolved_ip: '10.1.1.1',
       termination_type: 'passthrough',
     },
@@ -133,7 +133,7 @@ test('routesOfIp (2026-09-17): IP + ortam suzgeci, canli tur, siralama', () => {
       cluster_name: 'ark-a',
       namespace_name: 'digital-ch-dev',
       route_name: 'kart',
-      route_address: 'kart-app-v1-digital-ch-dev.apps-t.fw.garanti.com.tr',
+      route_address: 'kart-app-v1-digital-ch-dev.apps-t.fw.sirket.invalid',
       resolved_ip: '10.1.1.2',
       termination_type: 'passthrough',
     },
@@ -174,9 +174,9 @@ const CB = (o) => ({
 test('CS1 nginx KOSUYOR ama ad standarda UYMUYOR -> SPA sayilir, nameMismatch isaretlenir', () => {
   // KULLANICININ ASIL SORUSU. Eski olcut (ad kalibi) bu route'u "SPA degil" gosteriyordu.
   const rows = [
-    CB({ c: 'GBOCPP1', ns: 'kredi-prod', r: 'kredi-ui', addr: 'kredi-ui-kredi-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'kredi-prod', r: 'kredi-ui', addr: 'kredi-ui-kredi-prod.apps.fw' }),
   ];
-  const out = buildRouteStats(rows, [S('GBOCPP1', 'kredi-prod', 'kredi-ui', 1)]);
+  const out = buildRouteStats(rows, [S('OROCPP1', 'kredi-prod', 'kredi-ui', 1)]);
   const prod = out.envs.find((e) => e.env === 'PROD');
   assert.equal(prod.spa, 1, 'canli sinyal yerine ad kalibina bakiliyor olabilir');
   assert.equal(prod.nonSpa, 0);
@@ -188,9 +188,9 @@ test('CS1 nginx KOSUYOR ama ad standarda UYMUYOR -> SPA sayilir, nameMismatch is
 
 test('CS2 ad SPA kalibina UYUYOR ama kabinde nginx YOK -> nonSpa + nameFalsePositive', () => {
   const rows = [
-    CB({ c: 'GBOCPP1', ns: 'kart-prod', r: 'kart-app-v1', addr: 'kart-app-v1-kart-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'kart-prod', r: 'kart-app-v1', addr: 'kart-app-v1-kart-prod.apps.fw' }),
   ];
-  const out = buildRouteStats(rows, [S('GBOCPP1', 'kart-prod', 'kart-app-v1', 0)]);
+  const out = buildRouteStats(rows, [S('OROCPP1', 'kart-prod', 'kart-app-v1', 0)]);
   const prod = out.envs.find((e) => e.env === 'PROD');
   assert.equal(prod.spa, 0, 'ad kalibi canli sinyali EZIYOR');
   assert.equal(prod.nonSpa, 1);
@@ -200,10 +200,10 @@ test('CS2 ad SPA kalibina UYUYOR ama kabinde nginx YOK -> nonSpa + nameFalsePosi
 
 test('CS3 KESIFTE SATIRI OLMAYAN route unmeasured; nonSpa SAYILMAZ', () => {
   const rows = [
-    CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'var', addr: 'var-a-prod.apps.fw' }),
-    CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'yok', addr: 'yok-a-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'a-prod', r: 'var', addr: 'var-a-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'a-prod', r: 'yok', addr: 'yok-a-prod.apps.fw' }),
   ];
-  const out = buildRouteStats(rows, [S('GBOCPP1', 'a-prod', 'var', 0)]);
+  const out = buildRouteStats(rows, [S('OROCPP1', 'a-prod', 'var', 0)]);
   const prod = out.envs.find((e) => e.env === 'PROD');
   assert.equal(prod.nonSpa, 1, 'olculemeyen route SPA-disi sayildi');
   assert.equal(prod.unmeasured, 1);
@@ -214,11 +214,11 @@ test('CS3 KESIFTE SATIRI OLMAYAN route unmeasured; nonSpa SAYILMAZ', () => {
   );
   // LISTE UCU de ayni disiplinde: 'nonSpa' suzgeci olculemeyeni VERMEZ
   assert.equal(
-    routesOfCluster(rows, 'GBOCPP1', 'PROD', 'nonSpa', [S('GBOCPP1', 'a-prod', 'var', 0)]).length,
+    routesOfCluster(rows, 'OROCPP1', 'PROD', 'nonSpa', [S('OROCPP1', 'a-prod', 'var', 0)]).length,
     1,
   );
   assert.deepEqual(
-    routesOfCluster(rows, 'GBOCPP1', 'PROD', 'unmeasured', [S('GBOCPP1', 'a-prod', 'var', 0)]).map(
+    routesOfCluster(rows, 'OROCPP1', 'PROD', 'unmeasured', [S('OROCPP1', 'a-prod', 'var', 0)]).map(
       (r) => r.route,
     ),
     ['yok'],
@@ -228,7 +228,7 @@ test('CS3 KESIFTE SATIRI OLMAYAN route unmeasured; nonSpa SAYILMAZ', () => {
 test('CS4 KESIF HIC OKUNAMADI (null) -> her route unmeasured, spaSignalRead false', () => {
   // Tablo yok / sorgu dustu. Bos liste ile AYNI SEY DEGIL: bos liste "tarama kostu ama
   // satir yok" demek. Ikisini birlestirmek, hic olculmemis bir ortami "SPA yok" gostermek.
-  const rows = [CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'x-app-v1', addr: 'x-app-v1-a-prod.apps.fw' })];
+  const rows = [CB({ c: 'OROCPP1', ns: 'a-prod', r: 'x-app-v1', addr: 'x-app-v1-a-prod.apps.fw' })];
   const out = buildRouteStats(rows, null);
   const prod = out.envs.find((e) => e.env === 'PROD');
   assert.equal(out.spaSignalRead, false);
@@ -246,9 +246,9 @@ test('CS4 KESIF HIC OKUNAMADI (null) -> her route unmeasured, spaSignalRead fals
 test('CS5 AYNI route icin iki kesif satiri: SPA diyen KAZANIR (sira bagimsiz)', () => {
   // spa_discovery her ESLESEN is yuku icin satir yaziyor (Deployment + DC + Rollout).
   // "son satir kazansin" demek, sirasi rastgele olan bir listede cevabi zara baglardi.
-  const rows = [CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' })];
-  const ileri = [S('GBOCPP1', 'a-prod', 'web', 0), S('GBOCPP1', 'a-prod', 'web', 1)];
-  const geri = [S('GBOCPP1', 'a-prod', 'web', 1), S('GBOCPP1', 'a-prod', 'web', 0)];
+  const rows = [CB({ c: 'OROCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' })];
+  const ileri = [S('OROCPP1', 'a-prod', 'web', 0), S('OROCPP1', 'a-prod', 'web', 1)];
+  const geri = [S('OROCPP1', 'a-prod', 'web', 1), S('OROCPP1', 'a-prod', 'web', 0)];
   assert.equal(
     buildRouteStats(rows, ileri).envs[0].spa,
     1,
@@ -262,7 +262,7 @@ test('CS5 AYNI route icin iki kesif satiri: SPA diyen KAZANIR (sira bagimsiz)', 
 });
 
 test('CS6 HIC OLCULMEMIS cluster icin yuzde NULL, %0 DEGIL', () => {
-  const rows = [CB({ c: 'GBOCPP9', ns: 'a-prod', r: 'x', addr: 'x-a-prod.apps.fw' })];
+  const rows = [CB({ c: 'OROCPP9', ns: 'a-prod', r: 'x', addr: 'x-a-prod.apps.fw' })];
   const c = buildRouteStats(rows, []).envs[0].clusterRows[0];
   assert.equal(c.spaPctMeasured, null, '%0 yazilmis - bu "SPA yok" iddiasidir');
   assert.equal(c.unmeasured, 1);
@@ -278,10 +278,10 @@ test('CS7 PAYDA ROUTE TOPLAMI; olculen uzerinden yuzde AYRI ve FARKLI deger veri
   // spaPctMeasured = 1/1 = %100. Ikisinin FARKLI olmasi testin ayirt edici gucu:
   // ayni degeri verseler, paydayi degistiren mutasyon bekciden gecerdi.
   const rows = [
-    CB({ c: 'GBOCPQA1', ns: 'musteri-qa', r: 'crm', addr: 'crm-musteri-qa.apps.fw' }),
-    CB({ c: 'GBOCPQA1', ns: 'musteri-qa', r: 'gizli', addr: 'gizli-musteri-qa.apps.fw' }),
+    CB({ c: 'OROCPQA1', ns: 'musteri-qa', r: 'crm', addr: 'crm-musteri-qa.apps.fw' }),
+    CB({ c: 'OROCPQA1', ns: 'musteri-qa', r: 'gizli', addr: 'gizli-musteri-qa.apps.fw' }),
   ];
-  const c = buildRouteStats(rows, [S('GBOCPQA1', 'musteri-qa', 'crm', 1)]).envs[0].clusterRows[0];
+  const c = buildRouteStats(rows, [S('OROCPQA1', 'musteri-qa', 'crm', 1)]).envs[0].clusterRows[0];
   assert.equal(c.routes, 2);
   assert.equal(c.spa, 1);
   assert.equal(c.unmeasured, 1);
@@ -293,23 +293,23 @@ test('CS7 PAYDA ROUTE TOPLAMI; olculen uzerinden yuzde AYRI ve FARKLI deger veri
 test('CS8 KESIF SATIRI VAR ama hic eslesme YOK -> keyMismatch (anahtar uyusmuyor)', () => {
   // Iki job cluster ya da route adini farkli yaziyor olabilir. Bunu "SPA yok" gostermek,
   // olcum olmayan bir yere olcum iddiasi yazmak olurdu.
-  const rows = [CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' })];
-  const c = buildRouteStats(rows, [S('GBOCPP1', 'a-prod', 'BASKA-ROUTE', 1)]).envs[0]
+  const rows = [CB({ c: 'OROCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' })];
+  const c = buildRouteStats(rows, [S('OROCPP1', 'a-prod', 'BASKA-ROUTE', 1)]).envs[0]
     .clusterRows[0];
   assert.equal(c.discoveryRows, 1, 'cluster icin kesif satiri sayilmadi');
   assert.equal(c.spa + c.nonSpa, 0);
   assert.equal(c.keyMismatch, true, 'anahtar uyusmazligi bildirilmedi');
   assert.equal(c.discoveryScanDate, '2026-10-07', 'tarama tarihi tasinmadi');
   // Eslesme VARSA bayrak dusmeli
-  const d = buildRouteStats(rows, [S('GBOCPP1', 'a-prod', 'web', 1)]).envs[0].clusterRows[0];
+  const d = buildRouteStats(rows, [S('OROCPP1', 'a-prod', 'web', 1)]).envs[0].clusterRows[0];
   assert.equal(d.keyMismatch, false, 'eslesme oldugu halde anahtar uyusmazligi deniyor');
 });
 
 test('CS9 cluster / namespace / route eslesmesi BUYUK-KUCUK harf DUYARSIZ', () => {
   // route_inventory ve spa_discovery ayni adi farkli kasada yazabiliyor; kasa duyarli bir
   // anahtar her route'u "olculemedi" yapardi (sessiz, cunku sayi yine tutarli gorunur).
-  const rows = [CB({ c: 'GBOCPP1', ns: 'A-Prod', r: 'Web', addr: 'web-a-prod.apps.fw' })];
-  const out = buildRouteStats(rows, [S('gbocpp1', 'a-prod', 'web', 1)]);
+  const rows = [CB({ c: 'OROCPP1', ns: 'A-Prod', r: 'Web', addr: 'web-a-prod.apps.fw' })];
+  const out = buildRouteStats(rows, [S('orocpp1', 'a-prod', 'web', 1)]);
   assert.equal(out.envs[0].spa, 1, 'anahtar kasaya duyarli - her sey olculemedi oluyor');
 });
 
@@ -317,13 +317,13 @@ test('CS10 kanit alanlari listeye TASINIR: signal, matchBy, workload, nameSpa, r
   // Karari veren kisi sinyalin NEREDEN geldigini gormek zorunda: 'selector' kesin,
   // 'ad' ayni adli is yukune dusulmus (ZAYIF kanit, 2026-10-08 olcumunde baskin yol).
   const rows = [
-    CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' }),
-    CB({ c: 'GBOCPP1', ns: 'a-prod', r: 'yok', addr: 'yok-a-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'a-prod', r: 'web', addr: 'web-a-prod.apps.fw' }),
+    CB({ c: 'OROCPP1', ns: 'a-prod', r: 'yok', addr: 'yok-a-prod.apps.fw' }),
   ];
   const sig = [
-    S('GBOCPP1', 'a-prod', 'web', 1, { signal: 'image', matchBy: 'ad', workload: 'web-dep' }),
+    S('OROCPP1', 'a-prod', 'web', 1, { signal: 'image', matchBy: 'ad', workload: 'web-dep' }),
   ];
-  const liste = routesOfCluster(rows, 'GBOCPP1', 'PROD', 'all', sig);
+  const liste = routesOfCluster(rows, 'OROCPP1', 'PROD', 'all', sig);
   const web = liste.find((r) => r.route === 'web');
   assert.deepEqual(
     [web.kind, web.signal, web.matchBy, web.workload, web.nameSpa, web.reason],
@@ -385,32 +385,32 @@ test('CS12 uc noktalar sinyali GECIRIR; okunamadi ile bos AYRI bildirilir', () =
 });
 
 // ── CLUSTER BAZINDA KIRILIM (CB1..CB5, 2026-10-08) ───────────────────────────────────
-// Kullanici: "GBOCP Prod 1'de bu kadar root var, bunlarin su kadari SPA root'u, yuzdesi
+// Kullanici: "OROCP Prod 1'de bu kadar root var, bunlarin su kadari SPA root'u, yuzdesi
 // de budur." Ortam toplami "hangi cluster'da eksik" sorusunu cevaplamiyordu.
 
 test('CB1 cluster basina route/SPA ayrisir ve TOPLAMI ortam toplamina esittir', () => {
   const rows = [
-    CB({ c: 'GBOCPPROD1', ns: 'musteri-prod', r: 'crm', addr: 'crm-musteri-prod.apps.fw' }),
-    CB({ c: 'GBOCPPROD1', ns: 'musteri-prod', r: 'kyc', addr: 'kyc-musteri-prod.apps.fw' }),
-    CB({ c: 'GBOCPPROD1', ns: 'musteri-prod', r: 'api', addr: 'api-musteri-prod.apps.fw' }),
-    CB({ c: 'GBOCPPROD2', ns: 'odeme-prod', r: 'pay', addr: 'pay-odeme-prod.apps.fw' }),
+    CB({ c: 'OROCPPROD1', ns: 'musteri-prod', r: 'crm', addr: 'crm-musteri-prod.apps.fw' }),
+    CB({ c: 'OROCPPROD1', ns: 'musteri-prod', r: 'kyc', addr: 'kyc-musteri-prod.apps.fw' }),
+    CB({ c: 'OROCPPROD1', ns: 'musteri-prod', r: 'api', addr: 'api-musteri-prod.apps.fw' }),
+    CB({ c: 'OROCPPROD2', ns: 'odeme-prod', r: 'pay', addr: 'pay-odeme-prod.apps.fw' }),
   ];
   const sig = [
-    S('GBOCPPROD1', 'musteri-prod', 'crm', 1),
-    S('GBOCPPROD1', 'musteri-prod', 'kyc', 1),
-    S('GBOCPPROD1', 'musteri-prod', 'api', 0),
-    S('GBOCPPROD2', 'odeme-prod', 'pay', 1),
+    S('OROCPPROD1', 'musteri-prod', 'crm', 1),
+    S('OROCPPROD1', 'musteri-prod', 'kyc', 1),
+    S('OROCPPROD1', 'musteri-prod', 'api', 0),
+    S('OROCPPROD2', 'odeme-prod', 'pay', 1),
   ];
   const { envs } = buildRouteStats(rows, sig);
   const prod = envs.find((e) => e.env === 'PROD');
   assert.ok(prod, 'PROD ortami uretilmedi');
-  const p1 = prod.clusterRows.find((c) => c.cluster === 'GBOCPPROD1');
+  const p1 = prod.clusterRows.find((c) => c.cluster === 'OROCPPROD1');
   assert.deepEqual(
     [p1.routes, p1.spa, p1.nonSpa, p1.unmeasured, p1.spaPct],
     [3, 2, 1, 0, 66.7],
-    'GBOCPPROD1 kirilimi yanlis',
+    'OROCPPROD1 kirilimi yanlis',
   );
-  const p2 = prod.clusterRows.find((c) => c.cluster === 'GBOCPPROD2');
+  const p2 = prod.clusterRows.find((c) => c.cluster === 'OROCPPROD2');
   assert.deepEqual([p2.routes, p2.spa, p2.spaPct], [1, 1, 100]);
   // TOPLAM TUTMALI
   assert.equal(
@@ -432,7 +432,7 @@ test('CB1 cluster basina route/SPA ayrisir ve TOPLAMI ortam toplamina esittir', 
 
 test('CB3 cluster adi BOS gelen route ATLANMAZ, ayri kovada durur', () => {
   const rows = [
-    CB({ c: 'GBOCPDEV1', ns: 'musteri-dev', r: 'a', addr: 'a-musteri-dev.apps.fw' }),
+    CB({ c: 'OROCPDEV1', ns: 'musteri-dev', r: 'a', addr: 'a-musteri-dev.apps.fw' }),
     CB({ c: '', ns: 'musteri-dev', r: 'b', addr: 'b-musteri-dev.apps.fw' }),
     CB({ c: '   ', ns: 'musteri-dev', r: 'c', addr: 'c-musteri-dev.apps.fw' }),
   ];
@@ -501,38 +501,38 @@ const CR = (c, ns, addr, rname) => ({
 
 test('CR1 cluster + ortam suzgeci; nonSpa yalniz OLCULMUS ve SPA olmayani verir', () => {
   const rows = [
-    CR('GBOCPPROD1', 'musteri-prod', 'crm-musteri-prod.apps.fw', 'crm'),
-    CR('GBOCPPROD1', 'musteri-prod', 'api-musteri-prod.apps.fw', 'api'),
-    CR('GBOCPPROD2', 'musteri-prod', 'pay-musteri-prod.apps.fw', 'pay'),
-    CR('GBOCPPROD1', 'musteri-dev', 'x-musteri-dev.apps.fw', 'x'),
+    CR('OROCPPROD1', 'musteri-prod', 'crm-musteri-prod.apps.fw', 'crm'),
+    CR('OROCPPROD1', 'musteri-prod', 'api-musteri-prod.apps.fw', 'api'),
+    CR('OROCPPROD2', 'musteri-prod', 'pay-musteri-prod.apps.fw', 'pay'),
+    CR('OROCPPROD1', 'musteri-dev', 'x-musteri-dev.apps.fw', 'x'),
   ];
   const sig = [
-    S('GBOCPPROD1', 'musteri-prod', 'crm', 1),
-    S('GBOCPPROD1', 'musteri-prod', 'api', 0),
-    S('GBOCPPROD2', 'musteri-prod', 'pay', 1),
-    S('GBOCPPROD1', 'musteri-dev', 'x', 1),
+    S('OROCPPROD1', 'musteri-prod', 'crm', 1),
+    S('OROCPPROD1', 'musteri-prod', 'api', 0),
+    S('OROCPPROD2', 'musteri-prod', 'pay', 1),
+    S('OROCPPROD1', 'musteri-dev', 'x', 1),
   ];
   assert.deepEqual(
-    routesOfCluster(rows, 'GBOCPPROD1', 'PROD', 'nonSpa', sig).map((r) => r.address),
+    routesOfCluster(rows, 'OROCPPROD1', 'PROD', 'nonSpa', sig).map((r) => r.address),
     ['api-musteri-prod.apps.fw'],
   );
   assert.equal(
-    routesOfCluster(rows, 'GBOCPPROD1', 'PROD', 'all', sig).length,
+    routesOfCluster(rows, 'OROCPPROD1', 'PROD', 'all', sig).length,
     2,
     'baska cluster sizdi',
   );
   // ORTAM SUZGECI: ayni cluster'in dev namespace'i PROD listesine GIRMEZ
   assert.deepEqual(
-    routesOfCluster(rows, 'GBOCPPROD1', 'DEV', 'all', sig).map((r) => r.namespace),
+    routesOfCluster(rows, 'OROCPPROD1', 'DEV', 'all', sig).map((r) => r.namespace),
     ['musteri-dev'],
   );
 });
 
 test('CR2 cluster adi BUYUK/KUCUK harf duyarsiz eslesir', () => {
-  const rows = [CR('GBOCPPROD2', 'a-prod', 'x-a-prod.apps.fw', 'x')];
-  const sig = [S('GBOCPPROD2', 'a-prod', 'x', 1)];
-  assert.equal(routesOfCluster(rows, 'gbocpprod2', 'PROD', 'all', sig).length, 1);
-  assert.equal(routesOfCluster(rows, 'GBOCPPROD2', 'PROD', 'all', sig).length, 1);
+  const rows = [CR('OROCPPROD2', 'a-prod', 'x-a-prod.apps.fw', 'x')];
+  const sig = [S('OROCPPROD2', 'a-prod', 'x', 1)];
+  assert.equal(routesOfCluster(rows, 'orocpprod2', 'PROD', 'all', sig).length, 1);
+  assert.equal(routesOfCluster(rows, 'OROCPPROD2', 'PROD', 'all', sig).length, 1);
   assert.equal(routesOfCluster(rows, 'BASKA', 'PROD', 'all', sig).length, 0);
 });
 

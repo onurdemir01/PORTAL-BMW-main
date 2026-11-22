@@ -1,4 +1,4 @@
-// src/components/server_hub/jvmNesil.ts — JVM nesil etiketi (2026-11-14, üretim GBJIST02).
+// src/components/server_hub/jvmNesil.ts — JVM nesil etiketi (2026-11-14, üretim ORJIST02).
 //
 // Server Hub, taramada JVM'i bulunamayan dbo.MWAppsInventory uygulamasını gen 0 satır olarak tutar
 // (source 'envanter', yalnizEnvanter). Bu satır taranmış bir JVM değildir; ekranda "JBoss 0" yerine

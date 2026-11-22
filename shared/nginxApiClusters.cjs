@@ -10,163 +10,18 @@
 // zaten ortam kırılımında görünür.
 'use strict';
 
-/** @typedef {{ key: string, label: string, hosts: string[] }} ApiCluster */
+// SUNUCU ADLARI BURADA DEGIL (2026-11-20, kalite kapisi K17): kumelerin sunuculari kurum ayarindadir
+// (`nginx.apiKumeleri` {<kanal>: [SUNUCU]}, `nginx.apiGeneratorNonprod` {DEV|TEST|QA: [SUNUCU]}); kume
+// listesini sunucularla birlikte server/audit/nginx-api-kumeleri.cjs kurar. Bu dosya ekranla paylasilan
+// kisimdir (kanal kimligi + etiket); ekran yalniz etiketleri kullanir.
 
-/** @type {ApiCluster[]} */
-const API_CLUSTERS = [
-  {
-    key: 'mblcustomers',
-    label: 'mblcustomers',
-    hosts: [
-      'GBNGWP01',
-      'GBNGWP02',
-      'GBNGWP03',
-      'GBNGWP04',
-      'GBNGWP05',
-      'GBNGWP06',
-      'GBNGWP07',
-      'GBNGWP08',
-      'GBNGWP09',
-      'GBNGWP10',
-      'GBNGWP11',
-      'GBNGWP12',
-      'GBNGWP13',
-      'GBNGWP14',
-      'GBNGWP15',
-      'GBNGWP16',
-      'GBNGWAP01',
-      'GBNGWAP02',
-      'GBNGWAP03',
-      'GBNGWAP04',
-      'GBNGWAP05',
-      'GBNGWAP06',
-      'GBNGWAP07',
-      'GBNGWAP08',
-    ],
-  },
-  {
-    key: 'customers',
-    label: 'customers',
-    hosts: [
-      'GBNGWP25',
-      'GBNGWP26',
-      'GBNGWP27',
-      'GBNGWP28',
-      'GBNGWP29',
-      'GBNGWP30',
-      'GBNGWP31',
-      'GBNGWP32',
-      'GBNGWAP22',
-      'GBNGWAP23',
-      'GBNGWAP24',
-      'GBNGWAP25',
-    ],
-  },
-  {
-    key: 'mcustomers',
-    label: 'mcustomers',
-    hosts: [
-      'GBNGWAP10',
-      'GBNGWAP11',
-      'GBNGWAP12',
-      'GBNGWAP13',
-      'GBNGWP17',
-      'GBNGWP18',
-      'GBNGWP19',
-      'GBNGWP20',
-      'GBNGWP21',
-      'GBNGWP22',
-      'GBNGWP23',
-      'GBNGWP24',
-      'GBNGXAP30',
-      'GBNGXAP31',
-      'GBNGXP60',
-      'GBNGXP61',
-      'GBNGXP62',
-      'GBNGXP63',
-    ],
-  },
-];
+/** @typedef {{ key: string, label: string }} ApiClusterTanimi */
 
-const UP = (s) =>
-  String(s || '')
-    .trim()
-    .toUpperCase();
+/** @type {ReadonlyArray<ApiClusterTanimi>} */
+const API_CLUSTERS = Object.freeze([
+  Object.freeze({ key: 'mblcustomers', label: 'mblcustomers' }),
+  Object.freeze({ key: 'customers', label: 'customers' }),
+  Object.freeze({ key: 'mcustomers', label: 'mcustomers' }),
+]);
 
-/**
- * Bir API'nin bulunduğu sunucuları kümelere göre ayırır.
- *
- * @param {string[]} hosts API'nin bulunduğu sunucular (tüm ortamların birleşimi)
- * @returns {{ rows: { cluster: ApiCluster, present: string[], missing: string[] }[], outside: string[] }}
- *
- * `outside`: hiçbir kümede olmayan sunucular. Yeni bir gateway eklendiğinde burada görünür;
- * yani listelerin bayatladığının işaretidir (sessizce yanlış sayı göstermek yerine).
- */
-function clusterCoverage(hosts) {
-  const set = new Set((hosts || []).map(UP));
-  const known = new Set(API_CLUSTERS.reduce((a, c) => a.concat(c.hosts.map(UP)), []));
-  return {
-    rows: API_CLUSTERS.map((cluster) => ({
-      cluster,
-      present: cluster.hosts.filter((h) => set.has(UP(h))),
-      missing: cluster.hosts.filter((h) => !set.has(UP(h))),
-    })),
-    outside: [...set].filter((h) => !known.has(h)).sort((a, b) => Number(a > b) - Number(a < b)),
-  };
-}
-
-// API Generator job'unun (bmw_nginx/api_generator/api_generator.yaml) dev / test / qa play'lerinin
-// sunuculari. Production play'i yukaridaki uc kumenin TAMAMIDIR; ama production rate_limit_change
-// (2026-10-22) yalniz `channel`in kumesinde calisir - Ansible'daki kopya
-// `api_generator/operations/vars/main.yaml` (api_generator_kanal_kumeleri) bu listeyle AYNI olmalidir
-// (bekciler: Portal AG9, Ansible check_rate_limit_kanal_kumesi.py K7). Self Servis'teki rate limit
-// API listesi yalnizca job'in o ortamda GERCEKTEN calistigi sunuculardaki konfigurasyonlari sunar
-// (choice-sources 'nginx-api-gateway-confs'); liste job'la ayrisirsa secilen API job'un
-// sunucularinda bulunmaz.
-const API_GENERATOR_NONPROD = {
-  DEV: ['GBNGWD01', 'GBNGWD02'],
-  TEST: ['GBNGWT03', 'GBNGWT04'],
-  QA: ['GBNGWQ01', 'GBNGWQ02'],
-};
-
-/**
- * API Generator'ın bir ortam (+ production'da `site`) için çalıştığı sunucular — playbook'taki
- * play listeleri ve `site_ok` kuralıyla aynı: boş / all / hepsi / tumu / tümü = hepsi, pendik =
- * GBNGWP*, ankara = GBNGWAP* (GBNGX* yalnız "hepsi"de). Tanınmayan site boş liste döner (job da durur).
- * @param {string} env dev / test / qa / prod (harf duyarsız; production = prod)
- * @param {string} [site]
- * @param {string} [channel] production'da kümeyi seçer; tanınmayan / boş kanal DARALTMAZ (54 sunucu).
- *   Rate limit listesi için kanalın zorunluluğu çağıranda (choice-sources `apiGatewayKumesi`).
- * @returns {string[]}
- */
-function apiGeneratorHosts(env, site, channel) {
-  const e = UP(env) === 'PRODUCTION' ? 'PROD' : UP(env);
-  if (e !== 'PROD') return (API_GENERATOR_NONPROD[e] || []).slice();
-  const s = String(site || '')
-    .trim()
-    .toLowerCase();
-  // Kanal (mblcustomers / customers / mcustomers) production'da kumeyi belirler: o kanalin API'leri
-  // yalniz o kumenin sunucularindadir. Tanınmayan / boş kanal daraltmaz.
-  const kume = apiCluster(channel);
-  const all = (kume ? [kume] : API_CLUSTERS).reduce((a, c) => a.concat(c.hosts.map(UP)), []);
-  if (['', 'all', 'hepsi', 'tumu', 'tümü'].includes(s)) return all;
-  if (s === 'pendik') return all.filter((h) => /^GBNGWP/.test(h));
-  if (s === 'ankara') return all.filter((h) => /^GBNGWAP/.test(h));
-  return [];
-}
-
-/** Kanal adına (harf duyarsız) karşılık gelen production kümesi; yoksa null. */
-function apiCluster(channel) {
-  const k = String(channel || '')
-    .trim()
-    .toLowerCase();
-  return (k && API_CLUSTERS.find((c) => c.key === k)) || null;
-}
-
-module.exports = {
-  API_CLUSTERS,
-  API_GENERATOR_NONPROD,
-  apiGeneratorHosts,
-  apiCluster,
-  clusterCoverage,
-};
+module.exports = { API_CLUSTERS };

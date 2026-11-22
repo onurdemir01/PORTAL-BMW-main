@@ -34,18 +34,18 @@ başlatmadan önce DB'den taze** çözülür; istemcinin gönderdiği `input_jso
 
 **Admin ekranı:** Admin → OCP Yapılandırma → *OCP Cluster Hiyerarşisi* sekmesinde her satırda
 "Jump Server (bastion)" kolonu. Boş bırakılan hücrede devreye girecek yedek değer soluk gösterilir
-(`— yedek: gbaocp01`), yedek de yoksa `⚠ eşleme yok` uyarısı.
+(`— yedek: oraocp01`), yedek de yoksa `⚠ eşleme yok` uyarısı.
 
 ## 3. extra_vars v2 sözleşmesi
 
 Portal AWX'e **her zaman üç alanı birden** gönderir:
 
 ```yaml
-terminal_host: "GBAOCP01"                    # legacy skaler (= terminal_hosts[0])
-terminal_hosts: ["GBAOCP01", "GBAOCP02"]     # benzersiz + alfabetik sıralı (deterministik)
+terminal_host: "ORAOCP01"                    # legacy skaler (= terminal_hosts[0])
+terminal_hosts: ["ORAOCP01", "ORAOCP02"]     # benzersiz + alfabetik sıralı (deterministik)
 ocp_clusters:
-  - { env: qa, tenant: ark, cluster_name: gbocpqa1, terminal_host: GBAOCP01 }
-  - { env: qa, tenant: ark, cluster_name: gbocpqa2, terminal_host: GBAOCP02 }
+  - { env: qa, tenant: ark, cluster_name: orocpqa1, terminal_host: ORAOCP01 }
+  - { env: qa, tenant: ark, cluster_name: orocpqa2, terminal_host: ORAOCP02 }
 ```
 
 Tek bastion'lı kurulumda üretilen payload, eski payload'ın **üst kümesidir** — eski playbook
@@ -64,11 +64,11 @@ v3'te `ocp_clusters[]` öğeleri iki alan daha taşır:
 ocp_clusters:
   - env: qa
     tenant: ark
-    cluster_name: gbocpqa1
-    terminal_host: GBAOCP01
-    api_url: "https://api.gbocpqa1.garanti.com.tr:6443"   # DB'den (ocp_cluster_index.api_url)
-    credential_key: "uxmid_gar"                            # credentials.yaml'daki DEĞİŞKEN ADI
-    username: "uxmid"                                      # DB'den (ocp_cluster_index.ocp_username)
+    cluster_name: orocpqa1
+    terminal_host: ORAOCP01
+    api_url: "https://api.orocpqa1.sirket.invalid:6443"   # DB'den (ocp_cluster_index.api_url)
+    credential_key: "svcac_gar"                            # credentials.yaml'daki DEĞİŞKEN ADI
+    username: "svcac"                                      # DB'den (ocp_cluster_index.ocp_username)
 ```
 
 ### `username` — 2026-08-09 üretim arızasının kökü
@@ -93,8 +93,8 @@ Kullanıcı adı kabuk komut satırına gittiği için hem portalda hem playbook
 `[A-Za-z0-9][A-Za-z0-9._\-@]*` kalıbına zorlanır.
 
 **Vault anahtarı kataloğu:** `ocp_vault_key_catalog` tablosu `credentials.yaml` içindeki
-değişken adlarını (uxmid_gar, uxmid_gtek, uxmid_das, uxmid_gtdmz, uxmid_gtekdmz,
-uxmid_takasnet, uxmid_gohas) tutar; Admin > OCP Yapılandırma > **Vault Anahtarları**
+değişken adlarını (svcac_gar, svcac_gtek, svcac_das, svcac_dmz, svcac_gtekdmz,
+svcac_takasnet, svcac_gohas) tutar; Admin > OCP Yapılandırma > **Vault Anahtarları**
 sekmesinden yönetilir ve cluster satırındaki "Vault Anahtarı" alanının önerilerini besler.
 Kullanımdaki bir anahtar silinemez. **Parola burada da tutulmaz.**
 
@@ -199,10 +199,10 @@ Kullanıcı tek çalıştırmada birden fazla **(namespace, uygulama)** çifti s
 
 ```
 <cluster>__<namespace>__<uygulama>__<archive_id>.zip
-gbocpprod2__reference-applications-prod__parallel-composition-v3__0dda63d4.zip
+orocpprod2__reference-applications-prod__parallel-composition-v3__0dda63d4.zip
 ```
 
-Eskiden ad yalnızca jump server + rastgele hash'ti (`gbarkp54__0dda63d4….zip`) ve indirilen
+Eskiden ad yalnızca jump server + rastgele hash'ti (`orarkp54__0dda63d4….zip`) ve indirilen
 dosyanın neye ait olduğu anlaşılmıyordu.
 
 - Portal `ocp_targets[]` + kısa `archive_id` gönderir; **adı playbook kurar**
@@ -424,7 +424,7 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
    (işaret: `portal_settings.ocp_vault_key_seed_v1`).
 4. Admin > OCP Yapılandırma > OCP Cluster Hiyerarşisi'nde kullanılan cluster'ların
    **OCP Kullanıcı Adı** alanını doldur (boş bırakılırsa OCP Çalıştırma Ayarları'ndaki
-   genel varsayılan — `uxmid` — devreye girer).
+   genel varsayılan — `svcac` — devreye girer).
 
 **Geri alma:** Playbook'u önceki sürüme döndürmek yeterlidir. Acil durumda **kod değişikliği
 olmadan** da belirli bir yola sabitlenebilir: AWX template'inin extra_vars alanına

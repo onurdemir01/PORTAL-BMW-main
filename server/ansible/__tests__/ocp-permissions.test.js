@@ -1,6 +1,6 @@
 // server/ansible/__tests__/ocp-permissions.test.js — OCP YETKI BELGESI GUNCEL MI?
 //
-// NEDEN VAR: `docs/OCP-YETKILERI.yaml`, platform ekibinden `uxmid` icin yetki
+// NEDEN VAR: `docs/OCP-YETKILERI.yaml`, platform ekibinden `svcac` icin yetki
 // talep ederken kullanilan TEK kaynaktir. Playbook'a yeni bir `oc` komutu ekleyip
 // belgeyi guncellemeyi unutmak, eksikligi URETIME tasir: is yarida kalir ve
 // belirti neredeyse her zaman YANILTICIDIR —

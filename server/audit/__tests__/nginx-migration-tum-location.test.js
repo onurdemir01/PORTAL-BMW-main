@@ -22,9 +22,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildMigration, loadMigration, MIGRATION_GROUPS } = require('../nginx-migration.cjs');
+const { buildMigration, loadMigration, migrationGroups } = require('../nginx-migration.cjs');
 
-const APPS = '.apps.fw.garanti.com.tr';
+const APPS = '.apps.fw.sirket.invalid';
 const P = (host, service, location, target) => ({
   host,
   vhost: service + '-PROD.conf',
@@ -34,18 +34,18 @@ const P = (host, service, location, target) => ({
   target_url: target,
 });
 const N = (host, service, location) => ({ host, service, vhost: service + '-PROD.conf', location });
-const glomo = MIGRATION_GROUPS.find((g) => g.id === 'glomo');
+const glomo = migrationGroups().find((g) => g.id === 'glomo');
 
 test('TL1 tum location listesi: SPA, ad standardina uymayan, cozulemeyen ve include; eksikler basta', () => {
   const yeni = glomo.newHosts;
   const out = buildMigration({
     proxyRows: [
-      P('GBRVPP07', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS),
-      P('GBRVPP08', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS), // mirror: bir kez sayilir
-      P('GBRVPP07', 'GLOMO', '/yarim/', 'yarim-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/standartsiz/', 'webforms-ui-glomo-prod' + APPS), // ad kalibina UYMUYOR
-      P('GBRVPP07', 'GLOMO', '/cozulemez/', 'kayip-app-v1-yok-prod' + APPS), // envanterde yok
-      P('GBRVPP01', 'OPEN', '/baska-grup/', 'x-app-v1-open-prod' + APPS), // diger grup: KARISMAZ
+      P('ORRVPP07', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS),
+      P('ORRVPP08', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS), // mirror: bir kez sayilir
+      P('ORRVPP07', 'GLOMO', '/yarim/', 'yarim-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/standartsiz/', 'webforms-ui-glomo-prod' + APPS), // ad kalibina UYMUYOR
+      P('ORRVPP07', 'GLOMO', '/cozulemez/', 'kayip-app-v1-yok-prod' + APPS), // envanterde yok
+      P('ORRVPP01', 'OPEN', '/baska-grup/', 'x-app-v1-open-prod' + APPS), // diger grup: KARISMAZ
     ],
     upstreamRows: [],
     routeRows: [
@@ -59,7 +59,7 @@ test('TL1 tum location listesi: SPA, ad standardina uymayan, cozulemeyen ve incl
     newLocRows: [...yeni.map((h) => N(h, 'GLOMO', '/tam/')), N(yeni[0], 'GLOMO', '/yarim/')],
     oldIncludeRows: [
       {
-        host: 'GBRVPP07',
+        host: 'ORRVPP07',
         vhost: 'GLOMO-PROD.conf',
         service: 'GLOMO',
         location: '/inc/',
@@ -93,7 +93,7 @@ test('TL1 tum location listesi: SPA, ad standardina uymayan, cozulemeyen ve incl
   assert.deepEqual(by['/inc/'].siniflar, ['include']);
   assert.deepEqual(by['/inc/'].apps, ['glomo-prod/inc-app-v1']);
   assert.deepEqual(by['/tam/'].siniflar, ['spa']);
-  assert.deepEqual(by['/tam/'].oldHosts, ['GBRVPP07', 'GBRVPP08'], 'mirror sunucular birlesmeli');
+  assert.deepEqual(by['/tam/'].oldHosts, ['ORRVPP07', 'ORRVPP08'], 'mirror sunucular birlesmeli');
   assert.deepEqual(by['/tam/'].newHosts, yeni);
   assert.deepEqual(by['/yarim/'].newHosts, [yeni[0]]);
   assert.equal(by['/baska-grup/'], undefined, 'diger grubun location i bu gruba karisti');
@@ -116,11 +116,11 @@ test('TL2 loadMigration eski sunuculardaki include satirlarini da okur', async (
     const rs = (recordset) => ({ recordset });
     if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
     if (t.includes("kind = 'proxy'"))
-      return rs([P('GBRVPP07', 'GLOMO', '/p/', 'p-app-v1-glomo-prod' + APPS)]);
+      return rs([P('ORRVPP07', 'GLOMO', '/p/', 'p-app-v1-glomo-prod' + APPS)]);
     if (t.includes("(kind IS NULL OR kind = 'spa')") && t.includes('@o0')) {
       return rs([
         {
-          host: 'GBRVPP07',
+          host: 'ORRVPP07',
           vhost: 'GLOMO-PROD.conf',
           service: 'GLOMO',
           location: '/inc/',
@@ -156,8 +156,8 @@ const VH = '/usr/nginx/conf.d/GLOMO-PROD.conf';
 
 function tumGrup(extra) {
   const out = buildMigration({
-    proxyRows: [P('GBRVPP07', 'GLOMO', '/bilinen/', 'bilinen-app-v1-glomo-prod' + APPS)],
-    upstreamRows: ['GBRVPP07', 'GBRVPP08'].map((host) => ({
+    proxyRows: [P('ORRVPP07', 'GLOMO', '/bilinen/', 'bilinen-app-v1-glomo-prod' + APPS)],
+    upstreamRows: ['ORRVPP07', 'ORRVPP08'].map((host) => ({
       host,
       name: 'consent-ups',
       server: 'consent-mng-api-glomo-prod' + APPS + ':443',
@@ -170,7 +170,7 @@ function tumGrup(extra) {
     newLocRows: [],
     oldIncludeRows: [
       {
-        host: 'GBRVPP07',
+        host: 'ORRVPP07',
         vhost: 'GLOMO-PROD',
         service: 'GLOMO',
         location: '/inc/',
@@ -188,11 +188,11 @@ test('TL3 yalniz nginx -T de olan location listede; kaynak, hedef ve sinif dogru
   const g = tumGrup({
     auditLocRows: [
       // ic ice if yuzunden config taramasinin KACIRDIGI proxy location (upstream takma adi)
-      T('GBRVPP07', VH, '/consent-mng/', 'proxy', 'consent-ups'),
-      T('GBRVPP08', VH, '/consent-mng/', 'proxy', 'consent-ups'),
+      T('ORRVPP07', VH, '/consent-mng/', 'proxy', 'consent-ups'),
+      T('ORRVPP08', VH, '/consent-mng/', 'proxy', 'consent-ups'),
       // baska dosyadan include edilen parca: vhost server blogunun dosyasindan
       T(
-        'GBRVPP07',
+        'ORRVPP07',
         '/usr/nginx/conf.d/parcalar/transfer.conf',
         '/domestic-trf/',
         'proxy',
@@ -200,15 +200,15 @@ test('TL3 yalniz nginx -T de olan location listede; kaynak, hedef ve sinif dogru
         VH,
       ),
       // Root conf.d include parcasi da dosya gibi gorunur; servis gercek server blogundan gelmeli.
-      T('GBRVPP07', '/usr/nginx/conf.d/cors.conf', '/root-fragment/', 'static', '', VH),
-      T('GBRVPP07', VH, '= /robots.txt', 'static'),
-      T('GBRVPP07', VH, '/eski/', 'return'),
+      T('ORRVPP07', '/usr/nginx/conf.d/cors.conf', '/root-fragment/', 'static', '', VH),
+      T('ORRVPP07', VH, '= /robots.txt', 'static'),
+      T('ORRVPP07', VH, '/eski/', 'return'),
       // config'in bildigi location: sinif degismez, yalniz kaynak eklenir
-      T('GBRVPP07', VH, '/inc/', 'other'),
+      T('ORRVPP07', VH, '/inc/', 'other'),
       // altyapi ve application-confs: listeye GIRMEZ
-      T('GBRVPP07', '/usr/nginx/nginx.conf', '/nginx_status', 'other'),
+      T('ORRVPP07', '/usr/nginx/nginx.conf', '/nginx_status', 'other'),
       T(
-        'GBRVPP07',
+        'ORRVPP07',
         '/usr/nginx/conf.d/application-confs/inc-app-v1-glomo-prod.conf',
         '/ic/',
         'static',
@@ -216,14 +216,14 @@ test('TL3 yalniz nginx -T de olan location listede; kaynak, hedef ve sinif dogru
         '/usr/nginx/conf.d/application-confs/inc-app-v1-glomo-prod.conf',
       ),
       // baska grubun eski sunucusu: karismaz
-      T('GBRVPP01', '/usr/nginx/conf.d/OPEN-PROD.conf', '/open-x/', 'proxy', 'x'),
+      T('ORRVPP01', '/usr/nginx/conf.d/OPEN-PROD.conf', '/open-x/', 'proxy', 'x'),
     ],
   });
   const by = Object.fromEntries(g.locations.map((l) => [l.location, l]));
   const c = by['/consent-mng/'];
   assert.ok(c, 'config taramasinin kacirdigi /consent-mng/ listede yok');
   assert.deepEqual(c.kaynaklar, ['nginx-T']);
-  assert.deepEqual(c.oldHosts, ['GBRVPP07', 'GBRVPP08']);
+  assert.deepEqual(c.oldHosts, ['ORRVPP07', 'ORRVPP08']);
   assert.deepEqual(
     c.targets,
     ['consent-mng-api-glomo-prod' + APPS],
@@ -261,7 +261,7 @@ test('TL4 yeni sunucuda yalniz nginx -T nin gordugu tanim "yok" sayilmaz; bosluk
   const g = tumGrup({
     newLocRows: yeni.map((h) => N(h, 'GLOMO', '/bilinen/')),
     auditLocRows: [
-      T('GBRVPP07', VH, '=  /tek', 'proxy', 'tek-ups'),
+      T('ORRVPP07', VH, '=  /tek', 'proxy', 'tek-ups'),
       ...yeni.map((h) => T(h, VH, '/inc/', 'other')),
       ...yeni.map((h) => T(h, VH, '= /tek', 'proxy', 'tek-ups')),
     ],
@@ -301,7 +301,7 @@ test('TL6 loadMigration nginx -T satirlarini eski + yeni sunucular icin okur', a
     const rs = (recordset) => ({ recordset });
     if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
     if (t.includes('FROM dbo.Nginx_Audit_Locations l'))
-      return rs([T('GBRVPP07', VH, '/consent-mng/', 'proxy', 'c')]);
+      return rs([T('ORRVPP07', VH, '/consent-mng/', 'proxy', 'c')]);
     return rs([]);
   };
   const sql = new Proxy({}, { get: () => () => 'tip' });
@@ -318,7 +318,7 @@ test('TL6 loadMigration nginx -T satirlarini eski + yeni sunucular icin okur', a
   assert.match(q.t, /s\.seq = l\.srv_seq/);
   const hosts = q.params.map((p) => p.value);
   assert.ok(
-    hosts.includes('GBRVPP07') && hosts.includes(glomo.newHosts[0]),
+    hosts.includes('ORRVPP07') && hosts.includes(glomo.newHosts[0]),
     'eski ve yeni sunucular sorguda olmali',
   );
 });
@@ -357,7 +357,7 @@ test('TL9 config proxy kolonlari yoksa bagimsiz nginx -T kaynagi yine okunur', a
     if (t.includes('MAX(scan_date), 23) AS d')) return rs([{ d: '2026-10-18' }]);
     if (t.includes('FROM dbo.Nginx_Audit_Locations l')) {
       auditCalls++;
-      return rs([T('GBRVPP07', VH, '/audit-only/', 'static')]);
+      return rs([T('ORRVPP07', VH, '/audit-only/', 'static')]);
     }
     return rs([]);
   };

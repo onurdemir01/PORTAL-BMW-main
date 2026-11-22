@@ -86,7 +86,7 @@ function buildOcpRuntimeVars(cfg) {
 // Bastion eksikse 400 firlatir; api_url/credential_key eksikse HATA DEGIL — o cluster icin
 // alanlar gonderilmez ve playbook eski inventory yoluna duser (asamali gecis).
 // ── VAULT ANAHTARI ON KONTROLU (2026-08-28) ──────────────────────────────────
-// URETIMDE NE OLDU: Telnet `gbocpcicd2` icin `credential_key: "uxmid_gar"` gonderdi,
+// URETIMDE NE OLDU: Telnet `orocpcicd2` icin `credential_key: "svcac_gar"` gonderdi,
 // AWX vault'unda o ad cozulemedi ve playbook "vault parolasi cozulemedi" ile dustu.
 // Kullanici 12 saniye bekleyip ham AWX log'u okumak zorunda kaldi. Oysa portalda
 // `ocp_vault_key_catalog` tablosu ZATEN VAR — yalnizca admin CRUD'unda kullaniliyor,

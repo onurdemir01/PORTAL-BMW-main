@@ -15,7 +15,7 @@ const { spawnSync } = require('node:child_process');
 const { parseDump, aggregateCerts, orphansOf, BACKUP_RE } = require('../dump-parse.cjs');
 
 const DUMP = [
-  '@@HOST GBNGXT01',
+  '@@HOST ORNGXT01',
   '@@TIME 2026-09-22T10:00:00Z',
   '@@PREFIX /usr/nginx',
   '@@NGINX_T ok',
@@ -135,7 +135,7 @@ test('OR3 orphansOf: eski dokum (loaded yok) ve nginx -T dusen sunucu "belirlene
 test('OR4 aggregateCerts loadedUseCount: yalniz yuklu conf kullanimi; loaded bilinmiyorsa = useCount', () => {
   const p = parseDump(DUMP);
   const certs = aggregateCerts([
-    { host: 'GBNGXT01', certUses: p.certUses, certs: p.certs, loaded: p.loaded },
+    { host: 'ORNGXT01', certUses: p.certUses, certs: p.certs, loaded: p.loaded },
   ]);
   const a = certs.find((c) => c.fingerprint === 'AA');
   assert.equal(a.useCount, 1);

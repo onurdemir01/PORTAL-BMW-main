@@ -26,7 +26,7 @@ vi.mock('@/api/opsxApi', () => ({
 
 function target(over: Partial<WasTarget> = {}): WasTarget {
   return {
-    host: 'GBWASP01',
+    host: 'ORWASP01',
     profile: 'AppSrv01',
     cell: 'CELL01',
     node: 'NODE01',
@@ -48,7 +48,7 @@ function target(over: Partial<WasTarget> = {}): WasTarget {
 
 const HOST_INFO = [
   {
-    host: 'GBWASP01',
+    host: 'ORWASP01',
     env: 'Production',
     envRaw: 'PROD',
     os: 'LINUX',
@@ -58,7 +58,7 @@ const HOST_INFO = [
     reason: '',
   },
   {
-    host: 'GBWASP02',
+    host: 'ORWASP02',
     env: 'Production',
     envRaw: 'PROD',
     os: 'LINUX',
@@ -76,8 +76,8 @@ function statusWith(targets: WasTarget[]) {
     status: 'successful',
     app: 'APPX',
     hosts: [
-      { host: 'GBWASP01', overall: 'ok', reason: '', hasApp: true },
-      { host: 'GBWASP02', overall: 'ok', reason: '', hasApp: true },
+      { host: 'ORWASP01', overall: 'ok', reason: '', hasApp: true },
+      { host: 'ORWASP02', overall: 'ok', reason: '', hasApp: true },
     ],
     targets,
     finishedAt: new Date(now - 60_000).toISOString(),
@@ -92,7 +92,7 @@ beforeEach(() => {
     jobId: 501,
     awxServerId: 1,
     status: 'pending',
-    hosts: ['GBWASP01', 'GBWASP02'],
+    hosts: ['ORWASP01', 'ORWASP02'],
   });
 });
 
@@ -106,7 +106,7 @@ describe('WasJvmSelectStep', () => {
       statusWith([
         target(),
         target({
-          host: 'GBWASP02',
+          host: 'ORWASP02',
           cell: 'CELL02',
           node: 'NODE02',
           state: 'OLCULEMEDI',
@@ -144,7 +144,7 @@ describe('WasJvmSelectStep', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const arg = onSubmit.mock.calls[0][0];
     expect(Array.isArray(arg.target)).toBe(false);
-    expect(arg.target.host).toBe('GBWASP01');
+    expect(arg.target.host).toBe('ORWASP01');
     expect(arg.operation).toBe('stop');
     expect(arg.discovery).toMatchObject({ jobId: 501, awxServerId: 1 });
   });
@@ -154,7 +154,7 @@ describe('WasJvmSelectStep', () => {
       statusWith([
         target(),
         target({
-          host: 'GBWASP02',
+          host: 'ORWASP02',
           cell: 'CELL02',
           node: 'NODE02',
           state: 'STOPPED',
@@ -223,7 +223,7 @@ describe('WasConfirmStep', () => {
     );
     const input = screen.getByLabelText(/Onaylamak için JVM adını yazın/);
     const consent = screen.getByRole('checkbox', { name: /sonuçlarını kabul ediyorum/ });
-    const button = screen.getByRole('button', { name: /Durdur: APPX @ GBWASP01/ });
+    const button = screen.getByRole('button', { name: /Durdur: APPX @ ORWASP01/ });
 
     expect(input).toHaveValue('');
     expect(button).toBeDisabled();
@@ -269,7 +269,7 @@ describe('WasConfirmStep', () => {
       target: { value: 'APPX' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /sonuçlarını kabul ediyorum/ }));
-    const button = screen.getByRole('button', { name: /Durdur: APPX @ GBWASP01/ });
+    const button = screen.getByRole('button', { name: /Durdur: APPX @ ORWASP01/ });
     expect(button).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Uyarıları okudum/ }));
     expect(button).toBeEnabled();
@@ -289,7 +289,7 @@ describe('WasResultPanel', () => {
       status: 'failed',
       severity: 'unknown',
       result: {
-        host: 'GBWASP01',
+        host: 'ORWASP01',
         profile: 'AppSrv01',
         cell: 'CELL01',
         node: 'NODE01',
@@ -330,7 +330,7 @@ describe('WasResultPanel', () => {
       status: 'failed',
       severity: 'fail',
       result: {
-        host: 'GBWASP01',
+        host: 'ORWASP01',
         profile: 'AppSrv01',
         cell: 'CELL01',
         node: 'NODE01',

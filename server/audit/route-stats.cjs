@@ -147,7 +147,7 @@ function buildRouteStats(routeRows, spaRows) {
     ips: { spa: new Map(), nonSpa: new Map(), unmeasured: new Map() },
     unresolvedIp: { spa: 0, nonSpa: 0, unmeasured: 0 },
     clusters: new Set(),
-    // CLUSTER BASINA KIRILIM (kullanici, 2026-10-08): "GBOCP Prod 1'de bu kadar route
+    // CLUSTER BASINA KIRILIM (kullanici, 2026-10-08): "OROCP Prod 1'de bu kadar route
     // var, bunlarin su kadari SPA route'u, yuzdesi de budur." Ortam toplami tek basina
     // "hangi cluster'da eksik" sorusunu cevaplamiyordu; ARK'in prod'u dort cluster.
     //

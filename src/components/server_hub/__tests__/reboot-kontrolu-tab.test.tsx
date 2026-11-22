@@ -9,14 +9,14 @@ const sonraMock = vi.fn(async () => ({
   ok: true,
   jobId: 9,
   awxServerId: 1,
-  hedef: ['GBJBOP18'],
+  hedef: ['ORJBOP18'],
   disarida: [],
 }));
 const O18 = ['BOOT|b1||', 'URUN|JBOSS8||', 'URUN|RHA||', 'JVM|JBOSS8|appA|x'];
 const O19 = ['BOOT|c1||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appB|x'];
 const KAYIT = {
   id: 3,
-  hosts: ['GBJBOP18', 'GBJBOAP18'],
+  hosts: ['ORJBOP18', 'ORJBOAP18'],
   not: 'Ekim patch',
   durum: 'sorunlu',
   olusturan: 'onur',
@@ -28,8 +28,8 @@ const KAYIT = {
     sonuc: {
       faz: 'once',
       sunucular: {
-        GBJBOP18: { goruntu_ok: true, goruntu: O18 },
-        GBJBOAP18: { goruntu_ok: true, goruntu: O19 },
+        ORJBOP18: { goruntu_ok: true, goruntu: O18 },
+        ORJBOAP18: { goruntu_ok: true, goruntu: O19 },
       },
     },
   },
@@ -40,7 +40,7 @@ const KAYIT = {
     sonuc: {
       faz: 'sonra',
       sunucular: {
-        GBJBOP18: {
+        ORJBOP18: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -50,7 +50,7 @@ const KAYIT = {
             'SONUC|baslat|JBOSS8|appA|OK|/host=primary/server-config=appA:start -> STARTED',
           ],
         },
-        GBJBOAP18: {
+        ORJBOAP18: {
           once_var: true,
           son_olculdu: true,
           son_fark: ['FARK|DOWN|JVM|JBOSS8|appB|x'],
@@ -68,8 +68,8 @@ const KAYIT = {
       toplam: 2,
       job: 'successful',
       sunucu: {
-        GBJBOP18: { durum: 'sorunsuz', kalan: 0, islem: 1, hatali: 0 },
-        GBJBOAP18: { durum: 'sorunlu', kalan: 1, islem: 1, hatali: 1 },
+        ORJBOP18: { durum: 'sorunsuz', kalan: 0, islem: 1, hatali: 0 },
+        ORJBOAP18: { durum: 'sorunlu', kalan: 1, islem: 1, hatali: 1 },
       },
     },
   },
@@ -79,7 +79,7 @@ const KAYIT = {
 const BOS_KAYIT = {
   ...KAYIT,
   id: 4,
-  hosts: ['GBBOS01', 'GBJBOP18'],
+  hosts: ['ORBOS01', 'ORJBOP18'],
   durum: 'kontrol',
   once: {
     jobId: 1,
@@ -88,8 +88,8 @@ const BOS_KAYIT = {
     sonuc: {
       faz: 'once',
       sunucular: {
-        GBBOS01: { goruntu_ok: true, goruntu: ['BOOT|z1||'] },
-        GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+        ORBOS01: { goruntu_ok: true, goruntu: ['BOOT|z1||'] },
+        ORJBOP18: { goruntu_ok: true, goruntu: O18 },
       },
     },
   },
@@ -100,7 +100,7 @@ const BOS_KAYIT = {
     sonuc: {
       faz: 'sonra',
       sunucular: {
-        GBBOS01: {
+        ORBOS01: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -113,19 +113,19 @@ const BOS_KAYIT = {
           ],
           islemler: [],
         },
-        GBJBOP18: KAYIT.sonra.sonuc.sunucular.GBJBOP18,
+        ORJBOP18: KAYIT.sonra.sonuc.sunucular.ORJBOP18,
       },
     },
   },
   ozet: {
-    once: { alinan: 2, toplam: 2, job: 'successful', once_bos: ['GBBOS01'] },
+    once: { alinan: 2, toplam: 2, job: 'successful', once_bos: ['ORBOS01'] },
     sonra: {
       sorunsuz: 1,
       kontrol: 1,
       toplam: 2,
       job: 'successful',
       sunucu: {
-        GBBOS01: {
+        ORBOS01: {
           durum: 'kontrol',
           kalan: 0,
           islem: 0,
@@ -147,7 +147,7 @@ const BOS_KAYIT = {
             ],
           },
         },
-        GBJBOP18: {
+        ORJBOP18: {
           durum: 'sorunsuz',
           kalan: 0,
           islem: 1,
@@ -180,7 +180,7 @@ const BOS_KAYIT = {
 const OTO_KAYIT = {
   ...KAYIT,
   id: 6,
-  hosts: ['GBA01', 'GBB02', 'GBC03'],
+  hosts: ['ORA01', 'ORB02', 'ORC03'],
   durum: 'sorunlu',
   once: {
     jobId: 1,
@@ -189,9 +189,9 @@ const OTO_KAYIT = {
     sonuc: {
       faz: 'once',
       sunucular: {
-        GBA01: { goruntu_ok: true, goruntu: ['BOOT|a1||', 'SURUM|2||', 'URUN|RHA||'] },
-        GBB02: { goruntu_ok: true, goruntu: ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||'] },
-        GBC03: { goruntu_ok: true, goruntu: ['BOOT|c1||', 'SURUM|2||', 'URUN|IHS||'] },
+        ORA01: { goruntu_ok: true, goruntu: ['BOOT|a1||', 'SURUM|2||', 'URUN|RHA||'] },
+        ORB02: { goruntu_ok: true, goruntu: ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||'] },
+        ORC03: { goruntu_ok: true, goruntu: ['BOOT|c1||', 'SURUM|2||', 'URUN|IHS||'] },
       },
     },
   },
@@ -202,7 +202,7 @@ const OTO_KAYIT = {
     sonuc: {
       faz: 'sonra',
       sunucular: {
-        GBA01: {
+        ORA01: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -211,7 +211,7 @@ const OTO_KAYIT = {
           son_goruntu: ['BOOT|a2||', 'URUN|RHA||'],
           islemler: ['SONUC|durdur|NGINX||OK|x'],
         },
-        GBB02: {
+        ORB02: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -220,7 +220,7 @@ const OTO_KAYIT = {
           son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|CTG||'],
           islemler: [],
         },
-        GBC03: {
+        ORC03: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -240,7 +240,7 @@ const OTO_KAYIT = {
       toplam: 3,
       job: 'successful',
       sunucu: {
-        GBA01: {
+        ORA01: {
           durum: 'kontrol',
           kalan: 0,
           islem: 1,
@@ -263,7 +263,7 @@ const OTO_KAYIT = {
             ],
           },
         },
-        GBB02: {
+        ORB02: {
           durum: 'sorunlu',
           kalan: 1,
           islem: 4,
@@ -281,7 +281,7 @@ const OTO_KAYIT = {
             ],
           },
         },
-        GBC03: {
+        ORC03: {
           durum: 'sorunsuz',
           kalan: 0,
           islem: 0,
@@ -309,7 +309,7 @@ const KD_BILGI =
 const KD_KAYIT = {
   ...KAYIT,
   id: 8,
-  hosts: ['GBBOS02', 'GBJBOP18'],
+  hosts: ['ORBOS02', 'ORJBOP18'],
   durum: 'tamam',
   once: {
     jobId: 1,
@@ -318,8 +318,8 @@ const KD_KAYIT = {
     sonuc: {
       faz: 'once',
       sunucular: {
-        GBBOS02: { goruntu_ok: true, goruntu: ['BOOT|k1||'] },
-        GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+        ORBOS02: { goruntu_ok: true, goruntu: ['BOOT|k1||'] },
+        ORJBOP18: { goruntu_ok: true, goruntu: O18 },
       },
     },
   },
@@ -330,7 +330,7 @@ const KD_KAYIT = {
     sonuc: {
       faz: 'sonra',
       sunucular: {
-        GBBOS02: {
+        ORBOS02: {
           once_var: true,
           son_olculdu: true,
           son_fark: [],
@@ -340,12 +340,12 @@ const KD_KAYIT = {
           plan: ['BILGI|BOS|||bos'],
           islemler: [],
         },
-        GBJBOP18: { ...KAYIT.sonra.sonuc.sunucular.GBJBOP18, betik_surum: 4 },
+        ORJBOP18: { ...KAYIT.sonra.sonuc.sunucular.ORJBOP18, betik_surum: 4 },
       },
     },
   },
   ozet: {
-    once: { alinan: 2, toplam: 2, job: 'successful', once_bos: ['GBBOS02'] },
+    once: { alinan: 2, toplam: 2, job: 'successful', once_bos: ['ORBOS02'] },
     sonra: {
       sorunsuz: 1,
       kontrol: 0,
@@ -353,7 +353,7 @@ const KD_KAYIT = {
       toplam: 2,
       job: 'successful',
       sunucu: {
-        GBBOS02: {
+        ORBOS02: {
           durum: 'kapsam_disi',
           kalan: 0,
           islem: 0,
@@ -363,7 +363,7 @@ const KD_KAYIT = {
             'Reboot öncesi bu sunucuda izlenen uygulama (Nginx/Apache/IHS/CTG/JBoss/WAS) çalışmıyordu; karşılaştırılacak bir şey yoktu.',
           otomasyon: { sinif: 'dokunmadi', teknoloji: [] },
         },
-        GBJBOP18: {
+        ORJBOP18: {
           durum: 'sorunsuz',
           kalan: 0,
           islem: 1,
@@ -457,7 +457,7 @@ vi.mock('@/api/rebootCheckApi', () => ({
 vi.mock('@/api/serverHubApi', () => ({
   // Sekme yalniz sunucu adlarini ister (2026-11-05 hiz): tum filo degerlendirmesini (/overview) indirmez.
   serverHubApi: {
-    hostAdlari: vi.fn(async () => ({ ok: true, hosts: ['GBJBOP18'] })),
+    hostAdlari: vi.fn(async () => ({ ok: true, hosts: ['ORJBOP18'] })),
     overview: vi.fn(async () => {
       throw new Error('Reboot Kontrolu /overview istememeli');
     }),
@@ -479,10 +479,10 @@ describe('Reboot Kontrolü sekmesi', () => {
     expect(serverHubApi.hostAdlari).toHaveBeenCalled();
     expect(serverHubApi.overview).not.toHaveBeenCalled();
     // v3: "Sorunsuz" artık özet kutusu ve filtre düğmesinde de var; sunucu rozeti başlıkta aranır
-    const b18 = screen.getByRole('button', { name: /^GBJBOP18/ });
+    const b18 = screen.getByRole('button', { name: /^ORJBOP18/ });
     expect(within(b18).getByText('Sorunsuz')).toBeTruthy();
     expect(
-      within(screen.getByRole('button', { name: /^GBJBOAP18/ })).getByText('1 fark kaldı'),
+      within(screen.getByRole('button', { name: /^ORJBOAP18/ })).getByText('1 fark kaldı'),
     ).toBeTruthy();
     // otomasyon alanı olmayan eski API cevabı: istemci hesaplamaz, "—" gösterir; eski "N işlem" metni yok
     expect(within(b18).getByText('—')).toBeTruthy();
@@ -527,23 +527,23 @@ describe('Reboot Kontrolü sekmesi', () => {
       sayi: { mudahalesiz: 0, duzeltildi: 1, kontrol: 0, yapilamadi: 0, hatali: 1 },
       kova: {
         mudahalesiz: [],
-        duzeltildi: ['GBJBOP18'],
+        duzeltildi: ['ORJBOP18'],
         kontrol: [],
         yapilamadi: [],
-        hatali: ['GBJBOAP18'],
+        hatali: ['ORJBOAP18'],
       },
       basari: { pay: 1, payda: 2, metin: '%50' },
       islemYapilan: 2,
       geriGetirilen: { pay: 1, payda: 2, metin: '%50' },
       islemler: [],
       sunucu: {
-        GBJBOP18: {
+        ORJBOP18: {
           kova: 'duzeltildi',
           etiket: [],
           neden: [],
           komutlar: [{ islem: 'baslat', urun: 'JBOSS8', ad: 'appA', sonuc: 'OK', hedefte: true }],
         },
-        GBJBOAP18: {
+        ORJBOAP18: {
           kova: 'hatali',
           etiket: [],
           neden: ['1 öğe reboot öncesinden farklı kaldı', '1 komut hata döndü'],
@@ -578,10 +578,10 @@ describe('Reboot Kontrolü sekmesi', () => {
     expect(within(y).queryByTestId('seviye-ayrinti')).toBeNull();
     fireEvent.click(within(y).getByTestId('seviye-hatali'));
     const ay = within(y).getByTestId('seviye-ayrinti');
-    expect(ay.textContent).toMatch(/GBJBOAP18/);
+    expect(ay.textContent).toMatch(/ORJBOAP18/);
     expect(ay.textContent).toMatch(/JBoss 8 JVM appB açma — hata/);
     expect(ay.textContent).toMatch(/1 öğe reboot öncesinden farklı kaldı · 1 komut hata döndü/);
-    expect(ay.textContent).not.toMatch(/GBJBOP18/);
+    expect(ay.textContent).not.toMatch(/ORJBOP18/);
     expect(within(y).getByTestId('seviye-hatali').getAttribute('aria-expanded')).toBe('true');
     // eski 4 oran ve paragraf yok
     expect(within(y).queryByText('Reboot öncesi hale dönüş')).toBeNull();
@@ -612,7 +612,7 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     const grup = await screen.findByTestId('rc-once-bos-grup');
     expect((grup as HTMLDetailsElement).open).toBe(false);
     expect(grup.style.borderColor).toBe('var(--border)');
-    expect(within(grup).getByText('GBBOS01')).toBeTruthy();
+    expect(within(grup).getByText('ORBOS01')).toBeTruthy();
     expect(
       within(grup).getByText(/Reboot öncesi çalışan izlenen ürünü olmayan sunucular/).parentElement
         ?.textContent,
@@ -624,9 +624,9 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     expect(within(grup).queryByText(/yeniden alın|bu tek başına bir hata değil/)).toBeNull();
     expect(within(grup).queryByText(/zaten kapalıyken mi alındı/)).toBeNull();
     // grup, önce kartlarından SONRA gelir; boş sunucunun ayrıca kartı yok
-    const kart = screen.getByText('GBJBOP18', { selector: 'summary span' });
+    const kart = screen.getByText('ORJBOP18', { selector: 'summary span' });
     expect(kart.compareDocumentPosition(grup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByText('GBBOS01', { selector: 'summary span' })).toBeNull();
+    expect(screen.queryByText('ORBOS01', { selector: 'summary span' })).toBeNull();
     expect(screen.queryByText('izlenen ürün yok')).toBeNull();
     expect(screen.queryByText(/Önce görüntüsünde izlenen ürün yok/)).toBeNull();
     expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(5); // liste + ayrinti basligi + sunucu karti + ozet kutusu + filtre dugmesi
@@ -644,7 +644,7 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     fireEvent.click(within(oto).getByRole('button', { name: /^Tümü/ }));
     fireEvent.click(within(son).getByRole('button', { name: /^Kontrol gerekli \(1\)/ }));
     expect(screen.queryByText('Bu filtrede sunucu yok.')).toBeNull();
-    expect(screen.queryByRole('button', { name: /^GBJBOP18/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^ORJBOP18/ })).toBeNull();
     // v4: boş önce JBoss'u korumaz; sunucu "dokunulmadı" demez (bu eski kayıtta betik eski olduğu için işlem yoktu)
     expect(
       screen.getByText("JBoss 8 (AWX'teki betik eski — işlem yapılmadı)", { exact: false }),
@@ -700,7 +700,7 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     expect((dugme as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(dugme);
     expect(await screen.findByText('Önce görüntüsü boş sunucular (1)')).toBeTruthy();
-    expect(screen.getByText('GBBOS01', { selector: 'div.font-mono' })).toBeTruthy();
+    expect(screen.getByText('ORBOS01', { selector: 'div.font-mono' })).toBeTruthy();
     // inceleme B8: JVM kurali yalniz urunu reboot oncesi calisanlar icin; durulma beklemesi soylenir
     expect(
       screen.getByText(/Ürünü reboot öncesi çalışmayanın JVM'leri ürünle birlikte kapanır/),
@@ -742,18 +742,18 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
   });
 
   it('RT5 durulma=error notu görünür; tümü sorunlu iken özet kırmızı', async () => {
-    const s18 = { ...KAYIT.sonra.sonuc.sunucular.GBJBOP18, durulma: 'error' };
+    const s18 = { ...KAYIT.sonra.sonuc.sunucular.ORJBOP18, durulma: 'error' };
     AKTIF = {
       ...KAYIT,
       id: 5,
       sonra: {
         ...KAYIT.sonra,
-        sonuc: { faz: 'sonra', sunucular: { ...KAYIT.sonra.sonuc.sunucular, GBJBOP18: s18 } },
+        sonuc: { faz: 'sonra', sunucular: { ...KAYIT.sonra.sonuc.sunucular, ORJBOP18: s18 } },
       },
     } as typeof KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#5'));
-    fireEvent.click(await screen.findByRole('button', { name: /^GBJBOP18/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^ORJBOP18/ }));
     expect(
       await screen.findByText(/JVM planı çalışmadı — JVM'ler açılıp kapatılmadı/),
     ).toBeTruthy();
@@ -768,7 +768,7 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
     AKTIF = OTO_KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#6'));
-    await screen.findByRole('button', { name: /^GBA01/ });
+    await screen.findByRole('button', { name: /^ORA01/ });
     const kutu = (etiket: string) =>
       screen.getByText(etiket, { selector: 'div' }).previousElementSibling?.textContent;
     expect([
@@ -783,19 +783,19 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
       kutu('Karşılaştırma dışı'),
     ]).toEqual(['1', '1', '1', '0']);
     // teknoloji çipleri: çalıştırılan (yeşil ✓ / kırmızı ✗) ve çalıştırılmayan (neden)
-    const a = screen.getByRole('button', { name: /^GBA01/ });
+    const a = screen.getByRole('button', { name: /^ORA01/ });
     expect(within(a).getByText('Otomasyon başarılı')).toBeTruthy();
     expect((within(a).getByText('Nginx: kapatıldı ✓') as HTMLElement).style.color).toBe(
       'var(--status-success)',
     );
     expect(within(a).getByText('çalıştırılmadı: Red Hat Apache (değişiklik yok)')).toBeTruthy();
-    const b = screen.getByRole('button', { name: /^GBB02/ });
+    const b = screen.getByRole('button', { name: /^ORB02/ });
     expect(
       (within(b).getByText('JBoss 8: 3 JVM açıldı ✓, 1 JVM açılamadı ✗') as HTMLElement).style
         .color,
     ).toBe('var(--status-danger)');
     expect(
-      within(screen.getByRole('button', { name: /^GBC03/ })).getByText(
+      within(screen.getByRole('button', { name: /^ORC03/ })).getByText(
         'çalıştırılmadı: IBM Apache (IHS) (değişiklik yok)',
       ),
     ).toBeTruthy();
@@ -812,7 +812,7 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/eski betik sürümü olabilir/)).toBeNull();
-    // filtre: otomasyon Başarısız -> yalnız GBB02; son durum sayıları AND ile daralır
+    // filtre: otomasyon Başarısız -> yalnız ORB02; son durum sayıları AND ile daralır
     const oto = screen.getByRole('group', { name: 'Otomasyon filtresi' });
     const son = screen.getByRole('group', { name: 'Son durum filtresi' });
     expect(
@@ -832,9 +832,9 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
       'Karşılaştırma dışı (0)',
     ]);
     fireEvent.click(within(oto).getByRole('button', { name: /^Başarısız/ }));
-    expect(screen.getByRole('button', { name: /^GBB02/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^GBA01/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^GBC03/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^ORB02/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^ORA01/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^ORC03/ })).toBeNull();
     expect(
       within(son)
         .getAllByRole('button')
@@ -847,7 +847,7 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
       'Karşılaştırma dışı (0)',
     ]);
     fireEvent.click(within(son).getByRole('button', { name: /^Sorun kaldı/ }));
-    expect(screen.getByRole('button', { name: /^GBB02/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^ORB02/ })).toBeTruthy();
     fireEvent.click(within(oto).getByRole('button', { name: /^Başarılı/ }));
     expect(screen.getByText('Bu filtrede sunucu yok.')).toBeTruthy();
     // eski filtreler kalktı
@@ -859,17 +859,17 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
   it('RT7 sonuç gelmeyen sunucu: otomasyon "başarısız" + kırmızı neden notu ("dokunmadı" denmez)', async () => {
     const k = structuredClone(OTO_KAYIT);
     const not = 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)';
-    k.ozet.sonra.sunucu.GBC03 = {
+    k.ozet.sonra.sunucu.ORC03 = {
       durum: 'olculemedi',
       kalan: 0,
       islem: 0,
       hatali: 0,
       otomasyon: { sinif: 'basarisiz', teknoloji: [], not },
-    } as typeof k.ozet.sonra.sunucu.GBC03;
+    } as typeof k.ozet.sonra.sunucu.ORC03;
     AKTIF = k;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#6'));
-    const c = await screen.findByRole('button', { name: /^GBC03/ });
+    const c = await screen.findByRole('button', { name: /^ORC03/ });
     expect(within(c).getByText('Otomasyon başarısız')).toBeTruthy();
     expect((within(c).getByText(not) as HTMLElement).style.color).toBe('var(--status-danger)');
     expect(within(c).queryByText('Otomasyon dokunmadı')).toBeNull();
@@ -881,7 +881,7 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     AKTIF = KD_KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#8'));
-    const b = await screen.findByRole('button', { name: /^GBBOS02/ });
+    const b = await screen.findByRole('button', { name: /^ORBOS02/ });
     const rozet = within(b).getByText('Karşılaştırma dışı');
     expect((rozet as HTMLElement).style.color).toBe('var(--text-muted)');
     expect(within(b).queryByText('Kontrol gerekli')).toBeNull();
@@ -900,9 +900,9 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     ]);
     const son = screen.getByRole('group', { name: 'Son durum filtresi' });
     fireEvent.click(within(son).getByRole('button', { name: /^Karşılaştırma dışı \(1\)/ }));
-    expect(screen.queryByRole('button', { name: /^GBJBOP18/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^ORJBOP18/ })).toBeNull();
     // kart kapalı açılır; önce-boş metni bilgi notu (gri), uyarı rengi değil
-    fireEvent.click(screen.getByRole('button', { name: /^GBBOS02/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^ORBOS02/ }));
     const not = screen.getByText(KD_BILGI);
     expect((not.parentElement as HTMLElement).style.color).toBe('var(--text-muted)');
     // plan notlarında BOS tekrar edilmez
@@ -942,7 +942,7 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     AKTIF = k;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#8'));
-    await screen.findByRole('button', { name: /^GBBOS02/ });
+    await screen.findByRole('button', { name: /^ORBOS02/ });
     expect(screen.queryByRole('group', { name: 'Yönetici özeti' })).toBeNull();
     expect(screen.queryByText(/^Komut bazında:/)).toBeNull();
     expect((screen.getByText('0 / 0 sunucu sorunsuz') as HTMLElement).style.color).toBe(
@@ -1008,7 +1008,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     const k = {
       ...KAYIT,
       id: 13,
-      hosts: ['GBD01', 'GBW02', 'GBJ03'],
+      hosts: ['ORD01', 'ORW02', 'ORJ03'],
       durum: 'sorunlu',
       once: {
         jobId: 1,
@@ -1017,9 +1017,9 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
         sonuc: {
           faz: 'once',
           sunucular: {
-            GBD01: { goruntu_ok: true, goruntu: ['BOOT|d1||', 'SURUM|2||', 'URUN|RHA||'] },
-            GBW02: { goruntu_ok: true, goruntu: ['BOOT|w1||'] },
-            GBJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
+            ORD01: { goruntu_ok: true, goruntu: ['BOOT|d1||', 'SURUM|2||', 'URUN|RHA||'] },
+            ORW02: { goruntu_ok: true, goruntu: ['BOOT|w1||'] },
+            ORJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
           },
         },
       },
@@ -1031,7 +1031,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
           faz: 'sonra',
           sunucular: {
             // dolu önce: IHS yeni ve hâlâ çalışıyor -> sürüm 3 bunu kapatırdı; "betik eski" DENMEZ
-            GBD01: {
+            ORD01: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1040,7 +1040,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
               son_goruntu: [...v, 'URUN|RHA||', 'URUN|IHS||'],
               islemler: [],
             },
-            GBW02: {
+            ORW02: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1049,7 +1049,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
               son_goruntu: v,
               islemler: ['SONUC|durdur|NGINX||OK|x'],
             },
-            GBJ03: {
+            ORJ03: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1069,9 +1069,9 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
           toplam: 3,
           job: 'successful',
           sunucu: {
-            GBD01: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
-            GBW02: { durum: 'kontrol', kalan: 0, islem: 1, hatali: 0 },
-            GBJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+            ORD01: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+            ORW02: { durum: 'kontrol', kalan: 0, islem: 1, hatali: 0 },
+            ORJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
           },
         },
       },
@@ -1079,7 +1079,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     AKTIF = k as unknown as typeof KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#13'));
-    await screen.findByRole('button', { name: /^GBJ03/ });
+    await screen.findByRole('button', { name: /^ORJ03/ });
     const bant = screen
       .getAllByRole('alert')
       .filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
@@ -1104,7 +1104,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     const k = {
       ...KAYIT,
       id: 14,
-      hosts: ['GBX01', 'GBY02', 'GBJ03'],
+      hosts: ['ORX01', 'ORY02', 'ORJ03'],
       durum: 'sorunlu',
       once: {
         jobId: 1,
@@ -1113,9 +1113,9 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
         sonuc: {
           faz: 'once',
           sunucular: {
-            GBX01: { goruntu_ok: false, goruntu: ['BOOT|x1||'] },
-            GBY02: { goruntu_ok: true, goruntu: ['BOOT|y1||'] },
-            GBJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
+            ORX01: { goruntu_ok: false, goruntu: ['BOOT|x1||'] },
+            ORY02: { goruntu_ok: true, goruntu: ['BOOT|y1||'] },
+            ORJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
           },
         },
       },
@@ -1126,7 +1126,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
         sonuc: {
           faz: 'sonra',
           sunucular: {
-            GBX01: {
+            ORX01: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1136,7 +1136,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
               islemler: [],
               plan: ['BILGI|HATA|||once yok'],
             },
-            GBY02: {
+            ORY02: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1145,7 +1145,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
               son_goruntu: v,
               islemler: [],
             },
-            GBJ03: {
+            ORJ03: {
               once_var: true,
               son_olculdu: true,
               son_fark: [],
@@ -1165,9 +1165,9 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
           toplam: 3,
           job: 'successful',
           sunucu: {
-            GBX01: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
-            GBY02: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
-            GBJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+            ORX01: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
+            ORY02: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
+            ORJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
           },
         },
       },
@@ -1175,7 +1175,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     AKTIF = k as unknown as typeof KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#14'));
-    await screen.findByRole('button', { name: /^GBJ03/ });
+    await screen.findByRole('button', { name: /^ORJ03/ });
     const bant = screen
       .getAllByRole('alert')
       .filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
@@ -1183,7 +1183,7 @@ describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', ()
     expect(bant[0].textContent).toMatch(
       /\(sürüm 3, gerekli 4\): bu koşudaki betik \(sürüm 3\).*\(1 sunucuda etkili\)$/,
     );
-    // ürün tablosu da aynı önce kaynağından: GBX01'in CTG satırı "betik eski" demez, yalnız GBJ03'ün JBoss 8 satırı der
+    // ürün tablosu da aynı önce kaynağından: ORX01'in CTG satırı "betik eski" demez, yalnız ORJ03'ün JBoss 8 satırı der
     expect(
       screen.getAllByText(
         "reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı — AWX'teki betik eski (sürüm 3); güncel betikle yeniden çalıştırın",
@@ -1365,9 +1365,9 @@ describe('Reboot Kontrolü sekmesi — boş önce grubu (2026-11-22)', () => {
     const BOS = { goruntu_ok: true, goruntu: ['BOOT|z1||'] };
     // A) karışık kayıt (2 boş + 1 dolu), reboot sonrası kontrol henüz koşmadı: kapalı, gri, gelecek zaman + yeniden al
     AKTIF = kayit(20, 'once_hazir', {
-      GBBOS01: BOS,
-      GBBOS03: BOS,
-      GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+      ORBOS01: BOS,
+      ORBOS03: BOS,
+      ORJBOP18: { goruntu_ok: true, goruntu: O18 },
     });
     let r = render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#20'));
@@ -1382,7 +1382,7 @@ describe('Reboot Kontrolü sekmesi — boş önce grubu (2026-11-22)', () => {
     expect(within(grup).queryByText(/"kontrol edilecek"/)).toBeNull();
     r.unmount();
     // B) kayıttaki TÜM sunucular boş: kart ızgarası yok, grup açık ve uyarı renginde, tam uyarı metni
-    AKTIF = kayit(21, 'once_hazir', { GBBOS01: BOS, GBBOS03: BOS });
+    AKTIF = kayit(21, 'once_hazir', { ORBOS01: BOS, ORBOS03: BOS });
     r = render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#21'));
     grup = await screen.findByTestId('rc-once-bos-grup');
@@ -1393,23 +1393,23 @@ describe('Reboot Kontrolü sekmesi — boş önce grubu (2026-11-22)', () => {
         /Kayıttaki sunucuların hiçbirinde izlenen ürün çalışmıyordu\. Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/,
       ),
     ).toBeTruthy();
-    expect(within(grup).getByText('GBBOS01')).toBeTruthy();
-    expect(within(grup).getByText('GBBOS03')).toBeTruthy();
-    expect(screen.queryByText('GBBOS01', { selector: 'summary span' })).toBeNull();
-    expect(screen.queryByText('GBBOS03', { selector: 'summary span' })).toBeNull();
+    expect(within(grup).getByText('ORBOS01')).toBeTruthy();
+    expect(within(grup).getByText('ORBOS03')).toBeTruthy();
+    expect(screen.queryByText('ORBOS01', { selector: 'summary span' })).toBeNull();
+    expect(screen.queryByText('ORBOS03', { selector: 'summary span' })).toBeNull();
     r.unmount();
     // C) tek sunuculu boş kayıt "hepsi boş" uyarısına girmez (tek sunucu ayırt edici değil)
-    AKTIF = kayit(22, 'once_hazir', { GBBOS01: BOS });
+    AKTIF = kayit(22, 'once_hazir', { ORBOS01: BOS });
     r = render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#22'));
     grup = await screen.findByTestId('rc-once-bos-grup');
     expect((grup as HTMLDetailsElement).open).toBe(false);
     r.unmount();
     // D) önce koşarken: grup yok, her sunucunun kendi "alınıyor" kartı var
-    AKTIF = kayit(23, 'once_kosuyor', { GBBOS01: BOS, GBBOS03: BOS });
+    AKTIF = kayit(23, 'once_kosuyor', { ORBOS01: BOS, ORBOS03: BOS });
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#23'));
-    expect(await screen.findByText('GBBOS03', { selector: 'summary span' })).toBeTruthy();
+    expect(await screen.findByText('ORBOS03', { selector: 'summary span' })).toBeTruthy();
     expect(screen.queryByTestId('rc-once-bos-grup')).toBeNull();
     AKTIF = KAYIT;
   });

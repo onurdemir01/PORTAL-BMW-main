@@ -12,9 +12,9 @@ import { render } from '@/test/test-utils';
 import { LdapUserPicker, type LdapUser } from '@/components/admin/LdapUserPicker';
 
 const KULLANICI: LdapUser = {
-  username: 'osmankoz',
-  displayName: 'Osman Koz',
-  mail: 'osmankoz@garantibbva.com.tr',
+  username: 'ornekkisi',
+  displayName: 'Ornek Kisi',
+  mail: 'ornekkisi@ornekbanka.invalid',
   department: 'Middleware',
   title: null,
 };
@@ -50,17 +50,17 @@ describe('LdapUserPicker', () => {
     });
     await waitFor(() => expect(search).toHaveBeenCalled());
 
-    const secenek = await screen.findByText('Osman Koz');
+    const secenek = await screen.findByText('Ornek Kisi');
     fireEvent.click(secenek);
 
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('osmankoz'));
-    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('osmankoz');
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('ornekkisi'));
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('ornekkisi');
   });
 
   it('elle yazim KUCUK HARFE cevrilir (buyuk/kucuk harf sorunu)', async () => {
     const { onChange } = kur();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '  OsmanKoz  ' } });
-    expect(onChange).toHaveBeenCalledWith('osmankoz');
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '  OrnekKisi  ' } });
+    expect(onChange).toHaveBeenCalledWith('ornekkisi');
   });
 });
 
@@ -87,11 +87,11 @@ describe('LdapUserPicker · field="mail" (Crypto Hub)', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 400));
     });
-    fireEvent.click(await screen.findByText('Osman Koz'));
+    fireEvent.click(await screen.findByText('Ornek Kisi'));
 
     // ASIL IDDIA: e-posta kuralina kullanici adi yazilirsa motor ASLA eslestiremez.
-    await waitFor(() => expect(onChange).toHaveBeenCalledWith('osmankoz@garantibbva.com.tr'));
-    expect(onChange).not.toHaveBeenCalledWith('osmankoz');
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('ornekkisi@ornekbanka.invalid'));
+    expect(onChange).not.toHaveBeenCalledWith('ornekkisi');
   });
 
   it('e-postasi OLMAYAN kayit sessizce gecilmez (asla eslesmeyecek kural uretilmez)', async () => {
@@ -102,9 +102,9 @@ describe('LdapUserPicker · field="mail" (Crypto Hub)', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 400));
     });
-    fireEvent.click(await screen.findByText('Osman Koz'));
+    fireEvent.click(await screen.findByText('Ornek Kisi'));
 
-    expect(onChange).not.toHaveBeenCalledWith('osmankoz');
+    expect(onChange).not.toHaveBeenCalledWith('ornekkisi');
     expect(await screen.findByText(/dizinde e-posta yok/i)).toBeTruthy();
   });
 });
@@ -121,11 +121,11 @@ describe('LdapUserPicker · secim gorunur, arama durumu, sira korumasi', () => {
     kur();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osman' } });
     await bekle(400);
-    fireEvent.click(await screen.findByText('Osman Koz'));
+    fireEvent.click(await screen.findByText('Ornek Kisi'));
     const kart = await screen.findByTestId('ldap-secili');
     expect(kart.textContent).toContain('Seçildi');
-    expect(kart.textContent).toContain('Osman Koz');
-    expect(kart.textContent).toContain('osmankoz@garantibbva.com.tr');
+    expect(kart.textContent).toContain('Ornek Kisi');
+    expect(kart.textContent).toContain('ornekkisi@ornekbanka.invalid');
     expect(screen.queryByTestId('ldap-elle')).toBeNull();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'osmankozz' } });
     expect(screen.queryByTestId('ldap-secili')).toBeNull();
@@ -148,7 +148,7 @@ describe('LdapUserPicker · secim gorunur, arama durumu, sira korumasi', () => {
     expect(screen.getByTestId('ldap-ariyor').textContent).toContain('aranıyor');
     await act(async () => coz({ users: [KULLANICI] }));
     expect(screen.queryByTestId('ldap-ariyor')).toBeNull();
-    expect(screen.getByText('Osman Koz')).toBeTruthy();
+    expect(screen.getByText('Ornek Kisi')).toBeTruthy();
   });
 
   it('gec gelen ESKI yanit yeni sonucun ustune yazmaz', async () => {
@@ -167,6 +167,6 @@ describe('LdapUserPicker · secim gorunur, arama durumu, sira korumasi', () => {
     await act(async () => cozum.ayse({ users: [AYSE] }));
     await act(async () => cozum.osm({ users: [KULLANICI] }));
     expect(screen.getByText('Ayşe Kaya')).toBeTruthy();
-    expect(screen.queryByText('Osman Koz')).toBeNull();
+    expect(screen.queryByText('Ornek Kisi')).toBeNull();
   });
 });

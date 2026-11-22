@@ -67,7 +67,7 @@ export const isProdEnv = (env: string | null | undefined) => /^prod/i.test(Strin
 /** Sunucu adindan lokasyon (sunucu `site` vermediyse): tier harfinden sonra fazladan A = Ankara. */
 export function siteOf(h: NcHost): 'Pendik' | 'Ankara' | null {
   if (h.site === 'Pendik' || h.site === 'Ankara') return h.site;
-  const m = /^GBNG[WX](A?)[DTQP]/i.exec(h.host) || /^GBRVP(A?)P/i.exec(h.host);
+  const m = /^[A-Z]{2}NG[WX](A?)[DTQP]/i.exec(h.host) || /^[A-Z]{2}RVP(A?)P/i.exec(h.host);
   if (!m) return null;
   return m[1] ? 'Ankara' : 'Pendik';
 }
@@ -683,7 +683,7 @@ export function DashboardTab({
 
       <Card
         title="Production: Pendik / Ankara"
-        info="Ortamı production olan nginx sunucularının lokasyon dağılımı. Lokasyon envanterden, yoksa sunucu adından (tier harfinden sonra fazladan A = Ankara: GBNGXAP34 Ankara, GBNGXP40 Pendik)."
+        info="Ortamı production olan nginx sunucularının lokasyon dağılımı. Lokasyon envanterden, yoksa sunucu adından (tier harfinden sonra fazladan A = Ankara: …NGXAP.. Ankara, …NGXP.. Pendik)."
       >
         {prod.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>

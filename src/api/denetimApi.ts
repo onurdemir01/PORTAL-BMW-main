@@ -15,7 +15,7 @@ export interface NginxSpaEnvCell {
   inOcpInventory: boolean;
   locationPath: string;
   hosts: string[];
-  /** PROD: eski GBRVP* sunucusundaki proxy_pass hedefi (status='PROXY') */
+  /** PROD: eski ORRVP* sunucusundaki proxy_pass hedefi (status='PROXY') */
   proxyTarget?: string | null;
   /** proxy yaziminda -prod eksikti, eklenerek cozuldu */
   suffixAdded?: boolean;
@@ -103,7 +103,7 @@ export interface NginxEnvStat {
   vhosts: string[];
 }
 
-// ── Nginx SPA > Prod Tasima (eski GBRVP* -> yeni GBNGXP4x/5x) ───────────────────────
+// ── Nginx SPA > Prod Tasima (eski ORRVP* -> yeni GBNGXP4x/5x) ───────────────────────
 export interface NginxMigrationDirFlags {
   hys: boolean;
   app: boolean;
@@ -136,7 +136,7 @@ export interface NginxMigrationApp {
     hosts: string[];
     newHosts: string[];
     newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
-    /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (GBRVPP07-10 vb.) okunur — iş şu an
+    /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (ORRVPP07-10 vb.) okunur — iş şu an
      *  oradan akıyor. null = bu location için ölçüm satırı yok. Kural ve alanlar
      *  SpaYukOlcumu (Denetim ve ARK SPA Raporu ile AYNI). */
     traffic: SpaYukOlcumu | null;
@@ -516,7 +516,7 @@ export interface SpaCoverageResult {
   routeMatch: { address: number; name: number; ns: number; conflict: number; none: number };
   /** dbo.Openshift_Namespace_Owners okunabildi mi (sahiplik sutunu icin) */
   ownersReady?: boolean;
-  /** PROD nginx kumesi eski GBRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
+  /** PROD nginx kumesi eski ORRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
   prodProxy?: { rows: number; resolved: number; spa: number; unresolved: number };
   ocpNonSpaExcluded: number;
   nginxOutsidePattern: string[];
@@ -883,7 +883,7 @@ export interface InitScriptsResult {
   ageDays?: number | null;
   ageSource?: 'load_date' | 'scan_date' | string | null;
   /**
-   * 2026-09-24: GBEVM / GBPRV onekli sunucular genel envanterden AYRI raporlanir.
+   * 2026-09-24: OREVM / ORPRV onekli sunucular genel envanterden AYRI raporlanir.
    * Cogunluk genel envanterden hesaplanir, bu sunucular AYNI cogunluga gore olculur.
    * Ayni ayrim Server Hub'da da var.
    */
@@ -938,7 +938,7 @@ export interface InitSunucuGeneliBlock extends InitScriptStat {
 }
 
 export interface InitSunucuGeneliFile extends InitSunucuGeneliBlock {
-  /** GBEVM* / GBPRV*: ayni referansla olculur, ayri listelenir. */
+  /** OREVM* / ORPRV*: ayni referansla olculur, ayri listelenir. */
   special: InitSunucuGeneliBlock | null;
 }
 
@@ -1049,7 +1049,7 @@ export interface WebAppVhost {
   mcBalancer?: string;
   /** Web sunucusunun sitesi (ad kuralindan): DNS -> VIP bu sitenin cozucusuyla okunur. */
   site?: 'Pendik' | 'Ankara' | string;
-  /** DNS bolgesi (2026-10-16): server_name'in kendi alanindan ('gtdmz' | 'fw'), yoksa uygulama domain'inden; null = Portal cozucusu. */
+  /** DNS bolgesi (2026-10-16): server_name'in kendi alanindan ('dmz' | 'fw'), yoksa uygulama domain'inden; null = Portal cozucusu. */
   dnsBolge?: string | null;
 }
 
@@ -1075,7 +1075,7 @@ export interface WebAppRow {
   how: string;
   /** Bu uygulama sunucusu icin adim adim aciklama (topoloji, ad kurali, vhost kaynagi, eslesmeme sebebi). */
   nasil?: string[];
-  /** DNS -> VIP icin bolge ('gtdmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
+  /** DNS -> VIP icin bolge ('dmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
   dnsBolge?: string | null;
   matched: boolean;
   web: WebAppVhost[];

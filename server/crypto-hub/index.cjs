@@ -13,12 +13,7 @@
 'use strict';
 
 const express = require('express');
-const {
-  CRYPTO_TENANTS,
-  tenantOf,
-  selectionTree,
-  isOpen,
-} = require('../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen } = require('./kiracilar.cjs');
 
 // Production simdilik kapali (kullanici, 2026-09-26). Ekran zaten sectirmiyor; bu kontrol
 // DOGRUDAN API cagrisini de keser - aksi halde "kapali" yalnizca gorsel bir suslemeden ibaret
@@ -1494,7 +1489,7 @@ function initCryptoHub(app) {
           gerekce: kaynak.asim ? params.reason : '',
         });
       }
-      // DENETIM KAYDI: "kim yapti" servis hesabinin ardinda kaybolmasin (isler uxmid ile kosar).
+      // DENETIM KAYDI: "kim yapti" servis hesabinin ardinda kaybolmasin (isler svcac ile kosar).
       // K-3: params'a dosya/patch ICERIGI GITMEZ - yalniz sha256 + boyut; uzun her deger de
       // ozetlenir. Ardindan runner'in survey redaksiyonu (gizli / parola alanlari) uygulanir.
       try {

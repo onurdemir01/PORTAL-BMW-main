@@ -403,7 +403,7 @@ function YeniIsModal({
 const TOPLU_ORNEK = [
   '# Her satır bir iş. Alanlar | ile ayrılır; yalnız başlık zorunlu, sondakiler atlanabilir.',
   '# Başlık | Sahip | Son tarih | Öncelik | Durum | Ne bekleniyor | Açıklama',
-  "Application Hub: JVM parametre toplama playbook'u | Onur Demir | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak",
+  "Application Hub: JVM parametre toplama playbook'u | Deneme Kisi | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak",
   "TBMWANS parolası vault'a taşınsın | | 2026-12-01 | orta | beklemede | DBA onayı",
 ].join('\n');
 

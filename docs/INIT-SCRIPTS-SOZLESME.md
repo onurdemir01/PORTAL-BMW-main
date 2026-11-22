@@ -189,7 +189,7 @@ kopyasıyla alan alan karşılaştırır):
 - `appdomain.service` kök sekmesinde **yoktur**; iki kökün birleşiminde aynı algoritmayla
   sunucu geneli bölümde ölçülür (§7.3). Öteki kökün tablosundan yalnız `host` +
   `appdomain_service` (+ varsa `load_date`) okunur.
-- `GBEVM*` / `GBPRV*` ayrı raporlanır; satırları genel envanterin çoğunluğuna göre ölçülür.
+- `OREVM*` / `ORPRV*` ayrı raporlanır; satırları genel envanterin çoğunluğuna göre ölçülür.
 - `missingColumns` eskisiyle aynıdır (opsiyonel `startRHA.sh`/`startLiberty.sh` eklenmez).
 - Ekran: başlıklar ("Çoğunluk", "Çoğunluktan sapan", "çoğunlukla birebir aynı"), çip yokluğu ve
   CSV sütunları eskisi gibi. Deployment Scripts ekranı da aynı (ortak bileşen; yeni CSV sütunları
@@ -221,7 +221,7 @@ yoksa çoğunluk. Çoğunluk normalleştirilmiş içeriğe göre gruplanır (nor
   ("referans değil") gösterilir.
 - `startCustom.sh` (sunucuya özel) için de CR uyarısı sunucu satırında görünür.
 - `appdomain.service` (sunucu geneli): kök sekmesinde yok, bkz. §7.3.
-- `GBEVM*` / `GBPRV*`: genel envanterin referansına (ekip sürümü dahil) göre ölçülür.
+- `OREVM*` / `ORPRV*`: genel envanterin referansına (ekip sürümü dahil) göre ölçülür.
 - `.service`/`.ini` dosyalarında CR uyarı değildir (yalnız biçim farkı).
 
 ### 7.3 Sunucu geneli dosya: `appdomain.service` (2026-11-16)
@@ -236,7 +236,7 @@ sekmede "uyumlu", ötekinde "farklı" görünüyordu.
 - Yanıtta kökten bağımsız `sunucuGeneli` alanı: `{ files: [...], detailAvailable,
   teamReferenceAvailable, error }`. Hangi `root` istenirse istensin **birebir aynı** içerik.
   Her dosya: script istatistiği alanları (§7.1/§7.2 ile aynı adlar) + `rows` + `sayilar`
-  (`hosts, ayni, bicim, farkli, yok, okunamadi, kokFarki`) + `special` (GBEVM/GBPRV).
+  (`hosts, ayni, bicim, farkli, yok, okunamadi, kokFarki`) + `special` (OREVM/ORPRV).
 - Satır: iki tablonun birleşimi, **sunucu başına tek** (`host, durum, hash, norm, kaynak, tarih,
   kokler, kokFarki, digerKaynak, digerHash`). `durum` ∈ `ayni | bicim | farkli | yok | okunamadi`.
 - Sunucu iki tabloda da varsa hangi kaydın kullanılacağı (karar; inceleme B1/B2 sonrası, 2026-11-16):
@@ -249,14 +249,14 @@ sekmede "uyumlu", ötekinde "farklı" görünüyordu.
      ötekinde yalnız `scan_date` varsa tarih adımı atlanır (farklı anlamdaki iki zaman karşılaştırılmaz).
      Ölçülmüş boş + daha yeni (ör. ayrıntı `MISSING`) = dosya kaldırılmış: o kayıt kazanır.
   3. Hâlâ eşitse **değeri (hash) olan** kayıt, sonra **`/vhosting8`**.
-  Sunucu adı büyük/küçük harfe duyarsız birleştirilir (`GBXX` = `gbxx`, görünen ad büyük harfli
+  Sunucu adı büyük/küçük harfe duyarsız birleştirilir (`ORXX` = `gbxx`, görünen ad büyük harfli
   yazım); aynı tabloda yinelenen satır "iki kök farklı" sayılmaz (not yalnız öteki kökün kaydıyla).
   İki kayıt farklıysa satırda bilgi notu (`kokFarki`): `icerik` (ham farklı, norm farklı/bilinmiyor),
   `bicim` (ham farklı, norm aynı), `durum` (birinde değer var, ötekinde yok). Not sayımı değiştirmez.
 - Referans **tek**: ekip sürümü (`InitScriptsReference`), yoksa birleşik kümenin çoğunluğu.
   Ayrıntı tablosu yoksa (eski veri) da birleşik hesap yapılır (ham hash + çoğunluk). "Yalnız biçim
   farkı" sapma sayılmaz (§7.2 kuralı aynen).
-- `GBEVM*` / `GBPRV*` referansa katılmaz; aynı referansla ölçülüp `special`ta döner.
+- `OREVM*` / `ORPRV*` referansa katılmaz; aynı referansla ölçülüp `special`ta döner.
 - Sütun eksiği: kök sekmesinin `missingColumns`'u sunucu geneli dosyayı **bildirmez**; tablo bazında
   `sunucuGeneli.missingColumns: [{ root, label }]` bildirir (ekranda bölümün üstünde not).
 - Kök tablosunda yalnız `host` + sunucu geneli sütun varsa kök sekmesi boş rapor döner ve
@@ -270,7 +270,7 @@ sekmede "uyumlu", ötekinde "farklı" görünüyordu.
   etkilenmez (200).
 - Ekran: Init Scripts sayfasında kök seçiminin **üstünde** "Sunucu geneli: appdomain.service"
   bölümü (sayılar, referans, açılır sunucu tablosu, arama, "Sadece farkı olanlar", CSV,
-  GBEVM/GBPRV seçimi). Kök değişince içerik aynı kalır.
+  OREVM/ORPRV seçimi). Kök değişince içerik aynı kalır.
 
 ## 8. Yokluk ve hata davranışı
 

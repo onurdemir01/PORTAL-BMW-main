@@ -42,7 +42,7 @@ const RP = internetRpHosts() as { byEnv: Record<string, string[]>; all: Set<stri
 const GUN = '2026-10-01';
 type Satir = Record<string, unknown>;
 const D = (o: Satir): Satir => ({
-  cluster: 'gbocptest1',
+  cluster: 'orocptest1',
   namespace: 'kart-test',
   route: 'r',
   host: '',
@@ -62,7 +62,7 @@ const A = (app: string, ns: string, o: Satir = {}) =>
     route: app,
     workload: app,
     namespace: ns,
-    host: `${app}-${ns}.apps-t.fw.garanti.com.tr`,
+    host: `${app}-${ns}.apps-t.fw.sirket.invalid`,
     ...o,
   });
 const LOC = (host: string, ns: string, app: string): Satir => ({
@@ -91,14 +91,14 @@ function sunucuSonucu(hesaplandi: string) {
     A('cok-route', 'kart-test'),
     A('cok-route', 'kart-test', {
       route: 'cok-route-int',
-      host: 'cok-route-int-kart-test.apps-t.fw.garanti.com.tr',
-      cluster: 'gbocptest2',
+      host: 'cok-route-int-kart-test.apps-t.fw.sirket.invalid',
+      cluster: 'orocptest2',
     }),
     A('esles-yok', 'kart-test', { note: 'servis bulunamadi: x', is_spa: 0, match_by: '' }),
   ];
   const inv = [
     {
-      cluster_name: 'gbocptest1',
+      cluster_name: 'orocptest1',
       namespace_name: 'kart-test',
       route_name: 'cok-route',
       route_address: 'x',
@@ -107,7 +107,7 @@ function sunucuSonucu(hesaplandi: string) {
   ];
   const use = [
     {
-      cluster: 'gbocptest1',
+      cluster: 'orocptest1',
       namespace: 'kart-test',
       app: 'kart-ui',
       scan_date: GUN,
@@ -119,8 +119,8 @@ function sunucuSonucu(hesaplandi: string) {
   ];
   const cfg = [
     ...RP.byEnv.TEST.map(IZ),
-    LOC('GBNGXT33', 'kart-test', 'kart-ui'),
-    LOC('GBNGXT34', 'kart-test', 'kart-ui'),
+    LOC('ORNGXT33', 'kart-test', 'kart-ui'),
+    LOC('ORNGXT34', 'kart-test', 'kart-ui'),
   ];
   const kaynak = {
     prxKolon: 4,
@@ -299,8 +299,8 @@ const elle = (o: Partial<NgSpaApp>): Partial<NgSpaApp> => ({
   ag: 'internet',
   agSay: { passthrough: 1 },
   inventory: 'kayitli',
-  clusters: ['gbocpprod1'],
-  hosts: ['x.apps.fw.garanti.com.tr'],
+  clusters: ['orocpprod1'],
+  hosts: ['x.apps.fw.sirket.invalid'],
   ...o,
 });
 const govdeElle = (apps: Partial<NgSpaApp>[]): NgSpaDiscovery =>
@@ -318,7 +318,7 @@ const govdeElle = (apps: Partial<NgSpaApp>[]): NgSpaDiscovery =>
       proxyKolonu: true,
       tablolar: { cfg: 'var', dir: 'var', trf: 'var', ups: 'var' },
       hostlar: [],
-      taranmayan: { PROD: ['GBRVPAP03', 'GBRVPAP04'] },
+      taranmayan: { PROD: ['ORRVPAP03', 'ORRVPAP04'] },
       cozulemeyen: {},
       hedefCozulemeyen: { PROD: 1 },
       belirsiz: 0,
@@ -370,7 +370,7 @@ describe('NginxSpaDiscovery — yeni kodların etiketleri', () => {
     const kis = satirOf(container, 'kis-ui');
     expect(hucre(kis, 'rpIstek').textContent).toContain('sunucu taranmadı');
     const kisIpucu = hucre(kis, 'rpIstek').firstElementChild?.getAttribute('title') || '';
-    expect(kisIpucu).toContain('taranmayan: GBRVPAP03, GBRVPAP04');
+    expect(kisIpucu).toContain('taranmayan: ORRVPAP03, ORRVPAP04');
     expect(kisIpucu).not.toContain('pencere 7 günden kısa');
     for (const [app, parca] of [
       ['hed-ui', 'arka ucu bulunamayan'],
@@ -438,8 +438,8 @@ describe('NginxSpaDiscovery — satır memo', () => {
 const PROD_ALL = RP.byEnv.PROD;
 const PA = (app: string) =>
   A(app, 'odeme-prod', {
-    cluster: 'gbocpprod1',
-    host: `${app}-odeme-prod.apps.fw.garanti.com.tr`,
+    cluster: 'orocpprod1',
+    host: `${app}-odeme-prod.apps.fw.sirket.invalid`,
   });
 const DIZIN = (host: string, app: string): Satir => ({
   host,
@@ -456,7 +456,7 @@ const HTRF = (host: string, vhost: string, o: Satir = {}): Satir => ({
   vhost,
   service: null,
   env: null,
-  location: `@${vhost}.irp.garantibbva.com.tr`,
+  location: `@${vhost}.irp.ornekbanka.invalid`,
   req_24h: 0,
   req_7d: 0,
   hc_24h: 0,
@@ -474,7 +474,7 @@ function kararSonucu() {
     ...PROD_ALL.map(IZ),
     // TEST uygulaması YALNIZ PROD RP'de (proxy_pass test adresine).
     {
-      host: 'GBRVPP07',
+      host: 'ORRVPP07',
       vhost: 'GLOMO-PROD',
       service: 'GLOMO',
       env: 'PROD',
@@ -483,22 +483,22 @@ function kararSonucu() {
       namespace: null,
       status: 'NON_PROD_TARGET',
       kind: 'proxy',
-      upstream_name: 'disi-ui-kart-test.apps-t.fw.garanti.com.tr',
-      target_url: 'disi-ui-kart-test.apps-t.fw.garanti.com.tr',
+      upstream_name: 'disi-ui-kart-test.apps-t.fw.sirket.invalid',
+      target_url: 'disi-ui-kart-test.apps-t.fw.sirket.invalid',
       scan_date: GUN,
     },
   ];
   const dir = [
-    DIZIN('GBNGXP40', 'yp-var'),
-    DIZIN('GBNGXP41', 'yp-kova'),
-    DIZIN('GBNGXP44', 'yp-err'),
+    DIZIN('ORNGXP40', 'yp-var'),
+    DIZIN('ORNGXP41', 'yp-kova'),
+    DIZIN('ORNGXP44', 'yp-err'),
   ];
   const trf = [
-    HTRF('GBNGXP40', 'yp-var-odeme-prod', { req_7d: 50, req_24h: 5 }),
-    HTRF('GBNGXP41', 'yp-kova-odeme-prod'),
-    { ...HTRF('GBNGXP41', '_'), location: '@_', req_7d: 31 },
+    HTRF('ORNGXP40', 'yp-var-odeme-prod', { req_7d: 50, req_24h: 5 }),
+    HTRF('ORNGXP41', 'yp-kova-odeme-prod'),
+    { ...HTRF('ORNGXP41', '_'), location: '@_', req_7d: 31 },
     {
-      ...HTRF('GBNGXP44', 'yp-err-odeme-prod'),
+      ...HTRF('ORNGXP44', 'yp-err-odeme-prod'),
       req_24h: null,
       req_7d: null,
       hc_24h: null,
@@ -566,7 +566,7 @@ describe('NginxSpaDiscovery — ortam dışı tanım ve yeni PROD host kipi', ()
     fireEvent.click(satirOf(container, 'yp-err'));
     fireEvent.click(satirOf(container, 'yp-var'));
     await waitFor(() =>
-      expect(container.textContent).toContain('yp-var-odeme-prod.irp.garantibbva.com.tr'),
+      expect(container.textContent).toContain('yp-var-odeme-prod.irp.ornekbanka.invalid'),
     );
     expect(container.textContent).not.toContain('undefined');
   });
@@ -582,7 +582,7 @@ describe('NginxSpaDiscovery — ortam dışı tanım ve yeni PROD host kipi', ()
 //   k3-var  kendi TEST tanımı 50 istek                  → 'var', 7g 50 (950 DEĞİL)
 //   k3-olc  kendi TEST tanımı LOADERR                   → 'olculemedi' (900 kurtarmaz)
 //   k3-disi kendi ortamında tanım yok (yalnız PROD RP)  → rp 'tanimsiz', rpIstek 'uygulanamaz'
-const K3_UST = (app: string) => `${app}-kart-test.apps-t.fw.garanti.com.tr`;
+const K3_UST = (app: string) => `${app}-kart-test.apps-t.fw.sirket.invalid`;
 const K3_TRF = (host: string, vhost: string, location: string, o: Satir = {}): Satir => ({
   host,
   vhost,
@@ -598,7 +598,7 @@ const K3_TRF = (host: string, vhost: string, location: string, o: Satir = {}): S
   ...o,
 });
 const K3_PRX = (app: string, loc: string): Satir => ({
-  host: 'GBRVPP07',
+  host: 'ORRVPP07',
   vhost: 'GLOMO-PROD',
   service: 'GLOMO',
   env: 'PROD',
@@ -622,18 +622,18 @@ function k3Sonucu() {
       prxKolon: 4,
       cfg: [
         ...RP.byEnv.TEST.map(IZ),
-        LOC('GBNGXT33', 'kart-test', 'k3-yok'),
-        LOC('GBNGXT33', 'kart-test', 'k3-var'),
-        { ...LOC('GBNGXT33', 'kart-test', 'k3-olc'), vhost: 'OLC-TEST' },
+        LOC('ORNGXT33', 'kart-test', 'k3-yok'),
+        LOC('ORNGXT33', 'kart-test', 'k3-var'),
+        { ...LOC('ORNGXT33', 'kart-test', 'k3-olc'), vhost: 'OLC-TEST' },
         ...apps.map((x) => K3_PRX(x, `/${x}-p/`)),
       ],
       dir: [],
       ups: [],
       trf: [
-        K3_TRF('GBNGXT33', 'KART-TEST', '/k3-yok/'),
-        K3_TRF('GBNGXT33', 'KART-TEST', '/k3-var/', { req_7d: 50, req_24h: 5 }),
-        { ...K3_TRF('GBNGXT33', 'OLC-TEST', ''), location: null, error: 'log dosyası yok' },
-        ...apps.map((x) => K3_TRF('GBRVPP07', 'GLOMO-PROD', `/${x}-p/`, { req_7d: 900 })),
+        K3_TRF('ORNGXT33', 'KART-TEST', '/k3-yok/'),
+        K3_TRF('ORNGXT33', 'KART-TEST', '/k3-var/', { req_7d: 50, req_24h: 5 }),
+        { ...K3_TRF('ORNGXT33', 'OLC-TEST', ''), location: null, error: 'log dosyası yok' },
+        ...apps.map((x) => K3_TRF('ORRVPP07', 'GLOMO-PROD', `/${x}-p/`, { req_7d: 900 })),
       ],
       tablolar: { cfg: 'var', dir: 'var', trf: 'var', ups: 'var' },
     },
@@ -1008,42 +1008,42 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
 
   it('Adresler ve Cluster\'lar: ilk öğe + "+N" çipi; TAMAMI ipucunda ve ayrıntı panelinde; eski cluster işaretli', async () => {
     const hosts = [
-      'cok-ui-odeme-prod.apps.fw.garanti.com.tr',
-      'a2.apps.fw.garanti.com.tr',
-      'a3.garantibbva.com.tr',
+      'cok-ui-odeme-prod.apps.fw.sirket.invalid',
+      'a2.apps.fw.sirket.invalid',
+      'a3.ornekbanka.invalid',
     ];
-    const clusters = ['gbocpprod1', 'gbocpprod2', 'gbocpankprod1'];
+    const clusters = ['orocpprod1', 'orocpprod2', 'orocpankprod1'];
     sahte.govde = () =>
       govdeElle([
-        elle({ application: 'cok-ui', hosts, clusters, staleClusters: ['gbocpprod2'] }),
-        elle({ application: 'tek-ui', hosts: ['tekui.garantibbva.com.tr'] }),
+        elle({ application: 'cok-ui', hosts, clusters, staleClusters: ['orocpprod2'] }),
+        elle({ application: 'tek-ui', hosts: ['tekui.ornekbanka.invalid'] }),
         elle({ application: 'adressiz-ui', hosts: [], routes: ['adressiz-route'] }),
       ]);
     const { container } = render(<NginxSpaDiscovery />);
     await waitFor(() => expect(satirlar(container).length).toBe(3));
     const s = satirOf(container, 'cok-ui');
     const adr = hucre(s, 'adresler');
-    expect(adr.textContent).toBe('cok-ui-odeme-prod.apps.fw.garanti.com.tr+2');
+    expect(adr.textContent).toBe('cok-ui-odeme-prod.apps.fw.sirket.invalid+2');
     // ADRES İKİ PARÇA (doğrulama bulgusu, 2026-10-03): varsayılan route adresinde
     // "<uygulama>-<namespace>" öneki (1. kolonun tekrarı) ayrı ve kısalabilir öğede; ayırt eden
     // alan adı soneki AYRI öğede (index.css: flex-shrink 0, GS28). Eskiden adres sondan
     // kesiliyor, görünen kısım yalnız tekrar eden önek oluyordu.
     expect(adr.querySelector('.ng-adres-on')?.textContent).toBe('cok-ui-odeme-prod');
-    expect(adr.querySelector('.ng-adres-son')?.textContent).toBe('.apps.fw.garanti.com.tr');
+    expect(adr.querySelector('.ng-adres-son')?.textContent).toBe('.apps.fw.sirket.invalid');
     // Kurumsal adreste baş kısım anlamlı: bölünmez.
     const tek = hucre(satirOf(container, 'tek-ui'), 'adresler');
     expect(tek.querySelector('.ng-adres-son')).toBeNull();
-    expect(tek.querySelector('.ng-adres-tek')?.textContent).toBe('tekui.garantibbva.com.tr');
+    expect(tek.querySelector('.ng-adres-tek')?.textContent).toBe('tekui.ornekbanka.invalid');
     const adrIpucu = adr.firstElementChild?.getAttribute('title') || '';
     for (const h of hosts) expect(adrIpucu).toContain(h);
     const cl = hucre(s, 'clusterlar');
-    expect(cl.textContent).toContain('gbocpprod1+2');
-    expect(cl.textContent).not.toContain('gbocpankprod1');
+    expect(cl.textContent).toContain('orocpprod1+2');
+    expect(cl.textContent).not.toContain('orocpankprod1');
     expect(cl.textContent).toContain('1/3 önceki koşudan');
     const clIpucu = cl.firstElementChild?.getAttribute('title') || '';
-    expect(clIpucu).toContain('gbocpprod2 · önceki koşudan');
-    expect(clIpucu).toContain('gbocpankprod1');
-    expect(clIpucu).not.toContain('gbocpprod1 · önceki');
+    expect(clIpucu).toContain('orocpprod2 · önceki koşudan');
+    expect(clIpucu).toContain('orocpankprod1');
+    expect(clIpucu).not.toContain('orocpprod1 · önceki');
     // Tek öğede çip yok; adres yoksa route adı (eski davranış).
     expect(hucre(satirOf(container, 'tek-ui'), 'adresler').querySelector('.ng-cip')).toBeNull();
     expect(hucre(satirOf(container, 'adressiz-ui'), 'adresler').textContent).toBe('adressiz-route');
@@ -1054,7 +1054,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     );
     const ayr = container.querySelector('[data-testid="ayrinti-uygulama"]')?.textContent || '';
     for (const x of [...hosts, ...clusters]) expect(ayr).toContain(x);
-    expect(ayr).toContain('gbocpprod2 önceki koşudan');
+    expect(ayr).toContain('orocpprod2 önceki koşudan');
   });
 
   // TABLO GÜDÜMLÜ (doğrulama bulgusu, 2026-10-03): eski test yalnız istek / rp / envanter
@@ -1368,8 +1368,8 @@ const IKINCI_FIXTURE = (): Partial<NgSpaApp>[] => [
   elle({ application: 'bil-ui', ag: 'bilinmiyor', agSay: { bos: 1 } }),
   elle({
     application: 'eski-ui',
-    clusters: ['gbocpprod1', 'gbocpprod2'],
-    staleClusters: ['gbocpprod2'],
+    clusters: ['orocpprod1', 'orocpprod2'],
+    staleClusters: ['orocpprod2'],
   }),
   elle({ application: 'kap-ui', rp: 'kapsam-disi', rpNeden: 'rp-listesi-yok' }),
 ];
@@ -1588,10 +1588,10 @@ describe('NginxSpaDiscovery — ortam süzgeci (2026-11-11)', () => {
   const cokOrtam = () => {
     const disc = [
       A('kart-ui', 'kart-test'),
-      A('kart-ui', 'kart-prod', { cluster: 'gbocpprod1' }),
-      A('pos-ui', 'pos-prod', { cluster: 'gbocpprod2' }),
-      A('kart-ui', 'kart-qa', { cluster: 'gbocpqa1' }),
-      A('ekim-ui', 'ekim', { cluster: 'gbocptest2' }),
+      A('kart-ui', 'kart-prod', { cluster: 'orocpprod1' }),
+      A('pos-ui', 'pos-prod', { cluster: 'orocpprod2' }),
+      A('kart-ui', 'kart-qa', { cluster: 'orocpqa1' }),
+      A('ekim-ui', 'ekim', { cluster: 'orocptest2' }),
     ];
     const kaynak = {
       prxKolon: 4,
@@ -1633,7 +1633,7 @@ describe('NginxSpaDiscovery — ortam süzgeci (2026-11-11)', () => {
     const ns = container.querySelector('select[title="Namespace"]') as HTMLSelectElement;
     expect([...ns.options].map((o) => o.value)).toEqual(['tumu', 'kart-prod', 'pos-prod']);
     const cl = container.querySelector('select[title="Cluster"]') as HTMLSelectElement;
-    expect([...cl.options].map((o) => o.value)).toEqual(['tumu', 'gbocpprod1', 'gbocpprod2']);
+    expect([...cl.options].map((o) => o.value)).toEqual(['tumu', 'orocpprod1', 'orocpprod2']);
     const spa = container.querySelector('select[title="SPA"]') as HTMLSelectElement;
     expect(spa.textContent).toContain('SPA: evet (2)');
     expect(container.textContent).toContain('2 uygulama');

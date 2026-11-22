@@ -65,7 +65,7 @@ test('SP2: surum eki TEK BASINA SPA yapmaz (genisletme geri alindi)', () => {
 });
 
 test('SP3: etiket kurali - alan adi kuyrugu karari ETKILEMEZ', () => {
-  const APPS = '.apps.fw.garanti.com.tr';
+  const APPS = '.apps.fw.sirket.invalid';
   assert.equal(isSpaLabel('sube-portali-app-v1-kurumsal-prod' + APPS), true);
   assert.equal(isSpaLabel('fund-management-app-emb-v1-fund-management-ch' + APPS), true);
   assert.equal(isSpaLabel('non-core-assets-v0-front-architecture' + APPS), false);

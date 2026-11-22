@@ -42,7 +42,7 @@ yazıldığını merak ediyorsanız önce buraya bakın.
   `was` oraya yazamayabilir ve Portal'ın geri okuması `was`'ın dizinini okuyamaz.
 - Playbook düzeyindeki Ansible become (`dzdo -u was /bin/sh -c ...`) "dzdo içinde sarmalayıcı
   yok" kuralının kullanıcı onaylı istisnasıdır (sözleşme ek S2); yeni become eklenmez.
-- `ansible_pipelining: true`: ayrıcalıksızdan ayrıcalıksıza (`uxmid` -> `was`) geçişte pipelining
+- `ansible_pipelining: true`: ayrıcalıksızdan ayrıcalıksıza (`svcac` -> `was`) geçişte pipelining
   kapalıyken Ansible modül geçici dosyasının iznini setfacl/chown/chmod ile açmaya çalışır; hiçbiri
   tutmazsa "Failed to set permissions on the temporary files" ile DÜŞER (job 3339002'de 130
   sunucuda yaşandı). `was`'a geçen görevi olan her kaynak play pipelining kullanır.
@@ -65,7 +65,7 @@ yazıldığını merak ediyorsanız önce buraya bakın.
   "overall_status": "success | partial | failed",
   "hosts": [
     {
-      "host": "GBJBOT22",
+      "host": "ORJBOT22",
       "status": "ok | unreachable | error",
       "error": "...",
       "files": [
@@ -221,7 +221,7 @@ olsa bile sonuç "ok + 0 dosya" = "dosya yok" çıkıyordu. Artık:
   her host `{status: unreachable, error: "sonuc bildirmedi", files: []}` olarak eklenir; ad AWX
   envanterinde hiç eşleşmediyse mesaj `sonuc bildirmedi (AWX envanterinde eslesmedi)` olur
   (Portal'dan elle girilen ve AWX'te olmayan bir sunucu eskiden sonuçtan sessizce kayboluyordu).
-  Joker karakterli desenler (ör. `GBJBO*`) açılmaz, olduğu gibi listelenir.
+  Joker karakterli desenler (ör. `ORJBO*`) açılmaz, olduğu gibi listelenir.
 - AWX işi kırmızı kalsın (2026-08-28): rescue hostu ayakta tuttuğu için, bu kural olmasaydı hiçbir
   şey çalışmadığı halde iş "successful" görünürdü. Hiçbir host `ok` değilse toplayıcı `fail` eder.
   `set_stats` bu görevden ÖNCE çalıştığı için artifact zaten yayınlanmıştır: Portal düzgün sonucu
@@ -233,9 +233,9 @@ olsa bile sonuç "ok + 0 dosya" = "dosya yok" çıkıyordu. Artık:
 
 ```yaml
 selected_files:
-  - host: GBJBOQ01
+  - host: ORJBOQ01
     path: /vhosting/application/logs/application.log
-  - host: GBJBOQ02 # çoklu host desteklenir
+  - host: ORJBOQ02 # çoklu host desteklenir
     path: /vhosting/application/logs/application.log
 staging_dir: /sw/BMW_PORTAL/logs/legacy
 fallback_dir: /tmp/logx-v2-fallback

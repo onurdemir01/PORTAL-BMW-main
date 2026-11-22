@@ -3,8 +3,8 @@
 // URETIM (2026-09-07): kullanici KENDI actigi LogX isinde, AWX extra_vars'inda
 // baska bir calisanin adini gordu:
 //
-//   "requester_email": "onurdemir3@garantibbva.com.tr",
-//   "requester_name":  "Onur Demir"
+//   "requester_email": "denemekisi3@ornekbanka.invalid",
+//   "requester_name":  "Deneme Kisi"
 //
 // SEBEP LDAP DEGILDI. `runner.launchJobOnServer(serverId, templateId, extraVars,
 // limit, requester = null)` — LogX v2 bu fonksiyonu DORT argumanla cagiriyordu,
@@ -114,7 +114,7 @@ test('RA4 kullanici adi BILINIYORSA ad varsayilana DUSMEZ', () => {
 // YINE DEFAULT_REQUESTER'a, kod deposundaki sabit calisanin adresine dusuyordu.
 // Kullanicinin gordugu satir bir sonraki iste de aynen cikacakti:
 //
-//   "requester_email": "onurdemir3@garantibbva.com.tr"
+//   "requester_email": "denemekisi3@ornekbanka.invalid"
 //
 // Bildirimin gittigi yer E-POSTADIR. Kullanici adini gecirmek, sorunun
 // GORUNEN yarisini duzeltip ISLEYEN yarisini yerinde birakmakti.
@@ -283,7 +283,7 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
 // HTTP istegi YOK (`req` null) ve atif `req?.session?.user` uzerinden yapildigi icin
 // DOGRUDAN DEFAULT_REQUESTER'a dustu:
 //
-//   "requester_name": "Onur Demir", "requester_is_fallback": true
+//   "requester_name": "Deneme Kisi", "requester_is_fallback": true
 //
 // Oysa talep kaydi `username`i tasiyor; kimlik oradan (portal_users / LDAP) cozulmeli.
 // ─────────────────────────────────────────────────────────────────────────────

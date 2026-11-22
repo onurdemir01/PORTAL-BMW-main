@@ -609,6 +609,7 @@ export default function GlomoGecisPlani() {
   const eksikSayisi = apps.filter((a) => a.kaynak === 'portal').length;
   const eslesmeyen = data?.talepEslesmeyen || [];
   const gocHatasi = admin && data?.goc && !data.goc.uygulandi ? data.goc : null;
+  const seedHatasi = admin ? data?.seed?.hata || null : null;
 
   return (
     <div className="space-y-4">
@@ -674,6 +675,17 @@ export default function GlomoGecisPlani() {
             </>
           ) : null}{' '}
           Sayfa her yüklendiğinde yeniden denenir; ayrıntı sunucu logunda.
+        </div>
+      )}
+      {data?.ok && seedHatasi && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}
+          role="alert"
+        >
+          <b>Excel planı okunamadı:</b> <span className="font-mono text-[11px]">{seedHatasi}</span>.
+          Tablodaki mevcut satırlar gösteriliyor; yeni kurulumda plan boş başlar (kurum ayarı{' '}
+          <code>spaRapor.glomoGecis</code>).
         </div>
       )}
       {data?.ok && admin && eslesmeyen.length > 0 && (

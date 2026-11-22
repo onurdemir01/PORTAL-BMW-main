@@ -366,14 +366,14 @@ test('RA2 workflow: once kayit acar, ayni workflow sonra ayni kayda baglanir ve 
       502: {
         workflowJobId: 7000,
         started: '2026-11-17T09:30:00Z',
-        artifacts: { reboot_check_result: SONRA_SONUC(['GBNGXT13']) },
+        artifacts: { reboot_check_result: SONRA_SONUC(['ORNGXT13']) },
       },
       501: {
         workflowJobId: 7000,
         started: '2026-11-17T08:00:00Z',
         artifacts: {
-          reboot_check_result: ONCE_SONUC(['GBNGXT13']),
-          rc_once: { GBNGXT13: BOOT('GBNGXT13') },
+          reboot_check_result: ONCE_SONUC(['ORNGXT13']),
+          rc_once: { ORNGXT13: BOOT('ORNGXT13') },
         },
       },
     },
@@ -389,14 +389,14 @@ test('RA2 workflow: once kayit acar, ayni workflow sonra ayni kayda baglanir ve 
   assert.deepEqual([k.once_job_id, k.sonra_job_id], [501, 502]);
   assert.match(k.created_by, /^awx:unix-ekip$/);
   assert.match(k.notes, /AWX'ten alındı: iş #501, workflow #7000, başlatan unix-ekip/);
-  assert.deepEqual(JSON.parse(k.hosts_json), ['GBNGXT13']);
+  assert.deepEqual(JSON.parse(k.hosts_json), ['ORNGXT13']);
   assert.equal(k.status, 'tamam', 'Portal degerlendirmesi: fark yok, olculdu -> tamam');
   const ozet = JSON.parse(k.ozet_json);
   assert.equal(ozet.once.alinan, 1);
   assert.equal(ozet.sonra.sorunsuz, 1);
   // Alinan kayit Portal'in rc_once girdisini kurabilir (Portal'dan sonra da calisir).
   assert.deepEqual(rc.onceGirdisi(JSON.parse(k.once_json).sunucular), {
-    GBNGXT13: BOOT('GBNGXT13'),
+    ORNGXT13: BOOT('ORNGXT13'),
   });
 });
 
@@ -536,10 +536,10 @@ test("RA5 ayni is iki kez alinmaz; yazilan kolonlar DDL/ALTER'de", async () => {
 });
 
 test('RA6 kucuk harfli hedef: yazim korunur, once_hazir', async () => {
-  awxKur({ 950: { artifacts: { reboot_check_result: ONCE_SONUC(['gbngxt13']) } } });
+  awxKur({ 950: { artifacts: { reboot_check_result: ONCE_SONUC(['orngxt13']) } } });
   await awx.awxIsleriniAl({ zorla: true });
   const k = db.satirlar[0];
-  assert.deepEqual(JSON.parse(k.hosts_json), ['gbngxt13']);
+  assert.deepEqual(JSON.parse(k.hosts_json), ['orngxt13']);
   assert.equal(k.status, 'once_hazir');
 });
 

@@ -85,7 +85,7 @@ export interface CryptoArchive {
   /** indirilmiş chart paketi (harmonize-1.34.4.tgz); boş = dizinde .tgz yok */
   chart: string;
   /** values dosyaları — yalnızca ad/boyut/tarih; İÇERİK TUTULMAZ (parola barındırabilir).
-   *  `file` cluster alt dizinini de taşır: "cldev1/garanti_values.yaml". */
+   *  `file` cluster alt dizinini de taşır: "cldev1/ornek_values.yaml". */
   values: { file: string; size: number; mtime: string }[];
 }
 

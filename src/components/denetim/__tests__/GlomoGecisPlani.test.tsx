@@ -488,6 +488,22 @@ describe('GlomoGecisPlani', () => {
     expect(screen.queryByText(/Set 7 taşıması uygulanamadı/)).not.toBeInTheDocument();
   });
 
+  it('Excel plani kurum ayarindan okunamadiysa yalniz Admin uyari gorur (sebep metniyle)', async () => {
+    const p = plan(true);
+    p.seed = { hata: 'kurum ayarinda spaRapor.glomoGecis.seed yok' };
+    mockGecis.mockResolvedValue(p);
+    const { unmount } = render(<GlomoGecisPlani />);
+    const uyari = await screen.findByText(/Excel planı okunamadı/);
+    expect(uyari.closest('[role="alert"]')).toHaveTextContent('spaRapor.glomoGecis.seed yok');
+    unmount();
+    const u = plan(false);
+    u.seed = { hata: null };
+    mockGecis.mockResolvedValue(u);
+    render(<GlomoGecisPlani />);
+    await screen.findByText('yedi-app');
+    expect(screen.queryByText(/Excel planı okunamadı/)).not.toBeInTheDocument();
+  });
+
   it('ekip kaynağı: namespace yedeği "(namespace sahibi)" ile işaretli, uygulama sahibi işaretsiz', async () => {
     const p = plan(false);
     p.apps = [

@@ -553,8 +553,9 @@ describe('Admin > Sistem', () => {
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://*.GOV.TR:8443')).toBe('frameSonek');
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'http://*.tr')).toBe('frameSonek');
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', "'self',https://*.co.uk")).toBe('frameSonek');
-    expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://*.garanti.com.tr')).toBeNull();
-    expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://portal.com.tr')).toBeNull();
+    expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://*.sirket.invalid')).toBeNull();
+    // Kamu soneki altindaki SOMUT ad (joker degil) tehlikeli sayilmaz; .gov.tr ayni iki etiket kuralina girer.
+    expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://portal.gov.tr')).toBeNull();
     // Ikisi birden: daha genis olan (her site) soylenir.
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://*.com https://*')).toBe('frameYildiz');
     const g = onayGerekce(cerceve, cv({ value: "'self'" }), "'self' https://*.com.tr");

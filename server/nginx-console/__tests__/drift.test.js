@@ -10,11 +10,11 @@ const path = require('node:path');
 const { computeDrift, expectedLocal } = require('../drift.cjs');
 
 const inv = [
-  { host: 'GBRVPP07', env: 'prod', services: ['GLOMO'] },
-  { host: 'GBRVPP08', env: 'prod', services: ['GLOMO'] },
-  { host: 'GBRVPAP07', env: 'prod', services: ['GLOMO'] },
-  { host: 'GBRVPT01', env: 'test', services: ['GLOMO'] },
-  { host: 'GBNGXP40', env: 'prod', services: ['SPA', 'GLOMO'] },
+  { host: 'ORRVPP07', env: 'prod', services: ['GLOMO'] },
+  { host: 'ORRVPP08', env: 'prod', services: ['GLOMO'] },
+  { host: 'ORRVPAP07', env: 'prod', services: ['GLOMO'] },
+  { host: 'ORRVPT01', env: 'test', services: ['GLOMO'] },
+  { host: 'ORNGXP40', env: 'prod', services: ['SPA', 'GLOMO'] },
 ];
 const tree = (files) => ({
   tree: Object.entries(files).map(([p, sha]) => ({
@@ -26,28 +26,28 @@ const tree = (files) => ({
 });
 const dumps = new Map([
   [
-    'GBRVPP07',
+    'ORRVPP07',
     tree({
       '/usr/nginx/conf.d/GLOMO-PROD.conf': 'A',
       '/usr/nginx/conf/bmw_defaults.conf': 'D',
       '/usr/nginx/conf.d/only07.conf': 'X',
       '/usr/nginx/conf.d/GLOMO-PROD.conf_945': 'B',
-      '/usr/nginx/conf.d/gbrvpp07-local.conf': 'L1',
+      '/usr/nginx/conf.d/orrvpp07-local.conf': 'L1',
     }),
   ],
   [
-    'GBRVPP08',
+    'ORRVPP08',
     tree({
       '/usr/nginx/conf.d/GLOMO-PROD.conf': 'A',
       '/usr/nginx/conf/bmw_defaults.conf': 'D2',
-      '/usr/nginx/conf.d/gbrvpp08-local.conf': 'L2',
+      '/usr/nginx/conf.d/orrvpp08-local.conf': 'L2',
     }),
   ],
   [
-    'GBRVPAP07',
+    'ORRVPAP07',
     tree({ '/usr/nginx/conf.d/GLOMO-PROD.conf': 'A2', '/usr/nginx/conf/bmw_defaults.conf': 'D' }),
   ],
-  ['GBNGXP40', tree({ '/usr/nginx/conf.d/SPA.conf': 'S' })],
+  ['ORNGXP40', tree({ '/usr/nginx/conf.d/SPA.conf': 'S' })],
 ]);
 
 test('DR1 grup = servis+ortam; tek dokumlu grup karsilastirilmaz; cok servisli host her grupta', () => {
@@ -55,11 +55,11 @@ test('DR1 grup = servis+ortam; tek dokumlu grup karsilastirilmaz; cok servisli h
   const keys = r.groups.map((g) => g.key).sort();
   assert.deepEqual(keys, ['GLOMO|prod', 'GLOMO|test', 'SPA|prod']);
   const glomo = r.groups.find((g) => g.key === 'GLOMO|prod');
-  assert.deepEqual(glomo.hosts, ['GBNGXP40', 'GBRVPAP07', 'GBRVPP07', 'GBRVPP08']);
-  assert.deepEqual(glomo.dumped, ['GBNGXP40', 'GBRVPAP07', 'GBRVPP07', 'GBRVPP08']);
+  assert.deepEqual(glomo.hosts, ['ORNGXP40', 'ORRVPAP07', 'ORRVPP07', 'ORRVPP08']);
+  assert.deepEqual(glomo.dumped, ['ORNGXP40', 'ORRVPAP07', 'ORRVPP07', 'ORRVPP08']);
   const t = r.groups.find((g) => g.key === 'GLOMO|test');
   assert.equal(t.dumped.length, 0);
-  assert.deepEqual(t.dumpMissing, ['GBRVPT01']);
+  assert.deepEqual(t.dumpMissing, ['ORRVPT01']);
   assert.equal(t.files.length, 0);
   const spa = r.groups.find((g) => g.key === 'SPA|prod');
   assert.equal(spa.files.length, 0, 'tek dokumlu grup karsilastirilmaz');
@@ -67,7 +67,7 @@ test('DR1 grup = servis+ortam; tek dokumlu grup karsilastirilmaz; cok servisli h
 
 test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar (yalniz *.conf)', () => {
   const r = computeDrift(
-    inv.filter((h) => h.host.startsWith('GBRVP')),
+    inv.filter((h) => /^[A-Z]{2}RVP/.test(h.host)),
     dumps,
   );
   const g = r.groups.find((x) => x.key === 'GLOMO|prod');
@@ -75,14 +75,14 @@ test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar (ya
   const main = by['/usr/nginx/conf.d/GLOMO-PROD.conf'];
   assert.equal(main.status, 'differ');
   assert.equal(main.variants.length, 2);
-  assert.deepEqual(main.variants[0].hosts, ['GBRVPP07', 'GBRVPP08'], 'cogunluk (A) ustte');
-  assert.deepEqual(main.variants[1].hosts, ['GBRVPAP07']);
+  assert.deepEqual(main.variants[0].hosts, ['ORRVPP07', 'ORRVPP08'], 'cogunluk (A) ustte');
+  assert.deepEqual(main.variants[1].hosts, ['ORRVPAP07']);
   assert.equal(main.majority, 'A');
   const defaults = by['/usr/nginx/conf/bmw_defaults.conf'];
   assert.equal(defaults.status, 'differ');
   assert.equal(defaults.variants[0].sha, 'D');
   assert.equal(by['/usr/nginx/conf.d/only07.conf'].status, 'missing');
-  assert.deepEqual(by['/usr/nginx/conf.d/only07.conf'].missing, ['GBRVPAP07', 'GBRVPP08']);
+  assert.deepEqual(by['/usr/nginx/conf.d/only07.conf'].missing, ['ORRVPAP07', 'ORRVPP08']);
   // 2026-09-22 (kullanici): yedek dosyalar (<conf>_<job>) HIC listelenmez - *.conf disi
   assert.equal(
     by['/usr/nginx/conf.d/GLOMO-PROD.conf_945'],
@@ -90,7 +90,7 @@ test('DR2 farkli / eksik / sunucuya ozel siniflari; cogunluk ustte; sayaclar (ya
     'yedek dosya (.conf degil) listelenmez',
   );
   assert.equal(
-    by['/usr/nginx/conf.d/gbrvpp07-local.conf'].status,
+    by['/usr/nginx/conf.d/orrvpp07-local.conf'].status,
     'local',
     'yolunda host adi -> sunucuya ozel',
   );

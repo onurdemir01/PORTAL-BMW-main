@@ -1,6 +1,6 @@
 // src/api/nginxMigrationApi.ts — "Production Taşımaları > Tanım oluştur".
 //
-// Eski GBRVP* sunucusundaki bir proxy_pass location'ını yeni prod SPA sunucularında SPA
+// Eski ORRVP* sunucusundaki bir proxy_pass location'ını yeni prod SPA sunucularında SPA
 // tanımı olarak oluşturan AWX job'ını tetikler. Playbook:
 //   gar_bmt_ansible_scripts/bmw_nginx/nginx_ops/nginx_prod_migration.yml
 import { safeJson } from './http';

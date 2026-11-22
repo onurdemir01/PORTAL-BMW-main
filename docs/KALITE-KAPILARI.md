@@ -37,6 +37,27 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K14 | Kurumsal iş provası | `npm run kurumsal:prova` | CI (`kurumsal` işi), yerelde aynı komut | temiz ağaçta groovy'nin komutları aynen geçer, paket eksiksiz, süre ≤ 10 dk |
 | K15 | Kurumsal Sonar taklidi | `node scripts/sonar-kapi.cjs --ci --kurumsal` | CI (`sonar` işi) | K13 koşulları + inceleme bekleyen 0 hotspot (inceleme kaydı uygulanmaz); kurumun sınıflandırması ve kural profiliyle ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json)) ayrı projede |
 | K16 | `main` geçmişi | `node scripts/gecmis-denetim.cjs` | commit mesajı (konu satırı), CI (`main` push aralığı, PR) | `main`'e giden her first-parent commit birleşmiş bir PR'dan gelir (`github-actions[bot]` muaf); konu satırı 8–120 karakter |
+| K17 | Kurum iç adı | `node scripts/ic-ad-bekcisi.cjs` | commit öncesi (eklenen satırlar), commit mesajı, push öncesi ve CI (tüm ağaç + aralıktaki commit mesajları) | 0 kurum sunucu adı ve ad kalıbı, 0 `.com.tr` alan adı (kaçışlı biçim dahil), 0 kurum adı biçimi, 0 bilinen kurum iç ağı adresi; bulunan değer yazdırılmaz |
+
+**Kurum iç adı (K17, 2026-11-20).** Repo public: kurumun sunucu adları ve alan adları koda, teste,
+belgeye ya da commit mesajına yazılmaz. Kodun bildiği kurum listeleri kurum ayarındadır
+(`server/util/kurum-ayari.cjs`, `KURUM_AYAR_DOSYASI`; biçimi `deploy/kurum-ayari.ornek.json`). Playbook
+değerleri AWX template Variables'tadır ([AWX-KOPYALAMA-HARITASI.md](AWX-KOPYALAMA-HARITASI.md) "Kurum
+değerleri"). Örnek ve testler kurgusal ad kullanır: önek `OR`, alan adı `*.invalid`. Desenler geneldir;
+gerçek ad listesi repoya girmez. Kurallar:
+
+- **Sunucu adı:** kurum önekli ad ve ad kalıbı (`<önek>RVP*`, kısa host etiketi). Harf tutarlı; karışık
+  harfli base64 yanlış pozitif vermez.
+- **Alan adı:** `.com.tr` ile biten alan adı, regex içindeki kaçışlı biçimi de.
+- **Kurum adı (2026-11-21):** ad yazılmaz, sözcüklerin sha256 özeti karşılaştırılır. Yasak olanlar:
+  ayırt edici sözcükler, bileşik kimlikte marka parçası (`<marka>_values`), "<marka> <unvan>" ikilisi.
+  Marka sözcüğü tek başına sıradan bir Türkçe sözcük olduğu için serbesttir.
+- **İç ağ (2026-11-21):** bilinen gerçek ağların özeti (10.x için /16, 192.168.x için /24). Testler özel ağ
+  anlamı gerektirdiği için kurgusal 10.x adresleri serbesttir.
+
+Özetlerin kaynağı git dışında (`.ai-workspace/ic-ad/`). Bulgu yalnız `dosya:satır` ve türüyle yazılır;
+değer yazdırılmaz, çünkü CI günlüğü de public. Testi `server/__tests__/ic-ad-bekcisi.test.js`; mantık
+kurgusal özetlerle sınanır, gerçek listeler yalnız biçimce.
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 
@@ -121,15 +142,15 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 
 `npm run kur` kurar; `--no-verify` ile atlamak **yasaktır**. Atlansa bile CI aynı kapıları yeniden koşturur ve `main` koruması kırmızı PR'ı birleştirtmez.
 
-- `pre-commit`: değişen dosyalarda ESLint (0 uyarı), biçim çırığı, sır taraması (gitleaks kuruluysa o da).
-- `commit-msg`: konu satırı 8–120 karakter (kuralın tek kaynağı `scripts/gecmis-denetim.cjs`; CI aynı kuralı K16'da `main`'e giden commit'lere uygular); mesajda sır yok. Türkçe serbest biçim geçerlidir.
+- `pre-commit`: değişen dosyalarda ESLint (0 uyarı), biçim çırığı, sır taraması (gitleaks kuruluysa o da), kurum iç adı (K17, eklenen satırlar).
+- `commit-msg`: konu satırı 8–120 karakter (kuralın tek kaynağı `scripts/gecmis-denetim.cjs`; CI aynı kuralı K16'da `main`'e giden commit'lere uygular); mesajda sır ve kurum iç adı yok (K17). Türkçe serbest biçim geçerlidir.
 - `pre-push`: `npm run kapi:hizli`.
 
 ## CI
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) her PR'da ve `main`'e her push'ta üç iş koşturur:
 
-- `verify`: K0–K12 ve K16. K16 commit → PR ilişkisini GitHub API'den okur; iş bunun için yalnız `pull-requests: read` izni alır. PR olayında yalnız PR commit'lerinin konu satırına bakar. Zorla push'ta (önceki uç yeni geçmişin atası değil) yalnız son commit denetlenir ve bu yazılır. İhlal push'u geri almaz; CI'ı kırmızı yapar ve iş özetine yazar (`main` koruması ayrı, aşağıda).
+- `verify`: K0–K12, K16 ve K17. K16 commit → PR ilişkisini GitHub API'den okur; iş bunun için yalnız `pull-requests: read` izni alır. PR olayında yalnız PR commit'lerinin konu satırına bakar. Zorla push'ta (önceki uç yeni geçmişin atası değil) yalnız son commit denetlenir ve bu yazılır. İhlal push'u geri almaz; CI'ı kırmızı yapar ve iş özetine yazar (`main` koruması ayrı, aşağıda).
 - `kurumsal`: K14. Node sürümü groovy'den okunur; aşağıdaki "Kurumsal Jenkins" bölümüne bakın.
 - `sonar`: K13 ve K15. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir. K15 aynı kapıyla ikinci bir tarama yapar: kurumun sınıflandırmasıyla, ayrı projede (aşağıda "Kurumsal Sonar"). `verify` ve `kurumsal`'ı bekler; zorunlu kontrol olduğu için prova da fiilen zorunludur.
 

@@ -18,7 +18,7 @@
 'use strict';
 
 const express = require('express');
-const { PLATFORM_CLUSTERS, ENV_CLUSTERS, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
+const { platformKumeleri, ortamKumeleri, ENVS, envOfNamespace } = require('./ocp-platforms.cjs');
 const { tierOfHost, envOfHost } = require('./nginx-hosts.cjs');
 const { indexIntranetRows, coverageForEnv } = require('./nginx-intranet.cjs');
 const intranetKapsam = require('./intranet-kapsam.cjs');
@@ -38,7 +38,7 @@ const {
   loadMigration,
   resolveTarget,
   buildResolverMaps,
-  MIGRATION_GROUPS,
+  migrationGroups,
   spaTrafikAnahtari,
   SPA_TRAFIK_SEMA_SQL,
   spaTrafikSorgusu,
@@ -249,7 +249,7 @@ function initDenetim(app) {
       const trfIdx = await trfIdxP;
 
       // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
-      // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
+      // eski ORRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
       // spaFilter ile disarida kaliyor ve PROD sutunu bos kaliyordu. Proxy satirlari
       // Production Tasimalari'ndaki cozumle (-prod eki dahil) uygulamaya cevrilip
       // status='PROXY' SPA satiri gibi haritaya katilir. namespace cozumden gelir; hucre
@@ -258,7 +258,7 @@ function initDenetim(app) {
       if (await hasProxyColumns()) {
         try {
           // YALNIZ ARK (2026-11-11): proxy hedefi ARK disi bir route'a cozulmesin.
-          const arkC = PLATFORM_CLUSTERS.ark;
+          const arkC = platformKumeleri().ark || [];
           const arkYer = arkC.map((_, i) => `@a${i}`).join(', ');
           const arkPar = () =>
             arkC.map((c, i) => ({ name: `a${i}`, type: sql.NVarChar(200), value: c }));
@@ -482,9 +482,9 @@ function initDenetim(app) {
       // dizin taramasi (hysdeploy / applications / application-confs) HER sunucuda kosar ve
       // dbo.Nginx_Intranet_Audit'e yazilir (ad tarihsel). Matristeki her hucrenin sunuculari
       // icin (namespace, uygulama) bayraklari eklenir. Tablo yoksa hucreler bayraksiz kalir.
-      // Eski GBRVP* hostu -> tasima grubunun yeni sunuculari (PROD proxy hucreleri bunlardan okur)
+      // Eski ORRVP* hostu -> tasima grubunun yeni sunuculari (PROD proxy hucreleri bunlardan okur)
       const newHostsOfOld = new Map();
-      for (const g of MIGRATION_GROUPS)
+      for (const g of migrationGroups())
         for (const oh of g.oldHosts) newHostsOfOld.set(oh, g.newHosts);
       const dirHostsOfCell = (cell) => {
         if (cell.status !== 'PROXY') return cell.hosts;
@@ -501,7 +501,7 @@ function initDenetim(app) {
                 .trim()
                 .toUpperCase(),
             ),
-            ...MIGRATION_GROUPS.flatMap((g) => g.newHosts),
+            ...migrationGroups().flatMap((g) => g.newHosts),
           ].filter(Boolean),
         ),
       ];
@@ -519,7 +519,7 @@ function initDenetim(app) {
             spaHosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
           );
           dirsReady = true;
-          const newProdHosts = new Set(MIGRATION_GROUPS.flatMap((g) => g.newHosts));
+          const newProdHosts = new Set(migrationGroups().flatMap((g) => g.newHosts));
           const onNewProd = new Map(); // ns/app -> {hosts:Set, confName}
           // TARANAN sunucular: son taramada EN AZ BIR satiri olan host. Kullanici (2026-09-21):
           // "neden taranmadi gozukuyor?" — tablo yalniz izi olan (hysdeploy/app dizini/conf ya da
@@ -603,7 +603,8 @@ function initDenetim(app) {
       // belirt"): tasima grubunun ESKI sunucularinin hangilerinde proxy tanimi VAR, hangileri
       // EKSIK. Grup, tanimin goruldugu ilk eski sunucudan bulunur.
       const oldGroupOf = new Map();
-      for (const g of MIGRATION_GROUPS) for (const oh of g.oldHosts) oldGroupOf.set(oh, g.oldHosts);
+      for (const g of migrationGroups())
+        for (const oh of g.oldHosts) oldGroupOf.set(oh, g.oldHosts);
       for (const r of rows) {
         for (const cell of Object.values(r.envs)) {
           if (cell.status !== 'PROXY') continue;
@@ -781,7 +782,7 @@ function initDenetim(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
       const platform = 'ark';
-      const clusters = PLATFORM_CLUSTERS[platform];
+      const clusters = platformKumeleri()[platform];
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
       const r = await query(
         `SELECT cluster_name, namespace_name, route_name, route_address, resolved_ip, termination_type
@@ -820,7 +821,7 @@ function initDenetim(app) {
       const { routesOfCluster } = require('./route-stats.cjs');
       // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
       const platform = 'ark';
-      const clusters = PLATFORM_CLUSTERS[platform];
+      const clusters = platformKumeleri()[platform];
       const cluster = String(req.query.cluster || '').trim();
       const esles = clusters.find((c) => String(c).toLowerCase() === cluster.toLowerCase());
       if (!esles)
@@ -858,7 +859,7 @@ function initDenetim(app) {
       const { routesOfIp } = require('./route-stats.cjs');
       // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
       const platform = 'ark';
-      const clusters = PLATFORM_CLUSTERS[platform];
+      const clusters = platformKumeleri()[platform];
       const ip = String(req.query.ip || '').trim();
       if (!/^[0-9a-f.:]{3,45}$/i.test(ip))
         return res.status(400).json({ ok: false, message: 'ip gecersiz' });
@@ -896,7 +897,7 @@ function initDenetim(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
       const platform = 'ark';
-      const clusters = PLATFORM_CLUSTERS[platform];
+      const clusters = platformKumeleri()[platform];
 
       const dateRes = await query(
         `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
@@ -944,7 +945,7 @@ function initDenetim(app) {
              FROM dbo.Nginx_Intranet_Audit
             WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)`,
         ).catch(() => ({ recordset: [], _missing: true })),
-        // PROD: eski GBRVP* vhost'lari SPA include'u DEGIL proxy_pass kullanir; bu satirlar
+        // PROD: eski ORRVP* vhost'lari SPA include'u DEGIL proxy_pass kullanir; bu satirlar
         // spaFilter ile disarida kaliyordu ve PROD kapsami "olculemedi" gorunuyordu
         // (kullanici bildirimi, 2026-09-14). Hedefler Production Tasimalari'ndaki cozumle
         // (-prod eki dahil) uygulamaya cevrilir ve PROD nginx kumesine katilir.
@@ -987,8 +988,8 @@ function initDenetim(app) {
       // ASIL ESLESME ADRESTEN yapilir. route_name ile uygulama adinin ayni oldugu
       // GARANTI DEGIL (biri route'un, digeri deployment/rollout/dc'nin adi), ama route
       // ADRESI kurumsal kalibi tasiyor:
-      //   dev/test/qa : <Application>-<Namespace>.apps-t.fw.garanti.com.tr
-      //   prod        : <Application>-<Namespace>.apps.fw.garanti.com.tr
+      //   dev/test/qa : <Application>-<Namespace>.apps-t.fw.sirket.invalid
+      //   prod        : <Application>-<Namespace>.apps.fw.sirket.invalid
       // Namespace'i satirdan ZATEN bildigimiz icin ilk etiketin sonundaki "-<namespace>"
       // TAM OLARAK kesilir; "uygulama adi nerede biter, namespace nerede baslar"
       // belirsizligi hic dogmaz. Uygulama adinin icinde namespace'e benzeyen bir metin
@@ -1184,7 +1185,7 @@ function initDenetim(app) {
         ngx.get(e).set(app.toLowerCase(), app);
         addSvc(e, app.toLowerCase(), r.service, covTanim(r));
       }
-      // PROD proxy satirlari -> (ns, app) -> PROD nginx kumesi (internet katmani; GBRVP*
+      // PROD proxy satirlari -> (ns, app) -> PROD nginx kumesi (internet katmani; ORRVP*
       // hostlari internettir). Cozulemeyenler sayilir, sessizce dusmez.
       const proxyStats = { rows: 0, resolved: 0, spa: 0, unresolved: 0 };
       {
@@ -1857,7 +1858,7 @@ function initDenetim(app) {
     }
   });
 
-  // ── 1c) PROD TASIMA: eski GBRVP* proxy_pass hedefleri yeni GBNGXP4x/5x'te dizin mi ────
+  // ── 1c) PROD TASIMA: eski ORRVP* proxy_pass hedefleri yeni GBNGXP4x/5x'te dizin mi ────
   // Veri yukleme nginx-migration.cjs/loadMigration'da: ayni yukleyici "Tanim olustur"
   // dugmesinin anti-tamper kontrolunde de kullanilir (server/nginx-migration/index.cjs).
   // Belirtec: nginx_audit belirteci + Nginx_Config_Audit / Intranet / Spa_Traffic MAX(scan_date).
@@ -1894,11 +1895,11 @@ function initDenetim(app) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const platform = String(req.query.platform || 'ark').trim();
-      const clusters = PLATFORM_CLUSTERS[platform];
+      const clusters = platformKumeleri()[platform];
       if (!clusters) {
         return res.status(400).json({
           ok: false,
-          message: `Bilinmeyen platform: ${platform}. Geçerli: ${Object.keys(PLATFORM_CLUSTERS).join(', ')}`,
+          message: `Bilinmeyen platform: ${platform}. Geçerli: ${Object.keys(platformKumeleri()).join(', ')}`,
         });
       }
       const inputs = clusters.map((c, i) => ({ name: `c${i}`, type: sql.NVarChar(100), value: c }));
@@ -1908,10 +1909,10 @@ function initDenetim(app) {
       res.json({
         ok: true,
         platform,
-        platforms: Object.keys(PLATFORM_CLUSTERS),
+        platforms: Object.keys(platformKumeleri()),
         clusters,
         envs,
-        ...kapsamKur((result.recordset || []).map(kayit), ENV_CLUSTERS[platform], { envs }),
+        ...kapsamKur((result.recordset || []).map(kayit), ortamKumeleri()[platform], { envs }),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || hata });
@@ -2478,12 +2479,13 @@ function initDenetim(app) {
   // Ortak hesap (Init Script + Deployment Scripts, 2026-09-18): raw = [{host, <key>: sha}],
   // scripts = [{key,label,perServer?}] -> script bazli surum dagilimi + sunucu bazli sapma.
   /**
-   * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): GBEVM* ve GBPRV* filo
+   * GENEL ENVANTER DISI SUNUCULAR (kullanici, 2026-09-24): OREVM* ve ORPRV* filo
    * cogunlugunu bozuyor. Cogunluk YALNIZCA genel envanterden hesaplanir; bu sunucular
    * ayni cogunluga gore degerlendirilip AYRI raporlanir. Server Hub'da da ayni ayrim var
    * (server/server-hub/assess.cjs SPECIAL_HOST_RE) - iki ekran ayni olcutu kullansin.
    */
-  const SPECIAL_HOST_RE = /^(GBEVM|GBPRV)/i;
+  // Genel envanter disi sunucu sinifi: iki harfli kurum oneki + EVM / PRV (onek koda yazilmaz, K17).
+  const SPECIAL_HOST_RE = /^[A-Z]{2}(?:EVM|PRV)/i;
   const isSpecialHost = (h) => SPECIAL_HOST_RE.test(String(h || '').trim());
 
   /*
@@ -2912,7 +2914,7 @@ function initDenetim(app) {
         if (r.scan_date && (!scanDate || r.scan_date > scanDate)) scanDate = r.scan_date;
       }
       const raw = [...byHost.values()].sort((a, b) => a.host.localeCompare(b.host));
-      // Init ile AYNI ayrim (kullanici, 2026-09-24): cogunluk genel envanterden, GBEVM*/GBPRV*
+      // Init ile AYNI ayrim (kullanici, 2026-09-24): cogunluk genel envanterden, OREVM*/ORPRV*
       // ayni cogunluga gore olculup ayri blokta.
       const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
       const ozelRaw = raw.filter((r) => isSpecialHost(r.host));
@@ -3021,7 +3023,7 @@ function initDenetim(app) {
    *     satira bilgi notu (kokFarki: 'icerik' | 'bicim' | 'durum') - sayimi degistirmez;
    *   - TEK referans: ekip surumu, yoksa birlesik cogunluk; ayrinti tablosu yoksa (eski veri)
    *     de birlesik hesap yapilir (ham hash + cogunluk). "Yalniz bicim farki" sapma degildir;
-   *   - GBEVM* / GBPRV* referansa katilmaz, ayni referansla olculup `special`ta doner.
+   *   - OREVM* / ORPRV* referansa katilmaz, ayni referansla olculup `special`ta doner.
    * Ayrinti/referans sorgusu duserse bu bolum de eski yoldan (ham hash + cogunluk) cikar ve
    * `error` dolar; genis tablo okunamazsa bolum bos + `error`. Uc yine 200 doner.
    */
@@ -3157,7 +3159,7 @@ function initDenetim(app) {
       if (!t.cols.has(sc.key)) continue;
       for (const r of t.rows) {
         const host = String(r.host).trim();
-        // Anahtar buyuk harfle (B7): GBXX ile gbxx ayni sunucudur, tek satir.
+        // Anahtar buyuk harfle (B7): ORXX ile gbxx ayni sunucudur, tek satir.
         const anahtar = host.toUpperCase();
         const detail = src.details.get(`${t.root}|${anahtar}`)?.[sc.key] || null;
         const raw = r[sc.key] ? String(r[sc.key]).trim() : '';
@@ -3400,7 +3402,7 @@ function initDenetim(app) {
       );
       const opts = { details: ek.details, teamRefs: ek.teamRefs };
 
-      // Referans GENEL envanterden; GBEVM*/GBPRV* ayni referansa gore olculup ayri raporlanir.
+      // Referans GENEL envanterden; OREVM*/ORPRV* ayni referansa gore olculup ayri raporlanir.
       const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
       const ozelRaw = raw.filter((r) => isSpecialHost(r.host));
       const { scriptStats, hostRows } = scriptDeviationReport(genelRaw, scripts, undefined, opts);

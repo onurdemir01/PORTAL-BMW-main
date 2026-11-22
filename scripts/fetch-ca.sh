@@ -4,12 +4,12 @@
 #
 # KULLANIM (kurumsal agda):
 #   bash scripts/fetch-ca.sh api.openai.com
-#   bash scripts/fetch-ca.sh dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr 443 server/certs/mcp
+#   bash scripts/fetch-ca.sh dynatrace-mcp.apps-3rd-t.fw.sirket.invalid 443 server/certs/mcp
 #   # Hedefe SADECE bir proxy uzerinden ulasiliyorsa (ör. SMART_PROXY_URL gibi
 #   # servise-ozel proxy'ler) 4. argumana proxy host:port verin — openssl CONNECT
 #   # tuneli kurar, uygulamanin gerctekte gordugu AYNI zinciri (proxy SSL inspection
 #   # yapiyorsa onun enjekte ettigi sertifika dahil) yakalamis olursunuz:
-#   bash scripts/fetch-ca.sh gbca.fw.garanti.com.tr 8443 server/certs/smart tekprxv2.fw.garanti.com.tr:80
+#   bash scripts/fetch-ca.sh orca.fw.sirket.invalid 8443 server/certs/smart tekprxv2.fw.sirket.invalid:80
 #
 # CIKTILAR (<outdir> altinda):
 #   certificate-N.pem      → zincirdeki her sertifika (0 = leaf)

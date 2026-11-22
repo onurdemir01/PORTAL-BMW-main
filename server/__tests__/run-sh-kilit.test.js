@@ -1,6 +1,6 @@
 // server/__tests__/run-sh-kilit.test.js — deploy/run.sh start/restart kilidi node'a gecmez (2026-10-23).
 //
-// Uretim (gblabt02, Node 22.23.4 gecisi): release-git.sh -> run.sh start ile acilan Portal sureci,
+// Uretim (orlabt02, Node 22.23.4 gecisi): release-git.sh -> run.sh start ile acilan Portal sureci,
 // run_locked'in `exec 200>$LOCK_FILE` + `flock -n 200` ile aldigi kilidin fd'sini DEVRALIYORDU. flock
 // kilidi fd acik kaldikca yasar: sonraki her `run.sh prod restart` "baska bir start/restart suruyor"
 // ile dustu (stop + start calisiyordu, cunku stop kilit almaz ve node olunce kilit kalkar).

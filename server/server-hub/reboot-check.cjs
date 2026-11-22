@@ -212,7 +212,7 @@ function kapatmaKapisi(once) {
   if (!izlenenVar(once)) return 'bos';
   return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) ? 'eski' : '';
 }
-// v4 (2026-11-16, kullanici GBTDST01: "standart kurulum, dokunmak istesen dokunurdun"; secim "Her yerde kapat"): 'bos' kapi
+// v4 (2026-11-16, kullanici ORTDST01: "standart kurulum, dokunmak istesen dokunurdun"; secim "Her yerde kapat"): 'bos' kapi
 // HICBIR urunu korumaz (prod dahil); reboot sonrasi calisan her urun kapatilir ve "kontrol edilecek" der. Yalniz 'eski'
 // (JBoss nesli belirsiz) ve 'bootsuz' (betik plani HATA) korur. Betik reboot_duzelt.sh korunur() ile BIREBIR (RC_DUZELT_SURUM=4).
 const kapiKorur = (kapi, u) => kapi === 'bootsuz' || (kapi === 'eski' && /^JBOSS[78]$/.test(u));

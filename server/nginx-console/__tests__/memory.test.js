@@ -52,8 +52,8 @@ test("MEM1 120 host x ~2 MB dokum: ozet katmani heap'i sinirli tutar, icerik yal
   const HOSTS = 120;
   for (let h = 0; h < HOSTS; h++)
     fs.writeFileSync(
-      path.join(dir, 'raw', `GBNGX${String(h).padStart(3, '0')}.txt`),
-      dumpText.replace('HOSTX', `GBNGX${String(h).padStart(3, '0')}`),
+      path.join(dir, 'raw', `ORNGX${String(h).padStart(3, '0')}.txt`),
+      dumpText.replace('HOSTX', `ORNGX${String(h).padStart(3, '0')}`),
     );
   assert.ok(dumpText.length > 1_500_000, `dokum yeterince buyuk olmali: ${dumpText.length}`);
 
@@ -75,10 +75,10 @@ test("MEM1 120 host x ~2 MB dokum: ozet katmani heap'i sinirli tutar, icerik yal
     assert.ok(!('files' in sm), 'ozet icerik tasimamali');
   }
   // yan dosyalar yazildi mi
-  assert.ok(fs.existsSync(path.join(dir, 'raw', 'GBNGX000.summary.json')));
+  assert.ok(fs.existsSync(path.join(dir, 'raw', 'ORNGX000.summary.json')));
   // tam icerik: LRU en fazla 4
   for (let h = 0; h < 10; h++) {
-    const full = idx._loadFullForTest(`GBNGX${String(h).padStart(3, '0')}`);
+    const full = idx._loadFullForTest(`ORNGX${String(h).padStart(3, '0')}`);
     assert.equal(full.files.size, 400);
   }
   if (global.gc) global.gc();

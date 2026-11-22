@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const KR = require('../../../shared/cryptoHubResources.cjs');
-const { CRYPTO_TENANTS, tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf } = require('../kiracilar.cjs');
 
 const MI = 1024n * 1024n;
 const deger = (s, tur) => {

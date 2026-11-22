@@ -16,7 +16,7 @@
 //   PLAY'LERI ATLAR. `set_stats`'in TEK yazari ayri bir toplayici play ise sonuc
 //   sozlesmesi HIC yayinlanmaz ve portal "yapilandirilmis sonuc gelmedi" deyip ham
 //   log gosterir.
-//   URETIMDE YASANDI (Telnet, gbocpcicd2): vault parolasi cozulemedi -> assert dustu
+//   URETIMDE YASANDI (Telnet, orocpcicd2): vault parolasi cozulemedi -> assert dustu
 //   -> tek bastion oldugu icin ayakta host kalmadi -> toplayici play atlandi.
 //   Bu tuzak LogX'te ZATEN belgelenmisti (logx_ocp_discover_fetch.yml) ve Telnet'te
 //   AYNEN tekrarlandi — bu yuzden artik mekanik olarak yakalaniyor.

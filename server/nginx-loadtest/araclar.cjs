@@ -2,7 +2,7 @@
 //
 // Yuk araclari (k6 + wrk) yuk makinelerine KALICI kurulmaz. Admin "Araclari hazirla" ile AYNI AWX
 // sablonunu (nginx_loadtest_run) yuk_islem='araclar' ile baslatir: derleme makinesi (varsayilan
-// GBLABT02) k6 resmi surum arsivini (resmi checksums dosyasiyla) ve wrk 4.2.0 kaynagini kurumsal
+// ORLABT02) k6 resmi surum arsivini (resmi checksums dosyasiyla) ve wrk 4.2.0 kaynagini kurumsal
 // vekil uzerinden indirir, wrk'yi derler; ikililer /sw'de <NGINX_LOADTEST_DIR>/araclar/<id>/ altina
 // yazilir (0644, calistirilamaz). Her on kontrol / kosu secilen motorun ikilisini www kosu dizinine
 // kopyalar, sha256'sini YALNIZ Portal'in verdigi degerle (bu tablodaki) dogrular, calistirir, siler.
@@ -29,7 +29,10 @@
 const crypto = require('node:crypto');
 const dg = require('./dogrula.cjs');
 
-const VARSAYILAN_DERLEME_HOST = 'GBLABT02';
+// Varsayilan derleme makinesi kurum ayarinda (`nginx.yukTesti.derlemeSunucusu`; sunucu adi koda yazilmaz,
+// K17). Tanimsizsa izin listesi yalniz ad kuralina gore DEV/TEST/QA olan girdilerden olusur.
+const kurumDerlemeSunucusu = () =>
+  require('../util/kurum-ayari.cjs').sunucuAdi('nginx.yukTesti.derlemeSunucusu').ad;
 const VARSAYILAN_K6_SURUM = 'v0.49.0';
 const WRK_SURUM = dg.WRK_SURUM;
 const K6_SURUM_RE = /^v0\.(4[5-9]|5[0-9])\.[0-9]{1,2}$/;
@@ -138,29 +141,30 @@ function jsonOku(s) {
 // ── ORTAM ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Derleme makinesi izin listesi (NGINX_LOADTEST_DERLEME_HOSTLARI; virgul / bosluk / ';'). Girdi
- * GBLABT02 ya da ad kuralina gore DEV/TEST/QA (EDU degil) olmali; gecersiz atilir (bir kez uyari).
- * Liste bos kalirsa ['GBLABT02']. Ilk eleman varsayilan.
+ * Derleme makinesi izin listesi (NGINX_LOADTEST_DERLEME_HOSTLARI; virgul / bosluk / ';'). Girdi kurum
+ * ayarindaki derleme sunucusu ya da ad kuralina gore DEV/TEST/QA (EDU degil) olmali; gecersiz atilir (bir
+ * kez uyari). Liste bos kalirsa [derleme sunucusu] (o da yoksa bos). Ilk eleman varsayilan.
  */
 function derlemeHostlari(env = process.env) {
   const ham = String(env.NGINX_LOADTEST_DERLEME_HOSTLARI ?? '').trim();
-  if (!ham) return [VARSAYILAN_DERLEME_HOST];
+  const varsayilan = kurumDerlemeSunucusu();
+  if (!ham) return varsayilan ? [varsayilan] : [];
   const { envOfHost } = require('../audit/nginx-hosts.cjs');
   const out = [];
   for (const girdi of ham.split(/[\s,;]+/).filter(Boolean)) {
     const h = dg.hostNormalle(girdi);
-    const uygun = h && (h === VARSAYILAN_DERLEME_HOST || dg.IZINLI_ORTAM.has(envOfHost(h)));
+    const uygun = h && ((varsayilan && h === varsayilan) || dg.IZINLI_ORTAM.has(envOfHost(h)));
     if (!uygun) {
       dg.birKezUyar(
         'NGINX_LOADTEST_DERLEME_HOSTLARI',
         girdi,
-        'GBLABT02 ya da DEV/TEST/QA nginx adi degil',
+        'derleme sunucusu ya da DEV/TEST/QA nginx adi degil',
       );
       continue;
     }
     if (!out.includes(h)) out.push(h);
   }
-  return out.length ? out : [VARSAYILAN_DERLEME_HOST];
+  return out.length || !varsayilan ? out : [varsayilan];
 }
 
 function varsayilanDerlemeHost(env = process.env) {
@@ -266,7 +270,7 @@ function aracEkstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1
   if (
     !metin('yuk_derleme_host') ||
     !dg.HOST_RE.test(h) ||
-    !(h === VARSAYILAN_DERLEME_HOST || dg.IZINLI_ORTAM.has(envOfHost(h)))
+    !(h === kurumDerlemeSunucusu() || dg.IZINLI_ORTAM.has(envOfHost(h)))
   )
     ihlal.push('yuk_derleme_host');
   if (!metin('yuk_k6_surum') || !K6_SURUM_RE.test(o.yuk_k6_surum)) ihlal.push('yuk_k6_surum');
@@ -1121,7 +1125,7 @@ async function aracGeriCek(req, id) {
 }
 
 module.exports = {
-  VARSAYILAN_DERLEME_HOST,
+  kurumDerlemeSunucusu,
   VARSAYILAN_K6_SURUM,
   WRK_SURUM,
   K6_SURUM_RE,

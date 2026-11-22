@@ -103,12 +103,12 @@ describe('yolYukOzeti (Production Taşımaları uygulama özeti)', () => {
   it('ölçülmeyen yol + idle yol -> unknown (satirsiz-sunucu), "yük almıyor" denmez', () => {
     for (const sira of [
       [
-        { traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] },
-        { traffic: idle, hosts: ['GBRVPP07'] },
+        { traffic: null, hosts: ['ORRVPP08', 'ORRVPP09'] },
+        { traffic: idle, hosts: ['ORRVPP07'] },
       ],
       [
-        { traffic: idle, hosts: ['GBRVPP07'] },
-        { traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] },
+        { traffic: idle, hosts: ['ORRVPP07'] },
+        { traffic: null, hosts: ['ORRVPP08', 'ORRVPP09'] },
       ],
     ]) {
       const t = yolYukOzeti(sira)!;

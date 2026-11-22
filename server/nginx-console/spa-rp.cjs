@@ -487,7 +487,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       ekle(hostIdx, h, key);
       ekle(hostRoute, h, `${ns}|${L(r.route)}`);
       // ETIKET KORUNAGI (resolveTarget ile ayni kural): etiket '-<ns>' ile bitmeli. Ozel alan
-      // adinin genel etiketi ('mobil.garanti.com.tr' -> 'mobil') kesifte OLMAYAN yabanci bir
+      // adinin genel etiketi ('mobil.sirket.invalid' -> 'mobil') kesifte OLMAYAN yabanci bir
       // hedefle ('mobil.vendor-cdn.net') eslesip uygulamaya 'kesin' baglanmasin.
       const lbl = ilkEtiket(h);
       const suf = '-' + ns;
@@ -820,8 +820,8 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   };
 
   // ESLENIK SUNUCULAR (kullanici, 2026-11-12: "RP eslenik sunucular" 194/194 eksik gorunuyordu).
-  // Eslenik = AYNI servisi (vhost grubu: GLOMO, SAKLAMA ...) AYNI kurulumda (PROD eski GBRVP / yeni
-  // GBNGX ayri; non-prod tek) TASIYAN sunucular. Eskiden payda ortamin TUM RP sunuculariydi: QA'da
+  // Eslenik = AYNI servisi (vhost grubu: GLOMO, SAKLAMA ...) AYNI kurulumda (PROD eski ORRVP / yeni
+  // ORNGX ayri; non-prod tek) TASIYAN sunucular. Eskiden payda ortamin TUM RP sunuculariydi: QA'da
   // Q01 (Glomo) ve Q02 (Glomo disi) es degil; PROD'da eski + yeni filo birlikte sayiliyordu. Servisin
   // sunucu kumesi o gun taranmis tanimlardan cikar (hicbir uygulamasi olmayan sunucu servise ait
   // sayilmaz); taranmayan sunucu "eksik" sayilmaz.
@@ -951,7 +951,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     //   host-taranmadi  ortamin bir RP host'u o gun taranmadi: orada gorulmeyen bir tanim
     //               trafik aliyor olabilir (or. Ankara ulasilamadi, trafik Ankara'da)
     // KAPSAM ORTAMIN TAMAMI (dogrulama bulgusu P6b, 2026-10-01): eskiden yalniz tanimin
-    // BULUNDUGU tasima grubunun hostlarina bakiliyordu; tanim 'other' grubunda (GBRVPP01) 0
+    // BULUNDUGU tasima grubunun hostlarina bakiliyordu; tanim 'other' grubunda (ORRVPP01) 0
     // istekle bulunup Glomo Ankara taranmadiginda 'yok' yaziliyordu - oysa uygulama Ankara'da da
     // proxy ediliyor olabilir. 'tanimsiz' karari da ortamin TUM hostlarina bakar (tanimYokKarari);
     // "istek yok" ondan gevsek olamaz. rpHost paydasi (bilgi) tasima grubuyla kalir.

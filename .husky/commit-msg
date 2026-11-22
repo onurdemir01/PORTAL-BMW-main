@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 # Commit mesaji kapisi (docs/KALITE-KAPILARI.md). Ekip Turkce serbest bicim yaziyor; kural bicimi
-# degil ICERIGI denetler: anlamli bir konu satiri ve mesajda sir olmamasi (repo public). Konu satiri
-# kurali tek kaynakta (scripts/gecmis-denetim.cjs); CI ayni kurali main'e giden commit'lere uygular (K16).
+# degil ICERIGI denetler: anlamli bir konu satiri, mesajda sir ve kurum ic adi olmamasi (repo public;
+# K17). Konu satiri kurali tek kaynakta (scripts/gecmis-denetim.cjs); CI ayni kurali main'e giden
+# commit'lere uygular (K16).
 set -eu
 
 msg_file="${1:-}"
@@ -12,3 +13,4 @@ fi
 
 node scripts/gecmis-denetim.cjs --konu "$msg_file"
 node scripts/sir-tarama.cjs --mesaj "$msg_file"
+node scripts/ic-ad-bekcisi.cjs --mesaj "$msg_file"

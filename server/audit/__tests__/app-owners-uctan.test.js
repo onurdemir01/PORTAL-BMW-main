@@ -35,7 +35,7 @@ const sahte = (rel, exports) => {
 const NS = 'kart-prod';
 const APP_ROWS = [
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     namespace: NS,
     application: 'kart-app-v1',
     owner_group_name: 'GT-Uyg',
@@ -46,7 +46,7 @@ const APP_ROWS = [
     lookup_message: '',
   },
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     namespace: 'rotasiz-prod',
     application: 'rotasiz-app-v1',
     owner_group_name: 'GT-Uyg',
@@ -57,7 +57,7 @@ const APP_ROWS = [
     lookup_message: '',
   },
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     namespace: NS,
     application: 'yok-ui',
     owner_group_name: 'GT-Uyg',
@@ -105,7 +105,7 @@ const ROUTES = [
   {
     namespace_name: NS,
     route_name: 'eski-app-v1',
-    route_address: 'eski-app-v1-kart-prod.apps.fw.garanti.com.tr',
+    route_address: 'eski-app-v1-kart-prod.apps.fw.sirket.invalid',
     termination_type: 'reencrypt',
   },
 ];
@@ -120,7 +120,7 @@ const IA = (application, o = {}) => ({
   reqShown: 1,
   usage: null,
   hosts: [],
-  clusters: ['gbocpprod1'],
+  clusters: ['orocpprod1'],
   staleClusters: [],
   weakEvidence: false,
   pattern: 'uymuyor',
@@ -131,15 +131,15 @@ const rapor = () => ({
   notScanned: false,
   kesifTarihi: '2026-10-18',
   // yok-ui (uygulama sahibi var) ve sahipsiz-ui (yok) hic kurulmamis -> intranet eksik listesi
-  // GBNGXP50 taranmis (baska bir uygulamanin dizini var) -> kurulmamislar "eksik", olculemedi degil.
+  // ORNGXP50 taranmis (baska bir uygulamanin dizini var) -> kurulmamislar "eksik", olculemedi degil.
   ...buildIntranetRapor({
     apps: [IA('yok-ui'), IA('sahipsiz-ui')],
     ownersByNs: new Map(),
     beyanlar: new Map(),
-    hosts: ['GBNGXP50'],
+    hosts: ['ORNGXP50'],
     dirRows: [
       {
-        host: 'GBNGXP50',
+        host: 'ORNGXP50',
         namespace: NS,
         application: 'baska-ui',
         hys_deployed: 1,

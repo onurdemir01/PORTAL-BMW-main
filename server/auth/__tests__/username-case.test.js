@@ -30,7 +30,7 @@ const duz = (s) => s.replace(/\s+/g, ' ');
 test('UC1: normalizeUsername kucuk harfe cevirir ve domain ekini atar', () => {
   assert.equal(normalizeUsername('Osman.Koz'), 'osman.koz');
   assert.equal(normalizeUsername('  ADEMIR  '), 'ademir');
-  assert.equal(normalizeUsername('osman.koz@fw.garanti.com.tr'), 'osman.koz');
+  assert.equal(normalizeUsername('osman.koz@fw.sirket.invalid'), 'osman.koz');
   assert.equal(normalizeUsername(''), '');
   assert.equal(normalizeUsername(null), '');
 });

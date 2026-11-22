@@ -298,8 +298,8 @@ const TABLES = [
       )`,
   },
   {
-    // credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu (uxmid_gar, uxmid_das,
-    // uxmid_gtek ...). Admin buradan ekler/duzenler/siler; OCP Cluster Hiyerarsisi
+    // credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu (svcac_gar, svcac_das,
+    // svcac_gtek ...). Admin buradan ekler/duzenler/siler; OCP Cluster Hiyerarsisi
     // ekranindaki "Vault Anahtari" alani onerilerini BURADAN alir — daha once oneriler
     // mevcut cluster satirlarindan turetiliyordu, yani hic kullanilmamis bir anahtar
     // hicbir zaman onerilmiyordu.
@@ -2296,7 +2296,7 @@ const TABLES = [
   },
   {
     // Glomo Gecis Plani tek seferlik gocleri (2026-10-16): ad = uygulanan gocun adi (ornegin
-    // 'set7-talep-2026-10-16', glomo-gecis-set7-talep.json). Satir varsa goc bir daha calismaz;
+    // 'set7-talep-2026-10-16', kurum ayari spaRapor.glomoGecis.set7Talep). Satir varsa goc bir daha calismaz;
     // Admin'in sonradan yaptigi set degisikligi geri cekilmez.
     name: 'spa_gecis_goc',
     sql: `
@@ -2556,7 +2556,7 @@ const TABLES = [
   },
   {
     // Yuk Testi YUK MAKINESI IZIN LISTESI (2026-11-13, server/nginx-loadtest/yuk-makineleri.cjs): Admin Yuk Testi >
-    // Araclar'dan ekler / cikarir. Tablo bossa NGINX_LOADTEST_YUK_HOSTLARI (yoksa GBNGXT34) gecerlidir; ilk degisiklik
+    // Araclar'dan ekler / cikarir. Tablo bossa NGINX_LOADTEST_YUK_HOSTLARI (yoksa ORNGXT34) gecerlidir; ilk degisiklik
     // o listeyi tabloya tasir. Liste kapiyi gevsetemez (dogrula.yukHostKapisi her kosuda yeniden olcer).
     name: 'nginx_loadtest_yuk_hostlari',
     sql: `
@@ -4029,7 +4029,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'opsx',
     handler: 'opsx_was_operation',
     description:
-      'bmw_portal/opsx_was/opsx_was_operation.yml — TEK host + TEK JVM (target_host, was_profile/cell/node/server, operation, consent, confirm_text); was kullanicisiyla stopServer/startServer/serverStatus; sonuc set_stats opsx_was_op_result, FAIL/OLCULEMEDI ise job FAILED. dbo.WASAppsInventory yalniz olculmus running/stopped ile tek satir UPDATE (GBLABT02, tbmwans_pwd credential). Template timeout en cok 30 dk, allow_simultaneous KAPALI (Portal kilidi 60 dk).',
+      'bmw_portal/opsx_was/opsx_was_operation.yml — TEK host + TEK JVM (target_host, was_profile/cell/node/server, operation, consent, confirm_text); was kullanicisiyla stopServer/startServer/serverStatus; sonuc set_stats opsx_was_op_result, FAIL/OLCULEMEDI ise job FAILED. dbo.WASAppsInventory yalniz olculmus running/stopped ile tek satir UPDATE (ORLABT02, tbmwans_pwd credential). Template timeout en cok 30 dk, allow_simultaneous KAPALI (Portal kilidi 60 dk).',
     playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/opsx_was_operation.yml',
     env_var_name: 'OPSX_WAS_OPERATION_TEMPLATE_ID',
   },
@@ -4084,7 +4084,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'nginx',
     handler: 'nginx_console_fetch',
     description:
-      'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
+      'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, ORLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
     playbook_path: null,
     env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
   },
@@ -5105,10 +5105,10 @@ async function setupTables() {
   }
 
   // KULLANICI ADI NORMALIZASYONU (2026-09-26): rol override'lari eskiden kullanicinin
-  // YAZDIGI bicimde kaydediliyordu ("OsmanKoz"), okuma ise kucuk harfle yapiliyordu. Harf
+  // YAZDIGI bicimde kaydediliyordu ("OrnekKisi"), okuma ise kucuk harfle yapiliyordu. Harf
   // duyarli bir collation'da satir bulunamiyor ve kullanici rolunu sessizce kaybediyor.
   // Kod artik iki tarafta da kucuk harf kullaniyor; mevcut satirlar da bir kez duzeltilir.
-  // Cakisma olursa (hem 'OsmanKoz' hem 'osmankoz' varsa) BUYUK harfli olan SILINMEZ,
+  // Cakisma olursa (hem 'OrnekKisi' hem 'ornekkisi' varsa) BUYUK harfli olan SILINMEZ,
   // dokunulmadan birakilir ve loglanir - veri kaybetmektense gorunur kalsin.
   try {
     const dup = await pool.request().query(`
@@ -5556,7 +5556,7 @@ async function setupTables() {
     // ── OCP katalogunun AWX inventory dosyasindan bagimsizlastirilmasi ──────────
     // Playbook'lar cluster URL/parolasini AWX'teki openshift_inventory_vars.yaml'dan
     // okuyordu; artik URL portaldan gelir. PAROLA ASLA DB'YE GIRMEZ — yalnizca hangi
-    // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
+    // vault anahtarinin (credentials.yaml icindeki svcac_gar / svcac_das / svcac_gtek ...)
     // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
     {
       table: 'ocp_cluster_index',

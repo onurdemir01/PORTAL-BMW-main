@@ -22,43 +22,43 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ue = require('../nginx-upstream-envanter.cjs');
 
-const env = (h) => (h.startsWith('GBNGXP') ? 'PROD' : 'TEST');
+const env = (h) => (/^[A-Z]{2}NGXP/.test(h) ? 'PROD' : 'TEST');
 
 test('UE1 sunucu basina bagli / kullanilmayan / olculmedi', () => {
   const o = ue.upstreamOzeti(
     [
-      { host: 'gbngxp01', status: 'ok' },
-      { host: 'GBNGXT01', status: 'ok' },
-      { host: 'GBNGXT02', status: 'fail' },
-      { host: 'GBNGXT03', status: 'noinst' },
-      { host: 'GBNGXT04', status: 'ok' },
-      { host: 'GBNGXT05', status: 'fail' },
+      { host: 'orngxp01', status: 'ok' },
+      { host: 'ORNGXT01', status: 'ok' },
+      { host: 'ORNGXT02', status: 'fail' },
+      { host: 'ORNGXT03', status: 'noinst' },
+      { host: 'ORNGXT04', status: 'ok' },
+      { host: 'ORNGXT05', status: 'fail' },
     ],
     [
-      { host: 'GBNGXP01', n: 3, kullanilan: 2, resolve_yok: 1, keepalive_yok: 0 },
-      { host: 'GBNGXT01', n: 2, kullanilan: 0, resolve_yok: 0, keepalive_yok: 2 },
+      { host: 'ORNGXP01', n: 3, kullanilan: 2, resolve_yok: 1, keepalive_yok: 0 },
+      { host: 'ORNGXT01', n: 2, kullanilan: 0, resolve_yok: 0, keepalive_yok: 2 },
       // stream proxy_pass: location yok ama upstream kullaniliyor -> bagli
-      { host: 'GBNGXT04', n: 1, kullanilan: 1, resolve_yok: 0, keepalive_yok: 0 },
+      { host: 'ORNGXT04', n: 1, kullanilan: 1, resolve_yok: 0, keepalive_yok: 0 },
       // tarama fail ama kismi dokumde kullanim kaniti var -> bagli kalir
-      { host: 'GBNGXT05', n: 1, kullanilan: 1, resolve_yok: 0, keepalive_yok: 0 },
+      { host: 'ORNGXT05', n: 1, kullanilan: 1, resolve_yok: 0, keepalive_yok: 0 },
     ],
     [
-      { host: 'GBNGXP01', target_kind: 'upstream', n: 7 },
-      { host: 'GBNGXP01', target_kind: 'fqdn', n: 2 },
-      { host: 'GBNGXP01', target_kind: 'variable', n: 1 },
-      { host: 'GBNGXT02', target_kind: 'undefined', n: 1 },
+      { host: 'ORNGXP01', target_kind: 'upstream', n: 7 },
+      { host: 'ORNGXP01', target_kind: 'fqdn', n: 2 },
+      { host: 'ORNGXP01', target_kind: 'variable', n: 1 },
+      { host: 'ORNGXT02', target_kind: 'undefined', n: 1 },
     ],
     env,
   );
   assert.deepEqual(
     o.hosts.map((h) => [h.host, h.ortam, h.bagli, h.olculmedi, h.upstream, h.kullanilmayan]),
     [
-      ['GBNGXP01', 'PROD', true, false, 3, 1],
-      ['GBNGXT04', 'TEST', true, false, 1, 0],
-      ['GBNGXT05', 'TEST', true, false, 1, 0],
-      ['GBNGXT01', 'TEST', false, false, 2, 2],
-      ['GBNGXT02', 'TEST', false, true, 0, 0],
-      ['GBNGXT03', 'TEST', false, true, 0, 0],
+      ['ORNGXP01', 'PROD', true, false, 3, 1],
+      ['ORNGXT04', 'TEST', true, false, 1, 0],
+      ['ORNGXT05', 'TEST', true, false, 1, 0],
+      ['ORNGXT01', 'TEST', false, false, 2, 2],
+      ['ORNGXT02', 'TEST', false, true, 0, 0],
+      ['ORNGXT03', 'TEST', false, true, 0, 0],
     ],
   );
   assert.equal(o.hosts[0].upstreamLocation, 7);
@@ -235,34 +235,34 @@ test('UE3 servers olculmedi: liste yok, son server ayri; kesik liste', () => {
 test('UE4 ters arama', () => {
   const rows = [
     {
-      host: 'gbngxp01',
+      host: 'orngxp01',
       name: 'app',
       server: 'b.example:443',
       servers: 'a.example:443 resolve ; b.example:443',
       used: 1,
     },
-    { host: 'GBNGXT01', name: 'A.EXAMPLE-UPS', server: 'c:1', servers: 'c:1', used: 0 },
-    { host: 'GBNGXT02', name: 'diger', server: 'q:1', servers: 'q:1', used: 1 },
+    { host: 'ORNGXT01', name: 'A.EXAMPLE-UPS', server: 'c:1', servers: 'c:1', used: 0 },
+    { host: 'ORNGXT02', name: 'diger', server: 'q:1', servers: 'q:1', used: 1 },
     // kesik liste: aranan SON satir listede yok ama `server` kolonunda var
-    { host: 'GBNGXT03', name: 'havuz', server: 'z.example:443', servers: 'p:1 ; +40', used: 1 },
+    { host: 'ORNGXT03', name: 'havuz', server: 'z.example:443', servers: 'p:1 ; +40', used: 1 },
   ];
   const s = ue.aramaSonucu(rows, 'A.Example', true);
   assert.deepEqual(
     s.map((x) => [x.host, x.upstream, x.eslesen, x.adEsler, x.tamListe, x.kullaniliyor]),
     [
-      ['GBNGXP01', 'app', ['a.example:443'], false, true, true],
-      ['GBNGXT01', 'A.EXAMPLE-UPS', [], true, true, false],
+      ['ORNGXP01', 'app', ['a.example:443'], false, true, true],
+      ['ORNGXT01', 'A.EXAMPLE-UPS', [], true, true, false],
     ],
   );
   assert.deepEqual(
     ue.aramaSonucu(rows, 'z.example', true).map((x) => [x.host, x.eslesen, x.tamListe]),
-    [['GBNGXT03', ['z.example:443'], false]],
+    [['ORNGXT03', ['z.example:443'], false]],
     'kesik listede son server da aranir, tam liste DEGIL denir',
   );
   const eski = ue.aramaSonucu(rows, 'a.example', false);
   assert.deepEqual(
     eski.map((x) => [x.host, x.eslesen, x.tamListe]),
-    [['GBNGXT01', [], false]],
+    [['ORNGXT01', [], false]],
     'servers olculmediyse yalniz son server satirina bakilir',
   );
 });
@@ -271,14 +271,14 @@ test('UE5 disa aktarim satirlari', () => {
   const r = ue.baglantiSatirlari(
     [
       {
-        host: 'gbngxp01',
+        host: 'orngxp01',
         server_name: 'b.example',
         upstream: 'app',
         server: 'y:443',
         servers: 'x:443 resolve ; y:443 backup',
       },
       {
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         server_name: 'a.example',
         upstream: 'app',
         server: 'y:443',
@@ -286,16 +286,16 @@ test('UE5 disa aktarim satirlari', () => {
       },
       // ayni baglanti iki location'dan: tekillesir
       {
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         server_name: 'a.example',
         upstream: 'app',
         server: 'y:443',
         servers: 'x:443 resolve ; y:443 backup',
       },
-      { host: 'GBNGXP01', server_name: null, upstream: 'snip', server: 'z:1', servers: 'z:1' },
+      { host: 'ORNGXP01', server_name: null, upstream: 'snip', server: 'z:1', servers: 'z:1' },
       // kesik liste: bilinen + son server, eksik sayilir
       {
-        host: 'GBNGXP02',
+        host: 'ORNGXP02',
         server_name: 'c.example',
         upstream: 'havuz',
         server: 'k:9',
@@ -307,13 +307,13 @@ test('UE5 disa aktarim satirlari', () => {
   assert.deepEqual(
     r.satirlar.map((x) => [x.host, x.serverName, x.upstream, x.endpoint]),
     [
-      ['GBNGXP01', '(bilinmiyor)', 'snip', 'z:1'],
-      ['GBNGXP01', 'a.example', 'app', 'x:443'],
-      ['GBNGXP01', 'a.example', 'app', 'y:443'],
-      ['GBNGXP01', 'b.example', 'app', 'x:443'],
-      ['GBNGXP01', 'b.example', 'app', 'y:443'],
-      ['GBNGXP02', 'c.example', 'havuz', 'k:9'],
-      ['GBNGXP02', 'c.example', 'havuz', 'p:1'],
+      ['ORNGXP01', '(bilinmiyor)', 'snip', 'z:1'],
+      ['ORNGXP01', 'a.example', 'app', 'x:443'],
+      ['ORNGXP01', 'a.example', 'app', 'y:443'],
+      ['ORNGXP01', 'b.example', 'app', 'x:443'],
+      ['ORNGXP01', 'b.example', 'app', 'y:443'],
+      ['ORNGXP02', 'c.example', 'havuz', 'k:9'],
+      ['ORNGXP02', 'c.example', 'havuz', 'p:1'],
     ],
   );
   assert.equal(r.eksikUpstream, 1);
@@ -471,48 +471,48 @@ test('UE7 ag bilgisi: listen IP, domain, subnet', () => {
 
   const inv = [
     {
-      hostname: 'gbngxp01.corp.example',
+      hostname: 'orngxp01.corp.example',
       ip: '10.1.2.10',
       domain: 'corp.example',
       subnet: '10.1.2.0/24',
     },
-    { hostname: 'GBNGXT01', ip: 'unknown', domain: 'unknown', subnet: 'unknown' },
+    { hostname: 'ORNGXT01', ip: 'unknown', domain: 'unknown', subnet: 'unknown' },
   ];
   const ozet = ue.upstreamOzeti(
     [
-      { host: 'GBNGXP01', status: 'ok' },
-      { host: 'GBNGXT01', status: 'ok' },
-      { host: 'GBNGXT02', status: 'ok' },
+      { host: 'ORNGXP01', status: 'ok' },
+      { host: 'ORNGXT01', status: 'ok' },
+      { host: 'ORNGXT02', status: 'ok' },
     ],
     [],
     [],
     () => 'TEST',
   );
   const o = ue.agBilgisiEkle(ozet, inv, [
-    { host: 'GBNGXP01', listen: '443 ssl' },
-    { host: 'gbngxp01', listen: '10.1.2.50:443 ssl 10.9.9.9:443' },
-    { host: 'GBNGXT01', listen: '10.9.9.9:80' },
+    { host: 'ORNGXP01', listen: '443 ssl' },
+    { host: 'orngxp01', listen: '10.1.2.50:443 ssl 10.9.9.9:443' },
+    { host: 'ORNGXT01', listen: '10.9.9.9:80' },
   ]);
-  const p01 = o.hosts.find((h) => h.host === 'GBNGXP01');
+  const p01 = o.hosts.find((h) => h.host === 'ORNGXP01');
   assert.deepEqual(
     [p01.ip, p01.domain, p01.subnet, p01.listenIp, p01.subnetDisi],
     ['10.1.2.10', 'corp.example', '10.1.2.0/24', ['*', '10.1.2.50', '10.9.9.9'], ['10.9.9.9']],
   );
-  const t01 = o.hosts.find((h) => h.host === 'GBNGXT01');
+  const t01 = o.hosts.find((h) => h.host === 'ORNGXT01');
   assert.deepEqual(
     [t01.ip, t01.subnet, t01.listenIp, t01.subnetDisi],
     [null, null, ['10.9.9.9'], []],
     'subnet bilinmiyorsa subnet disi denmez',
   );
-  const t02 = o.hosts.find((h) => h.host === 'GBNGXT02');
+  const t02 = o.hosts.find((h) => h.host === 'ORNGXT02');
   assert.deepEqual([t02.ip, t02.listenIp], [null, []]);
   assert.equal(o.totals.agOlculdu, true);
   assert.equal(o.totals.agBilinmeyen, 1);
   // karsilastirilamayan adres (IPv6, ad) subnet disi SAYILMAZ (kanitsiz uyari yok)
   const v6 = ue.agBilgisiEkle(ozet, inv, [
-    { host: 'GBNGXP01', listen: '[::]:443 localhost:8080 10.9.9.9:1' },
+    { host: 'ORNGXP01', listen: '[::]:443 localhost:8080 10.9.9.9:1' },
   ]);
-  assert.deepEqual(v6.hosts.find((h) => h.host === 'GBNGXP01').subnetDisi, ['10.9.9.9']);
+  assert.deepEqual(v6.hosts.find((h) => h.host === 'ORNGXP01').subnetDisi, ['10.9.9.9']);
   const yok = ue.agBilgisiEkle(ozet, null, null);
   assert.equal(yok.totals.agOlculdu, false);
   assert.equal(yok.totals.listenOlculdu, false);
@@ -521,7 +521,7 @@ test('UE7 ag bilgisi: listen IP, domain, subnet', () => {
   const r = ue.baglantiSatirlari(
     [
       {
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         server_name: 'a',
         upstream: 'u',
         server: 'x:1',
@@ -529,7 +529,7 @@ test('UE7 ag bilgisi: listen IP, domain, subnet', () => {
         listen: '10.1.2.50:443 ssl',
       },
       {
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         server_name: 'a',
         upstream: 'u',
         server: 'x:1',
@@ -537,7 +537,7 @@ test('UE7 ag bilgisi: listen IP, domain, subnet', () => {
         listen: '10.9.9.9:443',
       },
       {
-        host: 'GBNGXP01',
+        host: 'ORNGXP01',
         server_name: 'b',
         upstream: 'u',
         server: 'x:1',

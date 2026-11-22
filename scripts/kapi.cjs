@@ -97,6 +97,13 @@ const KAPILAR = [
     ],
     ci: 'npm run paket -- --cikti',
   },
+  {
+    id: 'K17',
+    ad: 'kurum ic adi (tum agac)',
+    komut: ['node', 'scripts/ic-ad-bekcisi.cjs', '--tum'],
+    ci: 'node scripts/ic-ad-bekcisi.cjs --tum',
+    hizli: true,
+  },
 ];
 
 // Kapi listesinde olmayan ama CI'da ayrica kosan kapilar (fark araligi ister / ayri is).

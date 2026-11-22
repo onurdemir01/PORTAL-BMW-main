@@ -88,7 +88,7 @@ function kosu(id, adimlar, m = {}) {
       {
         id,
         etiket: `E${id}`,
-        hedef_host: 'GBNGXT33',
+        hedef_host: 'ORNGXT33',
         hedef_ip: '10.0.0.9',
         hedef_turu: 'sunucu',
         ...satir,
@@ -243,7 +243,7 @@ test('CK3 uyumsuz grup: neden kodlari, VERI_YOK; uyumsuz aday icin kararVer cagr
   const ref = kosu(1, dortAdim(1, [1, 1, 1, 1]));
   const adaylar = [
     kosu(2, dortAdim(2, [1, 1, 1, 1]), { motor: 'wrk' }),
-    kosu(4, dortAdim(4, [1, 1, 1, 1]), { hedef_host: 'GBNGXT34' }),
+    kosu(4, dortAdim(4, [1, 1, 1, 1]), { hedef_host: 'ORNGXT34' }),
     kosu(5, dortAdim(5, [1, 1, 1, 1]), {
       hedef_turu: 'serbest',
       hedef_host: '',
@@ -507,7 +507,7 @@ function kosuSatiri(id, o = {}) {
     senaryo_id: 1,
     islem: 'kosu',
     etiket: `E${id}`,
-    hedef_host: 'GBNGXT33',
+    hedef_host: 'ORNGXT33',
     hedef_ip: '10.0.0.9',
     vhost: 'app.test.local',
     parametreler: JSON.stringify({ hizlar: [100, 200] }),
@@ -590,7 +590,7 @@ test(
         motor: 'wrk',
         parametreler: JSON.stringify({ motor: 'wrk', tavan_rps: 450 }),
       }),
-      kosuSatiri(41, { hedef_host: 'GBNGXT34' }),
+      kosuSatiri(41, { hedef_host: 'ORNGXT34' }),
     );
     r = await istek('GET', '/karsilastir-coklu?ref=1&kosular=2,40,41&esikCpu=5&esikP95=7');
     assert.equal(r.statusCode, 200, JSON.stringify(r.body));
@@ -649,7 +649,7 @@ test(
     const d = D.denetim.at(-1);
     assert.equal(d.eylem, 'nginx_loadtest_etiket');
     assert.deepEqual(JSON.parse(d.detail), { kosuId: 2, eski: 'E2', yeni: '[K3] A3 brotli 4' });
-    assert.deepEqual([d.targetHost, d.targetIp], ['GBNGXT33', '10.0.0.9']);
+    assert.deepEqual([d.targetHost, d.targetIp], ['ORNGXT33', '10.0.0.9']);
     // Bos ve null etiketi kaldirir (NULL).
     r = await istek('PUT', '/kosular/2/etiket', { body: { etiket: '   ' } });
     assert.deepEqual([r.statusCode, r.body.etiket, D.kosular[1].etiket], [200, null, null]);

@@ -23,7 +23,7 @@ const ORNEK: [string, string, TopluKategori][] = [
   // ── host controller / domain kapali ──
   [
     'FAIL',
-    "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller gbbfaa01:9990, :read-attribute(name=local-host-name)): Failed to connect to the controller: The controller is not available at gbbfaa01:9990: java.net.ConnectException: WFLYPRT0053: Could not connect to remote+http://gbbfaa01:9990. The connection failed: Connection refused - HICBIR SEY DEGISMEDI (auto-start / server-config yalniz calisan host controller uzerinden degisir; XML elle duzenlenmez)",
+    "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller orbfaa01:9990, :read-attribute(name=local-host-name)): Failed to connect to the controller: The controller is not available at orbfaa01:9990: java.net.ConnectException: WFLYPRT0053: Could not connect to remote+http://orbfaa01:9990. The connection failed: Connection refused - HICBIR SEY DEGISMEDI (auto-start / server-config yalniz calisan host controller uzerinden degisir; XML elle duzenlenmez)",
     'hc_kapali',
   ],
   [
@@ -168,12 +168,12 @@ const INCELEME: [string, string, TopluKategori][] = [
   // B-F1 bayat tarama -> tarama eski (autostart-dogrulama.cjs:97 onay anında / atlandı; toplu-restart.cjs:199)
   [
     'DUSTU',
-    'onay anında: GBX01 taraması bayat (bayat kanıt: 2026-11-10) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.',
+    'onay anında: ORX01 taraması bayat (bayat kanıt: 2026-11-10) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.',
     'tarama_eski',
   ],
   [
     'DUSTU',
-    'atlandı: GBX01 taraması bayat (bayat kanıt: 2026-11-10, son yükleme dışlandı) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.',
+    'atlandı: ORX01 taraması bayat (bayat kanıt: 2026-11-10, son yükleme dışlandı) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.',
     'tarama_eski',
   ],
   ['ATLANDI', 'atlandı: tarama bayat (2026-11-10) — önce sunucuyu yeniden tarayın.', 'tarama_eski'],
@@ -195,19 +195,19 @@ const INCELEME: [string, string, TopluKategori][] = [
   ],
   [
     'DUSTU',
-    'seçim doğrulamasında düştü: artık aday değil (GBX01 taraması bayat (bayat kanıt: 2026-11-10) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.)',
+    'seçim doğrulamasında düştü: artık aday değil (ORX01 taraması bayat (bayat kanıt: 2026-11-10) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.)',
     'tarama_eski',
   ],
   // B-F3 server_hub_fix.sh backup() "yedek alinamadi: $1 -> $BK"
   [
     'FAIL',
-    'canlı okumada: yedek alinamadi: /usr/jboss8/domain/configuration/host.xml -> /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115',
+    'canlı okumada: yedek alinamadi: /usr/jboss8/domain/configuration/host.xml -> /sw/WAS_IMAGES/server-hub-backup/ORX01/20261115',
     'ortam_yetki',
   ],
   // B-F4 ortam / tanım / tarama
   [
     'DUSTU',
-    "onay anında: GBX01 üzerinde app1 yalnız envanterde (MWAppsInventory) — taramada JVM'i yok, auto-start değiştirilemez; iş açılmadı.",
+    "onay anında: ORX01 üzerinde app1 yalnız envanterde (MWAppsInventory) — taramada JVM'i yok, auto-start değiştirilemez; iş açılmadı.",
     'tanim',
   ],
   [
@@ -237,18 +237,18 @@ const INCELEME: [string, string, TopluKategori][] = [
   ],
   [
     'FAIL',
-    'WFLYPRT0053: Could not connect to remote+http://gbbfaa01:9990. The connection failed',
+    'WFLYPRT0053: Could not connect to remote+http://orbfaa01:9990. The connection failed',
     'hc_kapali',
   ],
   // B-F6 hiç çalıştırılmayan satır (toplu-restart.cjs topluDurdur): içteki neden başka öğenindir
   [
     'ATLANDI',
-    "atlandı: toplu iş durduruldu: GBX01/app1 restart isteği belirsiz hatayla döndü (AWX'te sürüyor olabilir): socket hang up — sonucu AWX'ten kontrol edin, sonra kalanlar için yeni toplu iş açın",
+    "atlandı: toplu iş durduruldu: ORX01/app1 restart isteği belirsiz hatayla döndü (AWX'te sürüyor olabilir): socket hang up — sonucu AWX'ten kontrol edin, sonra kalanlar için yeni toplu iş açın",
     'iptal',
   ],
   [
     'ATLANDI',
-    "atlandı: toplu iş durduruldu: GBX01/app1 host controller'a baglanilamadi — sonucu AWX'ten kontrol edin, sonra kalanlar için yeni toplu iş açın",
+    "atlandı: toplu iş durduruldu: ORX01/app1 host controller'a baglanilamadi — sonucu AWX'ten kontrol edin, sonra kalanlar için yeni toplu iş açın",
     'iptal',
   ],
   [
@@ -281,7 +281,7 @@ const HOST_XML: [string, string, TopluKategori][] = [
   ],
   [
     'FAIL',
-    'host controller yazma sirasinda acildi - XML degisikligi geri alindi (/usr/jboss8/domain/configuration/host.xml yedekten: /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml); HC yeni icerigi okumus olabilir - etkin auto-start belirsiz, sonraki taramayi bekleyin',
+    'host controller yazma sirasinda acildi - XML degisikligi geri alindi (/usr/jboss8/domain/configuration/host.xml yedekten: /sw/WAS_IMAGES/server-hub-backup/ORX01/20261115-101010/host.xml); HC yeni icerigi okumus olabilir - etkin auto-start belirsiz, sonraki taramayi bekleyin',
     'tarama_eski',
   ],
   [
@@ -312,7 +312,7 @@ const HOST_XML: [string, string, TopluKategori][] = [
   // dosya betikle güvenle değiştirilemiyor: elle
   [
     'FAIL',
-    'host controller yazma sirasinda acildi ve GERI ALMA BASARISIZ - /usr/jboss8/domain/configuration/host.xml elle /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml ile geri yazilmali',
+    'host controller yazma sirasinda acildi ve GERI ALMA BASARISIZ - /usr/jboss8/domain/configuration/host.xml elle /sw/WAS_IMAGES/server-hub-backup/ORX01/20261115-101010/host.xml ile geri yazilmali',
     'elle',
   ],
   [
@@ -367,7 +367,7 @@ const HOST_XML: [string, string, TopluKategori][] = [
   ],
   [
     'FAIL',
-    "yazildi ama geri okunan app1 '1\tv:true' (yedek /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml)",
+    "yazildi ama geri okunan app1 '1\tv:true' (yedek /sw/WAS_IMAGES/server-hub-backup/ORX01/20261115-101010/host.xml)",
     'elle',
   ],
   // ITEM satırları: tanım
@@ -384,18 +384,18 @@ const HOST_XML: [string, string, TopluKategori][] = [
   ],
   [
     'YARIM_KALDI',
-    'çalıştırılmadı: toplu iş durduruldu — GBX01 host XML işi #5 yazıldı ama geri okunan dosya beklenenden farklı (etkin auto-start belirsiz). Önce o sunucudaki host XML dosyasını yedekle karşılaştırın (yedek yolu öğe satırında; gerekirse elle geri yazın), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    'çalıştırılmadı: toplu iş durduruldu — ORX01 host XML işi #5 yazıldı ama geri okunan dosya beklenenden farklı (etkin auto-start belirsiz). Önce o sunucudaki host XML dosyasını yedekle karşılaştırın (yedek yolu öğe satırında; gerekirse elle geri yazın), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
     'iptal',
   ],
   [
     'YARIM_KALDI',
-    'çalıştırılmadı: toplu iş durduruldu — GBX01 host XML işi #5 geri almada başarısız (dosya elle geri yazılmalı). Önce o sunucudaki host XML dosyasını yedekten elle geri yazın (yedek yolu öğe satırında), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    'çalıştırılmadı: toplu iş durduruldu — ORX01 host XML işi #5 geri almada başarısız (dosya elle geri yazılmalı). Önce o sunucudaki host XML dosyasını yedekten elle geri yazın (yedek yolu öğe satırında), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
     'iptal',
   ],
   // ortam / yetki
   [
     'FAIL',
-    'yedek yolu dolu: /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml.4242 - HICBIR SEY DEGISMEDI',
+    'yedek yolu dolu: /sw/WAS_IMAGES/server-hub-backup/ORX01/20261115-101010/host.xml.4242 - HICBIR SEY DEGISMEDI',
     'ortam_yetki',
   ],
   [
@@ -507,7 +507,7 @@ describe('topluSiniflama', () => {
   it('TS3 sayım: yalnız başarısız, yalnız sıfır olmayan, sabit sıra; süzme', () => {
     const og = [
       { durum: 'OK', neden: 'app auto-start=false (host=m, CLI ile dogrulandi)' },
-      { durum: 'FAIL', neden: 'Connection refused gbbfaa01:9990' },
+      { durum: 'FAIL', neden: 'Connection refused orbfaa01:9990' },
       { durum: 'DUSTU', neden: 'canlı değer zaten true — tarama eski' },
       { durum: 'FAIL', neden: "host controller'a baglanilamadi" },
       { durum: 'PLAN_GECTI', neden: 'canlı değer hâlâ uyumsuz' },

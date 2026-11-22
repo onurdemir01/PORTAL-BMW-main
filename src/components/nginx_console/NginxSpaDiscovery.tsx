@@ -206,12 +206,12 @@ const RPI_NEDEN_METNI: Record<NgSpaRpIstekNeden, string> = {
     'ortamın bir RP sunucusu son taramada yok — orada görülmeyen bir tanım istek alıyor olabilir',
 };
 const YOL_ADI: Record<string, { t: string; ipucu: string }> = {
-  proxy: { t: 'proxy', ipucu: 'Eski PROD (GBRVP*) proxy_pass → OpenShift route' },
+  proxy: { t: 'proxy', ipucu: 'Eski PROD (…RVP*) proxy_pass → OpenShift route' },
   include: { t: 'include', ipucu: 'Servis vhost location → application-confs include' },
   dizin: {
     t: 'dizin',
     ipucu:
-      "Yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (application-confs conf var). RP isteği: uygulama vhost'unun (conf.d/<app>-<ns>.conf) ortak log'unda Host/SNI sayımı (host kipi).",
+      "Yeni PROD sunucularındaki dizin kurulumu (application-confs conf var). RP isteği: uygulama vhost'unun (conf.d/<app>-<ns>.conf) ortak log'unda Host/SNI sayımı (host kipi).",
   },
 };
 const ESLES_ADI: Record<string, string> = {
@@ -1428,11 +1428,11 @@ function CokluDeger({
 
 /**
  * Adres İKİ PARÇA (doğrulama bulgusu, 2026-10-03): varsayılan route adresi
- * "<uygulama>-<namespace>.apps(-t).fw.garanti.com.tr" sondan kesilince görünen kısım yalnız
+ * "<uygulama>-<namespace>.apps(-t).fw.sirket.invalid" sondan kesilince görünen kısım yalnız
  * 1. kolonun tekrarıydı (54 adresin 52'si); ayırt eden alan adı (apps / apps-t / kurumsal alan
  * adı) hep kesilen sondaydı. İlk etiket uygulama adıyla başlıyorsa (tekrar) ÖNCE o kısalır ve
  * soluk yazılır; alan adı soneki (`.ng-adres-son`) en son kısalır. Kurumsal adreste
- * ("kartlimit.garantibbva.com.tr") baş kısım anlamlıdır: bölünmez, sondan kısalır.
+ * ("kartlimit.ornekbanka.invalid") baş kısım anlamlıdır: bölünmez, sondan kısalır.
  */
 function AdresMetni({ h, a }: { h: string; a: NgSpaApp }) {
   const i = h.indexOf('.');

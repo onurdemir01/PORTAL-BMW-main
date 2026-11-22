@@ -1,6 +1,6 @@
 // src/components/opsx/steps/OcpClusterPickStep.tsx — restart/rollout tetiklenmeden önce,
 // tenant/env grubundaki GERÇEK cluster'lardan (bkz. OcpTargetStep dosya başı notu — ör.
-// ark_prod → gbocpprod1, gbocpprod2, gbocpprod4) hedeflenecek TEK birinin YA DA grubun
+// ark_prod → orocpprod1, orocpprod2, orocpprod4) hedeflenecek TEK birinin YA DA grubun
 // TAMAMININ seçimi.
 //
 // NEDEN TEK CLUSTER SEÇENEĞİ AWX `limit` DEĞİL: AWX'in `limit` alanı production'da

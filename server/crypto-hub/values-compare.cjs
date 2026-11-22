@@ -44,7 +44,7 @@ function anahtarla(lines) {
   return out;
 }
 
-/** Dosya yolundan cluster adi: ".../1.8.2/cldev1/garanti_values.yaml" -> "cldev1".
+/** Dosya yolundan cluster adi: ".../1.8.2/cldev1/ornek_values.yaml" -> "cldev1".
  *  Alt dizin yoksa dosya adina duser (eski duzen: surum dizininde tek dosya). */
 function clusterAdi(p) {
   const par = String(p || '')

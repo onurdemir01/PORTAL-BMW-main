@@ -23,12 +23,12 @@ import { grupla } from './webAppGrup';
 
 const nf = (n: number) => fmtNumber(n);
 
-// DNS -> LB VIP (2026-10-13). Sunucu satirin bolgesinin (gtdmz / fw.garanti) ve uyenin sitesinin
+// DNS -> LB VIP (2026-10-13). Sunucu satirin bolgesinin (dmz / fw.sirket) ve uyenin sitesinin
 // (Pendik / Ankara) DNS sunucusuyla cozer; uye KENDI sitesinin cevabiyla gosterilir (Ankara VIP'i
 // Pendik'ten farklidir). Bolge bilinmiyorsa Portal cozucusu ('varsayilan') kullanilir.
 type DnsDurum = { sonuc: Record<string, Record<string, WebAppDnsCevap>> };
-// BOLGE VHOST BASINA (2026-10-16): sunucu server_name'in kendi alanindan bolge verir (x.gtdmz.com.tr ->
-// gtdmz); domain'i bos uygulamada Ankara uyesi artik Ankara DNS'ine sorulur. Eski sunucu vermezse satirin
+// BOLGE VHOST BASINA (2026-10-16): sunucu server_name'in kendi alanindan bolge verir (x.odmz.invalid ->
+// dmz); domain'i bos uygulamada Ankara uyesi artik Ankara DNS'ine sorulur. Eski sunucu vermezse satirin
 // (uygulama domain'i) bolgesi.
 const bolgeOf = (r: WebAppRow, w: WebAppVhost) =>
   (w.dnsBolge !== undefined ? w.dnsBolge : r.dnsBolge) || null;
@@ -325,11 +325,10 @@ export default function WebApp() {
 
       {dns && (
         <p className="text-[11px] text-[var(--text-muted)]">
-          <b>DNS → LB VIP:</b> her web sunucusu kendi sitesinin DNS sunucusuyla çözülür — gtdmz:
-          Pendik <code>10.230.238.22</code> / Ankara <code>10.236.238.22</code>, fw.garanti: Pendik{' '}
-          <code>10.230.238.1</code> / Ankara <code>10.236.238.1</code>. Aynı VIP’e düşen sunucular o
-          VIP’in havuz (pool) üyeleridir. Domain’i bu ikisi dışında olan satırlar Portal sunucusunun
-          çözücüsüyle çözülür.
+          <b>DNS → LB VIP:</b> her web sunucusu kendi bölgesinin ve sitesinin DNS sunucusuyla
+          çözülür (bölge × site listesi Admin ayarı <code>WEB_APP_DNS_SUNUCULARI</code>). Aynı VIP’e
+          düşen sunucular o VIP’in havuz (pool) üyeleridir. Domain’i tanımlı bölgelerin dışında olan
+          satırlar Portal sunucusunun çözücüsüyle çözülür.
         </p>
       )}
       <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -578,7 +577,7 @@ export default function WebApp() {
                             {d.siteBelirsiz && (
                               <span
                                 className="text-[9px] text-amber-700"
-                                title="server_name'in alanı gtdmz / fw.garanti değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir."
+                                title="server_name'in alanı tanımlı DNS bölgelerinden biri değil: gösterilen cevap Portal sunucusunun çözücüsünden. Ankara VIP'i farklı olabilir."
                               >
                                 ⚠ Ankara VIP'i farklı olabilir
                               </span>

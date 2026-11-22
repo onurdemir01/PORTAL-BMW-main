@@ -48,6 +48,19 @@ jobs:
           case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
           node scripts/sir-tarama.cjs --aralik "$ARALIK"
 
+      - name: Internal Name Gate (K17, whole tree + commit messages)
+        env:
+          OLAY: ${{ github.event_name }}
+          TABAN: ${{ github.event.pull_request.base.sha }}
+          PR_UCU: ${{ github.event.pull_request.head.sha }}
+          ONCEKI: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          node scripts/ic-ad-bekcisi.cjs --tum
+          if [ "$OLAY" = pull_request ]; then ARALIK="$TABAN..$PR_UCU"; else ARALIK="$ONCEKI..$SHA"; fi
+          case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
+          node scripts/ic-ad-bekcisi.cjs --aralik "$ARALIK"
+
       - name: Main History Gate (K16, PR-less commits and subject lines)
         env:
           OLAY: ${{ github.event_name }}

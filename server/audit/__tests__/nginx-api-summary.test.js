@@ -22,21 +22,21 @@ const row = (host, config_file, locations, no_limit = 0) => ({
 });
 
 test('ortam SUNUCU ADINDAN turetilir (tabloda ortam kolonu yok)', () => {
-  assert.equal(envOfHost('GBNGWD01'), 'DEV');
-  assert.equal(envOfHost('GBNGWT03'), 'TEST');
-  assert.equal(envOfHost('GBNGWQ01'), 'QA');
-  assert.equal(envOfHost('GBNGWP01'), 'PROD');
-  assert.equal(envOfHost('GBNGWAP01'), 'PROD', 'Ankara da PROD');
-  assert.equal(envOfHost('GBRVPP07'), 'PROD', 'reverse proxy prod');
+  assert.equal(envOfHost('ORNGWD01'), 'DEV');
+  assert.equal(envOfHost('ORNGWT03'), 'TEST');
+  assert.equal(envOfHost('ORNGWQ01'), 'QA');
+  assert.equal(envOfHost('ORNGWP01'), 'PROD');
+  assert.equal(envOfHost('ORNGWAP01'), 'PROD', 'Ankara da PROD');
+  assert.equal(envOfHost('ORRVPP07'), 'PROD', 'reverse proxy prod');
   assert.equal(envOfHost('kimbilir'), 'BILINMIYOR', 'taninmayan SESSIZCE bir ortama atanmaz');
 });
 
 test('ortam kirilimi: kac sunucu, kac konfigurasyon, kac location', () => {
   const s = summarize([
-    row('GBNGWD01', 'mobile.conf', 10),
-    row('GBNGWD02', 'mobile.conf', 10),
-    row('GBNGWD01', 'internet.conf', 5),
-    row('GBNGWP01', 'mobile.conf', 12),
+    row('ORNGWD01', 'mobile.conf', 10),
+    row('ORNGWD02', 'mobile.conf', 10),
+    row('ORNGWD01', 'internet.conf', 5),
+    row('ORNGWP01', 'mobile.conf', 12),
   ]);
   const dev = s.byEnv.find((e) => e.env === 'DEV');
   assert.equal(dev.hosts, 2);
@@ -49,11 +49,11 @@ test('ortam kirilimi: kac sunucu, kac konfigurasyon, kac location', () => {
 
 test('sunucu kirilimi: her sunucu icin conf ve location sayisi', () => {
   const s = summarize([
-    row('GBNGWD01', 'a.conf', 3),
-    row('GBNGWD01', 'b.conf', 4),
-    row('GBNGWT03', 'a.conf', 3),
+    row('ORNGWD01', 'a.conf', 3),
+    row('ORNGWD01', 'b.conf', 4),
+    row('ORNGWT03', 'a.conf', 3),
   ]);
-  const d01 = s.byHost.find((h) => h.host === 'GBNGWD01');
+  const d01 = s.byHost.find((h) => h.host === 'ORNGWD01');
   assert.equal(d01.configs, 2);
   assert.equal(d01.locations, 7);
   assert.equal(d01.env, 'DEV');
@@ -61,23 +61,23 @@ test('sunucu kirilimi: her sunucu icin conf ve location sayisi', () => {
 
 test('sunucu sirasi ortama gore (DEV, TEST, QA, PROD) sonra ada gore', () => {
   const s = summarize([
-    row('GBNGWP02', 'a.conf', 1),
-    row('GBNGWD01', 'a.conf', 1),
-    row('GBNGWP01', 'a.conf', 1),
-    row('GBNGWT03', 'a.conf', 1),
+    row('ORNGWP02', 'a.conf', 1),
+    row('ORNGWD01', 'a.conf', 1),
+    row('ORNGWP01', 'a.conf', 1),
+    row('ORNGWT03', 'a.conf', 1),
   ]);
   assert.deepEqual(
     s.byHost.map((h) => h.host),
-    ['GBNGWD01', 'GBNGWT03', 'GBNGWP01', 'GBNGWP02'],
+    ['ORNGWD01', 'ORNGWT03', 'ORNGWP01', 'ORNGWP02'],
   );
 });
 
 test('konfigurasyon bazinda: hangi ortamda VAR, hangisinde YOK', () => {
   const s = summarize([
-    row('GBNGWD01', 'yalniz-dev.conf', 4),
-    row('GBNGWD01', 'her-yerde.conf', 8),
-    row('GBNGWT03', 'her-yerde.conf', 8),
-    row('GBNGWP01', 'her-yerde.conf', 8),
+    row('ORNGWD01', 'yalniz-dev.conf', 4),
+    row('ORNGWD01', 'her-yerde.conf', 8),
+    row('ORNGWT03', 'her-yerde.conf', 8),
+    row('ORNGWP01', 'her-yerde.conf', 8),
   ]);
   const only = s.byConfig.find((c) => c.config === 'yalniz-dev.conf');
   assert.deepEqual(only.presentEnvs, ['DEV']);
@@ -90,9 +90,9 @@ test('konfigurasyon bazinda: hangi ortamda VAR, hangisinde YOK', () => {
 
 test('SUNUCULAR ARASI suruklenme: ayni ortamda sunucular farkliysa isaretlenir', () => {
   const s = summarize([
-    row('GBNGWP01', 'x.conf', 20),
-    row('GBNGWP02', 'x.conf', 20),
-    row('GBNGWP03', 'x.conf', 17), // biri geride kalmis
+    row('ORNGWP01', 'x.conf', 20),
+    row('ORNGWP02', 'x.conf', 20),
+    row('ORNGWP03', 'x.conf', 17), // biri geride kalmis
   ]);
   const c = s.byConfig[0];
   assert.equal(c.hostInconsistent, true);
@@ -103,9 +103,9 @@ test('SUNUCULAR ARASI suruklenme: ayni ortamda sunucular farkliysa isaretlenir',
 
 test('ORTAMLAR ARASI suruklenme: ortamlarin beklenen sayisi farkliysa isaretlenir', () => {
   const s = summarize([
-    row('GBNGWD01', 'x.conf', 10),
-    row('GBNGWT03', 'x.conf', 10),
-    row('GBNGWP01', 'x.conf', 7), // prod geride
+    row('ORNGWD01', 'x.conf', 10),
+    row('ORNGWT03', 'x.conf', 10),
+    row('ORNGWP01', 'x.conf', 7), // prod geride
   ]);
   const c = s.byConfig[0];
   assert.equal(c.envInconsistent, true);
@@ -114,12 +114,12 @@ test('ORTAMLAR ARASI suruklenme: ortamlarin beklenen sayisi farkliysa isaretleni
 
 test('tutarli dagitimda HICBIR suruklenme bayragi yanmaz', () => {
   const s = summarize([
-    row('GBNGWD01', 'x.conf', 9),
-    row('GBNGWD02', 'x.conf', 9),
-    row('GBNGWT03', 'x.conf', 9),
-    row('GBNGWT04', 'x.conf', 9),
-    row('GBNGWP01', 'x.conf', 9),
-    row('GBNGWAP01', 'x.conf', 9),
+    row('ORNGWD01', 'x.conf', 9),
+    row('ORNGWD02', 'x.conf', 9),
+    row('ORNGWT03', 'x.conf', 9),
+    row('ORNGWT04', 'x.conf', 9),
+    row('ORNGWP01', 'x.conf', 9),
+    row('ORNGWAP01', 'x.conf', 9),
   ]);
   const c = s.byConfig[0];
   assert.equal(c.hostInconsistent, false);
@@ -129,10 +129,10 @@ test('tutarli dagitimda HICBIR suruklenme bayragi yanmaz', () => {
 
 test('rate limit tanimi OLMAYAN konfigurasyonlar', () => {
   const s = summarize([
-    row('GBNGWD01', 'limitsiz.conf', 5, 5), // 5 location, 5'i de limitsiz
-    row('GBNGWT03', 'limitsiz.conf', 5, 5),
-    row('GBNGWD01', 'kismi.conf', 5, 2), // 2'si limitsiz -> conf limitsiz SAYILMAZ
-    row('GBNGWD01', 'tam.conf', 5, 0),
+    row('ORNGWD01', 'limitsiz.conf', 5, 5), // 5 location, 5'i de limitsiz
+    row('ORNGWT03', 'limitsiz.conf', 5, 5),
+    row('ORNGWD01', 'kismi.conf', 5, 2), // 2'si limitsiz -> conf limitsiz SAYILMAZ
+    row('ORNGWD01', 'tam.conf', 5, 0),
   ]);
   assert.deepEqual(s.noLimitConfigs, ['limitsiz.conf']);
   assert.equal(s.totals.configsWithoutLimit, 1);
@@ -142,7 +142,7 @@ test('rate limit tanimi OLMAYAN konfigurasyonlar', () => {
 });
 
 test('BILINMIYOR bir ortam DEGILDIR: eksik ortam listesine girmez', () => {
-  const s = summarize([row('GBNGWD01', 'x.conf', 3), row('tanimsizsunucu', 'x.conf', 3)]);
+  const s = summarize([row('ORNGWD01', 'x.conf', 3), row('tanimsizsunucu', 'x.conf', 3)]);
   const c = s.byConfig[0];
   assert.ok(!c.missingEnvs.includes('BILINMIYOR'));
   assert.ok(s.envs.includes('BILINMIYOR'), 'ama GIZLENMEZ - ekranda gorunur');
@@ -151,9 +151,9 @@ test('BILINMIYOR bir ortam DEGILDIR: eksik ortam listesine girmez', () => {
 
 test('toplamlar', () => {
   const s = summarize([
-    row('GBNGWD01', 'a.conf', 4, 1),
-    row('GBNGWD02', 'a.conf', 4, 1),
-    row('GBNGWP01', 'b.conf', 6, 6),
+    row('ORNGWD01', 'a.conf', 4, 1),
+    row('ORNGWD02', 'a.conf', 4, 1),
+    row('ORNGWP01', 'b.conf', 6, 6),
   ]);
   assert.equal(s.totals.hosts, 3);
   assert.equal(s.totals.configs, 2);
@@ -175,43 +175,43 @@ test('bos girdi cokmez ve DOLU yanitla ayni sekli tasir', () => {
 test('sunucu basina SERVIS: vhost dosyasindan (ortam eki ve .conf atilir), audit verisi yoksa bos; siralama ortam > servis > ad (2026-09-17)', () => {
   const servers = [
     {
-      host: 'GBNGWP02',
+      host: 'ORNGWP02',
       conf_file: '/usr/nginx/conf.d/mblcustomers-PROD.conf',
-      server_name: 'mblcustomers.garantibbva.com.tr',
+      server_name: 'mblcustomers.ornekbanka.invalid',
     },
     {
-      host: 'GBNGWP01',
+      host: 'ORNGWP01',
       conf_file: '/usr/nginx/conf.d/customers-PROD.conf',
-      server_name: 'customers.garantibbva.com.tr www.customers.garantibbva.com.tr',
+      server_name: 'customers.ornekbanka.invalid www.customers.ornekbanka.invalid',
     },
     {
-      host: 'GBNGWP01',
+      host: 'ORNGWP01',
       conf_file: '/usr/nginx/conf.d/customers-PROD.conf',
-      server_name: 'customers.garantibbva.com.tr',
+      server_name: 'customers.ornekbanka.invalid',
     }, // ikinci server blogu (443)
-    { host: 'GBNGWD01', conf_file: 'mcustomers-dev.conf' },
+    { host: 'ORNGWD01', conf_file: 'mcustomers-dev.conf' },
   ];
   const m = servicesOfHosts(servers);
-  assert.deepEqual(m.get('GBNGWP01'), {
+  assert.deepEqual(m.get('ORNGWP01'), {
     services: ['customers'],
-    names: ['customers.garantibbva.com.tr', 'www.customers.garantibbva.com.tr'],
+    names: ['customers.ornekbanka.invalid', 'www.customers.ornekbanka.invalid'],
   });
-  assert.deepEqual(m.get('GBNGWD01').services, ['mcustomers']);
+  assert.deepEqual(m.get('ORNGWD01').services, ['mcustomers']);
   const out = summarize(
     [
-      row('GBNGWP01', 'a.conf', 3),
-      row('GBNGWP02', 'a.conf', 3),
-      row('GBNGWP03', 'a.conf', 3),
-      row('GBNGWD01', 'a.conf', 1),
+      row('ORNGWP01', 'a.conf', 3),
+      row('ORNGWP02', 'a.conf', 3),
+      row('ORNGWP03', 'a.conf', 3),
+      row('ORNGWD01', 'a.conf', 1),
     ],
     servers,
   );
   const by = Object.fromEntries(out.byHost.map((h) => [h.host, h]));
-  assert.deepEqual(by.GBNGWP02.services, ['mblcustomers']);
-  assert.deepEqual(by.GBNGWP03.services, []); // audit verisi yok -> "—"
+  assert.deepEqual(by.ORNGWP02.services, ['mblcustomers']);
+  assert.deepEqual(by.ORNGWP03.services, []); // audit verisi yok -> "—"
   assert.deepEqual(
     out.byHost.map((h) => h.host),
-    ['GBNGWD01', 'GBNGWP03', 'GBNGWP01', 'GBNGWP02'],
+    ['ORNGWD01', 'ORNGWP03', 'ORNGWP01', 'ORNGWP02'],
   ); // DEV once; PROD icinde servissiz ('') once, sonra customers, mblcustomers
-  assert.deepEqual(summarize([row('GBNGWP01', 'a.conf', 1)]).byHost[0].services, []); // serverRows verilmezse de calisir
+  assert.deepEqual(summarize([row('ORNGWP01', 'a.conf', 1)]).byHost[0].services, []); // serverRows verilmezse de calisir
 });

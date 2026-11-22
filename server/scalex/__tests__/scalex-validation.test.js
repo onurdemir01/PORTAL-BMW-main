@@ -257,8 +257,8 @@ test('A21 kesif: workload alanlari ayrisir', () => {
   );
 });
 test('A22 kesif: imaj `/` ve `:` iceriyor — parseDetailPairs bozulmamali', () => {
-  const p = result.parseDetailPairs('image=registry.gar.com.tr:5000/team/app:1.2.3-rc');
-  assert.equal(p.image, 'registry.gar.com.tr:5000/team/app:1.2.3-rc');
+  const p = result.parseDetailPairs('image=registry.sirket.invalid:5000/team/app:1.2.3-rc');
+  assert.equal(p.image, 'registry.sirket.invalid:5000/team/app:1.2.3-rc');
 });
 test('A23 kesif: ISO zaman damgasi `:` iceriyor', () => {
   const p = result.parseDetailPairs('created_at=2026-08-28T10:00:00Z created_by=ali');
@@ -434,12 +434,12 @@ test('B11 katalogda PAROLA yok, yalnizca vault degisken ADI', () => {
     tenant: 'ark',
     clusters: ['c1'],
     hosts: { c1: 'j1' },
-    meta: { c1: { api_url: 'https://a:6443', vault_credential_key: 'uxmid_gar' } },
+    meta: { c1: { api_url: 'https://a:6443', vault_credential_key: 'svcac_gar' } },
   });
   const s = JSON.stringify(cat);
   for (const bad of ['password', 'parola', 'secret'])
     assert.ok(!s.toLowerCase().includes(bad), bad);
-  assert.equal(cat.clusters.c1.credential, 'uxmid_gar');
+  assert.equal(cat.clusters.c1.credential, 'svcac_gar');
 });
 
 test('B12 vault anahtari on kontrolu calistirma yolunda cagriliyor', () => {
@@ -1030,7 +1030,7 @@ test("H4 api_url playbook regex'ini saglar", () => {
     clusters: ['c1'],
     hosts: { c1: 'j' },
     meta: {
-      c1: { api_url: 'https://api.gbocpprod1.fw.garanti.com.tr:6443', vault_credential_key: 'k' },
+      c1: { api_url: 'https://api.orocpprod1.fw.sirket.invalid:6443', vault_credential_key: 'k' },
     },
   }).clusters.c1;
   assert.match(c.api_url, RE);

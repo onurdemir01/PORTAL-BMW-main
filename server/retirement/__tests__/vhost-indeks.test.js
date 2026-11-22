@@ -30,9 +30,9 @@ function filo(tohum, nApp, nVhost) {
   const r = rastgele(tohum);
   const sec = (l) => l[Math.floor(r() * l.length)];
   const hostlar = Array.from({ length: 40 }, (_, i) =>
-    i % 2 ? `GBJBOP${10 + i}` : `GBJBOAP${10 + i}`,
+    i % 2 ? `ORJBOP${10 + i}` : `ORJBOAP${10 + i}`,
   );
-  const webHostlar = hostlar.map((h) => h.replace(/^(GBJB)O/, '$1W'));
+  const webHostlar = hostlar.map((h) => h.replace(/^([A-Z]{2}JB)O/, '$1W'));
   const adlar = Array.from({ length: Math.max(5, Math.floor(nApp / 3)) }, (_, i) =>
     i % 5 === 0 ? `app_${i}_svc` : `app${i}`,
   );
@@ -48,7 +48,7 @@ function filo(tohum, nApp, nVhost) {
     for (let k = 0; k < n; k++) {
       const tur = r();
       if (tur < 0.35)
-        hedefler.push(`${sec(hostlar).toLowerCase()}.fw.garanti.com.tr:${sec(portlar)}`);
+        hedefler.push(`${sec(hostlar).toLowerCase()}.fw.sirket.invalid:${sec(portlar)}`);
       else if (tur < 0.5) hedefler.push(`localhost:${sec(portlar)}`);
       else if (tur < 0.62) hedefler.push(`10.1.0.${Math.floor(r() * 40)}:${sec(portlar)}`);
       else if (tur < 0.67) hedefler.push(`10.9.9.9:${sec(portlar)}`);
@@ -60,7 +60,7 @@ function filo(tohum, nApp, nVhost) {
     }
     return {
       host: vh,
-      server_name: `v${i}.fw.garanti.com.tr`,
+      server_name: `v${i}.fw.sirket.invalid`,
       aliases: '',
       listen: `*:${r() < 0.5 ? 80 : 443}`,
       conf_file: `/c/${i}.conf`,

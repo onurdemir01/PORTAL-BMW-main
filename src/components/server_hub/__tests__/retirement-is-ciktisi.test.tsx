@@ -49,7 +49,7 @@ import RetirementCanli from '@/components/server_hub/RetirementCanli';
 const hedef = (o: Partial<RtTarget> = {}): RtTarget => ({
   id: 9,
   recordId: 5,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   site: 'Pendik',
   env: 'PROD',
   appName: 'CRM',
@@ -191,16 +191,16 @@ describe('Retirement is ciktisi — saf yardimcilar', () => {
   it('IC11 hata ozeti', () => {
     const cikti = [
       'TASK [durdur] ***',
-      'FAILED - RETRYING: [GBJBOP01]: bekle (3 retries left).',
-      'fatal: [GBJBOP01]: FAILED! => {"msg": "x"}',
+      'FAILED - RETRYING: [ORJBOP01]: bekle (3 retries left).',
+      'fatal: [ORJBOP01]: FAILED! => {"msg": "x"}',
       'ERROR! the role was not found',
       'STEP\tstop\tFAIL\tJVM durmadi',
-      'GBJBOP01 : ok=3 changed=0 unreachable=0 failed=0 skipped=0',
-      'GBJBOP02 : ok=3 changed=0 unreachable=0 failed=1 skipped=0',
-      'GBJBOP03 : ok=1 changed=0 unreachable=2 failed=0 skipped=0',
-      'GBJBOP04 : ok=1 changed=0 unreachable=0 failed=10 skipped=0',
-      'GBJBOP05 : ok=1 changed=0 unreachable=0 failed=3 skipped=0',
-      'GBJBOP06 : ok=1 changed=0 unreachable=0 failed=4 skipped=0',
+      'ORJBOP01 : ok=3 changed=0 unreachable=0 failed=0 skipped=0',
+      'ORJBOP02 : ok=3 changed=0 unreachable=0 failed=1 skipped=0',
+      'ORJBOP03 : ok=1 changed=0 unreachable=2 failed=0 skipped=0',
+      'ORJBOP04 : ok=1 changed=0 unreachable=0 failed=10 skipped=0',
+      'ORJBOP05 : ok=1 changed=0 unreachable=0 failed=3 skipped=0',
+      'ORJBOP06 : ok=1 changed=0 unreachable=0 failed=4 skipped=0',
     ].join('\n');
     const o = hataOzeti(cikti);
     expect(o.map((x) => x.satir)).toEqual([3, 4, 5, 7, 8, 9]);

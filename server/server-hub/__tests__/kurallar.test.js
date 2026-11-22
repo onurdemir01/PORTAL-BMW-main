@@ -158,7 +158,7 @@ test('KR1 katalog assess.cjs ile ayni: kod, varsayilan seviye, alan; olu kod yok
 // ── assess: SYNTAX_UNVERIFIED (uyari) + IP_UNUSED (bilgi) ureten tek web sunucusu ────────────
 const GUN = '2026-10-20';
 const NOW = Date.parse(`${GUN}T10:00:00Z`);
-const WEB = 'GBCJWP01';
+const WEB = 'ORCJWP01';
 const veri = () => ({
   hosts: [
     {
@@ -243,7 +243,7 @@ test('KR2b non-prod tavani: Non-Production sunucuda kritik -> uyari (isaretli, g
     const r = assess(ad(host), { now: NOW, seviyeler: { SYNTAX_UNVERIFIED: 'danger' } });
     return { r, h: r.hosts.find((x) => x.host === host) };
   };
-  const t = sec('GBCJWT01');
+  const t = sec('ORCJWT01');
   const f = bulgu(t.h, 'SYNTAX_UNVERIFIED');
   assert.equal(t.h.envGroup, 'Non-Production');
   assert.deepEqual([f.severity, f.defaultSeverity, f.ortamTavani], ['warning', 'warning', true]);
@@ -251,12 +251,12 @@ test('KR2b non-prod tavani: Non-Production sunucuda kritik -> uyari (isaretli, g
   assert.equal(t.r.summary.hosts.danger, 0, 'non-prod sunucu ozette kritik sayildi');
   const satir = flattenFindings(t.r.hosts).find((x) => x.code === 'SYNTAX_UNVERIFIED');
   assert.deepEqual([satir.severity, satir.ortamTavani], ['warning', true]);
-  const p = sec('GBCJWP01');
+  const p = sec('ORCJWP01');
   assert.deepEqual(
     [bulgu(p.h, 'SYNTAX_UNVERIFIED').severity, bulgu(p.h, 'SYNTAX_UNVERIFIED').ortamTavani],
     ['danger', undefined],
   );
-  const b = sec('GBXYZ01');
+  const b = sec('ORXYZ01');
   assert.equal(b.h.envGroup, 'Bilinmiyor');
   assert.equal(
     bulgu(b.h, 'SYNTAX_UNVERIFIED').severity,
@@ -264,7 +264,7 @@ test('KR2b non-prod tavani: Non-Production sunucuda kritik -> uyari (isaretli, g
     'ortami bilinmeyen sunucu yumusatildi',
   );
   // varsayilani kritik olmayan bulgu (uyari/bilgi) degismez, isaretlenmez
-  const u = assess(ad('GBCJWT01'), { now: NOW }).hosts.find((x) => x.host === 'GBCJWT01');
+  const u = assess(ad('ORCJWT01'), { now: NOW }).hosts.find((x) => x.host === 'ORCJWT01');
   assert.ok(u.findings.every((x) => !x.ortamTavani && x.defaultSeverity === undefined));
 });
 
@@ -622,7 +622,7 @@ test('KR5 limitler uygulanir: Simdi tara, Acilis Hazirligi, Reboot Kontrolu', as
   satir('limit:tara', '2');
   satir('limit:hazirlik', '3');
   satir('limit:reboot', '2');
-  const H = (n) => Array.from({ length: n }, (_, i) => `GBJBOP${String(i + 10)}`);
+  const H = (n) => Array.from({ length: n }, (_, i) => `ORJBOP${String(i + 10)}`);
   await httpIle(async (kok) => {
     let r = await post(`${kok}/scan`, { hosts: H(3) });
     assert.equal(r.status, 400);

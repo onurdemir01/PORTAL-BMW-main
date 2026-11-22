@@ -39,13 +39,13 @@ function makeItem(over: Partial<ScaleXStoppedItem> = {}): ScaleXStoppedItem {
     id: 1,
     env: 'test',
     tenant: 'ark',
-    clusterName: 'gbocptest1',
+    clusterName: 'orocptest1',
     namespace: 'ark-server-push-test',
     appName: 'server-push-reg-ch-v0',
     workloadKind: 'DeploymentConfig',
     previousReplicas: 1,
     phase: 'scaled_down',
-    stoppedBy: 'uxmid',
+    stoppedBy: 'svcac',
     stoppedAt: new Date().toISOString(),
     lastSeenAt: new Date().toISOString(),
     driftStatus: 'in_sync',
@@ -97,7 +97,7 @@ describe('StoppedPanel sapma taramasi', () => {
     expect(scope.env).toBe('test');
     expect(scope.tenant).toBe('ark');
     expect(scope.namespace).toBe('ark-server-push-test');
-    expect(scope.clusters).toEqual(['gbocptest1']);
+    expect(scope.clusters).toEqual(['orocptest1']);
   });
 
   // SA2 — AYNI cluster/namespace, FARKLI kapsam IKI AYRI IS olmali. Eski anahtar
@@ -172,7 +172,7 @@ describe('StoppedPanel sapma taramasi', () => {
   // cesitlendirmek yetiyordu ve o hal artik TEK is demek.
   it('SA5 kapsam (is) sayisi tavani asarsa HIC kesif baslatmaz', async () => {
     const many = Array.from({ length: 13 }, (_, i) =>
-      makeItem({ id: i + 1, clusterName: `gbocptest${i}`, appName: `app-${i}` }),
+      makeItem({ id: i + 1, clusterName: `orocptest${i}`, appName: `app-${i}` }),
     );
     mockStopped.mockResolvedValue(listOf(many));
     mockDiscover.mockResolvedValue({ ok: true, serverId: 1, jobId: 42, status: 'pending' });

@@ -20,7 +20,7 @@ const { assess } = require('../assess.cjs');
 
 const BUGUN = '2026-10-19';
 const NOW = Date.parse(`${BUGUN}T10:00:00Z`);
-const WEB = 'GBCJWP01';
+const WEB = 'ORCJWP01';
 const H = (ek = {}) => ({
   host: WEB,
   scan_date: BUGUN,

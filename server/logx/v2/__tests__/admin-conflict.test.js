@@ -19,7 +19,7 @@ test('createClusterIndexRow(): duplicate (MSSQL 2627) → status 409 dostça mes
   await withMock(
     () =>
       assert.rejects(
-        () => admin.createClusterIndexRow({ env: 'lab', tenant: 'ark', cluster_name: 'gbocplab2' }),
+        () => admin.createClusterIndexRow({ env: 'lab', tenant: 'ark', cluster_name: 'orocplab2' }),
         (err) => {
           assert.equal(err.status, 409);
           assert.match(err.message, /zaten var/i);
@@ -53,7 +53,7 @@ test('createTerminalHostRow(): duplicate (2601 unique index) → 409', async () 
   await withMock(
     () =>
       assert.rejects(
-        () => admin.createTerminalHostRow({ tenant: 'ark', env: 'lab', terminal_host: 'gbaocp01' }),
+        () => admin.createTerminalHostRow({ tenant: 'ark', env: 'lab', terminal_host: 'oraocp01' }),
         (err) => {
           assert.equal(err.status, 409);
           return true;

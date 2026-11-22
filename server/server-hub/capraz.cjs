@@ -57,7 +57,7 @@ function tabanAd(ad) {
 
 const taze = (h) => !h.taramadanDustu && h.fresh !== false;
 /**
- * YALNIZ ENVANTERDE (2026-11-14, uretim GBJIST02): assess.cjs taramada JVM'i bulunamayan
+ * YALNIZ ENVANTERDE (2026-11-14, uretim ORJIST02): assess.cjs taramada JVM'i bulunamayan
  * MWAppsInventory uygulamasini gen 0 satir olarak tutar (source 'envanter'). Bu satir TARAMA JVM'I
  * DEGILDIR: kopya grubu, kalinti / OpenShift / Retirement celiskisi, Uygulama 360 kopyasi, retire
  * etiketi ve iliski grafigi onu atlar. TEK yuklem; tuketiciler bunu cagirir.
@@ -66,8 +66,8 @@ const yalnizEnvanter = (j) => !!j && (j.yalnizEnvanter === true || j.source === 
 const bilinen = (j) => j.runningKnown !== false;
 /**
  * Tarama JVM'inin UYGULAMA taban adi. assess.cjs envanterEslestir numarali / grup eslesmesinde JVM'e
- * envanter uygulamasini (invApp) yazar: GBFACELIFTSUBE-T1 -> invApp GBFACELIFTSUBE-T -> taban
- * GBFACELIFTSUBE. JVM adi (-T1) standart ortam eki tasimadigi icin tabanAd(j.name) onu ayri
+ * envanter uygulamasini (invApp) yazar: ORFACELIFTSUBE-T1 -> invApp ORFACELIFTSUBE-T -> taban
+ * ORFACELIFTSUBE. JVM adi (-T1) standart ortam eki tasimadigi icin tabanAd(j.name) onu ayri
  * uygulama sayiyordu (prod kopyasi bulunamaz -> yanlis ORTAM_KALINTISI / R10).
  */
 const uygTaban = (j) => tabanAd(j?.invApp || j?.name);
@@ -315,8 +315,8 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
   // ── Retirement indeksi: host|uygulama -> hedefler ─────────────────────────────
   const retIx = new Map();
   for (const t of ret || []) ekle(retIx, `${kisaHost(t.host)}|${L(t.uygulama)}`, t);
-  // Retirement hedefinin uygulamasi MWAppsInventory adidir (or. GBFACELIFTSUBE-T); numarali / grup
-  // eslesmesiyle baglanan tarama JVM'i (GBFACELIFTSUBE-T1) o kayda invApp uzerinden de baglanir.
+  // Retirement hedefinin uygulamasi MWAppsInventory adidir (or. ORFACELIFTSUBE-T); numarali / grup
+  // eslesmesiyle baglanan tarama JVM'i (ORFACELIFTSUBE-T1) o kayda invApp uzerinden de baglanir.
   const retOf = (h, j) =>
     [
       ...new Set([

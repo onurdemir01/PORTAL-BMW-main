@@ -13,7 +13,7 @@ import type { NcHost } from '@/api/nginxConsoleApi';
 import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const HOST = {
-  host: 'GBNGXP40',
+  host: 'ORNGXP40',
   env: 'PROD',
   location: 'Pendik',
   site: null,
@@ -38,7 +38,7 @@ describe('Nginx Hub salt okunur erisim', () => {
   it('Instances: onRefreshHosts verilmezse "Seçilileri yenile" ve "Dokumu yenile" yok', () => {
     render(<InstancesTab hosts={[HOST]} loading={false} onOpen={vi.fn()} onReload={vi.fn()} />);
     expect(screen.queryByText(/Seçilileri yenile/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'GBNGXP40 eylemler' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ORNGXP40 eylemler' }));
     expect(screen.getByText('Konfigürasyonu aç')).toBeTruthy();
     expect(screen.queryByText('Dokumu yenile')).toBeNull();
   });

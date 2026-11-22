@@ -4,7 +4,7 @@
 // alinmis tarama (EAR 35 gune, Server Hub ~1-2 gune kadar taze) celiski kaniti sayiliyordu; in-place
 // JBoss 7 + 8'de STOP'un bilerek korudugu obur nesil paketi "ozgun adiyla diskte" sayiliyordu.
 //   RA1 STOP oncesi EAR taramasi: celiski YOK, "dogrulama bekliyor" notu (EAR, paket)
-//   RA2 STOP sonrasi EAR taramasi + ayni kokte ozgun ad: celiski (GBACQREPORTBATCH senaryosu)
+//   RA2 STOP sonrasi EAR taramasi + ayni kokte ozgun ad: celiski (ORACQREPORTBATCH senaryosu)
 //   RA3 in-place: /vhosting .old + /vhosting8 ozgun ad, hedef JBoss 7 -> celiski ve not YOK;
 //       karsi test: /vhosting'de ozgun ad kalmis + STOP sonrasi tarama -> celiski
 //   RA4 calisiyor / autostart: Server Hub taramasi STOP gunu ya da oncesi -> not; sonraki gun -> celiski;
@@ -123,18 +123,18 @@ test('RA1 STOP oncesi EAR taramasi: celiski yok, dogrulama bekliyor notu', () =>
   assert.deepEqual(jv(r2, hs, 'P1', 'PAY').celiski, [], 'ayni an STOP sonrasi sayildi');
 });
 
-test('RA2 STOP sonrasi EAR taramasi + ayni kokte ozgun ad: celiski (GBACQREPORTBATCH)', () => {
+test('RA2 STOP sonrasi EAR taramasi + ayni kokte ozgun ad: celiski (ORACQREPORTBATCH)', () => {
   const stop = Date.parse('2026-10-13T09:30:00Z');
-  const hs = [H('GBACQP01', 'PROD', [J('GBACQREPORTBATCH')])];
+  const hs = [H('ORACQP01', 'PROD', [J('ORACQREPORTBATCH')])];
   const r = ac(
     hs,
-    [hedef('GBACQP01', 'GBACQREPORTBATCH', { durduruldu: '2026-10-13', durdurulduMs: stop })],
-    earOf('2026-11-01T02:00:00.000Z', [E('GBACQREPORTBATCH.ear')]),
+    [hedef('ORACQP01', 'ORACQREPORTBATCH', { durduruldu: '2026-10-13', durdurulduMs: stop })],
+    earOf('2026-11-01T02:00:00.000Z', [E('ORACQREPORTBATCH.ear')]),
   );
-  const x = jv(r, hs, 'GBACQP01', 'GBACQREPORTBATCH');
+  const x = jv(r, hs, 'ORACQP01', 'ORACQREPORTBATCH');
   assert.deepEqual(
     x.celiski.map((c) => [c.kayit, c.nedenler, c.paket]),
-    [[24, ['paket'], 'GBACQREPORTBATCH.ear']],
+    [[24, ['paket'], 'ORACQREPORTBATCH.ear']],
   );
   assert.deepEqual(x.dogrulanamadi, []);
 });
@@ -309,7 +309,7 @@ test('RA6 STOP zamani kayitta yok: iddia kurulmaz, "zamani yok" notu', () => {
 // ── assess duzeyi (ham satirlar) ───────────────────────────────────────────────────────────
 const BUGUN = '2026-11-12';
 const NOW = Date.parse(`${BUGUN}T10:00:00Z`);
-const APP = 'GBRZAP01';
+const APP = 'ORRZAP01';
 const HR = (host, ek = {}) => ({
   host,
   scan_date: BUGUN,

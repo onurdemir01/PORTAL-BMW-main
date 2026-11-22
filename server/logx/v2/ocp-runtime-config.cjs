@@ -12,6 +12,12 @@
 
 const BLOB_NAME = 'logx:ocp-runtime';
 
+/** Kurum ayarindaki servis hesabi (ocp.tohum.varsayilanKullanici); yoksa ''. */
+function varsayilanOcpKullanicisi() {
+  const { deger } = require('../../util/kurum-ayari.cjs').bolum('ocp.tohum.varsayilanKullanici');
+  return typeof deger === 'string' ? normalizeUsername(deger) : '';
+}
+
 const DEFAULTS = Object.freeze({
   // Bos = override yok; playbook aday listesi + PATH ile kendi bulur. Doluysa playbook'a
   // `oc_binary` extra_var'i olarak gider ve kesfin ONUNE gecer.
@@ -24,7 +30,9 @@ const DEFAULTS = Object.freeze({
   // (Admin > OCP Cluster Hiyerarsisi > OCP Kullanici Adi) deger varsa O kazanir.
   // Bos birakilirsa playbook AWX'teki eski `username` degiskenine duser — o da yoksa
   // ilgili cluster anlasilir bir dogrulama hatasi verir (sessizce tum job dusmez).
-  defaultOcpUsername: 'uxmid',
+  // Kurumun servis hesabi adi koda yazilmaz (K17): admin bir deger kaydetmemisse kurum ayarindaki
+  // `ocp.tohum.varsayilanKullanici` kullanilir (varsayilanOcpKullanicisi), o da yoksa bos.
+  defaultOcpUsername: '',
   // Saniye. Playbook'taki ayni adli degiskenleri ezer.
   ocAsyncTimeout: 120, // namespace kesfi (oc login + get projects)
   ocListTimeout: 120, // pod listeleme
@@ -110,7 +118,7 @@ function normalize(raw) {
     // ya da (b) admin alani BILEREK bosaltamaz.
     defaultOcpUsername:
       raw?.defaultOcpUsername === undefined
-        ? DEFAULTS.defaultOcpUsername
+        ? varsayilanOcpKullanicisi()
         : normalizeUsername(raw.defaultOcpUsername),
     ocBinaryCandidates: cleaned.length ? cleaned : [...DEFAULTS.ocBinaryCandidates],
     ocAsyncTimeout: normalizeTimeout(raw?.ocAsyncTimeout, DEFAULTS.ocAsyncTimeout),

@@ -145,7 +145,7 @@ export interface OnayGerekcesi {
 /**
  * Joker ana makine bir kamu sonekini mi kapsiyor: `*.` + tek etiket (`*.com`, `*.tr`) ya da
  * iki etiket ve son etiket iki harfli ulke kodu (`*.com.tr`, `*.gov.tr`, `*.co.uk`). Kurumun
- * kendi alan adi altindaki joker (`*.kurum.com`, `*.garanti.com.tr`) KAPSANMAZ. Kamu sonek
+ * kendi alan adi altindaki joker (`*.kurum.com`, `*.sirket.invalid`) KAPSANMAZ. Kamu sonek
  * listesi (PSL) tasinmaz: kural kaba ama ongorulebilir; `*.kurum.tr` gibi iki etiketli kurum
  * adi da uyari alir (yanlis alarm yalniz bir onay penceresi, kacirilan sonek ise acik kapi).
  */

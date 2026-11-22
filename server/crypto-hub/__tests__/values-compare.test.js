@@ -22,7 +22,7 @@ const satirlar = (s) => s.split(String.fromCharCode(10));
 
 test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => {
   const a = {
-    path: '/vhosting/wyden/1.8.2/cldev1/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev1/ornek_values.yaml',
     lines: satirlar(
       ['global:', '  env: dev', '  replicas: 2', 'image:', '  tag: 1.8.2'].join(
         String.fromCharCode(10),
@@ -31,7 +31,7 @@ test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => 
   };
   // AYNI icerik, BASKA sira. Satir bazli bir diff burada "her sey farkli" derdi.
   const b = {
-    path: '/vhosting/wyden/1.8.2/cldev2/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev2/ornek_values.yaml',
     lines: satirlar(
       ['image:', '  tag: 1.8.2', 'global:', '  replicas: 2', '  env: dev'].join(
         String.fromCharCode(10),
@@ -54,7 +54,7 @@ test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => 
 
   // Gercek bir fark YAKALANMALI.
   const c = {
-    path: '/vhosting/wyden/1.8.2/cldev3/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev3/ornek_values.yaml',
     lines: satirlar(
       'global:' +
         String.fromCharCode(10) +

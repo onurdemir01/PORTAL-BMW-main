@@ -33,7 +33,7 @@ const IYI = [
   ['bas/son bosluk', '  ayse  ', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
   ['KURUM\\ad', 'KURUM\\Ayse', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
   ['kurum\\ad kucuk', 'kurum\\ayse', 'ayse', { attr: 'sAMAccountName', value: 'ayse' }],
-  ['UPN', 'Ayse@Kurum.com.tr', 'ayse', { attr: 'userPrincipalName', value: 'ayse@kurum.com.tr' }],
+  ['UPN', 'Ayse@Kurum.invalid', 'ayse', { attr: 'userPrincipalName', value: 'ayse@kurum.invalid' }],
   [
     'noktali buyuk I (Turkce klavye)',
     '\u0130sci',
@@ -42,9 +42,9 @@ const IYI = [
   ],
   [
     'noktasiz kucuk i',
-    'hakan.\u0131sci',
-    'hakan.isci',
-    { attr: 'sAMAccountName', value: 'hakan.isci' },
+    'gokce.\u0131scen',
+    'gokce.iscen',
+    { attr: 'sAMAccountName', value: 'gokce.iscen' },
   ],
   [
     'eski toLowerCase ciktisi (i + U+0307)',
@@ -115,8 +115,8 @@ test('GG izinli alan adlari: liste verilmisse disindaki NetBIOS reddedilir, icin
 });
 
 test('GG izinli UPN sonekleri', () => {
-  ortam({ AUTH_ALLOWED_UPN_SUFFIXES: 'kurum.com.tr' }, () => {
-    assert.equal(normalizeLoginInput('a@KURUM.com.tr').ok, true);
+  ortam({ AUTH_ALLOWED_UPN_SUFFIXES: 'kurum.invalid' }, () => {
+    assert.equal(normalizeLoginInput('a@KURUM.invalid').ok, true);
     assert.equal(normalizeLoginInput('a@gmail.com').code, 'alan_adi');
   });
 });

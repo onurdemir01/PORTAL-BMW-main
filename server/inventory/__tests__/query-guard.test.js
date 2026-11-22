@@ -259,8 +259,8 @@ test('custom sorgu varsayilan limiti 200 DEGIL ust sinir (10000); truncated bayr
 
 // ── GELISMIS FILTRE: OR GRUBU (GF1..GF4, 2026-10-01) ────────────────────────────────
 //
-// Kullanici: "envanterde sorgular bir sapitiyor. cluster name gbocpqa1 icerir OR cluster
-// name gbocpqa2 icerir deyip uyguladigimiz zaman sorgu adam akilli calismiyor."
+// Kullanici: "envanterde sorgular bir sapitiyor. cluster name orocpqa1 icerir OR cluster
+// name orocpqa2 icerir deyip uyguladigimiz zaman sorgu adam akilli calismiyor."
 //
 // Olculdu: uretilen SQL DOGRU. Asil sorun GORUNURLUK - gelismis filtre tek basina
 // kosmuyor, arama kutusu ve kolon suzgecleri ayni WHERE'e AND ile ekleniyor ve kullanici
@@ -284,7 +284,7 @@ test('GF1 OR grubu OR ile birlesir, AND grubu AND ile', () => {
   const f = (v) => ({ col: 'cluster_name', op: 'contains', value: v });
   const types = new Map([['cluster_name', 'nvarchar']]);
   const orSql = b(
-    { mode: 'OR', filters: [f('gbocpqa1'), f('gbocpqa2')] },
+    { mode: 'OR', filters: [f('orocpqa1'), f('orocpqa2')] },
     ['cluster_name'],
     sahteReq(),
     types,
@@ -318,7 +318,7 @@ test('GF3 bilinmeyen kolon SESSIZCE suzgeci dusurur ama TUM kosulu dusurmez', ()
       mode: 'OR',
       filters: [
         { col: 'yok_boyle_kolon', op: 'contains', value: 'x' },
-        { col: 'cluster_name', op: 'contains', value: 'gbocpqa2' },
+        { col: 'cluster_name', op: 'contains', value: 'orocpqa2' },
       ],
     },
     ['cluster_name'],

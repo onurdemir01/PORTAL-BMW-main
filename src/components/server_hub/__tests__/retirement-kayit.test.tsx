@@ -42,12 +42,12 @@ import RetirementTab from '@/components/server_hub/RetirementTab';
 const hedef = (id: number, o: Partial<RtTarget> = {}): RtTarget => ({
   id,
   recordId: 37,
-  host: `GBJEXP0${id}`,
+  host: `ORJEXP0${id}`,
   site: 'Pendik',
   env: 'TEST',
-  appName: 'GBPOSWEBAPI',
+  appName: 'ORPOSWEBAPI',
   gen: 7,
-  appPath: '/vhosting/GBPOSWEBAPI.ear',
+  appPath: '/vhosting/ORPOSWEBAPI.ear',
   web: [],
   status: 'pending',
   planText: null,
@@ -68,7 +68,7 @@ const hedef = (id: number, o: Partial<RtTarget> = {}): RtTarget => ({
 });
 const kayit = (targets: RtTarget[]): RtRecord => ({
   id: 37,
-  app: 'GBPOSWEBAPI',
+  app: 'ORPOSWEBAPI',
   smartNo: '364244',
   ocoNo: null,
   ownerEmail: null,
@@ -131,7 +131,7 @@ const T5 = hedef(5, {
   stoppedAt: '2026-10-26T09:00:00Z',
   web: [
     {
-      host: 'GBJEXW05',
+      host: 'ORJEXW05',
       serverName: 'pos.bmw.de',
       product: 'IHS',
       port: '443',
@@ -139,8 +139,8 @@ const T5 = hedef(5, {
     },
   ],
   webSonuc: [
-    ws('GBJEXW09', 'diger.bmw.de', 'failed', 509),
-    ws('gbjexw05', 'POS.bmw.de', 'ok', 510),
+    ws('ORJEXW09', 'diger.bmw.de', 'failed', 509),
+    ws('orjexw05', 'POS.bmw.de', 'ok', 510),
   ],
   awxIsleri: [
     { adim: 'web', web: 0, jobId: 509, durum: 'basarisiz', basladi: null, bitti: null },
@@ -149,12 +149,12 @@ const T5 = hedef(5, {
 });
 const KESIF = {
   ok: true,
-  base: 'GBPOSWEBAPI',
+  base: 'ORPOSWEBAPI',
   summary: {},
   targets: [
     {
-      host: 'GBJEXP02',
-      appName: 'GBPOSWEBAPI',
+      host: 'ORJEXP02',
+      appName: 'ORPOSWEBAPI',
       gen: 7,
       inPlace: true,
       digerSurumler: [8],
@@ -166,7 +166,7 @@ const KESIF = {
 async function ac(targets = [T1, T2, T3]) {
   api.get.mockResolvedValue({ ok: true, record: kayit(targets) });
   render(<RetirementTab />);
-  fireEvent.click(await screen.findByText('GBPOSWEBAPI'));
+  fireEvent.click(await screen.findByText('ORPOSWEBAPI'));
   await screen.findByRole('table', { name: 'Retirement hedefleri' });
   return screen.getByRole('table', { name: 'Retirement hedefleri' });
 }
@@ -235,7 +235,7 @@ describe('Retirement kayit ayrintisi', () => {
     expect(await within(satir(tablo, 2)).findByText('in-place')).toBeTruthy();
     expect(within(satir(tablo, 3)).queryByText('in-place')).toBeNull();
     expect(api.discover).toHaveBeenCalledTimes(1);
-    expect(api.discover).toHaveBeenCalledWith('GBPOSWEBAPI');
+    expect(api.discover).toHaveBeenCalledWith('ORPOSWEBAPI');
   });
 
   it('RK2b isaret kayitta varsa kesif istenmez', async () => {
@@ -351,7 +351,7 @@ const kontrol = (o: Partial<Kontrol> = {}): Kontrol => ({
   ...o,
 });
 const ws2 = (status: string, jobId: number | null, o: Record<string, unknown> = {}) => ({
-  host: 'GBJEXW05',
+  host: 'ORJEXW05',
   serverName: 'pos.bmw.de',
   product: 'IHS',
   confFile: 'mod-jk.conf',
@@ -368,7 +368,7 @@ const isx = (
 ) => ({ adim, jobId, durum, basladi: null, bitti: null, ...(web != null ? { web } : {}) });
 const WEB5 = [
   {
-    host: 'GBJEXW05',
+    host: 'ORJEXW05',
     serverName: 'pos.bmw.de',
     product: 'IHS',
     port: '443',
@@ -428,7 +428,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
       },
     });
     render(<RetirementTab />);
-    fireEvent.click(await screen.findByText('GBPOSWEBAPI'));
+    fireEvent.click(await screen.findByText('ORPOSWEBAPI'));
     const tablo = await screen.findByRole('table', { name: 'Retirement hedefleri' });
     for (const id of [15, 16]) {
       expect(dugmeler(satir(tablo, id))).not.toContain('kayıttan çıkar');
@@ -574,7 +574,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
 
   it('RK14 in-place cipi ust satirda; uygulama adi tam genislik; diger kurulum kayittaysa / silindiyse not', async () => {
     const j7 = hedef(51, {
-      host: 'GBJBAT03',
+      host: 'ORJBAT03',
       gen: 7,
       status: 'stopped',
       stoppedAt: '2026-10-26T09:00:00Z',
@@ -582,7 +582,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
       digerSurumler: [8],
     });
     const j8 = hedef(52, {
-      host: 'GBJBAT03',
+      host: 'ORJBAT03',
       gen: 8,
       status: 'stopping',
       lastJobId: 560,
@@ -590,7 +590,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
       digerSurumler: [7],
     });
     const sil = hedef(53, {
-      host: 'GBJBAT04',
+      host: 'ORJBAT04',
       status: 'deleted',
       deletedAt: '2026-10-25T10:00:00Z',
       inPlace: true,
@@ -601,7 +601,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
     const ortam = satir(tablo, 51).querySelector('[data-rt-ortam]') as HTMLElement;
     expect(cip.parentElement).toBe(ortam.parentElement);
     const ad = satir(tablo, 51).querySelector('[data-rt-uygulama]') as HTMLElement;
-    expect(ad).toHaveTextContent('GBPOSWEBAPI');
+    expect(ad).toHaveTextContent('ORPOSWEBAPI');
     expect(ad).not.toContainElement(cip);
     expect(satir(tablo, 51).querySelector('[data-rt-inplace-not]')).toHaveTextContent(
       'in-place: diğer kurulum (JBoss 8) da bu kayıtta hedef — onun satırını izleyin',
@@ -617,7 +617,7 @@ describe('Retirement kayit — eylem kosullari (denetim tur 2)', () => {
   it('RK15 erisilebilirlik: Olaylar baslik, Akis oku okunmaz, yukleniyor metni', async () => {
     api.get.mockReturnValueOnce(new Promise(() => {}));
     render(<RetirementTab />);
-    fireEvent.click(await screen.findByText('GBPOSWEBAPI'));
+    fireEvent.click(await screen.findByText('ORPOSWEBAPI'));
     expect(await screen.findByText('Kayıt yükleniyor…')).toHaveClass('sr-only');
     cleanup();
     const tablo = await ac([T1]);

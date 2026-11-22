@@ -86,7 +86,7 @@ Gerçek adlar ve ID'ler bu public repoda tutulmaz; yer tutucuların yerine kendi
 | Job Template | `BMW Portal - EAR Envanter` — ID `<TEMPLATE_ID>` |
 | Credential | `<CREDENTIAL_ADI>` (dzdo ile `was`'a geçebilen) |
 | Playbook | `bmw_portal/ear_envanter/ear_envanter.yml` |
-| Variables | Boş; **Prompt on launch açık** |
+| Variables | `portal_yazici_host: <yazıcı sunucu>` (/sw'ye yazan sunucu; kurum adı repoya yazılmaz, tanımsızsa girdi doğrulaması durur); **Prompt on launch açık** |
 | Limit | **Boş**; **Prompt on launch açık** |
 | Forks | `30` |
 | Timeout | `3600` saniye |
@@ -188,7 +188,7 @@ Remove-Variable TOKEN
 
 ## 6. Sonuçlar nerede?
 
-Çıktılar GBLABT02 üzerinde tutulur:
+Çıktılar ORLABT02 üzerinde tutulur:
 
 ```text
 Portal'ın başlattığı tarama:  /sw/BMW_PORTAL/ear_envanter/kosu-<KOSU_NO>/raw/SUNUCU_ADI.out

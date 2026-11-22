@@ -100,16 +100,16 @@ const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       env: 'TEST',
-      ipler: ['192.168.133.27'],
-      vhostlar: ['glomo-test.garantibbva.com.tr'],
+      ipler: ['192.168.251.27'],
+      vhostlar: ['glomo-test.ornekbanka.invalid'],
       vhostVerisi: true,
       uygun: true,
       neden: null,
     },
   ],
-  yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: SINIR,
   varsayilan: VARSAYILAN,
   serbest: { acik: true, aglar: [] },
@@ -127,7 +127,7 @@ const SENARYO = {
   id: 3,
   ad: 'GLOMO',
   aciklama: null,
-  vhost: 'glomo-test.garantibbva.com.tr',
+  vhost: 'glomo-test.ornekbanka.invalid',
   senaryoTur: 'K',
   yolSayisi: 264,
   sha256: 'b'.repeat(64),
@@ -144,7 +144,7 @@ function kuyruk(o: Partial<NlKuyruk> = {}): NlKuyruk {
     beklemeDk: 5,
     baslangicAt: '2026-11-03T21:00:00Z',
     enGecBitis: null,
-    onayHedefi: 'GBNGXT33',
+    onayHedefi: 'ORNGXT33',
     hedefTuru: 'sunucu',
     onaylananTurler: [],
     createdBy: 'onur',
@@ -178,10 +178,10 @@ function oge(o: Partial<NlKuyrukOge>): NlKuyrukOge {
     bitisAt: null,
     ayar: {
       senaryoId: 3,
-      hedefIp: '192.168.133.27',
-      hedefHost: 'GBNGXT33',
-      vhost: 'glomo-test.garantibbva.com.tr',
-      yukHost: 'GBNGXT34',
+      hedefIp: '192.168.251.27',
+      hedefHost: 'ORNGXT33',
+      vhost: 'glomo-test.ornekbanka.invalid',
+      yukHost: 'ORNGXT34',
       parametreler: null,
     },
     ...o,
@@ -200,9 +200,9 @@ beforeEach(() => {
     ok: true,
     tur: 'sunucu',
     ip,
-    host: 'GBNGXT33',
+    host: 'ORNGXT33',
     env: 'TEST',
-    vhostlar: ['glomo-test.garantibbva.com.tr'],
+    vhostlar: ['glomo-test.ornekbanka.invalid'],
     vhostVerisi: true,
     hizSiniri: null,
     vuSiniri: null,
@@ -219,7 +219,7 @@ describe('Yük Testi — gece kuyruğu', () => {
     fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
     fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
-      target: { value: 'GBNGXT33' },
+      target: { value: 'ORNGXT33' },
     });
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Hazır ayar' })).getByRole('button', {
@@ -246,15 +246,15 @@ describe('Yük Testi — gece kuyruğu', () => {
     expect(kayit).toHaveLength(1);
     expect(kayit[0]).toMatchObject({
       etiket: 'A3 brotli seviye 4',
-      hedef: 'GBNGXT33',
+      hedef: 'ORNGXT33',
       onKontrolKosuId: null,
     });
     expect(kayit[0].govde).toEqual({
       senaryoId: 3,
-      hedefHost: 'GBNGXT33',
-      hedefIp: '192.168.133.27',
-      vhost: 'glomo-test.garantibbva.com.tr',
-      yukHost: 'GBNGXT34',
+      hedefHost: 'ORNGXT33',
+      hedefIp: '192.168.251.27',
+      vhost: 'glomo-test.ornekbanka.invalid',
+      yukHost: 'ORNGXT34',
       sni: false,
       parametreler: {
         motor: 'k6',
@@ -278,8 +278,8 @@ describe('Yük Testi — gece kuyruğu', () => {
     expect(olustur).toBeDisabled();
     expect(screen.queryByRole('button', { name: /Vazgeç/ })).toBeNull();
     fireEvent.change(
-      screen.getByLabelText(/^Onay: hedef sunucu adını birebir yazın \(GBNGXT33\)/),
-      { target: { value: 'GBNGXT33' } },
+      screen.getByLabelText(/^Onay: hedef sunucu adını birebir yazın \(ORNGXT33\)/),
+      { target: { value: 'ORNGXT33' } },
     );
     expect(olustur).toBeEnabled();
     api.kuyrukOlustur.mockResolvedValueOnce({
@@ -295,7 +295,7 @@ describe('Yük Testi — gece kuyruğu', () => {
       beklemeDk: 5,
       baslangic: null,
       enGecBitis: null,
-      confirmText: 'GBNGXT33',
+      confirmText: 'ORNGXT33',
       onaylananTurler: [],
       ogeler: [{ etiket: 'A3 brotli seviye 4', govde: kayit[0].govde, onKontrolKosuId: null }],
     });
@@ -456,15 +456,15 @@ describe('Yük Testi — gece kuyruğu', () => {
           etiket: 'A1',
           govde: {
             senaryoId: 3,
-            hedefHost: 'GBNGXT33',
-            hedefIp: '192.168.133.27',
+            hedefHost: 'ORNGXT33',
+            hedefIp: '192.168.251.27',
             vhost: 'v',
-            yukHost: 'GBNGXT34',
+            yukHost: 'ORNGXT34',
             sni: false,
             parametreler: {},
           } as never,
           onKontrolKosuId: null,
-          hedef: 'GBNGXT33',
+          hedef: 'ORNGXT33',
           ozet: 'o',
           butceSn: 600,
         },
@@ -477,7 +477,7 @@ describe('Yük Testi — gece kuyruğu', () => {
       expect(screen.getByText(/Başlangıç hemen \(00:00 3 dk önce geçti\)\./)).toBeTruthy();
       expect(screen.queryByText(/^Kuyruk yarın/)).toBeNull();
       fireEvent.change(screen.getByLabelText(/^Onay: hedef sunucu adını/), {
-        target: { value: 'GBNGXT33' },
+        target: { value: 'ORNGXT33' },
       });
       api.kuyrukOlustur.mockResolvedValue({ ok: false, code: 'x', message: 'dur' });
       fireEvent.click(screen.getByRole('button', { name: /Kuyruğu oluştur/ }));

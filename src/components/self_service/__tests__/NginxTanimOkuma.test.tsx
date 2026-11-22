@@ -36,14 +36,14 @@ const VAR: NginxTanimlar = {
           namespace: 'ob-prod',
           tahmin: false,
           hedef: null,
-          sunucular: [{ host: 'GBNGXP44', filo: 'yeni' }],
+          sunucular: [{ host: 'ORNGXP44', filo: 'yeni' }],
         },
         {
           application: 'ob-app-v1',
           namespace: null,
           tahmin: true,
           hedef: 'https://ob-app-v1-ob-prod.apps.fw',
-          sunucular: [{ host: 'GBRVPP01', filo: 'eski' }],
+          sunucular: [{ host: 'ORRVPP01', filo: 'eski' }],
         },
       ],
     },
@@ -56,7 +56,7 @@ const VAR: NginxTanimlar = {
           namespace: 'sigorta-prod',
           tahmin: false,
           hedef: null,
-          sunucular: [{ host: 'GBNGXP45', filo: 'yeni' }],
+          sunucular: [{ host: 'ORNGXP45', filo: 'yeni' }],
         },
       ],
     },
@@ -88,8 +88,8 @@ describe('Nginx tanım okuma (read)', () => {
     const ob = screen.getByText('/ob/').closest('tr') as HTMLElement;
     expect(within(ob).getByText('sunucular arasında farklı')).toBeTruthy();
     expect(within(ob).getByText('ob-prod')).toBeTruthy();
-    expect(within(ob).getByText(/GBNGXP44/).textContent).toMatch(/yeni filo/);
-    const eski = screen.getByText(/GBRVPP01/);
+    expect(within(ob).getByText(/ORNGXP44/).textContent).toMatch(/yeni filo/);
+    const eski = screen.getByText(/ORRVPP01/);
     expect(eski.textContent).toMatch(/eski filo/);
     expect(screen.getByText('(tahmin: proxy hedefinden)').getAttribute('title')).toBe(
       'proxy hedefi: https://ob-app-v1-ob-prod.apps.fw',

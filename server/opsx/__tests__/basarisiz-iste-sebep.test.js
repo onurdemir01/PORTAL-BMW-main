@@ -1,6 +1,6 @@
 // server/opsx/__tests__/basarisiz-iste-sebep.test.js — BS1..BS5 (2026-09-30).
 //
-// URETIM: kullanici Crypto Hub cluster'i (daocptest1 / harmonize-test) icin OpsX pod
+// URETIM: kullanici Crypto Hub cluster'i (odocptest1 / harmonize-test) icin OpsX pod
 // kesfi calistirdi, "patliyor" dedi ama SEBEP hicbir yerde gorunmuyordu (job 3364180).
 //
 // Playbook dogru davraniyordu: (cluster,namespace) ciftinin hatasini toplayip `set_stats`

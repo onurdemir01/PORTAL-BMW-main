@@ -39,7 +39,7 @@ ANSIBLE_6203
 hostname: gsadasfasd
 appusername: www
 command: /vhosting/scripts/
-email: YigithanG@contractor.garantibbva.com.tr
+email: YigithanG@contractor.ornekbanka.invalid
 ```
 
 ### Credentials
@@ -119,7 +119,7 @@ Ancak job aslında çalışıyor ve Ansible tarafında log bulunuyor.
 Örnek gerçek Ansible logu:
 
 ```text
-Identity added: /runner/artifacts/3165048/ssh_key_data (uxmid@gbansp01)
+Identity added: /runner/artifacts/3165048/ssh_key_data (svcac@oransp01)
 add_file: sshkey_cert_copy: invalid argument
 [DEPRECATION WARNING]: ANSIBLE_COLLECTIONS_PATHS option, does not fit var 
 naming standard, use the singular form ANSIBLE_COLLECTIONS_PATH instead. This 

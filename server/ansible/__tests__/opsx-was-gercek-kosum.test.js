@@ -9,10 +9,13 @@
 // icin `'\t'` orada gercek sekmeydi: tuzak gorunmedi. Duzeltme: sekme cift tirnakli bir degiskende
 // (`opsx_was_sekme: "\t"`). Metin kurali: playbook-jinja-traps.test.js (T kurali).
 //   GK1 islem: betik RESULT OK basinca sonuc OK, before/after olculen, is basarili (rc 0)
-//   GK2 islem: envanter adimi parola yokken FAIL ve SEBEBI tasir (bos mesaj degil)
+//   GK2 islem: envanter adimi on kosullar yokken FAIL ve SEBEBI tasir (bos mesaj degil; eksiklerin hepsi)
 //   GK3 islem: betik RESULT basmazsa OLCULEMEDI; girdi reddinde sonuc play'inin yedek `line`'i gercek
 //       sekmeyle ayrilir (6 alan)
 //   GK4 kesif: DISCOVER + RESULT OK basinca host 'ok', profil listesi gelir
+//   GK5 islem: parola + portal_yazici_host + portal_envanter_sql_sunucusu verilince envanter adimi YAZICI
+//       SUNUCUDA kosar (sha1 / sahip kapisi, betik --sunucu ile); DB yok, sonuc satiri FAIL ama "tanimli
+//       degil" DEGIL (on kosul gecti)
 'use strict';
 
 const { test } = require('node:test');
@@ -43,6 +46,7 @@ function ortam(sahteBetik) {
     [
       `localhost ansible_connection=local ansible_python_interpreter=${py}`,
       `ORWAST01 ansible_connection=local ansible_become=false ansible_python_interpreter=${py}`,
+      `ORLABT02 ansible_connection=local ansible_become=false ansible_python_interpreter=${py}`,
       '',
     ].join('\n'),
   );
@@ -99,12 +103,17 @@ test('GK1 islem: RESULT OK -> sonuc OK, olculen durumlar, is basarili', ATLA, ()
   assert.equal(r.status, 0, r.stdout.slice(-1500));
 });
 
-test('GK2 islem: envanter adimi parola yokken FAIL ve sebebi tasir', ATLA, () => {
+test('GK2 islem: envanter adimi on kosullar yokken FAIL ve sebebi tasir', ATLA, () => {
   const r = oynat(BETIK_OK, 'opsx_was_operation.yml', ISLEM);
   const env = (r.stats?.opsx_was_op_result?.steps || []).find((x) => x.step === 'envanter');
   assert.ok(env, 'envanter adimi yok');
   assert.equal(env.status, 'FAIL');
-  assert.match(String(env.msg), /tbmwans_pwd tanimli degil/, 'sebep bos (sekme bolmesi)');
+  // Eksik on kosullarin HEPSI tek satirda (parola + AWX template Variables, kurum adlari koda yazilmaz).
+  assert.match(
+    String(env.msg),
+    /tbmwans_pwd \(AWX credential\), portal_yazici_host, portal_envanter_sql_sunucusu tanimli degil/,
+    'sebep bos ya da eksik (sekme bolmesi)',
+  );
 });
 
 test(
@@ -142,4 +151,27 @@ test('GK4 kesif: DISCOVER + RESULT OK -> host ok, profiller gelir', ATLA, () => 
   assert.ok(h, JSON.stringify(s));
   assert.equal(h.overall, 'ok', `host olculemedi sayildi (sekme bolmesi): ${JSON.stringify(h)}`);
   assert.equal(h.profiles.length, 1);
+});
+
+test('GK5 islem: on kosullar verilince envanter adimi yazici sunucuda kosar', ATLA, () => {
+  const r = oynat(BETIK_OK, 'opsx_was_operation.yml', {
+    ...ISLEM,
+    tbmwans_pwd: 'deneme-degeri',
+    portal_yazici_host: 'ORLABT02',
+    portal_envanter_sql_sunucusu: 'db.ornek.invalid,1453',
+  });
+  const s = r.stats?.opsx_was_op_result;
+  assert.ok(s, `opsx_was_op_result yayinlanmadi\n${r.stdout.slice(-2000)}`);
+  assert.equal(s.result, 'OK', 'islem sonucu envanter adimindan etkilenmemeli');
+  const env = (s.steps || []).find((x) => x.step === 'envanter');
+  assert.ok(env, 'envanter adimi yok');
+  assert.equal(env.status, 'FAIL', 'DB yokken envanter OK olamaz');
+  assert.ok(String(env.msg).length > 0, 'sebep bos');
+  assert.doesNotMatch(String(env.msg), /tanimli degil/, 'on kosul gecmedi');
+  assert.match(
+    r.stdout,
+    /TASK \[--- \[Task\] dbo\.WASAppsInventory tek satir UPDATE/,
+    'UPDATE gorevi yok',
+  );
+  assert.doesNotMatch(r.stdout, /deneme-degeri/, 'parola ciktiya sizdi');
 });

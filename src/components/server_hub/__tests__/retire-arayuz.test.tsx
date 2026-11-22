@@ -87,8 +87,8 @@ import {
   deploymentMetni,
 } from '@/components/server_hub/retireEtiket';
 
-const APP = 'GBCJAP01';
-const WEB = 'GBCJWP01';
+const APP = 'ORCJAP01';
+const WEB = 'ORCJWP01';
 const KURALLAR: ShRetireSonuc['kurallar'] = [
   {
     kural: 'R1',
@@ -454,7 +454,7 @@ describe('RA2 etiket listesi', () => {
     );
   });
   it('düşme nedenleri; kök girdisi Retirement konusu değil; envanter okunamadı bandı', async () => {
-    const dusen = etiket({ seviye: 'SUPHELI', nedenler: ['GBCJAP02: eşlenik kopya çalışıyor'] });
+    const dusen = etiket({ seviye: 'SUPHELI', nedenler: ['ORCJAP02: eşlenik kopya çalışıyor'] });
     const kesinGirdi = {
       ...GIRDI,
       seviye: 'KESIN' as const,
@@ -922,7 +922,7 @@ describe('RA9 etiket tablosu: sözlük, hızlı süzgeç, sütun dropdownları',
     ad: 'dusen',
     ortam: 'TEST',
     seviye: 'SUPHELI',
-    nedenler: ['GBCJAT02: eşlenik kopya çalışıyor'],
+    nedenler: ['ORCJAT02: eşlenik kopya çalışıyor'],
   });
   const ciz = () =>
     render(
@@ -1014,7 +1014,7 @@ describe('RA10 çapraz kontrol: çok kurallı etiket, Retirement kolonu, yeni ç
     seviye: 'SUPHELI',
     hamSeviye: 'SUPHELI',
     kurallar: ['R8', 'R9', 'R12'],
-    retirement: [{ kayit: 4, hedef: 9, durum: 'stopped', host: 'GBCJAP02' }],
+    retirement: [{ kayit: 4, hedef: 9, durum: 'stopped', host: 'ORCJAP02' }],
   });
   const ciz = (o: Partial<ShRetireSonuc> = {}) =>
     render(
@@ -1115,13 +1115,13 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     ...ek,
   });
   const BULGULAR = [
-    B('GBCJAP01', 'REBOOT_RISK', 'danger', 'jvm', {
+    B('ORCJAP01', 'REBOOT_RISK', 'danger', 'jvm', {
       fixable: true,
       fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'pay' },
     }),
-    B('GBCJAP02', 'KOPYA_TUTARSIZ', 'warning', 'capraz'),
-    B('GBCJAT01', 'STOPPED_AUTOSTART_ON', 'danger', 'jvm'),
-    B('GBCJAP01', 'SCAN_COST', 'info', 'scan'),
+    B('ORCJAP02', 'KOPYA_TUTARSIZ', 'warning', 'capraz'),
+    B('ORCJAT01', 'STOPPED_AUTOSTART_ON', 'danger', 'jvm'),
+    B('ORCJAP01', 'SCAN_COST', 'info', 'scan'),
   ];
   beforeEach(() => {
     m.findings.mockResolvedValue({
@@ -1156,7 +1156,7 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Çapraz kontrol/ }));
     expect(screen.getByRole('button', { name: 'Görünüm: Çapraz kontrol' })).toBeInTheDocument();
     expect(screen.getByText('1–1 / 1')).toBeInTheDocument();
-    expect(screen.getByText('KOPYA_TUTARSIZ metni GBCJAP02')).toBeInTheDocument();
+    expect(screen.getByText('KOPYA_TUTARSIZ metni ORCJAP02')).toBeInTheDocument();
   });
   it('İşlem düğmesi satırı açmaz; tek JVM için onay ister', async () => {
     m.jvmAutoStart.mockResolvedValue({ ok: true, jobId: 5 });
@@ -1165,13 +1165,13 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     fireEvent.click(d);
     // Portal ici onay penceresi (2026-11-08; eskiden window.confirm): onaylanmadan is baslamaz.
     const pencere = await screen.findByRole('dialog');
-    expect(pencere).toHaveTextContent('GBCJAP01 üzerinde pay (JBoss 7) için auto-start AÇILACAK.');
+    expect(pencere).toHaveTextContent('ORCJAP01 üzerinde pay (JBoss 7) için auto-start AÇILACAK.');
     expect(pencere).toHaveTextContent('Yalnız bu JVM etkilenir.');
     expect(m.jvmAutoStart).not.toHaveBeenCalled();
     fireEvent.click(within(pencere).getByRole('button', { name: 'Auto-start aç' }));
     await waitFor(() =>
       expect(m.jvmAutoStart).toHaveBeenCalledWith({
-        host: 'GBCJAP01',
+        host: 'ORCJAP01',
         gen: 7,
         jvm: 'pay',
         enable: true,
@@ -1179,7 +1179,7 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     );
     expect(screen.queryByTestId('sunucu-paneli')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'GBCJAP01 · REBOOT_RISK ayrıntısı' }),
+      screen.getByRole('button', { name: 'ORCJAP01 · REBOOT_RISK ayrıntısı' }),
     ).toHaveAttribute('aria-expanded', 'false');
   });
 });

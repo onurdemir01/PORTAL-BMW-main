@@ -396,12 +396,12 @@ function initTelnet(app) {
   // POST /api/telnet/run — testi tetikler.
   //
   // Legacy — sunucu listesi AWX'in KENDI `limit` alaninda:
-  //   { "limit": "GBCJAP01,GBCJAP03", "extra_vars": { "ip": "...", "port": "..." } }
+  //   { "limit": "ORCJAP01,ORCJAP03", "extra_vars": { "ip": "...", "port": "..." } }
   //   Tek istek = tek AWX job'i, yanit tek nesnedir (jobId/status/...).
   //
   // Openshift — bastion/terminal_host cozumleme portalda (LogX modeli), TEK AWX job'i,
   // TUM namespace'ler extra_vars'ta:
-  //   { "namespaces": ["ns1", "ns2"], "cluster": "gbocptest1" (opsiyonel — bkz. asagisi),
+  //   { "namespaces": ["ns1", "ns2"], "cluster": "orocptest1" (opsiyonel — bkz. asagisi),
   //     "extra_vars": { "env": "test", "cluster": "ark", "namespaces": ["ns1","ns2"],
   //     "ip": "...", "port": "..." } }
   //   Yanit Legacy ile AYNI sekil: `{ ok, jobId, status, awxServerId, templateId, sentBody }`
@@ -410,7 +410,7 @@ function initTelnet(app) {
   //   islediginden buna gerek kalmadi.
   //
   // CLUSTER SECIMI (OpsX Openshift Rollout ile AYNI UX): govdedeki `cluster` (tekil, GERCEK
-  // cluster adi, or. "gbocptest1") OPSIYONEL — bossa/gonderilmezse tenant/env grubunun TUM
+  // cluster adi, or. "orocptest1") OPSIYONEL — bossa/gonderilmezse tenant/env grubunun TUM
   // cluster'lari hedeflenir (eski davranis). Openshift Rollout'tan FARKLI olarak burada AWX
   // `limit`e HIC ihtiyac YOK: bastion fan-out modeli zaten `ocp_clusters[]` VERISINI (asagida)
   // kisitlayarak calisir, playbook'a hic dokunulmadi.
@@ -534,7 +534,7 @@ function initTelnet(app) {
       // `oc login` yapar).
       //
       // NEDEN: eski modelde cluster -> jump server eslemesi AWX envanterinin ICINDE gizliydi
-      // (envanterde `gbocpqa1` hem GRUP hem HOST olarak tanimli — Ansible bunu uyari olarak
+      // (envanterde `orocpqa1` hem GRUP hem HOST olarak tanimli — Ansible bunu uyari olarak
       // basiyor). Portalin DB'sindeki `ocp_cluster_index.terminal_host` kaydi hic
       // kullanilmiyordu. Artik eslemenin tek kaynagi portal.
       //
@@ -729,13 +729,21 @@ function initTelnet(app) {
       });
     }
 
-    // telnet_legacy.yaml'in sonundaki "DB Ops" play'i sabit olarak GBLABT02'yi hedefler
+    // telnet_legacy.yaml'in sonundaki "DB Ops" play'i sabit olarak ORLABT02'yi hedefler
     // (is calistirmasini denetim icin DB'ye kaydeder) — OpsX Legacy'deki AYNI sorun/cozum
     // (bkz. server/opsx/index.cjs "limitHosts" notu): AWX --limit PLAYBOOK GENELINDE
-    // gecerli oldugu icin, limit sadece secilen hedef sunucularla sinirlanirsa GBLABT02
-    // bu kumede olmadigindan o play "no hosts matched" ile sessizce atlanir. GBLABT02
+    // gecerli oldugu icin, limit sadece secilen hedef sunucularla sinirlanirsa ORLABT02
+    // bu kumede olmadigindan o play "no hosts matched" ile sessizce atlanir. ORLABT02
     // HER ZAMAN limit'e eklenir (zaten hedeflerden biriyse tekrar eklenmez).
-    const DB_OPS_HOST = 'GBLABT02';
+    // Sunucu kurum ayarinda (`opsx.dbIslemSunucusu`, K17); tanimsizsa istek baslatilmaz (denetim kaydi atlanirdi).
+    const dbSunucu = require('../util/kurum-ayari.cjs').sunucuAdi('opsx.dbIslemSunucusu');
+    if (!dbSunucu.ad)
+      return res.status(503).json({
+        ok: false,
+        message: `DB islem sunucusu tanimli degil: ${dbSunucu.hata}`,
+        code: 'kurum_ayari_eksik',
+      });
+    const DB_OPS_HOST = dbSunucu.ad;
     const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
     const limitValue = limitHosts.join(',');
     const extraVars = { ip: ipTrim, port: portTrim };

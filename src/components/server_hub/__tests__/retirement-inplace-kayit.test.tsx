@@ -26,12 +26,12 @@ import RetirementHedefAyrinti from '@/components/server_hub/RetirementHedefAyrin
 const hedef = (status: RtTargetStatus, o: Partial<RtTarget> = {}): RtTarget => ({
   id: 3,
   recordId: 1,
-  host: 'GBJEXP05',
+  host: 'ORJEXP05',
   site: 'Pendik',
   env: 'PROD',
-  appName: 'GBPOSWEBAPI',
+  appName: 'ORPOSWEBAPI',
   gen: 7,
-  appPath: '/vhosting/GBPOSWEBAPI.ear',
+  appPath: '/vhosting/ORPOSWEBAPI.ear',
   web: [],
   status,
   planText: null,
@@ -51,7 +51,7 @@ const hedef = (status: RtTargetStatus, o: Partial<RtTarget> = {}): RtTarget => (
 });
 const kayit = (t: RtTarget): RtRecord => ({
   id: 1,
-  app: 'GBPOSWEBAPI',
+  app: 'ORPOSWEBAPI',
   smartNo: '364244',
   ocoNo: null,
   ownerEmail: null,
@@ -73,9 +73,9 @@ const kayit = (t: RtTarget): RtRecord => ({
 const kesif = {
   ok: true,
   targets: [
-    { host: 'gbjexp05', appName: 'gbposwebapi', gen: 7, inPlace: true, digerSurumler: [8] },
-    { host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 8, inPlace: true, digerSurumler: [7] },
-    { host: 'GBJEXP06', appName: 'GBPOSWEBAPI', gen: 7 },
+    { host: 'orjexp05', appName: 'orposwebapi', gen: 7, inPlace: true, digerSurumler: [8] },
+    { host: 'ORJEXP05', appName: 'ORPOSWEBAPI', gen: 8, inPlace: true, digerSurumler: [7] },
+    { host: 'ORJEXP06', appName: 'ORPOSWEBAPI', gen: 7 },
   ],
 };
 
@@ -97,7 +97,7 @@ describe('in-place kayit ayrintisi', () => {
       b(true, [8], 'kesif'),
     );
     expect(inPlaceBilgisi(hedef('stopped'), h)).toEqual(b(true, [8], 'kesif'));
-    expect(inPlaceBilgisi({ ...hedef('stopped'), host: 'GBJEXP06', inPlace: null }, h)).toEqual(
+    expect(inPlaceBilgisi({ ...hedef('stopped'), host: 'ORJEXP06', inPlace: null }, h)).toEqual(
       b(false, [], 'kesif'),
     );
     // Bugunku kesifte hedef yok (silinmis / paket .old) ya da kesif dustu: bilinmiyor, "yok" DEGIL.
@@ -265,7 +265,7 @@ describe('in-place kayit ayrintisi', () => {
     const atlandi = { ...j8, status: 'skipped' as RtTargetStatus };
     expect(kayittakiDigerleri(j7, [j7, j8], [8])).toEqual([8]);
     expect(kayittakiDigerleri(j7, [j7, atlandi], [8])).toEqual([]);
-    expect(kayittakiDigerleri(j7, [j7, { ...j8, host: 'GBJEXP06' }], [8])).toEqual([]);
+    expect(kayittakiDigerleri(j7, [j7, { ...j8, host: 'ORJEXP06' }], [8])).toEqual([]);
     expect(
       inPlaceBilgisi({ ...j7, inPlace: true, digerSurumler: [8] }, null, [j7, j8]).kayitta,
     ).toEqual([8]);

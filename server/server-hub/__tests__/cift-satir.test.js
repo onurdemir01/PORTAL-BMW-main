@@ -1,7 +1,7 @@
 // server/server-hub/__tests__/cift-satir.test.js - Server_Hub_* cift satir ayiklama (uretim 2026-11-14).
 //
 // Uretim: dbo.Server_Hub_Jvms ayni (host, gen, jvm, scan_date) icin iki satir (id 408954 + 408983,
-// GBSTPQ01/8/GBSTPMAINWEB); degerlendirme JVM'i iki kez listeledi, Toplu Auto-Start reddedildi.
+// ORSTPQ01/8/ORSTPMAINWEB); degerlendirme JVM'i iki kez listeledi, Toplu Auto-Start reddedildi.
 //   CS1 tekillestir: dogal anahtar ayni -> tek satir, EN BUYUK id kalir (sira ne olursa olsun), sayilir
 //   CS2 id yoksa (eski sema) SON gorulen kalir; __sh_id hic sizmaz; farkli anahtar (gen/jvm) dokunulmaz
 //   CS3 her tablonun anahtari: Init root+file, Vhosts listen+server_name+aliases+conf_file, Ips ip+iface, ...
@@ -35,50 +35,50 @@ let temiz = false; // CS8: DB temizlendi (cift yok)
 const sorgular = [];
 const JVMS = () => [
   {
-    host: 'GBSTPQ01',
+    host: 'ORSTPQ01',
     scan_date: gun,
     gen: 8,
-    jvm: 'GBSTPMAINWEB',
+    jvm: 'ORSTPMAINWEB',
     grp: 'g',
     running: 1,
     auto_start: 'true',
     __sh_id: 408954,
   },
   {
-    host: 'GBSTPQ01',
+    host: 'ORSTPQ01',
     scan_date: gun,
     gen: 8,
-    jvm: 'GBSTPTELLER',
+    jvm: 'ORSTPTELLER',
     grp: 'g',
     running: 1,
     auto_start: 'true',
     __sh_id: 408957,
   },
   {
-    host: 'GBSTPQ01',
+    host: 'ORSTPQ01',
     scan_date: gun,
     gen: 8,
-    jvm: 'GBSTPMAINWEB',
+    jvm: 'ORSTPMAINWEB',
     grp: 'g',
     running: 0,
     auto_start: 'false',
     __sh_id: 408983,
   },
   {
-    host: 'GBSTPQ01',
+    host: 'ORSTPQ01',
     scan_date: gun,
     gen: 8,
-    jvm: 'GBSTPTELLER',
+    jvm: 'ORSTPTELLER',
     grp: 'g',
     running: 1,
     auto_start: 'true',
     __sh_id: 408986,
   },
   {
-    host: 'GBSTPQ01',
+    host: 'ORSTPQ01',
     scan_date: gun,
     gen: 7,
-    jvm: 'GBSTPMAINWEB',
+    jvm: 'ORSTPMAINWEB',
     grp: 'g',
     running: 1,
     auto_start: 'true',
@@ -121,8 +121,8 @@ stub('../../inventory/mssql.cjs', {
     }
     if (/FROM dbo\.Server_Hub_Hosts t/.test(q)) {
       const r = [
-        { host: 'GBSTPQ01', scan_date: gun, products: 'JBOSS8', note: '', __sh_id: 10 },
-        { host: 'GBSTPQ01', scan_date: gun, products: 'JBOSS8', note: 'yeni', __sh_id: 11 },
+        { host: 'ORSTPQ01', scan_date: gun, products: 'JBOSS8', note: '', __sh_id: 10 },
+        { host: 'ORSTPQ01', scan_date: gun, products: 'JBOSS8', note: 'yeni', __sh_id: 11 },
       ];
       if (temiz) r.shift();
       if (!idVar) for (const x of r) delete x.__sh_id;
@@ -172,7 +172,7 @@ test('CS1 dogal anahtar ayni -> tek satir, en buyuk id kalir, sayilir', () => {
     const r = C.tekillestir('dbo.Server_Hub_Jvms', giris);
     assert.equal(r.atilan, 2);
     assert.equal(r.satirlar.length, 3);
-    const mw8 = r.satirlar.find((x) => x.gen === 8 && x.jvm === 'GBSTPMAINWEB');
+    const mw8 = r.satirlar.find((x) => x.gen === 8 && x.jvm === 'ORSTPMAINWEB');
     assert.equal(mw8.auto_start, 'false', 'en son yukleme (408983) kalmali');
     assert.ok(
       r.satirlar.every((x) => !('__sh_id' in x)),
@@ -288,9 +288,9 @@ test('CS4 loadLatest: id secilir, cift JVM tek doner, ciftSatir sayilir', async 
   const jq = sorgular.find((q) => /FROM dbo\.Server_Hub_Jvms t/.test(q));
   assert.match(jq, /t\.\[id\] AS \[__sh_id\]/);
   assert.equal(data.jvms.length, 3);
-  assert.equal(data.jvms.filter((j) => j.jvm === 'GBSTPMAINWEB' && Number(j.gen) === 8).length, 1);
+  assert.equal(data.jvms.filter((j) => j.jvm === 'ORSTPMAINWEB' && Number(j.gen) === 8).length, 1);
   assert.equal(
-    data.jvms.find((j) => j.jvm === 'GBSTPMAINWEB' && Number(j.gen) === 8).auto_start,
+    data.jvms.find((j) => j.jvm === 'ORSTPMAINWEB' && Number(j.gen) === 8).auto_start,
     'false',
   );
   assert.equal(data.hosts.length, 1);
@@ -339,12 +339,12 @@ test('CS8 sayi 0a inince bir kez "0a indi" loglanir (temizlik etkisi gorunur)', 
 test('CS9 loadJvmAgir: id varsa ORDER BY t.[id] (Map son = en buyuk id), yoksa siralama eklenmez', async () => {
   KOLONLAR.Server_Hub_Jvms.push('jvm_args');
   try {
-    await SH.loadJvmAgir('GBSTPQ01');
+    await SH.loadJvmAgir('ORSTPQ01');
     let jq = sorgular.filter((q) => /FROM dbo\.Server_Hub_Jvms t/.test(q)).pop();
     assert.match(jq, /ORDER BY t\.\[id\]\s*$/);
     idVar = false;
     sorgular.length = 0;
-    await SH.loadJvmAgir('GBSTPQ01');
+    await SH.loadJvmAgir('ORSTPQ01');
     jq = sorgular.filter((q) => /FROM dbo\.Server_Hub_Jvms t/.test(q)).pop();
     assert.doesNotMatch(jq, esnek(/ORDER BY/));
   } finally {
@@ -382,7 +382,7 @@ test('CS7 loader bilgi satiri DUPLICATE_ROWS_DROPPED sunucuyu LOAD_EXCLUDED yapm
   const girdi = {
     hosts: [
       {
-        host: 'GBSTPQ01',
+        host: 'ORSTPQ01',
         scan_date: gun,
         products: 'JBOSS8',
         wall_s: 1,
@@ -404,7 +404,7 @@ test('CS7 loader bilgi satiri DUPLICATE_ROWS_DROPPED sunucuyu LOAD_EXCLUDED yapm
     schemaUnknown: false,
     loadIssues: [
       {
-        host: 'GBSTPQ01',
+        host: 'ORSTPQ01',
         scan_date: gun,
         issue: 'DUPLICATE_ROWS_DROPPED',
         detail: 'JVM=2',
@@ -413,12 +413,12 @@ test('CS7 loader bilgi satiri DUPLICATE_ROWS_DROPPED sunucuyu LOAD_EXCLUDED yapm
     ],
   };
   const a = gercek.assess(girdi, {});
-  const h = a.hosts.find((x) => x.host === 'GBSTPQ01');
+  const h = a.hosts.find((x) => x.host === 'ORSTPQ01');
   assert.equal(h.loadExcluded, false);
   // ayni zamanlamada gercek bir dislama satiri LOAD_EXCLUDED olur (bekci kor degil)
   girdi.loadIssues[0].issue = 'FORMAT';
   assert.equal(
-    gercek.assess(girdi, {}).hosts.find((x) => x.host === 'GBSTPQ01').loadExcluded,
+    gercek.assess(girdi, {}).hosts.find((x) => x.host === 'ORSTPQ01').loadExcluded,
     true,
   );
 });

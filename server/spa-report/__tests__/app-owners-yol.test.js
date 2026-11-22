@@ -34,7 +34,7 @@ const NS = 'kart-prod';
 const GUN = '2026-10-02';
 const APP_ROWS = [
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     namespace: NS,
     application: 'kart-app-v1',
     owner_group_name: 'GT-Uyg',
@@ -45,7 +45,7 @@ const APP_ROWS = [
     lookup_message: '',
   },
   {
-    cluster: 'gbocpprod1',
+    cluster: 'orocpprod1',
     namespace: NS,
     application: 'kart-ui',
     owner_group_name: 'GT-Uyg',
@@ -103,7 +103,7 @@ const IA = (application) => ({
   reqShown: 1,
   usage: null,
   hosts: [],
-  clusters: ['gbocpprod1'],
+  clusters: ['orocpprod1'],
   staleClusters: [],
   weakEvidence: false,
   pattern: 'uymuyor',

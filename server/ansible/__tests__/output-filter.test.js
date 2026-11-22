@@ -17,7 +17,7 @@ const { applyOutputFilter } = require('../runner.cjs');
 const STDOUT = [
   'PLAY [deploy] ******************',
   '  TASK [Gathering Facts] *******',
-  'ok: [gbansp01]',
+  'ok: [oransp01]',
   '  ÖZET: 3 sunucu guncellendi',
   'PLAY RECAP *********************',
 ].join('\n');

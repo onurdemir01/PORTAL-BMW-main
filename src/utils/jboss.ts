@@ -73,7 +73,7 @@ export function toHostPairs(keys: Iterable<string>): { host: string; jbossMajor:
 
 // ── KURULUM DIZINI (OpsX, 2026-10-08) ─────────────────────────────────────────────
 // OpsX playbook'lari kurulumu DIZINE gore secer ("7" kolu = /usr/jboss, "8" kolu = /usr/jboss8).
-// Standart disi bir sunucuda /usr/jboss altinda da JBoss 8 olabiliyor (GBJBOP18): iki satir da
+// Standart disi bir sunucuda /usr/jboss altinda da JBoss 8 olabiliyor (ORJBOP18): iki satir da
 // 8.x oldugundan (host, majör) kimligi ikisini birlestiriyordu. OpsX satir kimligi icin KOLU
 // kullanir; sunucu gondermediyse urun surumunun majörune dusulur (eski davranis).
 export function kurulumOf(h: { kurulum?: string | null; jbossVersion?: string | null }): string {

@@ -39,17 +39,17 @@ const VERI: OcpCoverageResult = {
   patterns: [],
   envClusters: {
     prod: [
-      { cluster: 'gbocpprod1', apps: 3 },
-      { cluster: 'gbocpprod2', apps: 1 },
-      { cluster: 'gbocpdrcprod1', apps: 0, veriYok: true },
-      { cluster: 'gbocpprod3', apps: 1, beklenmeyen: true },
+      { cluster: 'orocpprod1', apps: 3 },
+      { cluster: 'orocpprod2', apps: 1 },
+      { cluster: 'orocpdrcprod1', apps: 0, veriYok: true },
+      { cluster: 'orocpprod3', apps: 1, beklenmeyen: true },
     ],
   },
   envClusterKaynagi: { prod: 'resmi' },
   rows: [
-    satir('kart-api', 'kart', ['gbocpprod1', 'gbocpprod2']),
-    satir('IBAN-web', 'odeme', ['gbocpprod1']),
-    satir('eski-app', 'arsiv', ['gbocpprod1', 'gbocpprod3']),
+    satir('kart-api', 'kart', ['orocpprod1', 'orocpprod2']),
+    satir('IBAN-web', 'odeme', ['orocpprod1']),
+    satir('eski-app', 'arsiv', ['orocpprod1', 'orocpprod3']),
   ],
 };
 
@@ -64,7 +64,7 @@ describe('OcpRouteProd', () => {
   it('sutunlar prod cluster’lari; veri yok n’ye katilmaz', async () => {
     render(<OcpRouteProd />);
     await screen.findByText('kart-api');
-    for (const c of ['gbocpprod1', 'gbocpprod2', 'gbocpdrcprod1', 'gbocpprod3'])
+    for (const c of ['orocpprod1', 'orocpprod2', 'orocpdrcprod1', 'orocpprod3'])
       expect(screen.getAllByRole('columnheader', { name: new RegExp(c) }).length).toBeGreaterThan(
         0,
       );
@@ -74,7 +74,7 @@ describe('OcpRouteProd', () => {
     const iban = satirlar().find((r) => within(r).queryByText('IBAN-web'))!;
     expect(within(iban).getByText('1/2')).toBeTruthy();
     expect(
-      (screen.getByLabelText('gbocpdrcprod1 sütununa göre süz') as HTMLSelectElement).disabled,
+      (screen.getByLabelText('orocpdrcprod1 sütununa göre süz') as HTMLSelectElement).disabled,
     ).toBe(true);
   });
 
@@ -88,14 +88,14 @@ describe('OcpRouteProd', () => {
     expect(screen.getByText('1 / 3 prod route')).toBeTruthy();
 
     fireEvent.click(screen.getByText('Filtreleri temizle'));
-    fireEvent.change(screen.getByLabelText('gbocpprod2 sütununa göre süz'), {
+    fireEvent.change(screen.getByLabelText('orocpprod2 sütununa göre süz'), {
       target: { value: 'yok' },
     });
     expect(screen.queryByText('kart-api')).toBeNull();
     expect(screen.getByText('IBAN-web')).toBeTruthy();
     expect(screen.getByText('eski-app')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('gbocpprod3 sütununa göre süz'), {
+    fireEvent.change(screen.getByLabelText('orocpprod3 sütununa göre süz'), {
       target: { value: 'var' },
     });
     expect(screen.queryByText('IBAN-web')).toBeNull();

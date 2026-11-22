@@ -22,7 +22,7 @@ let izinli;
 beforeEach(() => {
   izinli = true;
   sahte('logx/v2/admin.cjs', {
-    getClusterTree: async () => ({ PROD: { ark: ['gbocpprod1', 'gbocpprod2'] } }),
+    getClusterTree: async () => ({ PROD: { ark: ['orocpprod1', 'orocpprod2'] } }),
   });
   sahte('logx/v2/restrictions.cjs', { isAllowed: async () => izinli });
 });
@@ -53,7 +53,7 @@ test('TP2 izinle gecer; erisim kisitlamasi yine uygulanir', async () => {
     r.cleanPairs.map((p) => p.namespace),
     ['kart-batch-prod'],
   );
-  assert.deepEqual(r.clusterNames, ['gbocpprod1', 'gbocpprod2']);
+  assert.deepEqual(r.clusterNames, ['orocpprod1', 'orocpprod2']);
   izinli = false;
   await assert.rejects(
     coz(

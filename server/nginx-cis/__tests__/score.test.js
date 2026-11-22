@@ -19,13 +19,13 @@ const R = (host, item_id, status, observed = '', detail = '') => ({
   detail,
 });
 const base = () => ({
-  hosts: [{ host: 'GBNGXP40', nginx_version: '1.25.3', t_state: 'ok', scan_date: '2026-09-22' }],
+  hosts: [{ host: 'ORNGXP40', nginx_version: '1.25.3', t_state: 'ok', scan_date: '2026-09-22' }],
   results: [
-    R('GBNGXP40', '2.5.1', 'PASS', 'off'),
-    R('GBNGXP40', '2.4.3', 'FAIL', '65'),
-    R('GBNGXP40', '5.2.2', 'MANUAL', '10m'),
-    R('GBNGXP40', '4.1.7', 'FAIL', 'tanimsiz'),
-    R('GBNGXP40', '2.2.2', 'NA', '-'),
+    R('ORNGXP40', '2.5.1', 'PASS', 'off'),
+    R('ORNGXP40', '2.4.3', 'FAIL', '65'),
+    R('ORNGXP40', '5.2.2', 'MANUAL', '10m'),
+    R('ORNGXP40', '4.1.7', 'FAIL', 'tanimsiz'),
+    R('ORNGXP40', '2.2.2', 'NA', '-'),
   ],
 });
 
@@ -69,23 +69,23 @@ test('CIS3 istisna: madde skordan DUSER (payda kucultulur), global ve sunucu baz
   assert.match(h.items.find((i) => i.id === '2.4.3').source, /tüm filo/);
   // sunucu bazli istisna yalniz o sunucuda
   const two = {
-    hosts: [...base().hosts, { host: 'GBNGXP41', t_state: 'ok', scan_date: '2026-09-22' }],
-    results: [...base().results, R('GBNGXP41', '2.4.3', 'FAIL', '65')],
+    hosts: [...base().hosts, { host: 'ORNGXP41', t_state: 'ok', scan_date: '2026-09-22' }],
+    results: [...base().results, R('ORNGXP41', '2.4.3', 'FAIL', '65')],
   };
   const s = scoreAll({
     ...two,
-    exceptions: [{ item_id: '2.4.3', host: 'gbngxp40', note: 'yalniz bu sunucu' }],
+    exceptions: [{ item_id: '2.4.3', host: 'orngxp40', note: 'yalniz bu sunucu' }],
   });
   assert.equal(
-    s.hosts.find((x) => x.host === 'GBNGXP40').items.find((i) => i.id === '2.4.3').status,
+    s.hosts.find((x) => x.host === 'ORNGXP40').items.find((i) => i.id === '2.4.3').status,
     'EXCEPTED',
   );
   assert.equal(
-    s.hosts.find((x) => x.host === 'GBNGXP41').items.find((i) => i.id === '2.4.3').status,
+    s.hosts.find((x) => x.host === 'ORNGXP41').items.find((i) => i.id === '2.4.3').status,
     'FAIL',
   );
   assert.match(
-    s.hosts.find((x) => x.host === 'GBNGXP40').items.find((i) => i.id === '2.4.3').source,
+    s.hosts.find((x) => x.host === 'ORNGXP40').items.find((i) => i.id === '2.4.3').source,
     /bu sunucu/,
   );
 });

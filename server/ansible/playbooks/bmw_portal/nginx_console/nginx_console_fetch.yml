@@ -1,10 +1,10 @@
 ---
 # nginx_console_fetch.yml — Portal > Nginx Hub: secilen nginx sunucularinin konfigurasyon
-# agacini + dosya iceriklerini + sertifikalarini SALT OKUNUR doker, GBLABT02 uzerinden /sw'ye
+# agacini + dosya iceriklerini + sertifikalarini SALT OKUNUR doker, ORLABT02 uzerinden /sw'ye
 # yazar (Portal ayni mount'u dogrudan okur). Ayrinti: README.md.
 #
 # extra_vars (Portal gonderir):
-#   target_hosts: ["GBNGXP40", "GBNGXP41"]   (opsiyonel; BOS/YOK -> tum nginx filosu envanterden
+#   target_hosts: ["ORNGXP40", "ORNGXP41"]   (opsiyonel; BOS/YOK -> tum nginx filosu envanterden
 #                                              kesfedilir: dbo.Inventory.nginx_version dolu olanlar,
 #                                              nginx_audit / nginx_metadata ile AYNI betik)
 #   console_dir:  /sw/BMW_PORTAL/nginx_console   (raw/<HOST>.txt buraya; varsayilan bu)
@@ -20,7 +20,7 @@
 #
 # NEDEN add_host: AWX `limit` yalniz template'te "prompt on launch" aciksa calisir (bkz. Portal
 # notlari) — host secimi playbook icinde yapilir.
-# NEDEN GBLABT02: envanter DB'sine erisen kesif betigi orada kosar; /sw mount da orada
+# NEDEN ORLABT02: envanter DB'sine erisen kesif betigi orada kosar; /sw mount da orada
 # (nginx sunucularinda /sw YOK) — nginx_audit ile ayni desen.
 #
 # Sure: host basina birkac saniye; TUM filo (yuzlerce nginx) 30-40 dk surebilir - Portal
@@ -28,7 +28,10 @@
 # calisir (tum filo).
 
 - name: "--- [Play] Hedef sunucular - verilen liste ya da envanterden kesif ---"
-  hosts: GBLABT02
+  # Yazici sunucu AWX sablon degiskeninden (portal_yazici_host; kurum sunucu adi repoya yazilmaz).
+  # Tanimsizsa bu play eslesen host bulamaz ve atlanir; toplayici set_stats'ta "tanimli degil" der ve
+  # isi dusurur (kesif hatasi yolu; sessizce bos sonuc donmez).
+  hosts: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
   gather_facts: no
   ignore_unreachable: true
   vars:
@@ -152,13 +155,13 @@
           changed_when: false
           when: need_dump | bool
 
-        - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
+        - name: --- [Task] /sw'ye yaz (yazici sunucu uzerinden) ---
           ansible.builtin.copy:
             content: "{{ dump_out.stdout }}\n"
             dest: "{{ console_dir }}/raw/{{ inventory_hostname | upper }}.txt"
             mode: '0666'
-          delegate_to: GBLABT02
-          # GBLABT02'ye ayni anda forks kadar oturum -> sshd MaxSessions (10) asilir:
+          delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
+          # ORLABT02'ye ayni anda forks kadar oturum -> sshd MaxSessions (10) asilir:
           # "mux_client_request_session: session request failed" (kullanici, 2026-09-21). En cok 6 eszamanli.
           throttle: 6
           when: (need_dump | bool) and (dump_out.stdout | default('') | length) > 0
@@ -217,9 +220,12 @@
     - name: --- [Task] Son gorulme dosyasini oku (_seen.json) ---
       ansible.builtin.slurp:
         src: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/_seen.json"
-      delegate_to: GBLABT02
+      delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
       register: seen_raw
       failed_when: false
+      # Yazici sunucu ulasilamazsa (ya da tanimsizsa) toplayici DUSMEZ: set_stats yine yayinlanir.
+      ignore_unreachable: true
+      when: (fetch_results | default([]) | selectattr('ok') | list | length) > 0
 
     - name: --- [Task] Son gorulme - onceki kayitlar ---
       ansible.builtin.set_fact:
@@ -235,15 +241,25 @@
         content: "{{ {'at': seen_now, 'hosts': ((seen_prev | default({})) if (seen_prev | default({})) is mapping else {}) | combine(seen_new)} | to_nice_json }}\n"
         dest: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/_seen.json"
         mode: '0666'
-      delegate_to: GBLABT02
+      delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
       when: (seen_hosts | length) > 0
       failed_when: false
+      ignore_unreachable: true
+
+    - name: --- [Task] Hedef kesfi hatasi (yazici sunucu tanimsizsa kesif hic yapilmadi) ---
+      ansible.builtin.set_fact:
+        console_kesif_hatasi: >-
+          {{ ('portal_yazici_host tanimli degil (AWX template Variables); hedef kesfi yapilmadi')
+             if (portal_yazici_host | default('', true) | string | trim | length) == 0
+             else (('portal_yazici_host (' ~ portal_yazici_host ~ ') envanterde yok; hedef kesfi yapilmadi')
+                   if portal_yazici_host not in groups['all']
+                   else (hostvars[portal_yazici_host].console_discovery_error | default('') | string)) }}
 
     - name: --- [Task] set_stats ---
       ansible.builtin.set_stats:
         data:
           nginx_console_fetch_result:
-            discovery_error: "{{ hostvars['GBLABT02'].console_discovery_error | default('') }}"
+            discovery_error: "{{ console_kesif_hatasi }}"
             hosts: "{{ fetch_results | default([]) }}"
             ok_count: "{{ fetch_results | default([]) | selectattr('ok') | list | length }}"
             dumped_count: "{{ fetch_results | default([]) | selectattr('ok') | rejectattr('skipped') | list | length }}"
@@ -253,7 +269,7 @@
       ansible.builtin.fail:
         msg: >-
           Hicbir sunucudan dokum alinamadi.
-          {{ ("Hedef kesfi basarisiz: " + (hostvars['GBLABT02'].console_discovery_error | string))
-             if (hostvars['GBLABT02'].console_discovery_error | default('')) | length > 0
+          {{ ("Hedef kesfi basarisiz: " + console_kesif_hatasi)
+             if (console_kesif_hatasi | length) > 0
              else ("Sonuclar: " + (fetch_results | default([]) | string)) }}
       when: (fetch_results | default([]) | selectattr('ok') | list | length) == 0

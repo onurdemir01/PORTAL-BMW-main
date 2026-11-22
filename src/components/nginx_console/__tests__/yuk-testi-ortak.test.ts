@@ -588,16 +588,16 @@ describe('Yük Testi — saf yardımcılar', () => {
 
   it('YO7b koşu uyarıları: katlanan adım uyarıları ("<TUR>: ..." ve özet satırı) ayrı listelenir', () => {
     const { genel, adim } = uyarilariAyir([
-      'arka_plan_yok:R4_gbngxt33(kosu_disi_bosluk_bulunamadi)',
-      'kayit:R4_gbngxt33:disk_%70',
+      'arka_plan_yok:R4_orngxt33(kosu_disi_bosluk_bulunamadi)',
+      'kayit:R4_orngxt33:disk_%70',
       'R4_K_yeni_br_100_r1: diger_trafik_%12',
       'R4_K_yeni_br_250_r2: saat_farki',
       '… ve 3 adım uyarısı daha',
       'log_baska_adim_satiri:12',
     ]);
     expect(genel).toEqual([
-      'arka_plan_yok:R4_gbngxt33(kosu_disi_bosluk_bulunamadi)',
-      'kayit:R4_gbngxt33:disk_%70',
+      'arka_plan_yok:R4_orngxt33(kosu_disi_bosluk_bulunamadi)',
+      'kayit:R4_orngxt33:disk_%70',
       'log_baska_adim_satiri:12',
     ]);
     expect(adim).toEqual([
@@ -906,7 +906,7 @@ describe('Yük Testi — saf yardımcılar', () => {
   it('YO15 koşu normalleştirmesi: tür / motor varsayılanı sunucu / k6, motor parametreden; wrk parametreleriyle çökmez; durdur metni', () => {
     const eski = kosuNormalle({
       id: 3,
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       hedefIp: '10.1.2.3',
       parametreler: {
         hizlar: [100],
@@ -923,7 +923,7 @@ describe('Yük Testi — saf yardımcılar', () => {
     expect(eski).toMatchObject({
       hedefTuru: 'sunucu',
       motor: 'k6',
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       serbestAg: null,
       planUyarilari: [],
     });
@@ -1066,7 +1066,7 @@ describe('Yük Testi — saf yardımcılar', () => {
     );
     expect(nedenMetni('onay_metni')).toBe('yazılan ad / IP hedefle aynı değil');
     expect(hedefEtiketi({ hedefHost: null, hedefIp: '10.20.30.40' })).toBe('10.20.30.40');
-    expect(hedefEtiketi({ hedefHost: 'GBNGXT10', hedefIp: '10.1.2.3' })).toBe('GBNGXT10');
+    expect(hedefEtiketi({ hedefHost: 'ORNGXT10', hedefIp: '10.1.2.3' })).toBe('ORNGXT10');
   });
 
   it('YO20 (WR2) wrk uyarısı: tavan ORTALAMA hızı sınırlar, istekler kümelenebilir, burst’ü küçük / burst’süz yolda 429 -> DUR; “aşamaz” demez', () => {
@@ -1176,7 +1176,7 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
         dahaVar: false,
         kosular: [
           { id: 9, hedefHost: '', hedefIp: '10.20.30.40', hedefTuru: 'serbest', motor: 'wrk' },
-          { id: 8, hedefHost: 'GBNGXT10', hedefIp: '10.1.2.3' },
+          { id: 8, hedefHost: 'ORNGXT10', hedefIp: '10.1.2.3' },
         ],
       }),
     );
@@ -1199,14 +1199,14 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
     });
     expect(r.kosular[1]).toMatchObject({
       id: 8,
-      hedefHost: 'GBNGXT10',
+      hedefHost: 'ORNGXT10',
       hedefTuru: 'sunucu',
       motor: 'k6',
     });
-    expect(r.kosular.map(hedefEtiketi)).toEqual(['10.20.30.40', 'GBNGXT10']);
-    await nginxLoadtestApi.kosular({ hedef: 'GBNGXT10', islem: 'kosu', motor: 'k6' });
+    expect(r.kosular.map(hedefEtiketi)).toEqual(['10.20.30.40', 'ORNGXT10']);
+    await nginxLoadtestApi.kosular({ hedef: 'ORNGXT10', islem: 'kosu', motor: 'k6' });
     expect(f.mock.calls[1][0]).toBe(
-      '/api/nginx-loadtest/kosular?islem=kosu&hedef=GBNGXT10&motor=k6',
+      '/api/nginx-loadtest/kosular?islem=kosu&hedef=ORNGXT10&motor=k6',
     );
   });
 
@@ -1218,7 +1218,7 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
         ok: true,
         tur: 'sunucu',
         ip: '10.1.2.5',
-        host: 'GBNGXT10',
+        host: 'ORNGXT10',
         env: 'TEST',
         vhostlar: ['a.example'],
         vhostVerisi: true,
@@ -1231,17 +1231,17 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
       }),
     );
     const s = await nginxLoadtestApi.ipSinifi('10.1.2.5', {
-      yukHost: 'GBNGXT34',
-      hedefHost: 'GBNGXT10',
+      yukHost: 'ORNGXT34',
+      hedefHost: 'ORNGXT10',
     });
     expect(f.mock.calls[0][0]).toBe(
-      '/api/nginx-loadtest/ip-sinifi?ip=10.1.2.5&yukHost=GBNGXT34&hedefHost=GBNGXT10',
+      '/api/nginx-loadtest/ip-sinifi?ip=10.1.2.5&yukHost=ORNGXT34&hedefHost=ORNGXT10',
     );
     expect(s).toEqual({
       ok: true,
       tur: 'sunucu',
       ip: '10.1.2.5',
-      host: 'GBNGXT10',
+      host: 'ORNGXT10',
       env: 'TEST',
       vhostlar: ['a.example'],
       vhostVerisi: true,
@@ -1266,7 +1266,7 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
         ip: '10.20.30.40',
         host: null,
         ag: '10.20.30.0/24',
-        digerSahipler: [{ host: 'GBAPPT01', env: 'TEST' }, { env: 'TEST' }],
+        digerSahipler: [{ host: 'ORAPPT01', env: 'TEST' }, { env: 'TEST' }],
       }),
     );
     expect(
@@ -1277,7 +1277,7 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
       ip: '10.20.30.40',
       host: null,
       ag: '10.20.30.0/24',
-      digerSahipler: [{ host: 'GBAPPT01', env: 'TEST' }],
+      digerSahipler: [{ host: 'ORAPPT01', env: 'TEST' }],
     });
     expect(f.mock.calls[1][0]).toBe('/api/nginx-loadtest/ip-sinifi?ip=10.20.30.40');
     f.mockResolvedValueOnce(
@@ -1286,19 +1286,19 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
           ok: false,
           code: 'ip_belirsiz',
           message:
-            '10.1.2.5 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.',
-          sahipler: [{ host: 'GBNGXT10', env: 'TEST', nginx: true, kaynaklar: ['tarama'] }],
+            '10.1.2.5 birden çok nginx sunucusunda tanımlı (ORNGXT10, ORNGXT11); hedef sunucuyu listeden seçin.',
+          sahipler: [{ host: 'ORNGXT10', env: 'TEST', nginx: true, kaynaklar: ['tarama'] }],
         },
         409,
       ),
     );
-    const ret = await nginxLoadtestApi.ipSinifi('10.1.2.5', { yukHost: 'GBNGXT34' });
-    expect(f.mock.calls[2][0]).toBe('/api/nginx-loadtest/ip-sinifi?ip=10.1.2.5&yukHost=GBNGXT34');
+    const ret = await nginxLoadtestApi.ipSinifi('10.1.2.5', { yukHost: 'ORNGXT34' });
+    expect(f.mock.calls[2][0]).toBe('/api/nginx-loadtest/ip-sinifi?ip=10.1.2.5&yukHost=ORNGXT34');
     expect(ret).toMatchObject({
       ok: false,
       code: 'ip_belirsiz',
       _httpStatus: 409,
-      sahipler: [{ host: 'GBNGXT10' }],
+      sahipler: [{ host: 'ORNGXT10' }],
     });
     f.mockResolvedValueOnce(
       jsonYanit(

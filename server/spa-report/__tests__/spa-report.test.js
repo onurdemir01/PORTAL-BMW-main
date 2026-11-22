@@ -22,7 +22,7 @@ const satir = (o) => ({
   application: 'x-app-v1',
   namespace: 'ns1-prod',
   location_path: '/x/',
-  host: 'GBNGXP40',
+  host: 'ORNGXP40',
   vhost: 'GLOMO-PROD.conf',
   ...o,
 });
@@ -31,10 +31,10 @@ test('AR1: ayni tanim mirror sunucularda TEKRAR ETMEZ, sunucular toplanir', () =
   // Prod'da ayni vhost 4-8 nginx'te durur. Tekillestirmezsek ekip ayni uygulamayi
   // sekiz kez gorur ve listeyi okuyamaz.
   const r = buildSpaReport({
-    rows: [satir({ host: 'GBNGXP40' }), satir({ host: 'GBNGXP41' }), satir({ host: 'GBNGXP48' })],
+    rows: [satir({ host: 'ORNGXP40' }), satir({ host: 'ORNGXP41' }), satir({ host: 'ORNGXP48' })],
   });
   assert.equal(r.rows.length, 1);
-  assert.deepEqual(r.rows[0].hosts, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48']);
+  assert.deepEqual(r.rows[0].hosts, ['ORNGXP40', 'ORNGXP41', 'ORNGXP48']);
 });
 
 test('AR2: yalniz PROD; baska ortamlar rapora GIRMEZ', () => {

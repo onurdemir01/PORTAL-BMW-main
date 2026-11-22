@@ -25,8 +25,8 @@ test('maskString: sifirla baslayan 11 hane TCKN sayilmaz', () => {
 
 // ── maskString: E-posta ───────────────────────────────────────────────────────
 test('maskString: e-posta adresleri maskelenir', () => {
-  const { masked } = maskString('Iletisim: ali.veli@example.com.tr');
-  assert.ok(!masked.includes('ali.veli@example.com.tr'));
+  const { masked } = maskString('Iletisim: ali.veli@example.invalid');
+  assert.ok(!masked.includes('ali.veli@example.invalid'));
   assert.match(masked, /\[EMAIL\]/);
 });
 

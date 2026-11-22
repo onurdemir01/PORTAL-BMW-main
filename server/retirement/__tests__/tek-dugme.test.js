@@ -5,7 +5,7 @@
 //     kapilari burada, ekran mantigi src/components/server_hub/__tests__/retirement-adim.test.ts
 //   - "admin olarak bekleme asamasinin duzgun calistigini anlayabilmek icin direkt tetikleme
 //     asamasina gecmek istiyorum" -> /delete-now: tarihi BUGUNE ceker, DELETE'i zamanlayici baslatir
-//   - "GBSVCVOICEORDER'in Apache konfigurasyonu olmasina ragmen kesfedememis" -> Server Hub
+//   - "ORSVCVOICEORDER'in Apache konfigurasyonu olmasina ragmen kesfedememis" -> Server Hub
 //     ikinci web kaynagi, SIKI eslesme
 //   - "uygulama ismi soneksiz listelendigi icin hangi ortamin silindigini anlayamayacak" ->
 //     listede ortam kirilimi
@@ -186,9 +186,9 @@ test('TD10 on kontrol web sunucularinda Server Hub taramasi baslatir; DUSERSE on
 
 // ── Server Hub ikinci web kaynagi ───────────────────────────────────────────────────
 const INV = [
-  { app: 'GBSVCVOICEORDER-D', host: 'GBJBOT07', jboss_version: '7' },
-  { app: 'GBSVCVOICEORDER-T', host: 'GBJBOT07', jboss_version: '7' },
-  { app: 'GBSVCVOICEORDER', host: 'GBJBOP11', jboss_version: '7' },
+  { app: 'ORSVCVOICEORDER-D', host: 'ORJBOT07', jboss_version: '7' },
+  { app: 'ORSVCVOICEORDER-T', host: 'ORJBOT07', jboss_version: '7' },
+  { app: 'ORSVCVOICEORDER', host: 'ORJBOP11', jboss_version: '7' },
 ];
 const V = (host, sn, port, conf, extra = {}) => ({
   host,
@@ -199,53 +199,53 @@ const V = (host, sn, port, conf, extra = {}) => ({
   ...extra,
 });
 const HUB = [
-  V('GBJBOT07', 'gbsvcvoiceorder-d.fw.garanti.com.tr', 443, '/c/d.conf'),
-  V('GBJBOT07', 'gbsvcvoiceorder-d.fw.garanti.com.tr', 80, '/c/d.conf'),
-  V('GBJBOT07', 'gbsvcvoiceorder-t.fw.garanti.com.tr', 443, '/c/t.conf'),
-  V('GBJBOT07', 'gbsvcvoiceorder-dx.fw.garanti.com.tr', 443, '/c/dx.conf'),
-  V('GBJBOP11', 'gbsvcvoiceorder.fw.garanti.com.tr', 443, '/c/p.conf'),
-  V('GBJBOP11', 'gbsvcvoiceorder-d.fw.garanti.com.tr', 443, '/c/x.conf'),
+  V('ORJBOT07', 'orsvcvoiceorder-d.fw.sirket.invalid', 443, '/c/d.conf'),
+  V('ORJBOT07', 'orsvcvoiceorder-d.fw.sirket.invalid', 80, '/c/d.conf'),
+  V('ORJBOT07', 'orsvcvoiceorder-t.fw.sirket.invalid', 443, '/c/t.conf'),
+  V('ORJBOT07', 'orsvcvoiceorder-dx.fw.sirket.invalid', 443, '/c/dx.conf'),
+  V('ORJBOP11', 'orsvcvoiceorder.fw.sirket.invalid', 443, '/c/p.conf'),
+  V('ORJBOP11', 'orsvcvoiceorder-d.fw.sirket.invalid', 443, '/c/x.conf'),
 ];
 const hedef = (out, app) => out.targets.find((t) => t.appName === app);
 
 test('TD5 sertifika envanterinde YOK ama Server Hub goruyor -> vhost bulunur (port basina)', () => {
-  const out = buildTargets('GBSVCVOICEORDER', INV, [], [], HUB);
-  const d = hedef(out, 'GBSVCVOICEORDER-D');
+  const out = buildTargets('ORSVCVOICEORDER', INV, [], [], HUB);
+  const d = hedef(out, 'ORSVCVOICEORDER-D');
   assert.deepEqual(
     d.web.map((w) => `${w.serverName}:${w.port}`).sort(),
-    ['gbsvcvoiceorder-d.fw.garanti.com.tr:443', 'gbsvcvoiceorder-d.fw.garanti.com.tr:80'],
+    ['orsvcvoiceorder-d.fw.sirket.invalid:443', 'orsvcvoiceorder-d.fw.sirket.invalid:80'],
     "ayni conf'taki :80 blogu kayboldu ya da yanlis vhost geldi",
   );
   assert.match(d.webHow, /Server Hub .*sertifika envanterinde yok/, 'kaynak ekranda soylenmiyor');
 });
 
 test("TD6 SIKI eslesme: -d retire edilirken KARDES ortamin (-t) ve benzer adin (-dx) vhost'u ALINMAZ", () => {
-  const out = buildTargets('GBSVCVOICEORDER', INV, [], [], HUB);
-  const d = hedef(out, 'GBSVCVOICEORDER-D').web.map((w) => w.serverName);
+  const out = buildTargets('ORSVCVOICEORDER', INV, [], [], HUB);
+  const d = hedef(out, 'ORSVCVOICEORDER-D').web.map((w) => w.serverName);
   assert.ok(
-    !d.some((s) => s.startsWith('gbsvcvoiceorder-t')),
+    !d.some((s) => s.startsWith('orsvcvoiceorder-t')),
     "-t vhost'u -d'ye baglandi - calisan ortam kapatilirdi",
   );
-  assert.ok(!d.some((s) => s.startsWith('gbsvcvoiceorder-dx')), "onek eslemesi -dx'i yakaladi");
+  assert.ok(!d.some((s) => s.startsWith('orsvcvoiceorder-dx')), "onek eslemesi -dx'i yakaladi");
   // PROD (soneksiz) uygulama -d vhost'unu yakalamaz ("iceriyor" eslemesi yakalardi)
-  const p = hedef(out, 'GBSVCVOICEORDER').web.map((w) => w.serverName);
-  assert.deepEqual(p, ['gbsvcvoiceorder.fw.garanti.com.tr']);
+  const p = hedef(out, 'ORSVCVOICEORDER').web.map((w) => w.serverName);
+  assert.deepEqual(p, ['orsvcvoiceorder.fw.sirket.invalid']);
 });
 
 test('TD7 sertifika envanteri eslerse ONCELIK onda; Server Hub yalniz yedek', () => {
   const cert = [
     {
-      host: 'GBJBOT07',
+      host: 'ORJBOT07',
       ip: '',
       port: '8443',
-      server_name: 'gbsvcvoiceorder-d.fw.garanti.com.tr',
+      server_name: 'orsvcvoiceorder-d.fw.sirket.invalid',
       conf_file: '/cert/d.conf',
       product: 'IHS',
       env: '',
     },
   ];
-  const out = buildTargets('GBSVCVOICEORDER', INV, cert, [], HUB);
-  const d = hedef(out, 'GBSVCVOICEORDER-D');
+  const out = buildTargets('ORSVCVOICEORDER', INV, cert, [], HUB);
+  const d = hedef(out, 'ORSVCVOICEORDER-D');
   assert.ok(!/Server Hub/.test(d.webHow), 'sertifika eslesmesine ragmen Server Hub kullanildi');
   assert.deepEqual(
     d.web.map((w) => w.confFile),

@@ -146,19 +146,19 @@ test('bos girdi cokmez', () => {
 test('ortam: ad kalibi tablo degerini duzeltir, celisenler sayilir, kalip disi tablo degerini korur', () => {
   const { summarizeNginxInventory } = require('../nginx-inventory-summary.cjs');
   const out = summarizeNginxInventory([
-    { hostname: 'GBNGXP50', env: 'non-production', location: 'Pendik' }, // intranet prod SPA: vhost yok
-    { hostname: 'GBNGXAP24', env: 'non-production', location: 'Ankara' }, // yeni prod SPA
-    { hostname: 'GBNGXT34', env: 'production', location: '' }, // unutulmus X-PROD.conf
-    { hostname: 'GBRVPP07', env: 'production', location: 'Pendik' }, // dogru
-    { hostname: 'GBLABT02', env: 'non-production', location: '' }, // kalip disi: tablo degeri
+    { hostname: 'ORNGXP50', env: 'non-production', location: 'Pendik' }, // intranet prod SPA: vhost yok
+    { hostname: 'ORNGXAP24', env: 'non-production', location: 'Ankara' }, // yeni prod SPA
+    { hostname: 'ORNGXT34', env: 'production', location: '' }, // unutulmus X-PROD.conf
+    { hostname: 'ORRVPP07', env: 'production', location: 'Pendik' }, // dogru
+    { hostname: 'ORLABT02', env: 'non-production', location: '' }, // kalip disi: tablo degeri
   ]);
   const by = Object.fromEntries(out.hosts.map((h) => [h.hostname, h]));
-  assert.equal(by.GBNGXP50.env, 'production');
-  assert.equal(by.GBNGXP50.envRaw, 'non-production');
-  assert.equal(by.GBNGXAP24.env, 'production');
-  assert.equal(by.GBNGXT34.env, 'non-production');
-  assert.equal(by.GBRVPP07.env, 'production');
-  assert.equal(by.GBLABT02.env, 'non-production');
+  assert.equal(by.ORNGXP50.env, 'production');
+  assert.equal(by.ORNGXP50.envRaw, 'non-production');
+  assert.equal(by.ORNGXAP24.env, 'production');
+  assert.equal(by.ORNGXT34.env, 'non-production');
+  assert.equal(by.ORRVPP07.env, 'production');
+  assert.equal(by.ORLABT02.env, 'non-production');
   assert.equal(out.totals.envCorrected, 3);
   const prod = out.byEnv.find((e) => e.env === 'production');
   assert.equal(prod.hosts, 3);
@@ -168,14 +168,14 @@ test('ortam: ad kalibi tablo degerini duzeltir, celisenler sayilir, kalip disi t
 // gosterir; uyelik kurali burada (hostnames), "too_many" yazan sunucular ayrica soylenir.
 test('service sunuculari (hostnames) ve listesi toplanmayan sunucular (too_many)', () => {
   const s = summarizeNginxInventory([
-    host({ hostname: 'GBNGXP01', services: 'glomo,cso', nginx_version: '1.24.0' }),
-    host({ hostname: 'GBNGXP02', services: 'glomo', nginx_version: '1.20.1' }),
-    host({ hostname: 'GBNGXP03', services: 'too_many' }),
-    host({ hostname: 'GBNGXP04', services: 'unknown' }),
+    host({ hostname: 'ORNGXP01', services: 'glomo,cso', nginx_version: '1.24.0' }),
+    host({ hostname: 'ORNGXP02', services: 'glomo', nginx_version: '1.20.1' }),
+    host({ hostname: 'ORNGXP03', services: 'too_many' }),
+    host({ hostname: 'ORNGXP04', services: 'unknown' }),
   ]);
   const glomo = s.byService.find((x) => x.service === 'glomo');
-  assert.deepEqual(glomo.hostnames, ['GBNGXP01', 'GBNGXP02']);
+  assert.deepEqual(glomo.hostnames, ['ORNGXP01', 'ORNGXP02']);
   assert.equal(glomo.hosts, glomo.hostnames.length);
-  assert.deepEqual(s.byService.find((x) => x.service === 'cso').hostnames, ['GBNGXP01']);
-  assert.deepEqual(s.totals.servicesUnlisted, ['GBNGXP03']);
+  assert.deepEqual(s.byService.find((x) => x.service === 'cso').hostnames, ['ORNGXP01']);
+  assert.deepEqual(s.totals.servicesUnlisted, ['ORNGXP03']);
 });

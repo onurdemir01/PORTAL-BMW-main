@@ -23,7 +23,9 @@ import { nginxConsoleApi } from '@/api/nginxConsoleApi';
 import {
   rvpOner,
   rvpSiradakiSoru,
+  BOS_RVP_AYARI,
   GT_EKIP,
+  type RvpAyari,
   type RvpBackend,
   type RvpBlok,
   type RvpGlomo,
@@ -205,14 +207,20 @@ function OrtamBlogu({ tur, blok }: { tur: 'nonProd' | 'prod'; blok: RvpBlok }) {
 export function RvpSecimTab() {
   const [secim, setSecim] = useState<RvpSecim>({});
   const [altAglar, setAltAglar] = useState<Record<string, string>>({});
+  // Kutularin sunuculari kurum ayarindan (nginx.rvp); gelene kadar / yoksa kutular "tanimsiz" gorunur.
+  const [rvpAyar, setRvpAyar] = useState<RvpAyari>(BOS_RVP_AYARI);
+  const [ayarHatasi, setAyarHatasi] = useState<string | null>(null);
   useEffect(() => {
     let iptal = false;
     nginxConsoleApi.rvpAltAglari().then(
       (r) => {
-        if (!iptal) setAltAglar(r.altAglar || {});
+        if (iptal) return;
+        setAltAglar(r.altAglar || {});
+        setRvpAyar(r.rvp || BOS_RVP_AYARI);
+        setAyarHatasi(r.rvpHata || null);
       },
       () => {
-        /* alt ag yalniz bilgi: okunamazsa sutun "—" kalir, sihirbaz calisir */
+        if (!iptal) setAyarHatasi('RP Seçimi kurum verisi okunamadı.');
       },
     );
     return () => {
@@ -220,7 +228,7 @@ export function RvpSecimTab() {
     };
   }, []);
   const siradaki = useMemo(() => rvpSiradakiSoru(secim), [secim]);
-  const oneri = useMemo(() => rvpOner(secim), [secim]);
+  const oneri = useMemo(() => rvpOner(secim, rvpAyar), [secim, rvpAyar]);
 
   const sec = (anahtar: Soru['anahtar'], deger: string) => {
     setSecim((eski) => {
@@ -245,6 +253,19 @@ export function RvpSecimTab() {
   return (
     <AltAglar.Provider value={altAglar}>
       <div className="space-y-4">
+        {ayarHatasi && (
+          <div
+            role="alert"
+            className="rounded-lg border px-3 py-2 text-xs"
+            style={{
+              borderColor: 'var(--status-warning)',
+              background: 'var(--status-warning-bg)',
+              color: 'var(--status-warning-text)',
+            }}
+          >
+            {ayarHatasi}
+          </div>
+        )}
         <div
           className="rounded-xl border p-4"
           style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}

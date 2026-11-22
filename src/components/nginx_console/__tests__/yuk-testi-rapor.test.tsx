@@ -367,7 +367,7 @@ describe('Toplu rapor ekran', () => {
       beklemeDk: 5,
       baslangicAt: null,
       enGecBitis: null,
-      onayHedefi: 'GBNGXT33',
+      onayHedefi: 'ORNGXT33',
       hedefTuru: 'sunucu',
       onaylananTurler: [],
       createdBy: 'onur',

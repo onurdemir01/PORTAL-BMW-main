@@ -22,7 +22,7 @@ describe('SPA özet matrisi', () => {
     expect(eslenikDurumu(app({}))).toBe('tam');
     // 2026-11-12: rpHost '1/2' (ortamin TUM RP'leri) artik eksik DEMEK DEGIL (QA Q01/Q02 farkli servis)
     expect(eslenikDurumu(app({ rpHost: '1/2' }))).toBe('tam');
-    expect(eslenikDurumu(app({ rpEslenik: 'eksik', rpEslenikEksik: ['GBNGXAP34'] }))).toBe('eksik');
+    expect(eslenikDurumu(app({ rpEslenik: 'eksik', rpEslenikEksik: ['ORNGXAP34'] }))).toBe('eksik');
     expect(eslenikDurumu(app({ rpSorun: ['NOT_DEPLOYED'] }))).toBe('hatali');
     expect(eslenikDurumu(app({ rpSorun: ['ORTAM_DISI'] }))).toBe('tam');
     expect(eslenikDurumu(app({ rp: 'tanimsiz' }))).toBeNull();

@@ -27,7 +27,7 @@ import type { NginxMigrationGroup, NginxMigrationLocation } from '@/api/denetimA
 
 const L = (o: Partial<NginxMigrationLocation> & { location: string }): NginxMigrationLocation => ({
   service: 'GLOMO',
-  oldHosts: ['GBRVPP07', 'GBRVPP08'],
+  oldHosts: ['ORRVPP07', 'ORRVPP08'],
   targets: [],
   written: [],
   siniflar: ['spa'],
@@ -51,11 +51,11 @@ const LOCS: NginxMigrationLocation[] = [
   L({
     location: '/yarim/',
     newStatus: 'partial',
-    newHosts: ['GBNGXP40'],
+    newHosts: ['ORNGXP40'],
     targets: ['yarim-app-v1-glomo-prod.apps.x'],
   }),
   L({ location: '/inc/', siniflar: ['include'], targets: ['inc-app-v1-glomo-prod'] }),
-  L({ location: '/tam/', newStatus: 'defined', newHosts: ['GBNGXP40', 'GBNGXP41'] }),
+  L({ location: '/tam/', newStatus: 'defined', newHosts: ['ORNGXP40', 'ORNGXP41'] }),
 ];
 
 function grup(locations: NginxMigrationLocation[] = LOCS): NginxMigrationGroup {
@@ -63,10 +63,10 @@ function grup(locations: NginxMigrationLocation[] = LOCS): NginxMigrationGroup {
     id: 'glomo',
     label: 'GLOMO',
     locations,
-    oldHosts: ['GBRVPP07', 'GBRVPP08'],
-    newHosts: ['GBNGXP40', 'GBNGXP41'],
-    newHostsScanned: ['GBNGXP40', 'GBNGXP41'],
-    oldHostsSeen: ['GBRVPP07', 'GBRVPP08'],
+    oldHosts: ['ORRVPP07', 'ORRVPP08'],
+    newHosts: ['ORNGXP40', 'ORNGXP41'],
+    newHostsScanned: ['ORNGXP40', 'ORNGXP41'],
+    oldHostsSeen: ['ORRVPP07', 'ORRVPP08'],
     serviceLocations: [],
     apps: [],
     nonSpa: [],
@@ -115,8 +115,8 @@ describe("Tüm location'lar", () => {
     render(<TumLocationlar g={grup()} />);
     const yarim = satirlar().find((r) => (r.textContent || '').includes('/yarim/'));
     expect(yarim?.textContent).toMatch(/1\/2/);
-    expect(yarim?.textContent).toMatch(/eksik: GBNGXP41/);
-    expect(yarim?.textContent).not.toMatch(/eksik: GBNGXP40/);
+    expect(yarim?.textContent).toMatch(/eksik: ORNGXP41/);
+    expect(yarim?.textContent).not.toMatch(/eksik: ORNGXP40/);
   });
 
   it('TLU4 hepsi / sınıf / arama süzgeçleri', () => {
@@ -153,11 +153,11 @@ describe("Tüm location'lar", () => {
     const i = (k: (typeof TUM_LOC_CSV_BASLIK)[number]) => TUM_LOC_CSV_BASLIK.indexOf(k);
     const yarim = rows.find((r) => r[i('location')] === '/yarim/')!;
     expect(yarim[i('yeni_sunucularda')]).toBe('KISMEN');
-    expect(yarim[i('eksik_yeni_sunucular')]).toBe('GBNGXP41');
+    expect(yarim[i('eksik_yeni_sunucular')]).toBe('ORNGXP41');
     expect(yarim[i('vhost')]).toBe('GLOMO-PROD.conf');
     const std = rows.find((r) => r[i('location')] === '/standartsiz/')!;
     expect(std[i('sinif')]).toBe('ad kalıbına uymuyor');
-    expect(std[i('eksik_yeni_sunucular')]).toBe('GBNGXP40 GBNGXP41');
+    expect(std[i('eksik_yeni_sunucular')]).toBe('ORNGXP40 ORNGXP41');
     expect(rows[0]).toHaveLength(TUM_LOC_CSV_BASLIK.length);
   });
 
@@ -231,7 +231,7 @@ describe("Tüm location'lar", () => {
       kaynaklar: [],
       siniflar: [],
       newStatus: 'partial',
-      newHosts: ['GBNGXP40'],
+      newHosts: ['ORNGXP40'],
     });
     render(<TumLocationlar g={grup([...LOCS, yeni])} />);
     expect(satirlar().some((r) => (r.textContent || '').includes('/yeni-eklenen/'))).toBe(false);

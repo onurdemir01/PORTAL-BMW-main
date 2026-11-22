@@ -8,8 +8,8 @@ const { createMcpClient } = require('../mcp/client.cjs');
 // Dogru adres (Instana MCP Confluence dokumani): https + route hostname, port YOK.
 // 8080 container-internal port — OpenShift route 443'ten servis veriyor;
 // eski http://...:8080/mcp adresi disaridan erisilemezdi.
-const INSTANA_MCP_URL =
-  process.env.INSTANA_MCP_URL || 'https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp';
+// Kurum adresi ortam ayarinda (koda yazilmaz, K17); tanimsizsa istemci "yapilandirilmamis" hatasi verir.
+const INSTANA_MCP_URL = String(process.env.INSTANA_MCP_URL || '').trim();
 
 function getEnvConfig(env) {
   if (env === 'prod') {

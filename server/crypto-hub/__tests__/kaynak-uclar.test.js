@@ -170,7 +170,7 @@ test('K3 gecmis kaydi: icerik YOK, sha256 + boyut; runner redaksiyonu da uygulan
       action: 'values_put',
       targets: [],
       confirmed: true,
-      valuesPath: '/vhosting/a/garanti_values.yaml',
+      valuesPath: '/vhosting/a/ornek_values.yaml',
       content: icerik,
     });
     assert.equal(r.status, 200);
@@ -234,7 +234,7 @@ test('K3 helm_template onizlemesi: Secret data/stringData ve sir adli degerler M
       action: 'helm_template',
       targets: [],
       release: 'wydenapp',
-      valuesPath: '/vhosting/a/garanti_values.yaml',
+      valuesPath: '/vhosting/a/ornek_values.yaml',
     });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const tpl = [
@@ -937,7 +937,7 @@ test('KK values_put / values_restore / helm_upgrade: CPU/bellek uygulamasi surer
     const p = await planUret(h);
     const a = await opsBaslat(h, U.ali, APPLY(p.res.planJetonu));
     assert.equal(a.status, 200);
-    const yol = '/vhosting/a/garanti_values.yaml';
+    const yol = '/vhosting/a/ornek_values.yaml';
     const govdeler = [
       {
         tenant: T,

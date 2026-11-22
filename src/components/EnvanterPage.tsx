@@ -166,8 +166,8 @@ const EnvanterPage: React.FC = () => {
   const [allColumns, setAllColumns] = useState<string[]>([]);
   const [visibleCols, setVisibleCols] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  // SUNUCUDA CALISAN KOSUL (2026-10-01). Kullanici: "sorgular bir sapitiyor... gbocpqa1
-  // icerir OR gbocpqa2 icerir deyip uyguladigimiz zaman adam akilli calismiyor."
+  // SUNUCUDA CALISAN KOSUL (2026-10-01). Kullanici: "sorgular bir sapitiyor... orocpqa1
+  // icerir OR orocpqa2 icerir deyip uyguladigimiz zaman adam akilli calismiyor."
   // Gelismis filtre TEK BASINA kosmuyor - arama kutusu ve kolon suzgecleri ayni WHERE'e
   // AND ile ekleniyor; kullanici o AND'i gormuyordu. Artik ne kostuysa ekranda yaziyor.
   const [appliedWhere, setAppliedWhere] = useState<string | null>(null);

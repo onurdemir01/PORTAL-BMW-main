@@ -323,18 +323,18 @@ test('portal cluster satiri playbook katalogu seklinde uretiliyor', () => {
   const cat = launch.buildScaleXClusterCatalog({
     env: 'prod',
     tenant: 'ark',
-    clusters: ['gbocpprod1'],
-    hosts: { gbocpprod1: 'gbjump1' },
-    meta: { gbocpprod1: { api_url: 'https://api.x:6443', vault_credential_key: 'uxmid_gar' } },
+    clusters: ['orocpprod1'],
+    hosts: { orocpprod1: 'orjump1' },
+    meta: { orocpprod1: { api_url: 'https://api.x:6443', vault_credential_key: 'svcac_gar' } },
   });
   assert.equal(cat.version, 1);
-  assert.deepEqual(cat.clusters.gbocpprod1, {
+  assert.deepEqual(cat.clusters.orocpprod1, {
     enabled: true,
     platform: 'ark',
     environments: ['prod'],
-    jump_server: 'gbjump1',
+    jump_server: 'orjump1',
     api_url: 'https://api.x:6443',
-    credential: 'uxmid_gar',
+    credential: 'svcac_gar',
   });
   // PAROLA HICBIR ZAMAN katalogda olmaz — yalnizca vault degiskeninin ADI.
   assert.equal(JSON.stringify(cat).includes('password'), false);

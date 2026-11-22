@@ -36,7 +36,7 @@ const A = (application, o = {}) => ({
   reqShown: 1,
   usage: null,
   hosts: [],
-  clusters: ['gbocpprod1', 'gbocpprod2'],
+  clusters: ['orocpprod1', 'orocpprod2'],
   staleClusters: [],
   weakEvidence: false,
   pattern: 'uymuyor',
@@ -53,25 +53,25 @@ const DZ = (host, ns, app, o = {}) => ({
   scan_date: '2026-10-18',
   ...o,
 });
-// GBNGXAP50 (PROD, Ankara) son taramada yok: olculemedi, 'eksik' degil.
-const HOSTS = ['GBNGXAP50', 'GBNGXP50', 'GBNGXP51', 'GBNGXT50'];
+// ORNGXAP50 (PROD, Ankara) son taramada yok: olculemedi, 'eksik' degil.
+const HOSTS = ['ORNGXAP50', 'ORNGXP50', 'ORNGXP51', 'ORNGXT50'];
 const APPS = [
   A('tam-ui'),
   A('yarim-ui'),
   A('tek-ui'),
   A('yok-ui'),
   A('ad-uymaz'),
-  A('wy-ui', { clusters: ['giocp3rdwyprod1'] }),
+  A('wy-ui', { clusters: ['oiocp3rdwyprod1'] }),
   A('t-ui', { namespace: 'kart-test', env: 'test' }),
 ];
 const DIRS = [
-  DZ('GBNGXP50', 'kart-prod', 'tam-ui'),
-  DZ('GBNGXP51', 'kart-prod', 'tam-ui'),
-  DZ('GBNGXP50', 'kart-prod', 'yarim-ui'),
-  DZ('GBNGXP51', 'kart-prod', 'yarim-ui', { app_deployed: 0, status: 'MISSING_APP' }),
-  DZ('GBNGXP51', 'kart-prod', 'tek-ui'),
-  DZ('GBNGXT50', 'kart-test', 't-ui'),
-  DZ('GBNGXP50', 'emekli-prod', 'eski-ui'),
+  DZ('ORNGXP50', 'kart-prod', 'tam-ui'),
+  DZ('ORNGXP51', 'kart-prod', 'tam-ui'),
+  DZ('ORNGXP50', 'kart-prod', 'yarim-ui'),
+  DZ('ORNGXP51', 'kart-prod', 'yarim-ui', { app_deployed: 0, status: 'MISSING_APP' }),
+  DZ('ORNGXP51', 'kart-prod', 'tek-ui'),
+  DZ('ORNGXT50', 'kart-test', 't-ui'),
+  DZ('ORNGXP50', 'emekli-prod', 'eski-ui'),
 ];
 const rapor = (o = {}) => ({
   ok: true,
@@ -123,14 +123,14 @@ test('IK1 hucre sayilari Intranet SPA ortam ozetine esit; tikla-listesi kurulmam
   const tek = detay.find((d) => d.app === 'tek-ui');
   assert.deepEqual(
     tek.hosts,
-    [{ host: 'GBNGXP50', missing: ['hysdeploy', 'applications', 'conf'] }],
+    [{ host: 'ORNGXP50', missing: ['hysdeploy', 'applications', 'conf'] }],
     'hic izi olmayan sunucuda uc parca da eksik',
   );
   assert.deepEqual(detay.find((d) => d.app === 'yarim-ui').hosts, [
-    { host: 'GBNGXP51', missing: ['applications'] },
+    { host: 'ORNGXP51', missing: ['applications'] },
   ]);
   assert.deepEqual(p.intranetPartial.find((x) => x.app === 'yarim-ui').hosts, [
-    { host: 'GBNGXP51', missing: ['applications'] },
+    { host: 'ORNGXP51', missing: ['applications'] },
   ]);
   assert.deepEqual(tek.owner, {
     groups: ['GT-Kart'],
@@ -147,7 +147,7 @@ test('IK2 olculebilirlik, ayri kovalar, sunucuda fazla', () => {
   const r = rapor();
   const { alanlar: p } = ik.intranetHucresi(r, 'PROD', sahip);
   assert.equal(p.measuredIntranet, true);
-  assert.deepEqual(p.intranetHosts, ['GBNGXP50', 'GBNGXP51']);
+  assert.deepEqual(p.intranetHosts, ['ORNGXP50', 'ORNGXP51']);
   assert.deepEqual(
     [p.intranetOnlyOnServerCount, p.intranetOnlyOnServer],
     [1, ['emekli-prod/eski-ui']],
@@ -159,7 +159,7 @@ test('IK2 olculebilirlik, ayri kovalar, sunucuda fazla', () => {
     ownersByNs: new Map(),
     beyanlar: new Map(),
     hosts: HOSTS,
-    dirRows: [DZ('GBNGXP50', 'kart', 'ek-ui'), DZ('GBNGXP40', 'disari-prod', 'net-ui')],
+    dirRows: [DZ('ORNGXP50', 'kart', 'ek-ui'), DZ('ORNGXP40', 'disari-prod', 'net-ui')],
   });
   assert.deepEqual(ek.sunucudaFazla, []);
   // dizin okunamadi: her satir olculemedi, kurulmamis SAYILMAZ, neden yazilir; elde satir olsa da
@@ -236,11 +236,11 @@ test('IK6 platform: ARK disi cluster sayilmaz, platformDisi gorunur', () => {
   const r = rapor();
   assert.ok(!r.rows.some((x) => x.application === 'wy-ui'), 'wyden uygulamasi ARK raporuna girdi');
   assert.deepEqual(r.platformDisi, [
-    { platform: 'wyden', uygulama: 1, clusters: ['giocp3rdwyprod1'] },
+    { platform: 'wyden', uygulama: 1, clusters: ['oiocp3rdwyprod1'] },
   ]);
   const kar = buildIntranetRapor({
     apps: [
-      A('iki-ui', { clusters: ['giocp3rdwyprod1', 'gbocpprod4'] }),
+      A('iki-ui', { clusters: ['oiocp3rdwyprod1', 'orocpprod4'] }),
       A('bil-ui', { clusters: ['yenicluster9'] }),
       A('bos-ui', { clusters: [] }),
     ],
@@ -283,7 +283,7 @@ const ROUTES = [
   {
     namespace_name: 'kart-prod',
     route_name: 'eski-app-v1',
-    route_address: 'eski-app-v1-kart-prod.apps.fw.garanti.com.tr',
+    route_address: 'eski-app-v1-kart-prod.apps.fw.sirket.invalid',
     termination_type: 'reencrypt',
   },
 ];
@@ -300,7 +300,7 @@ function db() {
     if (s.includes('FROM dbo.BMW_Openshift_Route_Inventory')) return { recordset: ROUTES };
     // ad kalibi hesabi: eski-app-v1 PROD intranet sunucusunda uc dizinle TAM
     if (s.includes('FROM dbo.Nginx_Intranet_Audit'))
-      return { recordset: [DZ('GBNGXP50', 'kart-prod', 'eski-app-v1')] };
+      return { recordset: [DZ('ORNGXP50', 'kart-prod', 'eski-app-v1')] };
     if (s.includes('Openshift_Namespace_Owners'))
       return {
         recordset: [

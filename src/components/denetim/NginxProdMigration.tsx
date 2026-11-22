@@ -1,6 +1,6 @@
 // src/components/denetim/NginxProdMigration.tsx — Nginx SPA > "Production Taşımaları".
 //
-// Soru (kullanici, 2026-09-14): eski GBRVP* sunucularinin location'larinda proxy_pass
+// Soru (kullanici, 2026-09-14): eski ORRVP* sunucularinin location'larinda proxy_pass
 // ile tanimli uygulamalar, yeni GBNGXP4x/5x sunucularinda
 //   /hysdeploy/<ns>/<app>/  ve  /usr/nginx/applications/<ns>/<app>/
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
@@ -59,7 +59,7 @@ const NEW_FLEET_KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur
 // ESKI_FILO_KAPALI (sunucu da reddeder; test ikisini karsilastirir).
 const ESKI_FILO_KAPALI = new Set(['glomo']);
 const ESKI_FILO_KAPALI_SEBEP =
-  'GLOMO için eski filoya (GBRVPP07-10 / GBRVPAP03-06) hiçbir işte gidilmez (2026-10-20); eski sunucudan kaldırma yapılmaz. Tanımlar yalnız yeni filoda.';
+  'GLOMO için eski filoya (eski reverse proxy sunucuları) hiçbir işte gidilmez (2026-10-20); eski sunucudan kaldırma yapılmaz. Tanımlar yalnız yeni filoda.';
 const NEW_FLEET_BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 // Silme guvenli ama survey'deki new_fleet sorusu (varsayilani false / zorunlu+varsayilansiz)
 // new_fleet gondermeyen DIGER nginx_ops islerini bozuyor: yonetici template'i duzeltmeli.
@@ -81,7 +81,7 @@ function deleteRefusalText(r: { code?: string; measured?: boolean; message?: str
   return r.message || 'İş başlatılamadı.';
 }
 
-// YÜK GÖSTERGESİ (2026-09-27, kullanıcı isteği). Ölçüm ESKİ sunuculardan (GBRVPP07-10 ve
+// YÜK GÖSTERGESİ (2026-09-27, kullanıcı isteği). Ölçüm ESKİ sunuculardan (ORRVPP07-10 ve
 // eşlenikleri) gelir: iş şu an oradan akıyor. Yeni sunuculara bakmak yanlış cevap verirdi —
 // tanım yeni olduğu için log kısa, "yük yok" gibi görünürdü.
 //

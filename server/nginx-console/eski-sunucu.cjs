@@ -99,7 +99,7 @@ function esikGun() {
 }
 
 // Taze kumesine hem verilen ad hem kisa ad yazilir (guvenli yon): bir kaynak sunucuyu FQDN ile
-// (gbngxp09.bmw.local), dokum/baska tablo kisa adla (GBNGXP09) tutuyorsa kisa ad da GORULMUS
+// (orngxp09.bmw.local), dokum/baska tablo kisa adla (ORNGXP09) tutuyorsa kisa ad da GORULMUS
 // sayilmali; aksi halde canli sunucu eski sayilip temizlige aday olurdu (dogrulama bulgusu).
 function tazeEkle(set, h) {
   const H = norm(h);

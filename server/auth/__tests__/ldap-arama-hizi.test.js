@@ -40,8 +40,8 @@ function yukle() {
 
 const KISI = {
   sAMAccountName: 'OnurDemir',
-  displayName: 'Onur Demir',
-  mail: 'onurdemir@garantibbva.com.tr',
+  displayName: 'Deneme Kisi',
+  mail: 'denemekisi@ornekbanka.invalid',
 };
 
 beforeEach(() => {

@@ -461,13 +461,13 @@ test('WT12 bayat kilit: bagli is TERMINAL ise birakilir; AWX sorgusu hata verirs
 });
 
 // GERCEK betik ciktisi (2026-10-02 capraz denetim: sahte WAS'ta kosan opsx_was.sh ->
-// playbook yorumlayicisi -> set_stats). GBWAST01'de CL2/cluster.xml okunamadi: app10 ve app3'un
+// playbook yorumlayicisi -> set_stats). ORWAST01'de CL2/cluster.xml okunamadi: app10 ve app3'un
 // kumesi '?'. app3 RUNNING, app10'un baska RUNNING ornegi yok. '?' kume ADI gibi gruplaninca
 // app3 app10'un "kardesi" sayiliyor ve SON_CALISAN uyarisi CIKMIYORDU.
 const CAPRAZ = {
   hosts: [
     {
-      host: 'GBWAST01',
+      host: 'ORWAST01',
       overall: 'ok',
       reason: '',
       profiles: [
@@ -508,13 +508,13 @@ const CAPRAZ = {
       ],
     },
     {
-      host: 'GBWAST02',
+      host: 'ORWAST02',
       overall: 'olculemedi',
       reason: 'hedefe ulasilamadi: Failed to connect to the host via ssh: timed out',
       profiles: [],
     },
     {
-      host: 'GBWAST04',
+      host: 'ORWAST04',
       overall: 'ok',
       reason: '',
       profiles: [
@@ -558,12 +558,12 @@ const CAPRAZ = {
 };
 
 test("WT14 kume '?' = BILINMIYOR: ad gibi gruplanmaz, hedefin kumesi '?' ise SON_CALISAN her zaman sorulur", () => {
-  const d = ws.parseDiscoverResult(CAPRAZ, ['GBWAST01', 'GBWAST02', 'GBWAST04']);
-  const hedef = (server, host = 'GBWAST01') =>
+  const d = ws.parseDiscoverResult(CAPRAZ, ['ORWAST01', 'ORWAST02', 'ORWAST04']);
+  const hedef = (server, host = 'ORWAST01') =>
     ws.findTarget(d, { host, profile: 'AppSrv01', cell: 'C1', node: 'N1', server });
   const app10 = hedef('app10');
   const s = ws.peerSummary(d, app10);
-  // app3 ('?') kardes SAYILMAZ; yalniz ayni adli app10 (GBWAST04, COKLU_SUREC).
+  // app3 ('?') kardes SAYILMAZ; yalniz ayni adli app10 (ORWAST04, COKLU_SUREC).
   assert.deepEqual(s, { total: 1, running: 0, unknown: 1, clusterKnown: false });
   for (const op of ['stop', 'restart']) {
     const w = ws.computeWarnings(d, app10, op);
@@ -581,7 +581,7 @@ test("WT14 kume '?' = BILINMIYOR: ad gibi gruplanmaz, hedefin kumesi '?' ise SON
   Object.assign(c2.hosts[2].profiles[0].servers[1], { state: 'RUNNING', pids: 1 });
   const d2 = ws.parseDiscoverResult(c2);
   const t2 = ws.findTarget(d2, {
-    host: 'GBWAST01',
+    host: 'ORWAST01',
     profile: 'AppSrv01',
     cell: 'C1',
     node: 'N1',
@@ -593,7 +593,7 @@ test("WT14 kume '?' = BILINMIYOR: ad gibi gruplanmaz, hedefin kumesi '?' ise SON
     ['SON_CALISAN'],
   );
   assert.match(w2[0].message, /Aynı adlı 1 örnek/);
-  // Bilinen kume (CL1) bozulmadi: app1'in tek kardesi GBWAST04'teki app1 (durmus) -> son calisan.
+  // Bilinen kume (CL1) bozulmadi: app1'in tek kardesi ORWAST04'teki app1 (durmus) -> son calisan.
   const w1 = ws.computeWarnings(d, hedef('app1'), 'stop');
   assert.deepEqual(
     w1.map((x) => x.code),
@@ -601,7 +601,7 @@ test("WT14 kume '?' = BILINMIYOR: ad gibi gruplanmaz, hedefin kumesi '?' ise SON
   );
   assert.match(w1[0].message, /"CL1" kümesinin/);
   // UI satiri: peers.clusterKnown false
-  const row = ws.targetsForApp(d, 'app10').find((r) => r.host === 'GBWAST01');
+  const row = ws.targetsForApp(d, 'app10').find((r) => r.host === 'ORWAST01');
   assert.equal(row.peers.clusterKnown, false);
   assert.equal(row.cluster, '?');
 });
@@ -709,11 +709,11 @@ test("WT16 islem adimlari: bilinmeyen durum OLCULEMEDI; 'UYARI:' ile baslayan OK
 
 test('WT17 sonuc istege ait mi: request_id / host / JVM uyusmazligi', () => {
   const p = (x) =>
-    ws.parseOpResult({ result: 'OK', host: 'gbwasp01', server: 'APPX', request_id: 'r1', ...x });
-  const params = { host: 'GBWASP01', server: 'APPX', request_id: 'r1' };
+    ws.parseOpResult({ result: 'OK', host: 'orwasp01', server: 'APPX', request_id: 'r1', ...x });
+  const params = { host: 'ORWASP01', server: 'APPX', request_id: 'r1' };
   assert.equal(ws.opResultMismatch(p({}), params), '');
   assert.match(ws.opResultMismatch(p({ request_id: 'r2' }), params), /istek/);
-  assert.match(ws.opResultMismatch(p({ host: 'GBWASP02' }), params), /sunucu/);
+  assert.match(ws.opResultMismatch(p({ host: 'ORWASP02' }), params), /sunucu/);
   assert.match(ws.opResultMismatch(p({ server: 'APPY' }), params), /JVM/);
   // Eski playbook request_id basmiyorsa o alan icin karar verilmez.
   assert.equal(ws.opResultMismatch(p({ request_id: '' }), params), '');

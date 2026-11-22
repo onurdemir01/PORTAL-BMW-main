@@ -349,27 +349,27 @@ function tsModul(dosya, adlar) {
 test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti alanlariyla okunur', () => {
   const { inPlaceOzeti } = tsModul('RetirementInPlace.tsx', ['inPlaceOzeti']);
   const r7 = {
-    app: 'GBPOSWEBAPI',
+    app: 'ORPOSWEBAPI',
     host: 'GOJBAP05',
     env: 'Production',
-    domain: 'garanti.com.tr',
+    domain: 'sirket.invalid',
     jboss_version: '7.4.8',
-    app_path: '/vhosting/GBPOSWEBAPI.ear',
+    app_path: '/vhosting/ORPOSWEBAPI.ear',
     status: 'running',
   };
-  const r8 = { ...r7, jboss_version: '8.0.0', app_path: '/vhosting8/GBPOSWEBAPI.ear' };
+  const r8 = { ...r7, jboss_version: '8.0.0', app_path: '/vhosting8/ORPOSWEBAPI.ear' };
   const certs = [
     {
       host: 'GOJBWP05',
       ip: '',
       port: '443',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/ihs/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/ihs/ORPOSWEBAPI.conf',
       product: 'IHS',
       env: 'PROD',
     },
   ];
-  const t = buildTargets('GBPOSWEBAPI', [r7, r8], certs, [], [], []).targets;
+  const t = buildTargets('ORPOSWEBAPI', [r7, r8], certs, [], [], []).targets;
   const yedi = t.find((x) => x.gen === 7);
   assert.ok(yedi && yedi.inPlace === true, 'kesif in-place isaretlemedi (senaryo bozuk)');
   const [o] = inPlaceOzeti([yedi]);
@@ -381,7 +381,7 @@ test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti ala
     inPlaceOzeti(t).map((x) => x.digerSecili),
     [[8], [7]],
   );
-  const tek = buildTargets('GBPOSWEBAPI', [r7], certs, [], [], []).targets;
+  const tek = buildTargets('ORPOSWEBAPI', [r7], certs, [], [], []).targets;
   assert.deepEqual(inPlaceOzeti(tek), [], 'tek kurulumlu hedef in-place uyarisi uretiyor');
 });
 

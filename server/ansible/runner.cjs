@@ -1368,11 +1368,11 @@ async function getJobOutput(jobId) {
 // (bkz. gar_bmt_ansible_scripts: openshift_access_test.yaml, indexer_infos.yaml). Bu
 // yuzden AWX'e giden HER job'a, isi tetikleyen Portal kullanicisinin e-postasi/adi
 // requester_email/requester_name olarak enjekte edilir — kullanici bilgisi yoksa
-// (ornegin zamanlanmis/sistem tetiklemesi) varsayilan olarak Onur Demir etiketlenir.
+// (ornegin zamanlanmis/sistem tetiklemesi) varsayilan olarak Deneme Kisi etiketlenir.
 // Template bu degiskeni "Prompt on launch"ta acmadiysa AWX sessizce yok sayar (zarar vermez).
 // VARSAYILAN GERCEK BIR CALISANIN KIMLIGIDIR ve bu YANLIS ATIF uretir: isi baska biri
 // tetiklemisken Teams'te (ve AWX extra_vars'inda) o kisi gorunur. Uretimde tam olarak
-// bu yasandi (2026-09-07): kullanici kendi actigi iste "Onur Demir" adini gordu.
+// bu yasandi (2026-09-07): kullanici kendi actigi iste "Deneme Kisi" adini gordu.
 //
 // Adres yine de GERCEK ve COZULEBILIR olmak zorunda: Teams akisindaki "Search for users"
 // adimi cozemedigi bir adreste bildirimi TAMAMEN dusuruyor. Bu yuzden adres kaldirilmadi,
@@ -1387,9 +1387,12 @@ async function getJobOutput(jobId) {
  */
 const FALLBACK_REQUESTER_LABEL = 'Bilinmeyen tetikleyici (Portal)';
 
+// Varsayilan istekci ORTAM AYARINDA (2026-11-20): kisi adi / adresi koda yazilmaz (repo public, K17).
+// Uretimde PORTAL_DEFAULT_REQUESTER_EMAIL verilmelidir: Teams akisi cozemedigi adreste bildirimi dusurur;
+// tanimsizsa adres bos gider (acilis uyarisi: server/index.cjs).
 const DEFAULT_REQUESTER = {
-  email: process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || 'onurdemir3@garantibbva.com.tr',
-  name: process.env.PORTAL_DEFAULT_REQUESTER_NAME || 'Onur Demir',
+  email: String(process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || '').trim(),
+  name: String(process.env.PORTAL_DEFAULT_REQUESTER_NAME || '').trim(),
 };
 
 function withRequesterVars(extraVars, user) {
@@ -1413,7 +1416,7 @@ function withRequesterVars(extraVars, user) {
   // kullanici adi biliniyorsa o, bilinmiyorsa notr bir etiket yazilir.
   const name = rawName || FALLBACK_REQUESTER_LABEL;
   // Varsayilana dusuldugunde logla - aksi halde Teams @mention'in GERCEKTEN o an
-  // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Onur Demir - kod
+  // tetikleyen kisiye mi cozuldugu, yoksa DEFAULT_REQUESTER'a mi (Deneme Kisi - kod
   // deposundaki sabit) dustugu, bildirimin GORUNTUSUNDEN AYIRT EDILEMEZ (DEFAULT_REQUESTER
   // gercek bir calisanin kimligi oldugu icin, o kisi test ederken kendi ismini gorup
   // "calisiyor" sanabilir - 2026-08-20 kullanici sorusu tam bu belirsizlikten dogdu).
@@ -3584,7 +3587,7 @@ function initAnsibleRunner(app) {
       throw Object.assign(e, { postOncesi: true });
     });
     // KIM TETIKLEDI (2026-09-15 duzeltmesi): Smart onayi SONRA geldiginde isi poller
-    // baslatir ve `req` yoktur; onceden atif DEFAULT_REQUESTER'a (Onur Demir) dusuyordu -
+    // baslatir ve `req` yoktur; onceden atif DEFAULT_REQUESTER'a (Deneme Kisi) dusuyordu -
     // kullanici kendi actigi iste baskasinin adini gordu (rate_limit_change,
     // requester_is_fallback=true). Talep kaydi username'i tasir: kimlik oradan cozulur
     // (portal_users onbellegi, yoksa LDAP). Cozulemezse eski davranis (fallback + bayrak).

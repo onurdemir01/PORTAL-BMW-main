@@ -13,6 +13,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Kurum ayarinin kurgusal ornegi (server/util/kurum-ayari.cjs; gercek sunucu adlari repoda yok, K17).
+    env: {
+      KURUM_AYAR_DOSYASI:
+        process.env.KURUM_AYAR_DOSYASI ||
+        path.resolve(import.meta.dirname, 'deploy/kurum-ayari.ornek.json'),
+    },
     include: ['src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['src/**/__tests__/**/*.test.js', 'node_modules/**'],
     coverage: {

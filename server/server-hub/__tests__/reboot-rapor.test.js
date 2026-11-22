@@ -66,21 +66,21 @@ test('RR3 reboot dogrulanamadi uyari; sonuc yok / son goruntu yok KRITIK (soruns
 test('RR4 rapor ekip arkadasinin tasarimini tasir ve tum veriyi KACISLAR', () => {
   const k = {
     id: 7,
-    hosts: ['GBX01', 'GBY02'],
+    hosts: ['ORX01', 'ORY02'],
     not: '<script>alert(1)</script>',
     olusturan: 'onur',
     once: {
       sonuc: {
         sunucular: {
-          GBX01: { goruntu_ok: true, goruntu: ONCE },
-          GBY02: { goruntu_ok: true, goruntu: ONCE },
+          ORX01: { goruntu_ok: true, goruntu: ONCE },
+          ORY02: { goruntu_ok: true, goruntu: ONCE },
         },
       },
     },
     sonra: {
       sonuc: {
         sunucular: {
-          GBX01: {
+          ORX01: {
             once_var: true,
             betik_surum: 4,
             son_olculdu: true,
@@ -88,7 +88,7 @@ test('RR4 rapor ekip arkadasinin tasarimini tasir ve tum veriyi KACISLAR', () =>
             son_goruntu: ['BOOT|b2||', ...ONCE.slice(1)],
             islemler: [],
           },
-          GBY02: {
+          ORY02: {
             son_olculdu: true,
             goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'],
             son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'],
@@ -119,7 +119,7 @@ test('RR4 rapor ekip arkadasinin tasarimini tasir ve tum veriyi KACISLAR', () =>
   assert.ok(!h.includes('<script>alert'), 'not alani kacislanmadi');
   assert.ok(!h.includes('<img src=x'), 'islem mesaji kacislanmadi');
   assert.match(h, /1 sunucuda kritik durum tespit edildi/);
-  assert.match(h, /GBX01<\/td>/, 'normal sunucu izgarada yok');
+  assert.match(h, /ORX01<\/td>/, 'normal sunucu izgarada yok');
 });
 
 test('RR5 yalniz once kaydi varsa "Reboot oncesi kayit" raporu (alinamayan kirmizi)', () => {

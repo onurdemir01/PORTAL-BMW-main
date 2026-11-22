@@ -6,11 +6,11 @@
 # NGINX Instance Manager'daki "Publish" akisinin karsiligi. Ayrinti: README.md.
 #
 # extra_vars (Portal gonderir):
-#   target_hosts:   ["GBNGXP40", "GBNGXP41"]
+#   target_hosts:   ["ORNGXP40", "ORNGXP41"]
 #   file_path:      "/usr/nginx/conf.d/application-confs/glomo-x-y.conf"
 #   mode:           "create" | "update"
 #   content_b64:    base64 icerik
-#   expected_sha:   {"GBNGXP40": "<sha256>", ...}  (host basina Portal'in gordugu sha; bos = kontrol yok)
+#   expected_sha:   {"ORNGXP40": "<sha256>", ...}  (host basina Portal'in gordugu sha; bos = kontrol yok)
 #   force:          true -> sha uyusmazligini yoksay
 #   console_dir:    /sw/BMW_PORTAL/nginx_console
 #   requester:      kullanici adi
@@ -29,7 +29,9 @@
           - (file_path | default('')) is not search('\.\.')
           - (mode | default('') | trim) in ['create', 'update']
           - (content_b64 | default('') | length) > 0
-        fail_msg: "target_hosts (liste), file_path (/usr/nginx/conf.d|conf altinda), mode (create|update), content_b64 zorunlu."
+          - portal_yazici_host | default('', true) is string
+          - (portal_yazici_host | default('', true) | string | trim | length) > 0
+        fail_msg: "target_hosts (liste), file_path (/usr/nginx/conf.d|conf altinda), mode (create|update), content_b64 zorunlu; portal_yazici_host AWX template Variables'ta tanimli olmali."
 
     - name: --- [Task] add_host ---
       ansible.builtin.add_host:
@@ -86,13 +88,13 @@
           changed_when: false
           failed_when: false
 
-        - name: --- [Task] /sw'ye yaz (GBLABT02 uzerinden) ---
+        - name: --- [Task] /sw'ye yaz (yazici sunucu uzerinden) ---
           ansible.builtin.copy:
             content: "{{ dump_out.stdout }}\n"
             dest: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/{{ inventory_hostname | upper }}.txt"
             mode: '0666'
-          delegate_to: GBLABT02
-          # GBLABT02'ye ayni anda forks kadar oturum -> sshd MaxSessions (10) asilir:
+          delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
+          # ORLABT02'ye ayni anda forks kadar oturum -> sshd MaxSessions (10) asilir:
           # "mux_client_request_session: session request failed" (kullanici, 2026-09-21). En cok 6 eszamanli.
           throttle: 6
           when: (dump_out.stdout | default('') | length) > 0

@@ -725,7 +725,7 @@ function OverrideEditor({
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="ad.soyad@garantibbva.com.tr"
+            placeholder="ad.soyad@ornekbanka.invalid"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono min-w-[16rem]"
           />
         )}

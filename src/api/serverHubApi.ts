@@ -87,7 +87,7 @@ export interface ShFinding {
 export interface ShHostRow {
   env?: string;
   envGroup?: string;
-  /** 2026-09-24: 'ozel' = GBEVM / GBPRV onekli sunucular (genel envanterden ayri listelenir) */
+  /** 2026-09-24: 'ozel' = OREVM / ORPRV onekli sunucular (genel envanterden ayri listelenir) */
   hostClass?: 'genel' | 'ozel';
   host: string;
   scanDate: string | null;
@@ -290,7 +290,7 @@ export interface ShSummary {
   hosts: { total: number; ok: number; info: number; warning: number; danger: number };
   /** 2026-09-24: envanter (dbo.Inventory) kac sunucuda diyor / tarama kacinda gordu */
   coverage?: Record<string, { inventory: number; scanned: number; scannedNotInInventory: number }>;
-  /** 2026-09-24: genel envanter disi sunucular (GBEVM / GBPRV) */
+  /** 2026-09-24: genel envanter disi sunucular (OREVM / ORPRV) */
   special?: {
     hosts: number;
     danger: number;

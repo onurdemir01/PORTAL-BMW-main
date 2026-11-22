@@ -13,8 +13,8 @@ const net = require('net');
 const { createMcpClient } = require('../mcp/client.cjs');
 
 // Dogrulanmis calisan adres (curl initialize testi, 2026-07-10): https + /mcp path.
-const DT_MANAGED_MCP_URL =
-  process.env.DT_MANAGED_MCP_URL || 'https://dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr/mcp';
+// Kurum adresi ortam ayarinda (koda yazilmaz, K17); tanimsizsa istemci "yapilandirilmamis" hatasi verir.
+const DT_MANAGED_MCP_URL = String(process.env.DT_MANAGED_MCP_URL || '').trim();
 
 const mcp = createMcpClient({ name: 'dynatrace', url: DT_MANAGED_MCP_URL });
 

@@ -226,7 +226,7 @@ function ozetOf(ad, kopyalar, etiketler) {
  */
 function uygulamalar360(hosts, etiketler = []) {
   const gruplar = new Map();
-  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (GBFACELIFTSUBE-T1), satir invApp tabaniyla.
+  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (ORFACELIFTSUBE-T1), satir invApp tabaniyla.
   const adAnahtar = new Map();
   for (const h of hosts || []) {
     if (h.taramadanDustu) continue;

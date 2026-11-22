@@ -14,6 +14,9 @@
 //   * set_stats HER yolda (fail'den once, kosulsuz); uzak play rescue + ignore_unreachable.
 //   * Envanter parolasi (tbmwans_pwd) yalniz no_log gorevin stdin'inden; environment ile
 //     verilmez (Ansible ortam degerlerini become/dzdo komut satirina yazar).
+//   * Yazici sunucu ve SQL sunucusu AWX template Variables'tan (portal_yazici_host,
+//     portal_envanter_sql_sunucusu); playbook'ta / betikte kurum adi yok (K17). OW13 betigin
+//     --sunucu kapisini GERCEKTEN kosturur (DB'ye baglanmadan).
 //
 // DAVRANIS burada OLCULMEZ (metin bekcisi): betik davranisi opsx-was-script.test.js'te, playbook'larin
 // GERCEK ansible-playbook ile kosulmasi opsx-was-gercek-kosum.test.js'te (Ansible deposundaki W5 Jinja2'yi
@@ -28,6 +31,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { normalize } = require('../../util/guard-text.cjs');
 
 const DIR =
@@ -224,7 +228,24 @@ test("OW7 envanter: parola yalniz no_log gorevin stdin'inden; SQL yalniz tek sat
   assert.equal(db.length, 1, 'parolayi stdin ile alan TEK envanter gorevi beklenir');
   const t = normalize(db[0]);
   assert.ok(t.includes('no_log: true'), 'envanter gorevi no_log degil');
-  assert.ok(t.includes('delegate_to: GBLABT02'), "envanter gorevi GBLABT02'ye delegate degil");
+  assert.ok(
+    t.includes("delegate_to: '{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}'"),
+    'envanter gorevi yazici sunucuya (AWX portal_yazici_host) delegate degil',
+  );
+  assert.ok(
+    t.includes("- '--sunucu={{ portal_envanter_sql_sunucusu | default(\'\', true) }}'") ||
+      t.includes('- "--sunucu={{ portal_envanter_sql_sunucusu | default(\'\', true) }}"'),
+    'SQL sunucusu betige --sunucu ile (AWX portal_envanter_sql_sunucusu) gitmiyor',
+  );
+  assert.ok(t.includes('(opsx_was_inv_hazir | bool)'), 'envanter gorevi on kosula bagli degil');
+  // On kosul: eksiklerin LISTESI (bos / null da eksik sayilir: default('', true)); hazir = liste bos.
+  const hazir = normalize(gorevler(src).find((g) => g.includes('opsx_was_inv_eksik: >-')) || '');
+  for (const v of ['tbmwans_pwd', 'portal_yazici_host', 'portal_envanter_sql_sunucusu'])
+    assert.ok(hazir.includes(`(${v} | default('', true) | string`), `on kosulda ${v} yok`);
+  assert.ok(
+    src.includes(`opsx_was_inv_hazir: "{{ (opsx_was_inv_eksik | length) == 0 }}"`),
+    'hazir eksik listesinden turemiyor',
+  );
   assert.ok(t.includes("stdin: '{{ tbmwans_pwd }}'"), 'parola stdin ile gitmiyor');
   assert.ok(
     !/environment:/.test(db[0]),
@@ -285,6 +306,8 @@ test('OW10 README sozlesmeyi anlatiyor', () => {
     'OPSX_WAS_OPERATION_TEMPLATE_ID',
     'allow_simultaneous',
     'tbmwans_pwd',
+    'portal_yazici_host',
+    'portal_envanter_sql_sunucusu',
     'Kanarya',
     'ADMU0509I',
     'kill -9',
@@ -332,5 +355,35 @@ test(
         `${f} iki depoda farkli`,
       );
     }
+  },
+);
+
+// Betigin --sunucu kapisi GERCEKTEN: tanimsiz / gecersiz SQL sunucusu DB'ye baglanmadan FAIL; gecerli
+// bicim kapidan gecer (sonraki kapi: bos parola). pyodbc gerekmez (kapilar baglantidan once).
+const PY = ['python3', 'python'].find(
+  (p) => spawnSync(p, ['--version'], { stdio: 'ignore' }).status === 0,
+);
+test(
+  'OW13 envanter betigi: SQL sunucusu --sunucu ile gelir; yoksa / gecersizse baglanmadan FAIL',
+  {
+    skip: !PY && 'python yok',
+  },
+  () => {
+    const kos = (...ek) =>
+      spawnSync(PY, ['-I', ENVANTER, '--host=ORHOST01', '--app=app1', '--status=running', ...ek], {
+        encoding: 'utf8',
+        input: '',
+        timeout: 30000,
+      });
+    for (const ek of [[], ['--sunucu='], ['--sunucu=db.ornek.invalid'], ['--sunucu=a;b,1453']]) {
+      const r = kos(...ek);
+      assert.equal(r.status, 2, `${ek.join(' ') || '(yok)'}: kod ${r.status} ${r.stdout}`);
+      assert.match(r.stdout, /^WASAPP_UPDATE\tFAIL\tSQL sunucusu tanimli degil ya da gecersiz/m);
+    }
+    const r = kos('--sunucu=db.ornek.invalid,1453', '--pwd-stdin');
+    assert.equal(r.status, 2);
+    assert.match(r.stdout, /^WASAPP_UPDATE\tFAIL\tparola bos/m, 'gecerli sunucu kapidan gecmeli');
+    // Baglanti dizgisinde sunucu YER TUTUCU (kurum adlari K17'nin isi; burada sabit ad olmamasi).
+    assert.match(oku(ENVANTER), /^ {4}"SERVER=%s;"$/m, 'SERVER sabit bir ad tasiyor');
   },
 );

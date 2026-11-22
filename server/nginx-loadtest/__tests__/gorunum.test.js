@@ -202,10 +202,10 @@ test('GR2 reloadlar: ham.reloadlar camelCase, bozuk girdi atlanir, eski satir bo
 test('GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu, 429 / 5xx / hata, konf, reloadlar', () => {
   const adimlar = r2Satirlari().map(adimGorunumu);
   const ozet = {
-    kesitler: [{ anahtar: 'R2_gbngxt33', konf_degisti: true }],
+    kesitler: [{ anahtar: 'R2_orngxt33', konf_degisti: true }],
     reloadlar: [
       {
-        kesit: 'R2_gbngxt33',
+        kesit: 'R2_orngxt33',
         t: 20,
         t_once: 19,
         t_son: 25,
@@ -217,7 +217,7 @@ test('GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu, 429 / 5xx / hata, konf
         etkilenen_turlar: ['R2_K_ka_identity_250_r2'],
       },
       {
-        kesit: 'R2_gbngxt33',
+        kesit: 'R2_orngxt33',
         t: 10,
         t_once: 9,
         t_son: 12,
@@ -255,7 +255,7 @@ test('GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu, 429 / 5xx / hata, konf
         tSon: 12,
         tur: 'R2_K_ka_identity_100_r2',
         faz: 'olcum',
-        kesit: 'R2_gbngxt33',
+        kesit: 'R2_orngxt33',
         workerOnce: 8,
         workerSonra: 8,
         kapananEnCok: 0,
@@ -267,7 +267,7 @@ test('GR3 sonucOzeti: toplam istek, p95 en iyi / en kotu, 429 / 5xx / hata, konf
         tSon: 25,
         tur: 'R2_K_ka_identity_250_r2',
         faz: 'olcum',
-        kesit: 'R2_gbngxt33',
+        kesit: 'R2_orngxt33',
         workerOnce: 8,
         workerSonra: 16,
         kapananEnCok: 8,

@@ -391,7 +391,7 @@ function prepareWith(timeout) {
         '    execution_mode: dry_run',
         '    scalex_cluster_mode: all',
         `    verification_timeout: "${timeout}"`,
-        '    username: uxmid',
+        '    username: svcac',
         '    smtp_host: smtp.x',
         '    smtp_port: 25',
         '    mail_from: a@b.c',

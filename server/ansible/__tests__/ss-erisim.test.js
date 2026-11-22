@@ -24,7 +24,7 @@ const path = require('node:path');
 const e = require('../ss-erisim.cjs');
 
 const DN_MW = 'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr';
-const kullanici = (groups) => ({ username: 'osmankoz', role: 'User', groups });
+const kullanici = (groups) => ({ username: 'ornekkisi', role: 'User', groups });
 const ADMIN = { username: 'onurdemir', role: 'Admin', groups: [] };
 const oge = (ek) => ({
   id: 'x',

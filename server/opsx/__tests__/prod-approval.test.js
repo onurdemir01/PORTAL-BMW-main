@@ -6,7 +6,7 @@
 // sonra Ansible tetiklensin."
 //
 // EN PAHALI IKI YANLIS, bu bekcilerin kilitledigi sey:
-//   1. FAIL-OPEN TESPIT: 'prod1' / 'gbocpprod1' gibi serbest yazilmis bir etiketi uretim
+//   1. FAIL-OPEN TESPIT: 'prod1' / 'orocpprod1' gibi serbest yazilmis bir etiketi uretim
 //      saymamak = production isi ONAYSIZ kosturmak.
 //   2. LIMIT KAYBI: onay sonrasi is `performSsLaunch` ile oynatiliyor ve o yol limit'i
 //      YALNIZ `detail.ask_limit_on_launch` dogruysa gonderir. OpsX'in dogrudan yolu
@@ -39,8 +39,8 @@ test('PA1 URETIM etiketleri yakalanir (serbest yazim + kelime icine gomulu)', ()
     'canli',
     'canlı',
     // GERCEK cluster/host adlari: isaret ayirici olmadan gomulu
-    'gbocpprod1',
-    'giocpank3rdwyprod1',
+    'orocpprod1',
+    'oiocpank3rdwyprod1',
     'DACRWAP01-PROD',
   ])
     assert.equal(ga.uretimEtiketi(e), true, `uretim sayilmadi: ${e}`);
@@ -59,10 +59,10 @@ test('PA3 preprod / nonprod URETIM DEGILDIR (yanlis pozitif kapisi)', () => {
 test('PA4 uretimIstegi ILK tutan alani SEBEP olarak doner', () => {
   const r = ga.uretimIstegi([
     { alan: 'ortam', deger: 'test' },
-    { alan: 'cluster', deger: ['gbocptest1', 'giocpank3rdwyprod1'] },
+    { alan: 'cluster', deger: ['orocptest1', 'oiocpank3rdwyprod1'] },
   ]);
   assert.equal(r.uretim, true);
-  assert.equal(r.sebep, 'cluster=giocpank3rdwyprod1');
+  assert.equal(r.sebep, 'cluster=oiocpank3rdwyprod1');
   // Hicbiri tutmazsa sebep null
   assert.deepEqual(ga.uretimIstegi([{ alan: 'ortam', deger: 'qa' }]), {
     uretim: false,
@@ -75,10 +75,10 @@ test('PA5 KATALOG/ENVANTER HATASI kapiyi acmaz: tum etiketler olculur', () => {
   // adi prod olan bir sunucu onaysiz gecmez.
   const r = ga.uretimIstegi([
     { alan: 'ortam', deger: ['', null] },
-    { alan: 'sunucu', deger: ['GBJBOSSPROD03'] },
+    { alan: 'sunucu', deger: ['ORJBOSSPROD03'] },
   ]);
   assert.equal(r.uretim, true);
-  assert.match(r.sebep, /sunucu=GBJBOSSPROD03/);
+  assert.match(r.sebep, /sunucu=ORJBOSSPROD03/);
 });
 
 // `smartApprovalFor` artik ONCE OpsX panelinin blob'una, sonra ortam degiskenine bakar
@@ -243,7 +243,7 @@ test('PA8 LIMIT FAIL-CLOSED: template limit kabul etmiyorsa is BASLATILMAZ', asy
       serverId: 1,
       templateId: 9,
       extraVars: {},
-      limitValue: 'HOST1,GBLABT02',
+      limitValue: 'HOST1,ORLABT02',
       etiketler: [{ alan: 'ortam', deger: 'prod' }],
       req: { session: { user: { username: 'u' } } },
       islemAdi: 'Legacy restart',
@@ -355,7 +355,7 @@ test('PA13 BILET LIMIT TASIR: detail.ask_limit_on_launch + resolvedLaunchOptions
       serverId: 3,
       templateId: 11,
       extraVars: { application: 'crm' },
-      limitValue: 'HOST1,HOST2,GBLABT02',
+      limitValue: 'HOST1,HOST2,ORLABT02',
       etiketler: [{ alan: 'ortam', deger: 'prod' }],
       req: { session: { user: { username: 'u', mail: 'u@x' } } },
       islemAdi: 'Legacy restart',
@@ -368,7 +368,7 @@ test('PA13 BILET LIMIT TASIR: detail.ask_limit_on_launch + resolvedLaunchOptions
     );
     assert.equal(
       gecen.resolvedLaunchOptions.limit,
-      'HOST1,HOST2,GBLABT02',
+      'HOST1,HOST2,ORLABT02',
       'limit degeri bilete yazilmamis',
     );
     // ZORUNLU SURVEY VARSAYILANLARI onceden dolduruldu: replay yolu bunu yapmaz
@@ -439,7 +439,7 @@ test('PA17 ONAY SURESI 15 DK: bilet kurali tasir (Legacy + Openshift), kullanici
         serverId: 3,
         templateId: 11,
         extraVars: {},
-        limitValue: platform === 'legacy' ? 'HOST1,GBLABT02' : '',
+        limitValue: platform === 'legacy' ? 'HOST1,ORLABT02' : '',
         etiketler: [{ alan: 'ortam', deger: 'prod' }],
         req: { session: { user: { username: 'u', mail: 'u@x' } } },
         islemAdi: `${platform} islem`,

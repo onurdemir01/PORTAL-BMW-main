@@ -7,17 +7,17 @@
 #   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
 #
 # Required extra_vars (v2 - per-cluster bastion):
-#   terminal_host: GBAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
-#   terminal_hosts: [GBAOCP01, GBAOCP02] # optional; unique, sorted list of bastions
+#   terminal_host: ORAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [ORAOCP01, ORAOCP02] # optional; unique, sorted list of bastions
 #   ocp_clusters:
 #     - env: lab
 #       tenant: ark
-#       cluster_name: gbocplab2
-#       terminal_host: GBAOCP01          # optional; when absent the scalar terminal_host is used
+#       cluster_name: orocplab2
+#       terminal_host: ORAOCP01          # optional; when absent the scalar terminal_host is used
 #       api_url: https://api...:6443     # portal (v3); yoksa inventory dosyasina duser
-#       credential_key: uxmid_gar        # vault degisken ADI (parola DEGIL)
-#       username: uxmid                  # oc login kullanicisi; yoksa `ocp_username`
-#   ocp_username: uxmid                  # portalin GENEL varsayilani (cluster'da yoksa)
+#       credential_key: svcac_gar        # vault degisken ADI (parola DEGIL)
+#       username: svcac                  # oc login kullanicisi; yoksa `ocp_username`
+#   ocp_username: svcac                  # portalin GENEL varsayilani (cluster'da yoksa)
 #
 # ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
 # api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
@@ -44,7 +44,7 @@
     #
     # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
     # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
-    logx_playbook_revision: "c33b80dd64"
+    logx_playbook_revision: "7897208054"
     # Effective bastion list: explicit list wins, else the legacy scalar, else per-cluster values.
     logx_bastions: >-
       {{

@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const H = require('./_node_harness.cjs');
 const N = require('../../../shared/cryptoHubNodes.cjs');
-const { CRYPTO_TENANTS, tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS, tenantOf } = require('../kiracilar.cjs');
 
 const { K, GOVDE, T, G_EVM, SIR } = H;
 const DK = 60000;

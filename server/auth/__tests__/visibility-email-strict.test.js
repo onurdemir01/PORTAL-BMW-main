@@ -173,7 +173,7 @@ test('VE6b: simulasyon GERCEK kimlikle yapilir (gruplar bos varsayilmaz)', () =>
 });
 
 test('VE7: kullanici adi BUYUK/KUCUK harf ayrimi yapmaz', () => {
-  // Uretimde gorulen (2026-09-26): "osmankoz ile girersem yetkin yok diyor, OsmanKoz ile
+  // Uretimde gorulen (2026-09-26): "ornekkisi ile girersem yetkin yok diyor, OrnekKisi ile
   // girersem goruyorum." Oturumdaki kullanici adi zaten normalizeUsername ile kucuk harfe
   // ceviriliyor; kirilma noktasi VERITABANI tarafiydi - rol override'i YAZARKEN kullanicinin
   // yazdigi bicim kaydediliyor, OKURKEN kucuk harf araniyordu. Harf duyarli bir collation'da

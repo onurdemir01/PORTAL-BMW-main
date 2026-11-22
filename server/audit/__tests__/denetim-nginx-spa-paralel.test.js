@@ -46,7 +46,7 @@ async function query(text) {
   if (t.includes('FROM dbo.Nginx_Spa_Traffic'))
     return rs([
       {
-        host: 'GBNGXT33',
+        host: 'ORNGXT33',
         vhost: 'GLOMO-TEST',
         service: 'GLOMO',
         env: 'TEST',
@@ -78,7 +78,7 @@ async function query(text) {
         namespace: 'kart-test',
         include_name: 'kart-app-v1',
         location_path: '/kart/',
-        host: 'GBNGXT33',
+        host: 'ORNGXT33',
         vhost: 'GLOMO-TEST',
         deploy_mode: 'namespaced',
         include_exists: 1,
@@ -195,6 +195,6 @@ test('NP4 SPA Kesfi route envanteri ARK cluster IN suzgecli, JS bekci duruyor', 
     src,
     /FROM dbo\.BMW_Openshift_Route_Inventory` \+ ` WHERE cluster_name IN \(\$\{arkInv\.sqlText\}\)`,\s*arkInv\.params/,
   );
-  assert.match(src, /PLATFORM_CLUSTERS\.ark/);
+  assert.match(src, /platformKumeleri\(\)\.ark/);
   assert.match(src, /const inv = arkSuz\(invHam, 'cluster_name'\);/, 'JS bekci kaldirilmis');
 });

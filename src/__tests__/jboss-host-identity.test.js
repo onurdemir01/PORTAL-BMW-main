@@ -56,15 +56,15 @@ const HOST_STEPS = [
 
 // ── J1: satir kimligi host DEGIL, (host, major) ciftidir ────────────────────
 test('J1: ayni host iki majorde iki FARKLI anahtar uretir', () => {
-  const j7 = J.hostKey('GBCJAP01', '7');
-  const j8 = J.hostKey('GBCJAP01', '8');
+  const j7 = J.hostKey('ORCJAP01', '7');
+  const j8 = J.hostKey('ORCJAP01', '8');
   assert.notEqual(j7, j8, 'cift kurulumlu host tek anahtara cokuyor — secim yine paylasilir');
 
   // Cozumleme kayipsiz olmali: secim sunucuya cift olarak gidiyor.
-  assert.deepEqual(J.parseHostKey(j8), { host: 'GBCJAP01', jbossMajor: '8' });
+  assert.deepEqual(J.parseHostKey(j8), { host: 'ORCJAP01', jbossMajor: '8' });
 
   // Buyuk/kucuk harf ayni sunucuyu iki kez SECTIRMEMELI.
-  assert.equal(J.hostKey('gbcjap01', '8'), j8);
+  assert.equal(J.hostKey('orcjap01', '8'), j8);
 });
 
 test('J1b: majoru bilinmeyen host da kararli bir anahtar alir', () => {
@@ -155,17 +155,17 @@ test("J4b: uc surum adiminin hicbiri TAM surum string'ine gore gruplamaz", () =>
 
 // ── J5: secilen anahtarlardan sunucuya gidecek cift uretimi ─────────────────
 test('J5: cift kurulumlu host tek ad + iki major olarak gonderilir', () => {
-  const keys = [J.hostKey('GBCJAP01', '7'), J.hostKey('GBCJAP01', '8'), J.hostKey('GBCJAP02', '8')];
+  const keys = [J.hostKey('ORCJAP01', '7'), J.hostKey('ORCJAP01', '8'), J.hostKey('ORCJAP02', '8')];
   const pairs = J.toHostPairs(keys);
   const hosts = [...new Set(pairs.map((p) => p.host))];
   const majors = [...new Set(pairs.map((p) => p.jbossMajor))].sort();
 
-  assert.deepEqual(hosts, ['GBCJAP01', 'GBCJAP02'], 'ayni sunucu iki kez gonderilmemeli');
+  assert.deepEqual(hosts, ['ORCJAP01', 'ORCJAP02'], 'ayni sunucu iki kez gonderilmemeli');
   assert.deepEqual(majors, ['7', '8'], 'iki kurulum da isaretlendi — ikisi de gitmeli');
 
   // Yalniz JBoss 8 satirlari isaretlendiginde 7 GITMEMELI: kullanicinin
   // "birini sectiremiyor" sikayetinin tam karsiligi.
-  const only8 = J.toHostPairs([J.hostKey('GBCJAP01', '8'), J.hostKey('GBCJAP02', '8')]);
+  const only8 = J.toHostPairs([J.hostKey('ORCJAP01', '8'), J.hostKey('ORCJAP02', '8')]);
   assert.deepEqual([...new Set(only8.map((p) => p.jbossMajor))], ['8']);
 });
 

@@ -66,12 +66,12 @@ test('buildSeedRows(): her cluster api_url + credential anahtari tasir, PAROLA Y
 
 test('buildSeedRows(): cluster-ozel jump server varsa tasinir, yoksa NULL (yedege duser)', () => {
   const rows = seed.buildSeedRows();
-  const prod1 = rows.find((r) => r.cluster_name === 'gbocpprod1');
-  assert.equal(prod1.terminal_host, 'gbarkp51', 'kullanicinin verdigi esleme uygulanmali');
+  const prod1 = rows.find((r) => r.cluster_name === 'orocpprod1');
+  assert.equal(prod1.terminal_host, 'orarkp51', 'kullanicinin verdigi esleme uygulanmali');
   assert.equal(prod1.tenant, 'ark');
   assert.equal(prod1.env, 'prod');
 
-  const test1 = rows.find((r) => r.cluster_name === 'gbocptest1');
+  const test1 = rows.find((r) => r.cluster_name === 'orocptest1');
   assert.equal(
     test1.terminal_host,
     null,
@@ -84,33 +84,34 @@ test('buildSeedRows(): her satir `oc login` kullanici adini tasir', () => {
   // okuyabiliyordu; o dosya AWX'te olmadigi icin 2026-08-09'da tum cluster'lar dustu.
   const rows = seed.buildSeedRows();
   assert.ok(
-    rows.every((r) => r.ocp_username === 'uxmid'),
+    rows.every((r) => r.ocp_username === 'svcac'),
     'tum seed satirlari kullanici adi tasimali',
   );
 });
 
 test('VAULT_KEYS: kullanicinin verdigi 7 anahtarin TAMAMI var ve PAROLA yok', () => {
-  const { VAULT_KEYS } = require('../data/ocp-inventory-seed.cjs');
+  // Tohum kurum ayarindan (ocp.tohum); testler kurgusal ornekle kosar.
+  const { VAULT_KEYS } = require('../data/ocp-inventory-seed.cjs').ocpTohumu();
   const names = VAULT_KEYS.map((k) => k.key_name).sort();
   assert.deepEqual(names, [
-    'uxmid_das',
-    'uxmid_gar',
-    'uxmid_gohas',
-    'uxmid_gtdmz',
-    'uxmid_gtek',
-    'uxmid_gtekdmz',
-    'uxmid_takasnet',
+    'svcac_das',
+    'svcac_dmz',
+    'svcac_gar',
+    'svcac_gohas',
+    'svcac_gtek',
+    'svcac_gtekdmz',
+    'svcac_takasnet',
   ]);
   // Anahtar ADI Ansible degisken adi kurallarina uymali (lookup('vars', <ad>)).
   assert.ok(VAULT_KEYS.every((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k.key_name)));
   assert.ok(!JSON.stringify(VAULT_KEYS).match(/password|parola|secret/i), 'PAROLA TUTULMAZ');
 });
 
-test("buildSeedRows(): metaco/das cluster'lari uxmid_das anahtarini kullanir", () => {
+test("buildSeedRows(): metaco/das cluster'lari svcac_das anahtarini kullanir", () => {
   const rows = seed.buildSeedRows();
-  const das = rows.find((r) => r.cluster_name === 'daocpprod1');
-  assert.equal(das.vault_credential_key, 'uxmid_das');
-  assert.match(das.api_url, /dijitalvarlik\.com\.tr/);
+  const das = rows.find((r) => r.cluster_name === 'odocpprod1');
+  assert.equal(das.vault_credential_key, 'svcac_das');
+  assert.match(das.api_url, /dijitalornek\.invalid/);
 });
 
 // ── Bir-kerelik davranis ──────────────────────────────────────────────────────
@@ -204,10 +205,10 @@ test("seedOcpBootstrapOnce(): DB'de ZATEN olan cluster atlanir (admin duzenlemes
     async (calls) => {
       await seed.seedOcpBootstrapOnce();
       const inserted = calls.inserts.map((c) => c.params[2]);
-      assert.ok(!inserted.includes('gbocpprod1'), 'var olan satir yeniden eklenmemeli');
-      assert.ok(inserted.includes('gbocpprod2'), 'olmayan satir eklenmeli');
+      assert.ok(!inserted.includes('orocpprod1'), 'var olan satir yeniden eklenmemeli');
+      assert.ok(inserted.includes('orocpprod2'), 'olmayan satir eklenmeli');
     },
-    { flag: null, existingClusters: new Set(['gbocpprod1']) },
+    { flag: null, existingClusters: new Set(['orocpprod1']) },
   );
 });
 
@@ -222,5 +223,21 @@ test('seedOcpBootstrapOnce(): isaret OKUNAMAZSA seed atlanir (mukerrer satir ris
     assert.equal(r.reason, 'flag_read_failed');
   } finally {
     settings.getSettingStrict = orig;
+  }
+});
+
+test('kurum ayari yoksa tohum BOS ve isaret konmaz (ayar sonradan verilince ilk kurulum yine calisir)', async () => {
+  const eski = process.env.KURUM_AYAR_DOSYASI;
+  try {
+    delete process.env.KURUM_AYAR_DOSYASI;
+    const t = require('../data/ocp-inventory-seed.cjs').ocpTohumu();
+    assert.deepEqual([Object.keys(t.INVENTORY).length, t.VAULT_KEYS.length], [0, 0]);
+    assert.match(t.hata, /KURUM_AYAR_DOSYASI tanimli degil/);
+    assert.deepEqual(
+      seed.buildSeedRows(t.INVENTORY, t.CLUSTER_JUMP_HOSTS, t.DEFAULT_OCP_USERNAME),
+      [],
+    );
+  } finally {
+    process.env.KURUM_AYAR_DOSYASI = eski;
   }
 });

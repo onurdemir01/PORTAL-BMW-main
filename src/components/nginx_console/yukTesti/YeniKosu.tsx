@@ -191,7 +191,7 @@ type SunucuHedefi = Pick<
 >;
 /** Secici satirinda en cok bu kadar IP; fazlasi "+n". */
 const SECICI_IP_SAYISI = 3;
-/** Secenek metni: "GBJWLT01 · TEST · 10.151.166.144 · nginx yok" (uygun degilse " — neden"). */
+/** Secenek metni: "ORJWLT01 · TEST · 10.250.166.144 · nginx yok" (uygun degilse " — neden"). */
 function hedefSecenekMetni(h: NlHedef): string {
   const ipler = h.ipler.length
     ? ` · ${h.ipler.slice(0, SECICI_IP_SAYISI).join(', ')}${h.ipler.length > SECICI_IP_SAYISI ? ` +${h.ipler.length - SECICI_IP_SAYISI}` : ''}`
@@ -1081,7 +1081,7 @@ export default function YeniKosu({
                   value={vhost}
                   onChange={(e) => degistir('vhost', e.target.value.trim().toLowerCase())}
                   list={vhostListesi?.length ? 'yuk-vhost-oneriler' : undefined}
-                  placeholder="ornek-test.fw.garantibbva.com.tr"
+                  placeholder="ornek-test.fw.ornekbanka.invalid"
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={(!!vhost && !!fHata.vhost) || undefined}

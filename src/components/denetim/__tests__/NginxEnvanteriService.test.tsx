@@ -55,7 +55,7 @@ const VERI: NginxInventoryResult = {
     hosts: 3,
     envs: 1,
     services: 2,
-    servicesUnlisted: ['GBNGXP09'],
+    servicesUnlisted: ['ORNGXP09'],
     nginxVersions: 2,
     osVersions: 1,
     cpuTotal: 12,
@@ -65,8 +65,8 @@ const VERI: NginxInventoryResult = {
   },
   byEnv: [],
   byService: [
-    { service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['GBNGXP01', 'GBNGXP02'] },
-    { service: 'cso', hosts: 1, envs: ['production'], hostnames: ['GBNGXP01'] },
+    { service: 'glomo', hosts: 2, envs: ['production'], hostnames: ['ORNGXP01', 'ORNGXP02'] },
+    { service: 'cso', hosts: 1, envs: ['production'], hostnames: ['ORNGXP01'] },
   ],
   versions: { nginx: dist, os: dist, kernel: dist, architecture: dist, metadata: dist },
   resources: {
@@ -79,9 +79,9 @@ const VERI: NginxInventoryResult = {
   },
   other: { domain: dist, subnet: dist, nginxUser: dist },
   hosts: [
-    host({ hostname: 'GBNGXP01', services: 'glomo,cso', nginx_version: '1.24.0', ip: '10.1.1.1' }),
-    host({ hostname: 'GBNGXP02', services: 'glomo', nginx_version: '1.20.1', ip: '10.1.1.2' }),
-    host({ hostname: 'GBNGXP09', services: 'too_many', nginx_version: '1.24.0' }),
+    host({ hostname: 'ORNGXP01', services: 'glomo,cso', nginx_version: '1.24.0', ip: '10.1.1.1' }),
+    host({ hostname: 'ORNGXP02', services: 'glomo', nginx_version: '1.20.1', ip: '10.1.1.2' }),
+    host({ hostname: 'ORNGXP09', services: 'too_many', nginx_version: '1.24.0' }),
   ],
 };
 
@@ -98,8 +98,8 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     expect(ac.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(ac);
 
-    expect(screen.getByText('GBNGXP01')).toBeTruthy();
-    expect(screen.getByText('GBNGXP02')).toBeTruthy();
+    expect(screen.getByText('ORNGXP01')).toBeTruthy();
+    expect(screen.getByText('ORNGXP02')).toBeTruthy();
     expect(screen.getByText('10.1.1.2')).toBeTruthy();
     const ozet = screen.getByTestId('service-surumleri');
     const rozetler = within(ozet).getAllByTestId('surum-rozeti');
@@ -108,7 +108,7 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     expect(rozetler.map((r) => r.textContent)).toEqual(['1.24.0, 1 sunucu', '1.20.1, 1 sunucu']);
     expect(within(ozet).getByText('2 farklı sürüm')).toBeTruthy();
     expect(screen.getByText(/service listesi toplanmadı/)).toBeTruthy();
-    expect(screen.getByText('GBNGXP09')).toBeTruthy();
+    expect(screen.getByText('ORNGXP09')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'glomo sunucularını gizle' }));
     expect(screen.queryByText('10.1.1.2')).toBeNull();
@@ -120,8 +120,8 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     // satirin herhangi bir yerine tiklamak da acar (yalniz ok dugmesi degil)
     fireEvent.click(screen.getByRole('button', { name: 'cso sunucularını göster' }).closest('tr')!);
     const tablo = screen.getByText('Sunucudaki service’ler'.replace('’', "'")).closest('table')!;
-    expect(within(tablo).getByText('GBNGXP01')).toBeTruthy();
-    expect(within(tablo).queryByText('GBNGXP02')).toBeNull();
+    expect(within(tablo).getByText('ORNGXP01')).toBeTruthy();
+    expect(within(tablo).queryByText('ORNGXP02')).toBeNull();
     expect(screen.queryByText(/farklı sürüm/)).toBeNull();
   });
 

@@ -42,12 +42,12 @@ db.query = async (sqlText) => {
         {
           id: 11,
           status: 'RUNNING',
-          username: 'uxmid',
+          username: 'svcac',
           username_groups: null,
           env: 'test',
           tenant: 'ark',
           namespace: 'ark-server-push-test',
-          cluster_name: 'gbocptest1',
+          cluster_name: 'orocptest1',
           action: 'restore',
           execution_mode: 'apply',
         },
@@ -66,7 +66,7 @@ const { finalizeOperation } = require('../index.cjs');
 
 function target(over = {}) {
   return {
-    cluster: 'gbocptest1',
+    cluster: 'orocptest1',
     app: 'server-push-reg-ch-v0',
     kind: 'DeploymentConfig',
     status: 'OK',

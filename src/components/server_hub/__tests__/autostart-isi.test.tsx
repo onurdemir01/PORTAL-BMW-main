@@ -54,7 +54,7 @@ import {
   _sifirlaForTest,
 } from '@/components/server_hub/autoStartIsi';
 
-const APP = 'GBCJAP01';
+const APP = 'ORCJAP01';
 const satir = (action: string, durum: string, mesaj: string) => ({
   line: `RESULT\t${action}\t${durum}\t${mesaj}`,
 });

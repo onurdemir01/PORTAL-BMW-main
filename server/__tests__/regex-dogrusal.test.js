@@ -49,7 +49,7 @@ test('SV2 duty-roster e-posta: test() sonucu ayni, kotu girdide hizli', () => {
     yeni,
     kip: 'test',
     tokenlar: ['a', 'b', 'com', 'tr', 'ş', '.', '.', '.', 'x.y', '@', ' ', '\t'],
-    el: ['a@b.c', 'a@.b.c', 'a@b.', 'a@.b', 'a@b..c', 'a@b@c.d', 'nobet.ci@sirket.com.tr'],
+    el: ['a@b.c', 'a@.b.c', 'a@b.', 'a@.b', 'a@b..c', 'a@b@c.d', 'nobet.ci@sirket.invalid'],
     onek: ['ali@', 'a.b@', 'ş@'],
     maks: 6,
     enAzEslesen: 150,

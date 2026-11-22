@@ -117,16 +117,16 @@ const HEDEFLER = {
   ok: true,
   hedefler: [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       env: 'TEST',
-      ipler: ['192.168.133.27'],
-      vhostlar: ['glomo-test.garantibbva.com.tr'],
+      ipler: ['192.168.251.27'],
+      vhostlar: ['glomo-test.ornekbanka.invalid'],
       vhostVerisi: true,
       uygun: true,
       neden: null,
     },
   ],
-  yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
+  yukHostlari: [{ host: 'ORNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: SINIR,
   varsayilan: VARSAYILAN,
   serbest: { acik: true, aglar: [] },
@@ -145,7 +145,7 @@ const SENARYO = {
   id: 3,
   ad: 'GLOMO',
   aciklama: null,
-  vhost: 'glomo-test.garantibbva.com.tr',
+  vhost: 'glomo-test.ornekbanka.invalid',
   senaryoTur: 'K',
   yolSayisi: 264,
   sha256: 'b'.repeat(64),
@@ -172,10 +172,10 @@ function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
     islem: 'kosu',
     etiket: null,
     adim: 'R7',
-    hedefHost: 'GBNGXT33',
-    hedefIp: '192.168.133.27',
-    vhost: 'glomo-test.garantibbva.com.tr',
-    yukHost: 'GBNGXT34',
+    hedefHost: 'ORNGXT33',
+    hedefIp: '192.168.251.27',
+    vhost: 'glomo-test.ornekbanka.invalid',
+    yukHost: 'ORNGXT34',
     senaryoId: 3,
     senaryoAd: 'GLOMO',
     durum: 'DONE',
@@ -245,9 +245,9 @@ beforeEach(() => {
     ok: true,
     tur: 'sunucu',
     ip,
-    host: 'GBNGXT33',
+    host: 'ORNGXT33',
     env: 'TEST',
-    vhostlar: ['glomo-test.garantibbva.com.tr'],
+    vhostlar: ['glomo-test.ornekbanka.invalid'],
     vhostVerisi: true,
     hizSiniri: null,
     vuSiniri: null,
@@ -263,7 +263,7 @@ async function formAc() {
   fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
   fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
   fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
-    target: { value: 'GBNGXT33' },
+    target: { value: 'ORNGXT33' },
   });
 }
 const okDugmesi = () =>
@@ -877,9 +877,9 @@ describe('Yük Testi HTTP/2 — karşılaştır (H2-C10)', () => {
     render(<Karsilastir />);
     const ref = await screen.findByLabelText('Referans koşu');
     expect(
-      await within(ref).findByRole('option', { name: /^#51 · GBNGXT33 · HTTP\/2 · / }),
+      await within(ref).findByRole('option', { name: /^#51 · ORNGXT33 · HTTP\/2 · / }),
     ).toBeTruthy();
-    expect(within(ref).getByRole('option', { name: /^#50 · GBNGXT33 · \d/ })).toBeTruthy();
+    expect(within(ref).getByRole('option', { name: /^#50 · ORNGXT33 · \d/ })).toBeTruthy();
     fireEvent.change(ref, { target: { value: '50' } });
     expect(screen.queryByText(/farklı protokolle koşuldu/)).toBeNull();
     fireEvent.change(screen.getByLabelText('Aday koşu'), { target: { value: '51' } });

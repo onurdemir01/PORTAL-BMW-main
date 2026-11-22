@@ -27,7 +27,7 @@ function withCapture(fn, { existing = false } = {}) {
 
 const BASE = {
   id: 'abc-123',
-  name: 'gbocpqa1',
+  name: 'orocpqa1',
   display: 'QA 1',
   env: 'qa',
   apiUrl: 'https://api',
@@ -59,7 +59,7 @@ test('tenant VARSA ayna satiri aktif yazilir ve jump_host terminal_host olur', a
     await store._mirrorToIndex({ ...BASE, tenant: 'ark' });
     const ins = calls.find((c) => /INSERT INTO ocp_cluster_index/i.test(c.sql));
     assert.equal(ins.params[1], 'ark');
-    assert.equal(ins.params[2], 'gbocpqa1');
+    assert.equal(ins.params[2], 'orocpqa1');
     assert.equal(ins.params[3], 'jump01', 'jumpHost -> terminal_host olarak tasinmali');
     assert.equal(ins.params[ins.params.length - 1], 1);
   });

@@ -67,26 +67,26 @@ test('YD1 ortam kapisi (tek hedef modeli): dbo.Inventory satirlari DEV/TEST/QA, 
   const ok = (host, inv, nginx) =>
     dg.hedefKapisi(host, KK({ [host]: inv }, nginx ? { [host]: nginx } : {}));
   assert.deepEqual(
-    [ok('GBNGXT33', ['Test'], 'test').ok, ok('GBNGXT33', ['Test'], 'test').env],
+    [ok('ORNGXT33', ['Test'], 'test').ok, ok('ORNGXT33', ['Test'], 'test').env],
     [true, 'TEST'],
   );
   // Ad DEV/TEST/QA diyorsa etiket addan (envanter daha kaba: D.. -> Test).
-  assert.equal(ok('GBNGXD01', ['Test'], 'dev').env, 'DEV');
-  assert.equal(ok('GBNGWQ02', ['QA'], 'qa').env, 'QA');
-  // Ad kurali disi makine: yalniz Inventory (gercek ornek GBJWLT01, Inventory Test, nginx envanteri yok).
-  assert.deepEqual([ok('GBJWLT01', ['Test']).ok, ok('GBJWLT01', ['Test']).env], [true, 'TEST']);
-  assert.equal(ok('GBLABT02', ['QA']).env, 'QA');
+  assert.equal(ok('ORNGXD01', ['Test'], 'dev').env, 'DEV');
+  assert.equal(ok('ORNGWQ02', ['QA'], 'qa').env, 'QA');
+  // Ad kurali disi makine: yalniz Inventory (gercek ornek ORJWLT01, Inventory Test, nginx envanteri yok).
+  assert.deepEqual([ok('ORJWLT01', ['Test']).ok, ok('ORJWLT01', ['Test']).env], [true, 'TEST']);
+  assert.equal(ok('ORLABT02', ['QA']).env, 'QA');
   // Karisik non-prod satirlar kabul; etiket sirali birlesim.
   assert.deepEqual(
-    [ok('GBJALT02', ['Test', 'QA', 'qa ']).ok, ok('GBJALT02', ['Test', 'QA']).env],
+    [ok('ORJALT02', ['Test', 'QA', 'qa ']).ok, ok('ORJALT02', ['Test', 'QA']).env],
     [true, 'QA/TEST'],
   );
   // Addan PROD / EDU: Inventory Test dese de red (envanter yalniz ISARET ekler, addaki uretimi gevsetemez).
   for (const [host, env] of [
-    ['GBNGXP40', 'PROD'],
-    ['GBRVPP01', 'PROD'],
-    ['GBNGXAP32', 'PROD'],
-    ['GBNGXT51', 'EDU'],
+    ['ORNGXP40', 'PROD'],
+    ['ORRVPP01', 'PROD'],
+    ['ORNGXAP32', 'PROD'],
+    ['ORNGXT51', 'EDU'],
   ]) {
     const r = ok(host, ['Test'], 'test');
     assert.deepEqual([r.ok, r.status, r.code, r.env], [false, 409, 'hedef_uretim', env], host);
@@ -103,12 +103,12 @@ test('YD1 ortam kapisi (tek hedef modeli): dbo.Inventory satirlari DEV/TEST/QA, 
     ['Test', 'Production'],
     ['Test', null],
   ]) {
-    const r = ok('GBJWLT01', kotu);
+    const r = ok('ORJWLT01', kotu);
     assert.deepEqual([r.ok, r.code], [false, 'hedef_uretim'], JSON.stringify(kotu));
     assert.match(r.message, /dbo\.Inventory ortamı .*yalnız DEV\/TEST\/QA/);
   }
   // dbo.Inventory'de hic satir yok: hedef_envanterde_yok (nginx envanterinde olsa bile; ortam kanitlanamiyor).
-  const yok = dg.hedefKapisi('GBNGXT33', KK({}, { GBNGXT33: 'test' }));
+  const yok = dg.hedefKapisi('ORNGXT33', KK({}, { ORNGXT33: 'test' }));
   assert.deepEqual([yok.ok, yok.status, yok.code], [false, 409, 'hedef_envanterde_yok']);
   assert.match(yok.message, /dbo\.Inventory'de kayıtlı değil/);
   // Gecersiz ad.
@@ -121,37 +121,37 @@ test('YD2 baska kaynaktan gelen her uretim isareti kapatir; kapi gevsemez', () =
     ['prod', ['Test']],
     ['canli', ['Test']],
   ]) {
-    const r = dg.hedefKapisi('GBNGXT33', KK({ GBNGXT33: inv }, { GBNGXT33: nginxEnv }));
+    const r = dg.hedefKapisi('ORNGXT33', KK({ ORNGXT33: inv }, { ORNGXT33: nginxEnv }));
     assert.equal(r.ok, false, JSON.stringify([nginxEnv, inv]));
     assert.equal(r.code, 'hedef_uretim');
     assert.match(r.message, /üretim işareti/);
   }
   // Inventory satirindaki uretim degeri ortam kuralinda zaten red (PRD taninmayan ortam).
   assert.equal(
-    dg.hedefKapisi('GBNGXT33', KK({ GBNGXT33: ['Test', 'PRD'] }, { GBNGXT33: 'test' })).code,
+    dg.hedefKapisi('ORNGXT33', KK({ ORNGXT33: ['Test', 'PRD'] }, { ORNGXT33: 'test' })).code,
     'hedef_uretim',
   );
   // preprod nginx_inventory etiketi uretim DEGIL (prod-approval kurali): kapi acik kalir.
   assert.equal(
-    dg.hedefKapisi('GBNGXT33', KK({ GBNGXT33: ['Test'] }, { GBNGXT33: 'preprod' })).ok,
+    dg.hedefKapisi('ORNGXT33', KK({ ORNGXT33: ['Test'] }, { ORNGXT33: 'preprod' })).ok,
     true,
   );
   // PROD RP listesindeki bir host (ad kurali D/T/Q dese bile) kapanir.
   const { internetRpHosts } = require('../../audit/nginx-hosts.cjs');
-  const prodRp = internetRpHosts().byEnv.PROD.find((h) => /^GBNG[WX]A?[DTQ]/.test(h));
+  const prodRp = internetRpHosts().byEnv.PROD.find((h) => /^[A-Z]{2}NG[WX]A?[DTQ]/.test(h));
   if (prodRp)
     assert.equal(
       dg.hedefKapisi(prodRp, KK({ [prodRp]: ['Test'] }, { [prodRp]: 'test' })).code,
       'hedef_uretim',
     );
   assert.match(
-    String(dg.uretimIsareti({ host: 'GBNGXT33', nginxEnv: 'x', invEnv: 'Production' })),
+    String(dg.uretimIsareti({ host: 'ORNGXT33', nginxEnv: 'x', invEnv: 'Production' })),
     /Inventory\.env=Production/,
   );
 });
 
 test('YD3 envanterde olmayan hedef 409; bos ya da okunamayan envanter 424 (yok SAYILMAZ)', async () => {
-  const r = dg.hedefKapisi('GBNGXT33', KK());
+  const r = dg.hedefKapisi('ORNGXT33', KK());
   assert.deepEqual([r.ok, r.status, r.code], [false, 409, 'hedef_envanterde_yok']);
   const sql = { NVarChar: () => 'nv' };
   await assert.rejects(
@@ -171,10 +171,10 @@ test('YD3 envanterde olmayan hedef 409; bos ya da okunamayan envanter 424 (yok S
   await assert.rejects(
     dg.kaynaklariOku({
       sql,
-      hostlar: ['GBNGXT33'],
+      hostlar: ['ORNGXT33'],
       query: async (q) => {
         if (/FROM dbo\.nginx_inventory/.test(q))
-          return { recordset: [{ hostname: 'GBNGXT33', env: 'test', ip: '10.0.0.5' }] };
+          return { recordset: [{ hostname: 'ORNGXT33', env: 'test', ip: '10.0.0.5' }] };
         throw new Error('Inventory kapali');
       },
     }),
@@ -183,57 +183,57 @@ test('YD3 envanterde olmayan hedef 409; bos ya da okunamayan envanter 424 (yok S
 });
 
 test('YD4 yuk makinesi: izin listesi, hedeften farkli, hostOrtami kurali (ad kurali aranmaz)', () => {
-  const izinli = ['GBNGXT34', 'GBNGXP50', 'GBLABT02', 'GBJWLT01', 'GBJALT02'];
+  const izinli = ['ORNGXT34', 'ORNGXP50', 'ORLABT02', 'ORJWLT01', 'ORJALT02'];
   const k = KK(
     {
-      GBNGXT34: ['Test'],
-      GBNGXP50: ['Test'],
-      GBLABT02: ['Test'],
-      GBJWLT01: ['Test'],
-      GBJALT02: ['QA'],
+      ORNGXT34: ['Test'],
+      ORNGXP50: ['Test'],
+      ORLABT02: ['Test'],
+      ORJWLT01: ['Test'],
+      ORJALT02: ['QA'],
     },
-    { GBNGXT34: 'test' },
+    { ORNGXT34: 'test' },
   );
-  const y = (h, ek = {}) => dg.yukHostKapisi(h, ek.k || k, { izinli, hedef: 'GBNGXT33', ...ek });
-  assert.deepEqual([y('GBNGXT34').ok, y('GBNGXT34').env], [true, 'TEST']);
-  // Gercek ornekler: nginx'siz makineler yalniz Inventory ile; GBLABT02 de artik kurala gore gecer (ad listesi yok).
-  for (const h of ['GBJWLT01', 'GBJALT02', 'GBLABT02']) assert.equal(y(h).ok, true, h);
-  assert.equal(y('GBNGXT35').code, 'yuk_host_izinsiz');
-  assert.equal(y('GBNGXT34', { hedef: 'GBNGXT34' }).code, 'ayni_host');
+  const y = (h, ek = {}) => dg.yukHostKapisi(h, ek.k || k, { izinli, hedef: 'ORNGXT33', ...ek });
+  assert.deepEqual([y('ORNGXT34').ok, y('ORNGXT34').env], [true, 'TEST']);
+  // Gercek ornekler: nginx'siz makineler yalniz Inventory ile; ORLABT02 de artik kurala gore gecer (ad listesi yok).
+  for (const h of ['ORJWLT01', 'ORJALT02', 'ORLABT02']) assert.equal(y(h).ok, true, h);
+  assert.equal(y('ORNGXT35').code, 'yuk_host_izinsiz');
+  assert.equal(y('ORNGXT34', { hedef: 'ORNGXT34' }).code, 'ayni_host');
   assert.equal(
-    y('GBNGXP50').code,
+    y('ORNGXP50').code,
     'yuk_host_izinsiz',
     'addan prod yuk makinesi izin listesinde diye gecti',
   );
-  assert.match(y('GBNGXP50').message, /yük makinesi yalnız DEV\/TEST\/QA olabilir/);
-  assert.equal(y('GBNGXT34', { k: KK({ GBNGXT34: ['Production'] }) }).code, 'yuk_host_izinsiz');
+  assert.match(y('ORNGXP50').message, /yük makinesi yalnız DEV\/TEST\/QA olabilir/);
+  assert.equal(y('ORNGXT34', { k: KK({ ORNGXT34: ['Production'] }) }).code, 'yuk_host_izinsiz');
   assert.equal(
-    y('GBNGXT34', { k: KK({ GBNGXT34: ['Test', 'Production'] }) }).code,
+    y('ORNGXT34', { k: KK({ ORNGXT34: ['Test', 'Production'] }) }).code,
     'yuk_host_izinsiz',
   );
   assert.equal(
-    y('GBNGXT34', { k: KK({}, { GBNGXT34: 'test' }) }).code,
+    y('ORNGXT34', { k: KK({}, { ORNGXT34: 'test' }) }).code,
     'yuk_host_izinsiz',
     'Inventory satirsiz yuk makinesi gecti',
   );
   assert.match(
-    y('GBNGXT34', { k: KK({}, { GBNGXT34: 'test' }) }).message,
+    y('ORNGXT34', { k: KK({}, { ORNGXT34: 'test' }) }).message,
     /dbo\.Inventory'de kayıtlı değil/,
   );
   assert.equal(
-    y('GBNGXT34', { k: KK({ GBNGXT34: ['Test'] }, { GBNGXT34: 'Production' }) }).code,
+    y('ORNGXT34', { k: KK({ ORNGXT34: ['Test'] }, { ORNGXT34: 'Production' }) }).code,
     'yuk_host_izinsiz',
   );
   assert.equal(
-    y('GBNGXT51', { izinli: ['GBNGXT51'], k: KK({ GBNGXT51: ['Test'] }) }).code,
+    y('ORNGXT51', { izinli: ['ORNGXT51'], k: KK({ ORNGXT51: ['Test'] }) }).code,
     'yuk_host_izinsiz',
     'EDU yuk makinesi gecti',
   );
   // Izin listesi env'den: bos -> varsayilan; gecersiz girdi atilir (liste daralir, genislemez).
-  assert.deepEqual(dg.yukHostlari({}), ['GBNGXT34']);
+  assert.deepEqual(dg.yukHostlari({}), ['ORNGXT34']);
   assert.deepEqual(
-    dg.yukHostlari({ NGINX_LOADTEST_YUK_HOSTLARI: 'gbngxt34, GBNGXD02;bad_host;' }),
-    ['GBNGXT34', 'GBNGXD02'],
+    dg.yukHostlari({ NGINX_LOADTEST_YUK_HOSTLARI: 'orngxt34, ORNGXD02;bad_host;' }),
+    ['ORNGXT34', 'ORNGXD02'],
   );
   assert.deepEqual(dg.yukHostlari({ NGINX_LOADTEST_YUK_HOSTLARI: '!!!' }), []);
 });
@@ -241,21 +241,21 @@ test('YD4 yuk makinesi: izin listesi, hedeften farkli, hostOrtami kurali (ad kur
 test('YD4b ad listesi yok: son kapi ve playbook ad kuralina bakmaz, uretim adi / EDU yine red', () => {
   assert.equal(dg.AD_DISI_YUK_HOSTLARI, undefined, 'ad disi yuk makinesi listesi geri geldi');
   // Son kapi: ad kurali disi makine hedef de yuk makinesi de olabilir; addan PROD / EDU red; hedef != yuk.
-  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'GBJWLT01' })), []);
-  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'GBJWLT01' })), []);
-  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'GBLABT02' })), []);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'ORJWLT01' })), []);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'ORJWLT01' })), []);
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'ORLABT02' })), []);
   for (const [k, v] of [
-    ['yuk_hedef_host', 'GBNGXP40'],
-    ['yuk_hedef_host', 'GBRVPP01'],
-    ['yuk_hedef_host', 'GBNGXT51'],
-    ['yuk_yuk_host', 'GBNGXAP32'],
-    ['yuk_yuk_host', 'GBNGXT51'],
+    ['yuk_hedef_host', 'ORNGXP40'],
+    ['yuk_hedef_host', 'ORRVPP01'],
+    ['yuk_hedef_host', 'ORNGXT51'],
+    ['yuk_yuk_host', 'ORNGXAP32'],
+    ['yuk_yuk_host', 'ORNGXT51'],
   ]) {
     assert.ok(dg.ekstraDegiskenleriDenetle(evOrnek({ [k]: v })).includes(k), `${k}=${v} gecti`);
   }
   assert.ok(
     dg
-      .ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'GBJWLT01', yuk_yuk_host: 'GBJWLT01' }))
+      .ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'ORJWLT01', yuk_yuk_host: 'ORJWLT01' }))
       .includes('yuk_yuk_host'),
   );
   // Playbook ayni kurali uygular: ek liste yok, ad kurali yok, uretim adi ve EDU listesi var.
@@ -277,34 +277,34 @@ test('YD4b ad listesi yok: son kapi ve playbook ad kuralina bakmaz, uretim adi /
     pb,
     esnek(/\(yuk_(hedef|yuk)_host \| string\) is match\(yt_re_nonprod_adi\)/),
   );
-  assert.match(pb, /yt_re_prod_adi: '\^\(GBRVP\|GBNG\[WX\]A\?P\)'/);
+  assert.match(pb, /yt_re_prod_adi: '\^\(\[A-Z\]\{2\}RVP\|\[A-Z\]\{2\}NG\[WX\]A\?P\)'/);
   assert.match(pb, /not \(\(yuk_yuk_host \| string\) is match\(yt_re_prod_adi\)\)/);
   assert.match(pb, /\(yuk_yuk_host \| string\) not in yt_edu_hostlari/);
   // Portal'in ad tabanli uretim kurali playbook'unkiyle ayni: envOfHost PROD <=> yt_re_prod_adi, EDU <=> yt_edu_hostlari.
   const { envOfHost } = require('../../audit/nginx-hosts.cjs');
-  const re = /^(GBRVP|GBNG[WX]A?P)/;
+  // Kalip onek bagimsiz (iki harfli kurum oneki parcasi degil, K17): baska onekli ad da ayni sonucu verir.
+  const re = /^([A-Z]{2}RVP|[A-Z]{2}NG[WX]A?P)/;
   for (const h of [
-    'GBNGXP40',
-    'GBNGWP01',
-    'GBNGXAP32',
-    'GBNGWAP02',
-    'GBRVPP01',
-    'GBRVPAP01',
-    'GBNGXT33',
-    'GBJWLT01',
-    'GBLABT02',
-    'GBNGXQ02',
+    'XYNGXP40',
+    'XYNGXT33',
+    'ORNGXP40',
+    'ORNGWP01',
+    'ORNGXAP32',
+    'ORNGWAP02',
+    'ORRVPP01',
+    'ORRVPAP01',
+    'ORNGXT33',
+    'ORJWLT01',
+    'ORLABT02',
+    'ORNGXQ02',
   ]) {
     assert.equal(envOfHost(h) === 'PROD', re.test(h), h);
   }
-  assert.deepEqual(
-    /yt_edu_hostlari: \[([^\]]*)\]/
-      .exec(pb)[1]
-      .split(',')
-      .map((x) => x.trim().replace(/^'|'$/g, '')),
-    ['GBNGXT51'],
-  );
-  assert.equal(envOfHost('GBNGXT51'), 'EDU');
+  // EDU listesi playbook'ta sabit DEGIL: AWX template Variables portal_edu_hostlari (Portal tarafinda kurum
+  // ayari nginx.ortamIstisnalari ... EDU); tanimsizsa playbook'un girdi kapisi durur.
+  assert.match(pb, /^ {4}yt_edu_hostlari: "\{\{ portal_edu_hostlari \}\}"$/m);
+  assert.match(pb, /- portal_edu_hostlari is defined\n/);
+  assert.equal(envOfHost('ORNGXT51'), 'EDU');
 });
 
 test('YD5 sinirlar, butce formulu ve olculmus rate limit (2026-11-03: daraltma yok, uyari)', () => {
@@ -592,8 +592,8 @@ test('YD7 Host ve IP enjeksiyonu reddedilir', () => {
   ]) {
     assert.equal(dg.kullanilabilirIp(ip), false, JSON.stringify(ip));
   }
-  for (const h of ['GBNGXT33', ' gbngxt33 ']) assert.equal(dg.hostNormalle(h), 'GBNGXT33');
-  for (const h of ['GB NG', 'GBNGXT33;rm', 'G', '-GB', 'GBNGXT33\r\nX', 'A'.repeat(32), '../x'])
+  for (const h of ['ORNGXT33', ' orngxt33 ']) assert.equal(dg.hostNormalle(h), 'ORNGXT33');
+  for (const h of ['GB NG', 'ORNGXT33;rm', 'G', '-GB', 'ORNGXT33\r\nX', 'A'.repeat(32), '../x'])
     assert.equal(dg.hostNormalle(h), '', JSON.stringify(h));
   // Aday IP: listen'den ve envanterden; joker / geri donus / IPv6 aday OLMAZ.
   assert.deepEqual(
@@ -675,9 +675,9 @@ test('YD8 on kontrol: engeller ve acik onay isteyen uyarilar', () => {
   assert.equal(u({ master_sayisi: 2 }).length, 0);
   assert.equal(e({ master_sayisi: null }).length, 0, 'olculemeyen master engel degil');
   assert.deepEqual(dg.onKontrolDegerlendir(null).engeller.length, 1);
-  assert.equal(dg.onayMetniDogru(' GBNGXT33 ', 'GBNGXT33'), true);
-  assert.equal(dg.onayMetniDogru('gbngxt33', 'GBNGXT33'), false);
-  assert.equal(dg.onayMetniDogru(undefined, 'GBNGXT33'), false);
+  assert.equal(dg.onayMetniDogru(' ORNGXT33 ', 'ORNGXT33'), true);
+  assert.equal(dg.onayMetniDogru('orngxt33', 'ORNGXT33'), false);
+  assert.equal(dg.onayMetniDogru(undefined, 'ORNGXT33'), false);
 });
 
 // Tur 4: etkin arac seti (ekstraDegiskenler `arac`).
@@ -694,8 +694,8 @@ function evOrnek(ek = {}) {
     ...dg.ekstraDegiskenler({
       islem: 'kosu',
       kosuId: 17,
-      hedefHost: 'GBNGXT33',
-      yukHost: 'GBNGXT34',
+      hedefHost: 'ORNGXT33',
+      yukHost: 'ORNGXT34',
       hedefIp: '10.0.0.5',
       vhost: 'app.test.local',
       senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 },
@@ -787,7 +787,7 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   );
   assert.ok(ihlal({ yuk_maxvu: '1001' }).includes('yuk_maxvu'));
   assert.ok(!ihlal({ yuk_maxvu: '1000' }).includes('yuk_maxvu'));
-  assert.ok(ihlal({ yuk_yuk_host: 'GBNGXT33' }).includes('yuk_yuk_host'));
+  assert.ok(ihlal({ yuk_yuk_host: 'ORNGXT33' }).includes('yuk_yuk_host'));
   assert.ok(ihlal({ yuk_hedef_ip: '127.0.0.1' }).includes('yuk_hedef_ip'));
   assert.ok(ihlal({ yuk_host_basligi: 'a.b\r\nX: 1' }).includes('yuk_host_basligi'));
   assert.ok(ihlal({ yuk_senaryo_sha256: '0'.repeat(64) }).includes('yuk_senaryo_sha256'));
@@ -810,7 +810,7 @@ test('YD9 extra_vars son kapisi: yalniz sozlesme anahtarlari, hepsi metin, b64 v
   // Is gecmisine senaryo govdesi gitmez.
   const m = dg.gecmisIcinMaskele(ev);
   assert.match(m.yuk_senaryo_b64, /^<\d+ b64>$/);
-  assert.equal(m.yuk_hedef_host, 'GBNGXT33');
+  assert.equal(m.yuk_hedef_host, 'ORNGXT33');
   // Ortam: gecersiz kok yolu varsayilana duser; kosu dizini sunucuda kurulur. Tur 4: k6 / wrk yolu
   // env'den OKUNMAZ (NGINX_LOADTEST_K6 / _WRK kalkti; yollar isaret degeri).
   assert.equal(dg.k6Yolu, undefined);
@@ -836,18 +836,18 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
       if (/FROM dbo\.nginx_inventory/.test(q)) {
         return {
           recordset: [
-            { hostname: 'gbngxt33', env: 'test', ip: '10.0.0.5' },
-            { hostname: 'GBNGXT34', env: 'test', ip: '10.0.0.6' },
-            { hostname: 'GBNGXP40', env: 'Production', ip: '10.9.0.1' },
+            { hostname: 'orngxt33', env: 'test', ip: '10.0.0.5' },
+            { hostname: 'ORNGXT34', env: 'test', ip: '10.0.0.6' },
+            { hostname: 'ORNGXP40', env: 'Production', ip: '10.9.0.1' },
           ],
         };
       }
-      if (/FROM dbo\.Inventory/.test(q)) return { recordset: [{ host: 'GBNGXT33', env: 'Test' }] };
+      if (/FROM dbo\.Inventory/.test(q)) return { recordset: [{ host: 'ORNGXT33', env: 'Test' }] };
       if (/OBJECT_ID/.test(q)) return { recordset: [{ oid: tablolarVar ? 1 : null }] };
       if (/Nginx_Audit_Servers/.test(q))
         return {
           recordset: [
-            { host: 'GBNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local' },
+            { host: 'ORNGXT33', listen: '10.0.0.9:443 ssl', server_name: 'app.test.local' },
           ],
         };
       // Settings: gun seek'i (d / o), host basina varlik, etkin gunun limit satirlari.
@@ -862,7 +862,7 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
         return {
           recordset: [
             {
-              host: 'GBNGXT33',
+              host: 'ORNGXT33',
               directive: 'limit_req_zone',
               value: '$binary_remote_addr zone=r:1m rate=100r/s',
             },
@@ -871,8 +871,8 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
       throw new Error(`beklenmeyen sorgu: ${q}`);
     };
   const k = await dg.kaynaklariOku({ query: veri(true), sql });
-  assert.deepEqual([...k.nginx.keys()].sort(), ['GBNGXP40', 'GBNGXT33', 'GBNGXT34']);
-  const ay = dg.hedefAyrintisi(k, 'GBNGXT33');
+  assert.deepEqual([...k.nginx.keys()].sort(), ['ORNGXP40', 'ORNGXT33', 'ORNGXT34']);
+  const ay = dg.hedefAyrintisi(k, 'ORNGXT33');
   assert.deepEqual(ay, {
     ipler: ['10.0.0.5', '10.0.0.9'],
     vhostlar: ['app.test.local'],
@@ -882,16 +882,16 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
     limitConn: null,
   });
   // /hedefler yolu (tek hedef modeli): tarama yalniz hostOrtami'ndan gecen hostlar icin (ad kurali yok); prod host
-  // (GBNGXP40) ve dbo.Inventory satiri olmayan host (GBNGXT34) tarama / limit okumasina girmez.
+  // (ORNGXP40) ve dbo.Inventory satiri olmayan host (ORNGXT34) tarama / limit okumasina girmez.
   const tarama = sorgular.find((s) => /Nginx_Audit_Servers\s+WHERE[\s\S]*host IN/.test(s.q));
-  assert.deepEqual(tarama.params.map((p) => p.value).sort(), ['GBNGXT33']);
+  assert.deepEqual(tarama.params.map((p) => p.value).sort(), ['ORNGXT33']);
   for (const s of sorgular) {
-    assert.doesNotMatch(s.q, /GBNGXT3/, 'host adi SQL metnine gomuldu');
+    assert.doesNotMatch(s.q, /ORNGXT3/, 'host adi SQL metnine gomuldu');
   }
   // Tablo yoksa "veri yok" (null): vhost denetimi atlanir, IP envanterden.
-  const k2 = await dg.kaynaklariOku({ query: veri(false), sql, hostlar: ['GBNGXT33'] });
+  const k2 = await dg.kaynaklariOku({ query: veri(false), sql, hostlar: ['ORNGXT33'] });
   assert.equal(k2.sunucular, null);
-  assert.deepEqual(dg.hedefAyrintisi(k2, 'GBNGXT33'), {
+  assert.deepEqual(dg.hedefAyrintisi(k2, 'ORNGXT33'), {
     ipler: ['10.0.0.5'],
     vhostlar: null,
     hizSiniri: null,
@@ -903,7 +903,7 @@ test('YD10 kaynaklariOku: parametreli IN listesi, tablo yoksa veri yok, tarama h
   await assert.rejects(
     dg.kaynaklariOku({
       sql,
-      hostlar: ['GBNGXT33'],
+      hostlar: ['ORNGXT33'],
       query: async (q, p) =>
         /Nginx_Audit_Servers\s+WHERE/.test(q)
           ? Promise.reject(new Error('timeout'))
@@ -976,7 +976,7 @@ test('YD11 e-posta suphesi dogrusal: eski ifadeyle birebir ayni karar, 2 KB yol 
     'a@a/b.co',
     'a@.co',
     'a@a.co.',
-    'ali.veli@ornek.com.tr',
+    'ali.veli@ornek.invalid',
     'x@y.zz@',
     '',
   ])
@@ -1163,39 +1163,39 @@ const LIMIT_DIREKTIF = new Set(['limit_req_zone', 'limit_conn_zone', 'limit_req'
 function tbmwans(ek = {}) {
   const d = {
     nginx: [
-      { hostname: 'GBNGXT33', env: 'test', ip: '10.0.0.5' },
-      { hostname: 'GBNGXT34', env: 'test', ip: '10.0.0.6' },
-      { hostname: 'GBNGXT35', env: 'test', ip: '10.0.0.7' },
-      { hostname: 'GBNGXP40', env: 'Production', ip: '10.9.0.1' },
-      { hostname: 'GBNGXT51', env: 'test', ip: '10.0.0.51' },
+      { hostname: 'ORNGXT33', env: 'test', ip: '10.0.0.5' },
+      { hostname: 'ORNGXT34', env: 'test', ip: '10.0.0.6' },
+      { hostname: 'ORNGXT35', env: 'test', ip: '10.0.0.7' },
+      { hostname: 'ORNGXP40', env: 'Production', ip: '10.9.0.1' },
+      { hostname: 'ORNGXT51', env: 'test', ip: '10.0.0.51' },
     ],
-    // Tek hedef modeli (2026-11-13): her hedef / IP sahibi dbo.Inventory'de olmali (GBNGXT35 paylasilan VIP sahibi).
+    // Tek hedef modeli (2026-11-13): her hedef / IP sahibi dbo.Inventory'de olmali (ORNGXT35 paylasilan VIP sahibi).
     inventory: [
-      { host: 'GBNGXT33', env: 'Test', ip: '10.0.0.5' },
-      { host: 'GBNGXT34', env: 'Test', ip: '10.0.0.6' },
-      { host: 'GBNGXT35', env: 'Test', ip: '10.0.0.7' },
+      { host: 'ORNGXT33', env: 'Test', ip: '10.0.0.5' },
+      { host: 'ORNGXT34', env: 'Test', ip: '10.0.0.6' },
+      { host: 'ORNGXT35', env: 'Test', ip: '10.0.0.7' },
     ],
     ipEnvanteri: [
-      { host: 'GBNGXT33', ip: '10.0.0.5' },
-      { host: 'GBNGXT34', ip: '10.0.0.6' },
+      { host: 'ORNGXT33', ip: '10.0.0.5' },
+      { host: 'ORNGXT34', ip: '10.0.0.6' },
     ],
     ipEnvanteriYasSaat: 3,
     ipEnvanteriSon: '2026-10-28 06:00:00',
     tarama: [
       {
-        host: 'GBNGXT33',
+        host: 'ORNGXT33',
         listen: '10.0.0.9:443 ssl',
         server_name: 'app.test.local api.test.local',
       },
-      { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local' },
-      { host: 'GBNGXT33', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' },
+      { host: 'ORNGXT34', listen: '443 ssl', server_name: 'rp.test.local' },
+      { host: 'ORNGXT33', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' },
       {
-        host: 'GBNGXT35',
+        host: 'ORNGXT35',
         listen: '10.0.0.100:443 ssl',
         server_name: 'vip.test.local paylasilan.test.local',
       },
       {
-        host: 'GBNGXP40',
+        host: 'ORNGXP40',
         listen: '10.9.0.1:443 ssl',
         server_name: 'prod.only.local paylasilan.test.local',
       },
@@ -1367,7 +1367,7 @@ async function sinifla(
   {
     veri = {},
     hedefHost = null,
-    yukHost = 'GBNGXT34',
+    yukHost = 'ORNGXT34',
     aglar = AG('10.20.30.0/24'),
     yasak = YASAK(''),
   } = {},
@@ -1497,21 +1497,21 @@ test('YD16 agIcinde ve ag / yayin adresi dislamasi (/30 ve alti; /31, /32 serbes
 test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async () => {
   // Tek nginx sahibi (son taramanin listen'i) -> sunucu.
   let { r, k } = await sinifla('10.0.0.9');
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBNGXT33' });
-  assert.deepEqual([...k.ipSahipleri.get('GBNGXT33')], ['tarama']);
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORNGXT33' });
+  assert.deepEqual([...k.ipSahipleri.get('ORNGXT33')], ['tarama']);
   // Envanter IP'si: nginx_inventory + Inventory + IPInventory ayni host -> tek sahip -> sunucu.
   ({ r, k } = await sinifla('10.0.0.5'));
-  assert.deepEqual([r.tur, r.host], ['sunucu', 'GBNGXT33']);
-  assert.deepEqual([...k.ipSahipleri.get('GBNGXT33')].sort(), [
+  assert.deepEqual([r.tur, r.host], ['sunucu', 'ORNGXT33']);
+  assert.deepEqual([...k.ipSahipleri.get('ORNGXT33')].sort(), [
     'dbo.IPInventory',
     'dbo.Inventory',
     'dbo.nginx_inventory',
   ]);
   // Paylasilan VIP + hedefHost -> sunucu (host secici; diger sahip de kurala uymali - tek hedef modeli).
-  ({ r } = await sinifla('10.0.0.100', { hedefHost: 'GBNGXT33' }));
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBNGXT33' });
+  ({ r } = await sinifla('10.0.0.100', { hedefHost: 'ORNGXT33' }));
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORNGXT33' });
   // hedefHost IP'nin sahibi degil -> ip_hedefte_yok (metni cagiran aday listesiyle kurar).
-  ({ r } = await sinifla('10.0.0.9', { hedefHost: 'GBNGXT35' }));
+  ({ r } = await sinifla('10.0.0.9', { hedefHost: 'ORNGXT35' }));
   assert.deepEqual([r.status, r.code], [409, 'ip_hedefte_yok']);
   // Iki sahip, hedefHost'suz -> ip_belirsiz.
   ({ r } = await sinifla('10.0.0.100'));
@@ -1520,26 +1520,26 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
     [
       409,
       'ip_belirsiz',
-      '10.0.0.100 birden çok sunucuda tanımlı (GBNGXT33, GBNGXT35); hedef sunucuyu listeden seçin.',
+      '10.0.0.100 birden çok sunucuda tanımlı (ORNGXT33, ORNGXT35); hedef sunucuyu listeden seçin.',
     ],
   );
   assert.deepEqual(r.sahipler, [
-    { host: 'GBNGXT33', env: 'TEST', nginx: true, kaynaklar: ['tarama'] },
-    { host: 'GBNGXT35', env: 'TEST', nginx: true, kaynaklar: ['tarama'] },
+    { host: 'ORNGXT33', env: 'TEST', nginx: true, kaynaklar: ['tarama'] },
+    { host: 'ORNGXT35', env: 'TEST', nginx: true, kaynaklar: ['tarama'] },
   ]);
   // nginx sahibi + Inventory'de baska host -> ip_belirsiz (nginx'li / nginx'siz ayrimi yok); host secici iki sahipten birini secer.
   const ikiSahip = {
-    inventory: [...tbmwans().d.inventory, { host: 'GBAPPT09', env: 'Test', ip: '10.0.0.9' }],
+    inventory: [...tbmwans().d.inventory, { host: 'ORAPPT09', env: 'Test', ip: '10.0.0.9' }],
   };
   ({ r } = await sinifla('10.0.0.9', { veri: ikiSahip }));
   assert.deepEqual(
     [r.code, r.message],
     [
       'ip_belirsiz',
-      '10.0.0.9 birden çok sunucuda tanımlı (GBAPPT09, GBNGXT33); hedef sunucuyu listeden seçin.',
+      '10.0.0.9 birden çok sunucuda tanımlı (ORAPPT09, ORNGXT33); hedef sunucuyu listeden seçin.',
     ],
   );
-  for (const h of ['GBAPPT09', 'GBNGXT33'])
+  for (const h of ['ORAPPT09', 'ORNGXT33'])
     assert.deepEqual(
       (await sinifla('10.0.0.9', { veri: ikiSahip, hedefHost: h })).r,
       { ok: true, tur: 'sunucu', host: h },
@@ -1550,26 +1550,26 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
     veri: {
       inventory: [
         ...tbmwans().d.inventory,
-        { host: 'GBAPPP09', env: 'Production', ip: '10.0.0.9' },
+        { host: 'ORAPPP09', env: 'Production', ip: '10.0.0.9' },
       ],
     },
-    hedefHost: 'GBNGXT33',
+    hedefHost: 'ORNGXT33',
   }));
   assert.deepEqual(
     [r.code, r.message],
     [
       'hedef_uretim',
-      '10.0.0.9, GBAPPP09 sunucusuna ait (dbo.Inventory ortamı Production); yük testi yapılmaz.',
+      '10.0.0.9, ORAPPP09 sunucusuna ait (dbo.Inventory ortamı Production); yük testi yapılmaz.',
     ],
   );
   // Adi cozulemeyen sahip -> ip_sahibi_cozulemedi, hedefHost'suz VE hedefHost'lu (fail-closed).
   const bozukAd = {
     ipEnvanteri: [
-      { host: 'GBNGXT33', ip: '10.0.0.5' },
+      { host: 'ORNGXT33', ip: '10.0.0.5' },
       { host: 'bad_host!', ip: '10.0.0.9' },
     ],
   };
-  for (const hedefHost of [null, 'GBNGXT33']) {
+  for (const hedefHost of [null, 'ORNGXT33']) {
     ({ r } = await sinifla('10.0.0.9', { veri: bozukAd, hedefHost }));
     assert.deepEqual(
       [r.status, r.code, r.message],
@@ -1623,8 +1623,8 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
       'sahipler govdede yok',
     );
   };
-  await uretim('10.9.0.1', {}, 'ortamı PROD', 'GBNGXP40');
-  await uretim('10.0.0.51', {}, 'ortamı EDU', 'GBNGXT51');
+  await uretim('10.9.0.1', {}, 'ortamı PROD', 'ORNGXP40');
+  await uretim('10.0.0.51', {}, 'ortamı EDU', 'ORNGXT51');
   await uretim(
     '10.20.30.60',
     { ipEnvanteri: [{ host: 'WEBSRV01', ip: '10.20.30.60' }] },
@@ -1633,43 +1633,43 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
   );
   await uretim(
     '10.20.30.51',
-    { inventory: [{ host: 'GBALP01', env: 'Alpha', ip: '10.20.30.51' }] },
+    { inventory: [{ host: 'ORALP01', env: 'Alpha', ip: '10.20.30.51' }] },
     'dbo.Inventory ortamı Alpha',
-    'GBALP01',
+    'ORALP01',
   );
   await uretim(
     '10.20.30.50',
-    { inventory: [{ host: 'GBDBP01', env: 'Production', ip: '10.20.30.50' }] },
+    { inventory: [{ host: 'ORDBP01', env: 'Production', ip: '10.20.30.50' }] },
     'dbo.Inventory ortamı Production',
-    'GBDBP01',
+    'ORDBP01',
   );
   const isaretli = tbmwans().d.nginx.map((x) =>
-    x.hostname === 'GBNGXT35' ? { ...x, env: 'Production' } : x,
+    x.hostname === 'ORNGXT35' ? { ...x, env: 'Production' } : x,
   );
   await uretim(
     '10.0.0.7',
     { nginx: isaretli },
     'üretim işareti: dbo.nginx_inventory.env=Production',
-    'GBNGXT35',
+    'ORNGXT35',
   );
   // Yuk makinesinin kendi IP'si -> ayni_host; yukHost verilmezse denetim atlanir.
   ({ r } = await sinifla('10.0.0.6'));
   assert.deepEqual(
     [r.code, r.message],
-    ['ayni_host', "10.0.0.6 yük makinesinin (GBNGXT34) kendi IP'si; hedef olamaz."],
+    ['ayni_host', "10.0.0.6 yük makinesinin (ORNGXT34) kendi IP'si; hedef olamaz."],
   );
   ({ r } = await sinifla('10.0.0.6', { yukHost: null }));
-  assert.deepEqual([r.tur, r.host], ['sunucu', 'GBNGXT34']);
+  assert.deepEqual([r.tur, r.host], ['sunucu', 'ORNGXT34']);
   // Tek hedef modeli: nginx olmayan TEST Inventory sahibi -> sunucu (izinli agda olsa da serbest DEGIL); sahipsiz -> serbest.
   ({ r } = await sinifla('10.20.30.41', {
-    veri: { inventory: [{ host: 'GBAPPT01', env: 'Test', ip: '10.20.30.41' }] },
+    veri: { inventory: [{ host: 'ORAPPT01', env: 'Test', ip: '10.20.30.41' }] },
   }));
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBAPPT01' });
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORAPPT01' });
   ({ r } = await sinifla('10.20.30.41', {
-    veri: { inventory: [{ host: 'GBAPPT01', env: 'Test', ip: '10.20.30.41' }] },
+    veri: { inventory: [{ host: 'ORAPPT01', env: 'Test', ip: '10.20.30.41' }] },
     aglar: [],
   }));
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBAPPT01' });
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORAPPT01' });
   ({ r } = await sinifla('10.20.30.40'));
   assert.deepEqual(r, {
     ok: true,
@@ -1752,20 +1752,20 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
   );
   // FQDN ve kucuk harfli sahip adi normallesir; FQDN Inventory satirinin ortami IP satirindan (host IN okumasi bulmaz).
   ({ r, k } = await sinifla('10.20.30.41', {
-    veri: { inventory: [{ host: 'gbappt01.bmw.local', env: 'Test', ip: ' 10.20.30.41 ' }] },
+    veri: { inventory: [{ host: 'orappt01.bmw.local', env: 'Test', ip: ' 10.20.30.41 ' }] },
   }));
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBAPPT01' });
-  assert.deepEqual(k.invTum.get('GBAPPT01'), ['Test']);
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORAPPT01' });
+  assert.deepEqual(k.invTum.get('ORAPPT01'), ['Test']);
   ({ r } = await sinifla('10.20.30.41', {
-    veri: { inventory: [{ host: 'gbappt01.bmw.local', env: 'Production', ip: '10.20.30.41' }] },
+    veri: { inventory: [{ host: 'orappt01.bmw.local', env: 'Production', ip: '10.20.30.41' }] },
   }));
   assert.equal(r.code, 'hedef_uretim');
   ({ r } = await sinifla('10.20.30.42', {
     veri: {
-      tarama: [{ host: 'gbngxt35', listen: '10.20.30.42:443 ssl', server_name: 'x.test.local' }],
+      tarama: [{ host: 'orngxt35', listen: '10.20.30.42:443 ssl', server_name: 'x.test.local' }],
     },
   }));
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBNGXT35' });
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORNGXT35' });
   // IPInventory tireli host onarimi: yukleyici 'GB-PRODDB01-10.20.30.45' satirini ilk '-'ten boler
   // (host 'GB', ip 'PRODDB01-10.20.30.45'); onarim olmasa IP sahipsiz gorunur ve serbest olurdu.
   ({ r, k } = await sinifla('10.20.30.45', {
@@ -1784,7 +1784,7 @@ test('YD17 ipSinifla: sahiplik kaynaklari, baglayici sira ve metinler', async ()
   );
   // sahipler govdesi en cok 10.
   const cok = Array.from({ length: 12 }, (_, i) => ({
-    host: `GBNGXT${60 + i}`,
+    host: `ORNGXT${60 + i}`,
     listen: '10.0.0.200:443',
     server_name: 'c.test.local',
   }));
@@ -2060,8 +2060,8 @@ function evKur({
   return dg.ekstraDegiskenler({
     islem,
     kosuId: 17,
-    hedefHost: 'GBNGXT33',
-    yukHost: 'GBNGXT34',
+    hedefHost: 'ORNGXT33',
+    yukHost: 'ORNGXT34',
     hedefIp: hedefTuru === 'serbest' ? '10.20.30.40' : '10.0.0.5',
     vhost: 'app.test.local',
     senaryo: { tur: 'K', tsv: s.tsv, sha256: s.sha256 },
@@ -2095,7 +2095,7 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
     ],
     [
       'sunucu',
-      'GBNGXT33',
+      'ORNGXT33',
       'k6',
       '100 250 400',
       '150',
@@ -2178,12 +2178,12 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   for (const [ev, ek, anahtar] of [
     [k6, { yuk_hedef_turu: 'Sunucu' }, 'yuk_hedef_turu'],
     [k6, { yuk_hedef_turu: 'x' }, 'yuk_hedef_turu'],
-    [ws, { yuk_hedef_host: 'GBNGXT33' }, 'yuk_hedef_host'],
+    [ws, { yuk_hedef_host: 'ORNGXT33' }, 'yuk_hedef_host'],
     [k6, { yuk_hedef_host: '' }, 'yuk_hedef_host'],
-    [k6, { yuk_hedef_host: 'GBNGXP40' }, 'yuk_hedef_host'],
-    [k6, { yuk_hedef_host: 'GBNGXT51' }, 'yuk_hedef_host'],
-    [k6, { yuk_yuk_host: 'GBNGXP50' }, 'yuk_yuk_host'],
-    [k6, { yuk_yuk_host: 'GBNGXT51' }, 'yuk_yuk_host'],
+    [k6, { yuk_hedef_host: 'ORNGXP40' }, 'yuk_hedef_host'],
+    [k6, { yuk_hedef_host: 'ORNGXT51' }, 'yuk_hedef_host'],
+    [k6, { yuk_yuk_host: 'ORNGXP50' }, 'yuk_yuk_host'],
+    [k6, { yuk_yuk_host: 'ORNGXT51' }, 'yuk_yuk_host'],
     [k6, { yuk_motor: 'K6' }, 'yuk_motor'],
     [ws, { yuk_sni: '1' }, 'yuk_sni'],
     [ws, { yuk_hizlar: '100' }, 'yuk_hizlar'],
@@ -2236,9 +2236,9 @@ test('YD20 extra_vars tur 3: k6 / wrk x sunucu / serbest, is gecerlilik penceres
   assert.deepEqual(den({ ...dk, yuk_hedef_turu: 'x' }), ['yuk_hedef_turu']);
   const ds = evKur({ islem: 'durdur', p: pws, hedefTuru: 'serbest' });
   assert.deepEqual(den(ds), []);
-  assert.deepEqual(den({ ...ds, yuk_hedef_host: 'GBNGXT33' }), ['yuk_hedef_host']);
+  assert.deepEqual(den({ ...ds, yuk_hedef_host: 'ORNGXT33' }), ['yuk_hedef_host']);
   assert.deepEqual(
-    den({ ...dk, yuk_hedef_host: 'GBNGXP40' }),
+    den({ ...dk, yuk_hedef_host: 'ORNGXP40' }),
     ['yuk_hedef_host'],
     'durdurda ad kurali denetlenmedi',
   );
@@ -2540,7 +2540,7 @@ test('YD21 onKontrolDegerlendir: k6 + sunucu sabit fikstur (D7 haric tur 2 ile b
 test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz cagrinin kaynaklari ve sirasi tur 2 ile ayni", async () => {
   const AYAR1 = [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       directive: 'limit_req_zone',
       value: '$binary_remote_addr zone=r:1m rate=100r/s',
     },
@@ -2549,14 +2549,14 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
   const k = await dg.kaynaklariOku({
     query: t.query,
     sql: t.sql,
-    hostlar: ['GBNGXT34'],
+    hostlar: ['ORNGXT34'],
     ip: '10.0.0.9',
     vhost: 'app.test.local',
   });
   for (const s of t.sorgular)
     assert.doesNotMatch(
       s.q,
-      /10\.0\.0\.9|GBNGXT3|2026-10/,
+      /10\.0\.0\.9|ORNGXT3|2026-10/,
       `IP / host / gun SQL metnine gomuldu: ${s.q}`,
     );
   const ipParam = t.sorgular.flatMap((s) => s.params).filter((p) => /^ip\d$/.test(p.name));
@@ -2592,17 +2592,17 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
       AYAR_LIMIT(1),
     ],
   );
-  // Bulunan sahip (GBNGXT33) Inventory env / tarama / limit okumasina girer (elle IP'de hedef hostu budur).
+  // Bulunan sahip (ORNGXT33) Inventory env / tarama / limit okumasina girer (elle IP'de hedef hostu budur).
   assert.deepEqual(
     t.sorgular[10].params.map((p) => p.value),
-    ['GBNGXT34', 'GBNGXT33'],
+    ['ORNGXT34', 'ORNGXT33'],
   );
   // Gunler parametre (NVarChar(10)); limit sorgusu yalniz o gun satiri olan host(lar) icin.
   assert.deepEqual(
     t.sorgular[14].params.map((p) => [p.name, p.type, p.value]),
     [
-      ['a0', 'nv64', 'GBNGXT34'],
-      ['a1', 'nv64', 'GBNGXT33'],
+      ['a0', 'nv64', 'ORNGXT34'],
+      ['a1', 'nv64', 'ORNGXT33'],
       ['d', 'nv10', '2026-10-28'],
       ['o', 'nv10', null],
     ],
@@ -2610,12 +2610,12 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
   assert.deepEqual(
     t.sorgular[15].params.map((p) => [p.name, p.type, p.value]),
     [
-      ['a0', 'nv64', 'GBNGXT33'],
+      ['a0', 'nv64', 'ORNGXT33'],
       ['g', 'nv10', '2026-10-28'],
     ],
   );
-  assert.ok(k.sunucular.has('GBNGXT33'));
-  assert.equal(dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, 90);
+  assert.ok(k.sunucular.has('ORNGXT33'));
+  assert.equal(dg.hedefAyrintisi(k, 'ORNGXT33').hizSiniri, 90);
   assert.deepEqual(
     [
       k.taramaVar,
@@ -2630,20 +2630,20 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
   assert.deepEqual(
     k.taramaAdlari.map((x) => [x.host, x.guncel]),
     [
-      ['GBNGXT33', true],
-      ['GBNGXT34', true],
-      ['GBNGXT33', true],
-      ['GBNGXT35', true],
-      ['GBNGXP40', true],
+      ['ORNGXT33', true],
+      ['ORNGXT34', true],
+      ['ORNGXT33', true],
+      ['ORNGXT35', true],
+      ['ORNGXP40', true],
     ],
   );
   assert.deepEqual(k.ipTaninmayan, []);
   // ip'siz / vhost'suz cagri (/hedefler): aday = nginx envanteri + son iki taramanin hostlari; dbo.Inventory kisa adla
-  // okunur, tarama / limit yalniz hostOrtami'ndan gecenler icin (TEK HEDEF MODELI: ad kurali yok; GBNGXT51 EDU, GBNGXP40
+  // okunur, tarama / limit yalniz hostOrtami'ndan gecenler icin (TEK HEDEF MODELI: ad kurali yok; ORNGXT51 EDU, ORNGXP40
   // uretim). Tarama / limit sorgulari iki gunluk pencereyle (2026-10-28 inceleme: yarim tarama gunu).
   const t2 = tbmwans({ ayarlar: AYAR1 });
-  const k2 = await dg.kaynaklariOku({ query: t2.query, sql: t2.sql, ekHostlar: ['GBNGXT34'] });
-  const nonProd = ['GBNGXT33', 'GBNGXT34', 'GBNGXT35'];
+  const k2 = await dg.kaynaklariOku({ query: t2.query, sql: t2.sql, ekHostlar: ['ORNGXT34'] });
+  const nonProd = ['ORNGXT33', 'ORNGXT34', 'ORNGXT35'];
   assert.deepEqual(
     t2.sorgular.map((s) => [s.q, s.params.map((p) => p.value)]),
     [
@@ -2652,7 +2652,7 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
       [`SELECT DISTINCT host FROM dbo.Nginx_Audit_Servers WHERE ${SON_IKI}`, []],
       [
         `SELECT host, env, ip FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (@h0,@h1,@h2,@h3,@h4)`,
-        ['GBNGXP40', ...nonProd, 'GBNGXT51'],
+        ['ORNGXP40', ...nonProd, 'ORNGXT51'],
       ],
       [
         `SELECT host, listen, server_name, CONVERT(varchar(10), scan_date, 23) AS gun FROM dbo.Nginx_Audit_Servers WHERE ${SON_IKI} AND host IN (@s0,@s1,@s2)`,
@@ -2661,14 +2661,14 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
       ["SELECT OBJECT_ID('dbo.Nginx_Audit_Settings') AS oid", []],
       [AYAR_GUNLERI, []],
       [AYAR_VARLIK(3), [...nonProd, '2026-10-28', null]],
-      [AYAR_LIMIT(1), ['GBNGXT33', '2026-10-28']],
+      [AYAR_LIMIT(1), ['ORNGXT33', '2026-10-28']],
     ],
   );
   assert.equal(k2.ipSahipleri.size, 0);
   assert.equal('taramaAdlari' in k2, false);
   // Bos Settings tablosu: gun yok -> limit sorgusu YOK, ayarlar bos (rate limit verisi var, hedefte limit yok).
   const t6 = tbmwans();
-  const k6 = await dg.kaynaklariOku({ query: t6.query, sql: t6.sql, ekHostlar: ['GBNGXT34'] });
+  const k6 = await dg.kaynaklariOku({ query: t6.query, sql: t6.sql, ekHostlar: ['ORNGXT34'] });
   assert.deepEqual([t6.sorgular.at(-1).q, k6.ayarlar.size], [AYAR_GUNLERI, 0]);
   // IP / ad / limit okuma hatasi 424 (okunamadi != yok).
   for (const [desen, kaynak] of [
@@ -2715,7 +2715,7 @@ test("YD22 kaynaklariOku ip / vhost: parametreli, IP SQL metninde YOK; ip'siz ca
       await dg.kaynaklariOku({
         query: t4.query,
         sql: t4.sql,
-        hostlar: ['GBNGXT34'],
+        hostlar: ['ORNGXT34'],
         vhost: 'app.test.local',
       })
     ).taramaAdlari,
@@ -2806,7 +2806,7 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
     ['.*', 'app.test.local', false],
   ])
     assert.equal(E(ad, vhost), beklenen, `${ad} ~ ${vhost}`);
-  const hb = async (vhost, { hedefTuru = 'sunucu', yukHost = 'GBNGXT34', veri = {} } = {}) => {
+  const hb = async (vhost, { hedefTuru = 'sunucu', yukHost = 'ORNGXT34', veri = {} } = {}) => {
     const t = tbmwans(veri);
     const k = await dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: [yukHost], vhost });
     return dg.hostBasligiDegerlendir(vhost, k, { hedefTuru, yukHost });
@@ -2820,12 +2820,12 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
         false,
         409,
         'host_uretim',
-        'Host başlığı (prod.only.local) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP40); bu adla yük testi yapılmaz.',
+        'Host başlığı (prod.only.local) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (ORNGXP40); bu adla yük testi yapılmaz.',
       ],
       tur,
     );
     assert.deepEqual(r.sahipler, [
-      { host: 'GBNGXP40', env: 'PROD', nginx: true, kaynaklar: ['tarama'] },
+      { host: 'ORNGXP40', env: 'PROD', nginx: true, kaynaklar: ['tarama'] },
     ]);
   }
   // Joker eslesme, EDU ve uretim isaretli sunucu da P sayilir.
@@ -2836,7 +2836,7 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
     (
       await hb(
         'a.prodwild.local',
-        ek([{ host: 'GBNGXP41', listen: '443', server_name: '*.prodwild.local' }]),
+        ek([{ host: 'ORNGXP41', listen: '443', server_name: '*.prodwild.local' }]),
       )
     ).code,
     'host_uretim',
@@ -2845,19 +2845,19 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
     (
       await hb(
         'edu.test.local',
-        ek([{ host: 'GBNGXT51', listen: '443', server_name: 'edu.test.local' }]),
+        ek([{ host: 'ORNGXT51', listen: '443', server_name: 'edu.test.local' }]),
       )
     ).code,
     'host_uretim',
   );
   const isaretli = tbmwans().d.nginx.map((x) =>
-    x.hostname === 'GBNGXT35' ? { ...x, env: 'Production' } : x,
+    x.hostname === 'ORNGXT35' ? { ...x, env: 'Production' } : x,
   );
   assert.equal(
     (
       await hb(
         't35.test.local',
-        ek([{ host: 'GBNGXT35', listen: '443', server_name: 't35.test.local' }], {
+        ek([{ host: 'ORNGXT35', listen: '443', server_name: 't35.test.local' }], {
           nginx: isaretli,
         }),
       )
@@ -2866,35 +2866,35 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
   );
   // > 5 uretim hostu: sirali ilk 5 + ' …'.
   const altiP = Array.from({ length: 6 }, (_, i) => ({
-    host: `GBNGXP${46 - i}`,
+    host: `ORNGXP${46 - i}`,
     listen: '443',
     server_name: 'cok.prod.local',
   }));
   assert.equal(
     (await hb('cok.prod.local', ek(altiP))).message,
-    'Host başlığı (cok.prod.local) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP41, GBNGXP42, GBNGXP43, GBNGXP44, GBNGXP45 …); bu adla yük testi yapılmaz.',
+    'Host başlığı (cok.prod.local) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (ORNGXP41, ORNGXP42, ORNGXP43, ORNGXP44, ORNGXP45 …); bu adla yük testi yapılmaz.',
   );
   // Uretim + TEST -> engel yok; sunucuda uyari yok, serbestte uretimde de var uyarisi.
   assert.deepEqual(await hb('paylasilan.test.local'), { ok: true, uyarilar: [] });
   assert.deepEqual(await hb('paylasilan.test.local', { hedefTuru: 'serbest' }), {
     ok: true,
     uyarilar: [
-      dg.HOST_URETIMDE_DE_VAR_UYARISI('paylasilan.test.local', ['GBNGXP40']),
-      dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34'),
+      dg.HOST_URETIMDE_DE_VAR_UYARISI('paylasilan.test.local', ['ORNGXP40']),
+      dg.YUK_MAKINESI_RP_UYARISI('ORNGXT34'),
     ],
   });
   // Hicbir yerde yok -> sunucuda hicbir sey (D7: engel degil), serbestte taramada yok uyarisi.
   assert.deepEqual(await hb('yok.test.local'), { ok: true, uyarilar: [] });
   assert.deepEqual((await hb('yok.test.local', { hedefTuru: 'serbest' })).uyarilar, [
     dg.HOST_TARAMADA_YOK_UYARISI('yok.test.local'),
-    dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34'),
+    dg.YUK_MAKINESI_RP_UYARISI('ORNGXT34'),
   ]);
   // Yuk makinesi havuzda (kendi server_name'i) ve internet RP'si -> iki uyari; RP olmayan yuk makinesi -> yok.
   assert.deepEqual((await hb('rp.test.local', { hedefTuru: 'serbest' })).uyarilar, [
-    dg.YUK_MAKINESI_HAVUZDA_UYARISI('rp.test.local', 'GBNGXT34'),
-    dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34'),
+    dg.YUK_MAKINESI_HAVUZDA_UYARISI('rp.test.local', 'ORNGXT34'),
+    dg.YUK_MAKINESI_RP_UYARISI('ORNGXT34'),
   ]);
-  assert.deepEqual(await hb('app.test.local', { hedefTuru: 'serbest', yukHost: 'GBNGXT35' }), {
+  assert.deepEqual(await hb('app.test.local', { hedefTuru: 'serbest', yukHost: 'ORNGXT35' }), {
     ok: true,
     uyarilar: [],
   });
@@ -2912,39 +2912,39 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
   );
   assert.equal(
     dg.HOST_URETIMDE_DE_VAR_UYARISI('a.b', [
-      'GBNGXP06',
-      'GBNGXP01',
-      'GBNGXP05',
-      'GBNGXP02',
-      'GBNGXP04',
-      'GBNGXP03',
+      'ORNGXP06',
+      'ORNGXP01',
+      'ORNGXP05',
+      'ORNGXP02',
+      'ORNGXP04',
+      'ORNGXP03',
     ]),
-    'Host başlığı (a.b) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (GBNGXP01, GBNGXP02, GBNGXP03, GBNGXP04, GBNGXP05): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.',
+    'Host başlığı (a.b) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (ORNGXP01, ORNGXP02, ORNGXP03, ORNGXP04, ORNGXP05): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.',
   );
   assert.equal(
-    dg.YUK_MAKINESI_HAVUZDA_UYARISI('a.b', 'GBNGXT34'),
-    'Host başlığı (a.b) yük sunucusunun (GBNGXT34) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.',
+    dg.YUK_MAKINESI_HAVUZDA_UYARISI('a.b', 'ORNGXT34'),
+    'Host başlığı (a.b) yük sunucusunun (ORNGXT34) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.',
   );
   assert.equal(
-    dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34'),
-    'Yük sunucusu (GBNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.',
+    dg.YUK_MAKINESI_RP_UYARISI('ORNGXT34'),
+    'Yük sunucusu (ORNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.',
   );
-  // 2026-11-16 (GBJWLT01): ad kalibi tutmayan sahip artik dbo.Inventory'den (hostOrtami) degerlendirilir.
+  // 2026-11-16 (ORJWLT01): ad kalibi tutmayan sahip artik dbo.Inventory'den (hostOrtami) degerlendirilir.
   const jw = (inv) =>
-    ek([{ host: 'GBJWLT01', listen: '443', server_name: 'jw.test.local' }], {
+    ek([{ host: 'ORJWLT01', listen: '443', server_name: 'jw.test.local' }], {
       inventory: [...tbmwans().d.inventory, ...inv],
     });
   assert.deepEqual(
-    await hb('jw.test.local', jw([{ host: 'GBJWLT01', env: 'Test', ip: '10.0.9.1' }])),
+    await hb('jw.test.local', jw([{ host: 'ORJWLT01', env: 'Test', ip: '10.0.9.1' }])),
     { ok: true, uyarilar: [] },
   );
   assert.deepEqual(
-    await hb('jw.test.local', jw([{ host: 'gbjwlt01.corp.local', env: 'QA', ip: '10.0.9.1' }])),
+    await hb('jw.test.local', jw([{ host: 'orjwlt01.corp.local', env: 'QA', ip: '10.0.9.1' }])),
     { ok: true, uyarilar: [] },
   );
   assert.equal((await hb('jw.test.local', jw([]))).code, 'host_uretim');
   assert.equal(
-    (await hb('jw.test.local', jw([{ host: 'GBJWLT01', env: 'Production', ip: '10.0.9.1' }]))).code,
+    (await hb('jw.test.local', jw([{ host: 'ORJWLT01', env: 'Production', ip: '10.0.9.1' }]))).code,
     'host_uretim',
   );
   assert.equal(
@@ -2952,8 +2952,8 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
       await hb(
         'jw.test.local',
         jw([
-          { host: 'GBJWLT01', env: 'Test', ip: '10.0.9.1' },
-          { host: 'GBJWLT01', env: 'Production', ip: '10.0.9.2' },
+          { host: 'ORJWLT01', env: 'Test', ip: '10.0.9.1' },
+          { host: 'ORJWLT01', env: 'Production', ip: '10.0.9.2' },
         ]),
       )
     ).code,
@@ -2979,9 +2979,9 @@ test('YD25 tarama listen alani bloktaki TUM listen direktiflerini tasir: her bel
   // PROD nginx'in IKINCI listen IP'si: IPInventory'de yok, izin listesinde (10.20.30.0/24). Ilk belirtece
   // bakan eslesme bu IP'yi sahipsiz (serbest) sayardi; dogru sonuc PROD sahip -> hedef_uretim.
   const prod = {
-    host: 'GBNGXP40',
+    host: 'ORNGXP40',
     listen: '10.9.0.1:443 ssl http2 10.20.30.40:443 ssl',
-    server_name: 'www.ornek.com.tr',
+    server_name: 'www.ornek.invalid',
   };
   let { r, k } = await sinifla('10.20.30.40', { veri: { tarama: [...tbmwans().d.tarama, prod] } });
   assert.deepEqual(
@@ -2990,34 +2990,34 @@ test('YD25 tarama listen alani bloktaki TUM listen direktiflerini tasir: her bel
       false,
       409,
       'hedef_uretim',
-      '10.20.30.40, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
+      '10.20.30.40, ORNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
     ],
   );
   assert.deepEqual(r.sahipler, [
-    { host: 'GBNGXP40', env: 'PROD', nginx: true, kaynaklar: ['tarama'] },
+    { host: 'ORNGXP40', env: 'PROD', nginx: true, kaynaklar: ['tarama'] },
   ]);
-  assert.deepEqual([...k.ipSahipleri.get('GBNGXP40')], ['tarama']);
+  assert.deepEqual([...k.ipSahipleri.get('ORNGXP40')], ['tarama']);
   // TEST hostun ikinci listen IP'si (IPInventory'de o hostun): aday listesinde; host secici ve elle IP sunucu.
   const t33 = {
-    host: 'GBNGXT33',
+    host: 'ORNGXT33',
     listen: '10.0.0.9:443 ssl 10.0.0.77:443 ssl',
     server_name: 'app.test.local',
   };
   const veri = {
     tarama: [t33, ...tbmwans().d.tarama.slice(1)],
-    ipEnvanteri: [...tbmwans().d.ipEnvanteri, { host: 'GBNGXT33', ip: '10.0.0.77' }],
+    ipEnvanteri: [...tbmwans().d.ipEnvanteri, { host: 'ORNGXT33', ip: '10.0.0.77' }],
   };
-  for (const hedefHost of ['GBNGXT33', null]) {
+  for (const hedefHost of ['ORNGXT33', null]) {
     ({ r, k } = await sinifla('10.0.0.77', { veri, hedefHost }));
-    assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBNGXT33' }, String(hedefHost));
+    assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORNGXT33' }, String(hedefHost));
     assert.deepEqual(
-      [...k.ipSahipleri.get('GBNGXT33')].sort(),
+      [...k.ipSahipleri.get('ORNGXT33')].sort(),
       ['dbo.IPInventory', 'tarama'],
       String(hedefHost),
     );
     // /ip-sinifi "uygun" ve kosuPlani aday savunmasi bu listeye bakar (ip_hedefte_yok olmamali).
     assert.deepEqual(
-      dg.hedefAyrintisi(k, 'GBNGXT33').ipler,
+      dg.hedefAyrintisi(k, 'ORNGXT33').ipler,
       ['10.0.0.5', '10.0.0.9', '10.0.0.77', '10.0.0.100'],
       String(hedefHost),
     );
@@ -3025,33 +3025,33 @@ test('YD25 tarama listen alani bloktaki TUM listen direktiflerini tasir: her bel
 });
 
 test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari ve limitler hostun en son gunundan', async () => {
-  // Analizci gunu 5000'lik commit'li partilerle yazar: bugun (MAX) YARIM, dun TAM. Bugun yalniz GBNGXT34 ve
-  // GBNGXT35 yazildi; GBNGXT33 ve GBNGXP40 henuz yok. Yalniz MAX(scan_date) okuyan kod bu satirlari gormezdi.
+  // Analizci gunu 5000'lik commit'li partilerle yazar: bugun (MAX) YARIM, dun TAM. Bugun yalniz ORNGXT34 ve
+  // ORNGXT35 yazildi; ORNGXT33 ve ORNGXP40 henuz yok. Yalniz MAX(scan_date) okuyan kod bu satirlari gormezdi.
   const DUN = '2026-10-27';
   const BUGUN = '2026-10-28';
   const YARIM = [
     {
-      host: 'GBNGXT33',
+      host: 'ORNGXT33',
       listen: '10.0.0.9:443 ssl',
       server_name: 'app.test.local api.test.local',
       gun: DUN,
     },
-    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: DUN },
+    { host: 'ORNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: DUN },
     {
-      host: 'GBNGXT35',
+      host: 'ORNGXT35',
       listen: '10.0.0.100:443 ssl',
       server_name: 'vip.test.local tasinan.test.local',
       gun: DUN,
     },
     {
-      host: 'GBNGXP40',
+      host: 'ORNGXP40',
       listen: '10.9.0.1:443 ssl',
       server_name: 'prod.only.local tasinan.test.local',
       gun: DUN,
     },
-    { host: 'GBNGXP40', listen: '10.20.30.40:443 ssl', server_name: 'www.prodapp.local', gun: DUN },
-    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
-    { host: 'GBNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local', gun: BUGUN },
+    { host: 'ORNGXP40', listen: '10.20.30.40:443 ssl', server_name: 'www.prodapp.local', gun: DUN },
+    { host: 'ORNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
+    { host: 'ORNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local', gun: BUGUN },
   ];
   // (1) Sahiplik: PROD'un IP'si yalniz dunku Servers'ta -> 409 hedef_uretim (serbest DEGIL).
   let { r, k } = await sinifla('10.20.30.40', { veri: { tarama: YARIM } });
@@ -3060,30 +3060,30 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
     [
       409,
       'hedef_uretim',
-      '10.20.30.40, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
+      '10.20.30.40, ORNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
     ],
   );
-  assert.deepEqual([...k.ipSahipleri.get('GBNGXP40')], ['tarama']);
+  assert.deepEqual([...k.ipSahipleri.get('ORNGXP40')], ['tarama']);
   // (2) Host basligi: yalniz uretimde tanimli ad yalniz dunku satirda -> iki kipte 409 host_uretim.
   const hb = async (vhost, veri, hedefTuru = 'sunucu') => {
     const t = tbmwans(veri);
-    const kk = await dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['GBNGXT34'], vhost });
-    return dg.hostBasligiDegerlendir(vhost, kk, { hedefTuru, yukHost: 'GBNGXT34' });
+    const kk = await dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['ORNGXT34'], vhost });
+    return dg.hostBasligiDegerlendir(vhost, kk, { hedefTuru, yukHost: 'ORNGXT34' });
   };
   for (const tur of ['sunucu', 'serbest']) {
     const x = await hb('prod.only.local', { tarama: YARIM }, tur);
     assert.deepEqual(
       [x.status, x.code, x.sahipler.map((s) => s.host)],
-      [409, 'host_uretim', ['GBNGXP40']],
+      [409, 'host_uretim', ['ORNGXP40']],
       tur,
     );
   }
-  // (3) Non-prod ad yalniz hostun EN SON gunundan: GBNGXT35 adi bugun kaldirmis (bugunku satiri var, adsiz);
-  // dunku bayat ad uretim engelini KALDIRMAZ. GBNGXP40 bugun henuz yazilmadi: dunku adi uretim sayilir.
+  // (3) Non-prod ad yalniz hostun EN SON gunundan: ORNGXT35 adi bugun kaldirmis (bugunku satiri var, adsiz);
+  // dunku bayat ad uretim engelini KALDIRMAZ. ORNGXP40 bugun henuz yazilmadi: dunku adi uretim sayilir.
   assert.equal((await hb('tasinan.test.local', { tarama: YARIM })).code, 'host_uretim');
-  // Ayni ad GBNGXT35'in BUGUNKU satirinda da varsa engel yok (paylasilan ad; serbestte uyari).
+  // Ayni ad ORNGXT35'in BUGUNKU satirinda da varsa engel yok (paylasilan ad; serbestte uyari).
   const bugunAdli = YARIM.map((x) =>
-    x.host === 'GBNGXT35' && x.gun === BUGUN
+    x.host === 'ORNGXT35' && x.gun === BUGUN
       ? { ...x, server_name: 'vip.test.local tasinan.test.local' }
       : x,
   );
@@ -3093,36 +3093,36 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
   });
   assert.deepEqual(
     (await hb('tasinan.test.local', { tarama: bugunAdli }, 'serbest')).uyarilar[0],
-    dg.HOST_URETIMDE_DE_VAR_UYARISI('tasinan.test.local', ['GBNGXP40']),
+    dg.HOST_URETIMDE_DE_VAR_UYARISI('tasinan.test.local', ['ORNGXP40']),
   );
   // guncel alani: hostun iki gun icindeki en son gunu.
   const tk = tbmwans({ tarama: YARIM });
   const kk = await dg.kaynaklariOku({
     query: tk.query,
     sql: tk.sql,
-    hostlar: ['GBNGXT34'],
+    hostlar: ['ORNGXT34'],
     vhost: 'x.test.local',
   });
   assert.deepEqual(
     kk.taramaAdlari.map((x) => `${x.host}:${x.guncel}`),
     [
-      'GBNGXT33:true',
-      'GBNGXT34:false',
-      'GBNGXT35:false',
-      'GBNGXP40:true',
-      'GBNGXP40:true',
-      'GBNGXT34:true',
-      'GBNGXT35:true',
+      'ORNGXT33:true',
+      'ORNGXT34:false',
+      'ORNGXT35:false',
+      'ORNGXP40:true',
+      'ORNGXP40:true',
+      'ORNGXT34:true',
+      'ORNGXT35:true',
     ],
   );
-  // (4) Hedef satirlari: bugun henuz yazilmamis GBNGXT33 dunku tam satirlarini kullanir (aday IP, vhost).
+  // (4) Hedef satirlari: bugun henuz yazilmamis ORNGXT33 dunku tam satirlarini kullanir (aday IP, vhost).
   const oku = async (veri) => {
     const t = tbmwans(veri);
-    return dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['GBNGXT33', 'GBNGXT34'] });
+    return dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['ORNGXT33', 'ORNGXT34'] });
   };
   k = await oku({ tarama: YARIM });
   assert.deepEqual(
-    [dg.hedefAyrintisi(k, 'GBNGXT33').ipler, dg.hedefAyrintisi(k, 'GBNGXT33').vhostlar],
+    [dg.hedefAyrintisi(k, 'ORNGXT33').ipler, dg.hedefAyrintisi(k, 'ORNGXT33').vhostlar],
     [
       ['10.0.0.5', '10.0.0.9'],
       ['api.test.local', 'app.test.local'],
@@ -3132,21 +3132,21 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
   k = await oku({
     tarama: [
       ...YARIM,
-      { host: 'GBNGXT33', listen: '10.0.0.19:443 ssl', server_name: 'yeni.test.local', gun: BUGUN },
+      { host: 'ORNGXT33', listen: '10.0.0.19:443 ssl', server_name: 'yeni.test.local', gun: BUGUN },
     ],
   });
   assert.deepEqual(
-    [dg.hedefAyrintisi(k, 'GBNGXT33').ipler, dg.hedefAyrintisi(k, 'GBNGXT33').vhostlar],
+    [dg.hedefAyrintisi(k, 'ORNGXT33').ipler, dg.hedefAyrintisi(k, 'ORNGXT33').vhostlar],
     [['10.0.0.5', '10.0.0.19'], ['yeni.test.local']],
   );
-  // (5) Limitler: GBNGXT33 bugunku Settings'te yok (bugun yalniz GBNGXT35 yazildi), dunku limit 100 r/s uygulanir.
+  // (5) Limitler: ORNGXT33 bugunku Settings'te yok (bugun yalniz ORNGXT35 yazildi), dunku limit 100 r/s uygulanir.
   const limit = (host, rate, gun) => [
     { host, directive: 'limit_req_zone', value: `$binary_remote_addr zone=r:1m rate=${rate}`, gun },
     { host, directive: 'limit_req', value: 'zone=r burst=20 nodelay', gun },
   ];
-  const diger = { host: 'GBNGXT35', directive: 'worker_processes', value: 'auto', gun: BUGUN };
-  k = await oku({ ayarlar: [diger, ...limit('GBNGXT33', '100r/s', DUN)] });
-  const ay = dg.hedefAyrintisi(k, 'GBNGXT33');
+  const diger = { host: 'ORNGXT35', directive: 'worker_processes', value: 'auto', gun: BUGUN };
+  k = await oku({ ayarlar: [diger, ...limit('ORNGXT33', '100r/s', DUN)] });
+  const ay = dg.hedefAyrintisi(k, 'ORNGXT33');
   assert.equal(ay.hizSiniri, 90, 'dunku limit uygulanmadi (global tavana dustu)');
   assert.equal(ay.limitReq, 100);
   // K2: limit daraltmaz, plan uyarisi verir (dunku limitle).
@@ -3166,29 +3166,29 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
     5000,
   );
   // Dunku 1 r/s: hizSiniri 0 (yalniz bilgi; B3 hedefi kapatmaz), limitReq 1 -> plan uyarisi.
-  k = await oku({ ayarlar: [diger, ...limit('GBNGXT33', '1r/s', DUN)] });
+  k = await oku({ ayarlar: [diger, ...limit('ORNGXT33', '1r/s', DUN)] });
   assert.deepEqual(
-    [dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, dg.hedefAyrintisi(k, 'GBNGXT33').limitReq],
+    [dg.hedefAyrintisi(k, 'ORNGXT33').hizSiniri, dg.hedefAyrintisi(k, 'ORNGXT33').limitReq],
     [0, 1],
   );
   // Bugunku Settings satiri varsa bugunku: limit 300 r/s -> 270; bugun limitsiz (yalniz baska direktif) -> null.
   k = await oku({
-    ayarlar: [...limit('GBNGXT33', '300r/s', BUGUN), ...limit('GBNGXT33', '100r/s', DUN)],
+    ayarlar: [...limit('ORNGXT33', '300r/s', BUGUN), ...limit('ORNGXT33', '100r/s', DUN)],
   });
-  assert.equal(dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, 270);
-  k = await oku({ ayarlar: [{ ...diger, host: 'GBNGXT33' }, ...limit('GBNGXT33', '100r/s', DUN)] });
+  assert.equal(dg.hedefAyrintisi(k, 'ORNGXT33').hizSiniri, 270);
+  k = await oku({ ayarlar: [{ ...diger, host: 'ORNGXT33' }, ...limit('ORNGXT33', '100r/s', DUN)] });
   assert.equal(
-    dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri,
+    dg.hedefAyrintisi(k, 'ORNGXT33').hizSiniri,
     null,
     'limit_req kaldirilmis hedefe dunku limit uygulandi',
   );
   // Iki host iki farkli gunde: limit sorgusu gun basina (yalniz o gunun satirlari).
   const t2 = tbmwans({
-    ayarlar: [...limit('GBNGXT34', '200r/s', BUGUN), ...limit('GBNGXT33', '100r/s', DUN)],
+    ayarlar: [...limit('ORNGXT34', '200r/s', BUGUN), ...limit('ORNGXT33', '100r/s', DUN)],
   });
-  k = await dg.kaynaklariOku({ query: t2.query, sql: t2.sql, hostlar: ['GBNGXT33', 'GBNGXT34'] });
+  k = await dg.kaynaklariOku({ query: t2.query, sql: t2.sql, hostlar: ['ORNGXT33', 'ORNGXT34'] });
   assert.deepEqual(
-    [dg.hedefAyrintisi(k, 'GBNGXT33').hizSiniri, dg.hedefAyrintisi(k, 'GBNGXT34').hizSiniri],
+    [dg.hedefAyrintisi(k, 'ORNGXT33').hizSiniri, dg.hedefAyrintisi(k, 'ORNGXT34').hizSiniri],
     [90, 180],
   );
   assert.deepEqual(
@@ -3196,38 +3196,38 @@ test('YD26 yarim tarama gunu: sahiplik / adlar son iki gunden, hedef satirlari v
       .filter((s) => s.q.startsWith('SELECT host, directive, value'))
       .map((s) => s.params.map((x) => x.value)),
     [
-      ['GBNGXT33', DUN],
-      ['GBNGXT34', BUGUN],
+      ['ORNGXT33', DUN],
+      ['ORNGXT34', BUGUN],
     ],
   );
 });
 
 test('YD26b host_uretim kume kurallari: P iki gunun birlesimi, S = P + N (bayat non-prod ad uyariyi susturmaz)', async () => {
-  // YD26'nin YARIM fiksturu ikisini ayiramaz: orada GBNGXP40'in bugun hic satiri yok (dunku satirlari guncel)
-  // ve 'tasinan.test.local' GBNGXP40'ta da var. Ad yalniz hostun guncel OLMAYAN gununde: ayri fikstur.
+  // YD26'nin YARIM fiksturu ikisini ayiramaz: orada ORNGXP40'in bugun hic satiri yok (dunku satirlari guncel)
+  // ve 'tasinan.test.local' ORNGXP40'ta da var. Ad yalniz hostun guncel OLMAYAN gununde: ayri fikstur.
   const DUN = '2026-10-27';
   const BUGUN = '2026-10-28';
   const oku = async (vhost, tarama) => {
     const t = tbmwans({ tarama });
-    return dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['GBNGXT34'], vhost });
+    return dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['ORNGXT34'], vhost });
   };
   const hb = async (vhost, tarama, hedefTuru) =>
-    dg.hostBasligiDegerlendir(vhost, await oku(vhost, tarama), { hedefTuru, yukHost: 'GBNGXT34' });
+    dg.hostBasligiDegerlendir(vhost, await oku(vhost, tarama), { hedefTuru, yukHost: 'ORNGXT34' });
   const guncel = async (vhost, tarama) =>
     (await oku(vhost, tarama)).taramaAdlari.map((x) => `${x.host}:${x.server_name}:${x.guncel}`);
-  // (1) GBNGXP40 bugun yazildi ama yalniz baska adli blokla (yarim yuklemede ad blogu henuz yazilmadi ya da
+  // (1) ORNGXP40 bugun yazildi ama yalniz baska adli blokla (yarim yuklemede ad blogu henuz yazilmadi ya da
   // ad bugun kaldirildi); ad yalniz dunku satirda, baska sahibi yok -> P birlesimden: iki kipte 409.
   const p = [
-    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
-    { host: 'GBNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'prod.only.local', gun: DUN },
-    { host: 'GBNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'baska.prod.local', gun: BUGUN },
+    { host: 'ORNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
+    { host: 'ORNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'prod.only.local', gun: DUN },
+    { host: 'ORNGXP40', listen: '10.9.0.1:443 ssl', server_name: 'baska.prod.local', gun: BUGUN },
   ];
   assert.deepEqual(
     await guncel('prod.only.local', p),
     [
-      'GBNGXT34:rp.test.local:true',
-      'GBNGXP40:prod.only.local:false',
-      'GBNGXP40:baska.prod.local:true',
+      'ORNGXT34:rp.test.local:true',
+      'ORNGXP40:prod.only.local:false',
+      'ORNGXP40:baska.prod.local:true',
     ],
     'fikstur',
   );
@@ -3236,23 +3236,23 @@ test('YD26b host_uretim kume kurallari: P iki gunun birlesimi, S = P + N (bayat 
     assert.deepEqual([x.status, x.code], [409, 'host_uretim'], `${tur}: ${JSON.stringify(x)}`);
     assert.deepEqual(
       x.sahipler.map((s) => s.host),
-      ['GBNGXP40'],
+      ['ORNGXP40'],
       tur,
     );
   }
-  // (2) Non-prod GBNGXT35 adi dun tasiyordu, bugun yalniz baska adla; ad hicbir uretim satirinda yok -> N bos
+  // (2) Non-prod ORNGXT35 adi dun tasiyordu, bugun yalniz baska adla; ad hicbir uretim satirinda yok -> N bos
   // (guncel degil), S = P + N bos: serbestte 'taramada yok' uyarisi (S birlesimden kurulsa susardi).
   const s = [
-    { host: 'GBNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
-    { host: 'GBNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'tasindi.test.local', gun: DUN },
-    { host: 'GBNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local', gun: BUGUN },
+    { host: 'ORNGXT34', listen: '443 ssl', server_name: 'rp.test.local', gun: BUGUN },
+    { host: 'ORNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'tasindi.test.local', gun: DUN },
+    { host: 'ORNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local', gun: BUGUN },
   ];
   assert.deepEqual(
     await guncel('tasindi.test.local', s),
     [
-      'GBNGXT34:rp.test.local:true',
-      'GBNGXT35:tasindi.test.local:false',
-      'GBNGXT35:vip.test.local:true',
+      'ORNGXT34:rp.test.local:true',
+      'ORNGXT35:tasindi.test.local:false',
+      'ORNGXT35:vip.test.local:true',
     ],
     'fikstur',
   );
@@ -3925,49 +3925,49 @@ test('YD-T2 hedefAyrintisi Inventory IPlerini de aday sayar; kaynaklariOku invIp
   const t = tbmwans({
     inventory: [
       ...tbmwans().d.inventory,
-      { host: 'GBJWLT01', env: 'Test', ip: '10.151.166.144' },
-      { host: 'GBJWLT01', env: 'Test', ip: '10.151.166.145, 300.1.1.1' },
+      { host: 'ORJWLT01', env: 'Test', ip: '10.250.166.144' },
+      { host: 'ORJWLT01', env: 'Test', ip: '10.250.166.145, 300.1.1.1' },
     ],
   });
   const k = await dg.kaynaklariOku({
     query: t.query,
     sql: t.sql,
-    hostlar: ['GBJWLT01', 'GBNGXT14'],
-    ip: '10.151.166.144',
+    hostlar: ['ORJWLT01', 'ORNGXT14'],
+    ip: '10.250.166.144',
   });
-  assert.deepEqual(k.invIp.get('GBJWLT01'), ['10.151.166.144', '10.151.166.145']);
-  assert.deepEqual(k.invTum.get('GBJWLT01'), ['Test', 'Test']);
-  const ay = dg.hedefAyrintisi(k, 'GBJWLT01');
+  assert.deepEqual(k.invIp.get('ORJWLT01'), ['10.250.166.144', '10.250.166.145']);
+  assert.deepEqual(k.invTum.get('ORJWLT01'), ['Test', 'Test']);
+  const ay = dg.hedefAyrintisi(k, 'ORJWLT01');
   assert.deepEqual(
     [ay.ipler, ay.vhostlar, ay.hizSiniri],
-    [['10.151.166.144', '10.151.166.145'], null, null],
+    [['10.250.166.144', '10.250.166.145'], null, null],
   );
   // Nginx host: tarama listen + nginx_inventory + Inventory IP birlesimi (sirali, tekil).
   assert.deepEqual(
-    dg.hedefAyrintisi(k, 'GBNGXT33').ipler,
-    dg.hedefAyrintisi({ ...k, invIp: new Map() }, 'GBNGXT33').ipler,
+    dg.hedefAyrintisi(k, 'ORNGXT33').ipler,
+    dg.hedefAyrintisi({ ...k, invIp: new Map() }, 'ORNGXT33').ipler,
   );
-  const r = dg.ipSinifla('10.151.166.144', k, {
+  const r = dg.ipSinifla('10.250.166.144', k, {
     aglar: [],
     yasak: { liste: [], hatali: [] },
-    yukHost: 'GBNGXT14',
+    yukHost: 'ORNGXT14',
   });
-  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'GBJWLT01' });
-  assert.deepEqual(dg.hedefKapisi('GBJWLT01', k), { ok: true, env: 'TEST' });
+  assert.deepEqual(r, { ok: true, tur: 'sunucu', host: 'ORJWLT01' });
+  assert.deepEqual(dg.hedefKapisi('ORJWLT01', k), { ok: true, env: 'TEST' });
 });
 
 test('YD-T3 hedefAdaylariOku: urun kolonlari sys.columns ile, ipucu, k birlestirme, host listesi, 424', async () => {
   const sorgular = [];
   const satirlar = [
     {
-      host: 'GBJWLT01',
+      host: 'ORJWLT01',
       env: 'Test',
-      ip: '10.151.166.144',
+      ip: '10.250.166.144',
       nginx_version: '1.24.0',
       rha_version: null,
     },
-    { host: 'gbjwlt01', env: 'Test', ip: '10.151.166.145', nginx_version: '', rha_version: '2.4' },
-    { host: 'GBNGXT33', env: 'Test', ip: '10.0.0.5', nginx_version: null, rha_version: null },
+    { host: 'orjwlt01', env: 'Test', ip: '10.250.166.145', nginx_version: '', rha_version: '2.4' },
+    { host: 'ORNGXT33', env: 'Test', ip: '10.0.0.5', nginx_version: null, rha_version: null },
     { host: 'bad host', env: 'Test', ip: '10.0.0.1', nginx_version: null, rha_version: null },
   ];
   const q =
@@ -3993,33 +3993,33 @@ test('YD-T3 hedefAdaylariOku: urun kolonlari sys.columns ile, ipucu, k birlestir
       }
       throw new Error(`beklenmeyen sorgu: ${t}`);
     };
-  const k = { inv: new Map(), invTum: new Map([['GBNGXT33', ['Test']]]), invIp: new Map() };
+  const k = { inv: new Map(), invTum: new Map([['ORNGXT33', ['Test']]]), invIp: new Map() };
   const a = await dg.hedefAdaylariOku({
     query: q(['host', 'env', 'ip', 'NGINX_VERSION', 'rha_version', 'jboss_version']),
     k,
   });
-  assert.deepEqual([...a.keys()], ['GBJWLT01', 'GBNGXT33']);
-  assert.deepEqual(a.get('GBJWLT01'), { nginxEnvanter: true, urunler: ['NGINX', 'RHA'] });
-  assert.deepEqual(a.get('GBNGXT33'), { nginxEnvanter: false, urunler: [] });
+  assert.deepEqual([...a.keys()], ['ORJWLT01', 'ORNGXT33']);
+  assert.deepEqual(a.get('ORJWLT01'), { nginxEnvanter: true, urunler: ['NGINX', 'RHA'] });
+  assert.deepEqual(a.get('ORNGXT33'), { nginxEnvanter: false, urunler: [] });
   assert.match(
     sorgular[1].t,
     /^SELECT host, env, ip, nginx_version, rha_version FROM dbo\.Inventory WHERE host IS NOT NULL$/,
   );
-  // k: okunmamis host eklenir, onceden okunmus host (GBNGXT33) cift satir almaz.
+  // k: okunmamis host eklenir, onceden okunmus host (ORNGXT33) cift satir almaz.
   assert.deepEqual(
-    [k.invTum.get('GBJWLT01'), k.invIp.get('GBJWLT01'), k.invTum.get('GBNGXT33')],
-    [['Test', 'Test'], ['10.151.166.144', '10.151.166.145'], ['Test']],
+    [k.invTum.get('ORJWLT01'), k.invIp.get('ORJWLT01'), k.invTum.get('ORNGXT33')],
+    [['Test', 'Test'], ['10.250.166.144', '10.250.166.145'], ['Test']],
   );
   // nginx_version kolonu yok: ipucu null (kolon yok != envanterde yok).
   const b = await dg.hedefAdaylariOku({ query: q(['host', 'env', 'ip', 'rha_version']) });
-  assert.deepEqual(b.get('GBJWLT01'), { nginxEnvanter: null, urunler: ['RHA'] });
+  assert.deepEqual(b.get('ORJWLT01'), { nginxEnvanter: null, urunler: ['RHA'] });
   // Host listesi: IN parametreli.
   const c = await dg.hedefAdaylariOku({
     query: q(['host', 'env', 'ip', 'nginx_version']),
     sql: { NVarChar: (n) => `nv${n}` },
-    hostlar: ['gbjwlt01'],
+    hostlar: ['orjwlt01'],
   });
-  assert.deepEqual([...c.keys()], ['GBJWLT01']);
+  assert.deepEqual([...c.keys()], ['ORJWLT01']);
   assert.deepEqual(await dg.hedefAdaylariOku({ query: q([]), hostlar: ['bad host'] }), new Map());
   // Okunamazsa 424 (yok SAYILMAZ).
   await assert.rejects(
@@ -4032,24 +4032,24 @@ test('YD-T3 hedefAdaylariOku: urun kolonlari sys.columns ile, ipucu, k birlestir
   );
   // FQDN ile kayitli satir kisa adla listelenir (atilmaz) ve k'ya kisa adla girer; host listesi FQDN satirini da okur.
   satirlar.push({
-    host: 'gbfqdt01.bmw.local',
+    host: 'orfqdt01.bmw.local',
     env: 'Test',
-    ip: '10.151.166.170',
+    ip: '10.250.166.170',
     nginx_version: '1.24.0',
     rha_version: null,
   });
   const k2 = { inv: new Map(), invTum: new Map(), invIp: new Map() };
   const f = await dg.hedefAdaylariOku({ query: q(['host', 'env', 'ip', 'nginx_version']), k: k2 });
   assert.deepEqual(
-    [f.get('GBFQDT01'), k2.invTum.get('GBFQDT01'), k2.invIp.get('GBFQDT01')],
-    [{ nginxEnvanter: true, urunler: ['NGINX'] }, ['Test'], ['10.151.166.170']],
+    [f.get('ORFQDT01'), k2.invTum.get('ORFQDT01'), k2.invIp.get('ORFQDT01')],
+    [{ nginxEnvanter: true, urunler: ['NGINX'] }, ['Test'], ['10.250.166.170']],
   );
   const f2 = await dg.hedefAdaylariOku({
     query: q(['host', 'env', 'ip']),
     sql: { NVarChar: (n) => `nv${n}` },
-    hostlar: ['GBFQDT01'],
+    hostlar: ['ORFQDT01'],
   });
-  assert.deepEqual([...f2.keys()], ['GBFQDT01']);
+  assert.deepEqual([...f2.keys()], ['ORFQDT01']);
 });
 
 test('YD-T4 FQDN ile kayitli dbo.Inventory satiri: kisa ad Test + FQDN Production -> 409 (hedef, yuk makinesi, IP sahibi)', async () => {
@@ -4057,59 +4057,59 @@ test('YD-T4 FQDN ile kayitli dbo.Inventory satiri: kisa ad Test + FQDN Productio
   // Kisa ad satiri Test, ayni makinenin FQDN satiri Production: satirlarin HEPSI DEV/TEST/QA DEGIL.
   const karisik = [
     ...taban,
-    { host: 'GBX01', env: 'Test', ip: '10.151.166.150' },
-    { host: 'gbx01.bmw.local', env: 'Production', ip: '10.151.166.151' },
+    { host: 'ORX01', env: 'Test', ip: '10.250.166.150' },
+    { host: 'orx01.bmw.local', env: 'Production', ip: '10.250.166.151' },
   ];
   for (const cagri of [
-    (t) => dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['GBX01', 'GBNGXT34'] }),
-    (t) => dg.kaynaklariOku({ query: t.query, sql: t.sql, ekHostlar: ['GBX01'] }),
+    (t) => dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['ORX01', 'ORNGXT34'] }),
+    (t) => dg.kaynaklariOku({ query: t.query, sql: t.sql, ekHostlar: ['ORX01'] }),
     (t) =>
-      dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['GBNGXT34'], ip: '10.151.166.150' }),
+      dg.kaynaklariOku({ query: t.query, sql: t.sql, hostlar: ['ORNGXT34'], ip: '10.250.166.150' }),
   ]) {
     const t = tbmwans({ inventory: karisik });
     const k = await cagri(t);
-    assert.deepEqual(k.invTum.get('GBX01'), ['Test', 'Production']);
-    const o = dg.hedefKapisi('GBX01', k);
+    assert.deepEqual(k.invTum.get('ORX01'), ['Test', 'Production']);
+    const o = dg.hedefKapisi('ORX01', k);
     assert.deepEqual([o.ok, o.status, o.code], [false, 409, 'hedef_uretim']);
-    assert.equal(dg.yukHostKapisi('GBX01', k, { izinli: ['GBX01'] }).code, 'yuk_host_izinsiz');
+    assert.equal(dg.yukHostKapisi('ORX01', k, { izinli: ['ORX01'] }).code, 'yuk_host_izinsiz');
   }
   const t1 = tbmwans({ inventory: karisik });
   const k1 = await dg.kaynaklariOku({
     query: t1.query,
     sql: t1.sql,
-    hostlar: ['GBNGXT34'],
-    ip: '10.151.166.150',
+    hostlar: ['ORNGXT34'],
+    ip: '10.250.166.150',
   });
-  const r1 = dg.ipSinifla('10.151.166.150', k1, { yukHost: 'GBNGXT34' });
+  const r1 = dg.ipSinifla('10.250.166.150', k1, { yukHost: 'ORNGXT34' });
   assert.deepEqual([r1.ok, r1.code], [false, 'hedef_uretim']);
   // Ikinci varyant: yalniz FQDN satirlari; IP X satiri Test, IP Y satiri Production. IP X ile gelinse bile 409.
   const t2 = tbmwans({
     inventory: [
       ...taban,
-      { host: 'gby01.bmw.local', env: 'Test', ip: '10.151.166.160' },
-      { host: 'GBY01.bmw.local', env: 'Production', ip: '10.151.166.161' },
+      { host: 'ory01.bmw.local', env: 'Test', ip: '10.250.166.160' },
+      { host: 'ORY01.bmw.local', env: 'Production', ip: '10.250.166.161' },
     ],
   });
   const k2 = await dg.kaynaklariOku({
     query: t2.query,
     sql: t2.sql,
-    hostlar: ['GBNGXT34'],
-    ip: '10.151.166.160',
+    hostlar: ['ORNGXT34'],
+    ip: '10.250.166.160',
   });
-  assert.deepEqual(k2.invTum.get('GBY01'), ['Test', 'Production']);
-  const r2 = dg.ipSinifla('10.151.166.160', k2, { yukHost: 'GBNGXT34' });
+  assert.deepEqual(k2.invTum.get('ORY01'), ['Test', 'Production']);
+  const r2 = dg.ipSinifla('10.250.166.160', k2, { yukHost: 'ORNGXT34' });
   assert.deepEqual([r2.ok, r2.code], [false, 'hedef_uretim']);
   // Yalniz FQDN satiri olan, satirlarinin hepsi Test makine: kisa adla gecer (ortam kanitli).
   const t3 = tbmwans({
-    inventory: [...taban, { host: 'gbz01.bmw.local', env: 'Test', ip: '10.151.166.170' }],
+    inventory: [...taban, { host: 'orz01.bmw.local', env: 'Test', ip: '10.250.166.170' }],
   });
   const k3 = await dg.kaynaklariOku({
     query: t3.query,
     sql: t3.sql,
-    hostlar: ['GBZ01', 'GBNGXT34'],
+    hostlar: ['ORZ01', 'ORNGXT34'],
   });
-  assert.deepEqual(dg.hedefKapisi('GBZ01', k3), { ok: true, env: 'TEST' });
-  assert.deepEqual(k3.invIp.get('GBZ01'), ['10.151.166.170']);
+  assert.deepEqual(dg.hedefKapisi('ORZ01', k3), { ok: true, env: 'TEST' });
+  assert.deepEqual(k3.invIp.get('ORZ01'), ['10.250.166.170']);
 });
 
 test("YD-T5 cok IP'li dbo.Inventory hucresi: IP sahibi aramasi aday uretimiyle ayni ayristirma (paylasilan VIP)", async () => {
@@ -4117,76 +4117,76 @@ test("YD-T5 cok IP'li dbo.Inventory hucresi: IP sahibi aramasi aday uretimiyle a
   // Uretim makinesi P'nin hucresi iki IP; test makinesi T'nin hucresi yalniz VIP. Sahip listesi P'yi de gormeli.
   const inv = [
     ...taban,
-    { host: 'GBAPPP77', env: 'Production', ip: '10.1.1.5, 10.151.166.200' },
-    { host: 'GBAPPT77', env: 'Test', ip: '10.151.166.200' },
+    { host: 'ORAPPP77', env: 'Production', ip: '10.1.1.5, 10.250.166.200' },
+    { host: 'ORAPPT77', env: 'Test', ip: '10.250.166.200' },
   ];
   const t = tbmwans({ inventory: inv });
   const k = await dg.kaynaklariOku({
     query: t.query,
     sql: t.sql,
-    hostlar: ['GBAPPT77', 'GBNGXT34'],
-    ip: '10.151.166.200',
+    hostlar: ['ORAPPT77', 'ORNGXT34'],
+    ip: '10.250.166.200',
   });
-  assert.deepEqual([...k.ipSahipleri.keys()].sort(), ['GBAPPP77', 'GBAPPT77']);
-  const r = dg.ipSinifla('10.151.166.200', k, { hedefHost: 'GBAPPT77', yukHost: 'GBNGXT34' });
+  assert.deepEqual([...k.ipSahipleri.keys()].sort(), ['ORAPPP77', 'ORAPPT77']);
+  const r = dg.ipSinifla('10.250.166.200', k, { hedefHost: 'ORAPPT77', yukHost: 'ORNGXT34' });
   assert.deepEqual([r.ok, r.code], [false, 'hedef_uretim']);
-  assert.match(r.message, /GBAPPP77 sunucusuna ait/);
+  assert.match(r.message, /ORAPPP77 sunucusuna ait/);
   // Ikinci etki: T'nin kendi cok IP'li hucresinden gelen aday IP icin T sahip sayilir (seciciden secilebilir).
   const t2 = tbmwans({
-    inventory: [...taban, { host: 'GBAPPT78', env: 'Test', ip: '10.151.166.210;10.151.166.211' }],
+    inventory: [...taban, { host: 'ORAPPT78', env: 'Test', ip: '10.250.166.210;10.250.166.211' }],
   });
   const k2 = await dg.kaynaklariOku({
     query: t2.query,
     sql: t2.sql,
-    hostlar: ['GBAPPT78', 'GBNGXT34'],
-    ip: '10.151.166.211',
+    hostlar: ['ORAPPT78', 'ORNGXT34'],
+    ip: '10.250.166.211',
   });
-  assert.deepEqual(dg.hedefAyrintisi(k2, 'GBAPPT78').ipler, ['10.151.166.210', '10.151.166.211']);
+  assert.deepEqual(dg.hedefAyrintisi(k2, 'ORAPPT78').ipler, ['10.250.166.210', '10.250.166.211']);
   assert.deepEqual(
-    dg.ipSinifla('10.151.166.211', k2, { hedefHost: 'GBAPPT78', yukHost: 'GBNGXT34' }),
-    { ok: true, tur: 'sunucu', host: 'GBAPPT78' },
+    dg.ipSinifla('10.250.166.211', k2, { hedefHost: 'ORAPPT78', yukHost: 'ORNGXT34' }),
+    { ok: true, tur: 'sunucu', host: 'ORAPPT78' },
   );
-  // Alt dize eslesmesi sahip YAPMAZ (10.151.166.21 != 10.151.166.211).
+  // Alt dize eslesmesi sahip YAPMAZ (10.250.166.21 != 10.250.166.211).
   const k3 = await dg.kaynaklariOku({
     query: t2.query,
     sql: t2.sql,
-    hostlar: ['GBNGXT34'],
-    ip: '10.151.166.21',
+    hostlar: ['ORNGXT34'],
+    ip: '10.250.166.21',
   });
-  assert.equal(k3.ipSahipleri.has('GBAPPT78'), false);
+  assert.equal(k3.ipSahipleri.has('ORAPPT78'), false);
 });
 
 test('YD-T6 /hedefler yolu (hostlar yok): ad kalibi disi ama taranmis Inventory hedefinin tarama ve limit verisi okunur', async () => {
   const t = tbmwans({
     inventory: [
       ...tbmwans().d.inventory,
-      { host: 'GBJWLT01', env: 'Test', ip: '10.151.166.144' },
-      { host: 'GBAPPP79', env: 'Production', ip: '10.9.9.79' },
+      { host: 'ORJWLT01', env: 'Test', ip: '10.250.166.144' },
+      { host: 'ORAPPP79', env: 'Production', ip: '10.9.9.79' },
     ],
     tarama: [
       ...tbmwans().d.tarama,
-      { host: 'GBJWLT01', listen: '10.151.166.146:443 ssl', server_name: 'jw.test.local' },
-      { host: 'GBAPPP79', listen: '10.9.9.79:443 ssl', server_name: 'p79.prod.local' },
+      { host: 'ORJWLT01', listen: '10.250.166.146:443 ssl', server_name: 'jw.test.local' },
+      { host: 'ORAPPP79', listen: '10.9.9.79:443 ssl', server_name: 'p79.prod.local' },
     ],
     ayarlar: [
       {
-        host: 'GBJWLT01',
+        host: 'ORJWLT01',
         directive: 'limit_req_zone',
         value: '$binary_remote_addr zone=r:1m rate=120r/s',
       },
     ],
   });
-  const k = await dg.kaynaklariOku({ query: t.query, sql: t.sql, ekHostlar: ['GBNGXT34'] });
-  const ay = dg.hedefAyrintisi(k, 'GBJWLT01');
+  const k = await dg.kaynaklariOku({ query: t.query, sql: t.sql, ekHostlar: ['ORNGXT34'] });
+  const ay = dg.hedefAyrintisi(k, 'ORJWLT01');
   assert.deepEqual(
     [ay.ipler, ay.vhostlar, ay.limitReq],
-    [['10.151.166.144', '10.151.166.146'], ['jw.test.local'], 120],
+    [['10.250.166.144', '10.250.166.146'], ['jw.test.local'], 120],
   );
-  assert.deepEqual(dg.hedefKapisi('GBJWLT01', k), { ok: true, env: 'TEST' });
+  assert.deepEqual(dg.hedefKapisi('ORJWLT01', k), { ok: true, env: 'TEST' });
   // Uretim Inventory makinesi (taranmis) tarama / limit okumasina girmez.
   const okunan = t.sorgular
     .filter((x) => /Nginx_Audit_(Servers|Settings) WHERE .*host IN|AS h\(host\)/.test(x.q))
     .flatMap((x) => x.params.map((p) => p.value));
-  assert.equal(okunan.includes('GBAPPP79'), false);
-  assert.equal(okunan.includes('GBJWLT01'), true);
+  assert.equal(okunan.includes('ORAPPP79'), false);
+  assert.equal(okunan.includes('ORJWLT01'), true);
 });

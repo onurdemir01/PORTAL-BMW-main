@@ -364,7 +364,7 @@ test('CS12 tekli kaynak secimi combobox: yerel select yok, yazdikca liste, Enter
 
 // CS11 (2026-10-26, kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de
 // ekleme veya karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor"):
-// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu ama -app-v icermiyor.
+// ges-pension-digital-ch-test/public-website-v0 ORNGXT33'te /hysdeploy altinda kurulu ama -app-v icermiyor.
 // RVP listeleri ortamin INTERNET sunucularindaki dizin taramasini (Nginx_Intranet_Audit) da kullanir.
 test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler ve karsilastirir', async () => {
   const adminPath = require.resolve('../../logx/v2/admin.cjs');
@@ -408,32 +408,32 @@ test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler 
           return {
             recordset: [
               {
-                host: 'GBNGXT33',
+                host: 'ORNGXT33',
                 namespace: 'ges-pension-digital-ch-test',
                 application: 'public-website-v0',
               },
               {
-                host: 'GBNGXT34',
+                host: 'ORNGXT34',
                 namespace: 'ges-pension-digital-ch-test',
                 application: 'public-website-v0',
               },
               {
-                host: 'GBNGXT33',
+                host: 'ORNGXT33',
                 namespace: 'ges-pension-digital-ch-test',
                 application: 'digi-main-container-app-v0',
               },
               {
-                host: 'GBNGXQ02',
+                host: 'ORNGXQ02',
                 namespace: 'ges-pension-digital-ch-test',
                 application: 'yalniz-qa-v0',
               },
               {
-                host: 'GBNGXT50',
+                host: 'ORNGXT50',
                 namespace: 'ges-pension-digital-ch-test',
                 application: 'intranet-sitesi-v0',
               },
               {
-                host: 'GBNGXT33',
+                host: 'ORNGXT33',
                 namespace: 'yalniz-sunucuda-ns-test',
                 application: 'eski-site-v2',
               },
@@ -458,12 +458,12 @@ test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler 
       byVal['public-website-v0'].group,
       'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)',
     );
-    assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: GBNGXT33, GBNGXT34/);
+    assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: ORNGXT33, ORNGXT34/);
     assert.match(byVal['public-website-v0'].alt, /OpenShift envanterinde yok/);
     assert.match(byVal['public-website-v0'].alt, /ad standardı dışı/);
     assert.match(
       byVal['digi-main-container-app-v0'].alt,
-      /^Sunucuda kurulu: GBNGXT33 · OpenShift'te var$/,
+      /^Sunucuda kurulu: ORNGXT33 · OpenShift'te var$/,
     );
     assert.match(
       byVal['digi-main-container-app-v1'].alt,
@@ -525,8 +525,8 @@ test('CS12 SPA Kesfi kaniti: konteynerinde nginx olan (ad standardi disi, henuz 
     loaded: true,
     exports: {
       getClusterTree: async () => ({
-        test: { ark: ['gbocptest1', 'gbocptest2'] },
-        prod: { ark: ['gbocpprod1'] },
+        test: { ark: ['orocptest1', 'orocptest2'] },
+        prod: { ark: ['orocpprod1'] },
       }),
     },
   };
@@ -555,21 +555,21 @@ test('CS12 SPA Kesfi kaniti: konteynerinde nginx olan (ad standardi disi, henuz 
           return {
             recordset: [
               {
-                cluster: 'gbocptest1',
+                cluster: 'orocptest1',
                 namespace: 'ges-pension-digital-ch-test',
                 workload: 'public-website-v0',
               },
               {
-                cluster: 'GBOCPTEST2',
+                cluster: 'OROCPTEST2',
                 namespace: 'ges-pension-digital-ch-test',
                 workload: 'public-website-v0',
               },
               {
-                cluster: 'gbocpprod1',
+                cluster: 'orocpprod1',
                 namespace: 'ges-pension-digital-ch-test',
                 workload: 'baska-ortam-v0',
               },
-              { cluster: 'gbocptest1', namespace: 'ges-pension-digital-ch-test', workload: '' },
+              { cluster: 'orocptest1', namespace: 'ges-pension-digital-ch-test', workload: '' },
             ],
           };
         }
@@ -590,7 +590,7 @@ test('CS12 SPA Kesfi kaniti: konteynerinde nginx olan (ad standardi disi, henuz 
     assert.equal(pw.group, 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)');
     assert.equal(
       pw.alt,
-      "Sunucuda kurulu değil · OpenShift'te var · SPA Keşfi: konteynerde nginx (GBOCPTEST2, gbocptest1) · ad standardı dışı",
+      "Sunucuda kurulu değil · OpenShift'te var · SPA Keşfi: konteynerde nginx (OROCPTEST2, orocptest1) · ad standardı dışı",
     );
     assert.equal(
       apps.find((a) => a.value === 'digi-main-container-app-v0').alt,

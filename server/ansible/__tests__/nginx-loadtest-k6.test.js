@@ -183,7 +183,7 @@ test('K3 Portal: UA_ONEK ortamdan, HOST_BASLIGI zorunlu, GLOMO varsayilanlari yo
   await hataVerir({ ...temel(), UA_ONEK: 'Kotu Onek' }, /UA_ONEK/);
   await hataVerir({ ...temel(), UA_ONEK: 'a.b' }, /UA_ONEK/);
   assert.ok(
-    !KAYNAK.includes('glomo-yuktesti') && !KAYNAK.includes('garantibbva'),
+    !KAYNAK.includes('glomo-yuktesti') && !KAYNAK.includes('ornekbanka'),
     'GLOMO UA/host varsayilani kalmamali',
   );
 });

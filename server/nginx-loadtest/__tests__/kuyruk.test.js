@@ -75,7 +75,7 @@ function sahteIslem() {
     kosuHata: [],
     uyarilar: [],
     butce: 600,
-    hedef: 'GBNGXT33',
+    hedef: 'ORNGXT33',
     oncesiKanca: null,
     // launchHata: satir + kanca SONRASI (gercek kosuyuBaslat gibi) hata; kosuId eklenir, satir FAILED. okOncesi: on kontrol hatasindan once.
     launchHata: [],
@@ -187,7 +187,7 @@ test('KQ1 sira: ogeler sirayla, ikinci oge birinci bitmeden baslamaz; on kontrol
   assert.deepEqual(I.launch[1], ['kosu', 102]);
   assert.deepEqual(
     I.cagri.find((c) => c[0] === 'kosu'),
-    ['kosu', 101, 'GBNGXT33'],
+    ['kosu', 101, 'ORNGXT33'],
     'onay metni kuyrugun onay hedefi degil',
   );
   assert.equal(oge(1).kosu_id, 102);
@@ -243,7 +243,7 @@ test('KQ2 dinlenme kosu kilidi birakildiktan SONRA baslar, bekleme_dk surer', as
   await tur(I2);
   bitir(101);
   await tur(I2);
-  D.kilitler.set('T|GBNGXT33', {
+  D.kilitler.set('T|ORNGXT33', {
     lock_id: 'L102',
     held: 1,
     locked_until: D.simdi - DK,
@@ -358,21 +358,21 @@ test('KQ3 ATLANDI kurallari: engel, kosu kapisi, yeni uyari turu, sure, yetki, p
   // f) plan kapisi 409 (siniflandirma / PROD-EDU) ve g) hedef degisti.
   sifirla();
   I = sahteIslem();
-  I.planHata = Object.assign(new Error('GBNGXT33 üretim sunucusu'), {
+  I.planHata = Object.assign(new Error('ORNGXT33 üretim sunucusu'), {
     status: 409,
     code: 'hedef_uretim',
   });
   kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
   await tur(I);
   assert.equal(oge(1).durum, 'ATLANDI');
-  assert.match(oge(1).neden, /^kapı: GBNGXT33 üretim sunucusu/);
+  assert.match(oge(1).neden, /^kapı: ORNGXT33 üretim sunucusu/);
   sifirla();
   I = sahteIslem();
-  I.hedef = 'GBNGXT99';
+  I.hedef = 'ORNGXT99';
   kuyrukKur(D, { ogeler: [{ etiket: 'A1' }] });
   await tur(I);
   assert.equal(oge(1).durum, 'ATLANDI');
-  assert.match(oge(1).neden, /^hedef değişti: onaylanan GBNGXT33, şimdi GBNGXT99/);
+  assert.match(oge(1).neden, /^hedef değişti: onaylanan ORNGXT33, şimdi ORNGXT99/);
   assert.equal(I.launch.length, 0);
 });
 
@@ -554,14 +554,14 @@ test('KQ7 ayni hedef kilidi: kilit_dolu -> oge bekler (deneme sayilmaz), kilit a
   I.okHata.push(
     Object.assign(
       new Error(
-        'GBNGXT33 üzerinde başka bir iş var (veli). İş bitince kilit kendiliğinden bırakılır.',
+        'ORNGXT33 üzerinde başka bir iş var (veli). İş bitince kilit kendiliğinden bırakılır.',
       ),
       { status: 409, code: 'kilit_dolu' },
     ),
   );
   await tur(I);
   assert.equal(oge(1).durum, 'BEKLIYOR');
-  assert.match(oge(1).neden, /^bekliyor: GBNGXT33 üzerinde başka bir iş var/);
+  assert.match(oge(1).neden, /^bekliyor: ORNGXT33 üzerinde başka bir iş var/);
   assert.equal(oge(1).deneme, 0);
   assert.equal(I.launch.length, 0);
   await tur(I);
@@ -652,7 +652,7 @@ test("KQ8 gecici hata: geri cekilmeyle 6 denemede HATALI; kosuId'li ama kesin ba
       belirsiz: true,
     }),
   );
-  D.kilitler.set('T|GBNGXT33', {
+  D.kilitler.set('T|ORNGXT33', {
     lock_id: 'L102',
     held: 1,
     locked_until: D.simdi + 60 * 60000,
@@ -670,7 +670,7 @@ test("KQ8 gecici hata: geri cekilmeyle 6 denemede HATALI; kosuId'li ama kesin ba
   await tur(I);
   assert.equal(kq(id).dinlenme_bitis, null, 'kilit tutulurken dinlenme sayaci basladi');
   assert.equal(oge(2).durum, 'BEKLIYOR');
-  D.kilitler.get('T|GBNGXT33').held = 0;
+  D.kilitler.get('T|ORNGXT33').held = 0;
   await tur(I);
   assert.equal(kq(id).dinlenme_bitis, D.simdi + 5 * 60000);
   // d) AWX is numarali hata (degisken yutuldu, is iptal edildi): HATALI (atla degil).
@@ -977,7 +977,7 @@ test("KQ12 iptal ile geri alma yarisi: iptal edilen kuyrukta oge BEKLIYOR'a donm
   let id = kuyrukKur(D, { ogeler: [{ etiket: 'A1' }, { etiket: 'A2' }] });
   I.okOncesi = async () => iptal(id);
   I.okHata.push(
-    Object.assign(new Error('GBNGXT33 üzerinde başka bir iş var (veli).'), {
+    Object.assign(new Error('ORNGXT33 üzerinde başka bir iş var (veli).'), {
       status: 409,
       code: 'kilit_dolu',
     }),
@@ -1197,7 +1197,7 @@ test('KQ19 duraklat + on kontrol: sonuc kullanilmaz, oge BEKLIYOR, kosu yok; kil
     await tur(I);
     assert.equal(oge(1).durum, 'CALISIYOR', 'suren on kontrol izlenmeli');
     // Sunucu ayarli on kontrolde durdurma isi geri alirken kilit tutulur: oge kapanmaz, ekran "sunucuya dokunmayin" der.
-    D.kilitler.set('T|GBNGXT33', {
+    D.kilitler.set('T|ORNGXT33', {
       lock_id: 'L101',
       held: 1,
       locked_until: D.simdi + 20 * DK,
@@ -1210,7 +1210,7 @@ test('KQ19 duraklat + on kontrol: sonuc kullanilmaz, oge BEKLIYOR, kosu yok; kil
       ['CALISIYOR', 101],
       `${durum}: kilit tutulurken oge birakildi`,
     );
-    D.kilitler.get('T|GBNGXT33').held = 0;
+    D.kilitler.get('T|ORNGXT33').held = 0;
     await tur(I);
     assert.deepEqual(
       [
@@ -1298,7 +1298,7 @@ test('KQ21 duraklatmada durdurulan kosu: oge HATALI olmaz, bastan kosulur; DINLE
   bitir(101);
   await tur(I);
   await duraklat(id);
-  D.kilitler.set('T|GBNGXT33', {
+  D.kilitler.set('T|ORNGXT33', {
     lock_id: 'L102',
     held: 1,
     locked_until: D.simdi + 20 * DK,
@@ -1336,7 +1336,7 @@ test('KQ21 duraklatmada durdurulan kosu: oge HATALI olmaz, bastan kosulur; DINLE
   D.simdi += 5 * DK;
   await tur(I);
   assert.equal(kq(id).dinlenme_bitis, null, 'kilit tutulurken dinlenme basladi');
-  D.kilitler.get('T|GBNGXT33').held = 0;
+  D.kilitler.get('T|ORNGXT33').held = 0;
   await tur(I);
   assert.equal(kq(id).dinlenme_bitis, D.simdi + 2 * DK);
   D.simdi += 2 * DK;
@@ -1718,7 +1718,7 @@ test('KQ28 durdurulan kosunun iki yazimi: arada kesinti dinlenmeyi kaybetmez, so
     bitir(101);
     await tur(I);
     await duraklat(id);
-    D.kilitler.set('T|GBNGXT33', {
+    D.kilitler.set('T|ORNGXT33', {
       lock_id: 'L102',
       held: 1,
       locked_until: D.simdi + 20 * DK,
@@ -1795,10 +1795,10 @@ test('KQ29 Durdur basilmis FAILED kosu da bastan kosulur; Durdur basilmamis FAIL
 test('KQ30 kapi kararlari govdeye bagli: karar verilirken duzenlenen oge ATLANDI olmaz, sonraki tur yeni degerle baslar', async () => {
   const yeniGovde = JSON.stringify({
     senaryoId: 2,
-    hedefHost: 'GBNGXT33',
+    hedefHost: 'ORNGXT33',
     hedefIp: '10.0.0.9',
     vhost: 'app.test.local',
-    yukHost: 'GBNGXT34',
+    yukHost: 'ORNGXT34',
     sni: false,
     parametreler: { hizlar: [100] },
   });

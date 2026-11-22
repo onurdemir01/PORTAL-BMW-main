@@ -415,14 +415,14 @@ async function loadRateLimits({ scanDate, suz } = {}) {
 // ORTAM, SUNUCU ADINDAN OKUNUR (2026-09-26, kullanici kurali):
 // "sunucunun sayilardan onceki ilk harf P ise Production, Q-T-D ise Non-Production".
 //
-// Onceki surum bir on-ek kalibiydi (`^GBNGX?P|^GBRVP`) ve UYDURMAYDI: GBNGXAP32 kalibi
-// tutmuyordu (GBNGX + optional X + P), GBNGXQ01 hic taninmiyordu. Ikisi de "DIGER"
+// Onceki surum bir on-ek kalibiydi (`^ORNGX?P|^ORRVP`) ve UYDURMAYDI: ORNGXAP32 kalibi
+// tutmuyordu (ORNGX + optional X + P), ORNGXQ01 hic taninmiyordu. Ikisi de "DIGER"
 // olarak dusuyordu - yani ekran, adindan ortami OKUNABILEN sunucular icin "bilmiyorum"
 // diyordu. Kural artik tek ve net: SAYILARDAN HEMEN ONCEKI HARF.
 //
-//   GBNGXP40 -> P   Production      GBRVPAP01 -> P   Production
-//   GBNGXAP34 -> P  Production      GBNGXT33  -> T   Non-Production
-//   GBNGXQ01 -> Q   Non-Production  GBNGXD01  -> D   Non-Production
+//   ORNGXP40 -> P   Production      ORRVPAP01 -> P   Production
+//   ORNGXAP34 -> P  Production      ORNGXT33  -> T   Non-Production
+//   ORNGXQ01 -> Q   Non-Production  ORNGXD01  -> D   Non-Production
 //
 // DIGER yalnizca adi bu kalibi hic tutmayan sunucu icin kalir (harf+sayi degil). Bu bir
 // tahmin degil, "olcemedim" demektir.

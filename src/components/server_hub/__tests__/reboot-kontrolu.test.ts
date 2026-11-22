@@ -122,9 +122,9 @@ describe('Reboot Kontrolü satırları', () => {
       ad: '',
       mesaj: 'eski bicim',
     });
-    expect(sunucuListesi('gbjbop18, GBJBOP18\nGBJBOAP18;  x1 ')).toEqual([
-      'GBJBOP18',
-      'GBJBOAP18',
+    expect(sunucuListesi('orjbop18, ORJBOP18\nORJBOAP18;  x1 ')).toEqual([
+      'ORJBOP18',
+      'ORJBOAP18',
       'X1',
     ]);
   });

@@ -118,12 +118,12 @@ test('RC3 reboot oncesi: target_hosts + rc_faz=once; kayit acilir', async () => 
   try {
     const l = [];
     const r = await istek(routerKur(l), '/reboot-check', {
-      hosts: ['gbjbop18', 'GBJBOP18', 'gbjboap18'],
+      hosts: ['orjbop18', 'ORJBOP18', 'orjboap18'],
     });
     assert.equal(r.status, 200);
     assert.deepEqual(l[0], {
       key: 'reboot_check',
-      ev: { rc_faz: 'once', target_hosts: 'GBJBOP18,GBJBOAP18' },
+      ev: { rc_faz: 'once', target_hosts: 'ORJBOP18,ORJBOAP18' },
     });
     assert.ok(d.yaz.some((y) => /INSERT INTO reboot_checks/.test(y.sql)));
     const bos = await istek(routerKur(l), '/reboot-check', { hosts: [] });

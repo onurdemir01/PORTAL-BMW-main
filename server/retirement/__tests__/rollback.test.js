@@ -69,7 +69,7 @@ const N = new Date('2026-11-20T12:00:00Z');
 const silinebilir = (status) => ({
   id: 7,
   record_id: 3,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   app_name: 'CRM',
   jboss_gen: 7,
   app_path: '/hysdeploy/CRM.ear',
@@ -83,7 +83,7 @@ const silinebilir = (status) => ({
     jobId: 70,
     at: '2026-11-20T19:50:00Z',
     durum: 'ok',
-    izinler: ['onay:sil:CRM|JBoss7|GBJBOP01'],
+    izinler: ['onay:sil:CRM|JBoss7|ORJBOP01'],
   }),
   status,
 });
@@ -146,7 +146,7 @@ test('GA3 BASARISIZ geri alma hedefi rollback_failed yapar (davranissal)', async
   const yazilan = dbKur([
     [
       "FROM retirement_targets WHERE status = 'rolling_back'",
-      [{ id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', env: 'PROD', job_id: 55 }],
+      [{ id: 7, record_id: 3, host: 'ORJBOP01', app_name: 'CRM', env: 'PROD', job_id: 55 }],
     ],
   ]);
   poller.startPoller(
@@ -171,7 +171,7 @@ test("GA4 BASARILI geri alma kaydi deleted YAPMAZ, open'a dondurur", async () =>
   const yazilan = dbKur([
     [
       "FROM retirement_targets WHERE status = 'rolling_back'",
-      [{ id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', env: 'PROD', job_id: 55 }],
+      [{ id: 7, record_id: 3, host: 'ORJBOP01', app_name: 'CRM', env: 'PROD', job_id: 55 }],
     ],
     ['COUNT(*) AS n FROM retirement_targets', [{ n: 0 }]],
   ]);

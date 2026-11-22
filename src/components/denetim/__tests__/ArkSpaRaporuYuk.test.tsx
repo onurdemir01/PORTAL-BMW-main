@@ -38,7 +38,7 @@ const satir = (application: string, traffic: ArkYuk | null): ArkSatir => ({
   namespace: 'kart-prod',
   application,
   location: `/${application}/`,
-  hosts: ['GBNGXP40', 'GBNGXP41'],
+  hosts: ['ORNGXP40', 'ORNGXP41'],
   vhosts: ['GLOMO-PROD'],
   team: [],
   traffic,

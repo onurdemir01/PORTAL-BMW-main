@@ -140,7 +140,7 @@ test('SAFE_HOST_RE: gecerli IPv4/IPv6/hostname/DNS adlari kabul edilir', () => {
   assert.ok(re.test('::1'));
   assert.ok(re.test('fe80::1'));
   assert.ok(re.test('my-host.example.com'));
-  assert.ok(re.test('GBARKAP82'));
+  assert.ok(re.test('ORARKAP82'));
 });
 
 test('SAFE_HOST_RE: shell enjeksiyon karakterleri REDDEDILIR', () => {

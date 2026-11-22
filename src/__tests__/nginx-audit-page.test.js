@@ -288,7 +288,7 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
     'İntranet · nginx’e kurulu',
     'Route’lar',
     'SPA route → IP',
-    'Yeni GBNGX sunucularına taşınma hazırlığı',
+    'Yeni …NGX sunucularına taşınma hazırlığı',
     'spaTotal',
     'ocpApps',
   ]) {
@@ -367,7 +367,7 @@ test('Nginx SPA matrisi: PROD proxy satirlari PROXY durumuyla girer; H/A/C yeni 
     'PROXY hucresinin dizinleri yeni sunuculardan okunmali',
   );
   assert.ok(
-    spa.includes('MIGRATION_GROUPS.flatMap((g) => g.newHosts)'),
+    spa.includes('migrationGroups().flatMap((g) => g.newHosts)'),
     'yeni prod sunucular dizin sorgusuna girmeli',
   );
   const den = read('components/DenetimPage.tsx');

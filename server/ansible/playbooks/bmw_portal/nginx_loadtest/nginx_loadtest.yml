@@ -7,9 +7,9 @@
     yt_re_islem: '^(on_kontrol|kosu|durdur)\Z'
     yt_re_kosu_id: '^[0-9]{1,10}\Z'
     yt_re_host: '^[A-Z0-9][A-Z0-9-]{1,30}\Z'
-    yt_re_nonprod_adi: '^GBNG[WX]A?[DTQ]'
-    yt_edu_hostlari: ['GBNGXT51']
-    yt_re_prod_adi: '^(GBRVP|GBNG[WX]A?P)'
+    yt_re_nonprod_adi: '^[A-Z]{2}NG[WX]A?[DTQ]'
+    yt_edu_hostlari: "{{ portal_edu_hostlari }}"
+    yt_re_prod_adi: '^([A-Z]{2}RVP|[A-Z]{2}NG[WX]A?P)'
     yt_re_ipv4: '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\Z'
     yt_re_ozel_ip: '^(0|127|169\.254|22[4-9]|2[3-5][0-9])\.'
     yt_re_vhost: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\Z'
@@ -27,7 +27,7 @@
     yt_re_k6_surum: '^v0[.](4[5-9]|5[0-9])[.][0-9]{1,2}\Z'
     yt_re_proxy: '^https?://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}\Z'
     yt_re_arac_dizin: '^/sw/BMW_PORTAL(_DEV)?(/[A-Za-z0-9._-]+)+/araclar/[0-9]{1,10}\Z'
-    yt_derleme_hostlari: ['GBLABT02']
+    yt_derleme_hostlari: "{{ [portal_yazici_host | default('', true)] }}"
     yt_eski_k6_isareti: '/yeni-playbook-gerekli/k6'
     yt_eski_wrk_isareti: '/yeni-playbook-gerekli/wrk'
     yt_re_srv_seviye: '^[1-9][0-9]?\Z'
@@ -36,6 +36,17 @@
   tasks:
     - name: --- [Task] Girdi kapisi ---
       block:
+        - name: --- [Task] AWX template variables (portal_yazici_host, portal_edu_hostlari) ---
+          ansible.builtin.assert:
+            that:
+              - portal_yazici_host | default('', true) is string
+              - (portal_yazici_host | default('', true) | string) is match(yt_re_host)
+              - portal_edu_hostlari is defined
+              - portal_edu_hostlari is sequence
+              - portal_edu_hostlari is not string
+            fail_msg: "AWX sablon degiskenleri eksik: portal_yazici_host (yazici sunucu adi) ve portal_edu_hostlari (EDU sunucu listesi, bos olabilir) template Variables'ta tanimli olmali; hicbir sey yapilmadi."
+            quiet: true
+
         - name: --- [Task] Operation, run id, target type, target and load host (not EDU, not a production name, target != load host) ---
           ansible.builtin.assert:
             that:
@@ -49,7 +60,7 @@
               - ((not ((yuk_hedef_host | string) is match(yt_re_prod_adi))) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
               - (yuk_yuk_host | string) not in yt_edu_hostlari
               - not ((yuk_yuk_host | string) is match(yt_re_prod_adi))
-            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host gecerli ad, EDU degil, uretim adi (GBRVP..., GBNG[WX][A]P...) degil; serbest: yuk_hedef_host bos; yuk_yuk_host ayni kurallar ve hedeften FARKLI olmali. Ortam (tum dbo.Inventory kayitlari DEV/TEST/QA) Portal'in kapisinda kanitlanir; hicbir sey yapilmadi."
+            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host gecerli ad, EDU degil, uretim adi (..RVP..., ..NG[WX][A]P...) degil; serbest: yuk_hedef_host bos; yuk_yuk_host ayni kurallar ve hedeften FARKLI olmali. Ortam (tum dbo.Inventory kayitlari DEV/TEST/QA) Portal'in kapisinda kanitlanir; hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('') | string) != 'araclar'
 
@@ -64,7 +75,7 @@
               - ((yuk_proxy | default('') | string) == '') or ((yuk_proxy | default('') | string) is match(yt_re_proxy))
               - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
               - not ((yuk_cikti_kok | default('') | string) is search('[.][.]'))
-            fail_msg: "araclar girdileri gecersiz (yuk_run_id rakam; yuk_derleme_host GBLABT02 ya da DEV/TEST/QA nginx adi, EDU degil; yuk_k6_surum v0.45..v0.59; yuk_wrk_surum 4.2.0; yuk_proxy bos ya da http(s)://<ad>:<port>; /sw koku); hicbir sey yapilmadi."
+            fail_msg: "araclar girdileri gecersiz (yuk_run_id rakam; yuk_derleme_host yazici sunucu ya da DEV/TEST/QA nginx adi, EDU degil; yuk_k6_surum v0.45..v0.59; yuk_wrk_surum 4.2.0; yuk_proxy bos ya da http(s)://<ad>:<port>; /sw koku); hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('') | string) == 'araclar'
 
@@ -1458,7 +1469,7 @@
           ansible.builtin.set_fact:
             yt_p5_hata: "{{ ansible_failed_result.msg | default('beklenmeyen hata') | string | truncate(300) }}"
 
-- name: --- [Play] Nginx yuk testi - /sw kopyasi (GBLABT02 uzerinden) ---
+- name: --- [Play] Nginx yuk testi - /sw kopyasi (yazici sunucu uzerinden) ---
   hosts: localhost
   gather_facts: no
   ignore_unreachable: true
@@ -1508,20 +1519,20 @@
                 msg: "hicbir sonuc dosyasi toplanamadi; /sw'ye yazilmadi"
               when: (yt_ctl_dosyalar.files | length) == 0
 
-            - name: --- [Task] /sw kosu dizini (GBLABT02) ---
+            - name: --- [Task] /sw kosu dizini (yazici sunucu) ---
               ansible.builtin.file:
                 path: "{{ yt_sw_dizin }}"
                 state: directory
                 mode: '0777'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_sw_r_dizin
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (/sw kosu dizini) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (/sw kosu dizini) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (/sw kosu dizini): {{ yt_sw_r_dizin.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (/sw kosu dizini): {{ yt_sw_r_dizin.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_sw_r_dizin is unreachable
 
-            - name: --- [Task] Sonuc dosyalari /sw'ye (GBLABT02) ---
+            - name: --- [Task] Sonuc dosyalari /sw'ye (yazici sunucu) ---
               ansible.builtin.copy:
                 src: "{{ item.path }}"
                 dest: "{{ yt_sw_dizin }}/{{ item.path | basename }}"
@@ -1529,12 +1540,12 @@
               loop: "{{ yt_ctl_dosyalar.files | sort(attribute='path') }}"
               loop_control:
                 label: "{{ item.path | basename }}"
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_sw_r_kopya
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (sonuc dosyalari) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (sonuc dosyalari) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (sonuc dosyalari): {{ (yt_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (sonuc dosyalari): {{ (yt_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
               when: (yt_sw_r_kopya is unreachable) or ((yt_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
 
             - name: --- [Task] sha256 (kontrol dugumundeki kopyalar) ---
@@ -1547,17 +1558,17 @@
                 label: "{{ item.path | basename }}"
               register: yt_ctl_sha
 
-            - name: --- [Task] SHA256SUMS (GBLABT02) ---
+            - name: --- [Task] SHA256SUMS (yazici sunucu) ---
               ansible.builtin.copy:
                 content: "{{ yt_ctl_sha.results | map(attribute='stat') | map(attribute='checksum') | zip(yt_ctl_sha.results | map(attribute='item') | map(attribute='path') | map('basename')) | map('join', '  ') | join('\n') }}\n"
                 dest: "{{ yt_sw_dizin }}/SHA256SUMS"
                 mode: '0666'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_sw_r_sums
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (SHA256SUMS) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (SHA256SUMS) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (SHA256SUMS): {{ yt_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (SHA256SUMS): {{ yt_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_sw_r_sums is unreachable
 
             - name: --- [Task] /sw kopyasi tamam ---
@@ -2153,13 +2164,13 @@
           failed_when: false
           when: (yt_a_dizin | default('') | length) > 0
 
-- name: '--- [Play] Nginx yuk testi - araclar: /sw yayini (GBLABT02 uzerinden) ---'
+- name: '--- [Play] Nginx yuk testi - araclar: /sw yayini (yazici sunucu uzerinden) ---'
   hosts: localhost
   gather_facts: no
   ignore_unreachable: true
   vars:
     yt_re_ascii_disi: '[^ -~]'
-    yt_re_gblabt02_erisilemedi: '^GBLABT02 erisilemedi '
+    yt_re_yazici_erisilemedi: '^yazici sunucu erisilemedi '
   tasks:
     - name: --- [Task] Arac seti /sw yayini ---
       when: ((yuk_islem | default('') | string) == 'araclar') and (yt_actl_dizin is defined)
@@ -2190,15 +2201,15 @@
                 yt_arac_sw: "{{ yuk_cikti_kok }}/araclar/{{ yuk_run_id | int }}"
                 yt_arac_yarim: "{{ yuk_cikti_kok }}/araclar/.{{ yuk_run_id | int }}.yarim"
 
-            - name: --- [Task] /sw araclar dizini var mi (GBLABT02) ---
+            - name: --- [Task] /sw araclar dizini var mi (yazici sunucu) ---
               ansible.builtin.stat:
                 path: "{{ yuk_cikti_kok }}/araclar"
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_kstat
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (araclar dizini denetimi) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (araclar dizini denetimi) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (araclar dizini denetimi): {{ yt_a_sw_r_kstat.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (araclar dizini denetimi): {{ yt_a_sw_r_kstat.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_kstat is unreachable
 
             - name: --- [Task] araclar yolu dizin degilse DUR ---
@@ -2210,33 +2221,33 @@
               ansible.builtin.set_fact:
                 yt_a_sw_adim: araclar_dizini
 
-            - name: --- [Task] /sw araclar dizini (GBLABT02; YALNIZ yoksa, 0755 - yuk makinelerinde www girebilsin) ---
+            - name: --- [Task] /sw araclar dizini (yazici sunucu; YALNIZ yoksa, 0755 - yuk makinelerinde www girebilsin) ---
               ansible.builtin.file:
                 path: "{{ yuk_cikti_kok }}/araclar"
                 state: directory
                 mode: '0755'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_kok
               when: not (yt_a_sw_r_kstat.stat.exists | default(false) | bool)
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (araclar dizini) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (araclar dizini) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (araclar dizini): {{ yt_a_sw_r_kok.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (araclar dizini): {{ yt_a_sw_r_kok.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_kok is unreachable
 
             - name: --- [Task] araclar dizini adimi bitti ---
               ansible.builtin.set_fact:
                 yt_a_sw_adim: ''
 
-            - name: --- [Task] Arac seti dizini zaten var mi (GBLABT02) ---
+            - name: --- [Task] Arac seti dizini zaten var mi (yazici sunucu) ---
               ansible.builtin.stat:
                 path: "{{ yt_arac_sw }}"
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_var
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (arac dizini denetimi) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (arac dizini denetimi) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (arac dizini denetimi): {{ yt_a_sw_var.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (arac dizini denetimi): {{ yt_a_sw_var.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_var is unreachable
 
             - name: --- [Task] Ayni arac dizinine iki kez yazilmaz ---
@@ -2244,29 +2255,29 @@
                 msg: "arac dizini zaten var: {{ yt_arac_sw }} (ayni is yeniden baslatilmis olabilir); yazilmadi"
               when: yt_a_sw_var.stat.exists | default(true) | bool
 
-            - name: --- [Task] Onceki yarim yayin silinir (GBLABT02) ---
+            - name: --- [Task] Onceki yarim yayin silinir (yazici sunucu) ---
               ansible.builtin.file:
                 path: "{{ yt_arac_yarim }}"
                 state: absent
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_ysil
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (yarim dizin silme) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (yarim dizin silme) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (yarim dizin silme): {{ yt_a_sw_r_ysil.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (yarim dizin silme): {{ yt_a_sw_r_ysil.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_ysil is unreachable
 
-            - name: --- [Task] Yarim yayin dizini (GBLABT02) ---
+            - name: --- [Task] Yarim yayin dizini (yazici sunucu) ---
               ansible.builtin.file:
                 path: "{{ yt_arac_yarim }}"
                 state: directory
                 mode: '0755'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_yarim
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (yarim dizin) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (yarim dizin) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (yarim dizin): {{ yt_a_sw_r_yarim.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (yarim dizin): {{ yt_a_sw_r_yarim.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_yarim is unreachable
 
             - name: --- [Task] Ikililer /sw'ye (0644; /sw'den calistirilmaz) ---
@@ -2277,25 +2288,25 @@
               loop:
                 - k6
                 - wrk
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_kopya
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (arac dosyalari) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (arac dosyalari) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (arac dosyalari): {{ (yt_a_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (arac dosyalari): {{ (yt_a_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
               when: (yt_a_sw_r_kopya is unreachable) or ((yt_a_sw_r_kopya.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
 
-            - name: --- [Task] SHA256SUMS (GBLABT02; insan icin, yuk makinesi buna guvenmez) ---
+            - name: --- [Task] SHA256SUMS (yazici sunucu; insan icin, yuk makinesi buna guvenmez) ---
               ansible.builtin.copy:
                 content: "{{ hostvars[yuk_derleme_host].yt_a_sha.k6 }}  k6\n{{ hostvars[yuk_derleme_host].yt_a_sha.wrk }}  wrk\n"
                 dest: "{{ yt_arac_yarim }}/SHA256SUMS"
                 mode: '0644'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_sums
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (SHA256SUMS) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (SHA256SUMS) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (SHA256SUMS): {{ yt_a_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (SHA256SUMS): {{ yt_a_sw_r_sums.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_sums is unreachable
 
             - name: --- [Task] Derleme bilgisi (manifest icin) ---
@@ -2330,17 +2341,17 @@
                                   'glibc': ((yt_arac_b.derleme_glibc | default('')) if ((yt_arac_b.derleme_glibc | default('-')) not in ['-', '']) else none),
                                   'os': ((yt_arac_b.derleme_os | default('')) if ((yt_arac_b.derleme_os | default('-')) not in ['-', '']) else none)}} }}
 
-            - name: --- [Task] manifest.json (GBLABT02; insan icin) ---
+            - name: --- [Task] manifest.json (yazici sunucu; insan icin) ---
               ansible.builtin.copy:
                 content: "{{ yt_arac_manifest | to_nice_json }}\n"
                 dest: "{{ yt_arac_yarim }}/manifest.json"
                 mode: '0644'
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_man
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (manifest.json) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (manifest.json) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (manifest.json): {{ yt_a_sw_r_man.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (manifest.json): {{ yt_a_sw_r_man.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_man is unreachable
 
             - name: --- [Task] Yarim dizin son adina (mv -T; dolu hedefte mv de reddeder, bos hedefin uzerine yazar; asil kapi yukaridaki stat) ---
@@ -2352,12 +2363,12 @@
                   - "{{ yt_arac_yarim }}"
                   - "{{ yt_arac_sw }}"
               changed_when: false
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_mv
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (yeniden adlandirma) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (yeniden adlandirma) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (yeniden adlandirma): {{ yt_a_sw_r_mv.msg | default('baglanti hatasi') | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (yeniden adlandirma): {{ yt_a_sw_r_mv.msg | default('baglanti hatasi') | string | truncate(200) }}"
               when: yt_a_sw_r_mv is unreachable
 
             - name: --- [Task] /sw'den geri okuma (sha256, duzenli dosya, 0644) ---
@@ -2368,12 +2379,12 @@
               loop:
                 - k6
                 - wrk
-              delegate_to: GBLABT02
+              delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
               register: yt_a_sw_r_son
 
-            - name: --- [Task] GBLABT02 erisilemediyse DUR (geri okuma) ---
+            - name: --- [Task] yazici sunucu erisilemediyse DUR (geri okuma) ---
               ansible.builtin.fail:
-                msg: "GBLABT02 erisilemedi (geri okuma): {{ (yt_a_sw_r_son.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
+                msg: "yazici sunucu erisilemedi (geri okuma): {{ (yt_a_sw_r_son.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | map(attribute='msg') | list | first | default('baglanti hatasi')) | string | truncate(200) }}"
               when: (yt_a_sw_r_son is unreachable) or ((yt_a_sw_r_son.results | default([]) | selectattr('unreachable', 'defined') | selectattr('unreachable') | list | length) > 0)
 
             - name: --- [Task] Geri okunan ikililer derlenenle ayni ---
@@ -2393,13 +2404,13 @@
       rescue:
         - name: --- [Task] Arac seti yayini basarisiz ---
           ansible.builtin.set_fact:
-            yt_arac_yayin_hata: "{{ ((('araclar dizini olusturulamadi (GBLABT02, 0755): ') if (((yt_a_sw_adim | default('')) == 'araclar_dizini') and not ((ansible_failed_result.msg | default('') | string) is match(yt_re_gblabt02_erisilemedi))) else '') ~ (ansible_failed_result.msg | default('beklenmeyen hata') | string)) | regex_replace(yt_re_ascii_disi, '?') | truncate(300) }}"
+            yt_arac_yayin_hata: "{{ ((('araclar dizini olusturulamadi (yazici sunucu, 0755): ') if (((yt_a_sw_adim | default('')) == 'araclar_dizini') and not ((ansible_failed_result.msg | default('') | string) is match(yt_re_yazici_erisilemedi))) else '') ~ (ansible_failed_result.msg | default('beklenmeyen hata') | string)) | regex_replace(yt_re_ascii_disi, '?') | truncate(300) }}"
 
-        - name: --- [Task] Yarim yayin dizini silinir (GBLABT02; erisilemezse kalir, Portal satiri FAILED) ---
+        - name: --- [Task] Yarim yayin dizini silinir (yazici sunucu; erisilemezse kalir, Portal satiri FAILED) ---
           ansible.builtin.file:
             path: "{{ yt_arac_yarim | default('') }}"
             state: absent
-          delegate_to: GBLABT02
+          delegate_to: "{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}"
           failed_when: false
           when: (yt_arac_yarim | default('') | length) > 0
 

@@ -111,7 +111,7 @@ function initInstana(app) {
       ok: true,
       configured: isConfigured(env),
       env,
-      mcpUrl: process.env.INSTANA_MCP_URL || 'https://instana-mcp.apps-3rd-t.fw.garanti.com.tr/mcp',
+      mcpUrl: String(process.env.INSTANA_MCP_URL || '').trim(),
     });
   });
 

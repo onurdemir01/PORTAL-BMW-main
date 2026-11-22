@@ -39,10 +39,16 @@ function isConfigured() {
   );
 }
 
+/** Kurum ayarindaki SMART login domain'i (`smart.domain`); yoksa ''. */
+function kurumSmartDomain() {
+  const { deger } = require('../util/kurum-ayari.cjs').bolum('smart.domain');
+  return typeof deger === 'string' ? deger.trim() : '';
+}
+
 function getConfig() {
   return {
     // SOS02-KL-001-EN'deki ortam host'lari (hepsi :8443, ayni path'ler):
-    //   Test: gbcalt01.fw.garanti.com.tr | QA: gbcadq01.fw.garanti.com.tr | Prod: gbca.fw.garanti.com.tr
+    //   Test: orcalt01.fw.sirket.invalid | QA: orcadq01.fw.sirket.invalid | Prod: orca.fw.sirket.invalid
     // Admin hangi ortama baglanilacagini SMART_API_URL'e o ortamin tam host'unu
     // (https://<host>:8443) yazarak secer.
     baseUrl: (process.env.SMART_API_URL || '').replace(/(?<!\/)\/+$/, ''),
@@ -65,10 +71,11 @@ function getConfig() {
     checkTicketPath:
       process.env.SMART_CHECK_TICKET_PATH ||
       '/smart/internal/requestfulfilment/loadwfinstancestatus/v1',
-    // "Login domain information of the user who created the request" — ornek deger
-    // dokumanda hep "GARANTI" (kullanicinin KENDI LDAP domain'i degil, sabit bir deger
-    // gibi gorunuyor). Farkliysa Admin > Sistem > Smart grubundan degistirilebilir.
-    domain: process.env.SMART_DOMAIN || 'GARANTI',
+    // "Login domain information of the user who created the request": kullanicinin KENDI LDAP
+    // domain'i degil, kurum genelinde sabit bir deger. Kurum adi oldugu icin koda yazilmaz (K17):
+    // SMART_DOMAIN ortam degiskeni (Admin > Sistem > Smart) ya da kurum ayari `smart.domain`. Ikisi de
+    // yoksa bos kalir ve createTicket talebi acmadan durur (yanlis domain'le talep acilmaz).
+    domain: process.env.SMART_DOMAIN || kurumSmartDomain(),
     // Poller ne siklikta local DB'deki PENDING taleplerin durumunu Smart'a sorsun.
     pollIntervalSeconds: Number(process.env.SMART_POLL_INTERVAL_SECONDS || 30),
     // Referans kod tabanindaki SINIRSIZ "while True: sleep(10)" BILINCLI OLARAK

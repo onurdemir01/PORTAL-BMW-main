@@ -132,7 +132,7 @@ async function ocpPairsForEnv(env, tenant) {
 // -- SUNUCUDA KURULU SPA'LAR (2026-10-26) ---------------------------------------------------
 // Kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de ekleme veya
 // karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor." Ornek:
-// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu, ama adi
+// ges-pension-digital-ch-test/public-website-v0 ORNGXT33'te /hysdeploy altinda kurulu, ama adi
 // -app-v icermedigi icin RVP Operations listesinde yoktu.
 // Kaynak: nginx_config_audit isinin dizin taramasi (dbo.Nginx_Intranet_Audit - adi tarihsel). Is HER
 // nginx sunucusunda /hysdeploy/<ns>/<app>/ ve /usr/nginx/applications/<ns>/<app>/ dizinlerini ADA
@@ -359,7 +359,7 @@ const SOURCES = {
   //
   // BU KAYNAK `input_url` ALANINA BAGLANIR. Isteyen namespace ve uygulamayi secer, URL'i
   // ELLE YAZMAZ: liste envanterden gelir. Boylece
-  //   * eski GBRVP* akisi (prod_create.yaml) HIC DEGISMEZ - ona yine gercek bir input_url
+  //   * eski ORRVP* akisi (prod_create.yaml) HIC DEGISMEZ - ona yine gercek bir input_url
   //     gider, "sanki URL girilmis gibi" davranir,
   //   * yeni filo akisinin ileri cozumlemesi (nginx_url_resolve.py) BIREBIR FQDN
   //     eslesmesiyle ilk adimda tutar, "birden fazla aday" (rc 91) durumuna girmez,
@@ -578,7 +578,7 @@ const SOURCES = {
   //     uc nokta yollari (/x/y/v0/ornek/uc) zone govdesine cozulemiyordu. Onek tasimayan ad playbook'ta
   //     yol sanilir -> listeye girmez.
   //   * yalnizca job'in o ortamda (ve production'da `site`ta) calistigi sunuculardaki dosyalar
-  //     (shared/nginxApiClusters.cjs apiGeneratorHosts).
+  //     (server/audit/nginx-api-kumeleri.cjs apiGeneratorHosts).
   //   * production'da kanal (mblcustomers / customers / mcustomers) verilirse yalniz o kanalin kumesi;
   //     kapsam o kumeye gore sayilir (kullanici 2026-10-22: "Prod ve customers secince ... o sunuculara
   //     bakmaliydi").
@@ -606,7 +606,7 @@ const SOURCES = {
       // Yalniz dogrulama: prod'da rate limit icin kanal kumesi zorunlu (bilinmiyorsa 400).
       apiGatewayKumesi(env, channel, islem);
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const { apiGeneratorHosts } = require('../audit/nginx-api-kumeleri.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
       if (!hosts.size) return [];
       // Kok yol zone adindan cikarilir (kokYolu); ip_zone / server_zone yeni yukleyiciyle gelir, eski
@@ -635,7 +635,7 @@ const SOURCES = {
     async details({ env, site, channel, islem }, conf) {
       const kume = apiGatewayKumesi(env, channel, islem);
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const { apiGeneratorHosts } = require('../audit/nginx-api-kumeleri.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
       // ip_zone / server_zone kolonlarini yeni envanter yukleyicisi ekler (metadata-only ALTER);
       // eski kurulumda yoksa sorgu patlamasin diye once varliklari sorulur.
@@ -695,7 +695,7 @@ const saltOkuma = (islem) => T(islem).toLowerCase() === 'read';
 
 function apiGatewayKumesi(env, channel, islem) {
   if (normEnv(env) !== 'PROD') return null;
-  const { API_CLUSTERS, apiCluster } = require('../../shared/nginxApiClusters.cjs');
+  const { API_CLUSTERS, apiCluster } = require('../audit/nginx-api-kumeleri.cjs');
   const kume = apiCluster(channel);
   if (kume) return kume;
   if (saltOkuma(islem)) return null;

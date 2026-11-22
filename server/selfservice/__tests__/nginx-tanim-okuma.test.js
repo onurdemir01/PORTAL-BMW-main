@@ -35,8 +35,8 @@ const stub = (rel, exports) => {
 const ok = require('../nginx-tanim-okuma.cjs');
 
 const GROUPS = [
-  { id: 'glomo', oldHosts: ['GBRVPP07', 'GBRVPAP03'], newHosts: ['GBNGXP40', 'GBNGXAP34'] },
-  { id: 'other', oldHosts: ['GBRVPP01'], newHosts: ['GBNGXP44'] },
+  { id: 'glomo', oldHosts: ['ORRVPP07', 'ORRVPAP03'], newHosts: ['ORNGXP40', 'ORNGXAP34'] },
+  { id: 'other', oldHosts: ['ORRVPP01'], newHosts: ['ORNGXP44'] },
 ];
 const R = (host, loc, app, ns, o = {}) => ({
   host,
@@ -74,12 +74,12 @@ test('NT1 sablon tanima ve eylem alani', () => {
 
 test('NT2 tablo: location -> uygulama, tutarsizlik, suzgec, siralama', () => {
   const rows = [
-    R('GBNGXT33', '/b/', 'b-app-v1', 'kart-test'),
-    R('GBNGXT33', '/a/', 'a-app-v1', 'kart-test'),
-    R('GBNGXT34', '/a/', 'a-app-v1', 'kart-test'),
-    R('GBNGXT34', '/a/', 'a-app-v1', 'kart-test'),
-    R('GBNGXT35', '/a/', 'a2-app-v1', 'kart-test'),
-    R('GBNGXT33', '', 'x', 'y'),
+    R('ORNGXT33', '/b/', 'b-app-v1', 'kart-test'),
+    R('ORNGXT33', '/a/', 'a-app-v1', 'kart-test'),
+    R('ORNGXT34', '/a/', 'a-app-v1', 'kart-test'),
+    R('ORNGXT34', '/a/', 'a-app-v1', 'kart-test'),
+    R('ORNGXT35', '/a/', 'a2-app-v1', 'kart-test'),
+    R('ORNGXT33', '', 'x', 'y'),
   ];
   const t = ok.tanimTablosu(rows, { env: 'test', service: 'glomo', groups: GROUPS });
   assert.deepEqual(
@@ -91,8 +91,8 @@ test('NT2 tablo: location -> uygulama, tutarsizlik, suzgec, siralama', () => {
   assert.deepEqual(
     a.cevaplar.map((c) => [c.application, c.namespace, c.sunucular.map((h) => h.host)]),
     [
-      ['a-app-v1', 'kart-test', ['GBNGXT33', 'GBNGXT34']],
-      ['a2-app-v1', 'kart-test', ['GBNGXT35']],
+      ['a-app-v1', 'kart-test', ['ORNGXT33', 'ORNGXT34']],
+      ['a2-app-v1', 'kart-test', ['ORNGXT35']],
     ],
   );
   assert.equal(a.cevaplar[0].sunucular[0].filo, null, 'non-prod filo etiketi tasimamali');
@@ -118,13 +118,13 @@ test('NT2 tablo: location -> uygulama, tutarsizlik, suzgec, siralama', () => {
 
 test('NT3 PROD filolari; GLOMO prod yalniz yeni filo; proxy tahmini', () => {
   const rows = [
-    R('GBNGXP40', '/g/', 'g-app-v1', 'g-prod'),
-    R('GBNGXAP34', '/g/', 'g-app-v1', 'g-prod'),
-    R('GBRVPP07', '/g/', 'g-app-v1', null, {
+    R('ORNGXP40', '/g/', 'g-app-v1', 'g-prod'),
+    R('ORNGXAP34', '/g/', 'g-app-v1', 'g-prod'),
+    R('ORRVPP07', '/g/', 'g-app-v1', null, {
       kind: 'proxy',
       target_url: 'https://g-app-v1-g-prod.apps.fw',
     }),
-    R('GBRVPAP03', '/eski/', 'e', null, { kind: 'proxy' }),
+    R('ORRVPAP03', '/eski/', 'e', null, { kind: 'proxy' }),
   ];
   const g = ok.tanimTablosu(rows, { env: 'PROD', service: 'GLOMO', groups: GROUPS });
   assert.equal(g.glomoProd, true);
@@ -135,16 +135,16 @@ test('NT3 PROD filolari; GLOMO prod yalniz yeni filo; proxy tahmini', () => {
     'eski filo location GLOMO prod okumasina girdi',
   );
   assert.deepEqual(g.satirlar[0].cevaplar[0].sunucular, [
-    { host: 'GBNGXAP34', filo: 'yeni' },
-    { host: 'GBNGXP40', filo: 'yeni' },
+    { host: 'ORNGXAP34', filo: 'yeni' },
+    { host: 'ORNGXP40', filo: 'yeni' },
   ]);
   const rows2 = [
-    R('GBNGXP44', '/w/', 'w-app-v1', 'w-prod'),
-    R('GBRVPP01', '/w/', 'w-app-v1', null, {
+    R('ORNGXP44', '/w/', 'w-app-v1', 'w-prod'),
+    R('ORRVPP01', '/w/', 'w-app-v1', null, {
       kind: 'proxy',
       target_url: 'https://w-app-v1-w-prod.apps.fw',
     }),
-    R('GBXYZP99', '/z/', 'z-app-v1', 'z-prod'),
+    R('ORXYZP99', '/z/', 'z-app-v1', 'z-prod'),
   ];
   const w = ok.tanimTablosu(rows2, { env: 'prod', service: 'webforms', groups: GROUPS });
   assert.equal(w.glomoProd, false);
@@ -156,7 +156,7 @@ test('NT3 PROD filolari; GLOMO prod yalniz yeni filo; proxy tahmini', () => {
     [proxy.hedef, proxy.namespace, proxy.sunucular[0].filo],
     ['https://w-app-v1-w-prod.apps.fw', null, 'eski'],
   );
-  assert.deepEqual(wc.find((c) => !c.tahmin).sunucular, [{ host: 'GBNGXP44', filo: 'yeni' }]);
+  assert.deepEqual(wc.find((c) => !c.tahmin).sunucular, [{ host: 'ORNGXP44', filo: 'yeni' }]);
   assert.equal(
     w.satirlar.find((s) => s.location === '/w/').tutarsiz,
     true,
@@ -223,7 +223,7 @@ test('NT4 okuyucu: olculemedi / yok / var, kolon yedegi, dogrulama', async () =>
         code: 'EREQUEST',
         number: 207,
       });
-    return { recordset: [R('GBNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
+    return { recordset: [R('ORNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
   });
   r = await ok.nginxTanimlari(
     { env: 'test', service: 'glomo' },
@@ -291,7 +291,7 @@ test('NT4c target_url ve ic ice mssql SQL207 hatasi eski sema yedegini acar', as
     const s = sahteSql((q) => {
       if (q.includes('MAX(scan_date)')) return { recordset: [{ d: '2026-10-19' }] };
       if (q.includes('kind')) throw hata;
-      return { recordset: [R('GBNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
+      return { recordset: [R('ORNGXT33', '/a/', 'a-app-v1', 'kart-test')] };
     });
     const r = await ok.nginxTanimlari(
       { env: 'test', service: 'glomo' },
@@ -321,8 +321,8 @@ test('NT5 GERCEK selfservice ucu', async (t) => {
         ? { recordset: [{ d: '2026-10-19' }] }
         : {
             recordset: [
-              R('GBNGXP40', '/g/', 'g-app-v1', 'g-prod'),
-              R('GBRVPP07', '/g/', 'g', null, { kind: 'proxy' }),
+              R('ORNGXP40', '/g/', 'g-app-v1', 'g-prod'),
+              R('ORRVPP07', '/g/', 'g', null, { kind: 'proxy' }),
             ],
           },
   });
@@ -346,7 +346,7 @@ test('NT5 GERCEK selfservice ucu', async (t) => {
   assert.equal(r.status, 200);
   assert.deepEqual(
     [j.durum, j.glomoProd, j.eskiFiloGizli, j.satirlar[0].cevaplar[0].sunucular[0].host],
-    ['var', true, 1, 'GBNGXP40'],
+    ['var', true, 1, 'ORNGXP40'],
   );
   r = await fetch(`${kok}/nginx-tanimlar?env=prod`, { headers: H });
   assert.equal(r.status, 400);

@@ -75,7 +75,7 @@ export default function SimpleCrudTable<T extends { id: number }>({
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
-  // Arama TUM kolonlarda calisir: admin "gbocpprod2" da yazabilir "uxmid_das" da.
+  // Arama TUM kolonlarda calisir: admin "orocpprod2" da yazabilir "svcac_das" da.
   // Kolon secmek zorunda birakmak, aradiginin hangi kolonda oldugunu bilmesini
   // gerektirirdi.
   const visibleRows = useMemo(() => {

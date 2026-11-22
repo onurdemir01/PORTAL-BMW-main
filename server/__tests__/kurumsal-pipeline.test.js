@@ -208,7 +208,7 @@ test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
     ],
     [
       'gercek e-posta',
-      asil.replace("'EKIP_EPOSTA_ADRESI'", "'ekip@ornek.com.tr'"),
+      asil.replace("'EKIP_EPOSTA_ADRESI'", "'ekip@ornek.invalid'"),
       /gercek e-posta/,
     ],
     [

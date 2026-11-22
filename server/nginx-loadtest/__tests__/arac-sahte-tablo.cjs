@@ -16,7 +16,7 @@ function aracSatiri(ek = {}) {
   return {
     id,
     durum: 'DONE',
-    derleme_host: 'GBLABT02',
+    derleme_host: 'ORLABT02',
     k6_surum: 'v0.49.0',
     wrk_surum: '4.2.0',
     istenen_k6_arsiv_sha256: SHA_K6_ARSIV,

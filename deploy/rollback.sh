@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy/rollback.sh — SON CALISAN PAKETE HIZLI GERI DONUS (gblabt02, kullanici: was).
+# deploy/rollback.sh — SON CALISAN PAKETE HIZLI GERI DONUS (orlabt02, kullanici: was).
 #
 # release.sh / release-git.sh her surumde once mevcut agacin yedegini alir:
 #   /vhosting8/bmw_portal/deploy/backup-<zaman>/   (son 3 tutulur; dist + node_modules DAHIL)

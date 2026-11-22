@@ -57,14 +57,14 @@ Her cluster için:
 ## LDAP (henüz doldurulmadıysa)
 
 ```env
-LDAP_URL=ldaps://adds.fw.garanti.com.tr:636
+LDAP_URL=ldaps://adds.fw.sirket.invalid:636
 LDAP_BASE_DN=DC=fw,DC=garanti,DC=com,DC=tr
 LDAP_BIND_DN=CN=svc_portal,OU=ServiceAccounts,DC=fw,DC=garanti,DC=com,DC=tr
 LDAP_BIND_PASSWORD=
 LDAP_ADMIN_GROUP=CN=BMW_Portal_Admins,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr
 LDAP_USER_GROUP=CN=BMW_Portal_Users,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr
 # Şirket CA sertifikası PEM dosyası yolu (LDAPS doğrulaması için)
-LDAP_CA_CERT_PATH=/etc/ssl/garanti-root.pem
+LDAP_CA_CERT_PATH=/etc/ssl/kurum-root.pem
 ```
 
 ---
