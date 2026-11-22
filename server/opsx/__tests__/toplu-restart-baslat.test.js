@@ -273,8 +273,8 @@ test('OB7 ad kurali: envanter TEST ama ad prod (ortam harfi P) -> uretim, launch
     (e) => e.status === 409 && e.code === 'uretim' && /ad. kural/.test(e.message),
   );
   assert.equal(S.launches.length, 0);
-  assert.equal(O.adKuraliProdMu('gojbwp03.dom.local'), true);
-  for (const h of ['ORJBOT18', 'ORJBOD01', 'APP01', 'GOJBAQ03'])
+  assert.equal(O.adKuraliProdMu('opjbwp03.dom.local'), true);
+  for (const h of ['ORJBOT18', 'ORJBOD01', 'APP01', 'OPJBAQ03'])
     assert.equal(O.adKuraliProdMu(h), false, h);
 });
 

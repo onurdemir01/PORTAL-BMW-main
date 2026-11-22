@@ -25,7 +25,7 @@ import {
 const ac = (onDegisti = vi.fn()) => {
   render(
     <JvmParamDuzenle
-      host="GOJBAP01"
+      host="OPJBAP01"
       gen={8}
       jvm="MUSTERI"
       uygulama="MUSTERI"
@@ -84,7 +84,7 @@ describe('JVM parametresi', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Önizle' }));
     expect(await screen.findByTestId('jvm-param-plan')).toHaveTextContent('max-heap-size 1g -> 2g');
     expect(m.jvmParam).toHaveBeenCalledWith({
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       gen: 8,
       jvm: 'MUSTERI',
       parametre: '-Xmx2g',

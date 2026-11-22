@@ -2144,7 +2144,7 @@ test('ETT25 kuyruktan baslatma hatasi ayni sunucuda bekleyen taramayi baslatir',
   assert.equal(satir(b.id).envanter_kosu_id, 77);
 });
 
-// KULLANIM ENGELI (2026-11-17, DACRPAP01): JBoss'a bagli olmayan ama dizini kullanilan EAR (surec ya da son 7 gunde
+// KULLANIM ENGELI (2026-11-17, ODCRPAP01): JBoss'a bagli olmayan ama dizini kullanilan EAR (surec ya da son 7 gunde
 // yazma) on kontrole de silmeye de giremez (tekli + toplu); olculemeyen / eski yazma engel degil.
 test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil / toplu reddi', async () => {
   // Esik TARAMA anina gore (host(): taranma 2026-11-15T10:00:00Z), duvar saatine gore degil.

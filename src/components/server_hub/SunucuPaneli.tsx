@@ -47,7 +47,7 @@ import { jvmNesilEtiketi, jvmSayisiMetni } from './jvmNesil';
 const SIRA: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
 
 /**
- * JVM'e bağlı olmayan EAR'ın dizin kullanımı (2026-11-17, DACRPAP01: domain.xml'de olmayan EAR'da canlı
+ * JVM'e bağlı olmayan EAR'ın dizin kullanımı (2026-11-17, ODCRPAP01: domain.xml'de olmayan EAR'da canlı
  * Node.js). Referans Uygulama Envanteri'nin tarama anı; ölçülmediyse bunu söyler ("kullanılmıyor" denmez).
  */
 export function BagsizKullanim({

@@ -1524,7 +1524,7 @@ test('TR20 ad kurali: envanter TEST + ad prod -> OpsX ten tek tek', () => {
     T.restartKapisi(A, H('ORJBOP18', [j]), j),
     /sunucu adı kuralına göre prod \(envanter TEST/,
   );
-  assert.match(T.restartKapisi(A, H('gojbwp03.dom', [j]), j), /kuralına göre prod/);
+  assert.match(T.restartKapisi(A, H('opjbwp03.dom', [j]), j), /kuralına göre prod/);
   assert.equal(T.restartKapisi(A, H('ORJBOT18', [j]), j), null);
   assert.equal(T.adKuraliProd('APP01'), false);
 });

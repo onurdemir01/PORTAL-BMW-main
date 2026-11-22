@@ -496,7 +496,7 @@ sahte(require.resolve('../../retirement/discover.cjs'), {
   discover: async () => ({
     targets: [
       {
-        host: 'GOJBAP01',
+        host: 'OPJBAP01',
         appName: 'MUSTERI',
         env: 'PROD',
         site: 'Pendik',
@@ -504,7 +504,7 @@ sahte(require.resolve('../../retirement/discover.cjs'), {
         tier: '3-tier',
         web: [
           {
-            host: 'GOJBWP01',
+            host: 'OPJBWP01',
             serverName: 'musteri.bank',
             product: 'RHA',
             kaynak: 'ajp',
@@ -615,8 +615,8 @@ test("AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tab
   const metinler = [];
   const tablo = {
     MWAppsInventory: [
-      { app: 'GEINTERNETBRANCH-T', host: 'GEJBOT03' },
-      { app: 'GEINTERNETBRANCH-D', host: 'GEJBOT03' },
+      { app: 'GEINTERNETBRANCH-T', host: 'OGJBOT03' },
+      { app: 'GEINTERNETBRANCH-D', host: 'OGJBOT03' },
     ],
     WASAppsInventory: [{ app: 'GEINTERNETWAS', n: 1 }],
     Openshift_Inventory: [{ app: 'geinternet-api', ns: 1, cl: 1 }],
@@ -654,7 +654,7 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
         recordset: [
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             jboss_version: 'EAP 8.0',
             jdk_type: 'OpenJDK',
@@ -667,13 +667,13 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
       };
     if (t.includes('FROM dbo.Inventory'))
       return {
-        recordset: [{ host: 'GOJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }],
+        recordset: [{ host: 'OPJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }],
       };
     return { recordset: [] };
   };
   hub.hosts = [
     {
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       fresh: true,
       scanDate: '2026-11-08',
       jvms: [
@@ -693,14 +693,14 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
   const d = await V.jbossDetay('MUSTERI');
   assert.equal(d.sunucular.length, 1);
   const s = d.sunucular[0];
-  assert.equal(s.host, 'GOJBAP01');
+  assert.equal(s.host, 'OPJBAP01');
   assert.equal(s.ortam, 'PROD');
   assert.equal(s.minHeap, '1024 MB');
   assert.equal(s.kapasite.bellekGb, 32);
   assert.equal(s.kapasite.cpu, 8);
   assert.equal(s.jvmler.length, 1, 'baska uygulamanin JVM i karisti');
   assert.equal(s.jvmler[0].jvmArgs, '-Xmx4g -Dsifre=*** -Dfile.encoding=UTF-8');
-  assert.equal(d.webSunuculari[0].host, 'GOJBWP01');
+  assert.equal(d.webSunuculari[0].host, 'OPJBWP01');
   assert.equal(d.webSunuculari[0].istek7g, 1200);
   assert.equal(d.ozet.calisanJvm, 1);
   assert.equal(d.kaynaklar.envanter.hata, null);
@@ -775,14 +775,14 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
         recordset: [
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             domain: 'dom-a',
             jboss_version: 'EAP 8.0',
           },
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             domain: 'dom-b',
             jboss_version: 'EAP 8.0',
@@ -793,7 +793,7 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
   };
   hub.hosts = [
     {
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       fresh: true,
       scanDate: '2026-11-11',
       jvms: [

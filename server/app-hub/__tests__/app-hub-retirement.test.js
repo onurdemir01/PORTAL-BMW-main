@@ -33,7 +33,7 @@ sahte(require.resolve('../../inventory/mssql.cjs'), {
     if (t.includes('FROM dbo.MWAppsInventory'))
       return {
         recordset: [
-          { app: 'MUSTERI', host: 'gojbap01', env: 'Production', jboss_version: 'EAP 8.0' },
+          { app: 'MUSTERI', host: 'opjbap01', env: 'Production', jboss_version: 'EAP 8.0' },
         ],
       };
     return { recordset: [] };
@@ -54,7 +54,7 @@ sahte(require.resolve('../../config/apps-table.cjs'), {
 const hub = { capraz: null, jvms: [] };
 sahte(require.resolve('../../server-hub/index.cjs'), {
   getAssessment: async () => ({
-    hosts: [{ host: 'GOJBAP01', fresh: true, scanDate: '2026-11-15', jvms: hub.jvms }],
+    hosts: [{ host: 'OPJBAP01', fresh: true, scanDate: '2026-11-15', jvms: hub.jvms }],
     latestScan: '2026-11-15',
     capraz: hub.capraz,
   }),
@@ -72,7 +72,7 @@ const RET_OK = { retirement: { okunamadi: false, hata: '', hedef: 3 } };
 const hedefSatiri = (o) => ({
   id: 71,
   record_id: 24,
-  host: 'GOJBAP01',
+  host: 'OPJBAP01',
   app_name: 'MUSTERI',
   jboss_gen: 8,
   app_path: '/vhosting8/MUSTERI.ear',

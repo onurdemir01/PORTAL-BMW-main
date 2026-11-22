@@ -848,7 +848,7 @@ def _deployment_eslesme_turu(d, yollar, ayni_mi, ad_k):
         p = os.path.normpath(d['yol'])
         if p in yollar:
             return 'YOL'
-        # EAR dizininin ICINDEKI modul ayri deployment olabilir (DACRAAP11, 2026-11-16:
+        # EAR dizininin ICINDEKI modul ayri deployment olabilir (ODCRAAP11, 2026-11-16:
         # fs-exploded path=/vhosting8/X.ear/X.war, ad "DA-X-prd.war"). Sinir '/' ile:
         # /vhosting8/X.ear1/... X.ear sayilmaz.
         if any(p.startswith(y.rstrip('/') + '/') for y in yollar):
@@ -1164,7 +1164,7 @@ def baglanti_tara(yapilandirmalar, was):
 
 
 # ---- KULLANIM KANITI (surum 4, 2026-11-17) ----
-# DACRPAP01: /vhosting8/DASCRYPTOWEBSITENODE.ear domain.xml'de yok (JVM_YOK, TANIM_YOK) ama dizinde canli bir
+# ODCRPAP01: /vhosting8/DASCRYPTOWEBSITENODE.ear domain.xml'de yok (JVM_YOK, TANIM_YOK) ama dizinde canli bir
 # Node.js sureci calisiyor (cwd = .../X.war) ve logs/ bugun yaziliyor. JVM_YOK cikan her EAR icin TEK /proc
 # taramasi (tum EAR'lar paylasir) ve agacta en yeni dosya mtime'i. Kayda yalniz pid, comm, kullanici ve
 # 'nasil' girer: cmdline METNI hicbir yere yazilmaz (parola tasiyabilir), yalniz yerelde yol karsilastirilir.

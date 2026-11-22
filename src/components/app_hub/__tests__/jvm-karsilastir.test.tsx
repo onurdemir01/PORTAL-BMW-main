@@ -63,8 +63,8 @@ const yanit = {
           farkSayisi: 2,
           jvmler: [
             {
-              etiket: 'GOJBAP01/MUSTERI',
-              host: 'GOJBAP01',
+              etiket: 'OPJBAP01/MUSTERI',
+              host: 'OPJBAP01',
               jvm: 'MUSTERI',
               kaynak: 'CALISAN',
               calisiyor: true,
@@ -78,19 +78,19 @@ const yanit = {
             {
               anahtar: '-Xmx',
               cogunluk: '2g',
-              cogunlukUyeler: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'],
+              cogunlukUyeler: ['OPJBAP01/MUSTERI', 'OPJBAP02/MUSTERI'],
               degerler: [],
-              sapanlar: [{ uye: 'GOJBAP03/MUSTERI', deger: '4g', normal: '4g' }],
+              sapanlar: [{ uye: 'OPJBAP03/MUSTERI', deger: '4g', normal: '4g' }],
               belirsiz: false,
             },
           ],
           eksikFazla: [
             {
               anahtar: '-Dozel.ayar',
-              olan: ['GOJBAP03/MUSTERI'],
-              olmayan: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'],
+              olan: ['OPJBAP03/MUSTERI'],
+              olmayan: ['OPJBAP01/MUSTERI', 'OPJBAP02/MUSTERI'],
               kesikte: [],
-              degerler: [{ uye: 'GOJBAP03/MUSTERI', deger: 'acik' }],
+              degerler: [{ uye: 'OPJBAP03/MUSTERI', deger: 'acik' }],
               cogunlukta: false,
             },
           ],
@@ -225,7 +225,7 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
     expect(within(a).getByText('-Xmx')).toBeTruthy();
     expect(within(a).getByText('2g')).toBeTruthy();
     expect(within(a).getByText('4g')).toBeTruthy();
-    expect(within(a).getAllByText('GOJBAP03/MUSTERI').length).toBeGreaterThan(0);
+    expect(within(a).getAllByText('OPJBAP03/MUSTERI').length).toBeGreaterThan(0);
     expect(within(a).getByText('-Dozel.ayar')).toBeTruthy();
     expect(within(a).getByText(/azınlıkta · fazla/)).toBeTruthy();
     expect(within(a).getByText(/Sunucuya özgü \(1, eşitsizlik sayılmadı\)/)).toBeTruthy();
@@ -281,11 +281,11 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
                   cogunlukUyeler: [],
                   degerler: [],
                   belirsiz: true,
-                  sapanlar: [{ uye: 'GOJBAP02/MUSTERI', deger: 'GOJBAP01', normal: 'GOJBAP01' }],
+                  sapanlar: [{ uye: 'OPJBAP02/MUSTERI', deger: 'OPJBAP01', normal: 'OPJBAP01' }],
                 },
               ],
               eksikFazla: [],
-              karsilastirilamadi: [{ anahtar: '-Dkesilen', kesik: ['GOJBAP01/MUSTERI'] }],
+              karsilastirilamadi: [{ anahtar: '-Dkesilen', kesik: ['OPJBAP01/MUSTERI'] }],
             },
           ],
         },

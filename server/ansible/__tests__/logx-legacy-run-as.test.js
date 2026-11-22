@@ -1,7 +1,7 @@
 // server/ansible/__tests__/logx-legacy-run-as.test.js — LogX Legacy HANGI KULLANICIYLA OKUR, HANGISIYLE YAZAR?
 //
 // URETIM OLAYI 1 (2026-10-01): LogX Legacy transferi
-//   ESJBOT02:/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log
+//   OFJBOT02:/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log
 // icin "Arsivlenecek mevcut ve okunabilir bir dosya bulunamadi." dedi. Dosya ORADAYDI.
 // Arsivleme baglanan kullaniciyla (svcac) kosuyordu; JBoss loglari `was`in ve 640. Kesif
 // dosyayi listeliyor, transferin `stat`'i `readable: false` donuyor -> belirti "dosya yok".

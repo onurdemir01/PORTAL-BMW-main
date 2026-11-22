@@ -108,10 +108,10 @@ test('LB4 ORSUB ve Ankara eslenikleri', () => {
     [],
     'ORSUB disinda ORWEB eklendi',
   );
-  const a = coz(['GOJBANP03'], K('GOJBWNP03-10.0.0.2'));
+  const a = coz(['OPJBANP03'], K('OPJBWNP03-10.0.0.2'));
   assert.equal(a.sonuclar[0].bulundu, false, 'Ankara eslenigi bulundu saymaz');
-  assert.deepEqual(hostlar(a.sonuclar[0]), ['GOJBWNP03']);
-  assert.equal(coz(['GOJBXNP03'], K('GOJBWNP03-10.0.0.2')).ipler.length, 0);
+  assert.deepEqual(hostlar(a.sonuclar[0]), ['OPJBWNP03']);
+  assert.equal(coz(['OPJBXNP03'], K('OPJBWNP03-10.0.0.2')).ipler.length, 0);
 });
 
 test('LB5 dijital kanal web sunuculari', () => {

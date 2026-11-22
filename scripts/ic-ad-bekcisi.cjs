@@ -27,6 +27,16 @@ const DESENLER = [
   ['kurum sunucu adi', /(?<![A-Za-z0-9])gb[a-z][a-z0-9]{1,20}\d[a-z]?(?![A-Za-z0-9])/],
   ['istirak OCP / sunucu adi', /(?<![A-Za-z0-9])gi(?:a?ocp|hst)[a-z0-9]*\d(?![A-Za-z0-9])/],
   ['istirak OCP / sunucu adi', /(?<![A-Za-z0-9])da(?:a?ocp|mtc)[a-z0-9]*\d(?![A-Za-z0-9])/],
+  // Istirak ve grup sirketi sunucu adlari (2026-11-22): <onek> + harfler + IKI hane; DATETIME2 gibi tek haneli
+  // belirtecler disarida. Harf tutarli.
+  [
+    'istirak OCP / sunucu adi',
+    /(?<![A-Za-z0-9])(?:DA|ES|GE|GO)[A-Z]{2,10}\d{2}[A-Z]?(?![A-Za-z0-9])/,
+  ],
+  [
+    'istirak OCP / sunucu adi',
+    /(?<![A-Za-z0-9])(?:da|es|ge|go)[a-z]{2,10}\d{2}[a-z]?(?![A-Za-z0-9])/,
+  ],
   // Regex icindeki kacisli bicim de (noktalardan once ters bolu): IU5 testi bu bicimle gozden kacmisti.
   ['kurum alan adi (.com.tr)', /(?<![a-z0-9-])[a-z0-9-]+\\?\.com\\?\.tr(?![a-z0-9-])/i],
 ];
