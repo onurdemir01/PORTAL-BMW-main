@@ -42,9 +42,7 @@ function parseObjectLine(line) {
 // Playbook'un `results[]` ogesi → { cluster_name, namespace, status, error, objects[] }
 function parseResultEntry(entry) {
   const e = entry || {};
-  const objects = (Array.isArray(e.lines) ? e.lines : [])
-    .map(parseObjectLine)
-    .filter(Boolean);
+  const objects = (Array.isArray(e.lines) ? e.lines : []).map(parseObjectLine).filter(Boolean);
   return {
     clusterName: String(e.cluster_name || ''),
     namespace: String(e.namespace || ''),

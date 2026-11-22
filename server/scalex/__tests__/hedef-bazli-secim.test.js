@@ -20,7 +20,18 @@ const path = require('node:path');
 const launch = require('../launch.cjs');
 const IX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 const RUNPHASE = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'scalex', 'scalex_app', 'tasks', '10_run_phase.yml'),
+  path.join(
+    __dirname,
+    '..',
+    '..',
+    'ansible',
+    'playbooks',
+    'bmw_portal',
+    'scalex',
+    'scalex_app',
+    'tasks',
+    '10_run_phase.yml',
+  ),
   'utf8',
 );
 
@@ -62,17 +73,26 @@ test('HT4 PATLAMA YARICAPI carpim degil GERCEK hedef sayisi', () => {
   // Carpimi kullanmak, kullanici hedeflerin yarisini haric tuttugunda bile
   // "yazili onay gerekir" demek — ve daha kotusu, `maxTargets` sinirini HIC
   // etkilenmeyecek hedefler yuzunden asmak olurdu.
-  const ortak = { clusters: ['c1', 'c2'], apps: ['a', 'b'], environment: 'prod', action: 'stop', executionMode: 'apply' };
+  const ortak = {
+    clusters: ['c1', 'c2'],
+    apps: ['a', 'b'],
+    environment: 'prod',
+    action: 'stop',
+    executionMode: 'apply',
+  };
   assert.equal(launch.computeBlastRadius(ortak).targets, 4, 'carpim yanlis');
   assert.equal(
-    launch.computeBlastRadius({ ...ortak, selectedTargets: [{ cluster: 'c1', name: 'a' }] }).targets,
+    launch.computeBlastRadius({ ...ortak, selectedTargets: [{ cluster: 'c1', name: 'a' }] })
+      .targets,
     1,
     'hedef bazli sayim yapilmiyor',
   );
 });
 
 test('HT5 istemci listesi kapsami GENISLETEMEZ (sunucu normalizasyonu)', () => {
-  const kod = IX.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const kod = IX.split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   const i = kod.indexOf('function normalizeTargets');
   assert.ok(i > 0, 'normalize edici yok');
   // SON ISARET BULUNMALI: `indexOf` -1 donerse `slice(i, -1)` dosyanin KALANINI verir ve
@@ -89,7 +109,9 @@ test('HT5 istemci listesi kapsami GENISLETEMEZ (sunucu normalizasyonu)', () => {
 });
 
 test('HT6 UC ucun hepsi hedef listesini OKUYOR (ayrisma olmasin)', () => {
-  const kod = IX.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const kod = IX.split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   // `/preview` ve `/run` — ikisi de normalize edip patlama yaricapina gecirmeli.
   const kez = (kod.match(/normalizeTargets\(req\.body\?\.targets/g) || []).length;
   assert.ok(kez >= 2, `hedef listesi ${kez} ucta okunuyor — /preview ve /run ikisi de okumali`);
@@ -109,7 +131,10 @@ test('HT7 playbook APP_RAW`i CLUSTER BASINA cozuyor', () => {
   // birakmadi) ve boolean bicimi onu "tanimsiz" sayip TUM listeye geri duserdi
   // — haric tutulan hedefler YINE islem gorurdu.
   const satir = RUNPHASE.split('\n').find((l) => l.includes('APP_RAW:'));
-  assert.ok(!/default\([^)]*,\s*true\s*\)/.test(satir), 'BOOLEAN default kullanilmis — kasitli bos liste ezilir');
+  assert.ok(
+    !/default\([^)]*,\s*true\s*\)/.test(satir),
+    'BOOLEAN default kullanilmis — kasitli bos liste ezilir',
+  );
 });
 
 test('HT8 hedef verilmediginde davranis BUGUNKU ile ayni', () => {
@@ -117,6 +142,12 @@ test('HT8 hedef verilmediginde davranis BUGUNKU ile ayni', () => {
   // ve playbook `target_app_names`e (tam carpim) duser.
   assert.deepEqual(launch.buildClusterAppMap(null, ['a']), {});
   assert.deepEqual(launch.buildClusterAppMap([], ['a']), {});
-  const kod = IX.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-  assert.match(kod, /if \(!Array\.isArray\(raw\) \|\| !raw\.length\) return null;/, 'bos liste null donmuyor');
+  const kod = IX.split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+  assert.match(
+    kod,
+    /if \(!Array\.isArray\(raw\) \|\| !raw\.length\) return null;/,
+    'bos liste null donmuyor',
+  );
 });

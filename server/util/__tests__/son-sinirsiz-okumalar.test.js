@@ -14,6 +14,7 @@
 // Bu testler GERCEK kod yolunu sahte bir HTTP katmaniyla kosturur: kaynak
 // taramasi bu sinifi goremez — kapinin VAR olmasi yetmez, CALISMASI gerekir.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -39,13 +40,17 @@ function devSunucu(bayt, kod = 500) {
     };
     yaz();
   });
-  return new Promise((r) => srv.listen(0, '127.0.0.1', () => r({ srv, durum, port: srv.address().port })));
+  return new Promise((r) =>
+    srv.listen(0, '127.0.0.1', () => r({ srv, durum, port: srv.address().port })),
+  );
 }
 
 function sureSinirli(p, ms, etiket) {
   return Promise.race([
     p,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`${etiket}: ${ms} ms icinde cozulmedi`)), ms)),
+    new Promise((_, rej) =>
+      setTimeout(() => rej(new Error(`${etiket}: ${ms} ms icinde cozulmedi`)), ms),
+    ),
   ]);
 }
 
@@ -92,7 +97,10 @@ test('SS2 `readBodyPreview` HATA FIRLATMAZ — gercek HTTP durumunu maskelemez',
 test('SS3 `readBodyPreview` govde yoksa/bozuksa bos doner, patlamaz', async () => {
   assert.equal(await readBodyPreview(null), '');
   assert.equal(await readBodyPreview(undefined), '');
-  const bozuk = (async function* () { yield Buffer.from('bas'); throw new Error('akis koptu'); })();
+  const bozuk = (async function* () {
+    yield Buffer.from('bas');
+    throw new Error('akis koptu');
+  })();
   // Akis YARIDA koparsa eldeki kisim yine de teshise yarar: '' degil 'bas' beklenir.
   assert.equal(await readBodyPreview(bozuk, { maxBytes: 100 }), 'bas');
 });
@@ -114,9 +122,11 @@ test('SS5 UC Teams yolunun HICBIRINDE `res.text()` KALMADI', () => {
     'server/db/housekeeping.cjs',
   ];
   for (const f of dosyalar) {
-    const kod = fs.readFileSync(path.join(ROOT, f), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    assert.doesNotMatch(kod, /await\s+res\.text\(\)/, `${f}: sinirsiz .text() geri geldi`);
+    const kod = fs
+      .readFileSync(path.join(ROOT, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    assert.doesNotMatch(kod, esnek(/await\s+res\.text\(\)/), `${f}: sinirsiz .text() geri geldi`);
     assert.match(kod, /readBodyPreview\(/, `${f}: sinirli okuma kullanilmiyor`);
   }
 });
@@ -136,7 +146,11 @@ function gercekTokenFn() {
   assert.ok(c > 0 && i > c && j > i, 'kaynak cikarimi bozuldu — desen degismis');
   const { tlsSecenekleri, tlsHatasiAcikla } = require('../tls-guven.cjs');
   return new Function(
-    'http', 'https', 'URL', 'tlsSecenekleri', 'tlsHatasiAcikla',
+    'http',
+    'https',
+    'URL',
+    'tlsSecenekleri',
+    'tlsHatasiAcikla',
     `${RUNNER_SRC.slice(c, i)}\n${RUNNER_SRC.slice(i, j)}\nreturn { fetchTokenOAuth2AtPath, AWX_TOKEN_MAX_BYTES };`,
   )(http, require('node:https'), URL, tlsSecenekleri, tlsHatasiAcikla);
 }
@@ -146,14 +160,20 @@ test('SS6 token ucu DEV yaniti tamponlamaz ve ACIKCA reddeder', async () => {
   const { srv, durum, port } = await devSunucu(64 * 1024 * 1024, 200);
   try {
     const hata = await sureSinirli(
-      fn.fetchTokenOAuth2AtPath(`http://127.0.0.1:${port}`, '/api/o/token/', 'u', 'p')
-        .then(() => null, (e) => e),
+      fn.fetchTokenOAuth2AtPath(`http://127.0.0.1:${port}`, '/api/o/token/', 'u', 'p').then(
+        () => null,
+        (e) => e,
+      ),
       20000,
       'SS6',
     );
     assert.ok(hata, 'dev yanit KABUL edildi — sinir yok');
     assert.match(hata.message, /çok büyük/, `beklenmeyen hata: ${hata.message}`);
-    assert.equal(hata.tooLarge, true, 'tooLarge isareti yok — cagiran kalici/gecici ayrimini yapamaz');
+    assert.equal(
+      hata.tooLarge,
+      true,
+      'tooLarge isareti yok — cagiran kalici/gecici ayrimini yapamaz',
+    );
     // Sunucu 64 MB yazmayi BITIREMEDEN baglanti kesilmis olmali.
     assert.ok(durum.yazilan < 64 * 1024 * 1024, 'baglanti kesilmedi, tum govde cekildi');
   } finally {
@@ -166,8 +186,10 @@ test('SS7 token ucu kirpmada ASILMAZ (`destroy` sonrasi `end` GELMEZ)', async ()
   const { srv, port } = await devSunucu(64 * 1024 * 1024, 200);
   try {
     const sonuc = await Promise.race([
-      fn.fetchTokenOAuth2AtPath(`http://127.0.0.1:${port}`, '/api/o/token/', 'u', 'p')
-        .then(() => 'cozuldu', () => 'cozuldu'),
+      fn.fetchTokenOAuth2AtPath(`http://127.0.0.1:${port}`, '/api/o/token/', 'u', 'p').then(
+        () => 'cozuldu',
+        () => 'cozuldu',
+      ),
       new Promise((r) => setTimeout(() => r('ASILDI'), 20000)),
     ]);
     assert.equal(sonuc, 'cozuldu', 'promise asili kaldi — sinirsiz tamponlamadan DAHA KOTU');
@@ -185,8 +207,14 @@ test('SS8 NORMAL token yaniti bozulmadan gecer', async () => {
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   try {
     const t = await sureSinirli(
-      fn.fetchTokenOAuth2AtPath(`http://127.0.0.1:${srv.address().port}`, '/api/o/token/', 'u', 'p'),
-      10000, 'SS8',
+      fn.fetchTokenOAuth2AtPath(
+        `http://127.0.0.1:${srv.address().port}`,
+        '/api/o/token/',
+        'u',
+        'p',
+      ),
+      10000,
+      'SS8',
     );
     assert.equal(t.token, 'abc123', 'mesru token yolu bozuldu');
     assert.ok(t.expires, 'son kullanma damgasi kayboldu');
@@ -229,6 +257,10 @@ test('SS11 cagiran basina JSON tavani VARSAYILANDA genel kapiya duser', () => {
   const kod = RUNNER_SRC.replace(/^\s*\/\/.*$/gm, '');
   const tanim = /const jsonTavan =([\s\S]*?);/.exec(kod);
   assert.ok(tanim, 'jsonTavan tanimi bulunamadi');
-  assert.match(tanim[1].replace(/\s+/g, ' '), /: AWX_JSON_MAX_BYTES$/, `varsayilan genel kapi degil: ${tanim[1].trim()}`);
+  assert.match(
+    tanim[1].replace(/\s+/g, ' '),
+    /: AWX_JSON_MAX_BYTES$/,
+    `varsayilan genel kapi degil: ${tanim[1].trim()}`,
+  );
   assert.match(tanim[1], /opts\.maxBytes > 0/, 'gecersiz/sifir tavan reddedilmiyor');
 });

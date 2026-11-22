@@ -541,7 +541,7 @@ export function NginxUpstreamEnvanteri({ yenile: disYenile = 0 }: { yenile?: num
   }, [yenile]);
 
   const ortamlar = useMemo(
-    () => [...new Set((veri?.hosts || []).map((h) => h.ortam))].sort(),
+    () => [...new Set((veri?.hosts || []).map((h) => h.ortam))].sort((a, b) => a.localeCompare(b)),
     [veri],
   );
   const satirlar = useMemo(() => {

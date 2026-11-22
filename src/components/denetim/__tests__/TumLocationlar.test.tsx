@@ -27,7 +27,7 @@ import type { NginxMigrationGroup, NginxMigrationLocation } from '@/api/denetimA
 
 const L = (o: Partial<NginxMigrationLocation> & { location: string }): NginxMigrationLocation => ({
   service: 'GLOMO',
-  oldHosts: ['GBRVPP07', 'GBRVPP08'],
+  oldHosts: ['ORRVPP07', 'ORRVPP08'],
   targets: [],
   written: [],
   siniflar: ['spa'],
@@ -42,10 +42,20 @@ const L = (o: Partial<NginxMigrationLocation> & { location: string }): NginxMigr
 });
 
 const LOCS: NginxMigrationLocation[] = [
-  L({ location: '/standartsiz/', siniflar: ['spa-disi'], targets: ['webforms-ui-glomo-prod.apps.x'], apps: ['glomo-prod/webforms-ui'] }),
-  L({ location: '/yarim/', newStatus: 'partial', newHosts: ['GBNGXP40'], targets: ['yarim-app-v1-glomo-prod.apps.x'] }),
+  L({
+    location: '/standartsiz/',
+    siniflar: ['spa-disi'],
+    targets: ['webforms-ui-glomo-prod.apps.x'],
+    apps: ['glomo-prod/webforms-ui'],
+  }),
+  L({
+    location: '/yarim/',
+    newStatus: 'partial',
+    newHosts: ['ORNGXP40'],
+    targets: ['yarim-app-v1-glomo-prod.apps.x'],
+  }),
   L({ location: '/inc/', siniflar: ['include'], targets: ['inc-app-v1-glomo-prod'] }),
-  L({ location: '/tam/', newStatus: 'defined', newHosts: ['GBNGXP40', 'GBNGXP41'] }),
+  L({ location: '/tam/', newStatus: 'defined', newHosts: ['ORNGXP40', 'ORNGXP41'] }),
 ];
 
 function grup(locations: NginxMigrationLocation[] = LOCS): NginxMigrationGroup {
@@ -53,16 +63,22 @@ function grup(locations: NginxMigrationLocation[] = LOCS): NginxMigrationGroup {
     id: 'glomo',
     label: 'GLOMO',
     locations,
-    oldHosts: ['GBRVPP07', 'GBRVPP08'],
-    newHosts: ['GBNGXP40', 'GBNGXP41'],
-    newHostsScanned: ['GBNGXP40', 'GBNGXP41'],
-    oldHostsSeen: ['GBRVPP07', 'GBRVPP08'],
+    oldHosts: ['ORRVPP07', 'ORRVPP08'],
+    newHosts: ['ORNGXP40', 'ORNGXP41'],
+    newHostsScanned: ['ORNGXP40', 'ORNGXP41'],
+    oldHostsSeen: ['ORRVPP07', 'ORRVPP08'],
     serviceLocations: [],
     apps: [],
     nonSpa: [],
     unresolved: [],
     totals: {
-      apps: 0, ready: 0, partial: 0, missing: 0, notScanned: 0, nonSpa: 0, unresolved: 0,
+      apps: 0,
+      ready: 0,
+      partial: 0,
+      missing: 0,
+      notScanned: 0,
+      nonSpa: 0,
+      unresolved: 0,
       locations: { total: 4, defined: 1, partial: 1, none: 2, notScanned: 0 },
     },
   };
@@ -78,8 +94,12 @@ describe("Tüm location'lar", () => {
     render(<TumLocationlar g={grup()} />);
     const metin = satirlar().map((r) => r.textContent || '');
     expect(metin).toHaveLength(3);
-    expect(metin.some((t) => t.includes('/standartsiz/') && t.includes('ad kalıbına uymuyor'))).toBe(true);
-    expect(metin.some((t) => t.includes('/inc/') && t.includes('eski sunucuda include'))).toBe(true);
+    expect(
+      metin.some((t) => t.includes('/standartsiz/') && t.includes('ad kalıbına uymuyor')),
+    ).toBe(true);
+    expect(metin.some((t) => t.includes('/inc/') && t.includes('eski sunucuda include'))).toBe(
+      true,
+    );
     expect(metin.some((t) => t.includes('/tam/'))).toBe(false);
   });
 
@@ -95,22 +115,35 @@ describe("Tüm location'lar", () => {
     render(<TumLocationlar g={grup()} />);
     const yarim = satirlar().find((r) => (r.textContent || '').includes('/yarim/'));
     expect(yarim?.textContent).toMatch(/1\/2/);
-    expect(yarim?.textContent).toMatch(/eksik: GBNGXP41/);
-    expect(yarim?.textContent).not.toMatch(/eksik: GBNGXP40/);
+    expect(yarim?.textContent).toMatch(/eksik: ORNGXP41/);
+    expect(yarim?.textContent).not.toMatch(/eksik: ORNGXP40/);
   });
 
   it('TLU4 hepsi / sınıf / arama süzgeçleri', () => {
     render(<TumLocationlar g={grup()} />);
-    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'all' } });
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), {
+      target: { value: 'all' },
+    });
     expect(satirlar()).toHaveLength(4);
     fireEvent.change(screen.getByLabelText('Sınıfa göre süz'), { target: { value: 'spa-disi' } });
-    expect(satirlar().map((r) => r.textContent)).toEqual([expect.stringContaining('/standartsiz/')]);
+    expect(satirlar().map((r) => r.textContent)).toEqual([
+      expect.stringContaining('/standartsiz/'),
+    ]);
     fireEvent.change(screen.getByLabelText('Sınıfa göre süz'), { target: { value: 'all' } });
     // Hedef adinda (location'da DEGIL) arama: ad kalibina uymayan uygulamayi hedefinden bulmak
-    fireEvent.change(screen.getByLabelText('Location ara'), { target: { value: 'webforms-ui-glomo' } });
-    expect(satirlar().map((r) => r.textContent)).toEqual([expect.stringContaining('/standartsiz/')]);
-    expect(suzLocationlar(LOCS, 'all', 'all', 'apps.x').map((l) => l.location)).toEqual(['/standartsiz/', '/yarim/']);
-    expect(suzLocationlar(LOCS, 'all', 'all', 'glomo-prod/webforms').map((l) => l.location)).toEqual(['/standartsiz/']);
+    fireEvent.change(screen.getByLabelText('Location ara'), {
+      target: { value: 'webforms-ui-glomo' },
+    });
+    expect(satirlar().map((r) => r.textContent)).toEqual([
+      expect.stringContaining('/standartsiz/'),
+    ]);
+    expect(suzLocationlar(LOCS, 'all', 'all', 'apps.x').map((l) => l.location)).toEqual([
+      '/standartsiz/',
+      '/yarim/',
+    ]);
+    expect(
+      suzLocationlar(LOCS, 'all', 'all', 'glomo-prod/webforms').map((l) => l.location),
+    ).toEqual(['/standartsiz/']);
     expect(suzLocationlar(LOCS, 'defined', 'all', '').map((l) => l.location)).toEqual(['/tam/']);
   });
 
@@ -120,11 +153,11 @@ describe("Tüm location'lar", () => {
     const i = (k: (typeof TUM_LOC_CSV_BASLIK)[number]) => TUM_LOC_CSV_BASLIK.indexOf(k);
     const yarim = rows.find((r) => r[i('location')] === '/yarim/')!;
     expect(yarim[i('yeni_sunucularda')]).toBe('KISMEN');
-    expect(yarim[i('eksik_yeni_sunucular')]).toBe('GBNGXP41');
+    expect(yarim[i('eksik_yeni_sunucular')]).toBe('ORNGXP41');
     expect(yarim[i('vhost')]).toBe('GLOMO-PROD.conf');
     const std = rows.find((r) => r[i('location')] === '/standartsiz/')!;
     expect(std[i('sinif')]).toBe('ad kalıbına uymuyor');
-    expect(std[i('eksik_yeni_sunucular')]).toBe('GBNGXP40 GBNGXP41');
+    expect(std[i('eksik_yeni_sunucular')]).toBe('ORNGXP40 ORNGXP41');
     expect(rows[0]).toHaveLength(TUM_LOC_CSV_BASLIK.length);
   });
 
@@ -133,7 +166,9 @@ describe("Tüm location'lar", () => {
     const [row] = tumLocCsvSatirlari(grup([t]), [t]);
     expect(row[TUM_LOC_CSV_BASLIK.indexOf('eksik_yeni_sunucular')]).toBe('');
     render(<TumLocationlar g={grup([t])} />);
-    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'not-scanned' } });
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), {
+      target: { value: 'not-scanned' },
+    });
     expect(satirlar()[0].textContent).toMatch(/TARANMADI/);
     expect(satirlar()[0].textContent).not.toMatch(/eksik:/);
   });
@@ -147,10 +182,25 @@ describe("Tüm location'lar", () => {
       targets: ['consent-mng-api-glomo-prod.apps.x'],
       written: ['consent-ups'],
     });
-    const statik = L({ location: '= /robots.txt', siniflar: ['statik'], kaynaklar: ['nginx-T'], davranislar: ['static'] });
+    const statik = L({
+      location: '= /robots.txt',
+      siniflar: ['statik'],
+      kaynaklar: ['nginx-T'],
+      davranislar: ['static'],
+    });
     // SPA ama config taramasi gormedi: uygulama tablosu config'ten kuruldugu icin orada da YOK
-    const gizli = L({ location: '/gizli-spa/', siniflar: ['spa'], kaynaklar: ['nginx-T'], davranislar: ['proxy'] });
-    render(<TumLocationlar g={grup([...LOCS, consent, statik, gizli])} kaynakTarihleri={{ config: '2026-10-17', nginxT: '2026-10-18' }} />);
+    const gizli = L({
+      location: '/gizli-spa/',
+      siniflar: ['spa'],
+      kaynaklar: ['nginx-T'],
+      davranislar: ['proxy'],
+    });
+    render(
+      <TumLocationlar
+        g={grup([...LOCS, consent, statik, gizli])}
+        kaynakTarihleri={{ config: '2026-10-17', nginxT: '2026-10-18' }}
+      />,
+    );
     const satir = satirlar().find((r) => (r.textContent || '').includes('/consent-mng/'));
     expect(satir?.textContent).toMatch(/config taramasında yok/);
     expect(satir?.textContent).toMatch(/yazım: consent-ups/);
@@ -160,7 +210,9 @@ describe("Tüm location'lar", () => {
     expect(ozet).toMatch(/Eski sunucularda 7 location; 6 tanesi/);
     expect(ozet).toMatch(/\(5 tanesi uygulama tablosunda hiç görünmüyor\)/);
     expect(ozet).toMatch(/3 location yalnız nginx -T taramasında görünüyor/);
-    fireEvent.change(screen.getByLabelText('Kaynağa göre süz'), { target: { value: 'yalniz-nginx-T' } });
+    fireEvent.change(screen.getByLabelText('Kaynağa göre süz'), {
+      target: { value: 'yalniz-nginx-T' },
+    });
     expect(satirlar().map((r) => r.textContent)).toEqual([
       expect.stringContaining('/consent-mng/'),
       expect.stringContaining('= /robots.txt'),
@@ -172,13 +224,27 @@ describe("Tüm location'lar", () => {
   });
 
   it('TLU8 yalnız yeni sunucularda olan location', () => {
-    const yeni = L({ location: '/yeni-eklenen/', eskide: false, oldHosts: [], kaynaklar: [], siniflar: [], newStatus: 'partial', newHosts: ['GBNGXP40'] });
+    const yeni = L({
+      location: '/yeni-eklenen/',
+      eskide: false,
+      oldHosts: [],
+      kaynaklar: [],
+      siniflar: [],
+      newStatus: 'partial',
+      newHosts: ['ORNGXP40'],
+    });
     render(<TumLocationlar g={grup([...LOCS, yeni])} />);
     expect(satirlar().some((r) => (r.textContent || '').includes('/yeni-eklenen/'))).toBe(false);
-    expect(screen.getByTestId('tum-loc-ozet').textContent).toMatch(/Eski sunucularda 4 location; 3 tanesi/);
-    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'partial' } });
+    expect(screen.getByTestId('tum-loc-ozet').textContent).toMatch(
+      /Eski sunucularda 4 location; 3 tanesi/,
+    );
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), {
+      target: { value: 'partial' },
+    });
     expect(satirlar().map((r) => r.textContent)).toEqual([expect.stringContaining('/yarim/')]);
-    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), { target: { value: 'yalniz-yeni' } });
+    fireEvent.change(screen.getByLabelText('Yeni sunucudaki duruma göre süz'), {
+      target: { value: 'yalniz-yeni' },
+    });
     const [r] = satirlar();
     expect(satirlar()).toHaveLength(1);
     expect(r.textContent).toMatch(/\/yeni-eklenen\//);

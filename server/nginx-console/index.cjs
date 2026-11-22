@@ -4,7 +4,7 @@
 // MIMARI (kullanici kisitlari): Portal sunuculara YALNIZ Ansible ile ulasir; nginx
 // dosyalarina www kullanicisiyla (dzdo) dokunulur. Bu yuzden:
 //   - OKUMA: nginx_console_fetch.yml secilen host(lar)ta files/nginx_console_dump.sh'i kosar,
-//     ciktiyi GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/<HOST>.txt'ye yazar;
+//     ciktiyi ORLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/<HOST>.txt'ye yazar;
 //     Portal AYNI mount'u dogrudan okur (bkz. hafiza: Portal /sw'ye dogrudan erisir).
 //     Tum filo taramasi 30-40 dk surer (kullanici deneyimi) -> ekrandaki "Yenile" yalniz
 //     secilen hostlari gonderir; tam tarama AWX'te gece zamanlanir.
@@ -158,11 +158,11 @@ function loadSummary(host) {
   const st = statDump(H);
   if (!st) return null;
   const hit = _summaries.get(H);
-  if (hit && hit.mtimeMs === st.mtimeMs) return hit.summary;
+  if (hit?.mtimeMs === st.mtimeMs) return hit.summary;
   // yan dosya
   try {
     const raw = JSON.parse(fs.readFileSync(summaryPathOf(H), 'utf8'));
-    if (raw && raw.mtimeMs === st.mtimeMs && raw.ozetSurumu === OZET_SURUMU) {
+    if (raw?.mtimeMs === st.mtimeMs && raw.ozetSurumu === OZET_SURUMU) {
       _summaries.set(H, { mtimeMs: st.mtimeMs, summary: raw });
       if (!raw.ingested) scheduleIngest(H, st);
       return raw;
@@ -180,7 +180,7 @@ function loadSummary(host) {
   try {
     tam = parseFull(H, st);
   } catch (e) {
-    if (!e || !e.tooLarge) throw e;
+    if (!e?.tooLarge) throw e;
     // TAVANI ASAN DOKUM: bellege almadan, diskten parca parca okuyarak ozet cikarmayi
     // dene (2026-09-22). Ozet ekranlarinin (host listesi, sertifikalar, tutarlilik,
     // artik dosyalar) dosya ICERIGINE ihtiyaci yok; icerik isteyen uclar yine "cok
@@ -306,7 +306,7 @@ function loadFull(host) {
   const st = statDump(H);
   if (!st) return null;
   const hit = _full.get(H);
-  if (hit && hit.mtimeMs === st.mtimeMs) {
+  if (hit?.mtimeMs === st.mtimeMs) {
     _full.delete(H);
     _full.set(H, hit); // LRU: en yeni sona
     return hit.parsed;
@@ -394,14 +394,14 @@ function seenAtOf(host, dumpedAt) {
 
 // ── Paket tutarliligi (2026-11-16) ─────────────────────────────────────────────────────
 /**
- * /drift/paket yaniti: tasima gruplarinin yeni PROD sunuculari (MIGRATION_GROUPS.newHosts) icin
+ * /drift/paket yaniti: tasima gruplarinin yeni PROD sunuculari (migrationGroups().newHosts) icin
  * ozet + son gorulme -> computePaketTutarlilik. Bir sunucunun ozeti okunamazsa (bozuk dokum vb.)
  * o sunucu "dokum yok" olarak olculemeyen sayilir; diger sunucular yine karsilastirilir.
  * @param {{nowMs?: number}} [opts]
  */
 function paketTutarlilikYaniti(opts = {}) {
-  const { MIGRATION_GROUPS } = require('../audit/nginx-migration.cjs');
-  const gruplar = MIGRATION_GROUPS.map((g) => ({ id: g.id, label: g.label, hosts: g.newHosts }));
+  const { migrationGroups } = require('../audit/nginx-migration.cjs');
+  const gruplar = migrationGroups().map((g) => ({ id: g.id, label: g.label, hosts: g.newHosts }));
   const veriler = new Map();
   for (const g of gruplar) {
     for (const h of g.hosts) {
@@ -418,7 +418,11 @@ function paketTutarlilikYaniti(opts = {}) {
     }
   }
   const r = computePaketTutarlilik(gruplar, veriler, { nowMs: opts.nowMs });
-  return { ok: true, ...r, generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString() };
+  return {
+    ok: true,
+    ...r,
+    generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString(),
+  };
 }
 
 // ── Envanter: nginx sunuculari (dbo.nginx_inventory, nginx_metadata job'i) ──────────────
@@ -631,7 +635,7 @@ async function spaKesfiHesapla() {
   const s = sema || {};
   const prxKolon = sema === null ? null : Number(s.prx || 0);
 
-  // INTERNET RP HOSTLARI tek yerden (nginx-hosts.cjs; PROD listesi MIGRATION_GROUPS).
+  // INTERNET RP HOSTLARI tek yerden (nginx-hosts.cjs; PROD listesi migrationGroups()).
   const { internetRpHosts } = require('../audit/nginx-hosts.cjs');
   const RP = internetRpHosts();
   const inList = (prefix, arr) => ({
@@ -652,7 +656,7 @@ async function spaKesfiHesapla() {
   // eski PROD okunuyor, yeni PROD tanimlari 'kaynak-yok' kaliyordu.
   const trfIn = inList('t', [...RP.all]);
   const arkInv = (() => {
-    const arkC = require('../audit/ocp-platforms.cjs').PLATFORM_CLUSTERS.ark;
+    const arkC = require('../audit/ocp-platforms.cjs').platformKumeleri().ark || [];
     return {
       sqlText: arkC.map((_, i) => `@k${i}`).join(', '),
       params: arkC.map((c, i) => ({ name: `k${i}`, type: sql.NVarChar(200), value: c })),
@@ -833,7 +837,9 @@ async function spaKesfiHesapla() {
   // uygulamanin Dynatrace olcumu gorunmuyordu. Eslesme zaten ARK kesif satirinin (namespace,
   // uygulama) anahtariyla yapilir; yalniz ACIKCA ARK disi bir cluster'in satiri atilir.
   const usage =
-    usageHam == null ? usageHam : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
+    usageHam == null
+      ? usageHam
+      : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
   const runs = arkSuz(runsHam, 'cluster');
   const katalog = arkSuz(katalogHam, 'cluster_name');
   // ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): RP tanim/trafik satirlari nginx sunucusundan
@@ -1373,11 +1379,14 @@ function initNginxConsole(app) {
   // ── RATE LIMIT (2026-09-26) ─────────────────────────────────────────────────────────
   // Kullanici: "tum Nginx sunucularinin rate limitlerini ayri bir sekmede gorup raporu
   // indirebilmek istiyorum."
-  // RP Secimi ekraninin alt ag sutunu: kurum ic agi, repoda degil ayarda (NGINX_RVP_ALT_AGLARI).
+  // RP Secimi ekraninin kurum verisi, repoda degil ayarda: alt ag sutunu (NGINX_RVP_ALT_AGLARI) ve kutularin
+  // sunuculari / ustverisi (kurum ayari nginx.rvp, rvp-ayari.cjs).
   router.get('/rvp-alt-aglari', (req, res) => {
     const { rvpAltAglari } = require('../util/ic-ag-ayari.cjs');
+    const { rvpAyari } = require('./rvp-ayari.cjs');
     const { altAglar, hata } = rvpAltAglari();
-    res.json({ ok: true, altAglar, hata });
+    const { rvp, hata: rvpHata } = rvpAyari();
+    res.json({ ok: true, altAglar, hata, rvp, rvpHata });
   });
 
   router.get('/ratelimit', async (req, res) => {
@@ -1490,7 +1499,7 @@ function initNginxConsole(app) {
   });
 
   // PAKET TUTARLILIGI (2026-11-16): yeni PROD SPA filolari (tasima gruplari, newHosts) icinde her
-  // SPA uygulamasinin paketi her sunucuda ayni mi. Grup listesi MIGRATION_GROUPS'tan (kopyalanmaz);
+  // SPA uygulamasinin paketi her sunucuda ayni mi. Grup listesi migrationGroups()'tan (kopyalanmaz);
   // nginx_inventory services'a guvenilmez (yeni filonun servis kolonu GLOMO gelmeyebilir). Olcum:
   // dokumdeki @@SPAPKG; tazelik: son gorulme (dokum mtime ile _seen.json'in buyugu) - parmak izi
   // degismeyen sunucuda dokum yeniden yazilmaz ama sunucu her kosuda gorulur. Sekme: drift.
@@ -1498,7 +1507,9 @@ function initNginxConsole(app) {
     try {
       res.json(paketTutarlilikYaniti());
     } catch (err) {
-      res.status(500).json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
+      res
+        .status(500)
+        .json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
     }
   });
 
@@ -1761,8 +1772,7 @@ function initNginxConsole(app) {
     }
     if (!['create', 'update'].includes(mode))
       return res.status(400).json({ ok: false, message: 'mode create|update olmalı.' });
-    if (content == null || !content.trim())
-      return res.status(400).json({ ok: false, message: 'İçerik boş.' });
+    if (!content?.trim()) return res.status(400).json({ ok: false, message: 'İçerik boş.' });
     if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT)
       return res.status(400).json({ ok: false, message: 'İçerik 512 KB sınırını aşıyor.' });
     if (content.includes('\0'))

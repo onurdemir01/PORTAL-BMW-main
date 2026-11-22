@@ -57,7 +57,9 @@ describe('OturumListesi', () => {
     await screen.findByText('Bu oturum');
     expect(screen.queryByText(/Diğer tüm oturumlardan çık/)).not.toBeInTheDocument();
     unmount();
-    api.list.mockResolvedValueOnce([satir('a', true), satir('b', false), satir('c', false)]).mockResolvedValueOnce([satir('a', true)]);
+    api.list
+      .mockResolvedValueOnce([satir('a', true), satir('b', false), satir('c', false)])
+      .mockResolvedValueOnce([satir('a', true)]);
     api.revokeOthers.mockResolvedValue(2);
     render(<OturumListesi />);
     fireEvent.click(await screen.findByText('Diğer tüm oturumlardan çık (2)'));
@@ -65,7 +67,9 @@ describe('OturumListesi', () => {
   });
 
   it('OL3 admin modu admin uclarini kullanir', async () => {
-    api.admin.list.mockResolvedValueOnce([satir('a', false), satir('b', false)]).mockResolvedValueOnce([]);
+    api.admin.list
+      .mockResolvedValueOnce([satir('a', false), satir('b', false)])
+      .mockResolvedValueOnce([]);
     api.admin.revoke.mockResolvedValue(2);
     render(<OturumListesi adminKullanici="ayse" />);
     fireEvent.click(await screen.findByText('Tüm oturumlarını sonlandır (2)'));

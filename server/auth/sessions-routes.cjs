@@ -28,7 +28,10 @@ function oturumlariOku(store, username) {
   const u = String(username || '').toLowerCase();
   return new Promise((resolve, reject) => {
     if (typeof store?.listByUser === 'function') {
-      return store.listByUser(u, (err, list) => { if (err) return reject(err instanceof Error ? err : new Error(String(err))); return resolve(list || []); });
+      return store.listByUser(u, (err, list) => {
+        if (err) return reject(err instanceof Error ? err : new Error(String(err)));
+        return resolve(list || []);
+      });
     }
     if (typeof store?.all === 'function') {
       return store.all((err, all) => {
@@ -49,7 +52,10 @@ function oturumlariOku(store, username) {
 
 function sil(store, sid) {
   return new Promise((resolve, reject) =>
-    store.destroy(sid, (err) => { if (err) return reject(err instanceof Error ? err : new Error(String(err))); return resolve(); }),
+    store.destroy(sid, (err) => {
+      if (err) return reject(err instanceof Error ? err : new Error(String(err)));
+      return resolve();
+    }),
   );
 }
 
@@ -78,7 +84,10 @@ function cihazOzeti(ua) {
 
 function satir(sid, sess, mevcutSid, p) {
   const m = sess.meta || {};
-  const b = Number.isFinite(m.createdAt) && Number.isFinite(m.lastSeenAt) ? sessionPolicy.bitisler(m, p) : null;
+  const b =
+    Number.isFinite(m.createdAt) && Number.isFinite(m.lastSeenAt)
+      ? sessionPolicy.bitisler(m, p)
+      : null;
   return {
     id: m.id || null,
     current: sid === mevcutSid,
@@ -97,11 +106,13 @@ async function liste(req, username) {
   const p = sessionPolicy.policy();
   const now = sessionPolicy.simdi();
   const ham = await oturumlariOku(req.sessionStore, username);
-  return ham
-    .map(({ sid, sess }) => ({ sid, sess, r: satir(sid, sess, req.sessionID, p) }))
-    // Suresi (yaptirim acisindan) dolmus ama henuz silinmemis satirlar "acik" degildir.
-    .filter(({ r }) => !r.idleExpiresAt || (r.idleExpiresAt > now && r.absoluteExpiresAt > now))
-    .sort((a, b) => (b.r.current - a.r.current) || ((b.r.lastSeenAt || 0) - (a.r.lastSeenAt || 0)));
+  return (
+    ham
+      .map(({ sid, sess }) => ({ sid, sess, r: satir(sid, sess, req.sessionID, p) }))
+      // Suresi (yaptirim acisindan) dolmus ama henuz silinmemis satirlar "acik" degildir.
+      .filter(({ r }) => !r.idleExpiresAt || (r.idleExpiresAt > now && r.absoluteExpiresAt > now))
+      .sort((a, b) => b.r.current - a.r.current || (b.r.lastSeenAt || 0) - (a.r.lastSeenAt || 0))
+  );
 }
 
 /**
@@ -116,7 +127,9 @@ async function esanliSiniriUygula(req, username) {
   const digerleri = hepsi.filter((x) => !x.r.current);
   const fazla = digerleri.length - (max - 1);
   if (fazla <= 0) return 0;
-  const kapanacak = digerleri.sort((a, b) => (a.r.lastSeenAt || 0) - (b.r.lastSeenAt || 0)).slice(0, fazla);
+  const kapanacak = digerleri
+    .sort((a, b) => (a.r.lastSeenAt || 0) - (b.r.lastSeenAt || 0))
+    .slice(0, fazla);
   for (const x of kapanacak) await sil(req.sessionStore, x.sid);
   denetim(req, 'session_revoked', {
     username,
@@ -148,7 +161,9 @@ function initSessionsRoutes(router, { requireAdmin }) {
   // Digerlerinin hepsinden cik (bu oturum kalir)
   sessionRouter.delete('/', kimlikGerekli, async (req, res) => {
     if (req.query.scope !== 'others') {
-      return res.status(400).json({ ok: false, error: 'scope=others gerekli (bu oturum için Çıkış kullanın).' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'scope=others gerekli (bu oturum için Çıkış kullanın).' });
     }
     try {
       const l = await liste(req, req.session.user.username);
@@ -166,9 +181,12 @@ function initSessionsRoutes(router, { requireAdmin }) {
     try {
       const l = await liste(req, req.session.user.username);
       const x = l.find((y) => y.r.id && y.r.id === req.params.id);
-      if (!x) return res.status(404).json({ ok: false, error: 'Oturum bulunamadı (kapanmış olabilir).' });
+      if (!x)
+        return res.status(404).json({ ok: false, error: 'Oturum bulunamadı (kapanmış olabilir).' });
       if (x.r.current) {
-        return res.status(400).json({ ok: false, error: 'Bu oturumu kapatmak için Çıkış kullanın.' });
+        return res
+          .status(400)
+          .json({ ok: false, error: 'Bu oturumu kapatmak için Çıkış kullanın.' });
       }
       await sil(req.sessionStore, x.sid);
       denetim(req, 'session_revoked', { detail: `by=self id=${x.r.id} device=${x.r.device}` });
@@ -182,7 +200,11 @@ function initSessionsRoutes(router, { requireAdmin }) {
   sessionRouter.get('/admin/:username', requireAdmin, async (req, res) => {
     try {
       const l = await liste(req, req.params.username);
-      res.json({ ok: true, username: req.params.username.toLowerCase(), sessions: l.map((x) => x.r) });
+      res.json({
+        ok: true,
+        username: req.params.username.toLowerCase(),
+        sessions: l.map((x) => x.r),
+      });
     } catch (e) {
       res.status(503).json({ ok: false, error: `Oturumlar okunamadı: ${e.message}` });
     }
@@ -194,7 +216,8 @@ function initSessionsRoutes(router, { requireAdmin }) {
       const l = await liste(req, hedefKullanici);
       const id = req.query.id ? String(req.query.id) : null;
       const hedef = id ? l.filter((x) => x.r.id === id) : l.filter((x) => !x.r.current);
-      if (id && !hedef.length) return res.status(404).json({ ok: false, error: 'Oturum bulunamadı (kapanmış olabilir).' });
+      if (id && !hedef.length)
+        return res.status(404).json({ ok: false, error: 'Oturum bulunamadı (kapanmış olabilir).' });
       for (const x of hedef) await sil(req.sessionStore, x.sid);
       denetim(req, 'session_revoked', {
         detail: `by=admin target=${hedefKullanici} ${id ? 'id=' + id : 'scope=all'} count=${hedef.length}`,

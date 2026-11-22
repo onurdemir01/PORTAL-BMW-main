@@ -29,9 +29,13 @@ function rastgele(tohum) {
 function filo(tohum, nApp, nVhost) {
   const r = rastgele(tohum);
   const sec = (l) => l[Math.floor(r() * l.length)];
-  const hostlar = Array.from({ length: 40 }, (_, i) => (i % 2 ? `GBJBOP${10 + i}` : `GBJBOAP${10 + i}`));
-  const webHostlar = hostlar.map((h) => h.replace(/^(GBJB)O/, '$1W'));
-  const adlar = Array.from({ length: Math.max(5, Math.floor(nApp / 3)) }, (_, i) => (i % 5 === 0 ? `app_${i}_svc` : `app${i}`));
+  const hostlar = Array.from({ length: 40 }, (_, i) =>
+    i % 2 ? `ORJBOP${10 + i}` : `ORJBOAP${10 + i}`,
+  );
+  const webHostlar = hostlar.map((h) => h.replace(/^([A-Z]{2}JB)O/, '$1W'));
+  const adlar = Array.from({ length: Math.max(5, Math.floor(nApp / 3)) }, (_, i) =>
+    i % 5 === 0 ? `app_${i}_svc` : `app${i}`,
+  );
   const ips = [];
   hostlar.forEach((h, i) => ips.push({ host: h, ip: `10.1.0.${i}` }));
   ips.push({ host: hostlar[0], ip: '10.9.9.9' }, { host: hostlar[1], ip: '10.9.9.9' });
@@ -43,21 +47,38 @@ function filo(tohum, nApp, nVhost) {
     const n = 1 + Math.floor(r() * 3);
     for (let k = 0; k < n; k++) {
       const tur = r();
-      if (tur < 0.35) hedefler.push(`${sec(hostlar).toLowerCase()}.fw.garanti.com.tr:${sec(portlar)}`);
+      if (tur < 0.35)
+        hedefler.push(`${sec(hostlar).toLowerCase()}.fw.sirket.invalid:${sec(portlar)}`);
       else if (tur < 0.5) hedefler.push(`localhost:${sec(portlar)}`);
       else if (tur < 0.62) hedefler.push(`10.1.0.${Math.floor(r() * 40)}:${sec(portlar)}`);
       else if (tur < 0.67) hedefler.push(`10.9.9.9:${sec(portlar)}`);
       else if (tur < 0.75) hedefler.push('~DYNAMIC');
-      else if (tur < 0.9) { const ad = sec(adlar); hedefler.push(r() < 0.5 ? ad.replace(/_/g, '-') : ad.toUpperCase()); }
-      else hedefler.push(` ${sec(adlar)} `);
+      else if (tur < 0.9) {
+        const ad = sec(adlar);
+        hedefler.push(r() < 0.5 ? ad.replace(/_/g, '-') : ad.toUpperCase());
+      } else hedefler.push(` ${sec(adlar)} `);
     }
-    return { host: vh, server_name: `v${i}.fw.garanti.com.tr`, aliases: '', listen: `*:${r() < 0.5 ? 80 : 443}`, conf_file: `/c/${i}.conf`, product: r() < 0.5 ? 'IHS' : 'RHA', proxy_targets: hedefler.join(',') };
+    return {
+      host: vh,
+      server_name: `v${i}.fw.sirket.invalid`,
+      aliases: '',
+      listen: `*:${r() < 0.5 ? 80 : 443}`,
+      conf_file: `/c/${i}.conf`,
+      product: r() < 0.5 ? 'IHS' : 'RHA',
+      proxy_targets: hedefler.join(','),
+    };
   });
   const apps = Array.from({ length: nApp }, (_, i) => ({
     app: sec(adlar),
     host: sec(hostlar),
     gen: sec([7, 8, null]),
-    jvm: r() < 0.85 ? { cfg_ports: [sec(portlar), sec(portlar)].join(','), ports: r() < 0.3 ? sec(portlar) : '' } : null,
+    jvm:
+      r() < 0.85
+        ? {
+            cfg_ports: [sec(portlar), sec(portlar)].join(','),
+            ports: r() < 0.3 ? sec(portlar) : '',
+          }
+        : null,
     modCluster: r() < 0.8,
   }));
   return { vhostRows, ipMap, apps };
@@ -71,16 +92,27 @@ test('VI1 esdegerlik: aday kumesiyle ajpWeb / mcWeb tum listeyle birebir ayni (s
       const ctx = { vhostRows, ipMap, jvm: a.jvm, gen: a.gen, modCluster: a.modCluster };
       const aday = adayVhostlar(a.app, a.host, ctx);
       const tamAjp = ajpWeb(a.host, a.jvm, vhostRows, ipMap);
-      assert.deepEqual(ajpWeb(a.host, a.jvm, aday, ipMap), tamAjp, `ajp fark: tohum ${tohum} ${a.app}@${a.host}`);
+      assert.deepEqual(
+        ajpWeb(a.host, a.jvm, aday, ipMap),
+        tamAjp,
+        `ajp fark: tohum ${tohum} ${a.app}@${a.host}`,
+      );
       eslesen += tamAjp.length;
       if (a.modCluster) {
         const tamMc = mcWeb(a.app, a.host, a.gen, vhostRows);
-        assert.deepEqual(mcWeb(a.app, a.host, a.gen, aday), tamMc, `mc fark: tohum ${tohum} ${a.app}@${a.host}`);
+        assert.deepEqual(
+          mcWeb(a.app, a.host, a.gen, aday),
+          tamMc,
+          `mc fark: tohum ${tohum} ${a.app}@${a.host}`,
+        );
         eslesen += tamMc.length;
       }
     }
   }
-  assert.ok(eslesen > 200, `test verisi yeterince eslesme uretmiyor (${eslesen}) - bekci kor kalir`);
+  assert.ok(
+    eslesen > 200,
+    `test verisi yeterince eslesme uretmiyor (${eslesen}) - bekci kor kalir`,
+  );
 });
 
 test('VI2 karmasiklik: vhost alanlari uygulama x vhost kez degil, ~vhost kez okunur', () => {
@@ -88,24 +120,57 @@ test('VI2 karmasiklik: vhost alanlari uygulama x vhost kez degil, ~vhost kez oku
   let okuma = 0;
   const sayan = vhostRows.map((v) => {
     const o = { ...v };
-    Object.defineProperty(o, 'proxy_targets', { get() { okuma += 1; return v.proxy_targets; }, enumerable: true });
+    Object.defineProperty(o, 'proxy_targets', {
+      get() {
+        okuma += 1;
+        return v.proxy_targets;
+      },
+      enumerable: true,
+    });
     return o;
   });
   for (const a of apps) {
-    webZenginlestir(a.app, a.host, { matched: true, how: 'x', web: [] },
-      { hubVhostsByHost: new Map(), vhostRows: sayan, ipMap, jvm: a.jvm, gen: a.gen, modCluster: a.modCluster });
+    webZenginlestir(
+      a.app,
+      a.host,
+      { matched: true, how: 'x', web: [] },
+      {
+        hubVhostsByHost: new Map(),
+        vhostRows: sayan,
+        ipMap,
+        jvm: a.jvm,
+        gen: a.gen,
+        modCluster: a.modCluster,
+      },
+    );
   }
-  assert.ok(okuma < 3 * sayan.length + apps.length * 60, `proxy_targets ${okuma} kez okundu (uygulama x vhost = ${apps.length * sayan.length})`);
+  assert.ok(
+    okuma < 3 * sayan.length + apps.length * 60,
+    `proxy_targets ${okuma} kez okundu (uygulama x vhost = ${apps.length * sayan.length})`,
+  );
 });
 
 test('VI3 webZenginlestir sonucu tum liste ile ayni', () => {
   const { vhostRows, ipMap, apps } = filo(5, 200, 800);
   for (const a of apps) {
     const bas = { matched: true, how: 'x', web: [] };
-    const ctx = { hubVhostsByHost: new Map(), vhostRows, ipMap, jvm: a.jvm, gen: a.gen, modCluster: a.modCluster };
+    const ctx = {
+      hubVhostsByHost: new Map(),
+      vhostRows,
+      ipMap,
+      jvm: a.jvm,
+      gen: a.gen,
+      modCluster: a.modCluster,
+    };
     const gercek = webZenginlestir(a.app, a.host, bas, ctx).web;
-    const beklenen = [...ajpWeb(a.host, a.jvm, vhostRows, ipMap), ...(a.modCluster ? mcWeb(a.app, a.host, a.gen, vhostRows) : [])];
-    assert.deepEqual(gercek.map((w) => `${w.host}|${w.serverName}|${w.port}|${w.confFile}`).sort(),
-      [...new Set(beklenen.map((w) => `${w.host}|${w.serverName}|${w.port}|${w.confFile}`))].sort(), `${a.app}@${a.host}`);
+    const beklenen = [
+      ...ajpWeb(a.host, a.jvm, vhostRows, ipMap),
+      ...(a.modCluster ? mcWeb(a.app, a.host, a.gen, vhostRows) : []),
+    ];
+    assert.deepEqual(
+      gercek.map((w) => `${w.host}|${w.serverName}|${w.port}|${w.confFile}`).sort(),
+      [...new Set(beklenen.map((w) => `${w.host}|${w.serverName}|${w.port}|${w.confFile}`))].sort(),
+      `${a.app}@${a.host}`,
+    );
   }
 });

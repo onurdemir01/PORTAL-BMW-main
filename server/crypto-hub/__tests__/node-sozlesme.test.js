@@ -30,7 +30,7 @@ const ansibleVar = () => fs.existsSync(path.join(CH, 'crypto_hub_ops.yml'));
 const oku = (...p) => fs.readFileSync(path.join(...p), 'utf8');
 
 const N = require('../../../shared/cryptoHubNodes.cjs');
-const { CRYPTO_TENANTS } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS } = require('../kiracilar.cjs');
 
 // Sozlesme 2.3 (bagimsiz kopya: nodes.yml bu tablodan SAPARSA kirmizi).
 const ESKI = [

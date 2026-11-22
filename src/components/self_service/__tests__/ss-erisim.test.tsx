@@ -33,6 +33,7 @@ vi.mock('@/hooks/useToast', () => ({
 }));
 import FieldOverridesModal from '../FieldOverridesModal';
 import { SsErisimBolumu, ssErisimModu, grupEtiketi } from '../SsErisimBolumu';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const DN = 'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr';
 const SS = {
@@ -102,11 +103,9 @@ describe('Self Service erişimi', () => {
   it('SEU2 LDAP tan seçilen grup DN olarak eklenir, çip CN gösterir, çıkarılabilir', async () => {
     vi.useFakeTimers();
     try {
-      const search = vi
-        .fn()
-        .mockResolvedValue({
-          groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }],
-        });
+      const search = vi.fn().mockResolvedValue({
+        groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }],
+      });
       render(<Kontrollu search={search} />);
       fireEvent.change(screen.getByLabelText('LDAP grubu ara'), { target: { value: 'GT-Mid' } });
       await act(async () => {
@@ -236,7 +235,7 @@ describe('Self Service erişimi', () => {
     ).toBe(2);
     const ap = readFileSync(join(kok, 'ansible', 'AnsiblePage.tsx'), 'utf8');
     expect(ap).toMatch(
-      /<FieldOverridesModal item=\{fieldsReviewItem\} ssErisimItem=\{fieldsReviewItem\}/,
+      esnek(/<FieldOverridesModal item=\{fieldsReviewItem\} ssErisimItem=\{fieldsReviewItem\}/),
     );
     expect(ap).toMatch(/enabled: false,/);
   });

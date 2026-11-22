@@ -16,7 +16,11 @@
 'use strict';
 
 const crypto = require('crypto');
-const { getEffectiveTable, effectiveSnapshotTables, MIN_ROW_RATIO } = require('./history-config.cjs');
+const {
+  getEffectiveTable,
+  effectiveSnapshotTables,
+  MIN_ROW_RATIO,
+} = require('./history-config.cjs');
 const { varsayilanSira } = require('../util/siralama.cjs');
 
 const INSERT_BATCH = 200; // MSSQL'de 2100 parametre siniri var; 200 x 5 = 1000, guvenli.
@@ -98,7 +102,11 @@ async function snapshotTable(def, now = new Date()) {
 
   if (!(await tableExists(name))) {
     return finishRun(def, startedAt, {
-      status: 'skipped', sourceRows: 0, added: 0, changed: 0, removed: 0,
+      status: 'skipped',
+      sourceRows: 0,
+      added: 0,
+      changed: 0,
+      removed: 0,
       message: 'Kaynak tablo bulunamadi.',
     });
   }
@@ -137,7 +145,11 @@ async function snapshotTable(def, now = new Date()) {
   // korumasiyla ayni mantik: bilinmezlik, veri kaybina yazilmaz.
   if (open.size > 0 && src.size < open.size * MIN_ROW_RATIO) {
     return finishRun(def, startedAt, {
-      status: 'aborted', sourceRows: src.size, added: 0, changed: 0, removed: 0,
+      status: 'aborted',
+      sourceRows: src.size,
+      added: 0,
+      changed: 0,
+      removed: 0,
       message:
         `Kaynak satir sayisi ani dustu (${open.size} -> ${src.size}). Bozuk tarama ` +
         `olabilir; gecmise HICBIR SEY yazilmadi.`,
@@ -146,7 +158,11 @@ async function snapshotTable(def, now = new Date()) {
 
   if (added.length === 0 && changed.length === 0 && removed.length === 0) {
     return finishRun(def, startedAt, {
-      status: 'ok', sourceRows: src.size, added: 0, changed: 0, removed: 0,
+      status: 'ok',
+      sourceRows: src.size,
+      added: 0,
+      changed: 0,
+      removed: 0,
       message: 'Degisiklik yok.',
     });
   }
@@ -183,8 +199,11 @@ async function snapshotTable(def, now = new Date()) {
   }
 
   return finishRun(def, startedAt, {
-    status: 'ok', sourceRows: src.size,
-    added: added.length, changed: changed.length, removed: removed.length,
+    status: 'ok',
+    sourceRows: src.size,
+    added: added.length,
+    changed: changed.length,
+    removed: removed.length,
   });
 }
 
@@ -194,8 +213,17 @@ async function finishRun(def, startedAt, res) {
       `INSERT INTO inventory_history_runs
          (table_name, started_at, finished_at, source_rows, added, changed, removed, status, message)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [def.table, startedAt, new Date(), res.sourceRows, res.added, res.changed,
-       res.removed, res.status, res.message || null],
+      [
+        def.table,
+        startedAt,
+        new Date(),
+        res.sourceRows,
+        res.added,
+        res.changed,
+        res.removed,
+        res.status,
+        res.message || null,
+      ],
     );
   } catch (e) {
     console.warn('[EnvanterGecmis] calistirma kaydi yazilamadi:', e.message);
@@ -290,8 +318,16 @@ async function recentRuns(limit = 50) {
 }
 
 module.exports = {
-  snapshotTable, snapshotAll, rowsAt, diff, rowCountSeries, recentRuns,
+  snapshotTable,
+  snapshotAll,
+  rowsAt,
+  diff,
+  rowCountSeries,
+  recentRuns,
   // saf yardimcilar — birim testleri DB gerektirmeden calissin diye acildi
-  _normValue: normValue, _rowKeyOf: rowKeyOf, _contentOf: contentOf, _sha256: sha256,
+  _normValue: normValue,
+  _rowKeyOf: rowKeyOf,
+  _contentOf: contentOf,
+  _sha256: sha256,
   _safeTableName: safeTableName,
 };

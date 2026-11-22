@@ -56,11 +56,20 @@ function kapsamKur(kayitlar, resmi, { envs = ENVS } = {}) {
       const missing = envs.filter((e) => !a.envs[e]?.length);
       return { ...a, present, missing, missingCount: missing.length };
     })
-    .sort((a, b) => a.application.localeCompare(b.application) || String(a.alt || '').localeCompare(String(b.alt || '')));
+    .sort(
+      (a, b) =>
+        a.application.localeCompare(b.application) ||
+        String(a.alt || '').localeCompare(String(b.alt || '')),
+    );
 
   // Kismi kapsam BIR HUKUM DEGIL GOZLEMDIR (bkz. ocp-clusters.cjs): cluster basina sayi verilir,
   // "eksik" damgasi vurulmaz.
-  const { kumeler: envClusters, kaynak: envClusterKaynagi } = envClustersResmi(apps.values(), envs, resmi, gorulen);
+  const { kumeler: envClusters, kaynak: envClusterKaynagi } = envClustersResmi(
+    apps.values(),
+    envs,
+    resmi,
+    gorulen,
+  );
 
   // Ozet: hangi "eksik ortam" deseni kac satirda goruluyor (en sik 10).
   const patternCount = new Map();

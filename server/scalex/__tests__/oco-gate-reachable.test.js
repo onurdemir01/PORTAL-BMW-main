@@ -85,7 +85,11 @@ test('OG3 kapali kapi DENETIME yaziliyor (sessiz kapanma yok) — yalniz prod`da
   sim.smartKipi('oco_only');
   sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
   await sim.calistir();
-  assert.equal(sim.denetimde('scalex_oco_gate_disabled').length, 1, 'kapali kapidan gecen prod isi iz birakmadi');
+  assert.equal(
+    sim.denetimde('scalex_oco_gate_disabled').length,
+    1,
+    'kapali kapidan gecen prod isi iz birakmadi',
+  );
   // Prod disi: kapinin istenmemesi normal, iz gurultu olurdu.
   sim.sifirla();
   sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
@@ -95,7 +99,11 @@ test('OG3 kapali kapi DENETIME yaziliyor (sessiz kapanma yok) — yalniz prod`da
   sim.sifirla();
   sim.smartKipi('oco_only');
   await sim.calistir({ ocoNumber: '1234567' });
-  assert.equal(sim.denetimde('scalex_oco_gate_disabled').length, 0, 'acik kapi "kapali" diye izlendi');
+  assert.equal(
+    sim.denetimde('scalex_oco_gate_disabled').length,
+    0,
+    'acik kapi "kapali" diye izlendi',
+  );
 });
 
 // ── gatePolicyFor: EKRAN ile SUNUCU AYRISMAMALI ────────────────────────────
@@ -109,7 +117,12 @@ test('OG4 ayar yokken bugunku davranis AYNEN surer (prod`da require)', () => {
 });
 
 test('OG5 admin kapatirsa prod`da da sorulmaz AMA `ocoGateDisabled` ile GORUNUR', () => {
-  const p = g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: false } });
+  const p = g({
+    action: 'stop',
+    executionMode: 'apply',
+    environment: 'prod',
+    ocoConfig: { enabled: false },
+  });
   assert.equal(p.oco, 'skip', 'admin kapattigi halde hala isteniyor');
   assert.equal(p.ocoGateDisabled, true, 'kapali kapi GORUNMUYOR — sessiz kapanma');
   // SMART kapisi bundan ETKILENMEZ.
@@ -118,17 +131,35 @@ test('OG5 admin kapatirsa prod`da da sorulmaz AMA `ocoGateDisabled` ile GORUNUR'
 
 test('OG6 ortam listesi verilirse O liste gecerli (prod disi ortamda da istenebilir)', () => {
   const cfg = { enabled: true, environments: ['prod', 'test'] };
-  assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'test', ocoConfig: cfg }).oco, 'require');
-  assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'dev', ocoConfig: cfg }).oco, 'skip');
+  assert.equal(
+    g({ action: 'stop', executionMode: 'apply', environment: 'test', ocoConfig: cfg }).oco,
+    'require',
+  );
+  assert.equal(
+    g({ action: 'stop', executionMode: 'apply', environment: 'dev', ocoConfig: cfg }).oco,
+    'skip',
+  );
   // Harf duyarsiz: katalogdaki etiket 'PROD' olabilir.
-  assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'PROD', ocoConfig: cfg }).oco, 'require');
+  assert.equal(
+    g({ action: 'stop', executionMode: 'apply', environment: 'PROD', ocoConfig: cfg }).oco,
+    'require',
+  );
 });
 
 test('OG7 BOS liste "hicbir ortam" demektir, liste YOKLUGUNDAN farklidir', () => {
   // Liste yok -> prod'da istenir
-  assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: true } }).oco, 'require');
+  assert.equal(
+    g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: true } })
+      .oco,
+    'require',
+  );
   // Bos liste -> hicbir yerde istenmez
-  const bos = g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: { enabled: true, environments: [] } });
+  const bos = g({
+    action: 'stop',
+    executionMode: 'apply',
+    environment: 'prod',
+    ocoConfig: { enabled: true, environments: [] },
+  });
   assert.equal(bos.oco, 'skip', 'bos liste "her prod" gibi ele alinmis');
 });
 
@@ -150,7 +181,11 @@ test('OG8 ortak kapi (`change-gates`) ayni listeyi TANIYOR — ekran/sunucu ayri
   );
   // enabled=false her seyi kapatir
   assert.equal(
-    cg.isOcoGateApplicable({ ocoCheck: { enabled: false, environments: ['prod'] } }, {}, { env: 'prod' }),
+    cg.isOcoGateApplicable(
+      { ocoCheck: { enabled: false, environments: ['prod'] } },
+      {},
+      { env: 'prod' },
+    ),
     false,
   );
 });
@@ -162,7 +197,11 @@ test('OG9 kapi politikasi TEK yerde cozuluyor; ekran ve sunucu ayni ayari goruyo
   // DAVRANIS: admin `test`i listeye ekler -> onizleme ister, calistirma da ister.
   sim.ayar.ozellestirme = { ocoCheck: { enabled: true, environments: ['test'] } };
   assert.equal((await sim.onizle({ env: 'test' })).json.gatePolicy.oco, 'require');
-  assert.equal((await sim.calistir({ env: 'test' })).json.ocoRequired, true, 'onizleme ister, calistirma sormaz');
+  assert.equal(
+    (await sim.calistir({ env: 'test' })).json.ocoRequired,
+    true,
+    'onizleme ister, calistirma sormaz',
+  );
   // ...ve prod listede YOK -> ikisi de istemez (SMART ayri kapi; yalniz OCO olculuyor).
   sim.smartKipi('oco_only');
   assert.equal((await sim.onizle()).json.gatePolicy.oco, 'skip');
@@ -171,11 +210,23 @@ test('OG9 kapi politikasi TEK yerde cozuluyor; ekran ve sunucu ayni ayari goruyo
 
   // YAPI: `gatePolicyFor` yalniz ortak cozucuden cagrilir. Bir uc onu DOGRUDAN cagirirsa
   // ayari kendi okumak zorunda kalir ve uclar yine ayrisir.
-  const kod = IX.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.equal((kod.match(/gatePolicyFor\(/g) || []).length, 1, '`gatePolicyFor` birden fazla yerden cagriliyor');
-  const cozucu = kod.slice(kod.indexOf('async function resolveGatePolicy'), kod.indexOf('function istemciyeUlasan'));
+  const kod = IX.split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  assert.equal(
+    (kod.match(/gatePolicyFor\(/g) || []).length,
+    1,
+    '`gatePolicyFor` birden fazla yerden cagriliyor',
+  );
+  const cozucu = kod.slice(
+    kod.indexOf('async function resolveGatePolicy'),
+    kod.indexOf('function istemciyeUlasan'),
+  );
   assert.match(cozucu, /gatePolicyFor\(/, 'tek cagri ortak cozucude degil');
-  assert.ok((kod.match(/await resolveGatePolicy\(req, \{/g) || []).length >= 4, 'uclar ortak cozucuyu kullanmiyor');
+  assert.ok(
+    (kod.match(/await resolveGatePolicy\(req, \{/g) || []).length >= 4,
+    'uclar ortak cozucuyu kullanmiyor',
+  );
 });
 
 test('OG10 ayar okunamazsa kapi ACIK kalir (fail-safe yonu dogru)', async (t) => {
@@ -187,7 +238,10 @@ test('OG10 ayar okunamazsa kapi ACIK kalir (fail-safe yonu dogru)', async (t) =>
   const p = (await sim.onizle()).json.gatePolicy;
   assert.equal(p.oco, 'require');
   assert.equal(p.smart, 'require');
-  assert.equal(g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: {} }).oco, 'require');
+  assert.equal(
+    g({ action: 'stop', executionMode: 'apply', environment: 'prod', ocoConfig: {} }).oco,
+    'require',
+  );
   const r = await sim.calistir({ ocoNumber: '1234567' });
   assert.equal(sim.baslatmalar().length, 0, 'ayar yokken prod isi BASLADI');
   assert.equal(r.status, 409);

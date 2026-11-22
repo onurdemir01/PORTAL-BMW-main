@@ -21,7 +21,9 @@ function getConfig() {
     index: process.env.SPLUNK_INDEX || 'main',
     productField: process.env.SPLUNK_PRODUCT_FIELD || 'product',
     products: (process.env.SPLUNK_PRODUCTS || 'httpd,nginx,jboss,websphere,ctg,hazelcast,provenir')
-      .split(',').map((s) => s.trim()).filter(Boolean),
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }
 
@@ -39,10 +41,17 @@ function checkReachable(timeoutMs = 3000) {
   return new Promise((resolve) => {
     const { baseUrl } = getConfig();
     let parsed;
-    try { parsed = new URL(baseUrl); } catch { return resolve(false); }
+    try {
+      parsed = new URL(baseUrl);
+    } catch {
+      return resolve(false);
+    }
     const port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
     const socket = net.createConnection({ host: parsed.hostname, port, timeout: timeoutMs });
-    const done = (ok) => { socket.destroy(); resolve(ok); };
+    const done = (ok) => {
+      socket.destroy();
+      resolve(ok);
+    };
     socket.once('connect', () => done(true));
     socket.once('timeout', () => done(false));
     socket.once('error', () => done(false));
@@ -58,15 +67,18 @@ function parseExportLines(raw) {
     if (!t) continue;
     try {
       const obj = JSON.parse(t);
-      if (obj && obj.result) results.push(obj.result);
-    } catch { /* JSON olmayan satir atlanir */ }
+      if (obj?.result) results.push(obj.result);
+    } catch {
+      /* JSON olmayan satir atlanir */
+    }
   }
   return results;
 }
 
 async function search({ product, windowMinutes = 15, limit = 50 }) {
   const { baseUrl, token, authScheme, index, productField, products } = getConfig();
-  if (!baseUrl || !token) throw new Error('Splunk yapılandırılmamış (SPLUNK_BASE_URL/SPLUNK_TOKEN).');
+  if (!baseUrl || !token)
+    throw new Error('Splunk yapılandırılmamış (SPLUNK_BASE_URL/SPLUNK_TOKEN).');
   if (!product || !products.includes(product)) {
     throw new Error(`Geçersiz ürün: ${product}. İzin verilenler: ${products.join(', ')}`);
   }

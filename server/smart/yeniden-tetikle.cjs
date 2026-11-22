@@ -32,14 +32,28 @@ function ocoKapsamli(ticket) {
 function uygunluk(ticket) {
   if (!ticket) return { ok: false, status: 404, message: 'Talep bulunamadı.' };
   if (ticket.status !== 'TIMEOUT') {
-    return { ok: false, status: 409, message: `Yalnız zaman aşımına uğramış talep yeniden tetiklenebilir (durum: ${ticket.status}).` };
+    return {
+      ok: false,
+      status: 409,
+      message: `Yalnız zaman aşımına uğramış talep yeniden tetiklenebilir (durum: ${ticket.status}).`,
+    };
   }
   const pl = ticket.pendingLaunch;
   if (!pl || typeof pl !== 'object' || !pl.detail) {
-    return { ok: false, status: 409, message: 'Talebin başlatma bilgisi kayıtlı değil; yeniden tetiklenemez. Kullanıcı yeni talep açmalı.' };
+    return {
+      ok: false,
+      status: 409,
+      message:
+        'Talebin başlatma bilgisi kayıtlı değil; yeniden tetiklenemez. Kullanıcı yeni talep açmalı.',
+    };
   }
   if (pl.launchOncesi) {
-    return { ok: false, status: 409, message: 'Bu talep türü (Crypto Hub node) yeniden tetiklenemez; kendi ekranından yeni talep açılmalı.' };
+    return {
+      ok: false,
+      status: 409,
+      message:
+        'Bu talep türü (Crypto Hub node) yeniden tetiklenemez; kendi ekranından yeni talep açılmalı.',
+    };
   }
   return { ok: true };
 }
@@ -59,27 +73,57 @@ const RED_ADI = /cancel|reject|iptal|İptal|İPTAL|reddedil|REDDEDİL/i;
 function smartKarari({ status, hata } = {}) {
   if (hata) {
     return {
-      durum: 'okunamadi', engel: true, stateName: null, statusCode: null,
+      durum: 'okunamadi',
+      engel: true,
+      stateName: null,
+      statusCode: null,
       message: `Smart kaydının durumu okunamadı (${hata}); reddedilmiş olabileceği için tetiklenmedi. Biraz sonra tekrar deneyin.`,
     };
   }
   const stateName = status?.stateName || null;
   const statusCode = String(status?.statusCode ?? '').trim() || null;
   if (status?.rejected || statusCode === '2000' || (stateName && RED_ADI.test(stateName))) {
-    return { durum: 'reddedildi', engel: true, stateName, statusCode, message: 'Smart kaydı REDDEDİLMİŞ ya da İPTAL EDİLMİŞ; iş tetiklenmez.' };
+    return {
+      durum: 'reddedildi',
+      engel: true,
+      stateName,
+      statusCode,
+      message: 'Smart kaydı REDDEDİLMİŞ ya da İPTAL EDİLMİŞ; iş tetiklenmez.',
+    };
   }
   if (status?.completed || statusCode === '1000') {
-    return { durum: 'onayli', engel: false, stateName, statusCode, message: 'Smart kaydı sonradan onaylanmış.' };
+    return {
+      durum: 'onayli',
+      engel: false,
+      stateName,
+      statusCode,
+      message: 'Smart kaydı sonradan onaylanmış.',
+    };
   }
   if (!statusCode) {
-    return { durum: 'okunamadi', engel: true, stateName, statusCode, message: 'Smart durum kodu boş döndü; reddedilmiş olabileceği için tetiklenmedi.' };
+    return {
+      durum: 'okunamadi',
+      engel: true,
+      stateName,
+      statusCode,
+      message: 'Smart durum kodu boş döndü; reddedilmiş olabileceği için tetiklenmedi.',
+    };
   }
   if (statusCode === '50') {
-    return { durum: 'bekliyor', engel: false, stateName, statusCode, message: 'Smart onayı hâlâ yok; tetiklerseniz onay sizin gerekçenizle atlanır.' };
+    return {
+      durum: 'bekliyor',
+      engel: false,
+      stateName,
+      statusCode,
+      message: 'Smart onayı hâlâ yok; tetiklerseniz onay sizin gerekçenizle atlanır.',
+    };
   }
   return {
-    durum: 'bilinmiyor', engel: false, stateName, statusCode,
-    message: `Smart belgelenmemiş bir durumda (kod ${statusCode}${stateName ? (", \"" + stateName + "\"") : ''}); onaylı değil. Tetiklerseniz onay sizin gerekçenizle atlanır.`,
+    durum: 'bilinmiyor',
+    engel: false,
+    stateName,
+    statusCode,
+    message: `Smart belgelenmemiş bir durumda (kod ${statusCode}${stateName ? ', "' + stateName + '"' : ''}); onaylı değil. Tetiklerseniz onay sizin gerekçenizle atlanır.`,
   };
 }
 
@@ -91,27 +135,42 @@ function istekDogrula(body, ticket) {
   const b = body && typeof body === 'object' ? body : {};
   const not = String(b.note ?? '').trim();
   if (not.length < NOT_EN_AZ) {
-    return { ok: false, message: `Gerekçe zorunlu (en az ${NOT_EN_AZ} karakter): neden onaysız / pencere dışı tetiklendiği denetimde kalır.` };
+    return {
+      ok: false,
+      message: `Gerekçe zorunlu (en az ${NOT_EN_AZ} karakter): neden onaysız / pencere dışı tetiklendiği denetimde kalır.`,
+    };
   }
-  if (not.length > NOT_EN_COK) return { ok: false, message: `Gerekçe en fazla ${NOT_EN_COK} karakter olabilir.` };
+  if (not.length > NOT_EN_COK)
+    return { ok: false, message: `Gerekçe en fazla ${NOT_EN_COK} karakter olabilir.` };
   if (!ocoKapsamli(ticket)) return { ok: true, mod: 'dogrudan', not, ocoNumber: '' };
   const mod = String(b.mode ?? '').trim();
   if (mod === 'oco') {
     const ocoNumber = String(b.ocoNumber ?? '').trim();
-    if (!/^\d{4,12}$/.test(ocoNumber)) return { ok: false, message: 'Geçerli bir OCO numarası girin (yalnız rakam).' };
+    if (!/^\d{4,12}$/.test(ocoNumber))
+      return { ok: false, message: 'Geçerli bir OCO numarası girin (yalnız rakam).' };
     const eski = String(ticket?.pendingLaunch?.extraVars?.oco_number ?? '').trim();
     if (eski && eski === ocoNumber) {
-      return { ok: false, message: `OCO ${ocoNumber} talebin penceresi kapanmış kaydı; yeni bir OCO numarası girin ya da "pencere dışında çalıştır" seçin.` };
+      return {
+        ok: false,
+        message: `OCO ${ocoNumber} talebin penceresi kapanmış kaydı; yeni bir OCO numarası girin ya da "pencere dışında çalıştır" seçin.`,
+      };
     }
     return { ok: true, mod, not, ocoNumber };
   }
   if (mod === 'pencereDisi') {
     if (b.outsideWindowConfirm !== true) {
-      return { ok: false, message: 'Pencere dışında çalıştırmak için ayrıca onay kutusunu işaretleyin.' };
+      return {
+        ok: false,
+        message: 'Pencere dışında çalıştırmak için ayrıca onay kutusunu işaretleyin.',
+      };
     }
     return { ok: true, mod, not, ocoNumber: '' };
   }
-  return { ok: false, message: 'Bu talep bir OCO penceresine bağlı: yeni OCO numarası girin ya da "pencere dışında çalıştır" seçin.' };
+  return {
+    ok: false,
+    message:
+      'Bu talep bir OCO penceresine bağlı: yeni OCO numarası girin ya da "pencere dışında çalıştır" seçin.',
+  };
 }
 
 /** extraVars kopyasina yeni OCO alanlarini yazar (kaynak nesneye dokunmaz). */
@@ -132,9 +191,25 @@ const MOD_METNI = {
 
 /** Bilete yazilacak aciklama: kim, nasil, neden. */
 function sonucMetni({ admin, mod, ocoNumber, smartDurum, not, zamanlandi }) {
-  const nasil = (() => { if (mod === 'oco') return `yeni OCO ${ocoNumber} ile ${zamanlandi ? (String(zamanlandi) + " tarihine zamanlandı") : 'hemen çalıştırıldı'}`; return MOD_METNI[mod] || mod; })();
-  const smart = smartDurum === 'onayli' ? 'Smart sonradan onaylamıştı' : 'Smart onayı admin tarafından atlandı';
-  return `Zaman aşımından sonra admin ${admin} yeniden tetikledi: ${nasil}; ${smart}. Gerekçe: ${not}`.slice(0, 2000);
+  const nasil = (() => {
+    if (mod === 'oco')
+      return `yeni OCO ${ocoNumber} ile ${zamanlandi ? String(zamanlandi) + ' tarihine zamanlandı' : 'hemen çalıştırıldı'}`;
+    return MOD_METNI[mod] || mod;
+  })();
+  const smart =
+    smartDurum === 'onayli' ? 'Smart sonradan onaylamıştı' : 'Smart onayı admin tarafından atlandı';
+  return `Zaman aşımından sonra admin ${admin} yeniden tetikledi: ${nasil}; ${smart}. Gerekçe: ${not}`.slice(
+    0,
+    2000,
+  );
 }
 
-module.exports = { ocoKapsamli, uygunluk, smartKarari, istekDogrula, yeniOcoDegiskenleri, sonucMetni, NOT_EN_AZ };
+module.exports = {
+  ocoKapsamli,
+  uygunluk,
+  smartKarari,
+  istekDogrula,
+  yeniOcoDegiskenleri,
+  sonucMetni,
+  NOT_EN_AZ,
+};

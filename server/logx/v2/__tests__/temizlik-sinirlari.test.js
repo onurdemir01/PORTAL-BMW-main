@@ -14,6 +14,7 @@
 // `state` 'expired' olur ve `state <> 'expired'` predikati onlari bir daha HIC
 // gormez. Sinir koymanin kendisi yeni bir sessiz veri kaybi uretebilirdi.
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -53,21 +54,31 @@ test('TS2 BOS liste hic sorgu uretmez (bos `IN ()` sozdizimi hatasidir)', () => 
 });
 
 test('TS3 `cleanupExpiredDownloads` hem TAVAN hem PARCALAMA tasir', () => {
-  const d = dilim(kodOnly(oku('server/logx/v2/downloads.cjs')),
-    'async function cleanupExpiredDownloads', 'module.exports');
+  const d = dilim(
+    kodOnly(oku('server/logx/v2/downloads.cjs')),
+    'async function cleanupExpiredDownloads',
+    'module.exports',
+  );
   assert.match(d, /SELECT TOP \(/, 'sinirsiz SELECT — once bellegi doldurur');
   assert.match(d, /for \(const parca of chunk\(/, 'DELETE parcalanmiyor — 2100 parametre siniri');
-  assert.doesNotMatch(d, /if\s*\(\s*(true|false|0|null|undefined)\s*\)/, 'sabit kosullu dal');
+  assert.doesNotMatch(
+    d,
+    esnek(/if\s*\(\s*(true|false|0|null|undefined)\s*\)/),
+    'sabit kosullu dal',
+  );
 });
 
 test('TS4 `expireOldRequests` UPDATE`i GORULEN satirlara hedefler (yetim dosya yok)', () => {
-  const d = dilim(kodOnly(oku('server/logx/v2/requests.cjs')),
-    'async function expireOldRequests', 'async function listRequestsForAdmin');
+  const d = dilim(
+    kodOnly(oku('server/logx/v2/requests.cjs')),
+    'async function expireOldRequests',
+    'async function listRequestsForAdmin',
+  );
   assert.match(d, /SELECT TOP \(/, 'sinirsiz SELECT');
   // ASIL SINAV: UPDATE artik WHERE predikatiyla TOPLU kosmamali.
   assert.doesNotMatch(
     d,
-    /UPDATE logx_v2_requests SET state = 'expired'\s*\n?\s*WHERE expires_at/,
+    esnek(/UPDATE logx_v2_requests SET state = 'expired'\s*\n?\s*WHERE expires_at/),
     'UPDATE hala TOPLU — okunmayan isteklerin dosyalari yetim kalir',
   );
   assert.match(d, /WHERE request_id IN \(/, 'UPDATE gorulen satirlari hedeflemiyor');
@@ -84,7 +95,7 @@ test('TS6 cikti yoklamasinin KENDI durdurucusu var', () => {
   const i = d.indexOf('jobOutput(jobId)');
   assert.ok(i > 0, 'cikti yoklamasi bulunamadi');
   const blok = d.slice(Math.max(0, i - 900), i + 1200);
-  assert.doesNotMatch(blok, /\.catch\(\(\)\s*=>\s*\{\}\)/, 'hata hala sessizce yutuluyor');
+  assert.doesNotMatch(blok, esnek(/\.catch\(\(\)\s*=>\s*\{\}\)/), 'hata hala sessizce yutuluyor');
   assert.match(blok, /ardArdaHata/, 'kendi hata sayaci yok');
 
   // ── SEBEP HATA DALINDA YAZILMALI ────────────────────────────────────────────

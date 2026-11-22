@@ -9,14 +9,19 @@ const { maskeDeseniDenetle } = require('../maske-deseni.cjs');
 // MSSQL unique-constraint ihlali (2627 = PRIMARY/UNIQUE KEY, 2601 = unique index). Duplicate
 // ekleme yakalanmazsa yakalanmamis hata → 500. Bunu dostca 409'a ceviririz.
 function isUniqueViolation(err) {
-  const n = (err?.number ?? (err?.originalError?.info?.number));
-  return n === 2627 || n === 2601 || /duplicate key|cannot insert duplicate|unique/i.test((err?.message) || '');
+  const n = err?.number ?? err?.originalError?.info?.number;
+  return (
+    n === 2627 ||
+    n === 2601 ||
+    /duplicate key|cannot insert duplicate|unique/i.test(err?.message || '')
+  );
 }
 async function insertOrConflict(runQuery, dupMsg) {
   try {
     return await runQuery();
   } catch (err) {
-    if (isUniqueViolation(err)) throw Object.assign(new Error(dupMsg), { status: 409, code: 'conflict' });
+    if (isUniqueViolation(err))
+      throw Object.assign(new Error(dupMsg), { status: 409, code: 'conflict' });
     throw err;
   }
 }
@@ -30,7 +35,7 @@ async function listClusterIndex() {
     `SELECT id, env, tenant, cluster_name, display, default_namespace, terminal_host,
             api_url, vault_credential_key, ocp_username, is_active, source,
             last_synced_at, sync_status
-     FROM ocp_cluster_index ORDER BY env, tenant, cluster_name`
+     FROM ocp_cluster_index ORDER BY env, tenant, cluster_name`,
   );
   return rows.map(normalizeBit);
 }
@@ -38,7 +43,7 @@ async function listClusterIndex() {
 // Yalnizca aktif satirlardan, sihirbaz icin { env: { tenant: [cluster,...] } } agaci uretir.
 async function getClusterTree() {
   const { rows } = await db.query(
-    `SELECT env, tenant, cluster_name FROM ocp_cluster_index WHERE is_active = 1 ORDER BY env, tenant, cluster_name`
+    `SELECT env, tenant, cluster_name FROM ocp_cluster_index WHERE is_active = 1 ORDER BY env, tenant, cluster_name`,
   );
   const tree = {};
   for (const row of rows) {
@@ -66,7 +71,9 @@ function normalizeApiUrl(value) {
     if (u.protocol !== 'https:') return null;
     if (/[\s"'`$;&|<>\\]/.test(s)) return null;
     return s;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Vault anahtarinin ADI (parola DEGIL). Ansible degisken adi kurallarina uymali —
@@ -91,16 +98,24 @@ async function createClusterIndexRow(data) {
     throw Object.assign(new Error('env, tenant ve cluster_name zorunlu.'), { status: 400 });
   }
   const { rows } = await insertOrConflict(
-    () => db.query(
-      `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, api_url,
+    () =>
+      db.query(
+        `INSERT INTO ocp_cluster_index (env, tenant, cluster_name, terminal_host, api_url,
          vault_credential_key, ocp_username, is_active)
        OUTPUT INSERTED.*
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
-       normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
-       normalizeOcpUsername(data.ocp_username), is_active !== false ? 1 : 0]
-    ),
-    `Bu kayıt zaten var: ${env}/${tenant}/${cluster_name}.`
+        [
+          env,
+          tenant,
+          cluster_name,
+          normalizeTerminalHost(data.terminal_host),
+          normalizeApiUrl(data.api_url),
+          normalizeVaultKey(data.vault_credential_key),
+          normalizeOcpUsername(data.ocp_username),
+          is_active !== false ? 1 : 0,
+        ],
+      ),
+    `Bu kayıt zaten var: ${env}/${tenant}/${cluster_name}.`,
   );
   return normalizeBit(rows[0]);
 }
@@ -113,9 +128,17 @@ async function updateClusterIndexRow(id, data) {
        updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id=$9`,
-    [env, tenant, cluster_name, normalizeTerminalHost(data.terminal_host),
-     normalizeApiUrl(data.api_url), normalizeVaultKey(data.vault_credential_key),
-     normalizeOcpUsername(data.ocp_username), is_active !== false ? 1 : 0, id]
+    [
+      env,
+      tenant,
+      cluster_name,
+      normalizeTerminalHost(data.terminal_host),
+      normalizeApiUrl(data.api_url),
+      normalizeVaultKey(data.vault_credential_key),
+      normalizeOcpUsername(data.ocp_username),
+      is_active !== false ? 1 : 0,
+      id,
+    ],
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -131,7 +154,7 @@ async function deleteClusterIndexRow(id) {
 async function clusterExists(env, tenant, clusterName) {
   const { rows } = await db.query(
     `SELECT 1 FROM ocp_cluster_index WHERE env=$1 AND tenant=$2 AND cluster_name=$3 AND is_active=1`,
-    [env, tenant, clusterName]
+    [env, tenant, clusterName],
   );
   return rows.length > 0;
 }
@@ -143,7 +166,7 @@ async function clusterExists(env, tenant, clusterName) {
 async function listVaultKeys() {
   const { rows } = await db.query(
     `SELECT id, key_name, default_username, description, is_active
-     FROM ocp_vault_key_catalog ORDER BY key_name`
+     FROM ocp_vault_key_catalog ORDER BY key_name`,
   );
   return rows.map(normalizeBit);
 }
@@ -151,7 +174,7 @@ async function listVaultKeys() {
 // Yalnizca aktif anahtar ADLARI (sihirbaz/oneri listesi icin).
 async function listActiveVaultKeyNames() {
   const { rows } = await db.query(
-    `SELECT key_name FROM ocp_vault_key_catalog WHERE is_active = 1 ORDER BY key_name`
+    `SELECT key_name FROM ocp_vault_key_catalog WHERE is_active = 1 ORDER BY key_name`,
   );
   return rows.map((r) => r.key_name);
 }
@@ -166,9 +189,9 @@ function assertVaultKeyName(value) {
     throw Object.assign(
       new Error(
         'Geçersiz vault anahtarı adı. Ansible değişken adı kurallarına uymalı: ' +
-        'harf veya alt çizgi ile başlar, yalnızca harf/rakam/alt çizgi içerir (ör. uxmid_gar).'
+          'harf veya alt çizgi ile başlar, yalnızca harf/rakam/alt çizgi içerir (ör. svcac_gar).',
       ),
-      { status: 400 }
+      { status: 400 },
     );
   }
   return s;
@@ -177,14 +200,20 @@ function assertVaultKeyName(value) {
 async function createVaultKey(data) {
   const keyName = assertVaultKeyName(data?.key_name);
   const { rows } = await insertOrConflict(
-    () => db.query(
-      `INSERT INTO ocp_vault_key_catalog (key_name, default_username, description, is_active)
+    () =>
+      db.query(
+        `INSERT INTO ocp_vault_key_catalog (key_name, default_username, description, is_active)
        OUTPUT INSERTED.* VALUES ($1,$2,$3,$4)`,
-      [keyName, normalizeOcpUsername(data.default_username),
-       String(data.description ?? '').trim().slice(0, 400) || null,
-       data.is_active !== false ? 1 : 0]
-    ),
-    `Bu vault anahtarı zaten tanımlı: ${keyName}.`
+        [
+          keyName,
+          normalizeOcpUsername(data.default_username),
+          String(data.description ?? '')
+            .trim()
+            .slice(0, 400) || null,
+          data.is_active !== false ? 1 : 0,
+        ],
+      ),
+    `Bu vault anahtarı zaten tanımlı: ${keyName}.`,
   );
   return normalizeBit(rows[0]);
 }
@@ -192,15 +221,22 @@ async function createVaultKey(data) {
 async function updateVaultKey(id, data) {
   const keyName = assertVaultKeyName(data?.key_name);
   const { rows } = await insertOrConflict(
-    () => db.query(
-      `UPDATE ocp_vault_key_catalog SET key_name=$1, default_username=$2, description=$3,
+    () =>
+      db.query(
+        `UPDATE ocp_vault_key_catalog SET key_name=$1, default_username=$2, description=$3,
          is_active=$4, updated_at=GETUTCDATE()
        OUTPUT INSERTED.* WHERE id=$5`,
-      [keyName, normalizeOcpUsername(data.default_username),
-       String(data.description ?? '').trim().slice(0, 400) || null,
-       data.is_active !== false ? 1 : 0, Number(id)]
-    ),
-    `Bu vault anahtarı zaten tanımlı: ${keyName}.`
+        [
+          keyName,
+          normalizeOcpUsername(data.default_username),
+          String(data.description ?? '')
+            .trim()
+            .slice(0, 400) || null,
+          data.is_active !== false ? 1 : 0,
+          Number(id),
+        ],
+      ),
+    `Bu vault anahtarı zaten tanımlı: ${keyName}.`,
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -208,25 +244,27 @@ async function updateVaultKey(id, data) {
 // Silme, anahtari KULLANAN cluster satirlari varsa reddedilir: sessizce silmek o
 // cluster'lari calisma aninda "parola cozulemedi" hatasina dusururdu.
 async function deleteVaultKey(id) {
-  const { rows } = await db.query(
-    `SELECT key_name FROM ocp_vault_key_catalog WHERE id = $1`, [Number(id)]
-  );
+  const { rows } = await db.query(`SELECT key_name FROM ocp_vault_key_catalog WHERE id = $1`, [
+    Number(id),
+  ]);
   if (!rows.length) return false;
   const keyName = rows[0].key_name;
 
   const { rows: users } = await db.query(
     `SELECT TOP 5 env, tenant, cluster_name FROM ocp_cluster_index WHERE vault_credential_key = $1`,
-    [keyName]
+    [keyName],
   );
   if (users.length) {
     const list = users.map((r) => `${r.tenant}/${r.env}/${r.cluster_name}`).join(', ');
     throw Object.assign(
       new Error(`Bu anahtar kullanımda, silinemez: ${list}${users.length === 5 ? ' …' : ''}`),
-      { status: 409, code: 'conflict' }
+      { status: 409, code: 'conflict' },
     );
   }
 
-  const { rowCount } = await db.query(`DELETE FROM ocp_vault_key_catalog WHERE id = $1`, [Number(id)]);
+  const { rowCount } = await db.query(`DELETE FROM ocp_vault_key_catalog WHERE id = $1`, [
+    Number(id),
+  ]);
   return rowCount > 0;
 }
 
@@ -240,7 +278,7 @@ async function listTerminalHostMap() {
 async function getTerminalHost(tenant, env) {
   const { rows } = await db.query(
     `SELECT terminal_host FROM ocp_terminal_host_map WHERE tenant=$1 AND env=$2 AND is_active=1`,
-    [tenant, env]
+    [tenant, env],
   );
   return rows[0]?.terminal_host || null;
 }
@@ -256,7 +294,9 @@ async function getTerminalHost(tenant, env) {
 // Eksik alanlar null gelir — cagiran taraf bunlari extra_vars'a HIC koymaz, boylece
 // playbook eski inventory yoluna duser (asamali gecis).
 async function resolveClusterMeta(env, tenant, clusterNames) {
-  const names = [...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const names = [
+    ...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean)),
+  ];
   const out = {};
   if (!names.length) return out;
 
@@ -264,7 +304,7 @@ async function resolveClusterMeta(env, tenant, clusterNames) {
     `SELECT cluster_name, terminal_host, api_url, vault_credential_key, ocp_username
      FROM ocp_cluster_index
      WHERE env=$1 AND tenant=$2 AND is_active=1`,
-    [env, tenant]
+    [env, tenant],
   );
   const byName = new Map(rows.map((r) => [r.cluster_name, r]));
   const fallbackHost = await getTerminalHost(tenant, env);
@@ -292,7 +332,9 @@ async function resolveClusterMeta(env, tenant, clusterNames) {
 // bastion'siz kaldigi kullaniciya soylenir); burada throw EDILMEZ ki cagiran mesaji
 // kendi baglamina gore kurabilsin.
 async function resolveTerminalHosts(env, tenant, clusterNames) {
-  const names = [...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean))];
+  const names = [
+    ...new Set((clusterNames || []).map((n) => String(n || '').trim()).filter(Boolean)),
+  ];
   const hosts = {};
   const missing = [];
   if (!names.length) return { hosts, missing };
@@ -300,7 +342,7 @@ async function resolveTerminalHosts(env, tenant, clusterNames) {
   const { rows } = await db.query(
     `SELECT cluster_name, terminal_host FROM ocp_cluster_index
      WHERE env=$1 AND tenant=$2 AND is_active=1`,
-    [env, tenant]
+    [env, tenant],
   );
   const byName = new Map(rows.map((r) => [r.cluster_name, normalizeTerminalHost(r.terminal_host)]));
 
@@ -321,13 +363,14 @@ async function createTerminalHostRow(data) {
     throw Object.assign(new Error('tenant, env ve terminal_host zorunlu.'), { status: 400 });
   }
   const { rows } = await insertOrConflict(
-    () => db.query(
-      `INSERT INTO ocp_terminal_host_map (tenant, env, terminal_host, is_active)
+    () =>
+      db.query(
+        `INSERT INTO ocp_terminal_host_map (tenant, env, terminal_host, is_active)
        OUTPUT INSERTED.*
        VALUES ($1,$2,$3,$4)`,
-      [tenant, env, terminal_host, is_active !== false ? 1 : 0]
-    ),
-    `Bu tenant/env için terminal host zaten tanımlı: ${tenant}/${env}.`
+        [tenant, env, terminal_host, is_active !== false ? 1 : 0],
+      ),
+    `Bu tenant/env için terminal host zaten tanımlı: ${tenant}/${env}.`,
   );
   return normalizeBit(rows[0]);
 }
@@ -338,7 +381,7 @@ async function updateTerminalHostRow(id, data) {
     `UPDATE ocp_terminal_host_map SET tenant=$1, env=$2, terminal_host=$3, is_active=$4, updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id=$5`,
-    [tenant, env, terminal_host, is_active !== false ? 1 : 0, id]
+    [tenant, env, terminal_host, is_active !== false ? 1 : 0, id],
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -361,13 +404,14 @@ async function createEnvSuffixRow(data) {
     throw Object.assign(new Error('env_label zorunlu.'), { status: 400 });
   }
   const { rows } = await insertOrConflict(
-    () => db.query(
-      `INSERT INTO logx_env_suffix_map (suffix, env_label, sort_order, is_active)
+    () =>
+      db.query(
+        `INSERT INTO logx_env_suffix_map (suffix, env_label, sort_order, is_active)
        OUTPUT INSERTED.*
        VALUES ($1,$2,$3,$4)`,
-      [suffix ?? '', env_label, sort_order ?? 0, is_active !== false ? 1 : 0]
-    ),
-    `Bu son-ek zaten tanımlı: "${suffix ?? ''}".`
+        [suffix ?? '', env_label, sort_order ?? 0, is_active !== false ? 1 : 0],
+      ),
+    `Bu son-ek zaten tanımlı: "${suffix ?? ''}".`,
   );
   return normalizeBit(rows[0]);
 }
@@ -378,7 +422,7 @@ async function updateEnvSuffixRow(id, data) {
     `UPDATE logx_env_suffix_map SET suffix=$1, env_label=$2, sort_order=$3, is_active=$4, updated_at=GETUTCDATE()
      OUTPUT INSERTED.*
      WHERE id=$5`,
-    [suffix ?? '', env_label, sort_order ?? 0, is_active !== false ? 1 : 0, id]
+    [suffix ?? '', env_label, sort_order ?? 0, is_active !== false ? 1 : 0, id],
   );
   return rows[0] ? normalizeBit(rows[0]) : null;
 }
@@ -422,7 +466,8 @@ async function validateMaskRule(data) {
   if (!name) throw Object.assign(new Error('name zorunlu.'), { status: 400 });
   if (!pattern) throw Object.assign(new Error('pattern zorunlu.'), { status: 400 });
   if (!replacement) throw Object.assign(new Error('replacement zorunlu.'), { status: 400 });
-  if (!/^[gimsuy]*$/.test(flags)) throw Object.assign(new Error('flags gecersiz.'), { status: 400 });
+  if (!/^[gimsuy]*$/.test(flags))
+    throw Object.assign(new Error('flags gecersiz.'), { status: 400 });
   const denetim = await maskeDeseniDenetle(pattern, flags);
   if (!denetim.ok) {
     throw Object.assign(new Error(`pattern reddedildi: ${denetim.sebep}`), { status: 400 });
@@ -435,12 +480,15 @@ async function createMaskRule(data) {
   const sortOrder = Number(data.sort_order ?? data.sortOrder ?? 0) || 0;
   const enabled = data.enabled === false || data.enabled === 0 ? 0 : 1;
   return insertOrConflict(
-    () => db.query(
-      `INSERT INTO logx_mask_rules (name, pattern, flags, replacement, sort_order, enabled)
+    () =>
+      db
+        .query(
+          `INSERT INTO logx_mask_rules (name, pattern, flags, replacement, sort_order, enabled)
        OUTPUT INSERTED.* VALUES ($1, $2, $3, $4, $5, $6)`,
-      [v.name, v.pattern, v.flags, v.replacement, sortOrder, enabled]
-    ).then((r) => normalizeBit(r.rows[0])),
-    'Bu isimde bir kural zaten var.'
+          [v.name, v.pattern, v.flags, v.replacement, sortOrder, enabled],
+        )
+        .then((r) => normalizeBit(r.rows[0])),
+    'Bu isimde bir kural zaten var.',
   );
 }
 
@@ -451,7 +499,7 @@ async function updateMaskRule(id, data) {
   const { rows } = await db.query(
     `UPDATE logx_mask_rules SET name=$1, pattern=$2, flags=$3, replacement=$4, sort_order=$5, enabled=$6, updated_at=GETUTCDATE()
      OUTPUT INSERTED.* WHERE id=$7`,
-    [v.name, v.pattern, v.flags, v.replacement, sortOrder, enabled, Number(id)]
+    [v.name, v.pattern, v.flags, v.replacement, sortOrder, enabled, Number(id)],
   );
   return rows.length ? normalizeBit(rows[0]) : null;
 }
@@ -462,10 +510,32 @@ async function deleteMaskRule(id) {
 }
 
 module.exports = {
-  listClusterIndex, getClusterTree, createClusterIndexRow, updateClusterIndexRow, deleteClusterIndexRow, clusterExists,
-  listVaultKeys, listActiveVaultKeyNames, createVaultKey, updateVaultKey, deleteVaultKey,
+  listClusterIndex,
+  getClusterTree,
+  createClusterIndexRow,
+  updateClusterIndexRow,
+  deleteClusterIndexRow,
+  clusterExists,
+  listVaultKeys,
+  listActiveVaultKeyNames,
+  createVaultKey,
+  updateVaultKey,
+  deleteVaultKey,
   normalizeOcpUsername,
-  listTerminalHostMap, getTerminalHost, resolveTerminalHosts, resolveClusterMeta, createTerminalHostRow, updateTerminalHostRow, deleteTerminalHostRow,
-  listEnvSuffixMap, createEnvSuffixRow, updateEnvSuffixRow, deleteEnvSuffixRow, resolveEnvLabel,
-  listMaskRules, createMaskRule, updateMaskRule, deleteMaskRule,
+  listTerminalHostMap,
+  getTerminalHost,
+  resolveTerminalHosts,
+  resolveClusterMeta,
+  createTerminalHostRow,
+  updateTerminalHostRow,
+  deleteTerminalHostRow,
+  listEnvSuffixMap,
+  createEnvSuffixRow,
+  updateEnvSuffixRow,
+  deleteEnvSuffixRow,
+  resolveEnvLabel,
+  listMaskRules,
+  createMaskRule,
+  updateMaskRule,
+  deleteMaskRule,
 };

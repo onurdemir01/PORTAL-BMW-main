@@ -23,39 +23,121 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { retirementApi, type RtHedefIs, type RtIsCiktisi, type RtTarget } from '@/api/retirementApi';
+import {
+  retirementApi,
+  type RtHedefIs,
+  type RtIsCiktisi,
+  type RtTarget,
+} from '@/api/retirementApi';
 import { IsGoruntuleyici, type CiktiOnbellegi } from '@/components/server_hub/RetirementIsCiktisi';
-import { ciktiSonucu, geriCekilme, hataOzeti, ipucuEslesir, isEtiketi, kaliciMesaj, sureMetni, varsayilanIs, yoklamaGecikmesi } from '@/components/server_hub/retirementCikti';
+import {
+  ciktiSonucu,
+  geriCekilme,
+  hataOzeti,
+  ipucuEslesir,
+  isEtiketi,
+  kaliciMesaj,
+  sureMetni,
+  varsayilanIs,
+  yoklamaGecikmesi,
+} from '@/components/server_hub/retirementCikti';
 import RetirementIsCiktisi from '@/components/server_hub/RetirementIsCiktisi';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { Modal } from '@/components/common/Modal';
 import RetirementCanli from '@/components/server_hub/RetirementCanli';
 
 const hedef = (o: Partial<RtTarget> = {}): RtTarget => ({
-  id: 9, recordId: 5, host: 'GBJBOP01', site: 'Pendik', env: 'PROD', appName: 'CRM', gen: 7, appPath: '/vhosting/CRM.ear', web: [], status: 'stopping',
-  planText: null, resultText: 'OK — durduruldu', lastJobId: 500, deleteJobId: null, stoppedAt: null, updatedAt: '2026-10-26T10:00:00Z', deletedAt: null,
-  rolledBackAt: null, rollbackJobId: null, scheduledAt: null, windowEnd: null, webSonuc: null, detail: null, ...o,
+  id: 9,
+  recordId: 5,
+  host: 'ORJBOP01',
+  site: 'Pendik',
+  env: 'PROD',
+  appName: 'CRM',
+  gen: 7,
+  appPath: '/vhosting/CRM.ear',
+  web: [],
+  status: 'stopping',
+  planText: null,
+  resultText: 'OK — durduruldu',
+  lastJobId: 500,
+  deleteJobId: null,
+  stoppedAt: null,
+  updatedAt: '2026-10-26T10:00:00Z',
+  deletedAt: null,
+  rolledBackAt: null,
+  rollbackJobId: null,
+  scheduledAt: null,
+  windowEnd: null,
+  webSonuc: null,
+  detail: null,
+  ...o,
 });
-const is = (o: Partial<RtHedefIs> = {}): RtHedefIs => ({ adim: 'stop', jobId: 500, durum: 'suruyor', basladi: '2026-10-26T10:00:00Z', bitti: null, ...o });
+const is = (o: Partial<RtHedefIs> = {}): RtHedefIs => ({
+  adim: 'stop',
+  jobId: 500,
+  durum: 'suruyor',
+  basladi: '2026-10-26T10:00:00Z',
+  bitti: null,
+  ...o,
+});
 const veri = (o: Partial<RtIsCiktisi> = {}): RtIsCiktisi => ({
-  ok: true, kaynak: 'awx', adim: 'stop', jobId: 500, awxServerId: 1, sunucuAdi: 'maestro', status: 'running', bitti: false, output: 'PLAY [x]',
-  kirpildi: false, started: '2026-10-26T10:00:00Z', finished: null, elapsed: 3, awxUrl: 'https://awx1.test/#/jobs/playbook/500/output', ...o,
+  ok: true,
+  kaynak: 'awx',
+  adim: 'stop',
+  jobId: 500,
+  awxServerId: 1,
+  sunucuAdi: 'maestro',
+  status: 'running',
+  bitti: false,
+  output: 'PLAY [x]',
+  kirpildi: false,
+  started: '2026-10-26T10:00:00Z',
+  finished: null,
+  elapsed: 3,
+  awxUrl: 'https://awx1.test/#/jobs/playbook/500/output',
+  ...o,
 });
-const isle = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
-const goster = (o: { t?: RtTarget; i?: RtHedefIs; onbellek?: CiktiOnbellegi; onIsBitti?: () => void } = {}) =>
-  render(<IsGoruntuleyici kayitId={5} t={o.t ?? hedef()} is={o.i ?? is()} onbellek={o.onbellek ?? new Map()} onIsBitti={o.onIsBitti ?? (() => {})} />);
+const isle = async (ms: number) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+};
+const goster = (
+  o: { t?: RtTarget; i?: RtHedefIs; onbellek?: CiktiOnbellegi; onIsBitti?: () => void } = {},
+) =>
+  render(
+    <IsGoruntuleyici
+      kayitId={5}
+      t={o.t ?? hedef()}
+      is={o.i ?? is()}
+      onbellek={o.onbellek ?? new Map()}
+      onIsBitti={o.onIsBitti ?? (() => {})}
+    />,
+  );
 
 describe('Retirement is ciktisi — saf yardimcilar', () => {
   it('IC1 URL: yalniz kayit, hedef, adim (+web); jobId / serverId yok', async () => {
-    const f = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const f = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
     vi.stubGlobal('fetch', f);
     try {
       await retirementApi.isCiktisi(5, 9, 'stop');
       await retirementApi.isCiktisi(5, 9, 'web', 2);
       const urls = f.mock.calls.map((c) => String((c as unknown[])[0]));
-      expect(urls).toEqual(['/api/retirement/5/targets/9/is-ciktisi?adim=stop', '/api/retirement/5/targets/9/is-ciktisi?adim=web&web=2']);
-      for (const u of urls) expect(u).not.toMatch(/jobId|serverId|job-status|\/\d+\/\d+\/is-ciktisi/);
-    } finally { vi.unstubAllGlobals(); }
+      expect(urls).toEqual([
+        '/api/retirement/5/targets/9/is-ciktisi?adim=stop',
+        '/api/retirement/5/targets/9/is-ciktisi?adim=web&web=2',
+      ]);
+      for (const u of urls)
+        expect(u).not.toMatch(/jobId|serverId|job-status|\/\d+\/\d+\/is-ciktisi/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('IC2 yoklama araligi', () => {
@@ -63,25 +145,45 @@ describe('Retirement is ciktisi — saf yardimcilar', () => {
     expect(yoklamaGecikmesi(false, 'running')).toBe(3000);
     for (const s of ['new', 'pending', 'waiting']) expect(yoklamaGecikmesi(true, s), s).toBe(3000);
     expect([1, 2, 3, 4, 5, 6].map(geriCekilme)).toEqual([3000, 6000, 12000, 24000, 30000, 30000]);
-    expect([0, 59, 60, 61, 3599, 3600, 3725].map(sureMetni)).toEqual(['0 sn', '59 sn', '1 dk 00 sn', '1 dk 01 sn', '59 dk 59 sn', '1 sa 00 dk', '1 sa 02 dk']);
+    expect([0, 59, 60, 61, 3599, 3600, 3725].map(sureMetni)).toEqual([
+      '0 sn',
+      '59 sn',
+      '1 dk 00 sn',
+      '1 dk 01 sn',
+      '59 dk 59 sn',
+      '1 sa 00 dk',
+      '1 sa 02 dk',
+    ]);
   });
 
   it('IC10 ciktiSonucu siniflamasi', () => {
     expect(ciktiSonucu(veri())).toBe('veri');
-    expect(ciktiSonucu({ ok: false, code: 'is_yok', kalici: true, message: '', _httpStatus: 409 })).toBe('kalici');
-    expect(ciktiSonucu({ ok: false, code: 'olculemedi', kalici: false, message: '', _httpStatus: 424 })).toBe('gecici');
+    expect(
+      ciktiSonucu({ ok: false, code: 'is_yok', kalici: true, message: '', _httpStatus: 409 }),
+    ).toBe('kalici');
+    expect(
+      ciktiSonucu({ ok: false, code: 'olculemedi', kalici: false, message: '', _httpStatus: 424 }),
+    ).toBe('gecici');
     // Bayraksiz red (kapi / eski sunucu): HTTP kodu.
     expect(ciktiSonucu({ ok: false, _httpStatus: 403 })).toBe('kalici');
     expect(ciktiSonucu({ ok: false, _httpStatus: 500 })).toBe('gecici');
     expect(ciktiSonucu(Object.assign(new Error('yasak'), { status: 403 }))).toBe('kalici');
     expect(ciktiSonucu(Object.assign(new Error('oturum'), { status: 401 }))).toBe('kalici');
     expect(ciktiSonucu(Object.assign(new Error('yok'), { status: 404 }))).toBe('kalici');
-    expect(ciktiSonucu(Object.assign(new Error('gecit'), { status: 503, gatewayUnavailable: true }))).toBe('gecici');
+    expect(
+      ciktiSonucu(Object.assign(new Error('gecit'), { status: 503, gatewayUnavailable: true })),
+    ).toBe('gecici');
     expect(ciktiSonucu(Object.assign(new Error('5xx'), { status: 500 }))).toBe('gecici');
     expect(ciktiSonucu(new TypeError('Failed to fetch'))).toBe('gecici');
     expect(ciktiSonucu(Object.assign(new Error('iptal'), { name: 'AbortError' }))).toBe('iptal');
-    expect(kaliciMesaj('template_uyusmuyor', '', { jobId: 77 })).toBe('AWX’teki #77 bu adımın playbook’u değil; çıktı gösterilmedi.');
-    expect(kaliciMesaj('awx_server_missing', 'AWX sunucusu #1 (maestro) devre dışı bırakıldı.')).toBe('AWX sunucusu #1 (maestro) devre dışı bırakıldı. Bu işin çıktısı Portal arşivinde de yok.');
+    expect(kaliciMesaj('template_uyusmuyor', '', { jobId: 77 })).toBe(
+      'AWX’teki #77 bu adımın playbook’u değil; çıktı gösterilmedi.',
+    );
+    expect(
+      kaliciMesaj('awx_server_missing', 'AWX sunucusu #1 (maestro) devre dışı bırakıldı.'),
+    ).toBe(
+      'AWX sunucusu #1 (maestro) devre dışı bırakıldı. Bu işin çıktısı Portal arşivinde de yok.',
+    );
     expect(kaliciMesaj('is_yok', '', { gecis: true })).toMatch(/‘Durumu tazele’/);
     expect(kaliciMesaj('http_403')).toMatch(/yalnız Admin/);
   });
@@ -89,16 +191,16 @@ describe('Retirement is ciktisi — saf yardimcilar', () => {
   it('IC11 hata ozeti', () => {
     const cikti = [
       'TASK [durdur] ***',
-      'FAILED - RETRYING: [GBJBOP01]: bekle (3 retries left).',
-      'fatal: [GBJBOP01]: FAILED! => {"msg": "x"}',
+      'FAILED - RETRYING: [ORJBOP01]: bekle (3 retries left).',
+      'fatal: [ORJBOP01]: FAILED! => {"msg": "x"}',
       'ERROR! the role was not found',
       'STEP\tstop\tFAIL\tJVM durmadi',
-      'GBJBOP01 : ok=3 changed=0 unreachable=0 failed=0 skipped=0',
-      'GBJBOP02 : ok=3 changed=0 unreachable=0 failed=1 skipped=0',
-      'GBJBOP03 : ok=1 changed=0 unreachable=2 failed=0 skipped=0',
-      'GBJBOP04 : ok=1 changed=0 unreachable=0 failed=10 skipped=0',
-      'GBJBOP05 : ok=1 changed=0 unreachable=0 failed=3 skipped=0',
-      'GBJBOP06 : ok=1 changed=0 unreachable=0 failed=4 skipped=0',
+      'ORJBOP01 : ok=3 changed=0 unreachable=0 failed=0 skipped=0',
+      'ORJBOP02 : ok=3 changed=0 unreachable=0 failed=1 skipped=0',
+      'ORJBOP03 : ok=1 changed=0 unreachable=2 failed=0 skipped=0',
+      'ORJBOP04 : ok=1 changed=0 unreachable=0 failed=10 skipped=0',
+      'ORJBOP05 : ok=1 changed=0 unreachable=0 failed=3 skipped=0',
+      'ORJBOP06 : ok=1 changed=0 unreachable=0 failed=4 skipped=0',
     ].join('\n');
     const o = hataOzeti(cikti);
     expect(o.map((x) => x.satir)).toEqual([3, 4, 5, 7, 8, 9]);
@@ -109,18 +211,47 @@ describe('Retirement is ciktisi — saf yardimcilar', () => {
 
   it('IC12 varsayilan secim ve etiket', () => {
     const l: RtHedefIs[] = [
-      is({ adim: 'onkontrol', jobId: 1, durum: 'basarili' }), is({ adim: 'stop', jobId: 2, durum: 'basarisiz' }),
-      is({ adim: 'web', web: 0, jobId: 3, durum: 'suruyor' }), is({ adim: 'web', web: 1, jobId: 4, durum: 'basarili' }),
+      is({ adim: 'onkontrol', jobId: 1, durum: 'basarili' }),
+      is({ adim: 'stop', jobId: 2, durum: 'basarisiz' }),
+      is({ adim: 'web', web: 0, jobId: 3, durum: 'suruyor' }),
+      is({ adim: 'web', web: 1, jobId: 4, durum: 'basarili' }),
     ];
     expect(varsayilanIs(l, { adim: 'web', web: 1 })?.jobId).toBe(4);
     expect(varsayilanIs(l, { adim: 'delete' })?.jobId).toBe(3);
     expect(varsayilanIs(l, { jobId: 2 })?.jobId).toBe(2);
     expect(varsayilanIs(l, {})?.jobId).toBe(3);
     expect(varsayilanIs(l.filter((x) => x.durum !== 'suruyor'))?.jobId).toBe(2);
-    expect(varsayilanIs([is({ adim: 'onkontrol', jobId: 1, durum: 'basarili' }), is({ adim: 'stop', jobId: 2, durum: 'basarili' })])?.jobId).toBe(2);
+    expect(
+      varsayilanIs([
+        is({ adim: 'onkontrol', jobId: 1, durum: 'basarili' }),
+        is({ adim: 'stop', jobId: 2, durum: 'basarili' }),
+      ])?.jobId,
+    ).toBe(2);
     expect(varsayilanIs([])).toBeNull();
-    const ws = [{ host: 'GBW', serverName: 'a.bmw.de', product: 'IHS', confFile: 'x', status: 'restoring', jobId: 9, message: null }, { host: 'GBW', serverName: 'b.bmw.de', product: 'IHS', confFile: 'x', status: 'restore_failed', jobId: 8, message: null }];
-    expect(isEtiketi({ adim: 'web', web: 0 }, ws)).toEqual({ etiket: 'Web geri açma: a.bmw.de', ipucu: 'GBW' });
+    const ws = [
+      {
+        host: 'GBW',
+        serverName: 'a.bmw.de',
+        product: 'IHS',
+        confFile: 'x',
+        status: 'restoring',
+        jobId: 9,
+        message: null,
+      },
+      {
+        host: 'GBW',
+        serverName: 'b.bmw.de',
+        product: 'IHS',
+        confFile: 'x',
+        status: 'restore_failed',
+        jobId: 8,
+        message: null,
+      },
+    ];
+    expect(isEtiketi({ adim: 'web', web: 0 }, ws)).toEqual({
+      etiket: 'Web geri açma: a.bmw.de',
+      ipucu: 'GBW',
+    });
     expect(isEtiketi({ adim: 'web', web: 1 }, ws).etiket).toBe('Web: b.bmw.de');
     expect(isEtiketi({ adim: 'delete_onkontrol' }).etiket).toBe('Silme ön kontrolü');
   });
@@ -128,11 +259,27 @@ describe('Retirement is ciktisi — saf yardimcilar', () => {
 
 describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
   let spy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => { vi.useFakeTimers(); spy = vi.spyOn(retirementApi, 'isCiktisi'); });
-  afterEach(() => { spy.mockRestore(); vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    spy = vi.spyOn(retirementApi, 'isCiktisi');
+  });
+  afterEach(() => {
+    spy.mockRestore();
+    vi.useRealTimers();
+  });
 
   it('IC3 bitince durur; onBitti canli gorulmusse BIR kez; bitmis is onbellekten', async () => {
-    spy.mockResolvedValueOnce(veri({ output: 'a' })).mockResolvedValueOnce(veri({ output: 'ab' })).mockResolvedValue(veri({ output: 'abc', bitti: true, status: 'successful', finished: '2026-10-26T10:05:00Z' }));
+    spy
+      .mockResolvedValueOnce(veri({ output: 'a' }))
+      .mockResolvedValueOnce(veri({ output: 'ab' }))
+      .mockResolvedValue(
+        veri({
+          output: 'abc',
+          bitti: true,
+          status: 'successful',
+          finished: '2026-10-26T10:05:00Z',
+        }),
+      );
     const onIsBitti = vi.fn();
     const onbellek: CiktiOnbellegi = new Map();
     const { unmount } = goster({ onbellek, onIsBitti });
@@ -143,7 +290,9 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
     const takip = screen.getByRole('button', { name: 'Takibi durdur' });
     expect(takip).not.toHaveAttribute('aria-pressed');
     fireEvent.click(takip);
-    expect(screen.getByRole('button', { name: 'Sona git · takip et' })).not.toHaveAttribute('aria-pressed');
+    expect(screen.getByRole('button', { name: 'Sona git · takip et' })).not.toHaveAttribute(
+      'aria-pressed',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Sona git · takip et' }));
     await isle(1499);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -154,7 +303,9 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
     await isle(60000);
     expect(spy).toHaveBeenCalledTimes(3);
     expect(onIsBitti).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/CRM işi #500 bitti: başarılı|JBoss STOP işi #500 bitti: başarılı/)).toBeTruthy();
+    expect(
+      screen.getByText(/CRM işi #500 bitti: başarılı|JBoss STOP işi #500 bitti: başarılı/),
+    ).toBeTruthy();
     unmount();
     // Bitmis is onbellekte: yeniden acilinca istek yok, onBitti yok (canli gorulmedi).
     const ikinci = vi.fn();
@@ -166,7 +317,14 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
   });
 
   it('IC3b zaten bitmis is: tek istek, onBitti yok', async () => {
-    spy.mockResolvedValue(veri({ bitti: true, status: 'failed', output: 'fatal: [h]: FAILED! => x', jobExplanation: 'Job failed' }));
+    spy.mockResolvedValue(
+      veri({
+        bitti: true,
+        status: 'failed',
+        output: 'fatal: [h]: FAILED! => x',
+        jobExplanation: 'Job failed',
+      }),
+    );
     const onIsBitti = vi.fn();
     goster({ onIsBitti });
     await isle(0);
@@ -179,7 +337,13 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
   });
 
   it('IC4 kalici ret: durur, mesaj terminal yerine', async () => {
-    spy.mockResolvedValue({ ok: false, code: 'sunucu_belirsiz', kalici: true, message: 'x', _httpStatus: 409 });
+    spy.mockResolvedValue({
+      ok: false,
+      code: 'sunucu_belirsiz',
+      kalici: true,
+      message: 'x',
+      _httpStatus: 409,
+    });
     goster({ t: hedef({ resultText: 'FAIL — STOP dustu' }) });
     await isle(0);
     await isle(60000);
@@ -236,11 +400,25 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
   });
 
   it('IC7 arsiv cipi, bandi ve terminal durumu', async () => {
-    spy.mockResolvedValue(veri({ kaynak: 'arsiv', status: null, bitti: true, sunucuAdi: null, awxUrl: null, arsivTarihi: '2026-10-22T08:00:00.000Z', uyari: 'AWX sunucusu #1 (maestro) devre dışı bırakıldı. Portal arşivi gösteriliyor.' }));
+    spy.mockResolvedValue(
+      veri({
+        kaynak: 'arsiv',
+        status: null,
+        bitti: true,
+        sunucuAdi: null,
+        awxUrl: null,
+        arsivTarihi: '2026-10-22T08:00:00.000Z',
+        uyari: 'AWX sunucusu #1 (maestro) devre dışı bırakıldı. Portal arşivi gösteriliyor.',
+      }),
+    );
     goster();
     await isle(0);
     expect(screen.getByText('arşivden')).toBeTruthy();
-    expect(screen.getByText(/AWX sunucusu #1 \(maestro\) devre dışı bırakıldı\. Portal arşivi gösteriliyor\./)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /AWX sunucusu #1 \(maestro\) devre dışı bırakıldı\. Portal arşivi gösteriliyor\./,
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('arşiv · durum bilinmiyor')).toBeTruthy();
     expect(screen.queryByText('AWX’te aç ↗')).toBeNull();
   });
@@ -266,7 +444,17 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
   it('IC13 Modal icinde Buyut: Esc yalniz katmani kapatir; odak Buyut dugmesine doner', async () => {
     spy.mockResolvedValue(veri({ bitti: true, status: 'successful' }));
     const onClose = vi.fn();
-    render(<Modal open onClose={onClose} title="Kayıt"><IsGoruntuleyici kayitId={5} t={hedef()} is={is()} onbellek={new Map()} onIsBitti={() => {}} /></Modal>);
+    render(
+      <Modal open onClose={onClose} title="Kayıt">
+        <IsGoruntuleyici
+          kayitId={5}
+          t={hedef()}
+          is={is()}
+          onbellek={new Map()}
+          onIsBitti={() => {}}
+        />
+      </Modal>,
+    );
     await isle(0);
     fireEvent.click(screen.getByRole('button', { name: /Büyüt/ }));
     const katman = screen.getByRole('dialog', { name: /İş çıktısı — JBoss STOP/ });
@@ -285,17 +473,37 @@ describe('Retirement is ciktisi — goruntuleyici ve yoklama', () => {
 
 describe('Retirement is ciktisi — Buyut, takip, liste (denetim tur 2)', () => {
   let spy: ReturnType<typeof vi.spyOn>;
-  beforeEach(() => { vi.useFakeTimers(); spy = vi.spyOn(retirementApi, 'isCiktisi'); });
-  afterEach(() => { spy.mockRestore(); vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    spy = vi.spyOn(retirementApi, 'isCiktisi');
+  });
+  afterEach(() => {
+    spy.mockRestore();
+    vi.useRealTimers();
+  });
 
   it('IC16 Buyut katmaninda odak tuzagi: Tab katmanda doner, Modal kapanmaz', async () => {
     spy.mockResolvedValue(veri({ bitti: true, status: 'successful' }));
     const onClose = vi.fn();
-    render(<Modal open onClose={onClose} title="Kayıt"><button type="button">Arkadaki düğme</button><IsGoruntuleyici kayitId={5} t={hedef()} is={is()} onbellek={new Map()} onIsBitti={() => {}} /><button type="button">Sondaki düğme</button></Modal>);
+    render(
+      <Modal open onClose={onClose} title="Kayıt">
+        <button type="button">Arkadaki düğme</button>
+        <IsGoruntuleyici
+          kayitId={5}
+          t={hedef()}
+          is={is()}
+          onbellek={new Map()}
+          onIsBitti={() => {}}
+        />
+        <button type="button">Sondaki düğme</button>
+      </Modal>,
+    );
     await isle(0);
     fireEvent.click(screen.getByRole('button', { name: /Büyüt/ }));
     const katman = screen.getByRole('dialog', { name: /İş çıktısı — JBoss STOP/ });
-    const odaklanabilir = [...katman.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')];
+    const odaklanabilir = [
+      ...katman.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+    ];
     expect(odaklanabilir.length).toBeGreaterThan(1);
     const ilk = odaklanabilir[0];
     const son = odaklanabilir[odaklanabilir.length - 1];
@@ -312,25 +520,38 @@ describe('Retirement is ciktisi — Buyut, takip, liste (denetim tur 2)', () => 
   });
 
   it('IC17 Buyut acikken Hata ozeti TEK kez (role=alert iki kez duyurulmaz)', async () => {
-    spy.mockResolvedValue(veri({ bitti: true, status: 'failed', output: 'fatal: [h]: FAILED! => x' }));
+    spy.mockResolvedValue(
+      veri({ bitti: true, status: 'failed', output: 'fatal: [h]: FAILED! => x' }),
+    );
     goster();
     await isle(0);
     expect(screen.getAllByText('Hata özeti')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /Büyüt/ }));
     expect(screen.getAllByText('Hata özeti')).toHaveLength(1);
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getByRole('dialog', { name: /İş çıktısı/ })).toContainElement(screen.getByText('Hata özeti'));
+    expect(screen.getByRole('dialog', { name: /İş çıktısı/ })).toContainElement(
+      screen.getByText('Hata özeti'),
+    );
   });
 
   it('IC18 takip dugmesi terminale bagli: durunca sona inmez, yeniden acinca iner', async () => {
-    spy.mockResolvedValueOnce(veri({ output: 'a' })).mockResolvedValueOnce(veri({ output: 'ab' })).mockResolvedValue(veri({ output: 'abc' }));
+    spy
+      .mockResolvedValueOnce(veri({ output: 'a' }))
+      .mockResolvedValueOnce(veri({ output: 'ab' }))
+      .mockResolvedValue(veri({ output: 'abc' }));
     const { container } = goster();
     await isle(0);
     const el = container.querySelector('.overflow-auto') as HTMLDivElement;
     expect(el).toBeTruthy();
     let ust = 0;
     Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 500 });
-    Object.defineProperty(el, 'scrollTop', { configurable: true, get: () => ust, set: (v: number) => { ust = v; } });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => ust,
+      set: (v: number) => {
+        ust = v;
+      },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Takibi durdur' }));
     await isle(1500);
     expect(spy).toHaveBeenCalledTimes(2);
@@ -341,20 +562,32 @@ describe('Retirement is ciktisi — Buyut, takip, liste (denetim tur 2)', () => 
 
   it('IC19 listede AWX kapali isareti; IC20 istenen is listede yoksa bant', async () => {
     spy.mockResolvedValue(veri({ bitti: true, status: 'successful' }));
-    const t = hedef({ awxIsleri: [is({ adim: 'onkontrol', jobId: 400, durum: 'basarili', sunucuKapali: true })] });
-    const { rerender } = render(<RetirementIsCiktisi kayitId={5} t={t} ipucu={{ adim: 'stop' }} onIsBitti={() => {}} />);
+    const t = hedef({
+      awxIsleri: [is({ adim: 'onkontrol', jobId: 400, durum: 'basarili', sunucuKapali: true })],
+    });
+    const { rerender } = render(
+      <RetirementIsCiktisi kayitId={5} t={t} ipucu={{ adim: 'stop' }} onIsBitti={() => {}} />,
+    );
     await isle(0);
     const nav = screen.getByRole('navigation', { name: 'Bu hedefin AWX işleri' });
     expect(nav).toHaveTextContent('#400 · başarılı');
     expect(nav).toHaveTextContent('· AWX kapalı');
     expect(screen.getByText(/İstenen iş bu hedefin iş listesinde yok/)).toBeTruthy();
-    rerender(<RetirementIsCiktisi kayitId={5} t={t} ipucu={{ adim: 'onkontrol' }} onIsBitti={() => {}} />);
+    rerender(
+      <RetirementIsCiktisi kayitId={5} t={t} ipucu={{ adim: 'onkontrol' }} onIsBitti={() => {}} />,
+    );
     expect(screen.queryByText(/İstenen iş bu hedefin iş listesinde yok/)).toBeNull();
     rerender(<RetirementIsCiktisi kayitId={5} t={t} ipucu={{ jobId: 999 }} onIsBitti={() => {}} />);
     expect(screen.getByText(/İstenen iş bu hedefin iş listesinde yok/)).toBeTruthy();
     const l = [is({ adim: 'onkontrol', jobId: 1 }), is({ adim: 'web', web: 2, jobId: 3 })];
-    expect([ipucuEslesir(l, undefined), ipucuEslesir(l, {}), ipucuEslesir(l, { adim: 'web', web: 2 }), ipucuEslesir(l, { adim: 'web', web: 0 }), ipucuEslesir(l, { jobId: 3 }), ipucuEslesir(l, { adim: 'stop' })])
-      .toEqual([true, true, true, false, true, false]);
+    expect([
+      ipucuEslesir(l, undefined),
+      ipucuEslesir(l, {}),
+      ipucuEslesir(l, { adim: 'web', web: 2 }),
+      ipucuEslesir(l, { adim: 'web', web: 0 }),
+      ipucuEslesir(l, { jobId: 3 }),
+      ipucuEslesir(l, { adim: 'stop' }),
+    ]).toEqual([true, true, true, false, true, false]);
   });
 
   it('IC21 yukleniyor iskeletinde ekran okuyucu metni; canli sembolu okunmaz', async () => {
@@ -375,7 +608,44 @@ describe('Retirement is ciktisi — Buyut, takip, liste (denetim tur 2)', () => 
 describe('RetirementCanli cikti baglantisi', () => {
   it('IC15 "çıktıyı izle" yalniz is listesi + onCikti ile; is #N span metni degismez (RO2); web girdisi ozgun sirayla', () => {
     const onCikti = vi.fn();
-    const t = hedef({ status: 'stopping', lastJobId: 77, awxIsleri: [is(), is({ adim: 'web', web: 0, jobId: 91 }), is({ adim: 'web', web: 2, jobId: 92 })], webSonuc: [{ host: 'GBW', serverName: 'a.bmw.de', product: 'IHS', confFile: 'x', status: 'running', jobId: 91, message: null }, { host: 'GBW', serverName: 'b.bmw.de', product: 'IHS', confFile: 'y', status: 'pending', jobId: null, message: null }, { host: 'GBW', serverName: 'c.bmw.de', product: 'IHS', confFile: 'z', status: 'running', jobId: 92, message: null }] });
+    const t = hedef({
+      status: 'stopping',
+      lastJobId: 77,
+      awxIsleri: [
+        is(),
+        is({ adim: 'web', web: 0, jobId: 91 }),
+        is({ adim: 'web', web: 2, jobId: 92 }),
+      ],
+      webSonuc: [
+        {
+          host: 'GBW',
+          serverName: 'a.bmw.de',
+          product: 'IHS',
+          confFile: 'x',
+          status: 'running',
+          jobId: 91,
+          message: null,
+        },
+        {
+          host: 'GBW',
+          serverName: 'b.bmw.de',
+          product: 'IHS',
+          confFile: 'y',
+          status: 'pending',
+          jobId: null,
+          message: null,
+        },
+        {
+          host: 'GBW',
+          serverName: 'c.bmw.de',
+          product: 'IHS',
+          confFile: 'z',
+          status: 'running',
+          jobId: 92,
+          message: null,
+        },
+      ],
+    });
     const { rerender, container } = render(<RetirementCanli targets={[t]} onCikti={onCikti} />);
     // Canli bolge YALNIZ baslik (denetim B16): saniyede bir ilerleyen sure canli bolgede olsa ekran okuyucu her saniye konusurdu.
     const canliBolgeler = container.querySelectorAll('[aria-live]');
@@ -390,11 +660,31 @@ describe('RetirementCanli cikti baglantisi', () => {
     fireEvent.click(linkler[2]);
     expect(onCikti).toHaveBeenLastCalledWith(9, { adim: 'web', web: 2 });
     // Span'in metni yalniz is bilgisi (baglanti kardes oge).
-    expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && /JBoss STOP.*iş #77.*AWX durumu okunuyor/.test(el.textContent || '') && !/çıktıyı izle/.test(el.textContent || ''))).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'SPAN' &&
+          /JBoss STOP.*iş #77.*AWX durumu okunuyor/.test(el.textContent || '') &&
+          !/çıktıyı izle/.test(el.textContent || ''),
+      ),
+    ).toBeTruthy();
     rerender(<RetirementCanli targets={[{ ...t, awxIsleri: undefined }]} onCikti={onCikti} />);
     expect(screen.queryByRole('button', { name: 'çıktıyı izle' })).toBeNull();
     // Listede o adimin isi yoksa baglanti YOK (baska bir isin ciktisini acardi): STOP yok, web 2 yok -> yalniz web 0.
-    rerender(<RetirementCanli targets={[{ ...t, awxIsleri: [is({ adim: 'onkontrol', jobId: 76, durum: 'basarili' }), is({ adim: 'web', web: 0, jobId: 91 })] }]} onCikti={onCikti} />);
+    rerender(
+      <RetirementCanli
+        targets={[
+          {
+            ...t,
+            awxIsleri: [
+              is({ adim: 'onkontrol', jobId: 76, durum: 'basarili' }),
+              is({ adim: 'web', web: 0, jobId: 91 }),
+            ],
+          },
+        ]}
+        onCikti={onCikti}
+      />,
+    );
     const kalan = screen.getAllByRole('button', { name: 'çıktıyı izle' });
     expect(kalan).toHaveLength(1);
     fireEvent.click(kalan[0]);
@@ -410,7 +700,13 @@ describe('AnsibleLogTerminal autoScroll', () => {
     const el = container.querySelector('.overflow-auto') as HTMLDivElement;
     let ust = 0;
     Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 500 });
-    Object.defineProperty(el, 'scrollTop', { configurable: true, get: () => ust, set: (v: number) => { ust = v; } });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => ust,
+      set: (v: number) => {
+        ust = v;
+      },
+    });
     rerender(<AnsibleLogTerminal output="ab" status="running" />);
     expect(ust).toBe(500);
     ust = 0;
@@ -418,7 +714,9 @@ describe('AnsibleLogTerminal autoScroll', () => {
     expect(ust).toBe(0);
     rerender(<AnsibleLogTerminal output="abc" status="running" autoScroll />);
     expect(ust).toBe(500);
-    rerender(<AnsibleLogTerminal output="abc" status="arsiv" statusLabel="arşiv · durum bilinmiyor" />);
+    rerender(
+      <AnsibleLogTerminal output="abc" status="arsiv" statusLabel="arşiv · durum bilinmiyor" />,
+    );
     expect(screen.getByText('arşiv · durum bilinmiyor')).toBeTruthy();
   });
 });

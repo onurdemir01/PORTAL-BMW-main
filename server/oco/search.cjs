@@ -113,7 +113,7 @@ function getDispatcher(targetUrl, bag = {}) {
   const host = new URL(targetUrl).hostname;
   const { ca } = caOku();
   const anahtar = `${cfg.proxyUrl || ''}|${host}`;
-  if (_disp && _disp.anahtar === anahtar && _disp.ca === ca) return _disp.dispatcher;
+  if (_disp?.anahtar === anahtar && _disp.ca === ca) return _disp.dispatcher;
   if (_disp) kapatSessiz(_disp.dispatcher);
   const tlsOpts = { ca, rejectUnauthorized: true, servername: host };
   const dispatcher = fabrika({ proxyUrl: cfg.proxyUrl, tlsOpts });
@@ -266,7 +266,9 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
 
   const sonuclar = await Promise.allSettled(
     roller.map((rol) =>
-      tekSorgu(fetchPage ? (skip) => fetchPage(skip, rol) : (skip) => httpPage(cfg, skip, grup, rol)),
+      tekSorgu(
+        fetchPage ? (skip) => fetchPage(skip, rol) : (skip) => httpPage(cfg, skip, grup, rol),
+      ),
     ),
   );
   const basarili = sonuclar.filter((s) => s.status === 'fulfilled');
@@ -279,7 +281,10 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
   sonuclar.forEach((s, i) => {
     const rol = roller[i];
     if (s.status !== 'fulfilled') {
-      eksik.push({ rol, message: `${ROL_ADI[rol] || rol} OCO'lar alınamadı: ${s.reason?.message || s.reason}` });
+      eksik.push({
+        rol,
+        message: `${ROL_ADI[rol] || rol} OCO'lar alınamadı: ${s.reason?.message || s.reason}`,
+      });
       return;
     }
     const r = s.value;
@@ -300,7 +305,7 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
 
 /** Sayfa yanitini dogrular: { dilim: ham kayitlar, total }. */
 function sayfaCoz(payload, oncekiTotal) {
-  const sonuc = payload && payload.SearchChangeOrderWithOffsetResult;
+  const sonuc = payload?.SearchChangeOrderWithOffsetResult;
   if (!sonuc) throw fail('OCO arama servisinden beklenen yanıt gelmedi.', 502);
   const dilim = Array.isArray(sonuc.Result) ? sonuc.Result : [];
   return { dilim, total: Number(sonuc.TotalCount) || oncekiTotal || 0 };

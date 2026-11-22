@@ -15,7 +15,7 @@ export interface NginxSpaEnvCell {
   inOcpInventory: boolean;
   locationPath: string;
   hosts: string[];
-  /** PROD: eski GBRVP* sunucusundaki proxy_pass hedefi (status='PROXY') */
+  /** PROD: eski ORRVP* sunucusundaki proxy_pass hedefi (status='PROXY') */
   proxyTarget?: string | null;
   /** proxy yaziminda -prod eksikti, eklenerek cozuldu */
   suffixAdded?: boolean;
@@ -35,11 +35,7 @@ export interface NginxSpaEnvCell {
 
 /** 'unknown' durumunun gerekce kodlari (server/audit/nginx-migration.cjs spaTrafikDurumu). */
 export type SpaYukKismiNeden =
-  | 'pencere'
-  | 'pencere-bilinmiyor'
-  | 'sampled'
-  | 'okunamayan-sunucu'
-  | 'satirsiz-sunucu';
+  'pencere' | 'pencere-bilinmiyor' | 'sampled' | 'okunamayan-sunucu' | 'satirsiz-sunucu';
 
 /**
  * dbo.Nginx_Spa_Traffic olcumu - UC UC AYNI bicimi doner: Denetim > Nginx SPA, Nginx ARK SPA
@@ -107,7 +103,7 @@ export interface NginxEnvStat {
   vhosts: string[];
 }
 
-// ── Nginx SPA > Prod Tasima (eski GBRVP* -> yeni GBNGXP4x/5x) ───────────────────────
+// ── Nginx SPA > Prod Tasima (eski ORRVP* -> yeni GBNGXP4x/5x) ───────────────────────
 export interface NginxMigrationDirFlags {
   hys: boolean;
   app: boolean;
@@ -140,7 +136,7 @@ export interface NginxMigrationApp {
     hosts: string[];
     newHosts: string[];
     newStatus: 'defined' | 'partial' | 'none' | 'not-scanned';
-    /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (GBRVPP07-10 vb.) okunur — iş şu an
+    /** YÜK ÖLÇÜMÜ (2026-09-27): ESKİ sunuculardan (ORRVPP07-10 vb.) okunur — iş şu an
      *  oradan akıyor. null = bu location için ölçüm satırı yok. Kural ve alanlar
      *  SpaYukOlcumu (Denetim ve ARK SPA Raporu ile AYNI). */
     traffic: SpaYukOlcumu | null;
@@ -520,7 +516,7 @@ export interface SpaCoverageResult {
   routeMatch: { address: number; name: number; ns: number; conflict: number; none: number };
   /** dbo.Openshift_Namespace_Owners okunabildi mi (sahiplik sutunu icin) */
   ownersReady?: boolean;
-  /** PROD nginx kumesi eski GBRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
+  /** PROD nginx kumesi eski ORRVP* proxy_pass satirlarindan cozulur (Production Tasimalari ile ayni cozum) */
   prodProxy?: { rows: number; resolved: number; spa: number; unresolved: number };
   ocpNonSpaExcluded: number;
   nginxOutsidePattern: string[];
@@ -773,7 +769,10 @@ export interface OcpCoverageResult {
   /** Ortam basina GERCEKTE kullanilan cluster'lar + her birindeki uygulama sayisi.
    *  Sabit bir liste DEGIL, veriden cikarilir: platformun cluster listesi ortam ayrimi
    *  tasimaz (bkz. server/audit/ocp-platforms.cjs). */
-  envClusters: Record<string, { cluster: string; apps: number; beklenmeyen?: boolean; veriYok?: boolean }[]>;
+  envClusters: Record<
+    string,
+    { cluster: string; apps: number; beklenmeyen?: boolean; veriYok?: boolean }[]
+  >;
   /** Ortamin cluster listesi nereden: 'resmi' (Portal'da tanimli ortam->cluster tablosu, n buradan)
    *  ya da 'veri' (o ortamda namespace barindiran cluster'lar). */
   envClusterKaynagi?: Record<string, 'resmi' | 'veri'>;
@@ -884,13 +883,14 @@ export interface InitScriptsResult {
   ageDays?: number | null;
   ageSource?: 'load_date' | 'scan_date' | string | null;
   /**
-   * 2026-09-24: GBEVM / GBPRV onekli sunucular genel envanterden AYRI raporlanir.
+   * 2026-09-24: OREVM / ORPRV onekli sunucular genel envanterden AYRI raporlanir.
    * Cogunluk genel envanterden hesaplanir, bu sunucular AYNI cogunluga gore olculur.
    * Ayni ayrim Server Hub'da da var.
    */
-  special?:
-    | Omit<InitScriptsResult, 'root' | 'roots' | 'missingColumns' | 'ok' | 'special' | 'sunucuGeneli'>
-    | null;
+  special?: Omit<
+    InitScriptsResult,
+    'root' | 'roots' | 'missingColumns' | 'ok' | 'special' | 'sunucuGeneli'
+  > | null;
   /**
    * Init (2026-11-16): sunucu geneli dosyalar (appdomain.service). Kokten BAGIMSIZ: hangi
    * kok istenirse istensin ayni icerik. Alan yoksa eski sunucu.
@@ -938,7 +938,7 @@ export interface InitSunucuGeneliBlock extends InitScriptStat {
 }
 
 export interface InitSunucuGeneliFile extends InitSunucuGeneliBlock {
-  /** GBEVM* / GBPRV*: ayni referansla olculur, ayri listelenir. */
+  /** OREVM* / ORPRV*: ayni referansla olculur, ayri listelenir. */
   special: InitSunucuGeneliBlock | null;
 }
 
@@ -1049,7 +1049,7 @@ export interface WebAppVhost {
   mcBalancer?: string;
   /** Web sunucusunun sitesi (ad kuralindan): DNS -> VIP bu sitenin cozucusuyla okunur. */
   site?: 'Pendik' | 'Ankara' | string;
-  /** DNS bolgesi (2026-10-16): server_name'in kendi alanindan ('gtdmz' | 'fw'), yoksa uygulama domain'inden; null = Portal cozucusu. */
+  /** DNS bolgesi (2026-10-16): server_name'in kendi alanindan ('dmz' | 'fw'), yoksa uygulama domain'inden; null = Portal cozucusu. */
   dnsBolge?: string | null;
 }
 
@@ -1075,7 +1075,7 @@ export interface WebAppRow {
   how: string;
   /** Bu uygulama sunucusu icin adim adim aciklama (topoloji, ad kurali, vhost kaynagi, eslesmeme sebebi). */
   nasil?: string[];
-  /** DNS -> VIP icin bolge ('gtdmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
+  /** DNS -> VIP icin bolge ('dmz' | 'fw'); null = bilinmiyor (Portal cozucusu). */
   dnsBolge?: string | null;
   matched: boolean;
   web: WebAppVhost[];
@@ -1640,7 +1640,12 @@ export interface VeriKataloguResult {
     katalogdaYok: { db: string; tablo: string; satir: number | null; mb: number | null }[];
     veritabanindaYok: { db: KatalogDb; tablo: string; alan: string; kullanilmiyor: boolean }[];
   };
-  secenekler: { veritabanlari: KatalogDb[]; alanlar: string[]; yazanTurleri: KatalogYazanTuru[]; guvenler: string[] };
+  secenekler: {
+    veritabanlari: KatalogDb[];
+    alanlar: string[];
+    yazanTurleri: KatalogYazanTuru[];
+    guvenler: string[];
+  };
 }
 
 export const denetimApi = {
@@ -1815,7 +1820,12 @@ export const denetimApi = {
   // kendi onbellegini alir.
   // Sunucu tam sonucu kaynak basina onbellekte tutar (WEBAPP_ONBELLEK_MS); arama onun uzerinde
   // suzulur. fresh: "Yenile" - onbellegi atla. signal: yeni arama eskisini iptal eder.
-  webApp: (source: string, q?: string, onlyUnmatched?: boolean, opts?: { fresh?: boolean; signal?: AbortSignal }): Promise<WebAppResult> =>
+  webApp: (
+    source: string,
+    q?: string,
+    onlyUnmatched?: boolean,
+    opts?: { fresh?: boolean; signal?: AbortSignal },
+  ): Promise<WebAppResult> =>
     fetch(
       `${BASE}/web-app?source=${encodeURIComponent(source)}` +
         (q ? `&q=${encodeURIComponent(q)}` : '') +
@@ -1825,7 +1835,11 @@ export const denetimApi = {
     ).then(safeJson),
 
   webAppDns: (istekler: { ad: string; bolge: string | null }[]): Promise<WebAppDnsResult> =>
-    fetch(`${BASE}/web-app/dns`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ istekler }) }).then(safeJson),
+    fetch(`${BASE}/web-app/dns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ istekler }),
+    }).then(safeJson),
 
   appEnvs: (source: string): Promise<AppEnvsResult> =>
     fetch(`${BASE}/app-envs?source=${encodeURIComponent(source)}`).then(safeJson),

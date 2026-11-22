@@ -1,6 +1,6 @@
 // server/inventory/mssql.cjs
-const sql = require("mssql");
-const { timeQuery, tarnPoolStats } = require("../metrics.cjs");
+const sql = require('mssql');
+const { timeQuery, tarnPoolStats } = require('../metrics.cjs');
 
 let _pool = null;
 let _available = false;
@@ -9,7 +9,7 @@ const RETRY_COOLDOWN_MS = 10_000;
 const MAIN_POOL_MAX = 20;
 const LONG_POOL_MAX = 4;
 
-const REQUIRED = ["MSSQL_SERVER", "MSSQL_DATABASE", "MSSQL_USER", "MSSQL_PASSWORD"];
+const REQUIRED = ['MSSQL_SERVER', 'MSSQL_DATABASE', 'MSSQL_USER', 'MSSQL_PASSWORD'];
 
 function isConfigured() {
   return REQUIRED.every((k) => process.env[k]);
@@ -18,18 +18,20 @@ function isConfigured() {
 // Havuz alt siniri env ile (varsayilan 2) ve bosta bekleme 5 dk: isinmis baglantilar
 // her 30 sn'de dusup yeniden acilmasin (soguk baglanti gecikmesi her istekte odenmesin).
 function poolMin() {
-  const n = Number.parseInt(process.env.TBMWANS_DB_POOL_MIN || "2", 10);
+  const n = Number.parseInt(process.env.TBMWANS_DB_POOL_MIN || '2', 10);
   return Number.isFinite(n) && n >= 0 ? Math.min(n, 20) : 2;
 }
 const POOL_IDLE_TIMEOUT_MS = 300_000;
 
 function closeQuietly(pool) {
   try {
-    if (pool && typeof pool.close === "function") {
+    if (pool && typeof pool.close === 'function') {
       const r = pool.close();
-      if (r && typeof r.catch === "function") r.catch(() => {});
+      if (r && typeof r.catch === 'function') r.catch(() => {});
     }
-  } catch { /* yoksay */ }
+  } catch {
+    /* yoksay */
+  }
 }
 
 // db/portal-mssql.cjs'teki AYRI havuzda da ayni desen — DB gercekten ulasilamazken her
@@ -50,7 +52,7 @@ async function connectOnce() {
     // IKINCISI SESSIZCE BIRINCISININ KIMLIGIYLE calisiyordu.
     const pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
-      port: Number.parseInt(process.env.MSSQL_PORT || "1433", 10),
+      port: Number.parseInt(process.env.MSSQL_PORT || '1433', 10),
       database: process.env.MSSQL_DATABASE,
       user: process.env.MSSQL_USER,
       password: process.env.MSSQL_PASSWORD,
@@ -73,9 +75,9 @@ async function connectOnce() {
     _superseded = null;
     _pool = pool;
     _available = true;
-    console.log("[Inventory] MSSQL baglantisi kuruldu.");
+    console.log('[Inventory] MSSQL baglantisi kuruldu.');
   } catch (err) {
-    console.error("[Inventory] MSSQL baglanti hatasi:", err.message);
+    console.error('[Inventory] MSSQL baglanti hatasi:', err.message);
     _pool = null;
     _lastErrorAt = Date.now();
   }
@@ -87,10 +89,12 @@ async function getPool() {
   if (_connecting) return _connecting;
   if (Date.now() - _lastErrorAt < RETRY_COOLDOWN_MS) return null;
   if (!isConfigured()) {
-    console.warn("[Inventory] MSSQL env vars eksik — envanter devre disi.");
+    console.warn('[Inventory] MSSQL env vars eksik — envanter devre disi.');
     return null;
   }
-  _connecting = connectOnce().finally(() => { _connecting = null; });
+  _connecting = connectOnce().finally(() => {
+    _connecting = null;
+  });
   return _connecting;
 }
 
@@ -111,12 +115,12 @@ async function query(sqlText, inputs = []) {
   const w0 = process.hrtime.bigint();
   const pool = await getPool();
   const waitNs = process.hrtime.bigint() - w0;
-  if (!pool) throw new Error("MSSQL bağlantısı yok");
+  if (!pool) throw new Error('MSSQL bağlantısı yok');
   const req = pool.request();
   for (const { name, type, value } of inputs) {
     req.input(name, type, value);
   }
-  return timeQuery("tbmwans", waitNs, sqlText, () => req.query(sqlText));
+  return timeQuery('tbmwans', waitNs, sqlText, () => req.query(sqlText));
 }
 
 // UZUN sorgular icin ayri, kucuk havuz (2026-09-21): Denetim'in 14 gunluk denetim tablolarini
@@ -130,13 +134,13 @@ async function connectLongOnce() {
   try {
     const pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
-      port: Number.parseInt(process.env.MSSQL_PORT || "1433", 10),
+      port: Number.parseInt(process.env.MSSQL_PORT || '1433', 10),
       database: process.env.MSSQL_DATABASE,
       user: process.env.MSSQL_USER,
       password: process.env.MSSQL_PASSWORD,
       options: { trustServerCertificate: true, encrypt: false },
       connectionTimeout: 10000,
-      requestTimeout: Number.parseInt(process.env.MSSQL_LONG_REQUEST_TIMEOUT_MS || "180000", 10),
+      requestTimeout: Number.parseInt(process.env.MSSQL_LONG_REQUEST_TIMEOUT_MS || '180000', 10),
       pool: { max: LONG_POOL_MAX, min: 0, idleTimeoutMillis: 60000 },
     }).connect();
     pool.on('error', () => {
@@ -145,7 +149,7 @@ async function connectLongOnce() {
     });
     _longPool = pool;
   } catch (err) {
-    console.error("[Inventory] MSSQL uzun-sorgu havuzu kurulamadi:", err.message);
+    console.error('[Inventory] MSSQL uzun-sorgu havuzu kurulamadi:', err.message);
     _longPool = null;
   }
   return _longPool;
@@ -157,7 +161,9 @@ async function getLongPool() {
   if (!base) return null;
   if (_longPool) return _longPool;
   if (!_longConnecting) {
-    _longConnecting = connectLongOnce().finally(() => { _longConnecting = null; });
+    _longConnecting = connectLongOnce().finally(() => {
+      _longConnecting = null;
+    });
   }
   return _longConnecting;
 }
@@ -166,12 +172,14 @@ async function queryLong(sqlText, inputs = []) {
   const longPool = await getLongPool();
   const pool = longPool || (await getPool());
   const waitNs = process.hrtime.bigint() - w0;
-  if (!pool) throw new Error("MSSQL bağlantısı yok");
+  if (!pool) throw new Error('MSSQL bağlantısı yok');
   const req = pool.request();
   for (const { name, type, value } of inputs) req.input(name, type, value);
   // Uzun havuz kurulamadiysa ana havuza dusulur; gunlukte AYRI etiket (ana havuzun 30 sn
   // zaman asimiyla calistigi gorunsun, "pool=tbmwans" ile karismasin).
-  return timeQuery(longPool ? "tbmwans-long" : "tbmwans(long-fallback)", waitNs, sqlText, () => req.query(sqlText));
+  return timeQuery(longPool ? 'tbmwans-long' : 'tbmwans(long-fallback)', waitNs, sqlText, () =>
+    req.query(sqlText),
+  );
 }
 
 module.exports = { getPool, isAvailable, query, queryLong, sql, poolStats, longPoolStats };

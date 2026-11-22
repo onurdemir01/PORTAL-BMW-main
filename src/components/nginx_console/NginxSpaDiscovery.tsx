@@ -155,7 +155,7 @@ const RPI_ETIKET: Record<NgSpaApp['rpIstek'], { t: string; renk: string; ipucu: 
     t: 'istek var',
     renk: 'var(--text-primary)',
     ipucu:
-      "RP access log: kendi ortamının RP tanımlarında son 7 günde istek var (hc.jsp/hc.html hariç).",
+      'RP access log: kendi ortamının RP tanımlarında son 7 günde istek var (hc.jsp/hc.html hariç).',
   },
   yok: {
     t: 'istek yok',
@@ -198,7 +198,7 @@ const RPI_NEDEN_METNI: Record<NgSpaRpIstekNeden, string> = {
   pencere:
     'ölçülen pencere 7 günden kısa, log örneklendi (512 MB kuyruk ya da Host alanı olmayan satır) veya pencere başı bilinmiyor',
   'eslesmeyen-host':
-    "yeni PROD sunucusunda hiçbir uygulamaya yazılamayan istek var (eşleşmeyen Host / IP / Host alanı yok) — nginx bunları varsayılan sunucuya düşürür, o vhost bu uygulama olabilir",
+    'yeni PROD sunucusunda hiçbir uygulamaya yazılamayan istek var (eşleşmeyen Host / IP / Host alanı yok) — nginx bunları varsayılan sunucuya düşürür, o vhost bu uygulama olabilir',
   'kaynak-yok':
     'ölçüm kaynağı olmayan tanım da var (yeni PROD dizin tanımı; host kipi satırı hiç üretilmedi)',
   ayrilamaz: 'uygulamaya ayrılamayan (paylaşımlı / belirsiz) tanım da var',
@@ -206,12 +206,12 @@ const RPI_NEDEN_METNI: Record<NgSpaRpIstekNeden, string> = {
     'ortamın bir RP sunucusu son taramada yok — orada görülmeyen bir tanım istek alıyor olabilir',
 };
 const YOL_ADI: Record<string, { t: string; ipucu: string }> = {
-  proxy: { t: 'proxy', ipucu: 'Eski PROD (GBRVP*) proxy_pass → OpenShift route' },
+  proxy: { t: 'proxy', ipucu: 'Eski PROD (…RVP*) proxy_pass → OpenShift route' },
   include: { t: 'include', ipucu: 'Servis vhost location → application-confs include' },
   dizin: {
     t: 'dizin',
     ipucu:
-      "Yeni PROD (GBNGXP4x/AP3x) dizin kurulumu (application-confs conf var). RP isteği: uygulama vhost'unun (conf.d/<app>-<ns>.conf) ortak log'unda Host/SNI sayımı (host kipi).",
+      "Yeni PROD sunucularındaki dizin kurulumu (application-confs conf var). RP isteği: uygulama vhost'unun (conf.d/<app>-<ns>.conf) ortak log'unda Host/SNI sayımı (host kipi).",
   },
 };
 const ESLES_ADI: Record<string, string> = {
@@ -232,7 +232,7 @@ const TABLO_ADI: Record<string, string> = {
 const TRAFIK_NEDEN: Record<string, string> = {
   log: 'log / betik hatası',
   'location-tipi': 'location tipi ölçülmüyor (=, ~ ya da regex)',
-  host: "sunucunun o gün hiç trafik satırı yok (zaman aşımı, ulaşılamadı ya da spa_traffic=false)",
+  host: 'sunucunun o gün hiç trafik satırı yok (zaman aşımı, ulaşılamadı ya da spa_traffic=false)',
   'satir-yok': "bu location / uygulama vhost'u için trafik satırı yok",
   'host-kipi-yok':
     "sunucuda host kipi (uygulama vhost'u) satırı yok — SPA_HOST_MODE kapalı ya da conf.d'de uygulama vhost'u bulunamadı",
@@ -473,9 +473,9 @@ function RpKapsamBand({ k }: { k: NgSpaRpKapsam }) {
         )}
         {hostKipiYok && (
           <div style={{ color: MUTED }} data-testid="rp-host-kipi-yok">
-            Yeni PROD uygulama vhost'ları için host kipi ölçümü yok (trafik taramasında '@'
-            satırı üretilmedi: nginx_spa_traffic.sh host kipi henüz koşmadı ya da SPA_HOST_MODE
-            kapalı) → dizin tanımlarının RP isteği "ölçüm kaynağı yok".
+            Yeni PROD uygulama vhost'ları için host kipi ölçümü yok (trafik taramasında '@' satırı
+            üretilmedi: nginx_spa_traffic.sh host kipi henüz koşmadı ya da SPA_HOST_MODE kapalı) →
+            dizin tanımlarının RP isteği "ölçüm kaynağı yok".
           </div>
         )}
         {kovali.length > 0 && (
@@ -715,7 +715,9 @@ function AgHucre({ a }: { a: NgSpaApp }) {
     .join(' · ');
   const title =
     `${e.ipucu}\nRoute'lar: ${say || '—'}\nRoute envanteri: ${AG_ENVANTER_METNI[a.agEnvanter] || a.agEnvanter}${celisik && a.agCelisikRoute ? ` (${a.agCelisikRoute} route)` : ''}` +
-    (a.agCelisme ? "\nÇelişki: intranet uygulama internet RP'de tanımlı (kural ile tanım çelişiyor)." : '') +
+    (a.agCelisme
+      ? "\nÇelişki: intranet uygulama internet RP'de tanımlı (kural ile tanım çelişiyor)."
+      : '') +
     (a.staleClusters.length ? '\nBir cluster son koşuda taranamadı; değer önceki koşudan.' : '');
   // Kırmızı çelişki ÖNCE: ikisi birlikteyse sayılı uyarı rozeti onu satırın dışına itmesin.
   const rozetler = [
@@ -764,7 +766,9 @@ const RP_NEDEN_KISA: Record<string, string> = {
 /** RP servisi metni (ipucu / ayrıntı): grup adı tek servis değilse söylenir. */
 const rpServisMetni = (a: NgSpaApp) =>
   (a.rpServis || []).join(', ') +
-  (a.rpServisGrup ? ' (yeni PROD dizin kurulumu: servis adı okunamıyor, sunucu grubu yazıldı)' : '');
+  (a.rpServisGrup
+    ? ' (yeni PROD dizin kurulumu: servis adı okunamıyor, sunucu grubu yazıldı)'
+    : '');
 
 /** Eşleşme yolunun kısa adı (tanımlı hücrenin 2. satırı; tam metin ESLES_ADI ipucunda). */
 const ESLES_KISA: Record<string, string> = {
@@ -825,7 +829,11 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
       >
         <Rozet ton="iyi">{e.t}</Rozet>
         {a.rpServis?.length ? (
-          <span className="ml-1 font-semibold" data-testid="rp-servis" style={{ color: 'var(--text-primary)' }}>
+          <span
+            className="ml-1 font-semibold"
+            data-testid="rp-servis"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {a.rpServis.join(', ')}
           </span>
         ) : null}
@@ -850,7 +858,8 @@ function RpHucre({ a, k }: { a: NgSpaApp; k?: NgSpaRpKapsam | null }) {
     a.rp === 'tanimsiz'
       ? `Ortamın (${ENV}) tüm internet RP sunucuları tarandı, tablolar okundu; ${ENV} RP'lerinde bu uygulamaya bağlanan tanım yok.`
       : rpNedenMetni(a, k);
-  const kisa = a.rp === 'tanimsiz' ? '' : RP_NEDEN_KISA[String(a.rpNeden || '').split(':')[0]] || '';
+  const kisa =
+    a.rp === 'tanimsiz' ? '' : RP_NEDEN_KISA[String(a.rpNeden || '').split(':')[0]] || '';
   // Ortam dışı uyarısı neden metninden ÖNCE (Hucre sırası): "ölçülemedi / sunucu taranmadı"
   // kısalınca "PROD RP'sinde tanımlı" kaybolmaz (2026-10-02 kararı: hücrede görünür).
   return (
@@ -1123,9 +1132,9 @@ function RpAyrinti({
         <>
           {yalnizDisi && (
             <div style={{ color: WARN }} data-testid="rp-ayrinti-yalniz-disi">
-              {ENV} RP'lerinde tanım yok — aşağıdaki tanımlar yalnız başka ortamın RP'sinde
-              (ortam dışı) ve {ENV} kararına sayılmaz: Reverse proxy "{RP_ETIKET[a.rp]?.t || a.rp}",
-              RP isteği sorulmaz; ortam dışı tanımların isteği yalnız bilgidir.
+              {ENV} RP'lerinde tanım yok — aşağıdaki tanımlar yalnız başka ortamın RP'sinde (ortam
+              dışı) ve {ENV} kararına sayılmaz: Reverse proxy "{RP_ETIKET[a.rp]?.t || a.rp}", RP
+              isteği sorulmaz; ortam dışı tanımların isteği yalnız bilgidir.
             </div>
           )}
           {karisik && (
@@ -1419,11 +1428,11 @@ function CokluDeger({
 
 /**
  * Adres İKİ PARÇA (doğrulama bulgusu, 2026-10-03): varsayılan route adresi
- * "<uygulama>-<namespace>.apps(-t).fw.garanti.com.tr" sondan kesilince görünen kısım yalnız
+ * "<uygulama>-<namespace>.apps(-t).fw.sirket.invalid" sondan kesilince görünen kısım yalnız
  * 1. kolonun tekrarıydı (54 adresin 52'si); ayırt eden alan adı (apps / apps-t / kurumsal alan
  * adı) hep kesilen sondaydı. İlk etiket uygulama adıyla başlıyorsa (tekrar) ÖNCE o kısalır ve
  * soluk yazılır; alan adı soneki (`.ng-adres-son`) en son kısalır. Kurumsal adreste
- * ("kartlimit.garantibbva.com.tr") baş kısım anlamlıdır: bölünmez, sondan kısalır.
+ * ("kartlimit.ornekbanka.invalid") baş kısım anlamlıdır: bölünmez, sondan kısalır.
  */
 function AdresMetni({ h, a }: { h: string; a: NgSpaApp }) {
   const i = h.indexOf('.');
@@ -1448,7 +1457,9 @@ function AdresMetni({ h, a }: { h: string; a: NgSpaApp }) {
 function AdresHucre({ a }: { a: NgSpaApp }) {
   const liste = a.hosts.length ? a.hosts : a.routes;
   return (
-    <Hucre ipucu={`${a.hosts.length ? 'Adresler' : "Route'lar"} (${liste.length}):\n${liste.join('\n')}`}>
+    <Hucre
+      ipucu={`${a.hosts.length ? 'Adresler' : "Route'lar"} (${liste.length}):\n${liste.join('\n')}`}
+    >
       <CokluDeger
         liste={liste}
         genislik="11rem"
@@ -1565,14 +1576,7 @@ function UygulamaAyrinti({ a }: { a: NgSpaApp }) {
 // tek kaynaktan; gizlenen kolon ikisinden birlikte düşer. Eski düzen (11 kolon) ve CSV
 // kolonları: CSV DEĞİŞMEDİ (aşağıda csv()).
 type KolonId =
-  | 'uygulama'
-  | 'istek'
-  | 'ag'
-  | 'rp'
-  | 'rpIstek'
-  | 'envanter'
-  | 'adresler'
-  | 'clusterlar';
+  'uygulama' | 'istek' | 'ag' | 'rp' | 'rpIstek' | 'envanter' | 'adresler' | 'clusterlar';
 interface KolonTanim {
   id: KolonId;
   baslik: string;
@@ -1622,7 +1626,7 @@ const KOLONLAR: readonly KolonTanim[] = [
     grup: 'rp',
     sag: true,
     ipucu:
-      'RP access log\'una göre kendi ortamının RP tanımı istek alıyor mu (son 7 gün; yeni PROD: uygulama vhost\'unun Host/SNI sayımı; başka ortamın RP\'sindeki istek yalnız "ortam dışı" bilgisi, karara ve sayıya girmez)',
+      "RP access log'una göre kendi ortamının RP tanımı istek alıyor mu (son 7 gün; yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki istek yalnız \"ortam dışı\" bilgisi, karara ve sayıya girmez)",
   },
   {
     id: 'envanter',
@@ -2099,15 +2103,15 @@ export default function NginxSpaDiscovery() {
   };
   const tumApps = useMemo(() => data?.apps || [], [data]);
   const apps = useMemo(
-    () => (glomoKapsam === 'tumu' ? tumApps : tumApps.filter((a) => glomoKapsaminda(a, glomoKapsam))),
+    () =>
+      glomoKapsam === 'tumu' ? tumApps : tumApps.filter((a) => glomoKapsaminda(a, glomoKapsam)),
     [tumApps, glomoKapsam],
   );
   const ortamSay = useMemo(() => sayac(apps, ortamOf), [apps]);
   // Yalniz veride GORULEN ortamlar dugme olur (bos "Edu (0)" gurultu); secili ortam veride
   // yoksa (eski tercih) yine gosterilir ki secim gorunmez kalip listeyi bosaltmasin.
   const ortamlar = useMemo(
-    () =>
-      [...ORTAM_SIRASI, 'belirsiz'].filter((e) => (ortamSay[e] || 0) > 0 || e === ortam),
+    () => [...ORTAM_SIRASI, 'belirsiz'].filter((e) => (ortamSay[e] || 0) > 0 || e === ortam),
     [ortamSay, ortam],
   );
   const ortamApps = useMemo(
@@ -2135,7 +2139,8 @@ export default function NginxSpaDiscovery() {
       const yeni = apps.filter((a) => ortamOf(a) === v);
       if (ns !== 'tumu' && !yeni.some((a) => a.namespace === ns)) setNs('tumu');
       if (cluster !== 'tumu' && !yeni.some((a) => a.clusters.includes(cluster))) setCluster('tumu');
-      if (servis !== 'tumu' && servis !== 'yok' && !yeni.some((a) => a.rpServis?.includes(servis))) setServis('tumu');
+      if (servis !== 'tumu' && servis !== 'yok' && !yeni.some((a) => a.rpServis?.includes(servis)))
+        setServis('tumu');
     }
   };
   const servisSay = useMemo(() => {
@@ -2147,7 +2152,10 @@ export default function NginxSpaDiscovery() {
     return m;
   }, [ortamApps]);
   const servisler = useMemo(
-    () => Object.keys(servisSay).filter(Boolean).sort((x, y) => x.localeCompare(y, 'tr')),
+    () =>
+      Object.keys(servisSay)
+        .filter(Boolean)
+        .sort((x, y) => x.localeCompare(y, 'tr')),
     [servisSay],
   );
   const say = useMemo(
@@ -2173,7 +2181,9 @@ export default function NginxSpaDiscovery() {
       if (rp !== 'tumu' && a.rp !== rp) return false;
       if (rpIstek !== 'tumu' && a.rpIstek !== rpIstek) return false;
       if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;
-      if (servis === 'yok' ? !!a.rpServis?.length : servis !== 'tumu' && !a.rpServis?.includes(servis))
+      if (
+        servis === 'yok' ? !!a.rpServis?.length : servis !== 'tumu' && !a.rpServis?.includes(servis)
+      )
         return false;
       if (eslenik !== 'tumu' && eslenikDurumu(a) !== eslenik) return false;
       if (!ara) return true;
@@ -2232,7 +2242,9 @@ export default function NginxSpaDiscovery() {
     // scrollIntoView AppLayout'un h-screen overflow-hidden kok kabini da kaydiriyordu. Yalniz en yakin
     // kaydirilabilir ata (main) kaydirilir (bkz. admin/tabs/sistem/kaydir.ts).
     if (tabloRef.current) {
-      const azalt = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const azalt =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       ogeyeKaydir(tabloRef.current, null, azalt);
     }
   };
@@ -2392,13 +2404,29 @@ export default function NginxSpaDiscovery() {
         >
           {(
             [
-              { id: 'tumu', ad: 'Tüm servisler', ipucu: 'Tüm SPA uygulamaları (RP tanımı olmayanlar dahil)' },
-              { id: 'glomo', ad: 'Glomo', ipucu: 'Yalnız GLOMO reverse proxy servisinde tanımlı uygulamalar' },
-              { id: 'glomo-disi', ad: 'Glomo dışı', ipucu: 'Glomo dışı bir reverse proxy servisinde (Openbanking, Saklama, Webforms …) tanımlı uygulamalar' },
+              {
+                id: 'tumu',
+                ad: 'Tüm servisler',
+                ipucu: 'Tüm SPA uygulamaları (RP tanımı olmayanlar dahil)',
+              },
+              {
+                id: 'glomo',
+                ad: 'Glomo',
+                ipucu: 'Yalnız GLOMO reverse proxy servisinde tanımlı uygulamalar',
+              },
+              {
+                id: 'glomo-disi',
+                ad: 'Glomo dışı',
+                ipucu:
+                  'Glomo dışı bir reverse proxy servisinde (Openbanking, Saklama, Webforms …) tanımlı uygulamalar',
+              },
             ] as const
           ).map((k) => {
             const secili = glomoKapsam === k.id;
-            const n = k.id === 'tumu' ? tumApps.length : tumApps.filter((a) => glomoKapsaminda(a, k.id)).length;
+            const n =
+              k.id === 'tumu'
+                ? tumApps.length
+                : tumApps.filter((a) => glomoKapsaminda(a, k.id)).length;
             return (
               <button
                 key={k.id}
@@ -2408,27 +2436,56 @@ export default function NginxSpaDiscovery() {
                 onClick={() => glomoKapsamSec(k.id)}
                 title={k.ipucu}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md ${secili ? 'shadow-sm' : ''}`}
-                style={{ background: secili ? 'var(--bg-surface)' : 'transparent', color: secili ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                style={{
+                  background: secili ? 'var(--bg-surface)' : 'transparent',
+                  color: secili ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}
               >
                 {k.ad}
-                <span className="ml-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(n)}</span>
+                <span className="ml-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  {nf(n)}
+                </span>
               </button>
             );
           })}
         </div>
       )}
       {s && glomoKapsam !== 'tumu' && (
-        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="glomo-kapsam-notu">
-          Yalnız {glomoKapsam === 'glomo' ? 'GLOMO' : 'Glomo dışı bir'} reverse proxy servisinde tanımlı uygulamalar sayılıyor;
-          RP'de tanımı olmayan uygulamaların servisi bilinmediği için bu görünümde yer almaz ("Tüm servisler"de görünür).
+        <p
+          className="text-[11px]"
+          style={{ color: 'var(--text-muted)' }}
+          data-testid="glomo-kapsam-notu"
+        >
+          Yalnız {glomoKapsam === 'glomo' ? 'GLOMO' : 'Glomo dışı bir'} reverse proxy servisinde
+          tanımlı uygulamalar sayılıyor; RP'de tanımı olmayan uygulamaların servisi bilinmediği için
+          bu görünümde yer almaz ("Tüm servisler"de görünür).
         </p>
       )}
-      {s && <SpaOzetMatrisi apps={apps} onSuz={ozettenSuz} eksikTarama={eksikTarama} servisKapsam={glomoKapsam} />}
       {s && (
-        <details className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }} data-testid="veri-notlari">
-          <summary className="cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
+        <SpaOzetMatrisi
+          apps={apps}
+          onSuz={ozettenSuz}
+          eksikTarama={eksikTarama}
+          servisKapsam={glomoKapsam}
+        />
+      )}
+      {s && (
+        <details
+          className="text-[11px] rounded-lg border px-3 py-2"
+          style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+          data-testid="veri-notlari"
+        >
+          <summary
+            className="cursor-pointer select-none"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             Tarama kapsamı ve veri notları · {nf(s.apps)} uygulama tarandı
-            {data?.scanDate && <> · <GuncellemeRozeti etiket="keşif" tarih={data.scanDate} /></>}
+            {data?.scanDate && (
+              <>
+                {' '}
+                · <GuncellemeRozeti etiket="keşif" tarih={data.scanDate} />
+              </>
+            )}
             {eksikTarama ? ` · eksik: ${eksikTarama}` : ''}
             {bmAdYuzde != null && bmAd > 0 ? ` · eşleşme: %${bmAdYuzde} ad benzerliğiyle` : ''}
           </summary>
@@ -2436,35 +2493,36 @@ export default function NginxSpaDiscovery() {
             {!!data?.platformHidden?.routes && (
               <div style={{ color: 'var(--text-muted)' }}>
                 OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı:{' '}
-                {nf(data.platformHidden.namespaces)} namespace, {nf(data.platformHidden.routes)} route
-                gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama değil).
+                {nf(data.platformHidden.namespaces)} namespace, {nf(data.platformHidden.routes)}{' '}
+                route gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama
+                değil).
               </div>
             )}
             {/* KANIT ZEMINI (2026-11-12: sayfa ustunden veri notlarina tasindi). 'ad' esleşmesi baskınsa bunu SOYLE. Uygulama basina rozet
           vardi ama toplam oran gorunmuyordu; "12.458 SPA" ile "12.458 SPA, cogu ad
           benzerligine dayali" ayni guven duzeyinde okunuyordu. */}
-      {bmAdYuzde != null && bmAd > 0 && (
-        <div
-          className="text-[12px] rounded-lg px-3 py-2 border"
-          style={
-            bmAdYuzde >= 50
-              ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }
-              : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }
-          }
-        >
-          <b>Eşleşme kanıtı:</b> {nf(bmSelector)} satır servis <b>selector</b>’ü ile (kesin),{' '}
-          {nf(bmAd)} satır yalnız <b>ad benzerliği</b> ile (zayıf — %{bmAdYuzde})
-          {bm[''] ? `, ${nf(bm[''])} satır hiç eşleşmedi` : ''}.
-          {bmAdYuzde >= 50 && (
-            <>
-              {' '}
-              Servis okunamadığı için route’lar servisle aynı adı taşıyan iş yüküne bağlandı;
-              ad ile iş yükü adı ayrıştığı yerde <b>yanlış iş yüküne</b> bakılmış olabilir.
-              Düzeltmesi kod değil <b>yetki</b>: <code>services</code> (get/list) okuma izni.
-            </>
-          )}
-        </div>
-      )}
+            {bmAdYuzde != null && bmAd > 0 && (
+              <div
+                className="text-[12px] rounded-lg px-3 py-2 border"
+                style={
+                  bmAdYuzde >= 50
+                    ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }
+                    : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }
+                }
+              >
+                <b>Eşleşme kanıtı:</b> {nf(bmSelector)} satır servis <b>selector</b>’ü ile (kesin),{' '}
+                {nf(bmAd)} satır yalnız <b>ad benzerliği</b> ile (zayıf — %{bmAdYuzde})
+                {bm[''] ? `, ${nf(bm[''])} satır hiç eşleşmedi` : ''}.
+                {bmAdYuzde >= 50 && (
+                  <>
+                    {' '}
+                    Servis okunamadığı için route’lar servisle aynı adı taşıyan iş yüküne bağlandı;
+                    ad ile iş yükü adı ayrıştığı yerde <b>yanlış iş yüküne</b> bakılmış olabilir.
+                    Düzeltmesi kod değil <b>yetki</b>: <code>services</code> (get/list) okuma izni.
+                  </>
+                )}
+              </div>
+            )}
             {data?.coverage && <Kapsam k={data.coverage} />}
             {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
           </div>
@@ -2482,14 +2540,14 @@ export default function NginxSpaDiscovery() {
           <b>Uygulama</b>: SPA olmayan ya da SPA olup olmadığı ölçülemeyen satırda namespace
           satırında "SPA değil" / "SPA ölçülemedi" rozeti (SPA ve ad kalıbı süzgeçleri yukarıda) ·{' '}
           <b>Uygulama isteği</b>: Dynatrace'e göre uygulama (pod) istek alıyor mu ·{' '}
-          <b>Reverse proxy › Ağ</b>: route TLS tipi (passthrough = internet, reencrypt = intranet)
-          · <b>Reverse proxy › Tanım</b>: internet SPA kendi ortamının RP sunucularında tanımlı mı
+          <b>Reverse proxy › Ağ</b>: route TLS tipi (passthrough = internet, reencrypt = intranet) ·{' '}
+          <b>Reverse proxy › Tanım</b>: internet SPA kendi ortamının RP sunucularında tanımlı mı
           (yalnız başka ortamın RP'sinde tanımlıysa "tanımsız" + ortam dışı uyarısı) ·{' '}
           <b>Reverse proxy › İstek</b>: RP access log'una göre kendi ortamının RP tanımı istek
-          alıyor mu (yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki
-          istek yalnız "ortam dışı" bilgisi, karara ve sayıya girmez) · <b>Route envanteri</b>:
-          route'u envanterde kayıtlı mı. <b>Adresler</b> ve <b>Cluster'lar</b> ilk öğeyi ve "+N"
-          gösterir; tamamı ipucunda ve ayrıntıda.
+          alıyor mu (yeni PROD: uygulama vhost'unun Host/SNI sayımı; başka ortamın RP'sindeki istek
+          yalnız "ortam dışı" bilgisi, karara ve sayıya girmez) · <b>Route envanteri</b>: route'u
+          envanterde kayıtlı mı. <b>Adresler</b> ve <b>Cluster'lar</b> ilk öğeyi ve "+N" gösterir;
+          tamamı ipucunda ve ayrıntıda.
         </div>
       </details>
 
@@ -2737,7 +2795,11 @@ export default function NginxSpaDiscovery() {
           sayfa kayarken HIC yapismiyordu (tarayicida olculdu). Kap dikeyde de kayinca baslik
           ve ilk kolon (uygulama) yerinde kalir. Yukseklik siniri ve klavye odagi icin
           scroll-padding index.css `.ng-spa-kap`ta (bekci: nginx-console.test.js GS28). */}
-      <div ref={tabloRef} className="ng-spa-kap overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div
+        ref={tabloRef}
+        className="ng-spa-kap overflow-auto rounded-xl border"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         {/* GENISLIK: tablo icerigi kadar (w-max), en az kap kadar (min-w-full). Esneyen kolon
             (Adresler; gizliyse son kolon) disindakiler <col> ile icerige sikisir (1px =
             "icerik kadar"); kalan bosluk YALNIZ esneyen kolona gider, kolonlar arasina
@@ -2749,10 +2811,7 @@ export default function NginxSpaDiscovery() {
           {kolonParcalari(gorunur).map((p) => (
             <colgroup key={p.idler[0]} data-grup={p.grup}>
               {p.idler.map((id) => (
-                <col
-                  key={id}
-                  style={id === esneyenKolon(gorunur) ? undefined : { width: '1px' }}
-                />
+                <col key={id} style={id === esneyenKolon(gorunur) ? undefined : { width: '1px' }} />
               ))}
             </colgroup>
           ))}

@@ -5,7 +5,7 @@
 // guncellenmesi gerekiyordu; biri unutulunca test "dosya yok" diye degil,
 // SESSIZCE "kontrol edilecek dosya yok" diye yesil kaliyordu.
 //
-// AGAC AWX REPOSUNUN AYNASIDIR. `server/ansible/bmw_portal/` klasoru, AWX
+// AGAC AWX REPOSUNUN AYNASIDIR. `server/ansible/playbooks/bmw_portal/` klasoru, AWX
 // projesindeki `bmw_portal/` ile BIREBIR AYNI yapidadir — klasor oldugu gibi
 // kopyalanabilir. Bu, kozmetik bir tercih degil:
 //
@@ -27,7 +27,7 @@ const path = require('node:path');
 const ANSIBLE_DIR = __dirname;
 
 /** AWX'e kopyalanan agacin koku. Bu klasorun ICERIGI `bmw_portal/` olur. */
-const AWX_TREE = path.join(ANSIBLE_DIR, 'bmw_portal');
+const AWX_TREE = path.join(ANSIBLE_DIR, 'playbooks', 'bmw_portal');
 
 /**
  * AWX'e KOPYALANMAYAN, yalnizca portal/AI tanilama icin duran playbook'lar.
@@ -65,7 +65,7 @@ const PLAYBOOKS = {
   nginxLoadtest: 'nginx_loadtest/nginx_loadtest.yml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
   // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR.
-  // Hedefe tek `raw` (python3 -B - + heredoc); sonuc GBLABT02 uzerinden /sw'ye. AWX'e limit GITMEZ.
+  // Hedefe tek `raw` (python3 -B - + heredoc); sonuc ORLABT02 uzerinden /sw'ye. AWX'e limit GITMEZ.
   earEnvanter: 'ear_envanter/ear_envanter.yml',
   // Application Hub (2026-11-08): OpenShift canli okuma (bastion, salt okunur). Iki seviye derinlik.
   appHubOcp: 'app_hub/app_hub_ocp.yml',

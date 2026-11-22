@@ -17,7 +17,7 @@
 // ikisini birlestirmek, nerede mudahale gerektigini gizlerdi.
 //
 // ORTAM: intranet satirinda vhost olmadigi icin ortam DOSYA ADINDAN turetilemez;
-// SUNUCU ADINDAN turetilir (nginx-hosts.cjs envOfHost, GBNGXT51 -> EDU istisnasi dahil).
+// SUNUCU ADINDAN turetilir (nginx-hosts.cjs envOfHost, ORNGXT51 -> EDU istisnasi dahil).
 'use strict';
 
 const { envOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
@@ -124,18 +124,16 @@ function coverageForEnv(expected, found, cap = 300) {
     fullCount: full.length,
     partialCount: partial.length,
     missingCount: missing.length,
-    full: full.sort(sortTr).slice(0, cap),
-    partial: partial.sort((a, b) => sortTr(a.app, b.app)).slice(0, cap),
-    missing: missing.sort(sortTr).slice(0, cap),
+    full: full.toSorted(sortTr).slice(0, cap),
+    partial: partial.toSorted((a, b) => sortTr(a.app, b.app)).slice(0, cap),
+    missing: missing.toSorted(sortTr).slice(0, cap),
     onlyOnServerCount: onlyOnServer.length,
-    onlyOnServer: onlyOnServer.sort(sortTr).slice(0, cap),
+    onlyOnServer: onlyOnServer.toSorted(sortTr).slice(0, cap),
     hosts: [...hosts].sort(varsayilanSira),
     // Kapsam YALNIZCA TAM kurulumlar uzerinden. Yarim kurulumu "kapsandi" saymak,
     // 404 donen bir uygulamayi yesil gostermek olurdu.
     coverage:
-      measured && expected.length
-        ? Math.round((full.length / expected.length) * 1000) / 10
-        : null,
+      measured && expected.length ? Math.round((full.length / expected.length) * 1000) / 10 : null,
   };
 }
 

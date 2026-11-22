@@ -60,7 +60,10 @@ function Dugmeler({
 }) {
   return (
     <div className="flex items-center justify-end gap-2 w-full">
-      <button onClick={onIptal} className="px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:text-gray-800">
+      <button
+        onClick={onIptal}
+        className="px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:text-gray-800"
+      >
         İptal
       </button>
       <button
@@ -69,7 +72,9 @@ function Dugmeler({
         data-testid={testId}
         className={
           'px-3 py-1.5 text-sm rounded-lg border disabled:opacity-40 ' +
-          (tehlikeli ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-blue-200 text-blue-700 hover:bg-blue-50')
+          (tehlikeli
+            ? 'border-red-200 text-red-700 hover:bg-red-50'
+            : 'border-blue-200 text-blue-700 hover:bg-blue-50')
         }
       >
         {tamamMetni}
@@ -131,10 +136,16 @@ export function SurveyYazPenceresi({
       const elle = Array.isArray(r.parolaElle) ? (r.parolaElle as string[]) : [];
       if (elle.length) {
         setParolaElle(elle);
-        toast.success(`Survey yazıldı. Parola varsayılanı AWX'te elle girilmeli: ${elle.join(', ')}`);
+        toast.success(
+          `Survey yazıldı. Parola varsayılanı AWX'te elle girilmeli: ${elle.join(', ')}`,
+        );
         return;
       }
-      toast.success(kapat ? 'Hedef survey kapatıldı ve doğrulandı.' : 'Survey hedefe yazıldı ve geri okunarak doğrulandı.');
+      toast.success(
+        kapat
+          ? 'Hedef survey kapatıldı ve doğrulandı.'
+          : 'Survey hedefe yazıldı ve geri okunarak doğrulandı.',
+      );
       onBitti();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -162,48 +173,63 @@ export function SurveyYazPenceresi({
       }
     >
       <div className="space-y-3 text-sm">
-        {hata && <p role="alert" className="text-red-600">{hata}</p>}
+        {hata && (
+          <p role="alert" className="text-red-600">
+            {hata}
+          </p>
+        )}
         {!detay && !hata && <p className="text-gray-400">Fark okunuyor…</p>}
         {detay && kapat && (
           <p>
-            Kaynak servis Portal Survey Tasarımcısı kullanıyor (AWX survey kapalı). Hedefte survey açık: tasarımcı alanları
-            görünmez. Spec yazılmaz; yalnız hedef template'te <span className="font-mono">survey_enabled=false</span> yapılır.
+            Kaynak servis Portal Survey Tasarımcısı kullanıyor (AWX survey kapalı). Hedefte survey
+            açık: tasarımcı alanları görünmez. Spec yazılmaz; yalnız hedef template'te{' '}
+            <span className="font-mono">survey_enabled=false</span> yapılır.
           </p>
         )}
         {detay && !kapat && ozet && (
           <>
             <p>
-              Kaynak survey'i (<b>{ozet.kaynakSoru}</b> soru) hedef template'e yazılacak; hedefte şu an <b>{ozet.hedefSoru}</b> soru var.
-              Önce spec yazılır, sonra survey açılır, sonra geri okunup karşılaştırılır.
+              Kaynak survey'i (<b>{ozet.kaynakSoru}</b> soru) hedef template'e yazılacak; hedefte şu
+              an <b>{ozet.hedefSoru}</b> soru var. Önce spec yazılır, sonra survey açılır, sonra
+              geri okunup karşılaştırılır.
             </p>
             {silinecek.length > 0 && (
               <p className="text-red-700">
-                Hedefte silinecek sorular: <span className="font-mono">{silinecek.map((s) => s.variable).join(', ')}</span>
+                Hedefte silinecek sorular:{' '}
+                <span className="font-mono">{silinecek.map((s) => s.variable).join(', ')}</span>
               </p>
             )}
             {ozet.parolaSoru > 0 && (
               <p className="text-amber-800">
-                Parola varsayılanları kaynaktan kopyalanamaz. Hedefte aynı parola sorusunun varsayılanı varsa korunur; yoksa boş
-                yazılır ve AWX'te elle girilmelidir (yazımdan sonra liste gösterilir).
+                Parola varsayılanları kaynaktan kopyalanamaz. Hedefte aynı parola sorusunun
+                varsayılanı varsa korunur; yoksa boş yazılır ve AWX'te elle girilmelidir (yazımdan
+                sonra liste gösterilir).
               </p>
             )}
           </>
         )}
         {parolaElle && (
           <div className="text-amber-800" data-testid="parola-elle">
-            <p className="font-semibold">Survey yazıldı. Şu parola sorularının varsayılanı AWX'te elle girilmeli:</p>
+            <p className="font-semibold">
+              Survey yazıldı. Şu parola sorularının varsayılanı AWX'te elle girilmeli:
+            </p>
             <p className="font-mono">{parolaElle.join(', ')}</p>
           </div>
         )}
         {geriFark && (
           <div className="text-red-700">
             <p className="font-semibold">Yazıldı ama geri okunan survey beklenenle aynı değil:</p>
-            <pre className="text-[11px] whitespace-pre-wrap break-all">{JSON.stringify(geriFark, null, 1)}</pre>
+            <pre className="text-[11px] whitespace-pre-wrap break-all">
+              {JSON.stringify(geriFark, null, 1)}
+            </pre>
           </div>
         )}
         <label className="flex items-start gap-2">
           <input type="checkbox" checked={onay} onChange={(e) => setOnay(e.target.checked)} />
-          <span>Hedef template'in mevcut survey'inin üzerine yazılacağını anladım. (Önceki hâli taşıma kaydında saklanır.)</span>
+          <span>
+            Hedef template'in mevcut survey'inin üzerine yazılacağını anladım. (Önceki hâli taşıma
+            kaydında saklanır.)
+          </span>
         </label>
       </div>
     </Modal>
@@ -226,7 +252,11 @@ export function DenemePenceresi({
 }) {
   const toT = satir.hedefTemplate?.id ?? 0;
   const [metin, setMetin] = useState('{}');
-  const [dogrulama, setDogrulama] = useState<{ valid: boolean; message?: string; resolvedExtraVars?: unknown } | null>(null);
+  const [dogrulama, setDogrulama] = useState<{
+    valid: boolean;
+    message?: string;
+    resolvedExtraVars?: unknown;
+  } | null>(null);
   const [uzerineYazOnay, setUzerineYazOnay] = useState<AlanFarki[] | null>(null);
   const [uzerineYaz, setUzerineYaz] = useState(false);
   const [gercekOnay, setGercekOnay] = useState(false);
@@ -267,7 +297,13 @@ export function DenemePenceresi({
     if (!extraVars) return;
     setMesgul(true);
     try {
-      const r = await ssTasimaApi.deneme(satir.itemId, { to, toT, extraVars, sadeceDogrula: true, hedefAyarUzerineYaz: uzerineYaz });
+      const r = await ssTasimaApi.deneme(satir.itemId, {
+        to,
+        toT,
+        extraVars,
+        sadeceDogrula: true,
+        hedefAyarUzerineYaz: uzerineYaz,
+      });
       if (!r.ok && r.onayGerekli) {
         setUzerineYazOnay((r.degisiklikler as AlanFarki[]) || []);
         return;
@@ -276,7 +312,11 @@ export function DenemePenceresi({
         toast.error(r.message || 'Doğrulama yapılamadı.');
         return;
       }
-      setDogrulama({ valid: !!r.valid, message: r.message, resolvedExtraVars: r.resolvedExtraVars });
+      setDogrulama({
+        valid: !!r.valid,
+        message: r.message,
+        resolvedExtraVars: r.resolvedExtraVars,
+      });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -299,7 +339,12 @@ export function DenemePenceresi({
       }
       await new Promise((r) => setTimeout(r, IZLEME_ARALIK_MS));
     }
-    if (!iptalRef.current) setIs({ jobId, durum: 'bilinmiyor', bilgi: 'Bekleme süresi doldu; durumu sonra raporu yenileyerek kontrol edin.' });
+    if (!iptalRef.current)
+      setIs({
+        jobId,
+        durum: 'bilinmiyor',
+        bilgi: 'Bekleme süresi doldu; durumu sonra raporu yenileyerek kontrol edin.',
+      });
   }
 
   async function kostur() {
@@ -307,14 +352,23 @@ export function DenemePenceresi({
     if (!extraVars) return;
     setMesgul(true);
     try {
-      const r = await ssTasimaApi.deneme(satir.itemId, { to, toT, extraVars, sadeceDogrula: false, confirm: true, hedefAyarUzerineYaz: uzerineYaz });
+      const r = await ssTasimaApi.deneme(satir.itemId, {
+        to,
+        toT,
+        extraVars,
+        sadeceDogrula: false,
+        confirm: true,
+        hedefAyarUzerineYaz: uzerineYaz,
+      });
       if (!r.ok) {
         toast.error(r.message || 'Deneme başlatılamadı.');
         return;
       }
       if (r.pendingApproval) {
         // Sunucu Smart gerektiren denemeyi reddeder; bu dal yalnız beklenmeyen durum içindir.
-        setIs({ bilgi: `Gerçek bir Smart talebi açıldı (#${String(r.ticketId ?? '')}). Onaydan sonraki iş deneme sayılmaz; talebi Smart'ta iptal edin ve gerekçeyle taşıyın.` });
+        setIs({
+          bilgi: `Gerçek bir Smart talebi açıldı (#${String(r.ticketId ?? '')}). Onaydan sonraki iş deneme sayılmaz; talebi Smart'ta iptal edin ve gerekçeyle taşıyın.`,
+        });
         onBitti();
         return;
       }
@@ -339,7 +393,10 @@ export function DenemePenceresi({
       subtitle={`${satir.title} → #${toT} ${satir.hedefTemplate?.name || ''}`}
       footer={
         <div className="flex items-center justify-end gap-2 w-full">
-          <button onClick={onKapat} className="px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:text-gray-800">
+          <button
+            onClick={onKapat}
+            className="px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:text-gray-800"
+          >
             İptal
           </button>
           <button
@@ -362,9 +419,10 @@ export function DenemePenceresi({
     >
       <div className="space-y-3 text-sm">
         <p className="text-gray-600">
-          Kaynak servis ayarları (Smart onayı, alan ayarları, koşullar) hedef template'e kopyalanır; kart hâlâ kaynağa bağlıdır,
-          servis kullanıcıları bu işi kendi geçmişlerinde görmez. Servis Smart onayı istiyorsa deneme yalnız Admin "Smart onayını
-          atla" tercihiniz açıkken koşar; kapalıysa reddedilir ve Smart'ta talep açılmaz.
+          Kaynak servis ayarları (Smart onayı, alan ayarları, koşullar) hedef template'e kopyalanır;
+          kart hâlâ kaynağa bağlıdır, servis kullanıcıları bu işi kendi geçmişlerinde görmez. Servis
+          Smart onayı istiyorsa deneme yalnız Admin "Smart onayını atla" tercihiniz açıkken koşar;
+          kapalıysa reddedilir ve Smart'ta talep açılmaz.
         </p>
         <label className="block">
           <span className="text-xs text-gray-500">extraVars (JSON)</span>
@@ -380,28 +438,42 @@ export function DenemePenceresi({
         </label>
         {uzerineYazOnay && (
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-2 text-amber-900">
-            <p className="font-semibold">Hedefte mevcut ayar var, üzerine yazılacak (geçmişe arşivlenir).</p>
+            <p className="font-semibold">
+              Hedefte mevcut ayar var, üzerine yazılacak (geçmişe arşivlenir).
+            </p>
             <AlanFarkListesi farklar={uzerineYazOnay} />
             <label className="flex items-center gap-2 mt-1">
-              <input type="checkbox" checked={uzerineYaz} onChange={(e) => setUzerineYaz(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={uzerineYaz}
+                onChange={(e) => setUzerineYaz(e.target.checked)}
+              />
               <span>Hedefteki ayarın üzerine yazılsın.</span>
             </label>
           </div>
         )}
         {dogrulama && (
           <div className={dogrulama.valid ? 'text-green-700' : 'text-red-700'}>
-            {dogrulama.valid ? 'Doğrulama geçti: hedefte iş bu parametrelerle başlatılabilir.' : `Doğrulama başarısız: ${dogrulama.message || ''}`}
+            {dogrulama.valid
+              ? 'Doğrulama geçti: hedefte iş bu parametrelerle başlatılabilir.'
+              : `Doğrulama başarısız: ${dogrulama.message || ''}`}
             {dogrulama.valid && dogrulama.resolvedExtraVars !== undefined && (
-              <pre className="mt-1 text-[11px] text-gray-600 whitespace-pre-wrap break-all">{JSON.stringify(dogrulama.resolvedExtraVars, null, 1)}</pre>
+              <pre className="mt-1 text-[11px] text-gray-600 whitespace-pre-wrap break-all">
+                {JSON.stringify(dogrulama.resolvedExtraVars, null, 1)}
+              </pre>
             )}
           </div>
         )}
         {dogrulama?.valid && (
           <label className="flex items-start gap-2 text-red-700">
-            <input type="checkbox" checked={gercekOnay} onChange={(e) => setGercekOnay(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={gercekOnay}
+              onChange={(e) => setGercekOnay(e.target.checked)}
+            />
             <span>
-              Bu, hedef sunucuda GERÇEK bir iştir ve bu yolda OCO değişiklik penceresi kontrolü YOKTUR: iş pencere dışında da koşar.
-              Zararsız parametrelerle koşturuyorum.
+              Bu, hedef sunucuda GERÇEK bir iştir ve bu yolda OCO değişiklik penceresi kontrolü
+              YOKTUR: iş pencere dışında da koşar. Zararsız parametrelerle koşturuyorum.
             </span>
           </label>
         )}
@@ -439,7 +511,8 @@ export function TasiPenceresi({
   const [gerekce, setGerekce] = useState('');
   const [mesgul, setMesgul] = useState(false);
   const gerekceGecerli = gerekce.trim().length >= GEREKCE_EN_AZ;
-  const hazir = satir.durum === 'HAZIR' && !!satir.planHash && (denemeVar || (denemesiz && gerekceGecerli));
+  const hazir =
+    satir.durum === 'HAZIR' && !!satir.planHash && (denemeVar || (denemesiz && gerekceGecerli));
 
   async function tasi() {
     if (!satir.hedefTemplate || !satir.planHash) return;
@@ -474,24 +547,39 @@ export function TasiPenceresi({
       title="Servisi taşı"
       subtitle={`${satir.title} → #${satir.hedefTemplate?.id ?? ''} ${satir.hedefTemplate?.name || ''}`}
       footer={
-        <Dugmeler onIptal={onKapat} onTamam={() => void tasi()} tamamMetni={mesgul ? 'Taşınıyor…' : 'Taşı'} pasif={!hazir || mesgul} testId="tasi-onay" />
+        <Dugmeler
+          onIptal={onKapat}
+          onTamam={() => void tasi()}
+          tamamMetni={mesgul ? 'Taşınıyor…' : 'Taşı'}
+          pasif={!hazir || mesgul}
+          testId="tasi-onay"
+        />
       }
     >
       <div className="space-y-3 text-sm">
         <p>
-          Kart <b>{satir.title}</b> hedefe bağlanacak. Kart kimliği, başlık, bağlantı, erişim ayarları ve açık/kapalı durumu
-          değişmez.
+          Kart <b>{satir.title}</b> hedefe bağlanacak. Kart kimliği, başlık, bağlantı, erişim
+          ayarları ve açık/kapalı durumu değişmez.
         </p>
-        <p>Kaynaktaki ayarlar hedefe kopyalanır; kaynak satır silinmez. Geçmiş işler kaynakta salt-okunur kalır.</p>
+        <p>
+          Kaynaktaki ayarlar hedefe kopyalanır; kaynak satır silinmez. Geçmiş işler kaynakta
+          salt-okunur kalır.
+        </p>
         {denemeVar ? (
-          <p className="text-green-700">Geçerli deneme koşusu: iş #{satir.deneme?.jobId} başarılı.</p>
+          <p className="text-green-700">
+            Geçerli deneme koşusu: iş #{satir.deneme?.jobId} başarılı.
+          </p>
         ) : (
           <div className="border border-amber-200 bg-amber-50 rounded-lg p-2 space-y-1">
             <p className="text-amber-900">
               Geçerli bir deneme koşusu yok{satir.deneme?.neden ? ` (${satir.deneme.neden})` : ''}.
             </p>
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={denemesiz} onChange={(e) => setDenemesiz(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={denemesiz}
+                onChange={(e) => setDenemesiz(e.target.checked)}
+              />
               <span>Deneme koşusu olmadan taşı</span>
             </label>
             {denemesiz && (
@@ -554,7 +642,11 @@ export function GeriAlPenceresi({
         toast.error(r.message || 'Geri alınamadı.');
         return;
       }
-      toast.success(kaydiKapat ? `${satir.title}: taşıma kaydı kapatıldı (kart değişmedi).` : `${satir.title} kaynağa geri alındı.`);
+      toast.success(
+        kaydiKapat
+          ? `${satir.title}: taşıma kaydı kapatıldı (kart değişmedi).`
+          : `${satir.title} kaynağa geri alındı.`,
+      );
       onBitti();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -583,20 +675,36 @@ export function GeriAlPenceresi({
       }
     >
       <div className="space-y-3 text-sm">
-        {hata && <p role="alert" className="text-red-600">{hata}</p>}
+        {hata && (
+          <p role="alert" className="text-red-600">
+            {hata}
+          </p>
+        )}
         {!o && !hata && <p className="text-gray-400">Kontrol ediliyor…</p>}
         {o && (
           <>
             <p>
-              Kart #{o.kayit.toTemplate} bağından kaynağa ({o.kaynakSunucuAdi || `#${o.kayit.fromServer}, Portal'da yok`}, template #
-              {o.kayit.fromTemplate}) döner. Hedef ayar satırı ve hedef AWX survey'i olduğu gibi kalır.
+              Kart #{o.kayit.toTemplate} bağından kaynağa (
+              {o.kaynakSunucuAdi || `#${o.kayit.fromServer}, Portal'da yok`}, template #
+              {o.kayit.fromTemplate}) döner. Hedef ayar satırı ve hedef AWX survey'i olduğu gibi
+              kalır.
             </p>
             {kapatKipi && (
               <div className="text-red-700 space-y-1">
-                <p className="font-semibold">Kart taşıma sonrası başka bir template'e bağlanmış; otomatik geri alma güvenli değil.</p>
-                <p>Kartı değiştirmeden yalnız taşıma kaydını kapatabilirsiniz; servis daha sonra yeniden hazırlanıp taşınabilir.</p>
+                <p className="font-semibold">
+                  Kart taşıma sonrası başka bir template'e bağlanmış; otomatik geri alma güvenli
+                  değil.
+                </p>
+                <p>
+                  Kartı değiştirmeden yalnız taşıma kaydını kapatabilirsiniz; servis daha sonra
+                  yeniden hazırlanıp taşınabilir.
+                </p>
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={onay} onChange={(e) => setOnay(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={onay}
+                    onChange={(e) => setOnay(e.target.checked)}
+                  />
                   <span>Kartın bugünkü bağı korunsun, yalnız kayıt kapatılsın</span>
                 </label>
               </div>
@@ -607,12 +715,14 @@ export function GeriAlPenceresi({
                 <ul>
                   {o.engeller.map((e) => (
                     <li key={e.anahtar}>
-                      <b>{e.adet}</b> × {e.baslik} <span className="text-gray-500">— {e.ipucu}</span>
+                      <b>{e.adet}</b> × {e.baslik}{' '}
+                      <span className="text-gray-500">— {e.ipucu}</span>
                     </li>
                   ))}
                   {o.okunamayan.map((e) => (
                     <li key={`o-${e.anahtar}`}>
-                      Kontrol edilemedi: {e.baslik} <span className="text-gray-500">— {e.hata}</span>
+                      Kontrol edilemedi: {e.baslik}{' '}
+                      <span className="text-gray-500">— {e.hata}</span>
                     </li>
                   ))}
                 </ul>
@@ -620,7 +730,9 @@ export function GeriAlPenceresi({
             )}
             {o.bilgiDegisiklikleri.length > 0 && (
               <div>
-                <p className="font-semibold text-gray-700">Taşımadan sonra kartta değişenler (korunur)</p>
+                <p className="font-semibold text-gray-700">
+                  Taşımadan sonra kartta değişenler (korunur)
+                </p>
                 <AlanFarkListesi farklar={o.bilgiDegisiklikleri} />
               </div>
             )}
@@ -632,9 +744,16 @@ export function GeriAlPenceresi({
                     <AlanFarkListesi farklar={d.farklar} />
                   </div>
                 ))}
-                <p>Bu değişiklikler kaynağa taşınmaz. Geri alınca servis, taşıma öncesi kaynak ayarlarıyla çalışır.</p>
+                <p>
+                  Bu değişiklikler kaynağa taşınmaz. Geri alınca servis, taşıma öncesi kaynak
+                  ayarlarıyla çalışır.
+                </p>
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={onay} onChange={(e) => setOnay(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={onay}
+                    onChange={(e) => setOnay(e.target.checked)}
+                  />
                   <span>Değişiklikleri gördüm, yine de geri al</span>
                 </label>
               </div>

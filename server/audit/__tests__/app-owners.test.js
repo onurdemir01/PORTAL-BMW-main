@@ -41,13 +41,33 @@ const {
 } = require('../ns-owners.cjs');
 
 const NS_SATIR = [
-  { namespace: 'muh-dev', owner_group_name: 'GT-NS-DEV', owner_email: 'nsdev@x', lookup_status: 'OK' },
-  { namespace: 'muh-test', owner_group_name: 'GT-NS-TEST', owner_email: 'nstest@x', lookup_status: 'OK' },
-  { namespace: 'muh-prod', owner_group_name: 'GT-NS-PROD', owner_email: 'nsprod@x', lookup_status: 'OK' },
-  { namespace: 'bos-prod', owner_group_name: null, owner_email: null, lookup_status: 'SORUMLU_YOK' },
+  {
+    namespace: 'muh-dev',
+    owner_group_name: 'GT-NS-DEV',
+    owner_email: 'nsdev@x',
+    lookup_status: 'OK',
+  },
+  {
+    namespace: 'muh-test',
+    owner_group_name: 'GT-NS-TEST',
+    owner_email: 'nstest@x',
+    lookup_status: 'OK',
+  },
+  {
+    namespace: 'muh-prod',
+    owner_group_name: 'GT-NS-PROD',
+    owner_email: 'nsprod@x',
+    lookup_status: 'OK',
+  },
+  {
+    namespace: 'bos-prod',
+    owner_group_name: null,
+    owner_email: null,
+    lookup_status: 'SORUMLU_YOK',
+  },
 ];
 const A = (namespace, application, o = {}) => ({
-  cluster: 'gbocpprod1',
+  cluster: 'orocpprod1',
   namespace,
   application,
   owner_group_name: null,
@@ -72,10 +92,7 @@ test('AO1 uygulama tablosu yokken birebir eski davranis (kaynak bilgisi yok)', (
   const nss = ['muh-dev', 'muh-prod', 'bos-prod', 'hic-yok'];
   const yeni = ownersForApp(o, 'accnting-process-app', nss);
   const eski = ownersFor(o.byNs, nss);
-  assert.deepEqual(
-    { groups: yeni.groups, emails: yeni.emails, unknownNs: yeni.unknownNs },
-    eski,
-  );
+  assert.deepEqual({ groups: yeni.groups, emails: yeni.emails, unknownNs: yeni.unknownNs }, eski);
   assert.deepEqual([yeni.kaynaklar, yeni.nsSahibi, yeni.appReady], [[], [], false]);
   // loadNamespaceOwners dusmus/eski sekil ({ready, byNs}) de ayni sonucu verir.
   const eskiSekil = ownersForApp({ ready: true, byNs: o.byNs }, 'accnting-process-app', nss);
@@ -116,10 +133,17 @@ test('AO3 uygulama satiri yoksa namespace sahibi, kaynak NAMESPACE olarak isaret
 test('AO4 satir kaynak NAMESPACE: namespace tablosu oncelikli, yoksa satirin kendi grubu', () => {
   const o = sahipler([
     A('muh-prod', 'app-a', { owner_group_name: 'ESKI-NS-KOPYA', kaynak: 'NAMESPACE' }),
-    A('yeni-prod', 'app-b', { owner_group_name: 'SATIR-NS', owner_email: 'satir@x', kaynak: 'namespace' }),
+    A('yeni-prod', 'app-b', {
+      owner_group_name: 'SATIR-NS',
+      owner_email: 'satir@x',
+      kaynak: 'namespace',
+    }),
   ]);
   const a = ownersForApp(o, 'app-a', ['muh-prod']);
-  assert.deepEqual([a.groups, a.kaynaklar, a.nsSahibi], [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']]);
+  assert.deepEqual(
+    [a.groups, a.kaynaklar, a.nsSahibi],
+    [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']],
+  );
   const b = ownersForApp(o, 'app-b', ['yeni-prod']);
   assert.deepEqual([b.groups, b.emails, b.kaynaklar], [['SATIR-NS'], ['satir@x'], ['NAMESPACE']]);
 });
@@ -136,16 +160,19 @@ test('AO5 ortamlar arasi karisik kaynak: her grup kendi kaynagiyla, bilinmeyen g
   assert.deepEqual(r.nsSahibi, ['muh-test']);
   assert.deepEqual(r.unknownNs, ['muh-qa']);
   // Ayni grup bir ortamda yedekten, digerinde uygulamadan geldiyse kaynak uygulamanindir.
-  const ayni = sahipler(
-    [A('muh-prod', 'app', { owner_group_name: 'GT-NS-DEV', kaynak: 'ARK997_YAZILIM' })],
-  );
+  const ayni = sahipler([
+    A('muh-prod', 'app', { owner_group_name: 'GT-NS-DEV', kaynak: 'ARK997_YAZILIM' }),
+  ]);
   const s = ownersForApp(ayni, 'app', ['muh-dev', 'muh-prod']);
   assert.deepEqual([s.groups, s.kaynaklar], [['GT-NS-DEV'], ['ARK997_YAZILIM']]);
   assert.equal(s.groups.length, s.kaynaklar.length);
 });
 
 test('AO6 kaynak YOK ve yedek de yoksa namespace bilinmeyenler listesinde', () => {
-  const o = sahipler([A('bos-prod', 'app', { kaynak: 'YOK' }), A('kayip-prod', 'app', { kaynak: '' })]);
+  const o = sahipler([
+    A('bos-prod', 'app', { kaynak: 'YOK' }),
+    A('kayip-prod', 'app', { kaynak: '' }),
+  ]);
   const r = ownersForApp(o, 'app', ['bos-prod', 'kayip-prod']);
   assert.deepEqual([r.groups, r.kaynaklar, r.unknownNs], [[], [], ['bos-prod', 'kayip-prod']]);
   // Grubu olmayan bir "uygulama kaynagi" (bozuk satir) sahip sayilmaz -> yedek.
@@ -156,8 +183,16 @@ test('AO6 kaynak YOK ve yedek de yoksa namespace bilinmeyenler listesinde', () =
 test('AO7 ayni ns/app birden cok cluster: kendi sahibini tasiyan satir kazanir (sira fark etmez)', () => {
   const ns = A('muh-prod', 'app', { cluster: 'c1', owner_group_name: 'NSK', kaynak: 'NAMESPACE' });
   const yok = A('muh-prod', 'app', { cluster: 'c3', kaynak: 'YOK' });
-  const gercek = A('muh-prod', 'app', { cluster: 'c2', owner_group_name: 'GERCEK', kaynak: 'ARK997_AGILE' });
-  for (const sira of [[ns, yok, gercek], [gercek, ns, yok], [yok, gercek, ns]]) {
+  const gercek = A('muh-prod', 'app', {
+    cluster: 'c2',
+    owner_group_name: 'GERCEK',
+    kaynak: 'ARK997_AGILE',
+  });
+  for (const sira of [
+    [ns, yok, gercek],
+    [gercek, ns, yok],
+    [yok, gercek, ns],
+  ]) {
     const m = indexAppOwners(sira);
     assert.equal(m.get('muh-prod/app').group, 'GERCEK', JSON.stringify(sira.map((x) => x.cluster)));
     assert.equal(m.get('muh-prod/app').cluster, 'c2');
@@ -167,35 +202,57 @@ test('AO7 ayni ns/app birden cok cluster: kendi sahibini tasiyan satir kazanir (
 });
 
 test('AO8 yukleyici: iki tablo bagimsiz; uygulama tablosu yokken eski anlam, sorgu sutunlari', async () => {
-  const sorgu = (yokTablolar, kayit = []) => async (q) => {
-    const s = String(q);
-    kayit.push(s);
-    for (const t of yokTablolar) if (s.includes(t)) throw new Error(`Invalid object name 'dbo.${t}'.`);
-    if (s.includes('dbo.Openshift_Namespace_Owners')) return { recordset: NS_SATIR };
-    if (s.includes('dbo.Openshift_App_Owners'))
-      return { recordset: [A('muh-prod', 'app', { owner_group_name: 'G', kaynak: 'SI51_AGILE' })] };
-    throw new Error('beklenmeyen sorgu');
-  };
+  const sorgu =
+    (yokTablolar, kayit = []) =>
+    async (q) => {
+      const s = String(q);
+      kayit.push(s);
+      for (const t of yokTablolar)
+        if (s.includes(t)) throw new Error(`Invalid object name 'dbo.${t}'.`);
+      if (s.includes('dbo.Openshift_Namespace_Owners')) return { recordset: NS_SATIR };
+      if (s.includes('dbo.Openshift_App_Owners'))
+        return {
+          recordset: [A('muh-prod', 'app', { owner_group_name: 'G', kaynak: 'SI51_AGILE' })],
+        };
+      throw new Error('beklenmeyen sorgu');
+    };
   _resetCache();
   const kayit = [];
   const r1 = await loadNamespaceOwners(sorgu(['Openshift_App_Owners'], kayit));
-  assert.deepEqual([r1.ready, r1.nsReady, r1.appReady, r1.byApp.size, r1.byNs.size], [true, true, false, 0, 4]);
+  assert.deepEqual(
+    [r1.ready, r1.nsReady, r1.appReady, r1.byApp.size, r1.byNs.size],
+    [true, true, false, 0, 4],
+  );
   const app = kayit.find((s) => s.includes('Openshift_App_Owners'));
-  for (const c of ['namespace', 'application', 'owner_group_name', 'owner_email', 'kaynak', 'lookup_status']) {
+  for (const c of [
+    'namespace',
+    'application',
+    'owner_group_name',
+    'owner_email',
+    'kaynak',
+    'lookup_status',
+  ]) {
     assert.ok(new RegExp(`\\b${c}\\b`).test(app), `uygulama sorgusunda ${c} yok`);
   }
   _resetCache();
   const r2 = await loadNamespaceOwners(sorgu(['Openshift_Namespace_Owners']));
-  assert.deepEqual([r2.ready, r2.nsReady, r2.appReady, r2.byNs.size, r2.byApp.size], [true, false, true, 0, 1]);
+  assert.deepEqual(
+    [r2.ready, r2.nsReady, r2.appReady, r2.byNs.size, r2.byApp.size],
+    [true, false, true, 0, 1],
+  );
   assert.deepEqual(ownersForApp(r2, 'app', ['muh-prod']).kaynaklar, ['SI51_AGILE']);
   _resetCache();
-  const r3 = await loadNamespaceOwners(sorgu(['Openshift_Namespace_Owners', 'Openshift_App_Owners']));
+  const r3 = await loadNamespaceOwners(
+    sorgu(['Openshift_Namespace_Owners', 'Openshift_App_Owners']),
+  );
   assert.deepEqual([r3.ready, r3.appReady], [false, false]);
   _resetCache();
 });
 
 test('AO9 buyuk/kucuk harf ve bosluk duyarsiz; uygulama adi bossa eski davranis', () => {
-  const o = sahipler([A(' MUH-PROD ', 'Accnting-Process-App', { owner_group_name: 'G', kaynak: 'si51_agile' })]);
+  const o = sahipler([
+    A(' MUH-PROD ', 'Accnting-Process-App', { owner_group_name: 'G', kaynak: 'si51_agile' }),
+  ]);
   const r = ownersForApp(o, 'ACCNTING-PROCESS-APP ', ['Muh-Prod']);
   assert.deepEqual([r.groups, r.kaynaklar], [['G'], ['SI51_AGILE']]);
   const bos = ownersForApp(o, '', ['muh-prod']);
@@ -205,15 +262,38 @@ test('AO9 buyuk/kucuk harf ve bosluk duyarsiz; uygulama adi bossa eski davranis'
 test('AO10 Intranet SPA: owners verilince uygulama sahibi + ekipKaynak, verilmezse eskisi', () => {
   const { buildIntranetRapor } = require('../../spa-report/intranet.cjs');
   const uyg = (application) => ({
-    env: 'PROD', namespace: 'muh-prod', application, spa: 'evet', ag: 'intranet',
-    clusters: ['gbocpprod1'], hosts: [], staleClusters: [],
+    env: 'PROD',
+    namespace: 'muh-prod',
+    application,
+    spa: 'evet',
+    ag: 'intranet',
+    clusters: ['orocpprod1'],
+    hosts: [],
+    staleClusters: [],
   });
-  const o = sahipler([A('muh-prod', 'kendi', { owner_group_name: 'APP-G', owner_email: 'app@x', kaynak: 'ARK997_AGILE' })]);
-  const base = { apps: [uyg('kendi'), uyg('yedekli')], beyanlar: new Map(), dirRows: [], hosts: [] };
+  const o = sahipler([
+    A('muh-prod', 'kendi', {
+      owner_group_name: 'APP-G',
+      owner_email: 'app@x',
+      kaynak: 'ARK997_AGILE',
+    }),
+  ]);
+  const base = {
+    apps: [uyg('kendi'), uyg('yedekli')],
+    beyanlar: new Map(),
+    dirRows: [],
+    hosts: [],
+  };
   const yeni = buildIntranetRapor({ ...base, ownersByNs: o.byNs, owners: o });
   const by = Object.fromEntries(yeni.rows.map((r) => [r.application, r]));
-  assert.ok(by.kendi && by.yedekli, 'satirlar rapora girmedi: ' + JSON.stringify(yeni.rows.map((r) => r.application)));
-  assert.deepEqual([by.kendi.ekip, by.kendi.ekipEposta, by.kendi.ekipKaynak], [['APP-G'], ['app@x'], ['ARK997_AGILE']]);
+  assert.ok(
+    by.kendi && by.yedekli,
+    'satirlar rapora girmedi: ' + JSON.stringify(yeni.rows.map((r) => r.application)),
+  );
+  assert.deepEqual(
+    [by.kendi.ekip, by.kendi.ekipEposta, by.kendi.ekipKaynak],
+    [['APP-G'], ['app@x'], ['ARK997_AGILE']],
+  );
   assert.deepEqual([by.yedekli.ekip, by.yedekli.ekipKaynak], [['GT-NS-PROD'], ['NAMESPACE']]);
   const eski = buildIntranetRapor({ ...base, ownersByNs: o.byNs });
   for (const r of eski.rows) assert.deepEqual([r.ekip, r.ekipKaynak], [['GT-NS-PROD'], []]);
@@ -222,20 +302,46 @@ test('AO10 Intranet SPA: owners verilince uygulama sahibi + ekipKaynak, verilmez
 test('AO11 SPA Raporu: ekipOf (ns, app) alir; nesne donusu teamKaynak, dizi donusu eskisi gibi', () => {
   const { buildSpaReport } = require('../../spa-report/build.cjs');
   const rows = [
-    { service: 'GLOMO', env: 'PROD', application: 'app-a', namespace: 'muh-prod', location_path: '/a/', host: 'H1' },
-    { service: 'GLOMO', env: 'PROD', application: 'app-b', namespace: 'muh-prod', location_path: '/b/', host: 'H1' },
+    {
+      service: 'GLOMO',
+      env: 'PROD',
+      application: 'app-a',
+      namespace: 'muh-prod',
+      location_path: '/a/',
+      host: 'H1',
+    },
+    {
+      service: 'GLOMO',
+      env: 'PROD',
+      application: 'app-b',
+      namespace: 'muh-prod',
+      location_path: '/b/',
+      host: 'H1',
+    },
   ];
   const o = sahipler([A('muh-prod', 'app-a', { owner_group_name: 'APP-A', kaynak: 'SI51_AGILE' })]);
   const cagri = [];
   const r = buildSpaReport({
-    rows, beyanlar: new Map(), trafficOf: () => null, env: 'PROD',
-    ekipOf: (ns, app) => { cagri.push(`${ns}/${app}`); return ownersForApp(o, app, [ns]); },
+    rows,
+    beyanlar: new Map(),
+    trafficOf: () => null,
+    env: 'PROD',
+    ekipOf: (ns, app) => {
+      cagri.push(`${ns}/${app}`);
+      return ownersForApp(o, app, [ns]);
+    },
   });
   const by = Object.fromEntries(r.rows.map((x) => [x.application, x]));
   assert.deepEqual([by['app-a'].team, by['app-a'].teamKaynak], [['APP-A'], ['SI51_AGILE']]);
   assert.deepEqual([by['app-b'].team, by['app-b'].teamKaynak], [['GT-NS-PROD'], ['NAMESPACE']]);
   assert.ok(cagri.includes('muh-prod/app-a'), 'ekipOf uygulama adini almadi');
-  const eski = buildSpaReport({ rows, beyanlar: new Map(), trafficOf: () => null, env: 'PROD', ekipOf: () => ['E'] });
+  const eski = buildSpaReport({
+    rows,
+    beyanlar: new Map(),
+    trafficOf: () => null,
+    env: 'PROD',
+    ekipOf: () => ['E'],
+  });
   for (const x of eski.rows) assert.deepEqual([x.team, x.teamKaynak], [['E'], []]);
   const hic = buildSpaReport({ rows, beyanlar: new Map(), trafficOf: () => null, env: 'PROD' });
   for (const x of hic.rows) assert.deepEqual([x.team, x.teamKaynak], [[], []]);
@@ -244,22 +350,57 @@ test('AO11 SPA Raporu: ekipOf (ns, app) alir; nesne donusu teamKaynak, dizi donu
 test('AO12 Kapsam intranet hucresi: ownerOf uygulama adini alir', () => {
   const ik = require('../intranet-kapsam.cjs');
   const rapor = {
-    rows: [{ env: 'PROD', namespace: 'muh-prod', application: 'app-x', kurulum: { durum: 'yok', sunucular: [] } }],
-    taranmayanSunucu: [], intranetSunuculari: [], sunucudaFazla: [], dizinDurum: 'var',
+    rows: [
+      {
+        env: 'PROD',
+        namespace: 'muh-prod',
+        application: 'app-x',
+        kurulum: { durum: 'yok', sunucular: [] },
+      },
+    ],
+    taranmayanSunucu: [],
+    intranetSunuculari: [],
+    sunucudaFazla: [],
+    dizinDurum: 'var',
   };
-  const o = sahipler([A('muh-prod', 'app-x', { owner_group_name: 'APP-X', kaynak: 'ARK997_YAZILIM' })]);
+  const o = sahipler([
+    A('muh-prod', 'app-x', { owner_group_name: 'APP-X', kaynak: 'ARK997_YAZILIM' }),
+  ]);
   const { detay } = ik.intranetHucresi(rapor, 'PROD', (nss, app) => ownersForApp(o, app, nss));
   assert.equal(detay.length, 1);
-  assert.deepEqual([detay[0].owner.groups, detay[0].owner.kaynaklar], [['APP-X'], ['ARK997_YAZILIM']]);
+  assert.deepEqual(
+    [detay[0].owner.groups, detay[0].owner.kaynaklar],
+    [['APP-X'], ['ARK997_YAZILIM']],
+  );
 });
 
-test('AO13 Glomo gecis canli raporu: teamKaynak grup basina, uygulama kaynagi NAMESPACE\'i yener', () => {
+test("AO13 Glomo gecis canli raporu: teamKaynak grup basina, uygulama kaynagi NAMESPACE'i yener", () => {
   const { glomoCanli } = require('../../spa-report/gecis.cjs');
   const m = glomoCanli({
     rows: [
-      { service: 'GLOMO', namespace: 'muh-prod', application: 'app', location: '/a/', team: ['G1', 'G2'], teamKaynak: ['NAMESPACE', 'SI51_AGILE'] },
-      { service: 'GLOMO', namespace: 'muh-prod', application: 'app', location: '/b/', team: ['G1'], teamKaynak: ['ARK997_AGILE'] },
-      { service: 'GLOMO', namespace: 'muh-prod', application: 'eski', location: '/c/', team: ['G3'] },
+      {
+        service: 'GLOMO',
+        namespace: 'muh-prod',
+        application: 'app',
+        location: '/a/',
+        team: ['G1', 'G2'],
+        teamKaynak: ['NAMESPACE', 'SI51_AGILE'],
+      },
+      {
+        service: 'GLOMO',
+        namespace: 'muh-prod',
+        application: 'app',
+        location: '/b/',
+        team: ['G1'],
+        teamKaynak: ['ARK997_AGILE'],
+      },
+      {
+        service: 'GLOMO',
+        namespace: 'muh-prod',
+        application: 'eski',
+        location: '/c/',
+        team: ['G3'],
+      },
     ],
   });
   const x = m.get('muh-prod/app');
@@ -272,7 +413,8 @@ test('AO13 Glomo gecis canli raporu: teamKaynak grup basina, uygulama kaynagi NA
 const yorumsuz = (src) => src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/.*$/gm, '$1');
 
 test('AO14 yorum silici: yorumdaki cagri sayilmaz, koddaki kalir', () => {
-  const ornek = "a = ownersForApp(owners, nss[0], nss); // ownersForApp(owners, r.application, nss)\n/* ownersFor(x) */ u = 'http://x';";
+  const ornek =
+    "a = ownersForApp(owners, nss[0], nss); // ownersForApp(owners, r.application, nss)\n/* ownersFor(x) */ u = 'http://x';";
   const t = yorumsuz(ornek);
   assert.ok(!t.includes('r.application'), 'satir sonu yorumu silinmedi');
   assert.ok(!t.includes('ownersFor(x)'), 'blok yorum silinmedi');
@@ -311,7 +453,16 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
     n += 1;
     if (s.includes('dbo.Openshift_Namespace_Owners')) {
       if (nsHata) throw nsHata;
-      return { recordset: [{ namespace: 'b-prod', owner_group_name: 'GT-NS', owner_email: 'ns@x', lookup_status: 'OK' }] };
+      return {
+        recordset: [
+          {
+            namespace: 'b-prod',
+            owner_group_name: 'GT-NS',
+            owner_email: 'ns@x',
+            lookup_status: 'OK',
+          },
+        ],
+      };
     }
     if (s.includes('dbo.Openshift_App_Owners')) return { recordset: [APP_ROW] };
     throw new Error('beklenmeyen sorgu');
@@ -323,7 +474,10 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
     const y = ownersForApp(o, 'yabanci', ['b-prod']);
     assert.deepEqual([y.groups, y.unknownNs, y.veriYokNs], [[], [], ['b-prod']]);
     const k = ownersForApp(o, 'kendi', ['a-prod', 'b-prod']);
-    assert.deepEqual([k.groups, k.kaynaklar, k.unknownNs, k.veriYokNs], [['GT-Uyg'], ['SI51_AGILE'], [], ['b-prod']]);
+    assert.deepEqual(
+      [k.groups, k.kaynaklar, k.unknownNs, k.veriYokNs],
+      [['GT-Uyg'], ['SI51_AGILE'], [], ['b-prod']],
+    );
     // Gecici dusus onbellege girmedi: tablo geri gelince hemen dogru sahip.
     nsHata = null;
     const o2 = await loadNamespaceOwners(q);
@@ -336,14 +490,19 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
     assert.equal(n, once, 'tam sonuc onbellege girmedi');
     // Tablo YOK (kalici): onbellege girer; ve namespace verisi yok -> veriYokNs.
     _resetCache();
-    nsHata = Object.assign(new Error("Invalid object name 'dbo.Openshift_Namespace_Owners'."), { number: 208 });
+    nsHata = Object.assign(new Error("Invalid object name 'dbo.Openshift_Namespace_Owners'."), {
+      number: 208,
+    });
     const o3 = await loadNamespaceOwners(q);
     const n3 = n;
     await loadNamespaceOwners(q);
     assert.equal(n, n3, 'tablo yok durumu onbellege girmedi');
     assert.deepEqual(ownersForApp(o3, 'yabanci', ['b-prod']).veriYokNs, ['b-prod']);
     // Uygulama tablosu yokken (eski yol) veriYokNs hep bos: ready=false zaten "veri yok" der.
-    assert.deepEqual(ownersForApp({ ready: false, byNs: new Map() }, 'x', ['b-prod']).veriYokNs, []);
+    assert.deepEqual(
+      ownersForApp({ ready: false, byNs: new Map() }, 'x', ['b-prod']).veriYokNs,
+      [],
+    );
   } finally {
     _resetCache();
   }
@@ -351,20 +510,34 @@ test('AO15 namespace tablosu gecici okunamaz: veri yok (bilinmiyor degil), onbel
 
 test('AO16 ARK_DISI satiri namespace yedegi gibi okunur; ayni ns/app ARK satiri kazanir', () => {
   const disi = A('muh-prod', 'app', {
-    cluster: 'gbocpdev9',
+    cluster: 'orocpdev9',
     owner_group_name: 'GT-NS-PROD',
     kaynak: 'NAMESPACE',
     lookup_status: 'ARK_DISI',
     lookup_message: 'ARK disi cluster: uygulama duzeyi sahip aranmaz',
   });
-  const ark = A('muh-prod', 'app', { cluster: 'gbocpprod1', owner_group_name: 'GERCEK', kaynak: 'SI51_AGILE' });
-  for (const sira of [[disi, ark], [ark, disi]]) {
+  const ark = A('muh-prod', 'app', {
+    cluster: 'orocpprod1',
+    owner_group_name: 'GERCEK',
+    kaynak: 'SI51_AGILE',
+  });
+  for (const sira of [
+    [disi, ark],
+    [ark, disi],
+  ]) {
     const r = ownersForApp(sahipler(sira), 'app', ['muh-prod']);
     assert.deepEqual([r.groups, r.kaynaklar, r.nsSahibi], [['GERCEK'], ['SI51_AGILE'], []]);
   }
   const yalniz = ownersForApp(sahipler([disi]), 'app', ['muh-prod']);
-  assert.deepEqual([yalniz.groups, yalniz.kaynaklar, yalniz.nsSahibi], [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']]);
-  const yok = A('sahipsiz-prod', 'app', { cluster: 'gbocpdev9', kaynak: 'YOK', lookup_status: 'ARK_DISI' });
+  assert.deepEqual(
+    [yalniz.groups, yalniz.kaynaklar, yalniz.nsSahibi],
+    [['GT-NS-PROD'], ['NAMESPACE'], ['muh-prod']],
+  );
+  const yok = A('sahipsiz-prod', 'app', {
+    cluster: 'orocpdev9',
+    kaynak: 'YOK',
+    lookup_status: 'ARK_DISI',
+  });
   const y = ownersForApp(sahipler([yok]), 'app', ['sahipsiz-prod']);
   assert.deepEqual([y.groups, y.unknownNs], [[], ['sahipsiz-prod']]);
 });

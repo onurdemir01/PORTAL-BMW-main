@@ -11,7 +11,11 @@ test('checkRateLimit(): limit altinda false doner, limite ulasinca true', () => 
   const user = `test-user-${Date.now()}-a`;
   // FEATURE_LIMITS.logs = { max: 10, windowMs: 1h }
   for (let i = 0; i < 10; i++) {
-    assert.equal(provider.checkRateLimit(user, 'logs'), false, `istek #${i + 1} limit altinda kalmali`);
+    assert.equal(
+      provider.checkRateLimit(user, 'logs'),
+      false,
+      `istek #${i + 1} limit altinda kalmali`,
+    );
   }
   assert.equal(provider.checkRateLimit(user, 'logs'), true, '11. istek limiti asmali');
 });
@@ -24,7 +28,7 @@ test('checkRateLimit(): farkli feature ayni kullanici icin BAGIMSIZ kota tutar',
 });
 
 // ── Finding 6: sizinti onlemi — pencere disina dusen anahtarlar supurulmeli ────────────
-test('_sweepRateMap(): tum zaman damgalari eskimis anahtarlar Map\'ten silinir', () => {
+test("_sweepRateMap(): tum zaman damgalari eskimis anahtarlar Map'ten silinir", () => {
   const user = `test-user-${Date.now()}-c`;
   provider.checkRateLimit(user, 'logs'); // anahtari olustur
   const key = `logs:${user}`;
@@ -57,9 +61,12 @@ function withEnv(vars, fn) {
   const saved = {};
   for (const k of Object.keys(vars)) saved[k] = process.env[k];
   Object.assign(process.env, vars);
-  try { return fn(); } finally {
+  try {
+    return fn();
+  } finally {
     for (const k of Object.keys(vars)) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
     }
   }
 }

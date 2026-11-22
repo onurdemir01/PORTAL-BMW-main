@@ -36,7 +36,11 @@ const DURUM = {
     tone: 'danger',
     hint: '`nginx -T` düştü: konfigürasyon reload edilemez, ölçüm eksik olabilir.',
   },
-  olculdu: { label: 'ölçüldü', tone: 'success', hint: 'nginx kurulu, çalışıyor ve konfigürasyonu geçerli.' },
+  olculdu: {
+    label: 'ölçüldü',
+    tone: 'success',
+    hint: 'nginx kurulu, çalışıyor ve konfigürasyonu geçerli.',
+  },
   bilinmiyor: {
     label: 'ölçülmedi',
     tone: 'neutral',
@@ -79,9 +83,7 @@ function describe(durum) {
 async function loadHostStates({ query, sql, scanDate = null } = {}) {
   if (typeof query !== 'function') return new Map();
 
-  const tarih = scanDate
-    ? `CAST(@d AS DATE)`
-    : `(SELECT MAX(scan_date) FROM ${HOSTS_TABLE})`;
+  const tarih = scanDate ? `CAST(@d AS DATE)` : `(SELECT MAX(scan_date) FROM ${HOSTS_TABLE})`;
   const params = scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [];
 
   const calis = async (kolonlar) => {
@@ -105,7 +107,9 @@ async function loadHostStates({ query, sql, scanDate = null } = {}) {
 
   const out = new Map();
   for (const r of rows) {
-    const host = String(r.host || '').trim().toUpperCase();
+    const host = String(r.host || '')
+      .trim()
+      .toUpperCase();
     if (!host) continue;
     const kayit = {
       host,

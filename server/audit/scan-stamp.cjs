@@ -24,14 +24,14 @@ async function scanStamp(query, table, where = '') {
   try {
     if (!_colCache.has(table)) {
       const c = await query(`SELECT COL_LENGTH('${table}', 'scanned_at') AS c`);
-      _colCache.set(table, !!(c.recordset && c.recordset[0] && c.recordset[0].c));
+      _colCache.set(table, !!c.recordset?.[0]?.c);
     }
     if (!_colCache.get(table)) return null;
     // Son taramanin ani: en yeni scan_date icindeki en yeni scanned_at.
     const sql = `SELECT MAX(scanned_at) AS t FROM ${table}
                   WHERE scan_date = (SELECT MAX(scan_date) FROM ${table})${where ? ' AND ' + where : ''}`;
     const r = await query(sql);
-    const v = r.recordset && r.recordset[0] ? r.recordset[0].t : null;
+    const v = r.recordset?.[0] ? r.recordset[0].t : null;
     return v ? new Date(v).toISOString() : null;
   } catch {
     return null; // tarama saati bir SUS bilgisidir; ekrani dusurmez

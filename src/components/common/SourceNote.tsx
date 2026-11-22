@@ -63,11 +63,13 @@ export function SourceNote({ source, scanDate, extra }: Props) {
         <span className="font-mono">{source.job}</span> — {source.what}
         {scanDate ? (
           <>
-            {' '}· <b style={{ color: 'var(--text-secondary)' }}>son tarama {scanDate}</b>
+            {' '}
+            · <b style={{ color: 'var(--text-secondary)' }}>son tarama {scanDate}</b>
           </>
         ) : scanDate === null ? (
           <>
-            {' '}· <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span>
+            {' '}
+            · <span style={{ color: 'var(--status-warning-text)' }}>tarama kaydı yok</span>
           </>
         ) : null}
         <span> · Tazelemek için: {source.refresh}</span>

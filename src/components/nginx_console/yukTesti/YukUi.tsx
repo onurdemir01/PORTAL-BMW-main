@@ -4,9 +4,23 @@
 // (metin her zaman `metin` alanindan; koyu temada AA). Hub'in yerel smBtn'i ('#fff') KULLANILMAZ.
 import React from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import type { NlHedefTuru, NlMotor, NlProtokol, NlSunucuAyari, NlUyariTuru } from '@/api/nginxLoadtestApi';
+import type {
+  NlHedefTuru,
+  NlMotor,
+  NlProtokol,
+  NlSunucuAyari,
+  NlUyariTuru,
+} from '@/api/nginxLoadtestApi';
 import { Cip, Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
-import { H2_CIP_IPUCU, NGINX_YOK_UYARISI, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
+import {
+  H2_CIP_IPUCU,
+  NGINX_YOK_UYARISI,
+  SERBEST_CIP_IPUCU,
+  WRK_CIP_IPUCU,
+  gecerlilikBilgisi,
+  kosuDurumu,
+  ISLEM_ETIKETI,
+} from './yukTestiOrtak';
 
 /** Sunucu ayarinin gorunur uyarilari: geri alma uyari / hata ve hazirlik betiginin uyarilari (ok ise hic bir sey cizilmez). */
 export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
@@ -17,22 +31,36 @@ export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
     <div className="space-y-2">
       {ga && ga.durum === 'hata' && (
         <UyariKutusu ton="hata" rol="alert" baslik="Sunucu ayarı geri alınamadı">
-          <p className="wrap-anywhere">{ga.metin || 'Hedefteki nginx konfigürasyonu koşu öncesi durumuna dönmemiş olabilir; elle kontrol edin.'}</p>
+          <p className="wrap-anywhere">
+            {ga.metin ||
+              'Hedefteki nginx konfigürasyonu koşu öncesi durumuna dönmemiş olabilir; elle kontrol edin.'}
+          </p>
         </UyariKutusu>
       )}
       {ga && ga.durum === 'uyari' && (
         <UyariKutusu ton="uyari" baslik="Sunucu ayarı geri alınırken uyarı">
-          <p className="wrap-anywhere">{ga.metin || 'Konfigürasyon dosyası başkası tarafından değiştirilmiş olabilir; dokunulmadı.'}</p>
+          <p className="wrap-anywhere">
+            {ga.metin ||
+              'Konfigürasyon dosyası başkası tarafından değiştirilmiş olabilir; dokunulmadı.'}
+          </p>
         </UyariKutusu>
       )}
       {ga && ga.durum === 'bekliyor' && (
         <UyariKutusu ton="uyari" baslik="Sunucu ayarı geri alınıyor">
-          <p className="wrap-anywhere">{ga.metin || 'Geri alma durdurma işinde; sonucu bekleniyor.'}</p>
+          <p className="wrap-anywhere">
+            {ga.metin || 'Geri alma durdurma işinde; sonucu bekleniyor.'}
+          </p>
         </UyariKutusu>
       )}
       {betik.length > 0 && (
         <UyariKutusu ton="uyari" baslik="Sunucu ayarı uyarıları">
-          <ul className="list-disc space-y-0.5 pl-4">{betik.map((u) => <li key={u} className="wrap-anywhere">{u}</li>)}</ul>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {betik.map((u) => (
+              <li key={u} className="wrap-anywhere">
+                {u}
+              </li>
+            ))}
+          </ul>
         </UyariKutusu>
       )}
     </div>
@@ -40,14 +68,56 @@ export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
 }
 
 /** Sunucunun istedigi uyari turleri: her biri okunup tek tek isaretlenir (kuyruk olusturma ve oge duzenleme). */
-export function UyariTuruOnayi({ baslik, turler, onayli, onDegisti }: { baslik: string; turler: NlUyariTuru[]; onayli: Set<string>; onDegisti: (s: Set<string>) => void }) {
+export function UyariTuruOnayi({
+  baslik,
+  turler,
+  onayli,
+  onDegisti,
+}: {
+  baslik: string;
+  turler: NlUyariTuru[];
+  onayli: Set<string>;
+  onDegisti: (s: Set<string>) => void;
+}) {
   return (
-    <fieldset className="space-y-1.5 rounded-lg px-3 py-2.5" style={{ background: 'var(--bg-elevated)' }}>
-      <legend className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{baslik}</legend>
+    <fieldset
+      className="space-y-1.5 rounded-lg px-3 py-2.5"
+      style={{ background: 'var(--bg-elevated)' }}
+    >
+      <legend className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+        {baslik}
+      </legend>
       {turler.map((t) => (
-        <label key={t.kod} className="flex items-start gap-2 text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
-          <input type="checkbox" className="mt-1" checked={onayli.has(t.kod)} onChange={(e) => { const n = new Set(onayli); if (e.target.checked) { n.add(t.kod); } else { n.delete(t.kod); } onDegisti(n); }} />
-          <span className="min-w-0"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{t.kod}</span>{` ${t.ornek}`}{t.ogeler?.length ? <span style={{ color: 'var(--text-secondary)' }}>{` (öğe ${t.ogeler.join(', ')})`}</span> : null}</span>
+        <label
+          key={t.kod}
+          className="flex items-start gap-2 text-[12px] leading-5"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={onayli.has(t.kod)}
+            onChange={(e) => {
+              const n = new Set(onayli);
+              if (e.target.checked) {
+                n.add(t.kod);
+              } else {
+                n.delete(t.kod);
+              }
+              onDegisti(n);
+            }}
+          />
+          <span className="min-w-0">
+            <span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              {t.kod}
+            </span>
+            {` ${t.ornek}`}
+            {t.ogeler?.length ? (
+              <span
+                style={{ color: 'var(--text-secondary)' }}
+              >{` (öğe ${t.ogeler.join(', ')})`}</span>
+            ) : null}
+          </span>
         </label>
       ))}
     </fieldset>
@@ -56,22 +126,57 @@ export function UyariTuruOnayi({ baslik, turler, onayli, onDegisti }: { baslik: 
 
 /** Metin / sayi girdisi ve secim kutusu: token renkli; hata varsa tehlike kenari. GIRDI 32px ve tam genislik;
  *  baska boy / genislik isteyen yer GIRDI_TABAN + kendi h-* w-* siniflarini kullanir (iki h-* / w-* carpismasin). */
-export const GIRDI_TABAN = 'min-w-0 rounded-lg border px-2.5 text-[12px] leading-none outline-none transition-[border-color] duration-150 focus:border-[var(--accent)] disabled:opacity-60';
+export const GIRDI_TABAN =
+  'min-w-0 rounded-lg border px-2.5 text-[12px] leading-none outline-none transition-[border-color] duration-150 focus:border-[var(--accent)] disabled:opacity-60';
 export const GIRDI = `${GIRDI_TABAN} h-8 w-full`;
 export const girdiStili = (hatali = false): React.CSSProperties => ({
-  borderColor: hatali ? 'var(--status-danger)' : 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)',
+  borderColor: hatali ? 'var(--status-danger)' : 'var(--border)',
+  background: 'var(--bg-surface)',
+  color: 'var(--text-primary)',
 });
 
-export function Bolum({ baslik, aciklama, eylem, children, className = '', govdeSinifi = 'p-4' }: {
-  baslik?: React.ReactNode; aciklama?: React.ReactNode; eylem?: React.ReactNode; children: React.ReactNode; className?: string; govdeSinifi?: string;
+export function Bolum({
+  baslik,
+  aciklama,
+  eylem,
+  children,
+  className = '',
+  govdeSinifi = 'p-4',
+}: {
+  baslik?: React.ReactNode;
+  aciklama?: React.ReactNode;
+  eylem?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  govdeSinifi?: string;
 }) {
   return (
-    <section className={`min-w-0 rounded-xl border ${className}`} style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+    <section
+      className={`min-w-0 rounded-xl border ${className}`}
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
       {(baslik || eylem) && (
-        <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b px-4 py-3" style={{ borderColor: 'var(--border-subtle)' }}>
+        <header
+          className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b px-4 py-3"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <div className="min-w-0 flex-1">
-            {baslik && <h3 className="text-[13px] font-semibold leading-5" style={{ color: 'var(--text-primary)' }}>{baslik}</h3>}
-            {aciklama && <p className="mt-0.5 text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{aciklama}</p>}
+            {baslik && (
+              <h3
+                className="text-[13px] font-semibold leading-5"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                {baslik}
+              </h3>
+            )}
+            {aciklama && (
+              <p
+                className="mt-0.5 text-[11px] leading-4"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {aciklama}
+              </p>
+            )}
           </div>
           {eylem && <div className="flex flex-wrap items-center gap-1.5">{eylem}</div>}
         </header>
@@ -86,49 +191,134 @@ export function Bolum({ baslik, aciklama, eylem, children, className = '', govde
  *  Inceleme UI4 (2026-10-28): gorunen satirin id'si (hata > not > yardim) id'si `id` olan denetime aria-describedby ile
  *  baglanir (ekran okuyucu odakta okur). Cocuk birden cok olabilir (Host basligi: input + datalist): Children.map ile
  *  yalniz eslesen cocuk klonlanir; map her zaman uygulanir (aciklama gelip gidince denetim yeniden kurulmaz, odak kalir). */
-export function Alan({ id, etiket, yardim, not, hata, children, className = '' }: {
-  id: string; etiket: React.ReactNode; yardim?: React.ReactNode; not?: React.ReactNode; hata?: string | null; children: React.ReactNode; className?: string;
+export function Alan({
+  id,
+  etiket,
+  yardim,
+  not,
+  hata,
+  children,
+  className = '',
+}: {
+  id: string;
+  etiket: React.ReactNode;
+  yardim?: React.ReactNode;
+  not?: React.ReactNode;
+  hata?: string | null;
+  children: React.ReactNode;
+  className?: string;
 }) {
   const aciklamaId = hata ? `${id}-hata` : not ? `${id}-not` : yardim ? `${id}-yardim` : undefined;
   return (
     <div className={`min-w-0 ${className}`}>
-      <label htmlFor={id} className="mb-1 block text-[11px] font-semibold leading-4" style={{ color: 'var(--text-secondary)' }}>{etiket}</label>
-      {React.Children.map(children, (c) => (React.isValidElement<{ id?: string }>(c) && c.props.id === id
-        ? React.cloneElement(c as React.ReactElement<React.HTMLAttributes<HTMLElement>>, { 'aria-describedby': aciklamaId })
-        : c))}
-      {hata
-        ? <p id={`${id}-hata`} className="mt-1 text-[11px] leading-4" style={{ color: 'var(--status-danger-text)' }}>{hata}</p>
-        : not ? (
-          <p id={`${id}-not`} className="mt-1 flex items-start gap-1 text-[11px] leading-4" style={{ color: 'var(--status-warning-text)' }}>
-            <ExclamationTriangleIcon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden /><span className="min-w-0">{not}</span>
-          </p>
-        ) : yardim ? <p id={`${id}-yardim`} className="mt-1 text-[11px] leading-4" style={{ color: 'var(--text-muted)' }}>{yardim}</p> : null}
+      <label
+        htmlFor={id}
+        className="mb-1 block text-[11px] font-semibold leading-4"
+        style={{ color: 'var(--text-secondary)' }}
+      >
+        {etiket}
+      </label>
+      {React.Children.map(children, (c) =>
+        React.isValidElement<{ id?: string }>(c) && c.props.id === id
+          ? React.cloneElement(c as React.ReactElement<React.HTMLAttributes<HTMLElement>>, {
+              'aria-describedby': aciklamaId,
+            })
+          : c,
+      )}
+      {hata ? (
+        <p
+          id={`${id}-hata`}
+          className="mt-1 text-[11px] leading-4"
+          style={{ color: 'var(--status-danger-text)' }}
+        >
+          {hata}
+        </p>
+      ) : not ? (
+        <p
+          id={`${id}-not`}
+          className="mt-1 flex items-start gap-1 text-[11px] leading-4"
+          style={{ color: 'var(--status-warning-text)' }}
+        >
+          <ExclamationTriangleIcon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0">{not}</span>
+        </p>
+      ) : yardim ? (
+        <p
+          id={`${id}-yardim`}
+          className="mt-1 text-[11px] leading-4"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {yardim}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 /** Serbest hedef, nginx'siz hedef, wrk ve HTTP/2 cipleri (k6 + nginx'li sunucu + HTTP/1.1 varsayilandir: cip YOK). Tur / motor /
  *  protokol kosu satirindan; `nginxsiz` (2026-11-13) kosu satirinin hedefNginx === false'undan (sunucu hedefinde). */
-export function TurMotorCipleri({ hedefTuru, motor, protokol, nginxsiz = false }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null; protokol?: NlProtokol | null; nginxsiz?: boolean }) {
+export function TurMotorCipleri({
+  hedefTuru,
+  motor,
+  protokol,
+  nginxsiz = false,
+}: {
+  hedefTuru?: NlHedefTuru | null;
+  motor?: NlMotor | null;
+  protokol?: NlProtokol | null;
+  nginxsiz?: boolean;
+}) {
   const h2 = protokol === 'h2' && motor !== 'wrk';
   const ngYok = nginxsiz && hedefTuru !== 'serbest';
   if (hedefTuru !== 'serbest' && motor !== 'wrk' && !h2 && !ngYok) return null;
   return (
     <>
-      {hedefTuru === 'serbest' && <Cip ton="uyari" cerceve title={SERBEST_CIP_IPUCU}>serbest</Cip>}
-      {ngYok && <Cip ton="uyari" cerceve title={NGINX_YOK_UYARISI}>nginx yok</Cip>}
-      {motor === 'wrk' && <Cip cerceve title={WRK_CIP_IPUCU}>wrk</Cip>}
-      {h2 && <Cip cerceve title={H2_CIP_IPUCU}>HTTP/2</Cip>}
+      {hedefTuru === 'serbest' && (
+        <Cip ton="uyari" cerceve title={SERBEST_CIP_IPUCU}>
+          serbest
+        </Cip>
+      )}
+      {ngYok && (
+        <Cip ton="uyari" cerceve title={NGINX_YOK_UYARISI}>
+          nginx yok
+        </Cip>
+      )}
+      {motor === 'wrk' && (
+        <Cip cerceve title={WRK_CIP_IPUCU}>
+          wrk
+        </Cip>
+      )}
+      {h2 && (
+        <Cip cerceve title={H2_CIP_IPUCU}>
+          HTTP/2
+        </Cip>
+      )}
     </>
   );
 }
 
 /** Tanim listesi hucresi: kucuk etiket, deger. */
-export function Tanim({ etiket, children, title }: { etiket: string; children: React.ReactNode; title?: string }) {
+export function Tanim({
+  etiket,
+  children,
+  title,
+}: {
+  etiket: string;
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>{etiket}</dt>
-      <dd className="mt-0.5 truncate text-[12px] font-medium leading-5" style={{ color: 'var(--text-primary)' }} title={title}>{children}</dd>
+      <dt className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>
+        {etiket}
+      </dt>
+      <dd
+        className="mt-0.5 truncate text-[12px] font-medium leading-5"
+        style={{ color: 'var(--text-primary)' }}
+        title={title}
+      >
+        {children}
+      </dd>
     </div>
   );
 }
@@ -139,6 +329,12 @@ export function KosuDurumHapi({ durum }: { durum: string }) {
 }
 export function GecerlilikHapi({ gecerlilik }: { gecerlilik: string | null | undefined }) {
   const g = gecerlilikBilgisi(gecerlilik);
-  return g ? <Hap label={g.etiket} ton={g.ton} title={g.aciklama} /> : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>—</span>;
+  return g ? (
+    <Hap label={g.etiket} ton={g.ton} title={g.aciklama} />
+  ) : (
+    <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+      —
+    </span>
+  );
 }
 export const islemEtiketi = (islem: string) => ISLEM_ETIKETI[islem] || islem;

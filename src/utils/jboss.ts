@@ -39,13 +39,21 @@ export function jbossLabel(major: string): string {
  *  bu dosyanin var olus sebebi. Host adi buyuk harfe cevrilir: envanter bazi
  *  satirlarda kucuk harf donebiliyor ve ayni sunucu iki kez secilebilir hale gelirdi. */
 export function hostKey(host: string, major: string): string {
-  return `${String(host || '').trim().toUpperCase()}|${major}`;
+  return `${String(host || '')
+    .trim()
+    .toUpperCase()}|${major}`;
 }
 
 /** `hostKey` cozumlemesi — secilen anahtarlari sunucuya gonderilecek cifte cevirir. */
 export function parseHostKey(key: string): { host: string; jbossMajor: string } {
   const i = String(key || '').indexOf('|');
-  if (i < 0) return { host: String(key || '').trim().toUpperCase(), jbossMajor: '' };
+  if (i < 0)
+    return {
+      host: String(key || '')
+        .trim()
+        .toUpperCase(),
+      jbossMajor: '',
+    };
   return {
     host: String(key).slice(0, i).trim().toUpperCase(),
     jbossMajor: String(key).slice(i + 1),
@@ -65,7 +73,7 @@ export function toHostPairs(keys: Iterable<string>): { host: string; jbossMajor:
 
 // ── KURULUM DIZINI (OpsX, 2026-10-08) ─────────────────────────────────────────────
 // OpsX playbook'lari kurulumu DIZINE gore secer ("7" kolu = /usr/jboss, "8" kolu = /usr/jboss8).
-// Standart disi bir sunucuda /usr/jboss altinda da JBoss 8 olabiliyor (GBJBOP18): iki satir da
+// Standart disi bir sunucuda /usr/jboss altinda da JBoss 8 olabiliyor (ORJBOP18): iki satir da
 // 8.x oldugundan (host, majör) kimligi ikisini birlestiriyordu. OpsX satir kimligi icin KOLU
 // kullanir; sunucu gondermediyse urun surumunun majörune dusulur (eski davranis).
 export function kurulumOf(h: { kurulum?: string | null; jbossVersion?: string | null }): string {
@@ -77,7 +85,10 @@ export function kurulumDizini(kol: string): string {
   return kol === '8' ? '/usr/jboss8' : kol === '7' ? '/usr/jboss' : '';
 }
 /** Urun surumu ile kurulum dizini standarda uymuyorsa (JBoss 8, /usr/jboss altinda) true. */
-export function standartDisiKurulum(h: { kurulum?: string | null; jbossVersion?: string | null }): boolean {
+export function standartDisiKurulum(h: {
+  kurulum?: string | null;
+  jbossVersion?: string | null;
+}): boolean {
   const k = kurulumOf(h);
   const m = majorOfHost(h);
   return !!k && !!m && k !== m;

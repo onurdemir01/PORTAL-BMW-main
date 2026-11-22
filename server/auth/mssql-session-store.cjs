@@ -26,7 +26,10 @@ function expiryFrom(sess) {
     return new Date(sessionPolicy.bitisler(m).absoluteExpiresAt);
   }
   const e = sess?.cookie?.expires;
-  if (e) { const d = new Date(e); if (!Number.isNaN(d.getTime())) return d; }
+  if (e) {
+    const d = new Date(e);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
   return new Date(Date.now() + DEFAULT_TTL_MS);
 }
 
@@ -38,7 +41,7 @@ function kolonHatasi(err) {
   return /invalid column name/i.test(String(err?.message));
 }
 function satirAlanlari(sess) {
-  const m = (sess?.meta) || {};
+  const m = sess?.meta || {};
   const u = sess?.user?.username;
   return {
     username: u ? String(u).toLowerCase() : null,
@@ -56,7 +59,11 @@ function createMssqlSessionStore(session) {
         .then(({ rows }) => {
           if (!rows.length) return cb(null, null);
           let parsed = null;
-          try { parsed = JSON.parse(rows[0].sess); } catch { /* bozuk satir → session yok say */ }
+          try {
+            parsed = JSON.parse(rows[0].sess);
+          } catch {
+            /* bozuk satir → session yok say */
+          }
           cb(null, parsed);
         })
         // express-session bu hatayi next(err)'e verir (bkz. express-session kaynagi) —
@@ -64,7 +71,10 @@ function createMssqlSessionStore(session) {
         // araya girebiliyor) ve global handler'a ulasip ulasmadigini teyit edemedik.
         // Bu yuzden burada da ACIKCA logluyoruz — bir sonraki olayda gercek DB hatasi
         // (timeout/ECONNRESET/vb.) prod.out'ta gorunsun.
-        .catch((err) => { console.error("[SessionStore] get() basarisiz:", err.message); cb(err); });
+        .catch((err) => {
+          console.error('[SessionStore] get() basarisiz:', err.message);
+          cb(err);
+        });
     }
 
     // Upsert — codebase idiom'u (writeVisibility) ile ayni: once UPDATE, satir yoksa INSERT.
@@ -73,37 +83,56 @@ function createMssqlSessionStore(session) {
       const json = JSON.stringify(sess);
       const f = satirAlanlari(sess);
       const genis = () =>
-        db.query(
-          `UPDATE portal_sessions SET sess = $1, expires = $2, username = $3, created_at = $4, last_seen_at = $5 WHERE sid = $6`,
-          [json, expires, f.username, f.createdAt, f.lastSeenAt, sid],
-        ).then(({ rowCount }) => {
-          if (rowCount > 0) return null;
-          return db.query(
-            `INSERT INTO portal_sessions (sid, sess, expires, username, created_at, last_seen_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-            [sid, json, expires, f.username, f.createdAt, f.lastSeenAt],
-          );
-        });
-      const dar = () =>
-        db.query(`UPDATE portal_sessions SET sess = $1, expires = $2 WHERE sid = $3`, [json, expires, sid])
+        db
+          .query(
+            `UPDATE portal_sessions SET sess = $1, expires = $2, username = $3, created_at = $4, last_seen_at = $5 WHERE sid = $6`,
+            [json, expires, f.username, f.createdAt, f.lastSeenAt, sid],
+          )
           .then(({ rowCount }) => {
             if (rowCount > 0) return null;
-            return db.query(`INSERT INTO portal_sessions (sid, sess, expires) VALUES ($1, $2, $3)`, [sid, json, expires]);
+            return db.query(
+              `INSERT INTO portal_sessions (sid, sess, expires, username, created_at, last_seen_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+              [sid, json, expires, f.username, f.createdAt, f.lastSeenAt],
+            );
+          });
+      const dar = () =>
+        db
+          .query(`UPDATE portal_sessions SET sess = $1, expires = $2 WHERE sid = $3`, [
+            json,
+            expires,
+            sid,
+          ])
+          .then(({ rowCount }) => {
+            if (rowCount > 0) return null;
+            return db.query(
+              `INSERT INTO portal_sessions (sid, sess, expires) VALUES ($1, $2, $3)`,
+              [sid, json, expires],
+            );
           });
       (kolonlarVar ? genis() : dar())
         .catch((err) => {
           if (!kolonlarVar || !kolonHatasi(err)) throw err;
           kolonlarVar = false;
-          console.warn("[SessionStore] portal_sessions yeni sutunlari yok — eski sema ile devam:", err.message);
+          console.warn(
+            '[SessionStore] portal_sessions yeni sutunlari yok — eski sema ile devam:',
+            err.message,
+          );
           return dar();
         })
         .then(() => cb?.(null))
-        .catch((err) => { console.error("[SessionStore] set() basarisiz:", err.message); cb?.(err); });
+        .catch((err) => {
+          console.error('[SessionStore] set() basarisiz:', err.message);
+          cb?.(err);
+        });
     }
 
     destroy(sid, cb) {
       db.query(`DELETE FROM portal_sessions WHERE sid = $1`, [sid])
         .then(() => cb?.(null))
-        .catch((err) => { console.error("[SessionStore] destroy() basarisiz:", err.message); cb?.(err); });
+        .catch((err) => {
+          console.error('[SessionStore] destroy() basarisiz:', err.message);
+          cb?.(err);
+        });
     }
 
     // Faz D: bir kullanicinin acik oturumlari ("aktif oturumlarim", admin). Yalnizca
@@ -118,12 +147,19 @@ function createMssqlSessionStore(session) {
         .then(({ rows }) => {
           const out = [];
           for (const r of rows || []) {
-            try { out.push({ sid: r.sid, sess: JSON.parse(r.sess) }); } catch { /* bozuk satir */ }
+            try {
+              out.push({ sid: r.sid, sess: JSON.parse(r.sess) });
+            } catch {
+              /* bozuk satir */
+            }
           }
           cb(null, out);
         })
         .catch((err) => {
-          if (kolonHatasi(err)) { kolonlarVar = false; return cb(null, []); }
+          if (kolonHatasi(err)) {
+            kolonlarVar = false;
+            return cb(null, []);
+          }
           cb(err);
         });
     }
@@ -135,16 +171,22 @@ function createMssqlSessionStore(session) {
       if (Number.isFinite(sess?.meta?.createdAt)) return cb?.(null);
       db.query(`UPDATE portal_sessions SET expires = $1 WHERE sid = $2`, [expiryFrom(sess), sid])
         .then(() => cb?.(null))
-        .catch((err) => { console.warn("[SessionStore] touch() basarisiz (yoksayildi):", err.message); cb?.(null); }); // touch hatasi oturumu dusurmesin
+        .catch((err) => {
+          console.warn('[SessionStore] touch() basarisiz (yoksayildi):', err.message);
+          cb?.(null);
+        }); // touch hatasi oturumu dusurmesin
     }
   }
 
   const store = new MssqlSessionStore();
 
   // Suresi dolan session'lari periyodik temizle (30 dk) — DB sismesin.
-  const iv = setInterval(() => {
-    db.query(`DELETE FROM portal_sessions WHERE expires < GETUTCDATE()`).catch(() => {});
-  }, 30 * 60 * 1000);
+  const iv = setInterval(
+    () => {
+      db.query(`DELETE FROM portal_sessions WHERE expires < GETUTCDATE()`).catch(() => {});
+    },
+    30 * 60 * 1000,
+  );
   if (iv.unref) iv.unref();
 
   return store;
@@ -172,7 +214,9 @@ async function revokeSessionsForUser(username) {
     }
   }
   try {
-    const { rowCount } = await db.query(`DELETE FROM portal_sessions WHERE LOWER(sess) LIKE $1`, [needle]);
+    const { rowCount } = await db.query(`DELETE FROM portal_sessions WHERE LOWER(sess) LIKE $1`, [
+      needle,
+    ]);
     return rowCount || 0;
   } catch {
     return 0;
@@ -186,24 +230,44 @@ async function rewriteRoleForUser(username, role) {
   const u = String(username).toLowerCase();
   let rows;
   try {
-    ({ rows } = await db.query(`SELECT sid, sess FROM portal_sessions WHERE username = $1 AND expires > GETUTCDATE()`, [u]));
+    ({ rows } = await db.query(
+      `SELECT sid, sess FROM portal_sessions WHERE username = $1 AND expires > GETUTCDATE()`,
+      [u],
+    ));
   } catch {
     return 0;
   }
   let n = 0;
   for (const r of rows || []) {
     let sess;
-    try { sess = JSON.parse(r.sess); } catch { continue; }
+    try {
+      sess = JSON.parse(r.sess);
+    } catch {
+      continue;
+    }
     if (!sess?.user || sess.user.role === role) continue;
     sess.user.role = role;
     try {
-      await db.query(`UPDATE portal_sessions SET sess = $1 WHERE sid = $2`, [JSON.stringify(sess), r.sid]);
+      await db.query(`UPDATE portal_sessions SET sess = $1 WHERE sid = $2`, [
+        JSON.stringify(sess),
+        r.sid,
+      ]);
       n++;
-    } catch { /* tek satir hatasi digerlerini durdurmaz */ }
+    } catch {
+      /* tek satir hatasi digerlerini durdurmaz */
+    }
   }
   return n;
 }
 
-function _kolonDurumuSifirla() { kolonlarVar = true; }
+function _kolonDurumuSifirla() {
+  kolonlarVar = true;
+}
 
-module.exports = { createMssqlSessionStore, revokeSessionsForUser, rewriteRoleForUser, expiryFrom, _kolonDurumuSifirla };
+module.exports = {
+  createMssqlSessionStore,
+  revokeSessionsForUser,
+  rewriteRoleForUser,
+  expiryFrom,
+  _kolonDurumuSifirla,
+};

@@ -26,13 +26,13 @@ test('IG1 denetim `detail` ayristiricisi IKI bicimi de cozuyor', () => {
     hosts: [],
   });
   assert.deepEqual(
-    gaps.parseManualDetail('v2_legacy_manual_host', 'app=ODEME hosts=GBA01,GBA02 jobId=12'),
-    { app: 'ODEME', hosts: ['GBA01', 'GBA02'] },
+    gaps.parseManualDetail('v2_legacy_manual_host', 'app=ODEME hosts=ORA01,ORA02 jobId=12'),
+    { app: 'ODEME', hosts: ['ORA01', 'ORA02'] },
   );
   // Tek sunucu da liste olarak cozulmeli.
-  assert.deepEqual(gaps.parseManualDetail('v2_legacy_manual_host', 'app=X hosts=GBA01 jobId=1'), {
+  assert.deepEqual(gaps.parseManualDetail('v2_legacy_manual_host', 'app=X hosts=ORA01 jobId=1'), {
     app: 'X',
-    hosts: ['GBA01'],
+    hosts: ['ORA01'],
   });
   // Cozulemeyen satir SESSIZCE ATLANIR — uydurma bir ad uretmekten iyidir.
   assert.equal(gaps.parseManualDetail('v2_legacy_manual_host', 'jobId=12'), null);
@@ -53,7 +53,7 @@ test('IG2 envanter OKUNAMAZSA sonuc "hala_yok" DEGIL "kontrol_edilemedi"', async
     'kontrol_edilemedi',
   );
   assert.equal(
-    await gaps.resolveStatus({ kind: 'host', name: 'GBA01', app: 'ODEME' }, patlayan),
+    await gaps.resolveStatus({ kind: 'host', name: 'ORA01', app: 'ODEME' }, patlayan),
     'kontrol_edilemedi',
   );
 
@@ -72,7 +72,7 @@ test('IG2 envanter OKUNAMAZSA sonuc "hala_yok" DEGIL "kontrol_edilemedi"', async
 test('IG3 envanter OKUNDUYSA iki hal de dogru ayirt ediliyor', async () => {
   const canli = {
     searchApps: async (q) => ({ apps: q === 'VAR' ? ['VAR'] : [], fallbackMode: false }),
-    resolveHostsForApp: async (app) => (app === 'VARAPP' ? ['GBA01'] : []),
+    resolveHostsForApp: async (app) => (app === 'VARAPP' ? ['ORA01'] : []),
   };
   assert.equal(
     await gaps.resolveStatus({ kind: 'app', name: 'VAR', app: 'VAR' }, canli),
@@ -83,11 +83,11 @@ test('IG3 envanter OKUNDUYSA iki hal de dogru ayirt ediliyor', async () => {
     'hala_yok',
   );
   assert.equal(
-    await gaps.resolveStatus({ kind: 'host', name: 'GBA01', app: 'VARAPP' }, canli),
+    await gaps.resolveStatus({ kind: 'host', name: 'ORA01', app: 'VARAPP' }, canli),
     'envantere_girdi',
   );
   assert.equal(
-    await gaps.resolveStatus({ kind: 'host', name: 'GBA09', app: 'VARAPP' }, canli),
+    await gaps.resolveStatus({ kind: 'host', name: 'ORA09', app: 'VARAPP' }, canli),
     'hala_yok',
   );
 });
@@ -109,7 +109,7 @@ test('IG4 toplama: ayni ad tekrarlarinda sayac/ilk-son gorulme dogru', () => {
     {
       username: 'a',
       action: 'v2_legacy_manual_host',
-      detail: 'app=ODEME hosts=GBA01,GBA02 jobId=3',
+      detail: 'app=ODEME hosts=ORA01,ORA02 jobId=3',
       created_at: '2026-09-03T10:00:00Z',
     },
   ];
@@ -125,7 +125,7 @@ test('IG4 toplama: ayni ad tekrarlarinda sayac/ilk-son gorulme dogru', () => {
     .filter((r) => r.kind === 'host')
     .map((r) => r.name)
     .sort();
-  assert.deepEqual(hosts, ['GBA01', 'GBA02'], 'coklu sunucu listesi tek tek ayrilmali');
+  assert.deepEqual(hosts, ['ORA01', 'ORA02'], 'coklu sunucu listesi tek tek ayrilmali');
 });
 
 test('IG5 uc ADMIN-ONLY', () => {

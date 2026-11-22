@@ -228,75 +228,78 @@ const AppNameStep: React.FC<Props> = ({
   // job'ı besler — bkz. server/logx/v2/ocp-inventory.cjs başlığı). Tek senkron DB
   // okuması, AWX job'ı tetiklenmez. `onDiscover` (aşağıda) hâlâ canlı keşif fallback'i
   // sunar — envanterde henüz taranmamış YENİ bir namespace için kaçış yolu.
-  useAsyncEffect(async (alive) => {
-    if (!env || !tenant || !namespace || !clusterKey) return;
-    const scanMemo = autoScanMemo ?? localScanRef.current;
-    setLoadingCache(true);
-    setSelected(new Set());
-    try {
-      const r = await logxV2Api
-        .inventoryApps(env, tenant, clusterKey.split(','), namespace)
-        .catch(() => null);
-      if (!alive()) return;
-      // KISITLI NAMESPACE: otomatik canlı tarama YAPILMAZ. Eskiden liste boş
-      // (cached:false) geldiği için sihirbaz "taranmamış" sanıp AWX taramasını
-      // başlatıyor, o da 403 ile düşüyordu — kullanıcı sebepsiz bir "hata" görüyordu.
-      if (r?.restriction) {
-        setItems([]);
-        setFailed([]);
-        setDenied(true);
-        setDeniedMessage(r.message || '');
-        setCache(null);
-        setSources({});
-        setMembership({});
-        return;
-      }
-      setDeniedMessage('');
-      if (!r || !r.cached) {
-        setItems([]);
+  useAsyncEffect(
+    async (alive) => {
+      if (!env || !tenant || !namespace || !clusterKey) return;
+      const scanMemo = autoScanMemo ?? localScanRef.current;
+      setLoadingCache(true);
+      setSelected(new Set());
+      try {
+        const r = await logxV2Api
+          .inventoryApps(env, tenant, clusterKey.split(','), namespace)
+          .catch(() => null);
+        if (!alive()) return;
+        // KISITLI NAMESPACE: otomatik canlı tarama YAPILMAZ. Eskiden liste boş
+        // (cached:false) geldiği için sihirbaz "taranmamış" sanıp AWX taramasını
+        // başlatıyor, o da 403 ile düşüyordu — kullanıcı sebepsiz bir "hata" görüyordu.
+        if (r?.restriction) {
+          setItems([]);
+          setFailed([]);
+          setDenied(true);
+          setDeniedMessage(r.message || '');
+          setCache(null);
+          setSources({});
+          setMembership({});
+          return;
+        }
+        setDeniedMessage('');
+        if (!r || !r.cached) {
+          setItems([]);
+          setFailed([]);
+          setDenied(false);
+          setCache(null);
+          setSources({});
+          setMembership({});
+          setScannedAt(r?.scannedAt ?? null);
+          // ZATEN TARANMIŞ VE BOŞ ÇIKMIŞSA tekrar tarama: namespace gerçekten boş.
+          // Kullanıcı isterse elle tazeler. Bu kontrol olmadan boş bir namespace her
+          // girişte (ve her kullanıcı için) ~1 dk'lık bir AWX job'ı açıyordu.
+          if (r?.scannedEmpty) return;
+          // TARAMA KAYDI OKUNAMADIYSA da otomatik tarama YAPMA. "Hiç taranmadı" ile
+          // "kaydı okuyamadım" aynı şey değil: kayıt okunamıyorsa taradıktan sonra da
+          // okunamayacak, yani otomatik tarama sonsuza kadar tekrarlanırdı. Elle
+          // tarama düğmesi açık kalır — kullanıcının kaçış yolu korunur.
+          if (r?.scanUnknown) return;
+          // KAYIT YOKSA KULLANICIYA SORMA, TARA. Aynı (cluster, namespace) için yalnız BİR
+          // kez. Hafıza SAYFA seviyesindedir: bileşen içi bir ref, adım değişimindeki
+          // remount'ta sıfırlanıp korumayı etkisiz bırakıyordu (üretimdeki sonsuz döngü).
+          const key = `${clusterKey}|${namespace}`;
+          if (onDiscover && !scanMemo.has(key)) {
+            scanMemo.set(key, Date.now());
+            // BAŞARISIZ OLACAĞI BELLİ BİR JOB'I HİÇ AÇMA (bkz. checkReadiness başlığı).
+            const blocked = await checkReadiness();
+            if (!alive()) return;
+            if (blocked) {
+              setNotReady(blocked);
+              return;
+            }
+            onDiscover();
+          }
+          return;
+        }
+        setItems(r.items || []);
         setFailed([]);
         setDenied(false);
-        setCache(null);
-        setSources({});
-        setMembership({});
-        setScannedAt(r?.scannedAt ?? null);
-        // ZATEN TARANMIŞ VE BOŞ ÇIKMIŞSA tekrar tarama: namespace gerçekten boş.
-        // Kullanıcı isterse elle tazeler. Bu kontrol olmadan boş bir namespace her
-        // girişte (ve her kullanıcı için) ~1 dk'lık bir AWX job'ı açıyordu.
-        if (r?.scannedEmpty) return;
-        // TARAMA KAYDI OKUNAMADIYSA da otomatik tarama YAPMA. "Hiç taranmadı" ile
-        // "kaydı okuyamadım" aynı şey değil: kayıt okunamıyorsa taradıktan sonra da
-        // okunamayacak, yani otomatik tarama sonsuza kadar tekrarlanırdı. Elle
-        // tarama düğmesi açık kalır — kullanıcının kaçış yolu korunur.
-        if (r?.scanUnknown) return;
-        // KAYIT YOKSA KULLANICIYA SORMA, TARA. Aynı (cluster, namespace) için yalnız BİR
-        // kez. Hafıza SAYFA seviyesindedir: bileşen içi bir ref, adım değişimindeki
-        // remount'ta sıfırlanıp korumayı etkisiz bırakıyordu (üretimdeki sonsuz döngü).
-        const key = `${clusterKey}|${namespace}`;
-        if (onDiscover && !scanMemo.has(key)) {
-          scanMemo.set(key, Date.now());
-          // BAŞARISIZ OLACAĞI BELLİ BİR JOB'I HİÇ AÇMA (bkz. checkReadiness başlığı).
-          const blocked = await checkReadiness();
-          if (!alive()) return;
-          if (blocked) {
-            setNotReady(blocked);
-            return;
-          }
-          onDiscover();
-        }
-        return;
+        setScannedAt(r.scannedAt ?? null);
+        setCache({ fetchedAt: r.fetchedAt, stale: r.stale, source: r.source });
+        setSources(r.sources || {});
+        setMembership(r.clusters || {});
+      } finally {
+        if (alive()) setLoadingCache(false);
       }
-      setItems(r.items || []);
-      setFailed([]);
-      setDenied(false);
-      setScannedAt(r.scannedAt ?? null);
-      setCache({ fetchedAt: r.fetchedAt, stale: r.stale, source: r.source });
-      setSources(r.sources || {});
-      setMembership(r.clusters || {});
-    } finally {
-      if (alive()) setLoadingCache(false);
-    }
-  }, [env, tenant, clusterKey, namespace, reloadToken, autoScanMemo, onDiscover]);
+    },
+    [env, tenant, clusterKey, namespace, reloadToken, autoScanMemo, onDiscover],
+  );
 
   // Elle tetiklenen taramalar da aynı kapıdan geçer: hazır değilse job açmak yerine
   // kullanıcıya ne yapılması gerektiğini söyler.

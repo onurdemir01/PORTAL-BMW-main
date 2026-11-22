@@ -100,7 +100,10 @@ const betikEskiMetni = (r) => {
 /** Kayit duzeyi bant (ekran rebootKontrolu.ts betikEskiMetni + sayi ile BIREBIR): etiketler = etkilenen sunucularin surum etiketleri. */
 function betikEskiBandi(etiketler, n) {
   const nedenler = [...new Set(etiketler.map(eskiSurumNedeni))];
-  const neden = nedenler.length === 1 ? nedenler[0] : etiketler.map((x) => `${x}: ${eskiSurumNedeni(x)}`).join('; ');
+  const neden =
+    nedenler.length === 1
+      ? nedenler[0]
+      : etiketler.map((x) => `${x}: ${eskiSurumNedeni(x)}`).join('; ');
   return `AWX'teki reboot_check betiği eski (${etiketler.join(' / ')}, gerekli ${BETIK_SURUM_GEREKLI}): ${neden}. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın. (${n} sunucuda etkili)`;
 }
 
@@ -110,7 +113,13 @@ function sonucSatirlari(r) {
     .filter((l) => l.startsWith('SONUC|'))
     .map((l) => {
       const q = l.split('|');
-      return { islem: q[1] || '', urun: q[2] || '', ad: q[3] || '', sonuc: q[4] || '', mesaj: q.slice(5).join('|') };
+      return {
+        islem: q[1] || '',
+        urun: q[2] || '',
+        ad: q[3] || '',
+        sonuc: q[4] || '',
+        mesaj: q.slice(5).join('|'),
+      };
     });
 }
 const izlenenVar = (satirlar) => dizi(satirlar).some((l) => /^(URUN|JVM)\|/.test(l));
@@ -154,12 +163,18 @@ function onceNesilCevir(once, diger) {
     const q = l.split('|');
     if (q[0] !== 'JVM' || !/^JBOSS[78]$/.test(q[1])) return l;
     const h = evDizini(q[3]);
-    const g = h && harita.has(h) ? harita.get(h) : /jboss8|vhosting8/.test(h) ? 'JBOSS8' : q[1];
+    let g = q[1];
+    if (h && harita.has(h)) g = harita.get(h);
+    else if (/jboss8|vhosting8/.test(h)) g = 'JBOSS8';
     if (g === 'JBOSS7') j7 = true;
     return [q[0], g, ...q.slice(2)].join('|');
   });
   const belirsiz = !j7 && !d7 && cev.some((l) => l.startsWith('URUN|JBOSS7|'));
-  return { satirlar: belirsiz ? cev.filter((l) => !l.startsWith('URUN|JBOSS7|')) : cev, cevrildi: true, belirsiz: belirsiz ? ['JBOSS7'] : [] };
+  return {
+    satirlar: belirsiz ? cev.filter((l) => !l.startsWith('URUN|JBOSS7|')) : cev,
+    cevrildi: true,
+    belirsiz: belirsiz ? ['JBOSS7'] : [],
+  };
 }
 
 /** Goruntu satirlari -> { urun: Set, jvm: Set('URUN|ad') }; haricJb: JBoss satirlari sayilmaz. */
@@ -197,12 +212,10 @@ function kapatmaKapisi(once) {
   if (!izlenenVar(once)) return 'bos';
   return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) ? 'eski' : '';
 }
-// v4 (2026-11-16, kullanici GBTDST01: "standart kurulum, dokunmak istesen dokunurdun"; secim "Her yerde kapat"): 'bos' kapi
+// v4 (2026-11-16, kullanici ORTDST01: "standart kurulum, dokunmak istesen dokunurdun"; secim "Her yerde kapat"): 'bos' kapi
 // HICBIR urunu korumaz (prod dahil); reboot sonrasi calisan her urun kapatilir ve "kontrol edilecek" der. Yalniz 'eski'
 // (JBoss nesli belirsiz) ve 'bootsuz' (betik plani HATA) korur. Betik reboot_duzelt.sh korunur() ile BIREBIR (RC_DUZELT_SURUM=4).
-const kapiKorur = (kapi, u) =>
-  kapi === 'bootsuz' ||
-  (kapi === 'eski' && /^JBOSS[78]$/.test(u));
+const kapiKorur = (kapi, u) => kapi === 'bootsuz' || (kapi === 'eski' && /^JBOSS[78]$/.test(u));
 
 /**
  * Son (ya da ilk) goruntu kumesi + CIKARIM (reboot_duzelt.sh simdi_dosya ile ayni, inceleme R2 #2): reboot oncesi calismayan
@@ -237,13 +250,24 @@ function sonKume(satirlar, onceUrun) {
 const V3_BOS_KAPATMAZ = ['CTG', 'JBOSS7', 'JBOSS8', 'WAS'];
 function betikEtkisi(once, r) {
   const surum = betikSurumu(r);
-  const yok = { eski: false, etiket: surum.etiket, urunler: [], hala: [], gecti: [], kapatmaz: () => false, metin: '', gectiNotu: '' };
+  const yok = {
+    eski: false,
+    etiket: surum.etiket,
+    urunler: [],
+    hala: [],
+    gecti: [],
+    kapatmaz: () => false,
+    metin: '',
+    gectiNotu: '',
+  };
   if (!r || surum.guncel) return yok;
   const n = Number(r.betik_surum);
   if (!(Number.isFinite(n) && n >= 3))
     return { ...yok, eski: true, kapatmaz: () => true, metin: betikEskiMetni(r) };
   const onceVar = Array.isArray(once) && bootVar(once);
-  const bos = onceVar ? kapatmaKapisi(once) === 'bos' : dizi(r.plan).some((l) => l.startsWith('BILGI|BOS|'));
+  const bos = onceVar
+    ? kapatmaKapisi(once) === 'bos'
+    : dizi(r.plan).some((l) => l.startsWith('BILGI|BOS|'));
   if (!bos) return yok;
   const ilk = sonKume(r.goruntu, new Set()).urun;
   const son = sonKume(r.son_goruntu, new Set()).urun;
@@ -280,8 +304,10 @@ function portalKalan(once, son) {
   const o = onceKume(cev.satirlar);
   const s = sonKume(son, o.urun);
   const out = [];
-  for (const u of [...o.urun].sort(varsayilanSira)) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
-  for (const k of [...o.jvm].sort(varsayilanSira)) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
+  for (const u of [...o.urun].sort(varsayilanSira))
+    if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
+  for (const k of [...o.jvm].sort(varsayilanSira))
+    if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
   for (const k of [...s.jvm].sort(varsayilanSira))
     if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) out.push(`FARK|NEW|JVM|${k}|`);
   for (const u of [...s.urun].sort(varsayilanSira))
@@ -360,7 +386,8 @@ function kontrolNedenAyrimi(once, r) {
       if (!o.urun.has(u)) ekle(kapiKorur(kapi, u) ? korunan : kapanmali, u);
     for (const k of [...s.jvm].sort(varsayilanSira)) {
       const u = k.split('|')[0];
-      if (!o.jvm.has(k) && !o.urun.has(u)) ekle(kapiKorur(kapi, u) ? korunan : kapanmali, k.replace('|', '/'));
+      if (!o.jvm.has(k) && !o.urun.has(u))
+        ekle(kapiKorur(kapi, u) ? korunan : kapanmali, k.replace('|', '/'));
     }
   } else {
     const son = new Set(dizi(r?.son_goruntu).map((l) => l.split('|').slice(0, 3).join('|')));
@@ -393,7 +420,8 @@ function kontrolNedenAyrimi(once, r) {
     const eskiNot = `AWX'teki betik eski (${surum.etiket}): ${eskiSurumNedeni(surum.etiket)}`;
     let kuyruk = 'kapatma sonucunu kontrol edin.';
     if (eskiK.length && !diger.length) kuyruk = `${eskiNot}.`;
-    else if (eskiK.length) kuyruk = `${liste(eskiK)} için ${eskiNot}; ${liste(diger)} için kapatma sonucunu kontrol edin.`;
+    else if (eskiK.length)
+      kuyruk = `${liste(eskiK)} için ${eskiNot}; ${liste(diger)} için kapatma sonucunu kontrol edin.`;
     neden.push(
       `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — ${kuyruk}`,
     );
@@ -430,7 +458,8 @@ function kontrolNedenleri(once, r) {
  * Hedef: baslat -> son goruntude calisiyor; urun durdur -> ne URUN ne JVM'i; JVM durdur -> yok (sonKume / onceNesilCevir).
  * teknoloji: izlenen 7 urunden once/ilk/son/islemlerde gorulen her biri: { urun, ad, calistirildi, ozet, sonuc }.
  */
-const OTOMASYON_BILINMIYOR = 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)';
+const OTOMASYON_BILINMIYOR =
+  'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)';
 /**
  * Hedef-durum baglami (otomasyonOzeti, komutSayaci ve yoneticiOzeti'nin TEK kaynagi): once/ilk/son kumeleri ve bir SONUC
  * satirinin son kontrolde hedefte olup olmadigi. Hedef: baslat -> son goruntude calisiyor; urun durdur -> ne URUN ne JVM'i;
@@ -440,9 +469,8 @@ function hedefBaglami(once, r) {
   const isl = sonucSatirlari(r);
   const olculdu = !!r?.son_olculdu;
   const onceVar = Array.isArray(once) && bootVar(once);
-  const cev = onceVar
-    ? onceNesilCevir(once, olculdu ? r?.son_goruntu : r?.goruntu)
-    : { satirlar: [], belirsiz: [] };
+  const sonGoruntu = olculdu ? r?.son_goruntu : r?.goruntu;
+  const cev = onceVar ? onceNesilCevir(once, sonGoruntu) : { satirlar: [], belirsiz: [] };
   const kapi = onceVar ? kapatmaKapisi(once) : '';
   const o = onceKume(cev.satirlar);
   const ilk = sonKume(r?.goruntu, o.urun);
@@ -453,7 +481,8 @@ function hedefBaglami(once, r) {
     const k = `${x.urun}|${x.ad}`;
     if (!URUN_ADI[x.urun]) return true;
     if (x.islem === 'baslat') return x.ad ? s.jvm.has(k) : s.urun.has(x.urun);
-    if (x.islem === 'durdur') return x.ad ? !s.jvm.has(k) : !s.urun.has(x.urun) && !urunJvmVar(s, x.urun);
+    if (x.islem === 'durdur')
+      return x.ad ? !s.jvm.has(k) : !s.urun.has(x.urun) && !urunJvmVar(s, x.urun);
     return true;
   };
   return { isl, onceVar, cev, kapi, o, ilk, s, hedefte };
@@ -493,7 +522,11 @@ function komutKoprusu(sunucular, hedefler, onceSat = null) {
     for (const k of ['ok', 'fail', 'skip', 'okHedefteDegil', 'okOlculemedi']) t[k] += c[k];
     if (c.ok + c.fail + c.skip) t.sunucu += 1;
   }
-  return { ...t, komut: t.ok + t.fail + t.skip, basarili: t.ok - t.okHedefteDegil - t.okOlculemedi };
+  return {
+    ...t,
+    komut: t.ok + t.fail + t.skip,
+    basarili: t.ok - t.okHedefteDegil - t.okOlculemedi,
+  };
 }
 
 function otomasyonOzeti(once, r) {
@@ -524,26 +557,48 @@ function otomasyonOzeti(once, r) {
     if (planHata) return 'plan hata verdi — işlem yapılmadı';
     if (!s) return 'son durum ölçülemedi';
     if (!fark(s, u)) {
-      if (isl.some((x) => x.urun === u && x.sonuc === 'SKIP')) return 'zaten doğru durumdaydı (komut gerekmedi)';
+      if (isl.some((x) => x.urun === u && x.sonuc === 'SKIP'))
+        return 'zaten doğru durumdaydı (komut gerekmedi)';
       return fark(ilk, u) ? 'kendiliğinden düzeldi (komut gerekmedi)' : 'değişiklik yok';
     }
-    if (cev.belirsiz.includes(u) || (kapi === 'eski' && kapiKorur(kapi, u))) return 'eski sürüm önce — JBoss dokunulmadı';
+    if (cev.belirsiz.includes(u) || (kapi === 'eski' && kapiKorur(kapi, u)))
+      return 'eski sürüm önce — JBoss dokunulmadı';
     // v4: bos once hicbir urunu korumaz; 'bootsuz' yukarida, 'eski' bir ustte - baska koruyan kapi yok.
     // Inceleme F5: betik SKIP yazdiysa (ornegin "zaten baslatiliyordu") nedeni gorunur; "komut calismadi" eksik kalirdi.
     const skip = isl.find((x) => x.urun === u && x.sonuc === 'SKIP');
     if (skip) return `komut koşulmadı (betik: ${skip.mesaj || 'gerek görülmedi'}) — fark kaldı`;
     // 2026-11-16: yalniz eski betigin gercekten islemedigi urunde (betikEtkisi.kapatmaz) "betik eski" denir.
-    return etki.kapatmaz(u) ? "AWX'teki betik eski — işlem yapılmadı" : 'komut çalışmadı — fark kaldı';
+    return etki.kapatmaz(u)
+      ? "AWX'teki betik eski — işlem yapılmadı"
+      : 'komut çalışmadı — fark kaldı';
   };
   // Inceleme F2: komut OK dondu ama son goruntu alinamadi -> "acilamadi" denmez; dogrulanamadi (yine hata sinifi).
-  const durumu = (x) => (x.sonuc === 'OK' && !s ? 'olcmedi' : basarili(x) ? 'ok' : 'hata');
+  const durumu = (x) => {
+    if (x.sonuc === 'OK' && !s) return 'olcmedi';
+    return basarili(x) ? 'ok' : 'hata';
+  };
   const METIN = {
-    baslat: { ok: 'açıldı ✓', olcmedi: 'açma komutu OK — son durum ölçülemedi ✗', hata: 'açılamadı ✗' },
-    durdur: { ok: 'kapatıldı ✓', olcmedi: 'kapatma komutu OK — son durum ölçülemedi ✗', hata: 'kapatılamadı ✗' },
+    baslat: {
+      ok: 'açıldı ✓',
+      olcmedi: 'açma komutu OK — son durum ölçülemedi ✗',
+      hata: 'açılamadı ✗',
+    },
+    durdur: {
+      ok: 'kapatıldı ✓',
+      olcmedi: 'kapatma komutu OK — son durum ölçülemedi ✗',
+      hata: 'kapatılamadı ✗',
+    },
   };
   const teknoloji = URUNLER.filter((u) => gorulen.has(u)).map((u) => {
     const kx = komut.filter((x) => x.urun === u);
-    if (!kx.length) return { urun: u, ad: URUN_ADI[u], calistirildi: false, ozet: calismayanNeden(u), sonuc: 'yok' };
+    if (!kx.length)
+      return {
+        urun: u,
+        ad: URUN_ADI[u],
+        calistirildi: false,
+        ozet: calismayanNeden(u),
+        sonuc: 'yok',
+      };
     const parca = [];
     for (const x of kx.filter((y) => !y.ad)) {
       const d = durumu(x);
@@ -614,7 +669,9 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
     const ayrim = kontrolNedenAyrimi(once, r);
     const neden = [
       ...ayrim.neden,
-      ...(ayrim.onceBos && !ayrim.neden.length && rebootDogrulanamadi(once, r) ? [REBOOT_DOGRULANAMADI] : []),
+      ...(ayrim.onceBos && !ayrim.neden.length && rebootDogrulanamadi(once, r)
+        ? [REBOOT_DOGRULANAMADI]
+        : []),
     ];
     const bilgi = ayrim.onceBos ? [ONCE_BOS_NEDEN] : [];
     let durum = 'sorunsuz';
@@ -695,10 +752,23 @@ function ogeSayaci(once, r) {
       if (kapiKorur(kapi, u) || cev.belirsiz.includes(u)) korunan.add(u);
       else ekle(u, '', false);
     }
-    for (const k of g.jvm) if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) ekle(...k.split('|'), false);
+    for (const k of g.jvm)
+      if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) ekle(...k.split('|'), false);
   }
-  const komutu = (u, ad, islem) => isl.find((y) => y.urun === u && y.ad === ad && y.islem === islem);
-  const c = { once: 0, hedef: 0, dogru: 0, ilkSapan: 0, ilkDown: 0, ilkNew: 0, otomatik: 0, kendiliginden: 0, halaSapan: 0, korunan: [...korunan].filter((u) => s.urun.has(u)).length };
+  const komutu = (u, ad, islem) =>
+    isl.find((y) => y.urun === u && y.ad === ad && y.islem === islem);
+  const c = {
+    once: 0,
+    hedef: 0,
+    dogru: 0,
+    ilkSapan: 0,
+    ilkDown: 0,
+    ilkNew: 0,
+    otomatik: 0,
+    kendiliginden: 0,
+    halaSapan: 0,
+    korunan: [...korunan].filter((u) => s.urun.has(u)).length,
+  };
   for (const x of oge.values()) {
     const var_ = (g) => (x.ad ? g.jvm.has(`${x.u}|${x.ad}`) : g.urun.has(x.u));
     const ilkV = var_(ilk);
@@ -712,7 +782,8 @@ function ogeSayaci(once, r) {
     else c.ilkNew += 1;
     const islem = x.calismali ? 'baslat' : 'durdur';
     const kendi = komutu(x.u, x.ad, islem);
-    const urunleBirlikte = !!x.ad && x.calismali && kendi?.sonuc !== 'FAIL' && komutu(x.u, '', 'baslat')?.sonuc === 'OK';
+    const urunleBirlikte =
+      !!x.ad && x.calismali && kendi?.sonuc !== 'FAIL' && komutu(x.u, '', 'baslat')?.sonuc === 'OK';
     const komutOk = kendi?.sonuc === 'OK' || urunleBirlikte;
     if (!sonDogru) c.halaSapan += 1;
     else if (komutOk) c.otomatik += 1;
@@ -735,11 +806,33 @@ function ogeSayaci(once, r) {
 function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
   const d = deg || sonraDegerlendir(sunucular, hedefler, onceSat);
   const sn = {
-    toplam: hedefler.length, olculen: 0, olculemeyen: 0, onceYok: 0,
-    onceBos: 0, onceBosDiger: 0, onceBosKontrol: 0, onceBosSorunlu: 0,
-    karsilastirilabilir: 0, sorunsuz: 0, kontrol: 0, sorunlu: 0, birakilan: 0, birakilanKontrolNotlu: 0,
+    toplam: hedefler.length,
+    olculen: 0,
+    olculemeyen: 0,
+    onceYok: 0,
+    onceBos: 0,
+    onceBosDiger: 0,
+    onceBosKontrol: 0,
+    onceBosSorunlu: 0,
+    karsilastirilabilir: 0,
+    sorunsuz: 0,
+    kontrol: 0,
+    sorunlu: 0,
+    birakilan: 0,
+    birakilanKontrolNotlu: 0,
   };
-  const oge = { once: 0, hedef: 0, dogru: 0, ilkSapan: 0, ilkDown: 0, ilkNew: 0, otomatik: 0, kendiliginden: 0, halaSapan: 0, korunan: 0 };
+  const oge = {
+    once: 0,
+    hedef: 0,
+    dogru: 0,
+    ilkSapan: 0,
+    ilkDown: 0,
+    ilkNew: 0,
+    otomatik: 0,
+    kendiliginden: 0,
+    halaSapan: 0,
+    korunan: 0,
+  };
   const olculenler = [];
   for (const h of hedefler) {
     const x = d[h];
@@ -782,7 +875,10 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
     // sunucu ('kontrol' notlu) da birakilandir; yalniz 'sorunsuz' sayilsaydi basarisiz gibi gorunurdu (yoneticiye yaniltici).
     // Inceleme B2: 'kontrol' sunucu yalniz TUM kontrol nedenleri "otomasyon KAPATTI" ise birakilandir; betik eski / ESKI /
     // BELIRSIZ gibi baska bir nedeni olan sunucuda yapilacak is vardir -> kontrol bekleyen kalir.
-    const yalnizKapatti = x.durum === 'kontrol' && dizi(x.neden).length > 0 && dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
+    const yalnizKapatti =
+      x.durum === 'kontrol' &&
+      dizi(x.neden).length > 0 &&
+      dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
     if (!x.kalan && c.korunan === 0 && (x.durum === 'sorunsuz' || yalnizKapatti)) {
       sn.birakilan += 1;
       if (yalnizKapatti) sn.birakilanKontrolNotlu += 1;
@@ -805,16 +901,20 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
   const p = [];
   const kapsamEk = [
     ...(sn.olculemeyen ? [`${sn.olculemeyen} sunucu ölçülemedi`] : []),
-    ...(sn.onceYok ? [`${sn.onceYok} sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı`] : []),
+    ...(sn.onceYok
+      ? [`${sn.onceYok} sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı`]
+      : []),
   ];
-  p.push(`Kayıttaki ${sn.toplam} sunucunun ${sn.olculen} tanesinde reboot sonrası son durum ölçüldü${kapsamEk.length ? `, ${kapsamEk.join(', ')}` : ''}.`);
+  p.push(
+    `Kayıttaki ${sn.toplam} sunucunun ${sn.olculen} tanesinde reboot sonrası son durum ölçüldü${kapsamEk.length ? ', ' + kapsamEk.join(', ') : ''}.`,
+  );
   if (sn.onceBos) {
     const ek = [
       ...(sn.onceBosKontrol ? [`${sn.onceBosKontrol} tanesi kontrol bekliyor`] : []),
       ...(sn.onceBosSorunlu ? [`${sn.onceBosSorunlu} tanesinde sorun kaldı`] : []),
     ];
     p.push(
-      `${sn.onceBos} sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı${ek.length ? ` (bunlardan ${ek.join(', ')})` : ''}.`,
+      `${sn.onceBos} sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı${ek.length ? ' (bunlardan ' + ek.join(', ') + ')' : ''}.`,
     );
   }
   if (sn.karsilastirilabilir) {
@@ -829,26 +929,35 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
       ? ` (bunlardan ${sn.birakilanKontrolNotlu} tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var)`
       : '';
     p.push(
-      `Karşılaştırılabilen ${sn.karsilastirilabilir} sunucudan ${sn.birakilan} tanesi reboot öncesi haliyle bırakıldı (${o.birakildi.metin})${notlu}${ek.length ? `; ${ek.join(', ')}` : ''}.`,
+      `Karşılaştırılabilen ${sn.karsilastirilabilir} sunucudan ${sn.birakilan} tanesi reboot öncesi haliyle bırakıldı (${o.birakildi.metin})${notlu}${ek.length ? '; ' + ek.join(', ') : ''}.`,
     );
   } else p.push('Karşılaştırılabilen (önce görüntüsü dolu ve son durumu ölçülen) sunucu yok.');
   if (oge.hedef)
     p.push(
-      `Karşılaştırılabilen sunucularda öğe bazında (ürün + JVM) reboot öncesi hale dönüş ${o.donus.metin} (${oge.dogru} / ${oge.hedef}); reboot öncesi çalışan öğe sayısı ${oge.once}${oge.korunan ? `; reboot öncesi çalışmayan ${oge.korunan} öğe kapatma güvenli olmadığı için dokunulmadı (kontrol bekliyor)` : ''}.`,
+      `Karşılaştırılabilen sunucularda öğe bazında (ürün + JVM) reboot öncesi hale dönüş ${o.donus.metin} (${oge.dogru} / ${oge.hedef}); reboot öncesi çalışan öğe sayısı ${oge.once}${oge.korunan ? '; reboot öncesi çalışmayan ' + oge.korunan + ' öğe kapatma güvenli olmadığı için dokunulmadı (kontrol bekliyor)' : ''}.`,
     );
   if (oge.ilkSapan)
     p.push(
-      `Bu sunucularda reboot sonrası ilk kontrolde ${oge.ilkSapan} öğe reboot öncesinden farklıydı (${oge.ilkDown} kapalı, ${oge.ilkNew} fazladan çalışan); ${oge.otomatik} tanesini otomasyon düzeltti, ${oge.kendiliginden} tanesi kendiliğinden düzeldi (${o.kapanan.metin} kapatıldı)${oge.halaSapan ? `, ${oge.halaSapan} öğe hâlâ farklı` : ''}.`,
+      `Bu sunucularda reboot sonrası ilk kontrolde ${oge.ilkSapan} öğe reboot öncesinden farklıydı (${oge.ilkDown} kapalı, ${oge.ilkNew} fazladan çalışan); ${oge.otomatik} tanesini otomasyon düzeltti, ${oge.kendiliginden} tanesi kendiliğinden düzeldi (${o.kapanan.metin} kapatıldı)${oge.halaSapan ? ', ' + oge.halaSapan + ' öğe hâlâ farklı' : ''}.`,
     );
-  else if (oge.hedef) p.push('Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu.');
+  else if (oge.hedef)
+    p.push('Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu.');
   if (mudahale)
     p.push(
-      `Otomasyon son durumu ölçülen sunucularda ${mudahale} açma/kapatma komutu çalıştırdı; ${komutOlculen.basarili} tanesinin hedefi son kontrolde doğrulandı (${o.otomasyon.metin})${dogrulanamayan ? `; ölçülemeyen sunucularda çalışan ${dogrulanamayan} komutun sonucu doğrulanamadı` : ''}.`,
+      `Otomasyon son durumu ölçülen sunucularda ${mudahale} açma/kapatma komutu çalıştırdı; ${komutOlculen.basarili} tanesinin hedefi son kontrolde doğrulandı (${o.otomasyon.metin})${dogrulanamayan ? '; ölçülemeyen sunucularda çalışan ' + dogrulanamayan + ' komutun sonucu doğrulanamadı' : ''}.`,
     );
-  else if (dogrulanamayan) p.push(`Otomasyon yalnız ölçülemeyen sunucularda ${dogrulanamayan} komut çalıştırdı; sonucu doğrulanamadı.`);
+  else if (dogrulanamayan)
+    p.push(
+      `Otomasyon yalnız ölçülemeyen sunucularda ${dogrulanamayan} komut çalıştırdı; sonucu doğrulanamadı.`,
+    );
   if (komut.ok + komut.fail)
-    p.push(`Komut başarı oranı (dönüş kodu) ${o.komut.metin} (${komut.ok} / ${o.komut.payda})${komut.skip ? `; ${komut.skip} öğede komuta gerek kalmadı` : ''}.`);
-  else p.push(`Otomasyonun müdahalesine gerek olmadı${komut.skip ? ` (${komut.skip} öğede komut gerekmedi)` : ''}.`);
+    p.push(
+      `Komut başarı oranı (dönüş kodu) ${o.komut.metin} (${komut.ok} / ${o.komut.payda})${komut.skip ? '; ' + komut.skip + ' öğede komuta gerek kalmadı' : ''}.`,
+    );
+  else
+    p.push(
+      `Otomasyonun müdahalesine gerek olmadı${komut.skip ? ' (' + komut.skip + ' öğede komut gerekmedi)' : ''}.`,
+    );
   return { sunucu: sn, oge, komut, komutOlculen, oran: o, metin: p.join(' ') };
 }
 
@@ -872,7 +981,8 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
  */
 // sonraDegerlendir 'olculemedi' sebeplerinin yonetici raporundaki okunur karsiligi.
 const OKUNUR_SEBEP = {
-  'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)': 'Sunucuya ulaşılamadı (sonuç gelmedi)',
+  'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)':
+    'Sunucuya ulaşılamadı (sonuç gelmedi)',
   'son goruntu alinamadi': 'İşlem sonrası son durum ölçülemedi',
 };
 const SEVIYE_KOVALARI = ['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'];
@@ -889,14 +999,27 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     const b = r && !r.sonuc_yok ? hedefBaglami(once, r) : null;
     const komutlar = (b ? b.isl : [])
       .filter((y) => y.sonuc === 'OK' || y.sonuc === 'FAIL')
-      .map((y) => ({ islem: y.islem, urun: y.urun, ad: y.ad, sonuc: y.sonuc, hedefte: y.sonuc === 'OK' && !!b.s && b.hedefte(y) }));
+      .map((y) => ({
+        islem: y.islem,
+        urun: y.urun,
+        ad: y.ad,
+        sonuc: y.sonuc,
+        hedefte: y.sonuc === 'OK' && !!b.s && b.hedefte(y),
+      }));
     const olculemedi = !x || x.durum === 'olculemedi';
     const onceGecerli = !onceSat || (Array.isArray(once) && bootVar(once));
-    const korunan = !olculemedi && onceGecerli && Array.isArray(once) ? ogeSayaci(once, r).korunan : 0;
+    const korunan =
+      !olculemedi && onceGecerli && Array.isArray(once) ? ogeSayaci(once, r).korunan : 0;
     const yalnizKapatti =
-      x?.durum === 'kontrol' && dizi(x.neden).length > 0 && dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
+      x?.durum === 'kontrol' &&
+      dizi(x.neden).length > 0 &&
+      dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
     const yerinde =
-      !olculemedi && onceGecerli && !x.kalan && korunan === 0 && (x.durum === 'sorunsuz' || x.durum === 'kapsam_disi' || yalnizKapatti);
+      !olculemedi &&
+      onceGecerli &&
+      !x.kalan &&
+      korunan === 0 &&
+      (x.durum === 'sorunsuz' || x.durum === 'kapsam_disi' || yalnizKapatti);
     const etiket = [];
     const neden = [];
     let k;
@@ -907,7 +1030,11 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
       // kendiliginden duzelen sunucu otomasyonla duzeltilmis sayilmaz).
       k = komutlar.some((y) => y.hedefte) ? 'duzeltildi' : 'mudahalesiz';
       if (k === 'mudahalesiz' && komutlar.length)
-        etiket.push(komutlar.some((y) => y.sonuc === 'FAIL') ? 'komut hata döndü; kendiliğinden düzeldi' : 'komut hedefe ulaşmadı; kendiliğinden düzeldi');
+        etiket.push(
+          komutlar.some((y) => y.sonuc === 'FAIL')
+            ? 'komut hata döndü; kendiliğinden düzeldi'
+            : 'komut hedefe ulaşmadı; kendiliğinden düzeldi',
+        );
       if (x.durum === 'kapsam_disi') etiket.push('izlenen uygulama yoktu');
       if (yalnizKapatti) etiket.push('fazladan çalışan ürün kapatıldı');
     } else if (!olculemedi && onceGecerli && !x.kalan && x.durum === 'kontrol') {
@@ -922,11 +1049,17 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
         else altNeden = 'komutsuz';
       }
       // Once goruntusu yoksa asil neden odur (sonuc gelmese de); digerleri sonraDegerlendir sebebinin okunur karsiligi.
-      if (!onceGecerli || r?.once_var === false) neden.push('Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı');
+      if (!onceGecerli || r?.once_var === false)
+        neden.push('Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı');
       else if (!x || x.durum === 'olculemedi')
-        neden.push(`${OKUNUR_SEBEP[x?.sebep] || 'Sunucudan sonuç gelmedi'}${!r || r.sonuc_yok ? ' — yapılan işlem bilinmiyor' : ''}`);
+        neden.push(
+          `${OKUNUR_SEBEP[x?.sebep] || 'Sunucudan sonuç gelmedi'}${!r || r.sonuc_yok ? ' — yapılan işlem bilinmiyor' : ''}`,
+        );
       if (x?.kalan) neden.push(`${x.kalan} öğe reboot öncesinden farklı kaldı`);
-      if (korunan) neden.push(`reboot öncesi çalışmayan ${korunan} ürün kapatma güvenli olmadığı için açık bırakıldı`);
+      if (korunan)
+        neden.push(
+          `reboot öncesi çalışmayan ${korunan} ürün kapatma güvenli olmadığı için açık bırakıldı`,
+        );
       const fail = komutlar.filter((y) => y.sonuc === 'FAIL').length;
       if (fail) neden.push(`${fail} komut hata döndü`);
       if (x?.durum === 'kontrol') neden.push(...dizi(x.neden));
@@ -935,12 +1068,31 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     if (komutlar.length) islemYapilan += 1;
     // bilinmiyor: sonra'ya gonderildi (once gecerli) ama sonuc gelmedi; komut kosmus olabilir (rc_sonuc yalniz son adimda
     // yazilir) -> 'islem yok' DENMEZ. Once'si olmayan sunucu sonra'ya hic gonderilmez: orada 'islem yok' dogrudur.
-    sunucu[h] = { kova: k, etiket, neden, komutlar, durum: x?.durum || 'olculemedi', kalan: x?.kalan || 0, bilinmiyor: onceGecerli && (!r || !!r.sonuc_yok), ...(altNeden ? { altNeden } : {}) };
+    sunucu[h] = {
+      kova: k,
+      etiket,
+      neden,
+      komutlar,
+      durum: x?.durum || 'olculemedi',
+      kalan: x?.kalan || 0,
+      bilinmiyor: onceGecerli && (!r || !!r.sonuc_yok),
+      ...(altNeden ? { altNeden } : {}),
+    };
     const gorulen = new Set();
     for (const y of komutlar) {
       const anahtar = `${y.islem}|${y.urun}|${y.ad ? 'jvm' : 'urun'}`;
       if (!islem.has(anahtar))
-        islem.set(anahtar, { anahtar, islem: y.islem, urun: y.urun, jvm: !!y.ad, komut: 0, ok: 0, fail: 0, hedefte: 0, sunucular: [] });
+        islem.set(anahtar, {
+          anahtar,
+          islem: y.islem,
+          urun: y.urun,
+          jvm: !!y.ad,
+          komut: 0,
+          ok: 0,
+          fail: 0,
+          hedefte: 0,
+          sunucular: [],
+        });
       const t = islem.get(anahtar);
       t.komut += 1;
       if (y.sonuc === 'OK') t.ok += 1;
@@ -954,7 +1106,10 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
   }
   const sayi = Object.fromEntries(SEVIYE_KOVALARI.map((k) => [k, kova[k].length]));
   const islemler = [...islem.values()].sort(
-    (a, b) => b.sunucular.length - a.sunucular.length || b.komut - a.komut || varsayilanSira(a.anahtar, b.anahtar),
+    (a, b) =>
+      b.sunucular.length - a.sunucular.length ||
+      b.komut - a.komut ||
+      varsayilanSira(a.anahtar, b.anahtar),
   );
   return {
     toplam: hedefler.length,
@@ -966,11 +1121,15 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     // Basarili sayilan ama ek etiketi olan sunucular (kullanici: "kapsam disi ... sorunsuz gosterilmeli; hicbir sey yapilmadigi
     // icin ek bir etikete sahip olabilir").
     etiketSay: {
-      izlenenYok: Object.values(sunucu).filter((x) => x.etiket.includes('izlenen uygulama yoktu')).length,
+      izlenenYok: Object.values(sunucu).filter((x) => x.etiket.includes('izlenen uygulama yoktu'))
+        .length,
     },
     // Hic islem yapilamayan sunucularin alt nedenleri (ozet kirilimi).
     yapilamadiNeden: Object.fromEntries(
-      ['ulasilamadi', 'once_yok', 'olculemedi', 'komutsuz'].map((n) => [n, kova.yapilamadi.filter((h) => sunucu[h].altNeden === n).length]),
+      ['ulasilamadi', 'once_yok', 'olculemedi', 'komutsuz'].map((n) => [
+        n,
+        kova.yapilamadi.filter((h) => sunucu[h].altNeden === n).length,
+      ]),
     ),
     // Otomasyonun devreye girip sonucu belli oldugu sunucular: eski haline getirilen + getirilemeyen.
     otomasyon: oran(sayi.duzeltildi, sayi.duzeltildi + sayi.hatali),
@@ -982,8 +1141,7 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
 /** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
 const goruntuTamam = (r) =>
   !!(
-    r &&
-    r.goruntu_ok &&
+    r?.goruntu_ok &&
     Array.isArray(r.goruntu) &&
     r.goruntu.some((l) => String(l).startsWith('BOOT|'))
   );
@@ -1040,7 +1198,16 @@ function sonraOzeti(r, sonuc, job) {
   const ozet = {
     ...(jsonOku(r.ozet_json) || {}),
     // seviye (2026-11-17): yonetici raporunun sunucu seviyesi ozeti (sunucuSeviyesi); ekran ve rapor ayni kaynaktan.
-    sonra: { sorunsuz, kontrol, kapsamDisi, toplam: d.length, job, sunucu: deg, yonetici, seviye: sunucuSeviyesi(sonuc?.sunucular || {}, hedefler, onceSat, deg) },
+    sonra: {
+      sorunsuz,
+      kontrol,
+      kapsamDisi,
+      toplam: d.length,
+      job,
+      sunucu: deg,
+      yonetici,
+      seviye: sunucuSeviyesi(sonuc?.sunucular || {}, hedefler, onceSat, deg),
+    },
   };
   return { durum, ozet };
 }
@@ -1121,12 +1288,26 @@ async function ilerlet(r) {
 }
 
 function mount(router, { launch, HOST_RE, limit }) {
+  // AWX ALIMI DURUMU (2026-11-21): AWX'te kosan islerin neden alinip alinmadigi ekranda gorunur. ?tara=1 (Yenile)
+  // 2 dk sinirini atlar ve taramayi BEKLER; hata olursa durum yine doner (hata alaninda). '/reboot-check/:id'den ONCE.
+  router.get('/reboot-check/awx-alim', async (req, res) => {
+    const awx = require('./reboot-check-awx.cjs');
+    if (String(req.query?.tara || '') === '1') {
+      try {
+        await awx.awxIsleriniAl({ zorla: true });
+      } catch (e) {
+        console.warn('[RebootCheck] AWX isleri (Yenile):', e?.message);
+      }
+    }
+    res.json({ ok: true, durum: awx.alimDurumu() });
+  });
+
   router.get('/reboot-check', async (req, res) => {
     // AWX'te kosan isler (reboot-check-awx.cjs): poller 2 dk'da bir alir; liste acilinca da (ayni sinirla) bir tur
     // tetiklenir, BEKLENMEZ (liste yavaslamasin; alinan kayit bir sonraki yenilemede gorunur).
     require('./reboot-check-awx.cjs')
       .awxIsleriniAl()
-      .catch((e) => console.warn('[RebootCheck] AWX isleri:', e && e.message));
+      .catch((e) => console.warn('[RebootCheck] AWX isleri:', e?.message));
     try {
       const { rows } = await db().query(
         `SELECT TOP 50 id, hosts_json, notes, status, created_by, created_at, once_job_id, once_server_id, once_at,
@@ -1155,7 +1336,11 @@ function mount(router, { launch, HOST_RE, limit }) {
       res
         .set('Cache-Control', 'no-store')
         .type('html')
-        .send(require('./reboot-rapor.cjs').raporHtml(satir(r, true), { eposta: String(req.query?.eposta || '') === '1' }));
+        .send(
+          require('./reboot-rapor.cjs').raporHtml(satir(r, true), {
+            eposta: String(req.query?.eposta || '') === '1',
+          }),
+        );
     } catch (err) {
       res.status(500).type('text').send(err.message);
     }
@@ -1238,33 +1423,27 @@ function mount(router, { launch, HOST_RE, limit }) {
     if (!Number.isInteger(id) || id <= 0)
       return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
     if (req.body?.onay !== true)
-      return res
-        .status(400)
-        .json({
-          ok: false,
-          message: 'Reboot sonrası düzeltme JVM/web başlatır ve durdurur; onay gerekli.',
-        });
+      return res.status(400).json({
+        ok: false,
+        message: 'Reboot sonrası düzeltme JVM/web başlatır ve durdurur; onay gerekli.',
+      });
     try {
       const r = await kayit(id);
       if (!r) return res.status(404).json({ ok: false, message: 'Kayıt yok.' });
       if (!SONRA_ACIK.includes(r.status))
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: `Kayıt bu durumda reboot sonrası kontrole uygun değil (${r.status}).`,
-          });
+        return res.status(409).json({
+          ok: false,
+          message: `Kayıt bu durumda reboot sonrası kontrole uygun değil (${r.status}).`,
+        });
       const once = jsonOku(r.once_json);
       const rcOnce = onceGirdisi(once?.sunucular);
       const hedef = Object.keys(rcOnce);
       if (!hedef.length)
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message:
-              'Hiçbir sunucunun (yeni biçimde) "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz. Reboot öncesi görüntüyü yeniden alın.',
-          });
+        return res.status(409).json({
+          ok: false,
+          message:
+            'Hiçbir sunucunun (yeni biçimde) "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz. Reboot öncesi görüntüyü yeniden alın.',
+        });
       const j = await launch(
         req,
         REGISTRY_KEY,

@@ -7,32 +7,32 @@
 //
 // Küçültme YALNIZCA kullanıcı "küçült" butonuna basınca olur; yeni bir iş başlayınca
 // pencere her zaman ekranın ORTASINDA açılır (önceki job'ın konumundan bağımsız).
-import React, { useEffect, useRef, useState } from "react";
-import { useJobTracker } from "@/contexts/JobTrackerContext";
-import { useFloatingWindow, ResizeHandle } from "@/hooks/useFloatingWindow";
-import AnsibleLogTerminal from "./AnsibleLogTerminal";
+import React, { useEffect, useRef, useState } from 'react';
+import { useJobTracker } from '@/contexts/JobTrackerContext';
+import { useFloatingWindow, ResizeHandle } from '@/hooks/useFloatingWindow';
+import AnsibleLogTerminal from './AnsibleLogTerminal';
 
 // Durum noktalari terminal paletinden (bkz. index.css --term-*): alt cubuk, AWX
 // job ciktisinin ozeti oldugu icin ayni renk dilini konusur.
 const STATUS_DOT: Record<string, string> = {
-  successful: "var(--term-success)",
-  failed: "var(--term-danger)",
-  error: "var(--term-danger)",
-  canceled: "var(--term-warning)",
-  running: "var(--term-info)",
-  pending: "var(--term-muted)",
-  waiting: "var(--term-muted)",
+  successful: 'var(--term-success)',
+  failed: 'var(--term-danger)',
+  error: 'var(--term-danger)',
+  canceled: 'var(--term-warning)',
+  running: 'var(--term-info)',
+  pending: 'var(--term-muted)',
+  waiting: 'var(--term-muted)',
 };
 
 // Ekran okuyucuya okunacak metin. Renkli bir nokta gormeyene durum ADIYLA soylenir.
 const STATUS_LABEL: Record<string, string> = {
-  successful: "başarılı",
-  failed: "başarısız",
-  error: "hata",
-  canceled: "iptal edildi",
-  running: "çalışıyor",
-  pending: "kuyrukta",
-  waiting: "kuyrukta",
+  successful: 'başarılı',
+  failed: 'başarısız',
+  error: 'hata',
+  canceled: 'iptal edildi',
+  running: 'çalışıyor',
+  pending: 'kuyrukta',
+  waiting: 'kuyrukta',
 };
 
 const DEFAULT_SIZE = { w: 760, h: 560 };
@@ -54,14 +54,14 @@ export default function JobTrackerBar() {
   //
   // Yalnizca SONUCLANAN isler duyurulur — her yoklamada "calisiyor" demek gurultu
   // olurdu. Duyurulanlar `announcedRef`te tutulur ki ayni is iki kez okunmasin.
-  const [announcement, setAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState('');
   const announcedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const justDone = jobs.filter((j) => j.done && !announcedRef.current.has(j.id));
     if (justDone.length === 0) return;
     for (const j of justDone) announcedRef.current.add(j.id);
     setAnnouncement(
-      justDone.map((j) => `${j.title}: ${STATUS_LABEL[j.status] || j.status}`).join(". ")
+      justDone.map((j) => `${j.title}: ${STATUS_LABEL[j.status] || j.status}`).join('. '),
     );
   }, [jobs]);
 
@@ -87,15 +87,24 @@ export default function JobTrackerBar() {
   if (jobs.length === 0) return liveRegion;
 
   const minimized = jobs.filter((j) => j.minimized);
-  const filter = expanded ? (filters[expanded.id] || { enabled: false, prefix: "" }) : { enabled: false, prefix: "" };
+  const filter = expanded
+    ? filters[expanded.id] || { enabled: false, prefix: '' }
+    : { enabled: false, prefix: '' };
 
   function setFilter(id: string, patch: Partial<{ enabled: boolean; prefix: string }>) {
-    setFilters((prev) => ({ ...prev, [id]: { ...(prev[id] || { enabled: false, prefix: "" }), ...patch } }));
+    setFilters((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] || { enabled: false, prefix: '' }), ...patch },
+    }));
   }
 
-  const displayedOutput = expanded && filter.enabled && filter.prefix
-    ? expanded.output.split("\n").filter((l) => l.startsWith(filter.prefix)).join("\n")
-    : expanded?.output || "";
+  const displayedOutput =
+    expanded && filter.enabled && filter.prefix
+      ? expanded.output
+          .split('\n')
+          .filter((l) => l.startsWith(filter.prefix))
+          .join('\n')
+      : expanded?.output || '';
 
   return (
     <>
@@ -132,7 +141,7 @@ export default function JobTrackerBar() {
               status={expanded.status}
               title={expanded.title}
               size="fill"
-              className={expanded.filterable ? "rounded-t-none" : ""}
+              className={expanded.filterable ? 'rounded-t-none' : ''}
               onMinimize={() => minimize(expanded.id)}
               onClose={() => remove(expanded.id)}
               onHeaderPointerDown={startMove}
@@ -157,10 +166,12 @@ export default function JobTrackerBar() {
               title="Büyütmek için tıklayın"
             >
               <span
-                className={`w-1.5 h-1.5 rounded-full ${j.done ? "" : "animate-status-pulse"}`}
-                style={{ background: STATUS_DOT[j.status] || "var(--term-muted)" }}
+                className={`w-1.5 h-1.5 rounded-full ${j.done ? '' : 'animate-status-pulse'}`}
+                style={{ background: STATUS_DOT[j.status] || 'var(--term-muted)' }}
               />
-              <span className="truncate max-w-[180px] font-mono" title={j.title}>{j.title}</span>
+              <span className="truncate max-w-[180px] font-mono" title={j.title}>
+                {j.title}
+              </span>
             </button>
           ))}
         </div>

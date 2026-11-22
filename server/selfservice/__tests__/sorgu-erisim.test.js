@@ -29,7 +29,8 @@ sahte(require.resolve('../../auth/index.cjs'), {
   getRequestUser: () => kullanici,
 });
 const canSee = async (_u, k) => (k in gorunur ? gorunur[k] : true);
-const requireVisible = (k) => async (req, res, next) => ((await canSee(null, k)) ? next() : res.status(403).json({ ok: false, error: 'gizli' }));
+const requireVisible = (k) => async (req, res, next) =>
+  (await canSee(null, k)) ? next() : res.status(403).json({ ok: false, error: 'gizli' });
 sahte(require.resolve('../../auth/visibility.cjs'), {
   canSee,
   requireVisible,
@@ -40,7 +41,11 @@ sahte(require.resolve('../../auth/visibility.cjs'), {
   },
 });
 sahte(require.resolve('../../audit/index.cjs'), { auditMutations: () => (_q, _s, n) => n() });
-sahte(require.resolve('../store.cjs'), { loadSelfServiceStore: async () => {}, readGroups: async () => [], updateGroup: async () => {} });
+sahte(require.resolve('../store.cjs'), {
+  loadSelfServiceStore: async () => {},
+  readGroups: async () => [],
+  updateGroup: async () => {},
+});
 sahte(require.resolve('../../inventory/mssql.cjs'), {
   sql: { NVarChar: () => 'nv', VarChar: () => 'v', Int: 'int' },
   query: async () => {
@@ -67,23 +72,26 @@ async function durum(yol, govde) {
 }
 const SORGULAR = [
   ['/ip-check', { ips: ['10.0.0.1'] }],
-  ['/server-ip-check', { servers: ['GBJBOP07'] }],
+  ['/server-ip-check', { servers: ['ORJBOP07'] }],
   ['/openshift-check', { query: 'kart' }],
 ];
 
 test('SE1 yalniz BMW Hub goren: sorgu uclari acik, diger Self Service ucu kapali', async () => {
   gorunur.BmwHub = true;
   gorunur['Self Service'] = false;
-  for (const [y, g] of SORGULAR) assert.notEqual(await durum(y, g), 403, `${y} BMW Hub kullanicisina kapali`);
+  for (const [y, g] of SORGULAR)
+    assert.notEqual(await durum(y, g), 403, `${y} BMW Hub kullanicisina kapali`);
   assert.equal(await durum('/groups'), 403, 'Self Service gizliyken diger uc acildi');
 });
 
 test('SE2 hicbirini goremeyen: sorgu uclari 403; yalniz yeni sayfa izni (IpSorgu / OcpSorgu) acar', async () => {
   for (const k of ['BmwHub', 'Self Service', 'IpSorgu', 'OcpSorgu']) gorunur[k] = false;
-  for (const [y, g] of SORGULAR) assert.equal(await durum(y, g), 403, `${y} gorunurluk olmadan acildi`);
+  for (const [y, g] of SORGULAR)
+    assert.equal(await durum(y, g), 403, `${y} gorunurluk olmadan acildi`);
   for (const k of ['IpSorgu', 'OcpSorgu']) {
     gorunur[k] = true;
-    for (const [y, g] of SORGULAR) assert.notEqual(await durum(y, g), 403, `${y} yalniz ${k} gorene kapali`);
+    for (const [y, g] of SORGULAR)
+      assert.notEqual(await durum(y, g), 403, `${y} yalniz ${k} gorene kapali`);
     gorunur[k] = false;
   }
 });
@@ -91,5 +99,6 @@ test('SE2 hicbirini goremeyen: sorgu uclari 403; yalniz yeni sayfa izni (IpSorgu
 test('SE3 yalniz Self Service goren: sorgu uclari acik', async () => {
   for (const k of ['BmwHub', 'IpSorgu', 'OcpSorgu']) gorunur[k] = false;
   gorunur['Self Service'] = true;
-  for (const [y, g] of SORGULAR) assert.notEqual(await durum(y, g), 403, `${y} Self Service kullanicisina kapali`);
+  for (const [y, g] of SORGULAR)
+    assert.notEqual(await durum(y, g), 403, `${y} Self Service kullanicisina kapali`);
 });

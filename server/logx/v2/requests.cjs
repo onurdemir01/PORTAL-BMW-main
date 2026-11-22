@@ -32,13 +32,22 @@ async function createRequest(user, platform) {
     `INSERT INTO logx_v2_requests (username, auth_source, role, session_token, platform, state, expires_at)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3,$4,$5,'draft', DATEADD(HOUR, $6, GETUTCDATE()))`,
-    [user.username, user.authSource || 'local', user.role || 'User', user.sessionToken, platform, REQUEST_TTL_HOURS]
+    [
+      user.username,
+      user.authSource || 'local',
+      user.role || 'User',
+      user.sessionToken,
+      platform,
+      REQUEST_TTL_HOURS,
+    ],
   );
   return normalizeRequest(rows[0]);
 }
 
 async function getRequestRow(requestId) {
-  const { rows } = await db.query(`SELECT * FROM logx_v2_requests WHERE request_id = $1`, [requestId]);
+  const { rows } = await db.query(`SELECT * FROM logx_v2_requests WHERE request_id = $1`, [
+    requestId,
+  ]);
   return rows[0] || null;
 }
 
@@ -60,8 +69,11 @@ async function updateRequest(requestId, fields) {
   const params = [];
   let i = 1;
   const map = {
-    state: 'state', input: 'input_json', discoveryResult: 'discovery_result_json',
-    selectedFiles: 'selected_files_json', errorMessage: 'error_message',
+    state: 'state',
+    input: 'input_json',
+    discoveryResult: 'discovery_result_json',
+    selectedFiles: 'selected_files_json',
+    errorMessage: 'error_message',
   };
   for (const [key, col] of Object.entries(map)) {
     if (fields[key] !== undefined) {
@@ -76,7 +88,7 @@ async function updateRequest(requestId, fields) {
   params.push(requestId);
   const { rows } = await db.query(
     `UPDATE logx_v2_requests SET ${sets.join(', ')} OUTPUT INSERTED.* WHERE request_id = $${i}`,
-    params
+    params,
   );
   return rows[0] ? normalizeRequest(rows[0]) : null;
 }
@@ -95,12 +107,16 @@ async function expireOldRequests(deleteStagedFileFn) {
      FROM logx_v2_requests r
      LEFT JOIN logx_v2_downloads d ON d.request_id = r.request_id
      WHERE r.expires_at < GETUTCDATE() AND r.state <> 'expired'
-     ORDER BY r.expires_at`
+     ORDER BY r.expires_at`,
   );
   const seen = new Set();
   for (const row of rows) {
     if (row.staged_path && deleteStagedFileFn) {
-      try { await deleteStagedFileFn(row.staged_path); } catch { /* best-effort */ }
+      try {
+        await deleteStagedFileFn(row.staged_path);
+      } catch {
+        /* best-effort */
+      }
     }
     seen.add(row.request_id);
   }
@@ -118,8 +134,8 @@ async function expireOldRequests(deleteStagedFileFn) {
   for (const parca of chunk(idler)) {
     await db.query(
       `UPDATE logx_v2_requests SET state = 'expired'
-        WHERE request_id IN (${parca.map((_, i) => ("$" + (i + 1))).join(',')})`,
-      parca
+        WHERE request_id IN (${parca.map((_, i) => '$' + (i + 1)).join(',')})`,
+      parca,
     );
   }
   return seen.size;
@@ -132,18 +148,30 @@ async function listRequestsForAdmin({ state, platform, limit = 100 } = {}) {
   const conditions = [];
   const params = [];
   let i = 1;
-  if (state) { conditions.push(`state = $${i++}`); params.push(state); }
-  if (platform) { conditions.push(`platform = $${i++}`); params.push(platform); }
+  if (state) {
+    conditions.push(`state = $${i++}`);
+    params.push(state);
+  }
+  if (platform) {
+    conditions.push(`platform = $${i++}`);
+    params.push(platform);
+  }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   params.push(Number(limit) || 100);
   const { rows } = await db.query(
     `SELECT * FROM logx_v2_requests ${where} ORDER BY id DESC LIMIT $${i}`,
-    params
+    params,
   );
   return rows.map(normalizeRequest);
 }
 
 module.exports = {
-  createRequest, getRequest, getRequestRow, assertOwnership, updateRequest, expireOldRequests,
-  normalizeRequest, listRequestsForAdmin,
+  createRequest,
+  getRequest,
+  getRequestRow,
+  assertOwnership,
+  updateRequest,
+  expireOldRequests,
+  normalizeRequest,
+  listRequestsForAdmin,
 };

@@ -20,10 +20,22 @@
 // ve kayit ile AWX arasinda ayrisma riski dogurur (ayni gerekce ScaleX'te de yazili).
 'use strict';
 const { webTekille } = require('./web-liste.cjs');
-const { onKontrolIzinleri, onKontrolOku, onKontrolBasladi, onKontrolSonucu, onKontrolGecerli } = require('./stop-sonuc.cjs');
+const {
+  onKontrolIzinleri,
+  onKontrolOku,
+  onKontrolBasladi,
+  onKontrolSonucu,
+  onKontrolGecerli,
+} = require('./stop-sonuc.cjs');
 
 const db = require('../db/index.cjs');
-const { stopZamani, etkinSilmeGunu, silmeZamaniGeldi, silmeOnKontrolZamaniGeldi, silmePlanTazeDk } = require('./schedule.cjs');
+const {
+  stopZamani,
+  etkinSilmeGunu,
+  silmeZamaniGeldi,
+  silmeOnKontrolZamaniGeldi,
+  silmePlanTazeDk,
+} = require('./schedule.cjs');
 
 let _timer = null;
 let _launch = null;
@@ -111,9 +123,17 @@ async function stopTick(now) {
       const u = await db.query(
         `UPDATE retirement_targets SET status = 'failed', result_text = $1, updated_at = GETUTCDATE()
           WHERE id = $2 AND status = 'stop_scheduled'`,
-        ['Onaylanan ön kontrolün izin listesi yok — zamanlanmış STOP başlatılmadı, hiçbir şey yapılmadı. Ön kontrolü yeniden çalıştırıp onaylayın.', t.id],
+        [
+          'Onaylanan ön kontrolün izin listesi yok — zamanlanmış STOP başlatılmadı, hiçbir şey yapılmadı. Ön kontrolü yeniden çalıştırıp onaylayın.',
+          t.id,
+        ],
       );
-      if (u.rowCount) await olay(t.record_id, 'schedule-expired', `${t.app_name} @ ${t.host}: onaylanan on kontrol izin listesi yok - STOP baslatilmadi`);
+      if (u.rowCount)
+        await olay(
+          t.record_id,
+          'schedule-expired',
+          `${t.app_name} @ ${t.host}: onaylanan on kontrol izin listesi yok - STOP baslatilmadi`,
+        );
       continue;
     }
     // TOPLU STOP (2026-10-08): ayni kayit + ayni zamanlama ani = kullanici onlari TEK iste
@@ -136,8 +156,18 @@ async function stopTick(now) {
     }
     if (!alinan.length) continue;
     const t = alinan[0];
-    const hedef = (x) => ({ targetId: x.id, host: x.host, application: x.app_name, gen: x.jboss_gen, appPath: x.app_path, izinler: x.izinler });
-    const etiket = alinan.length > 1 ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}` : `${t.app_name} @ ${t.host}`;
+    const hedef = (x) => ({
+      targetId: x.id,
+      host: x.host,
+      application: x.app_name,
+      gen: x.jboss_gen,
+      appPath: x.app_path,
+      izinler: x.izinler,
+    });
+    const etiket =
+      alinan.length > 1
+        ? `${t.app_name} @ ${alinan.map((x) => x.host).join(', ')}`
+        : `${t.app_name} @ ${t.host}`;
     let r;
     try {
       r = await _launch('stop', {
@@ -162,9 +192,19 @@ async function stopTick(now) {
     }
     try {
       for (const x of alinan)
-        await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, x.id]);
-      await db.query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`, [t.record_id]);
-      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? (" (" + alinan.length + " hedef tek iste)") : ''}`);
+        await db.query(
+          `UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`,
+          [r?.jobId ?? null, x.id],
+        );
+      await db.query(
+        `UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`,
+        [t.record_id],
+      );
+      await olay(
+        t.record_id,
+        'stop',
+        `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? ' (' + alinan.length + ' hedef tek iste)' : ''}`,
+      );
       kosan += alinan.length;
     } catch (e) {
       console.error(
@@ -254,13 +294,24 @@ async function deleteTick(now) {
           WHERE id = $2 AND status = 'deleting' AND delete_job_id IS NULL`,
         [`DELETE baslatilamadi: ${e.message}`.slice(0, 1000), t.id],
       );
-      await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: DELETE baslatilamadi — ${e.message}`);
+      await olay(
+        t.record_id,
+        'error',
+        `${t.app_name} @ ${t.host}: DELETE baslatilamadi — ${e.message}`,
+      );
       continue;
     }
     try {
       // ON KONTROL TUKENDI: ayni liste ikinci bir silmeye verilmez (yeniden deneme yeni on kontrol ister).
-      const kullanildi = JSON.stringify({ ...plan, kullanildi: true, deleteJobId: r?.jobId ?? null });
-      await db.query(`UPDATE retirement_targets SET delete_job_id = $1, delete_onkontrol_json = $2, updated_at = GETUTCDATE() WHERE id = $3`, [r?.jobId ?? null, kullanildi, t.id]);
+      const kullanildi = JSON.stringify({
+        ...plan,
+        kullanildi: true,
+        deleteJobId: r?.jobId ?? null,
+      });
+      await db.query(
+        `UPDATE retirement_targets SET delete_job_id = $1, delete_onkontrol_json = $2, updated_at = GETUTCDATE() WHERE id = $3`,
+        [r?.jobId ?? null, kullanildi, t.id],
+      );
       await olay(
         t.record_id,
         'delete',
@@ -287,7 +338,11 @@ async function deleteTick(now) {
  *  geri yazilir ve bir sonraki tur tekrar dener (STOP / DELETE claim'iyle ayni kural). */
 async function silmeOnKontrolBaslat(t, now) {
   const eski = t.delete_onkontrol_json ?? null;
-  const claimJson = JSON.stringify({ durum: 'baslatiliyor', at: now.toISOString(), kaynak: 'zamanlayici' });
+  const claimJson = JSON.stringify({
+    durum: 'baslatiliyor',
+    at: now.toISOString(),
+    kaynak: 'zamanlayici',
+  });
   const c = await db.query(
     eski == null
       ? `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped' AND delete_onkontrol_json IS NULL`
@@ -313,14 +368,29 @@ async function silmeOnKontrolBaslat(t, now) {
       `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND delete_onkontrol_json = $3`,
       [eski, t.id, claimJson],
     );
-    await olay(t.record_id, 'error', `${t.app_name} @ ${t.host}: silme on kontrolu baslatilamadi — ${e.message}`);
+    await olay(
+      t.record_id,
+      'error',
+      `${t.app_name} @ ${t.host}: silme on kontrolu baslatilamadi — ${e.message}`,
+    );
     return false;
   }
   await db.query(
     `UPDATE retirement_targets SET delete_onkontrol_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND delete_onkontrol_json = $3`,
-    [onKontrolBasladi(r?.jobId ?? null, { kaynak: 'zamanlayici', awxServerId: r?.awxServerId ?? null }), t.id, claimJson],
+    [
+      onKontrolBasladi(r?.jobId ?? null, {
+        kaynak: 'zamanlayici',
+        awxServerId: r?.awxServerId ?? null,
+      }),
+      t.id,
+      claimJson,
+    ],
   );
-  await olay(t.record_id, 'delete-plan', `${t.app_name} @ ${t.host}: silme on kontrolu #${r?.jobId ?? '?'} baslatildi - silme yalniz bu listeyle yapilir`);
+  await olay(
+    t.record_id,
+    'delete-plan',
+    `${t.app_name} @ ${t.host}: silme on kontrolu #${r?.jobId ?? '?'} baslatildi - silme yalniz bu listeyle yapilir`,
+  );
   return true;
 }
 
@@ -329,7 +399,10 @@ async function silmeOnKontrolBaslat(t, now) {
 // Zamanlayicinin baslattigi silme on kontrolunu kimse izlemiyor; geri alma on kontrolunu ekran izler
 // (job-status) ama ekran kapanirsa sonuc burada da yazilir. OKUNAMADI != BASARISIZ: AWX okunamazsa
 // kayit 'running' KALIR, sonraki tur tekrar bakar.
-const ONKONTROL_ALANI = Object.freeze({ delete: 'delete_onkontrol_json', rollback: 'rollback_onkontrol_json' });
+const ONKONTROL_ALANI = Object.freeze({
+  delete: 'delete_onkontrol_json',
+  rollback: 'rollback_onkontrol_json',
+});
 async function onKontrolTick(recordId = null) {
   if (typeof _finalize !== 'function') return { kapanan: 0 };
   const { rows } = await db.query(
@@ -342,7 +415,7 @@ async function onKontrolTick(recordId = null) {
   for (const t of rows || []) {
     for (const [kind, alan] of Object.entries(ONKONTROL_ALANI)) {
       const o = onKontrolOku(t[alan]);
-      if (!o || o.durum !== 'running' || !o.jobId) continue;
+      if (o?.durum !== 'running' || !o.jobId) continue;
       let s;
       try {
         s = await _finalize(kind, { job_id: o.jobId, host: t.host });
@@ -350,9 +423,12 @@ async function onKontrolTick(recordId = null) {
         console.warn(`[Retirement poller] ${kind} on kontrolu #${o.jobId} okunamadi:`, e.message);
         continue;
       }
-      if (!s || !s.terminal) continue;
+      if (!s?.terminal) continue;
       const yeni = onKontrolSonucu(kind, s.awxStatus, s.sonuc, o.jobId, o);
-      const u = await db.query(`UPDATE retirement_targets SET ${alan} = $1, updated_at = GETUTCDATE() WHERE id = $2 AND ${alan} = $3`, [yeni, t.id, t[alan]]);
+      const u = await db.query(
+        `UPDATE retirement_targets SET ${alan} = $1, updated_at = GETUTCDATE() WHERE id = $2 AND ${alan} = $3`,
+        [yeni, t.id, t[alan]],
+      );
       if (!u.rowCount) continue;
       kapanan += 1;
       const y = JSON.parse(yeni);
@@ -384,9 +460,30 @@ async function onKontrolTick(recordId = null) {
 // duruma geri donerdi (deleteTick yalniz 'stopped' hedefe bakar). 'rollback_failed'
 // hicbir tick tarafindan alinmaz; insan mudahalesi bekler.
 const ADIMLAR = Object.freeze([
-  { durum: 'stopping', isAlani: 'last_job_id', kind: 'stop', basarili: 'stopped', basarisiz: 'failed', zamanAlani: 'stopped_at' },
-  { durum: 'deleting', isAlani: 'delete_job_id', kind: 'delete', basarili: 'deleted', basarisiz: 'failed', zamanAlani: 'deleted_at' },
-  { durum: 'rolling_back', isAlani: 'rollback_job_id', kind: 'rollback', basarili: 'active', basarisiz: 'rollback_failed', zamanAlani: 'rolled_back_at' },
+  {
+    durum: 'stopping',
+    isAlani: 'last_job_id',
+    kind: 'stop',
+    basarili: 'stopped',
+    basarisiz: 'failed',
+    zamanAlani: 'stopped_at',
+  },
+  {
+    durum: 'deleting',
+    isAlani: 'delete_job_id',
+    kind: 'delete',
+    basarili: 'deleted',
+    basarisiz: 'failed',
+    zamanAlani: 'deleted_at',
+  },
+  {
+    durum: 'rolling_back',
+    isAlani: 'rollback_job_id',
+    kind: 'rollback',
+    basarili: 'active',
+    basarisiz: 'rollback_failed',
+    zamanAlani: 'rolled_back_at',
+  },
 ]);
 
 async function finalizeAdim(adim, recordId = null) {
@@ -408,8 +505,9 @@ async function finalizeAdim(adim, recordId = null) {
       console.warn(`[Retirement poller] is #${t.job_id} durumu okunamadi:`, e.message);
       continue;
     }
-    if (o && o.awxStatus) _awxDurum.set(Number(t.job_id), { status: String(o.awxStatus), at: Date.now() });
-    if (!o || !o.terminal) continue;
+    if (o?.awxStatus)
+      _awxDurum.set(Number(t.job_id), { status: String(o.awxStatus), at: Date.now() });
+    if (!o?.terminal) continue;
     _awxDurum.delete(Number(t.job_id));
     if (o.ok) {
       await db.query(
@@ -417,7 +515,11 @@ async function finalizeAdim(adim, recordId = null) {
           WHERE id = $2 AND status = '${adim.durum}'`,
         [String(o.message || '').slice(0, 1000), t.id],
       );
-      await olay(t.record_id, `${adim.kind}-result`, `${t.app_name} @ ${t.host}: ${o.message || adim.basarili}`);
+      await olay(
+        t.record_id,
+        `${adim.kind}-result`,
+        `${t.app_name} @ ${t.host}: ${o.message || adim.basarili}`,
+      );
       if (adim.kind === 'stop') {
         // STOP'ta kayit 'stopped' olur ve stop_at ILK stop'ta yazilir - silme tarihi
         // buradan sayilir (bkz. schedule.etkinSilmeGunu).
@@ -430,14 +532,20 @@ async function finalizeAdim(adim, recordId = null) {
           [t.record_id],
         );
         if (Number(kalan.rows?.[0]?.n) === 0)
-          await db.query(`UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'stopping'`, [t.record_id]);
+          await db.query(
+            `UPDATE retirement_records SET status = 'stopped', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'stopping'`,
+            [t.record_id],
+          );
       } else if (adim.kind === 'delete') {
         const kalan = await db.query(
           `SELECT COUNT(*) AS n FROM retirement_targets WHERE record_id = $1 AND status NOT IN ('deleted', 'skipped')`,
           [t.record_id],
         );
         if (Number(kalan.rows?.[0]?.n) === 0)
-          await db.query(`UPDATE retirement_records SET status = 'deleted', updated_at = GETUTCDATE() WHERE id = $1`, [t.record_id]);
+          await db.query(
+            `UPDATE retirement_records SET status = 'deleted', updated_at = GETUTCDATE() WHERE id = $1`,
+            [t.record_id],
+          );
       } else if (adim.kind === 'rollback') {
         // DALLANMA ACIK YAZILDI. Eskiden `else` dali DELETE varsayiyordu; ucuncu adim
         // eklenince geri alma oraya duser ve basarili bir GERI ALMA kaydi 'deleted'
@@ -463,7 +571,11 @@ async function finalizeAdim(adim, recordId = null) {
           WHERE id = $2 AND status = '${adim.durum}'`,
         [String(o.message || `${adim.kind} basarisiz`).slice(0, 1000), t.id],
       );
-      await olay(t.record_id, `${adim.kind}-result`, `${t.app_name} @ ${t.host}: BASARISIZ — ${o.message || ''}`);
+      await olay(
+        t.record_id,
+        `${adim.kind}-result`,
+        `${t.app_name} @ ${t.host}: BASARISIZ — ${o.message || ''}`,
+      );
     }
     kapanan += 1;
   }
@@ -513,7 +625,11 @@ async function webTick(recordId = null) {
     if (tek.atilan) {
       liste = tek.liste;
       degisti = true;
-      await olay(t.record_id, 'web', `${t.app_name}: web listesinde ${tek.atilan} tekrar eden vhost cikarildi (ayni host/conf/ServerName)`);
+      await olay(
+        t.record_id,
+        'web',
+        `${t.app_name}: web listesinde ${tek.atilan} tekrar eden vhost cikarildi (ayni host/conf/ServerName)`,
+      );
     }
     for (const w of liste) {
       if (w.status !== 'pending') continue;
@@ -532,7 +648,12 @@ async function webTick(recordId = null) {
         continue;
       }
       try {
-        const r = await _web({ webHost: w.host, product: w.product, confFile: w.confFile, serverName: w.serverName });
+        const r = await _web({
+          webHost: w.host,
+          product: w.product,
+          confFile: w.confFile,
+          serverName: w.serverName,
+        });
         w.jobId = r?.jobId ?? null;
         w.awxServerId = r?.awxServerId ?? null;
         w.status = 'running';
@@ -540,15 +661,26 @@ async function webTick(recordId = null) {
         w.message = `is #${w.jobId ?? '?'}`;
         degisti = true;
         kosan += 1;
-        await olay(t.record_id, 'web', `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma isi #${w.jobId ?? '?'}`);
+        await olay(
+          t.record_id,
+          'web',
+          `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma isi #${w.jobId ?? '?'}`,
+        );
       } catch (e) {
         // 'pending' KALIR: bir sonraki tick tekrar dener. 'failed' yazmak, hic
         // denenmemis bir kaldirmayi basarisiz gostermek olurdu.
-        await olay(t.record_id, 'error', `${t.app_name}: ${w.host} / ${w.serverName} vhost isi baslatilamadi — ${e.message}`);
+        await olay(
+          t.record_id,
+          'error',
+          `${t.app_name}: ${w.host} / ${w.serverName} vhost isi baslatilamadi — ${e.message}`,
+        );
       }
     }
     if (degisti)
-      await db.query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(liste).slice(0, 60000), t.id]);
+      await db.query(
+        `UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`,
+        [JSON.stringify(liste).slice(0, 60000), t.id],
+      );
   }
   return { kosan, elle };
 }
@@ -573,30 +705,57 @@ async function webSonucTick(recordId = null) {
   let kapanan = 0;
   for (const t of rows || []) {
     let liste;
-    try { liste = JSON.parse(t.web_result_json); } catch { continue; }
+    try {
+      liste = JSON.parse(t.web_result_json);
+    } catch {
+      continue;
+    }
     if (!Array.isArray(liste)) continue;
     let degisti = false;
     for (const w of liste) {
       if (w.status !== 'running') continue;
       // IZ BIRAKMADAN BEKLEMEK YOK: is numarasi yoksa sonuc hic okunamaz; okuma hatasi da
       // sessiz kalmamali - ekran "suruyor" derken sebebi logda olmali.
-      if (!w.jobId) { console.warn(`[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi 'running' ama is numarasi yok - sonuc okunamaz (elle kontrol)`); continue; }
-      let s;
-      try { s = await _finalize('web', { job_id: w.jobId }); } catch (e) {
-        console.warn(`[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi #${w.jobId} sonucu OKUNAMADI (sonraki tur tekrar): ${e.message}`);
+      if (!w.jobId) {
+        console.warn(
+          `[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi 'running' ama is numarasi yok - sonuc okunamaz (elle kontrol)`,
+        );
         continue;
       }
-      if (!s || !s.terminal) continue;
-      w.status = (() => { if (s.ok) return 'ok'; if (s.skip) return 'skip'; return 'failed'; })();
+      let s;
+      try {
+        s = await _finalize('web', { job_id: w.jobId });
+      } catch (e) {
+        console.warn(
+          `[Retirement poller] #${t.record_id} ${w.host} / ${w.serverName}: web isi #${w.jobId} sonucu OKUNAMADI (sonraki tur tekrar): ${e.message}`,
+        );
+        continue;
+      }
+      if (!s?.terminal) continue;
+      w.status = (() => {
+        if (s.ok) return 'ok';
+        if (s.skip) return 'skip';
+        return 'failed';
+      })();
       w.bitti = new Date().toISOString();
       w.message = `is #${w.jobId}: ${s.message || ''}`.slice(0, 500);
       degisti = true;
       kapanan += 1;
-      await olay(t.record_id, w.status === 'failed' ? 'error' : 'web',
-        `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma ${(() => { if (w.status === 'ok') return 'TAMAM'; if (w.status === 'skip') return 'ATLANDI (yapilacak sey bulunmadi)'; return 'BASARISIZ'; })()} - ${w.message}`);
+      await olay(
+        t.record_id,
+        w.status === 'failed' ? 'error' : 'web',
+        `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma ${(() => {
+          if (w.status === 'ok') return 'TAMAM';
+          if (w.status === 'skip') return 'ATLANDI (yapilacak sey bulunmadi)';
+          return 'BASARISIZ';
+        })()} - ${w.message}`,
+      );
     }
     if (degisti)
-      await db.query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(liste).slice(0, 60000), t.id]);
+      await db.query(
+        `UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`,
+        [JSON.stringify(liste).slice(0, 60000), t.id],
+      );
   }
   return { kapanan };
 }
@@ -619,7 +778,17 @@ async function tick(now = new Date()) {
   const f = await finalizeTick();
   const w = await webTick();
   const ws = await webSonucTick();
-  if (s.kosan || s.gecen || d.kosan || d.planlanan || ok.kapanan || f.kapanan || w.kosan || w.elle || ws.kapanan)
+  if (
+    s.kosan ||
+    s.gecen ||
+    d.kosan ||
+    d.planlanan ||
+    ok.kapanan ||
+    f.kapanan ||
+    w.kosan ||
+    w.elle ||
+    ws.kapanan
+  )
     console.log(
       `[Retirement poller] STOP kosan=${s.kosan} penceresi-gecen=${s.gecen} · DELETE kosan=${d.kosan} on-kontrol=${d.planlanan} · on-kontrol-sonuc=${ok.kapanan} · kapanan=${f.kapanan} · WEB kosan=${w.kosan} elle=${w.elle} sonuclanan=${ws.kapanan}`,
     );
@@ -692,4 +861,19 @@ function stopPoller() {
   _web = null;
 }
 
-module.exports = { startPoller, stopPoller, tick, webSimdi, kayitCanli, zamanlayici, awxDurumu, pollSaniye: () => Math.round(cfg().intervalMs / 1000), _stopTick: stopTick, _deleteTick: deleteTick, _onKontrolTick: onKontrolTick, _finalizeTick: finalizeTick, _webTick: webTick, _webSonucTick: webSonucTick };
+module.exports = {
+  startPoller,
+  stopPoller,
+  tick,
+  webSimdi,
+  kayitCanli,
+  zamanlayici,
+  awxDurumu,
+  pollSaniye: () => Math.round(cfg().intervalMs / 1000),
+  _stopTick: stopTick,
+  _deleteTick: deleteTick,
+  _onKontrolTick: onKontrolTick,
+  _finalizeTick: finalizeTick,
+  _webTick: webTick,
+  _webSonucTick: webSonucTick,
+};

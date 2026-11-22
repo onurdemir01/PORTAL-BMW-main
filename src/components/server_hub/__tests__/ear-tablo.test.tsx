@@ -372,10 +372,17 @@ describe('EarTablo', () => {
     const { unmount } = ciz();
     expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Görünümler' })).getByRole('button', { name: /^Kısmiler/ }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Görünümler' })).getByRole('button', {
+        name: /^Kısmiler/,
+      }),
+    );
     expect(screen.getByText('1–2 / 2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Görünüm: Kısmiler' })).toBeInTheDocument();
-    const hucreler = screen.getAllByRole('row').slice(1).map((r) => r.textContent);
+    const hucreler = screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => r.textContent);
     expect(hucreler[0]).toContain('A3');
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(
       expect.arrayContaining([expect.stringContaining('Not')]),
@@ -388,7 +395,9 @@ describe('EarTablo', () => {
     expect(screen.getByText('1–3 / 3')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Görünümler' })).toBeInTheDocument();
     // Kolonlar da varsayılana döner (görünümün "Not" kolonu gizlenir).
-    expect(screen.getAllByRole('columnheader').some((h) => (h.textContent || '').startsWith('Not'))).toBe(false);
+    expect(
+      screen.getAllByRole('columnheader').some((h) => (h.textContent || '').startsWith('Not')),
+    ).toBe(false);
     unmount();
     ciz();
     fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));
@@ -402,7 +411,9 @@ describe('EarTablo', () => {
 
   it('ET12 yerel CSV: süzülenlerin tamamı, görünen kolonlar', async () => {
     // 130 süzülmüş satır > sayfa boyu 100: CSV sayfayla sınırlı kalırsa yakalanır.
-    const satirlar = Array.from({ length: 260 }, (_, i) => satir(i + 1, { durum: i % 2 ? 'KISMI' : 'TAM' }));
+    const satirlar = Array.from({ length: 260 }, (_, i) =>
+      satir(i + 1, { durum: i % 2 ? 'KISMI' : 'TAM' }),
+    );
     render(
       <EarTablo<Satir>
         kimlik="csv"
@@ -422,18 +433,35 @@ describe('EarTablo', () => {
     expect([ad, basliklar, satirlarCsv.length]).toEqual(['dosya', ['Ad', 'Sayı', 'Durum'], 130]);
     fireEvent.change(screen.getByLabelText('ara'), { target: { value: 'a12' } });
     fireEvent.click(screen.getByRole('button', { name: /^CSV \(/ }));
-    expect(csvM.mock.calls[1][2].map((r: string[]) => r[0])).toEqual(['A12', 'A120', 'A122', 'A124', 'A126', 'A128']);
+    expect(csvM.mock.calls[1][2].map((r: string[]) => r[0])).toEqual([
+      'A12',
+      'A120',
+      'A122',
+      'A124',
+      'A126',
+      'A128',
+    ]);
   });
 
   it('ET13 satırlar daralınca sayfa konumu kırpılır', () => {
     const cok = Array.from({ length: 150 }, (_, i) => satir(i + 1));
     const { rerender } = render(
-      <EarTablo<Satir> kimlik="kirp" kolonlar={KOLONLAR} satirlar={cok} satirAnahtari={(r) => String(r.id)} />,
+      <EarTablo<Satir>
+        kimlik="kirp"
+        kolonlar={KOLONLAR}
+        satirlar={cok}
+        satirAnahtari={(r) => String(r.id)}
+      />,
     );
     fireEvent.click(screen.getByRole('button', { name: /Sonraki/ }));
     expect(screen.getByText('101–150 / 150')).toBeInTheDocument();
     rerender(
-      <EarTablo<Satir> kimlik="kirp" kolonlar={KOLONLAR} satirlar={cok.slice(0, 40)} satirAnahtari={(r) => String(r.id)} />,
+      <EarTablo<Satir>
+        kimlik="kirp"
+        kolonlar={KOLONLAR}
+        satirlar={cok.slice(0, 40)}
+        satirAnahtari={(r) => String(r.id)}
+      />,
     );
     expect(screen.getByText('1–40 / 40')).toBeInTheDocument();
     expect(screen.getByText('A1')).toBeInTheDocument();
@@ -459,7 +487,10 @@ describe('EarTablo', () => {
     expect(screen.queryByText('ayrıntı A2')).toBeNull();
     fireEvent.click(screen.getByText('A1'));
     expect(screen.getByText('ayrıntı A1')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'satır A1 ayrıntısı' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'satır A1 ayrıntısı' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 
   it('ET14b açılır alan kapsayıcının görünen genişliğinde ve solda sabit (dar ekranda yatay taşmaz)', () => {
@@ -516,7 +547,13 @@ describe('EarTablo', () => {
     );
     const { rerender } = render(
       ciz({
-        gorunumler: [{ ad: 'Ekip: kısmi', aciklama: 'ortak · ayse', f: [{ k: 'durum', op: 'in', v: ['KISMI'] }] }],
+        gorunumler: [
+          {
+            ad: 'Ekip: kısmi',
+            aciklama: 'ortak · ayse',
+            f: [{ k: 'durum', op: 'in', v: ['KISMI'] }],
+          },
+        ],
         kaydet,
         sil,
       }),

@@ -14,6 +14,8 @@
 // traffic_state ∈ {ACTIVE, NO_RECENT_TRAFFIC}; diger her durumda -1.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -129,7 +131,7 @@ test('TR7 kesif ve ekran: sorgu en yeni taramadan, onay ZORUNLU', () => {
   // server_name BUYUK/KUCUK HARF DUYARSIZ eslesmeli (Apache kasa korumuyor)
   assert.match(
     DISC,
-    /server_name \|\| ''\)\.trim\(\)\.toLowerCase\(\)/,
+    esnek(/server_name \|\| ''\)\.trim\(\)\.toLowerCase\(\)/),
     'vhost anahtari kasaya duyarli',
   );
   // Ozet uc kovayi AYRI tutar

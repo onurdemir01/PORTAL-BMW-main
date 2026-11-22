@@ -490,7 +490,7 @@ function dogrula(p) {
   const deg = Array.isArray(p?.degisiklikler) ? p.degisiklikler : [];
   const canli = p?.canli && typeof p.canli === 'object' ? p.canli : null;
   const lr = p?.limitRange || { durum: 'olculemedi' };
-  const yeniOf = (alan) => (deg.find((d) => d.alan === alan) || {}).yeni;
+  const yeniOf = (alan) => deg.find((d) => d.alan === alan)?.yeni;
 
   // Etkin deger: degisen alan yeni degeriyle; degismeyen alan CANLIDAN (girilmeyen alan).
   // canli null = olculemedi -> bilinmiyor (undefined); canli[alan] null = spec'te YOK.

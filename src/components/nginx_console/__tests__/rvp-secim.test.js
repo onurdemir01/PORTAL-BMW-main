@@ -21,7 +21,9 @@ function tsYukle() {
   try {
     return require('typescript');
   } catch (e) {
-    throw new Error('typescript paketi yok - RP Secimi bekcisi KOSAMADI (yesil sayilmaz): ' + e.message);
+    throw new Error(
+      'typescript paketi yok - RP Secimi bekcisi KOSAMADI (yesil sayilmaz): ' + e.message,
+    );
   }
 }
 function yukle(dosya) {
@@ -38,10 +40,25 @@ function yukle(dosya) {
 }
 
 const M = yukle(SRC);
+// Kutularin sunuculari kurum ayarindan (nginx.rvp); testler kurgusal ornegi sunucu modulu uzerinden okur
+// (ekran ayni veriyi GET /rvp-alt-aglari ile alir).
+const { rvpAyari } = require('../../../../server/nginx-console/rvp-ayari.cjs');
+const AYAR = rvpAyari().rvp;
+const oner = (s) => M.rvpOner(s, AYAR);
+const sunucu = (h) => M.rvpSunucu(h, AYAR);
 const TAB_RAW = fs.readFileSync(TAB, 'utf8');
 /** Kutunun sunucu adlari (sira onemsiz, kume olarak). */
 const adlar = (blok) => (blok && blok.sunucular ? blok.sunucular.map((s) => s.host).sort() : null);
-const T14_21 = ['GBNGXT14', 'GBNGXT15', 'GBNGXT16', 'GBNGXT17', 'GBNGXT18', 'GBNGXT19', 'GBNGXT20', 'GBNGXT21'];
+const T14_21 = [
+  'ORNGXT14',
+  'ORNGXT15',
+  'ORNGXT16',
+  'ORNGXT17',
+  'ORNGXT18',
+  'ORNGXT19',
+  'ORNGXT20',
+  'ORNGXT21',
+];
 
 // ── RVP-1 soru sirasi ─────────────────────────────────────────────────────────────────
 test('RVP-1 soru sirasi: glomo yalniz ARK+internet, nprAcik yalniz internet ve Glomo DISINDA', () => {
@@ -61,19 +78,27 @@ test('RVP-1 soru sirasi: glomo yalniz ARK+internet, nprAcik yalniz internet ve G
     'Glomo her halde RVP kaydina gider - nprAcik sormak gereksiz soru',
   );
   assert.equal(sor({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo' }), 'nprAcik');
-  assert.equal(sor({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'evet' }), null);
+  assert.equal(
+    sor({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'evet' }),
+    null,
+  );
   assert.equal(sor({ backend: 'ark', kitle: 'intranet' }), null, 'intranette nprAcik sorulmamali');
   assert.equal(sor({ backend: 'hosting', kitle: 'intranet' }), null);
 });
 
 test('RVP-1b eksik secimde oneri YOK (yarim cevapla sunucu gosterilmez)', () => {
-  for (const s of [{}, { backend: 'ark' }, { backend: 'ark', kitle: 'internet' }, { backend: 'hosting', kitle: 'internet' }])
-    assert.equal(M.rvpOner(s), null, JSON.stringify(s));
+  for (const s of [
+    {},
+    { backend: 'ark' },
+    { backend: 'ark', kitle: 'internet' },
+    { backend: 'hosting', kitle: 'internet' },
+  ])
+    assert.equal(oner(s), null, JSON.stringify(s));
 });
 
 // ── RVP-2 'hicbiri' -> ekip ───────────────────────────────────────────────────────────
 test("RVP-2 'hicbiri': sunucu gosterilmez, GT Agile BMW ekibine yonlendirir", () => {
-  const r = M.rvpOner({ backend: 'hicbiri' });
+  const r = oner({ backend: 'hicbiri' });
   assert.equal(r.durum, 'ekip');
   assert.match(r.baslik, /GT Agile BMW/);
   assert.equal(r.nonProd, undefined, "'hicbiri' dalinda sunucu blogu OLMAMALI");
@@ -82,7 +107,7 @@ test("RVP-2 'hicbiri': sunucu gosterilmez, GT Agile BMW ekibine yonlendirir", ()
 
 // ── RVP-3 ARK + internet + Glomo -> RVP kaydi ─────────────────────────────────────────
 test('RVP-3 ARK + internet + Glomo: sunucu DEGIL, RVP kaydina yonlendirir', () => {
-  const r = M.rvpOner({ backend: 'ark', kitle: 'internet', glomo: 'glomo' });
+  const r = oner({ backend: 'ark', kitle: 'internet', glomo: 'glomo' });
   assert.equal(r.durum, 'rvp');
   assert.equal(r.rvpYolu, '/self-service/nginx-rvp-operations');
   assert.equal(r.nonProd, undefined, 'Glomo dalinda sunucu listesi gosterilmemeli');
@@ -91,36 +116,52 @@ test('RVP-3 ARK + internet + Glomo: sunucu DEGIL, RVP kaydina yonlendirir', () =
 
 // ── RVP-4 ARK + internet + Non-Glomo ─────────────────────────────────────────────────
 test('RVP-4 ARK + internet + Non-Glomo: non-prod nprAcik ile DEGISIR, prod sabit', () => {
-  const acik = M.rvpOner({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'evet' });
-  assert.deepEqual(adlar(acik.nonProd), ['GBNGXD02', 'GBNGXQ02', 'GBNGXT34']);
-  const kapali = M.rvpOner({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'hayir' });
+  const acik = oner({ backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'evet' });
+  assert.deepEqual(adlar(acik.nonProd), ['ORNGXD02', 'ORNGXQ02', 'ORNGXT34']);
+  const kapali = oner({
+    backend: 'ark',
+    kitle: 'internet',
+    glomo: 'nonglomo',
+    nprAcik: 'hayir',
+  });
   assert.deepEqual(adlar(kapali.nonProd), T14_21.slice().sort());
-  assert.match(kapali.nonProd.not, /internete açılmayacak/i, 'T14-21 kutusunun sebebi yazili degil');
+  assert.match(
+    kapali.nonProd.not,
+    /internete açılmayacak/i,
+    'T14-21 kutusunun sebebi yazili degil',
+  );
   // production ikisinde de AYNI ve kullanicinin verdigi liste
-  // GBNGXAP28/29 kapatildi, yerine GBNGXAP32/33 (kullanici, 2026-11-12)
-  const bekl = ['GBNGXAP32', 'GBNGXAP33', 'GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59'];
+  // ORNGXAP28/29 kapatildi, yerine ORNGXAP32/33 (kullanici, 2026-11-12)
+  const bekl = ['ORNGXAP32', 'ORNGXAP33', 'ORNGXP44', 'ORNGXP45', 'ORNGXP58', 'ORNGXP59'];
   assert.deepEqual(adlar(acik.prod), bekl);
   assert.deepEqual(adlar(kapali.prod), bekl);
 });
 
 // ── RVP-5 ARK + intranet ─────────────────────────────────────────────────────────────
 test('RVP-5 ARK + intranet: D50/T50/Q50 ve P50-53 + AP50/51', () => {
-  const r = M.rvpOner({ backend: 'ark', kitle: 'intranet' });
-  assert.deepEqual(adlar(r.nonProd), ['GBNGXD50', 'GBNGXQ50', 'GBNGXT50']);
-  assert.deepEqual(adlar(r.prod), ['GBNGXAP50', 'GBNGXAP51', 'GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53']);
+  const r = oner({ backend: 'ark', kitle: 'intranet' });
+  assert.deepEqual(adlar(r.nonProd), ['ORNGXD50', 'ORNGXQ50', 'ORNGXT50']);
+  assert.deepEqual(adlar(r.prod), [
+    'ORNGXAP50',
+    'ORNGXAP51',
+    'ORNGXP50',
+    'ORNGXP51',
+    'ORNGXP52',
+    'ORNGXP53',
+  ]);
 });
 
 // ── RVP-6 Hosting ────────────────────────────────────────────────────────────────────
-test('RVP-6 Hosting + internet: non-prod GBRNAT01 / T14-21, prod GBRNAP + GBRNAAP', () => {
-  const acik = M.rvpOner({ backend: 'hosting', kitle: 'internet', nprAcik: 'evet' });
-  assert.deepEqual(adlar(acik.nonProd), ['GBRNAT01']);
-  const kapali = M.rvpOner({ backend: 'hosting', kitle: 'internet', nprAcik: 'hayir' });
+test('RVP-6 Hosting + internet: non-prod ORRNAT01 / T14-21, prod ORRNAP + ORRNAAP', () => {
+  const acik = oner({ backend: 'hosting', kitle: 'internet', nprAcik: 'evet' });
+  assert.deepEqual(adlar(acik.nonProd), ['ORRNAT01']);
+  const kapali = oner({ backend: 'hosting', kitle: 'internet', nprAcik: 'hayir' });
   assert.deepEqual(adlar(kapali.nonProd), T14_21.slice().sort());
-  assert.deepEqual(adlar(acik.prod), ['GBRNAAP01', 'GBRNAAP02', 'GBRNAP01', 'GBRNAP02']);
+  assert.deepEqual(adlar(acik.prod), ['ORRNAAP01', 'ORRNAAP02', 'ORRNAP01', 'ORRNAP02']);
 });
 
 test("RVP-6b Hosting + intranet: production TANIMSIZ - bos liste 'sunucu yok' demek DEGIL", () => {
-  const r = M.rvpOner({ backend: 'hosting', kitle: 'intranet' });
+  const r = oner({ backend: 'hosting', kitle: 'intranet' });
   assert.deepEqual(adlar(r.nonProd), T14_21.slice().sort());
   assert.equal(r.prod.durum, 'tanimsiz', 'production kutusu tanimsiz isaretlenmemis');
   assert.deepEqual(r.prod.sunucular, []);
@@ -140,12 +181,12 @@ test("RVP-7 her onerilen sunucunun Excel ustverisi var; bilinmeyen ad '?' ile is
   ];
   let n = 0;
   for (const s of hepsi) {
-    const r = M.rvpOner(s);
+    const r = oner(s);
     for (const blok of [r.nonProd, r.prod]) {
       if (!blok || blok.durum !== 'sunucu') continue;
       for (const srv of blok.sunucular) {
         n++;
-        assert.match(srv.host, /^GB[A-Z0-9]+$/, srv.host);
+        assert.match(srv.host, /^[A-Z]{2}[A-Z0-9]+$/, srv.host);
         assert.ok(srv.domain !== '?' && srv.domain, `${srv.host}: domain ustverisi yok`);
         assert.ok(srv.surum !== '?' && srv.surum, `${srv.host}: nginx surumu yok`);
         assert.ok(['Pendik', 'Ankara'].includes(srv.lokasyon), `${srv.host}: lokasyon`);
@@ -153,11 +194,11 @@ test("RVP-7 her onerilen sunucunun Excel ustverisi var; bilinmeyen ad '?' ile is
     }
   }
   assert.ok(n >= 30, `onerilen sunucu sayisi beklenenden az: ${n}`);
-  const yok = M.rvpSunucu('GBYOK99');
+  const yok = sunucu('ORYOK99');
   assert.equal(yok.domain, '?', 'bilinmeyen sunucu ustverisi UYDURULUYOR');
 });
 
-test('RVP-7b onayli liste disindakiler oneri olarak CIKMAZ (GBNGXT07, Edu asamasi, Ankara QA intranet)', () => {
+test('RVP-7b onayli liste disindakiler oneri olarak CIKMAZ (ORNGXT07, Edu asamasi, Ankara QA intranet)', () => {
   const cikanlar = new Set();
   for (const s of [
     { backend: 'ark', kitle: 'internet', glomo: 'nonglomo', nprAcik: 'evet' },
@@ -167,14 +208,22 @@ test('RVP-7b onayli liste disindakiler oneri olarak CIKMAZ (GBNGXT07, Edu asamas
     { backend: 'hosting', kitle: 'internet', nprAcik: 'hayir' },
     { backend: 'hosting', kitle: 'intranet' },
   ]) {
-    const r = M.rvpOner(s);
+    const r = oner(s);
     for (const blok of [r.nonProd, r.prod])
       if (blok && blok.durum === 'sunucu') for (const srv of blok.sunucular) cikanlar.add(srv.host);
   }
-  // GBNGXT07: 2026-10-01'de onayli reverse proxy listesinin disinda birakildi.
-  // GBNGXT39/40/41/42, GBNGXT51: Edu asamasi - kullanici "yalniz saydiklarim" dedi.
-  // GBNGXAQ50: Ankara QA intranet - ayni karar.
-  for (const h of ['GBNGXT07', 'GBNGXT39', 'GBNGXT40', 'GBNGXT41', 'GBNGXT42', 'GBNGXT51', 'GBNGXAQ50'])
+  // ORNGXT07: 2026-10-01'de onayli reverse proxy listesinin disinda birakildi.
+  // ORNGXT39/40/41/42, ORNGXT51: Edu asamasi - kullanici "yalniz saydiklarim" dedi.
+  // ORNGXAQ50: Ankara QA intranet - ayni karar.
+  for (const h of [
+    'ORNGXT07',
+    'ORNGXT39',
+    'ORNGXT40',
+    'ORNGXT41',
+    'ORNGXT42',
+    'ORNGXT51',
+    'ORNGXAQ50',
+  ])
     assert.ok(!cikanlar.has(h), `${h} oneri olarak cikiyor - onayli liste disinda`);
 });
 
@@ -186,7 +235,10 @@ test('RVP-8 ekran salt okunur: is baslatan/yazan hicbir cagri yok', () => {
   const kalan = TAB_RAW.split(IZINLI).join('');
   for (const kotu of ['fetch(', 'Api.', 'axios', 'POST', 'method:'])
     assert.ok(!kalan.includes(kotu), `RP Secimi ekraninda yazma/istek izi var: ${kotu}`);
-  assert.ok(TAB_RAW.includes('rvpOner(secim)'), 'ekran karar fonksiyonunu kullanmiyor');
+  assert.ok(
+    TAB_RAW.includes('rvpOner(secim, rvpAyar)'),
+    'ekran karar fonksiyonunu kurum ayariyla kullanmiyor',
+  );
   assert.ok(TAB_RAW.includes('rvpSiradakiSoru(secim)'), 'ekran soru sirasini kendi uyduruyor');
   // Dort soru da TEK YERDE (RVP_SORULAR); ekranda ayri bir soru metni dizisi olmamali.
   // Sayim YALNIZ RVP_SORULAR govdesinde: `type Soru` bildirimindeki birlesim de eslesiyordu.
@@ -205,7 +257,10 @@ test('RVP-8 ekran salt okunur: is baslatan/yazan hicbir cagri yok', () => {
 
 // ── RVP-9 sekme kaydi: sayfa + gorunurluk + seed ucunun UCU birden ───────────────────
 test('RVP-9 sekme uc yerde de kayitli (sayfa, gorunurluk uclari, DB seed) ve varsayilan KAPALI', () => {
-  const page = fs.readFileSync(path.join(KOK, 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
+  const page = fs.readFileSync(
+    path.join(KOK, 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'),
+    'utf8',
+  );
   assert.ok(/'rvpsecim'/.test(page), 'Tab birlesiminde/TABS dizisinde rvpsecim yok');
   assert.ok(page.includes("{ id: 'rvpsecim', label: 'RP Seçimi'"), 'HUB_TABS kaydi yok');
   assert.ok(
@@ -216,7 +271,7 @@ test('RVP-9 sekme uc yerde de kayitli (sayfa, gorunurluk uclari, DB seed) ve var
   const i = vis.indexOf('const NGINX_TAB_KEYS = [');
   assert.ok(
     vis.slice(i, vis.indexOf('];', i)).includes("'rvpsecim'"),
-    'NGINX_TAB_KEYS\'te yok - Admin ekranindan YETKILENDIRILEMEZ (sekme hic gorunmez)',
+    "NGINX_TAB_KEYS'te yok - Admin ekranindan YETKILENDIRILEMEZ (sekme hic gorunmez)",
   );
   const db = fs.readFileSync(path.join(KOK, 'server', 'db', 'mssql-setup.cjs'), 'utf8');
   const j = db.indexOf("element_key: 'tab:nginx:rvpsecim',");
@@ -225,20 +280,38 @@ test('RVP-9 sekme uc yerde de kayitli (sayfa, gorunurluk uclari, DB seed) ve var
   assert.ok(blk.includes("parent_key: 'NginxConsole'"), 'seed parent yanlis');
   assert.ok(blk.includes('default_visible: 0'), 'seed varsayilani ACIK');
   const k = db.indexOf('const NGINX_TAB_KEYS_SEED = [');
-  assert.ok(db.slice(k, db.indexOf('];', k)).includes("'rvpsecim'"), 'NGINX_TAB_KEYS_SEED\'te yok');
+  assert.ok(db.slice(k, db.indexOf('];', k)).includes("'rvpsecim'"), "NGINX_TAB_KEYS_SEED'te yok");
 });
 
 // ── RVP-10 kaynak notu: bu sekme HICBIR ISTEN beslenmez ──────────────────────────────
 // Nginx Hub her sekmenin basinda "hangi is besliyor" yazar. Bu sekmeyi var olan bir job'a
 // baglamak, elle guncellenen Excel listesini TAZE OLCUM gibi gosterirdi.
 test('RVP-10 kaynak notu var olan bir AWX isini sahiplenmez; elle guncellendigini soyler', () => {
-  const page = fs.readFileSync(path.join(KOK, 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'), 'utf8');
-  assert.ok(page.includes("rvpsecim: 'rvpstatic'"), 'SOURCE_OF kaydi yok ya da baska bir kaynaga bagli');
-  const note = fs.readFileSync(path.join(KOK, 'src', 'components', 'nginx_console', 'SourceNote.tsx'), 'utf8');
+  const page = fs.readFileSync(
+    path.join(KOK, 'src', 'components', 'nginx_console', 'NginxConsolePage.tsx'),
+    'utf8',
+  );
+  assert.ok(
+    page.includes("rvpsecim: 'rvpstatic'"),
+    'SOURCE_OF kaydi yok ya da baska bir kaynaga bagli',
+  );
+  const note = fs.readFileSync(
+    path.join(KOK, 'src', 'components', 'nginx_console', 'SourceNote.tsx'),
+    'utf8',
+  );
   const i = note.indexOf('rvpstatic: {');
   assert.ok(i > 0, 'rvpstatic kaynagi tanimli degil');
   const blk = note.slice(i, note.indexOf('},', i));
   assert.ok(!/job: '[a-z_]+'/.test(blk), 'rvpstatic var olan bir job adini sahipleniyor');
   assert.match(blk, /elle güncellen/i, 'notta listenin elle guncellendigi yazili degil');
   assert.match(blk, /taramadan GELMEZ/, 'notta "taramadan gelmez" uyarisi yok');
+});
+
+test('RVP-9 kurum ayari yoksa kutular TANIMSIZ ve sebep yazili (bos liste "sunucu yok" demek olurdu)', () => {
+  assert.ok(Object.keys(AYAR.kutular).length >= 7, 'ornek ayarda kutular eksik');
+  const r = M.rvpOner({ backend: 'ark', kitle: 'intranet' });
+  assert.equal(r.nonProd.durum, 'tanimsiz');
+  assert.equal(r.prod.durum, 'tanimsiz');
+  assert.match(r.prod.not, /nginx\.rvp\.kutular\.arkIntranetProd/);
+  assert.equal(M.rvpSunucu('ORNGXD50').domain, '?', 'ayarsiz ustveri uydurulmaz');
 });

@@ -223,7 +223,7 @@ async function yaz(anahtar, yeni, varsayilan, aciklama, kim) {
      SELECT @eski AS eski, $2 AS yeni, @degisti AS degisti;`,
     [anahtar, String(yeni), not, kim, String(varsayilan)],
   );
-  const sonuc = tx.rows && tx.rows[0];
+  const sonuc = tx.rows?.[0];
   if (!sonuc) throw new Error('Server Hub ayar yazımı sonucu okunamadı.');
   const eski = T(sonuc.eski);
   const gercekYeni = T(sonuc.yeni);

@@ -362,8 +362,11 @@ async function filterTablesByRole(tables, role, username) {
   const config = await readVisibleTables();
   const roleKey = role === 'Admin' ? 'Admin' : 'User';
   const allowed = config[roleKey];
-  let base =
-    (() => { if (allowed === '*') return tables.slice(); if (Array.isArray(allowed)) return tables.filter((t) => allowed.includes(t)); return tables.slice(); })();
+  let base = (() => {
+    if (allowed === '*') return tables.slice();
+    if (Array.isArray(allowed)) return tables.filter((t) => allowed.includes(t));
+    return tables.slice();
+  })();
 
   const inactive = await getInactiveTableNames();
   if (inactive.size) base = base.filter((t) => !inactive.has(t));
@@ -660,8 +663,34 @@ function isSelectOnly(sqlText) {
   // Tek-ifade zorunlulugu: mesru SELECT'ler ';' gerektirmez, coklu-ifade injection'ini
   // (bir sonraki ifade banned-list disi bir sey olsa bile) engeller.
   if (cleaned.replace(/;\s*$/, '').includes(';')) return false;
-  const banned =
-    new RegExp('\\b(' + ['INSERT','UPDATE','DELETE','DROP','ALTER','CREATE','EXEC','EXECUTE','TRUNCATE','MERGE','GRANT','REVOKE','WAITFOR','OPENROWSET','OPENQUERY','OPENDATASOURCE','BULK','DBCC','SHUTDOWN','BACKUP','RESTORE','KILL'].join('|') + ')\\b');
+  const banned = new RegExp(
+    '\\b(' +
+      [
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'DROP',
+        'ALTER',
+        'CREATE',
+        'EXEC',
+        'EXECUTE',
+        'TRUNCATE',
+        'MERGE',
+        'GRANT',
+        'REVOKE',
+        'WAITFOR',
+        'OPENROWSET',
+        'OPENQUERY',
+        'OPENDATASOURCE',
+        'BULK',
+        'DBCC',
+        'SHUTDOWN',
+        'BACKUP',
+        'RESTORE',
+        'KILL',
+      ].join('|') +
+      ')\\b',
+  );
   if (banned.test(cleaned)) return false;
   // 4-parcali linked-server adlandirmasi (sunucu.veritabani.sema.tablo) — OPENQUERY/
   // OPENDATASOURCE disindaki tek linked-server erisim yolu; extractReferencedTables'in
@@ -799,7 +828,7 @@ const ANSI_TEXT_TYPES = new Set(['char', 'varchar']);
  *   ifadesi; ansi: parametrenin VarChar (true) mi NVarChar (false) mi baglanmasi gerektigi.
  */
 function colExprFor(col, colTypes) {
-  const t = String((colTypes && colTypes.get && colTypes.get(col)) || '').toLowerCase();
+  const t = String(colTypes?.get?.(col) || '').toLowerCase();
   if (UNICODE_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: false };
   if (ANSI_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: true };
   return { expr: `CAST(${quoteIdent(col)} AS NVARCHAR(MAX))`, ansi: false };
@@ -1001,7 +1030,7 @@ function initInventory(app) {
           },
           // Alias satiri hic yoksa (henuz bir gorunen ad girilmemis) varsayilan true —
           // setAlias() ile ayni varsayilan (bkz. dosya basi).
-          aliasActive: r.alias_active === false || r.alias_active === 0 ? false : true,
+          aliasActive: !(r.alias_active === false || r.alias_active === 0),
         })),
       });
     } catch (err) {
@@ -1482,7 +1511,7 @@ function initInventory(app) {
       if (!pool) return res.status(503).json({ ok: false, error: 'Veritabanı bağlantısı yok.' });
 
       // UYGULANAN KOSUL GORUNUR OLSUN (kullanici, 2026-10-01: "envanterde sorgular bir
-      // sapitiyor... cluster name gbocpqa1 icerir OR cluster name gbocpqa2 icerir deyip
+      // sapitiyor... cluster name orocpqa1 icerir OR cluster name orocpqa2 icerir deyip
       // uyguladigimiz zaman sorgu adam akilli calismiyor").
       //
       // Gelismis filtre TEK BASINA calismiyor: arama kutusu, kolon basligi suzgecleri ve
@@ -1642,7 +1671,7 @@ function initInventory(app) {
   // kod incelemesi, review.md #3).
   router.post('/query', async (req, res) => {
     const startedAt = Date.now();
-    const username = (getRequestUser(req) && getRequestUser(req).username) || 'system';
+    const username = getRequestUser(req)?.username || 'system';
     // actions.md #20 — TAM audit: genel auditMutations middleware'i (dosya basi) yalniz
     // 2xx yanitlarda ve yalniz URL+redakte-body yakalar; sorgu suresi/satir-sayisi/basarili-
     // basarisiz/hata-mesaji/kullanilan-tablolari YAKALAMAZ. Bu route kendi ozel audit girisini
@@ -1709,7 +1738,10 @@ function initInventory(app) {
     // satir donuyor"). Istemci limit gondermiyordu, 200 sessizce kesiyordu. Sinira takilan
     // sonuc `truncated` ile bildirilir; kullanici daraltmak icin sorguya WHERE/TOP ekler.
     const MAX_ROWS = 10000;
-    const limit = Math.min(MAX_ROWS, Math.max(1, Number.parseInt(limitParam || String(MAX_ROWS), 10)));
+    const limit = Math.min(
+      MAX_ROWS,
+      Math.max(1, Number.parseInt(limitParam || String(MAX_ROWS), 10)),
+    );
 
     try {
       // actions.md #20.1 — AYRI salt-okunur havuz tercih edilir; tanimli degilse (DBA henuz
@@ -1820,7 +1852,7 @@ function initInventory(app) {
     const queries = readSavedQueries();
     const idx = queries.findIndex((q) => q.name === name);
     if (idx < 0) return res.status(404).json({ ok: false, error: 'Sorgu bulunamadı.' });
-    const username = (getRequestUser(req) && getRequestUser(req).username) || '';
+    const username = getRequestUser(req)?.username || '';
     queries[idx].isPublished = !queries[idx].isPublished;
     if (queries[idx].isPublished) queries[idx].publishedBy = username;
     try {
@@ -1890,7 +1922,10 @@ function initInventory(app) {
   // YALNIZ ADMIN (kullanici, 2026-09-17): envanteri yenilemek tum sunuculara baglanan bir
   // AWX job'i baslatir; sunucu tarafinda kapi, dugmeyi gizlemek yetmez (API dogrudan cagrilabilir).
   router.post('/refresh/run', async (req, res) => {
-    if (!isAdmin(req)) return res.status(403).json({ ok: false, message: 'Envanteri yenilemek için yönetici yetkisi gerekli.' });
+    if (!isAdmin(req))
+      return res
+        .status(403)
+        .json({ ok: false, message: 'Envanteri yenilemek için yönetici yetkisi gerekli.' });
     const { choices } = req.body || {};
     if (!Array.isArray(choices) || choices.length === 0) {
       return res.status(400).json({ ok: false, message: 'En az bir değer seçilmeli.' });
@@ -2045,7 +2080,10 @@ function initInventory(app) {
     try {
       const { effectiveTables } = require('./history-config.cjs');
       const tables = (await effectiveTables()).map((t) => ({
-        table: t.table, label: t.label, mode: t.mode, key: t.key,
+        table: t.table,
+        label: t.label,
+        mode: t.mode,
+        key: t.key,
       }));
       res.json({ ok: true, tables });
     } catch (err) {
@@ -2089,7 +2127,9 @@ function initInventory(app) {
         return d;
       };
       const out = await require('./history.cjs').diff(
-        String(req.query.table || ''), mk(req.query.from), mk(req.query.to),
+        String(req.query.table || ''),
+        mk(req.query.from),
+        mk(req.query.to),
       );
       res.json({ ok: true, ...out });
     } catch (err) {
@@ -2102,7 +2142,8 @@ function initInventory(app) {
     try {
       const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
       const series = await require('./history.cjs').rowCountSeries(
-        String(req.query.table || ''), days,
+        String(req.query.table || ''),
+        days,
       );
       res.json({ ok: true, series });
     } catch (err) {
@@ -2124,7 +2165,13 @@ function initInventory(app) {
         table: r.table_name,
         label: r.label,
         mode: r.mode,
-        key: (() => { try { return JSON.parse(r.key_columns || '[]'); } catch { return []; } })(),
+        key: (() => {
+          try {
+            return JSON.parse(r.key_columns || '[]');
+          } catch {
+            return [];
+          }
+        })(),
         enabled: r.enabled === true || r.enabled === 1,
         updatedAt: r.updated_at,
         updatedBy: r.updated_by,
@@ -2163,7 +2210,8 @@ function initInventory(app) {
     if (enabled && keys.length === 0) {
       return res.status(400).json({
         ok: false,
-        message: 'Geçmişi tutmak için en az bir anahtar kolon seçin — anahtar, "aynı satır" tanımıdır.',
+        message:
+          'Geçmişi tutmak için en az bir anahtar kolon seçin — anahtar, "aynı satır" tanımıdır.',
       });
     }
     try {
@@ -2171,7 +2219,9 @@ function initInventory(app) {
         const cols = (await getColumns(name)).map((c) => c.toLowerCase());
         const missing = keys.filter((k) => !cols.includes(k.toLowerCase()));
         if (missing.length) {
-          return res.status(400).json({ ok: false, message: `Tabloda olmayan kolon(lar): ${missing.join(', ')}` });
+          return res
+            .status(400)
+            .json({ ok: false, message: `Tabloda olmayan kolon(lar): ${missing.join(', ')}` });
         }
       }
       const dbx = require('../db/index.cjs');

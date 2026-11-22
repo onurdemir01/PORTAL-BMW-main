@@ -9,23 +9,23 @@
 // LISTE KOPYALANMADI: baslik, menuyu ve gorunurluk agacini da besleyen TEK kaynaktan
 // (src/config/elements.ts PAGES) turetilir. Yeni bir sayfa eklendiginde basligi
 // kendiliginden gelir; ayri bir eslemeyi guncellemeyi unutma ihtimali yok.
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
-import { PAGES } from "@/config/elements";
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { PAGES } from '@/config/elements';
 
-export const APP_NAME = "BMW Portal";
+export const APP_NAME = 'BMW Portal';
 
 /** Yol -> sayfa etiketi. En UZUN eslesme kazanir: "/admin/users" gibi alt yollar da
  *  dogru sayfaya baglansin, ama "/" her seyle eslesmesin. */
 // Menude yeri OLMAYAN ama kendi basligini hak eden yollar (PAGES'te bulunmazlar).
-const MENU_DISI: Record<string, string> = { "/403": "Yetkisiz Erişim" };
+const MENU_DISI: Record<string, string> = { '/403': 'Yetkisiz Erişim' };
 
 export function titleForPath(pathname: string): string {
   if (MENU_DISI[pathname]) return `${MENU_DISI[pathname]} · ${APP_NAME}`;
   let best: { label: string; len: number } | null = null;
   for (const p of PAGES) {
-    if (p.route === "/") continue;
-    if (pathname === p.route || pathname.startsWith(p.route + "/")) {
+    if (p.route === '/') continue;
+    if (pathname === p.route || pathname.startsWith(p.route + '/')) {
       if (!best || p.route.length > best.len) best = { label: p.label, len: p.route.length };
     }
   }

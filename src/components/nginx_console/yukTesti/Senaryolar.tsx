@@ -833,7 +833,7 @@ function YeniSenaryo({ onKapat, onKaydedildi }: { onKapat: () => void; onKaydedi
             id="sen-vhost"
             value={vhost}
             onChange={(e) => setVhost(e.target.value.trim().toLowerCase())}
-            placeholder="ornek-test.fw.garantibbva.com.tr"
+            placeholder="ornek-test.fw.ornekbanka.invalid"
             autoComplete="off"
             spellCheck={false}
             className={GIRDI}

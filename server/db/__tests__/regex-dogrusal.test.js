@@ -2,9 +2,10 @@
 // dogrusal yazildi; yeni desen (KAYNAKTAN okunur) eskisiyle AYNI sonucu verir, kotu girdide hizli biter.
 //
 //   DR1 kolon yakalama (match): eski `\s+([^;]+?)\s*(?:;\s*)?$` uc niceleyici bosluk takas ediyordu
-//       (kolon icindeki uzun bosluk dizisinde karesel). Yeni grup: bosluksuz / ';'siz baslayip biten
-//       kolon metni `[^\s;](?:[^;]*[^\s;])?`; kolon hic yoksa (RETURNING + bosluk + istege bagli ';')
-//       eskinin geri izleyip sectigi SON bosluk karakteri: `\s(?=(?:;\s*)?$)`. Grup 1 birebir ayni.
+//       (kolon icindeki uzun bosluk dizisinde karesel). Yeni: `\s([^;]+)(?:;\s*)?$` (DR2'nin varlik
+//       kosuluyla ayni). Eslesme baslangici ve tam eslesme ayni; grup 1 artik cevresindeki bosluklari da
+//       tasir, kod onu yalniz trim() ile kullanir: karsilastirilan, kodun okudugu deger (trim edilmis
+//       kolonlar). Grubun ham hali bir sozlesme degil (2026-11-20, Sonar S5843 karmasiklik 23 -> 5).
 //   DR2 cumleyi silme (replace): eslesme hep metnin sonuna uzanir, yalniz BASLANGICI onemli. Varlik
 //       kosulu `\s+[^;]+?\s*(;\s*)?$` == `\s[^;]+(;\s*)?$` (bosluk [^;] icinde); bastaki `\s*` geri bakisla
 //       bosluk dizisinin basina capali (her bosluktan yeniden deneme yok).
@@ -13,6 +14,7 @@
 'use strict';
 
 const { test } = require('node:test');
+const assert = require('node:assert/strict');
 const H = require('../../__tests__/fixtures/regex-esdeger.cjs');
 
 const DB = H.kaynak('server/db/index.cjs');
@@ -52,11 +54,18 @@ const SQL_UC = [
   'x RETURNING\n\tid\n',
 ];
 
-test('DR1 RETURNING kolon yakalama: grup ve eslesme ayni, kotu girdide hizli', () => {
+test('DR1 RETURNING kolon yakalama: eslesme ve kolonlar ayni, kotu girdide hizli', () => {
   const yeni = H.literalAl(DB, 'const m = sql.match(');
+  // Kodun okudugu: eslesme var mi, nerede baslar, tam eslesme, trim edilmis kolon metni.
+  const okunan = (re) => (s) => {
+    const m = re.exec(s);
+    return m && { i: m.index, tam: m[0], kolonlar: m[1].trim() };
+  };
+  assert.match(DB, /const rawCols = m\[1\]\.trim\(\);/);
   H.esdeger({
-    eski: /\bRETURNING\b\s+([^;]+?)\s*(?:;\s*)?$/i,
-    yeni,
+    eski: okunan(/\bRETURNING\b\s+([^;]+?)\s*(?:;\s*)?$/i),
+    yeni: okunan(yeni),
+    kip: 'fn',
     tokenlar: SQL,
     el: SQL_UC,
     onek: SQL_ONEK,

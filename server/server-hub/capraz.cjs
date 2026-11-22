@@ -57,7 +57,7 @@ function tabanAd(ad) {
 
 const taze = (h) => !h.taramadanDustu && h.fresh !== false;
 /**
- * YALNIZ ENVANTERDE (2026-11-14, uretim GBJIST02): assess.cjs taramada JVM'i bulunamayan
+ * YALNIZ ENVANTERDE (2026-11-14, uretim ORJIST02): assess.cjs taramada JVM'i bulunamayan
  * MWAppsInventory uygulamasini gen 0 satir olarak tutar (source 'envanter'). Bu satir TARAMA JVM'I
  * DEGILDIR: kopya grubu, kalinti / OpenShift / Retirement celiskisi, Uygulama 360 kopyasi, retire
  * etiketi ve iliski grafigi onu atlar. TEK yuklem; tuketiciler bunu cagirir.
@@ -66,11 +66,11 @@ const yalnizEnvanter = (j) => !!j && (j.yalnizEnvanter === true || j.source === 
 const bilinen = (j) => j.runningKnown !== false;
 /**
  * Tarama JVM'inin UYGULAMA taban adi. assess.cjs envanterEslestir numarali / grup eslesmesinde JVM'e
- * envanter uygulamasini (invApp) yazar: GBFACELIFTSUBE-T1 -> invApp GBFACELIFTSUBE-T -> taban
- * GBFACELIFTSUBE. JVM adi (-T1) standart ortam eki tasimadigi icin tabanAd(j.name) onu ayri
+ * envanter uygulamasini (invApp) yazar: ORFACELIFTSUBE-T1 -> invApp ORFACELIFTSUBE-T -> taban
+ * ORFACELIFTSUBE. JVM adi (-T1) standart ortam eki tasimadigi icin tabanAd(j.name) onu ayri
  * uygulama sayiyordu (prod kopyasi bulunamaz -> yanlis ORTAM_KALINTISI / R10).
  */
-const uygTaban = (j) => tabanAd((j && j.invApp) || (j && j.name));
+const uygTaban = (j) => tabanAd(j?.invApp || j?.name);
 const yolAdi = (y) =>
   String(y || '')
     .replace(/(?<!\/)\/+$/, '')
@@ -134,7 +134,7 @@ function kurumBicimiKur(DTF = Intl.DateTimeFormat) {
     });
   } catch (e) {
     console.warn(
-      `[ServerHub] ${KURUM_TZ} saat dilimi kullanilamiyor (${(e && e.message) || e}); kurum gunu sabit UTC+3 ile hesaplanir`,
+      `[ServerHub] ${KURUM_TZ} saat dilimi kullanilamiyor (${e?.message || e}); kurum gunu sabit UTC+3 ile hesaplanir`,
     );
     return null;
   }
@@ -285,11 +285,10 @@ function kopyaKarari(grup) {
  * @returns {{ jvm: (host: string, j: object) => object|null, host: (host: string) => object[] }}
  */
 function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => null } = {}) {
-  const ocp = capraz && capraz.ocp && !capraz.ocp.okunamadi ? capraz.ocp.indeks : null;
-  const kullanim =
-    capraz && capraz.kullanim && !capraz.kullanim.okunamadi ? capraz.kullanim.indeks : null;
+  const ocp = capraz?.ocp && !capraz.ocp.okunamadi ? capraz.ocp.indeks : null;
+  const kullanim = capraz?.kullanim && !capraz.kullanim.okunamadi ? capraz.kullanim.indeks : null;
   const ret =
-    capraz && capraz.retirement && !capraz.retirement.okunamadi ? capraz.retirement.hedefler : null;
+    capraz?.retirement && !capraz.retirement.okunamadi ? capraz.retirement.hedefler : null;
   const sonuc = new Map();
   const hostSonuc = new Map();
   const anahtar = (h, j) => `${h.host}|${Number(j.gen) || 0}|${L(j.name)}`;
@@ -316,8 +315,8 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
   // ── Retirement indeksi: host|uygulama -> hedefler ─────────────────────────────
   const retIx = new Map();
   for (const t of ret || []) ekle(retIx, `${kisaHost(t.host)}|${L(t.uygulama)}`, t);
-  // Retirement hedefinin uygulamasi MWAppsInventory adidir (or. GBFACELIFTSUBE-T); numarali / grup
-  // eslesmesiyle baglanan tarama JVM'i (GBFACELIFTSUBE-T1) o kayda invApp uzerinden de baglanir.
+  // Retirement hedefinin uygulamasi MWAppsInventory adidir (or. ORFACELIFTSUBE-T); numarali / grup
+  // eslesmesiyle baglanan tarama JVM'i (ORFACELIFTSUBE-T1) o kayda invApp uzerinden de baglanir.
   const retOf = (h, j) =>
     [
       ...new Set([
@@ -373,7 +372,7 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
   // ── kalinti: prod'da calismayan uygulamanin non-prod kopyasi calisiyor ─────────
   const envanterProd = new Set();
   for (const a of envanter || [])
-    if (a && a.env === 'PROD' && a.app) envanterProd.add(U(tabanAd(a.app)));
+    if (a?.env === 'PROD' && a.app) envanterProd.add(U(tabanAd(a.app)));
   for (const [taban, liste] of tabanIx) {
     const calisanNonprod = liste.filter(
       (c) => NONPROD.has(c.h.env) && taze(c.h) && bilinen(c.j) && c.j.running,
@@ -426,7 +425,7 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
           istek = 0;
           for (const k of new Set(hits.map((x) => `${L(x.namespace)}|${L(x.uygulama)}`))) {
             const o = kullanim.get(k);
-            if (!o || o.reqShown == null) olculdu = false;
+            if (o?.reqShown == null) olculdu = false;
             else {
               istek += o.reqShown;
               if (o.windowDays && (!pencere || o.windowDays < pencere)) pencere = o.windowDays;
@@ -562,7 +561,7 @@ function kopyaMetni(j, k) {
   // "x/y kopya calisiyor" (2026-11-14; kullanici: "prod'da toplam 5 makinede sadece birinde acik").
   if (typeof k.calisanSayisi === 'number')
     parca.push(
-      `${k.calisanSayisi}/${k.toplamSayisi || k.kopyaSayisi} kopya çalışıyor${k.bilinmeyenSayisi ? ` (${k.bilinmeyenSayisi} bilinmiyor)` : ''}`,
+      `${k.calisanSayisi}/${k.toplamSayisi || k.kopyaSayisi} kopya çalışıyor${k.bilinmeyenSayisi ? ' (' + k.bilinmeyenSayisi + ' bilinmiyor)' : ''}`,
     );
   if (k.nedenler.includes('calisma')) parca.push('bu kopya kapalı, aynı ortamda çalışan kopya var');
   if (k.nedenler.includes('autostart'))
@@ -589,7 +588,7 @@ function kalintiMetni(k) {
       return `prod kopyası Retirement ile durduruldu (#${k.retirement.join(', #')})`;
     return `prod kopyaları kapalı: ${k.prodKopyalar.map((p) => p.host).join(', ')}`;
   })();
-  const o = k.ocpProd && k.ocpProd[0];
+  const o = k.ocpProd?.[0];
   const ocp = o
     ? ` — OpenShift prod'da var (${o.namespace} @ ${o.cluster}${fazlasi(k.ocpProd.length, 1)}): uygulama taşınmış olabilir`
     : '';

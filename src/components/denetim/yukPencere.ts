@@ -83,13 +83,21 @@ export function kismiAciklama(t: YukOlcumu): string {
       `Okunan access log ${pencereSuresi(t.pencereSaat)} kapsıyor (tarama günü 00:00'dan geriye ${t.pencereSaat} saat) ve bu sürede sağlık kontrolü dışında istek görülmedi. Sunucudaki log saklama süresi 7 günden kısa olabilir (günlük rotasyon).`,
     );
   if (k.includes('pencere-bilinmiyor'))
-    c.push('Ölçülen sürenin başı bu taramada yok (eski tarama sürümü): kaç gün bakıldığı bilinmiyor.');
+    c.push(
+      'Ölçülen sürenin başı bu taramada yok (eski tarama sürümü): kaç gün bakıldığı bilinmiyor.',
+    );
   if (k.includes('sampled'))
-    c.push('Log dosyasının tamamı okunamadı (okuma bütçesi bitti ya da eski bir log dosyası açılamadı); okunan bölüm 7 günü kapsamıyor.');
+    c.push(
+      'Log dosyasının tamamı okunamadı (okuma bütçesi bitti ya da eski bir log dosyası açılamadı); okunan bölüm 7 günü kapsamıyor.',
+    );
   if (k.includes('okunamayan-sunucu'))
-    c.push(`${t.unknownHosts || 'Bir'} sunucuda access log okunamadı; oraya gelen istek bilinmiyor.`);
+    c.push(
+      `${t.unknownHosts || 'Bir'} sunucuda access log okunamadı; oraya gelen istek bilinmiyor.`,
+    );
   if (k.includes('satirsiz-sunucu'))
-    c.push(`${t.missingHosts || 'Bir'} sunucuda bu tanımın o günkü ölçüm satırı yok (tarama zaman aşımı ya da trafik adımı kapalı).`);
+    c.push(
+      `${t.missingHosts || 'Bir'} sunucuda bu tanımın o günkü ölçüm satırı yok (tarama zaman aşımı ya da trafik adımı kapalı).`,
+    );
   if (!c.length) c.push('Ölçüm 7 günün tamamını ve tanımın her sunucusunu kapsamıyor.');
   c.push('7 günün tamamı ölçülemediği için “yük almıyor” DENMEZ.');
   return c.join(' ');

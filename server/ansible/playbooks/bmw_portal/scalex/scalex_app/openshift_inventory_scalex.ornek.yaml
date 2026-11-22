@@ -1,0 +1,382 @@
+---
+# KURGUSAL ORNEK (2026-11-20): gercek katalog repoda TUTULMAZ (kurum sunucu / cluster / alan adlari).
+# AWX'te bu klasorde `openshift_inventory_scalex.yaml` adiyla gercek degerler durur; playbook o dosyayi okur
+# (yalniz Portal scalex_clusters_override gondermediginde). Bu dosya bicim icindir, AWX'e kopyalanmaz.
+# Cluster kataloğu.
+# Aktif/pasif: enabled: true|false
+# Grup: platform + environments (ör. ark_dev, hosting_qa)
+# SSH hedefi farklıysa ansible_host kullan.
+# credential, ../global_variables/credentials.yaml içindeki variable adıdır.
+# oc yolu farklıysa defaults.oc_paths listesine ekle.
+#
+# Örnek:
+# mycluster:
+#   enabled: true
+#   platform: ark
+#   environments: [test]
+#   jump_server: myjump01
+#   ansible_host: ORAOCP01
+#   api_url: https://api.mycluster.example:6443
+#   credential: svcac_gar
+#
+version: 1
+defaults:
+  tls_verify: false
+  # oc client bu sırayla aranır; bulunamazsa PATH son fallback olarak kontrol edilir.
+  # Ortamda farklı bir konum varsa yalnızca bu listeye mutlak yolu ekleyin.
+  oc_paths:
+    - /bin/oc
+    - /usr/local/bin/oc
+    - /usr/bin/oc
+clusters:
+  orocpdrcprod1:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: ordrcp51
+    api_url: https://api.orocpdrcprod1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpcicd2:
+    enabled: true
+    platform: cicd
+    environments: [cicd]
+    jump_server: orocpcicd2
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpcicd2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpcicd3:
+    enabled: true
+    platform: cicd
+    environments: [cicd]
+    jump_server: orocpcicd3
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpcicd3.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocp3rdprod1:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: orhstp51
+    api_url: https://api.orocp3rdprod1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocp3rdprod2:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: orhstp52
+    api_url: https://api.orocp3rdprod2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpank3rdprod2:
+    enabled: true
+    platform: hosting
+    environments: [prod]
+    jump_server: orhstap81
+    api_url: https://api.orocpank3rdprod2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  oiocp3rdprod1:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: oihstp51
+    api_url: https://api.oiocp3rdprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gtek
+  oiocp3rdprod2:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: oihstp52
+    api_url: https://api.oiocp3rdprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gtek
+  oiocpank3rdprod2:
+    enabled: true
+    platform: istirak-hosting
+    environments: [prod]
+    jump_server: oihstap81
+    api_url: https://api.oiocpank3rdprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gtek
+  odocpprod1:
+    enabled: true
+    platform: metaco_das
+    environments: [prod]
+    jump_server: odocpprod1
+    ansible_host: ORAOCP01
+    api_url: https://api.odocpprod1.fw.dijitalornek.invalid:6443
+    credential: svcac_das
+  orocp3rdcwprod1:
+    enabled: true
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: orocp3rdcwprod1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocp3rdcwprod1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  oiocp3rdwyprod1:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: orwydp51
+    api_url: https://api.oiocp3rdwyprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  oiocp3rdwyprod2:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: orwydp52
+    api_url: https://api.oiocp3rdwyprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  oiocpank3rdwyprod1:
+    enabled: true
+    platform: wyden
+    environments: [prod]
+    jump_server: oiocpank3rdwyprod1
+    ansible_host: ORAOCP01
+    api_url: https://api.oiocpank3rdwyprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpprod1:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: orarkp51
+    api_url: https://api.orocpprod1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpprod2:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: orarkp52
+    api_url: https://api.orocpprod2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpankprod2:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: orarkap82
+    api_url: https://api.orocpankprod2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpprod4:
+    enabled: true
+    platform: ark
+    environments: [prod]
+    jump_server: orarkp54
+    api_url: https://api.orocpprod4.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocplab1:
+    enabled: true
+    platform: ark
+    environments: [lab]
+    jump_server: orocplab1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocplab1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocplab2:
+    enabled: true
+    platform: ark
+    environments: [lab]
+    jump_server: orocplab2
+    ansible_host: ORAOCP01
+    api_url: https://api.orocplab2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpedu1:
+    enabled: true
+    platform: ark
+    environments: [edu]
+    jump_server: orocpedu1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpedu1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocptest1:
+    enabled: true
+    platform: ark
+    environments: [dev, test]
+    jump_server: orocptest1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocptest1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocptest2:
+    enabled: true
+    platform: ark
+    environments: [dev, test]
+    jump_server: orocptest2
+    ansible_host: ORAOCP01
+    api_url: https://api.orocptest2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocptest4:
+    enabled: true
+    platform: ark
+    environments: [dev, test, qa]
+    jump_server: orocptest4
+    ansible_host: ORAOCP01
+    api_url: https://api.orocptest4.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpqa1:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: orocpqa1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpqa1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpqa2:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: orocpqa2
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpqa2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocpankqa2:
+    enabled: true
+    platform: ark
+    environments: [qa]
+    jump_server: orocpankqa2
+    ansible_host: ORAOCP01
+    api_url: https://api.orocpankqa2.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocp3rdtest3:
+    enabled: true
+    platform: hosting
+    environments: [dev, test, qa]
+    jump_server: orocp3rdtest3
+    ansible_host: ORAOCP01
+    api_url: https://api.orocp3rdtest3.fw.sirket.invalid:6443
+    credential: svcac_gar
+  orocp3rdtest4:
+    enabled: true
+    platform: hosting
+    environments: [dev, test, qa]
+    jump_server: orocp3rdtest4
+    ansible_host: ORAOCP01
+    api_url: https://api.orocp3rdtest4.fw.sirket.invalid:6443
+    credential: svcac_gar
+  oiocp3rdtest3:
+    enabled: true
+    platform: istirak-hosting
+    environments: [dev, test, qa]
+    jump_server: oiocp3rdtest3
+    ansible_host: ORAOCP01
+    api_url: https://api.oiocp3rdtest3.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  oiocp3rdtest4:
+    enabled: true
+    platform: istirak-hosting
+    environments: [dev, test, qa]
+    jump_server: oiocp3rdtest4
+    ansible_host: ORAOCP01
+    api_url: https://api.oiocp3rdtest4.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  odocptest1:
+    enabled: true
+    platform: metaco_das
+    environments: [dev, test, qa]
+    jump_server: odocptest1
+    ansible_host: ORAOCP01
+    api_url: https://api.odocptest1.fw.dijitalornek.invalid:6443
+    credential: svcac_das
+  orocp3rdcwtest1:
+    enabled: true
+    platform: metaco_gar
+    environments: [dev, test, qa]
+    jump_server: orocp3rdcwtest1
+    ansible_host: ORAOCP01
+    api_url: https://api.orocp3rdcwtest1.fw.sirket.invalid:6443
+    credential: svcac_gar
+  oiocp3rdwytest1:
+    enabled: true
+    platform: wyden
+    environments: [dev, test, qa]
+    jump_server: oiocp3rdwytest1
+    ansible_host: ORAOCP01
+    api_url: https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  oiocp3rdwytest2:
+    enabled: true
+    platform: wyden
+    environments: [dev, test, qa]
+    jump_server: oiocp3rdwytest2
+    ansible_host: ORAOCP01
+    api_url: https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpinsprod2:
+    enabled: false
+    platform: instana
+    environments: [prod]
+    jump_server: orinsp52
+    api_url: https://api.orocpinsprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  odocpprod2:
+    enabled: false
+    platform: metaco_das
+    environments: [prod]
+    jump_server: odmtcp52
+    api_url: https://api.odocpprod2.fw.dijitalornek.invalid:6443
+    credential: svcac_das
+  odocpankprod1:
+    enabled: false
+    platform: metaco_das
+    environments: [prod]
+    jump_server: odmtcap81
+    api_url: https://api.odocpankprod1.fw.dijitalornek.invalid:6443
+    credential: svcac_das
+  orocpcdsprod1:
+    enabled: false
+    platform: cds
+    environments: [prod]
+    jump_server: orcdsp51
+    api_url: https://api.orocpcdsprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocp3rdcwprod2:
+    enabled: false
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: ormtcp52
+    api_url: https://api.orocp3rdcwprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpank3rdcwprod1:
+    enabled: false
+    platform: metaco_gar
+    environments: [prod]
+    jump_server: ormtcap81
+    api_url: https://api.orocpank3rdcwprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocp3rdaicprod1:
+    enabled: false
+    platform: ai
+    environments: [prod]
+    jump_server: oroaip51
+    api_url: https://api.orocp3rdaicprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpank3rdaiprod1:
+    enabled: false
+    platform: ai
+    environments: [prod]
+    jump_server: oroaiap81
+    api_url: https://api.orocpank3rdaiprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocparkaiprod1:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: oraaip51
+    api_url: https://api.orocparkaiprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocparkaiprod2:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: oraaip52
+    api_url: https://api.orocparkaiprod2.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpankarkaiprod1:
+    enabled: false
+    platform: ark_ai
+    environments: [prod]
+    jump_server: oraaiap81
+    api_url: https://api.orocpankarkaiprod1.fw.teknoloji.invalid:6443
+    credential: svcac_gar
+  orocpprod3:
+    enabled: false
+    platform: ark
+    environments: [prod]
+    jump_server: orarkp53
+    api_url: https://api.orocpprod3.fw.sirket.invalid:6443
+    credential: svcac_gar

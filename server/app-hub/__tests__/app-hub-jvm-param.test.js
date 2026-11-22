@@ -65,15 +65,21 @@ sahte(require.resolve('../../opsx/index.cjs'), {
 const isler = new Set();
 sahte(require.resolve('../../db/index.cjs'), {
   query: async (t, p) => {
-    if (/^SELECT TOP 1 id FROM ansible_job_history/.test(t)) return { rows: isler.has(`${p[0]}|${p[1]}`) ? [{ id: 1 }] : [] };
+    if (/^SELECT TOP 1 id FROM ansible_job_history/.test(t))
+      return { rows: isler.has(`${p[0]}|${p[1]}`) ? [{ id: 1 }] : [] };
     kayit.gecmis.push(p);
     return { rows: [] };
   },
 });
 sahte(require.resolve('../../auth/index.cjs'), {
-  requireAdmin: (req, res, next) => (req.session && req.session.user && req.session.user.role === 'Admin' ? next() : res.status(403).json({ ok: false })),
+  requireAdmin: (req, res, next) =>
+    req.session && req.session.user && req.session.user.role === 'Admin'
+      ? next()
+      : res.status(403).json({ ok: false }),
 });
-sahte(require.resolve('../../auth/visibility.cjs'), { requireVisiblePrefix: () => (_q, _s, n) => n() });
+sahte(require.resolve('../../auth/visibility.cjs'), {
+  requireVisiblePrefix: () => (_q, _s, n) => n(),
+});
 const muaf = [];
 sahte(require.resolve('../../audit/index.cjs'), {
   auditMutations: (_p, o) => {
@@ -138,14 +144,60 @@ const sifirla = () => {
   kayit.kapi.length = 0;
   kapiYaniti = { proceed: true };
 };
-const govde = (ek = {}) => ({ host: 'GOJBAP01', gen: 8, jvm: 'MUSTERI', parametre: '-Dapp.env=prod', ...ek });
+const govde = (ek = {}) => ({
+  host: 'GOJBAP01',
+  gen: 8,
+  jvm: 'MUSTERI',
+  parametre: '-Dapp.env=prod',
+  ...ek,
+});
 
 test('JP1 izin listesi ve sir anahtari', () => {
-  for (const iyi of ['-Dapp.env=prod', '-Dbayrak', '-Xmx2g', '-Xms512m', '-Xss1m', '-XX:+UseG1GC', '-XX:-UseG1GC', '-XX:MaxMetaspaceSize=512m', '-Dlog.path=/vhosting/logs/a.log', '-Durl=http://x:8080/a'])
+  for (const iyi of [
+    '-Dapp.env=prod',
+    '-Dbayrak',
+    '-Xmx2g',
+    '-Xms512m',
+    '-Xss1m',
+    '-XX:+UseG1GC',
+    '-XX:-UseG1GC',
+    '-XX:MaxMetaspaceSize=512m',
+    '-Dlog.path=/vhosting/logs/a.log',
+    '-Durl=http://x:8080/a',
+  ])
     assert.equal(J.parametreDogrula(iyi).ok, true, `kabul edilmeli: ${iyi}`);
-  for (const kotu of ['', 'Dx=1', '-Dx="a b"', '-Dx=a b', '-Dx=$(id)', '-Dx=a;b', '-Dx=a,b', '-Dx=***', '-Dx=a`b`', '-XX:OnOutOfMemoryError=kill', '-XX:OnError=x', '-javaagent:/a.jar', '-agentlib:jdwp', '-Djava.security.manager=allow', '-Xmx2g -Dx=1', '-Ddb.password=x', '-Dapi.key=x', '-Dkeystore.pass=x', '-Dsecret=x', '-Xmx2g' + String.fromCharCode(10) + '-Dx=1',
+  for (const kotu of [
+    '',
+    'Dx=1',
+    '-Dx="a b"',
+    '-Dx=a b',
+    '-Dx=$(id)',
+    '-Dx=a;b',
+    '-Dx=a,b',
+    '-Dx=***',
+    '-Dx=a`b`',
+    '-XX:OnOutOfMemoryError=kill',
+    '-XX:OnError=x',
+    '-javaagent:/a.jar',
+    '-agentlib:jdwp',
+    '-Djava.security.manager=allow',
+    '-Xmx2g -Dx=1',
+    '-Ddb.password=x',
+    '-Dapi.key=x',
+    '-Dkeystore.pass=x',
+    '-Dsecret=x',
+    '-Xmx2g' + String.fromCharCode(10) + '-Dx=1',
     // inceleme 2026-11-11: baska dosyadan secenek / sinif yukleyen, uzak yonetim acan, TLS degistiren
-    '-XX:VMOptionsFile=/tmp/x', '-XX:Flags=/tmp/x', '-Djava.ext.dirs=/tmp', '-Djava.class.path=/tmp', '-Djava.system.class.loader=x.Y', '-Dcom.sun.management.jmxremote.authenticate=false', '-Dcom.sun.management.jmxremote.port=9010', '-Djava.rmi.server.hostname=x', '-Djavax.net.ssl.trustStore=/tmp/t'])
+    '-XX:VMOptionsFile=/tmp/x',
+    '-XX:Flags=/tmp/x',
+    '-Djava.ext.dirs=/tmp',
+    '-Djava.class.path=/tmp',
+    '-Djava.system.class.loader=x.Y',
+    '-Dcom.sun.management.jmxremote.authenticate=false',
+    '-Dcom.sun.management.jmxremote.port=9010',
+    '-Djava.rmi.server.hostname=x',
+    '-Djavax.net.ssl.trustStore=/tmp/t',
+  ])
     assert.equal(J.parametreDogrula(kotu).ok, false, `reddedilmeli: ${kotu}`);
   assert.equal(J.anahtar('-XX:+UseG1GC'), J.anahtar('-XX:-UseG1GC'));
   assert.equal(J.anahtar('-Dapp.env=a'), '-Dapp.env');
@@ -164,8 +216,14 @@ test('JP2 plan: plan_only, prod kapisi yok, kayitlarda deger acik (sir anahtari 
   assert.equal(kayit.kapi.length, 0, 'plan prod kapisina gitti');
   assert.equal(kayit.launch.length, 1);
   const ev = kayit.launch[0].extraVars;
-  assert.deepEqual([ev.action, ev.plan_only, ev.target_host, ev.jvm, ev.gen, ev.jvm_option], ['jboss_jvm_option', true, 'GOJBAP01', 'MUSTERI', 8, '-Dapp.env=prod']);
-  assert.ok(JSON.stringify(kayit.gecmis).includes('Application Hub JVM parametresi plan'), 'is gecmisi sablon adi (durum ucu sahiplik kontrolu buna bakar)');
+  assert.deepEqual(
+    [ev.action, ev.plan_only, ev.target_host, ev.jvm, ev.gen, ev.jvm_option],
+    ['jboss_jvm_option', true, 'GOJBAP01', 'MUSTERI', 8, '-Dapp.env=prod'],
+  );
+  assert.ok(
+    JSON.stringify(kayit.gecmis).includes('Application Hub JVM parametresi plan'),
+    'is gecmisi sablon adi (durum ucu sahiplik kontrolu buna bakar)',
+  );
   assert.ok(kayit.denetim.some((d) => d.eylem === 'app_hub_jvm_param_plan'));
   assert.equal(r.body.parametre, '-Dapp.env=prod');
 });
@@ -188,22 +246,47 @@ test('JP3 uygula: onay metni, prod kapisi (ortam bilinmiyorsa uretim), Smart tal
   ]);
   assert.equal(kayit.launch[0].extraVars.plan_only, false);
   // FAIL-CLOSED: yalniz envGroup Non-Production prod disi; BILINMIYOR / bos / PROD -> prod etiketi
-  for (const [env, envGroup] of [['', undefined], ['BILINMIYOR', 'Bilinmiyor'], ['PROD', 'Production'], ['TEST', undefined]]) {
+  for (const [env, envGroup] of [
+    ['', undefined],
+    ['BILINMIYOR', 'Bilinmiyor'],
+    ['PROD', 'Production'],
+    ['TEST', undefined],
+  ]) {
     filo({ env, envGroup });
     sifirla();
     await istek('POST', '/jboss/jvm-param', govde({ apply: true, onayMetni: 'MUSTERI' }));
-    assert.match(String(kayit.kapi[0].etiketler[0].deger), /prod/i, `${env}/${envGroup} prod sayilmadi`);
+    assert.match(
+      String(kayit.kapi[0].etiketler[0].deger),
+      /prod/i,
+      `${env}/${envGroup} prod sayilmadi`,
+    );
     const { uretimIstegi } = jest_uretim();
-    assert.equal(uretimIstegi(kayit.kapi[0].etiketler).uretim, true, `${env}/${envGroup}: gercek uretim tespiti prod demedi`);
+    assert.equal(
+      uretimIstegi(kayit.kapi[0].etiketler).uretim,
+      true,
+      `${env}/${envGroup}: gercek uretim tespiti prod demedi`,
+    );
   }
   filo({ env: 'TEST', envGroup: 'Non-Production' });
   sifirla();
   await istek('POST', '/jboss/jvm-param', govde({ apply: true, onayMetni: 'MUSTERI' }));
-  assert.equal(jest_uretim().uretimIstegi(kayit.kapi[0].etiketler).uretim, false, 'Non-Production test sunucusu prod sayildi');
+  assert.equal(
+    jest_uretim().uretimIstegi(kayit.kapi[0].etiketler).uretim,
+    false,
+    'Non-Production test sunucusu prod sayildi',
+  );
   assert.equal(kayit.kapi[0].ozet.uygulama, 'MUSTERI', 'uygulama adi JVM adindan gelmeli');
   // Smart talebi acildi -> is baslatilmaz
   sifirla();
-  kapiYaniti = { proceed: false, body: { ok: true, pendingApproval: true, externalTicketId: 'S-1', message: 'Smart talebi açıldı' } };
+  kapiYaniti = {
+    proceed: false,
+    body: {
+      ok: true,
+      pendingApproval: true,
+      externalTicketId: 'S-1',
+      message: 'Smart talebi açıldı',
+    },
+  };
   r = await istek('POST', '/jboss/jvm-param', govde({ apply: true, onayMetni: 'MUSTERI' }));
   assert.equal(r.status, 200);
   assert.equal(r.body.pendingApproval, true);
@@ -214,7 +297,10 @@ test('JP4 hedef taramadan dogrulanir', async () => {
   const durumlar = [
     [{ fresh: false }, /bayat/],
     [{ jvms: [] }, /taramada yok/],
-    [{ jvms: [{ name: 'MUSTERI', gen: 8, source: 'cli', cfgSrc: 'UNAVAILABLE' }] }, /tanım kaynağında yok/],
+    [
+      { jvms: [{ name: 'MUSTERI', gen: 8, source: 'cli', cfgSrc: 'UNAVAILABLE' }] },
+      /tanım kaynağında yok/,
+    ],
   ];
   for (const [ek, msj] of durumlar) {
     filo(ek);
@@ -230,8 +316,15 @@ test('JP4 hedef taramadan dogrulanir', async () => {
   assert.equal((await istek('POST', '/jboss/jvm-param', govde())).status, 400);
   filo();
   sifirla();
-  assert.equal((await istek('POST', '/jboss/jvm-param', govde({ gen: 7 }))).status, 400, 'yanlis nesil kabul edildi');
-  assert.equal((await istek('POST', '/jboss/jvm-param', govde({ parametre: '-Dx=$(id)' }))).status, 400);
+  assert.equal(
+    (await istek('POST', '/jboss/jvm-param', govde({ gen: 7 }))).status,
+    400,
+    'yanlis nesil kabul edildi',
+  );
+  assert.equal(
+    (await istek('POST', '/jboss/jvm-param', govde({ parametre: '-Dx=$(id)' }))).status,
+    400,
+  );
   assert.equal(kayit.launch.length, 0);
 });
 
@@ -244,15 +337,38 @@ test('JP5 durum ucu', async () => {
   let r = await istek('GET', '/jboss/jvm-param/2/901');
   assert.deepEqual([r.body.finished, r.body.status], [false, 'running']);
   const once = kayit.onbellek;
-  durum = { status: 'successful', artifacts: { server_hub_fix_result: { action: 'jboss_jvm_option', plan_only: false, line: 'RESULT\tjboss_jvm_option\tOK\tMUSTERI: -Dapp.env=<gizli> degistirildi' } } };
+  durum = {
+    status: 'successful',
+    artifacts: {
+      server_hub_fix_result: {
+        action: 'jboss_jvm_option',
+        plan_only: false,
+        line: 'RESULT\tjboss_jvm_option\tOK\tMUSTERI: -Dapp.env=<gizli> degistirildi',
+      },
+    },
+  };
   r = await istek('GET', '/jboss/jvm-param/2/901');
   assert.deepEqual([r.body.finished, r.body.sonuc, r.body.plan], [true, 'OK', false]);
   assert.match(r.body.mesaj, /degistirildi/);
   assert.equal(kayit.onbellek, once + 1, 'OK sonrasi onbellek silinmedi');
-  durum = { status: 'successful', artifacts: { server_hub_fix_result: { action: 'jboss_jvm_option', plan_only: true, line: 'RESULT\tjboss_jvm_option\tPLAN\tMUSTERI ...' } } };
+  durum = {
+    status: 'successful',
+    artifacts: {
+      server_hub_fix_result: {
+        action: 'jboss_jvm_option',
+        plan_only: true,
+        line: 'RESULT\tjboss_jvm_option\tPLAN\tMUSTERI ...',
+      },
+    },
+  };
   r = await istek('GET', '/jboss/jvm-param/2/902');
   assert.deepEqual([r.body.sonuc, r.body.plan], ['PLAN', true]);
-  durum = { status: 'successful', artifacts: { server_hub_fix_result: { action: 'jboss_retire', line: 'RESULT\tjboss_retire\tOK\tx' } } };
+  durum = {
+    status: 'successful',
+    artifacts: {
+      server_hub_fix_result: { action: 'jboss_retire', line: 'RESULT\tjboss_retire\tOK\tx' },
+    },
+  };
   assert.equal((await istek('GET', '/jboss/jvm-param/2/903')).status, 400);
   assert.equal((await istek('GET', '/jboss/jvm-param/x/1')).status, 400);
 });
@@ -263,9 +379,25 @@ test('JP6 genel denetim katmani bu ucu atlar', async () => {
 });
 
 test('JP7 sozlesme: Portal ve betik izin listesi ayni (Ansible deposu yaninda ise)', (t) => {
-  const betik = path.join(__dirname, '..', '..', '..', '..', '..', '..', 'Downloads', 'Compressed', 'gar_bmt_ansible_scripts', 'bmw_automation_folder', 'server_hub', 'files', 'server_hub_fix.sh');
+  const betik = path.join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    '..',
+    'Downloads',
+    'Compressed',
+    'gar_bmt_ansible_scripts',
+    'bmw_automation_folder',
+    'server_hub',
+    'files',
+    'server_hub_fix.sh',
+  );
   const yol = process.env.SERVER_HUB_FIX_SH || betik;
-  if (!fs.existsSync(yol)) return t.skip('server_hub_fix.sh bu makinede yok (SERVER_HUB_FIX_SH ile verilebilir)');
+  if (!fs.existsSync(yol))
+    return t.skip('server_hub_fix.sh bu makinede yok (SERVER_HUB_FIX_SH ile verilebilir)');
   const s = fs.readFileSync(yol, 'utf8');
   const m = /^JVMOPT_RE='([^']+)'/m.exec(s);
   assert.ok(m, 'betikte JVMOPT_RE yok');

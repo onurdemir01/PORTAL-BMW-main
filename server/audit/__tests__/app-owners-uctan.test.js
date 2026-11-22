@@ -24,23 +24,75 @@ const { buildIntranetRapor } = require('../../spa-report/intranet.cjs');
 const KOK = path.join(__dirname, '..', '..');
 const sahte = (rel, exports) => {
   const yol = path.join(KOK, rel);
-  require.cache[Module._resolveFilename(yol, module)] = { id: yol, filename: yol, loaded: true, exports };
+  require.cache[Module._resolveFilename(yol, module)] = {
+    id: yol,
+    filename: yol,
+    loaded: true,
+    exports,
+  };
 };
 
 const NS = 'kart-prod';
 const APP_ROWS = [
-  { cluster: 'gbocpprod1', namespace: NS, application: 'kart-app-v1', owner_group_name: 'GT-Uyg', owner_email: 'uyg@banka.com', kaynak: 'SI51_AGILE', configuration_id: '4177193', lookup_status: 'OK', lookup_message: '' },
-  { cluster: 'gbocpprod1', namespace: 'rotasiz-prod', application: 'rotasiz-app-v1', owner_group_name: 'GT-Uyg', owner_email: 'uyg@banka.com', kaynak: 'SI51_AGILE', configuration_id: '1', lookup_status: 'OK', lookup_message: '' },
-  { cluster: 'gbocpprod1', namespace: NS, application: 'yok-ui', owner_group_name: 'GT-Uyg', owner_email: 'uyg@banka.com', kaynak: 'ARK997_AGILE', configuration_id: '2', lookup_status: 'OK', lookup_message: '' },
+  {
+    cluster: 'orocpprod1',
+    namespace: NS,
+    application: 'kart-app-v1',
+    owner_group_name: 'GT-Uyg',
+    owner_email: 'uyg@banka.com',
+    kaynak: 'SI51_AGILE',
+    configuration_id: '4177193',
+    lookup_status: 'OK',
+    lookup_message: '',
+  },
+  {
+    cluster: 'orocpprod1',
+    namespace: 'rotasiz-prod',
+    application: 'rotasiz-app-v1',
+    owner_group_name: 'GT-Uyg',
+    owner_email: 'uyg@banka.com',
+    kaynak: 'SI51_AGILE',
+    configuration_id: '1',
+    lookup_status: 'OK',
+    lookup_message: '',
+  },
+  {
+    cluster: 'orocpprod1',
+    namespace: NS,
+    application: 'yok-ui',
+    owner_group_name: 'GT-Uyg',
+    owner_email: 'uyg@banka.com',
+    kaynak: 'ARK997_AGILE',
+    configuration_id: '2',
+    lookup_status: 'OK',
+    lookup_message: '',
+  },
 ];
 const NS_ROWS = [
   { namespace: NS, owner_group_name: 'GT-NS', owner_email: 'ns@banka.com', lookup_status: 'OK' },
-  { namespace: 'rotasiz-prod', owner_group_name: 'GT-NS', owner_email: 'ns@banka.com', lookup_status: 'OK' },
+  {
+    namespace: 'rotasiz-prod',
+    owner_group_name: 'GT-NS',
+    owner_email: 'ns@banka.com',
+    lookup_status: 'OK',
+  },
 ];
 
 const CFG = (application, o = {}) => ({
-  service: 'GLOMO', env: 'PROD', application, namespace: NS, include_name: application, location_path: `/${application}/`,
-  host: 'H1', vhost: 'GLOMO-PROD', deploy_mode: 'namespaced', include_exists: 1, app_deployed: 1, in_ocp_inventory: 1, status: 'OK', ...o,
+  service: 'GLOMO',
+  env: 'PROD',
+  application,
+  namespace: NS,
+  include_name: application,
+  location_path: `/${application}/`,
+  host: 'H1',
+  vhost: 'GLOMO-PROD',
+  deploy_mode: 'namespaced',
+  include_exists: 1,
+  app_deployed: 1,
+  in_ocp_inventory: 1,
+  status: 'OK',
+  ...o,
 });
 // Kapsam: rotasiz-prod namespace'inde hic route yok -> rotasiz-app-v1 / ns-app-v1 route'suz listede
 // (detailOf); kart-prod'da eski-app-v1 reencrypt.
@@ -49,19 +101,54 @@ const OCP = [
   { namespace: 'rotasiz-prod', application: 'rotasiz-app-v1' },
   { namespace: 'rotasiz-prod', application: 'ns-app-v1' },
 ];
-const ROUTES = [{ namespace_name: NS, route_name: 'eski-app-v1', route_address: 'eski-app-v1-kart-prod.apps.fw.garanti.com.tr', termination_type: 'reencrypt' }];
+const ROUTES = [
+  {
+    namespace_name: NS,
+    route_name: 'eski-app-v1',
+    route_address: 'eski-app-v1-kart-prod.apps.fw.sirket.invalid',
+    termination_type: 'reencrypt',
+  },
+];
 
 const IA = (application, o = {}) => ({
-  application, namespace: NS, env: 'prod', spa: 'evet', ag: 'intranet', istek: 'var', reqShown: 1,
-  usage: null, hosts: [], clusters: ['gbocpprod1'], staleClusters: [], weakEvidence: false, pattern: 'uymuyor', ...o,
+  application,
+  namespace: NS,
+  env: 'prod',
+  spa: 'evet',
+  ag: 'intranet',
+  istek: 'var',
+  reqShown: 1,
+  usage: null,
+  hosts: [],
+  clusters: ['orocpprod1'],
+  staleClusters: [],
+  weakEvidence: false,
+  pattern: 'uymuyor',
+  ...o,
 });
 const rapor = () => ({
-  ok: true, notScanned: false, kesifTarihi: '2026-10-18',
+  ok: true,
+  notScanned: false,
+  kesifTarihi: '2026-10-18',
   // yok-ui (uygulama sahibi var) ve sahipsiz-ui (yok) hic kurulmamis -> intranet eksik listesi
-  // GBNGXP50 taranmis (baska bir uygulamanin dizini var) -> kurulmamislar "eksik", olculemedi degil.
+  // ORNGXP50 taranmis (baska bir uygulamanin dizini var) -> kurulmamislar "eksik", olculemedi degil.
   ...buildIntranetRapor({
-    apps: [IA('yok-ui'), IA('sahipsiz-ui')], ownersByNs: new Map(), beyanlar: new Map(), hosts: ['GBNGXP50'],
-    dirRows: [{ host: 'GBNGXP50', namespace: NS, application: 'baska-ui', hys_deployed: 1, app_deployed: 1, conf_exists: 1, status: 'OK', scan_date: '2026-10-18' }],
+    apps: [IA('yok-ui'), IA('sahipsiz-ui')],
+    ownersByNs: new Map(),
+    beyanlar: new Map(),
+    hosts: ['ORNGXP50'],
+    dirRows: [
+      {
+        host: 'ORNGXP50',
+        namespace: NS,
+        application: 'baska-ui',
+        hys_deployed: 1,
+        app_deployed: 1,
+        conf_exists: 1,
+        status: 'OK',
+        scan_date: '2026-10-18',
+      },
+    ],
   }),
 });
 
@@ -69,7 +156,8 @@ const DB = { config: [], nsHata: null };
 function db() {
   const query = async (q) => {
     const s = String(q);
-    if (s.includes('MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit')) return { recordset: [{ d: '2026-10-18' }] };
+    if (s.includes('MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit'))
+      return { recordset: [{ d: '2026-10-18' }] };
     if (s.includes('SELECT DISTINCT TOP 30')) return { recordset: [{ d: '2026-10-18' }] };
     if (s.includes('sys.columns')) return { recordset: [{ n: 0 }] };
     if (s.includes('Openshift_Namespace_Owners')) {
@@ -105,7 +193,9 @@ const nsOwners = () => require('../ns-owners.cjs');
 const al = async (yol) => {
   const { base } = await sunucu();
   nsOwners()._resetCache();
-  const j = await fetch(`${base}${yol}${yol.includes('?') ? '&' : '?'}fresh=1`).then((x) => x.json());
+  const j = await fetch(`${base}${yol}${yol.includes('?') ? '&' : '?'}fresh=1`).then((x) =>
+    x.json(),
+  );
   assert.equal(j.ok, true, j.message);
   return j;
 };
@@ -117,7 +207,11 @@ test('AU1 /nginx-spa: owner UYGULAMA sahibinden; satiri olmayan uygulama namespa
     const j = await al('/nginx-spa');
     const by = Object.fromEntries(j.rows.map((r) => [r.application, r]));
     assert.ok(by['kart-app-v1'] && by['baska-app-v1'], 'satirlar yok: ' + Object.keys(by));
-    assert.deepEqual(sahip(by['kart-app-v1'].owner), [['GT-Uyg'], ['SI51_AGILE']], 'uygulama adi ownersForApp\'a gitmedi');
+    assert.deepEqual(
+      sahip(by['kart-app-v1'].owner),
+      [['GT-Uyg'], ['SI51_AGILE']],
+      "uygulama adi ownersForApp'a gitmedi",
+    );
     assert.deepEqual(by['kart-app-v1'].owner.namespaces, [NS]);
     assert.deepEqual(sahip(by['baska-app-v1'].owner), [['GT-NS'], ['NAMESPACE']]);
     assert.equal(j.ownersReady, true);
@@ -126,23 +220,37 @@ test('AU1 /nginx-spa: owner UYGULAMA sahibinden; satiri olmayan uygulama namespa
   }
 });
 
-test('AU2 /nginx-spa-coverage: eksik-liste owner\'i uygulama sahibi (detailOf)', async () => {
+test("AU2 /nginx-spa-coverage: eksik-liste owner'i uygulama sahibi (detailOf)", async () => {
   const j = await al('/nginx-spa-coverage?platform=ark');
   const p = j.rows.find((x) => x.env === 'PROD');
   assert.ok(p, 'PROD satiri yok');
   const by = Object.fromEntries((p.missingDetail.noRoute || []).map((d) => [d.app, d]));
-  assert.ok(by['rotasiz-app-v1'] && by['ns-app-v1'], 'route\'suz liste: ' + JSON.stringify(p.missingDetail.noRoute));
-  assert.deepEqual(sahip(by['rotasiz-app-v1'].owner), [['GT-Uyg'], ['SI51_AGILE']], 'detailOf uygulama adini vermedi');
+  assert.ok(
+    by['rotasiz-app-v1'] && by['ns-app-v1'],
+    "route'suz liste: " + JSON.stringify(p.missingDetail.noRoute),
+  );
+  assert.deepEqual(
+    sahip(by['rotasiz-app-v1'].owner),
+    [['GT-Uyg'], ['SI51_AGILE']],
+    'detailOf uygulama adini vermedi',
+  );
   assert.deepEqual(by['rotasiz-app-v1'].owner.namespaces, ['rotasiz-prod']);
   assert.deepEqual(sahip(by['ns-app-v1'].owner), [['GT-NS'], ['NAMESPACE']]);
 });
 
-test('AU3 /nginx-spa-coverage?platform=ark: intranet hucresi owner\'i uygulama sahibi (ownerOf)', async () => {
+test("AU3 /nginx-spa-coverage?platform=ark: intranet hucresi owner'i uygulama sahibi (ownerOf)", async () => {
   const j = await al('/nginx-spa-coverage?platform=ark');
   const p = j.rows.find((x) => x.env === 'PROD');
   const by = Object.fromEntries(p.missingDetail.intranet.map((d) => [d.app, d]));
-  assert.ok(by['yok-ui'] && by['sahipsiz-ui'], 'intranet listesi: ' + JSON.stringify(Object.keys(by)));
-  assert.deepEqual(sahip(by['yok-ui'].owner), [['GT-Uyg'], ['ARK997_AGILE']], 'ownerOf uygulama adini vermedi');
+  assert.ok(
+    by['yok-ui'] && by['sahipsiz-ui'],
+    'intranet listesi: ' + JSON.stringify(Object.keys(by)),
+  );
+  assert.deepEqual(
+    sahip(by['yok-ui'].owner),
+    [['GT-Uyg'], ['ARK997_AGILE']],
+    'ownerOf uygulama adini vermedi',
+  );
   assert.deepEqual(sahip(by['sahipsiz-ui'].owner), [['GT-NS'], ['NAMESPACE']]);
 });
 
@@ -154,7 +262,11 @@ test('AU4 namespace tablosu gecici okunamaz: kendi sahibi olmayan uygulama "veri
     const by = Object.fromEntries(j.rows.map((r) => [r.application, r]));
     assert.deepEqual(sahip(by['kart-app-v1'].owner), [['GT-Uyg'], ['SI51_AGILE']]);
     const b = by['baska-app-v1'].owner;
-    assert.deepEqual([b.groups, b.unknownNs, b.veriYokNs], [[], [], [NS]], '"bilinmiyor" ile "veri yok" karisti');
+    assert.deepEqual(
+      [b.groups, b.unknownNs, b.veriYokNs],
+      [[], [], [NS]],
+      '"bilinmiyor" ile "veri yok" karisti',
+    );
   } finally {
     DB.config = [];
     DB.nsHata = null;

@@ -18,7 +18,7 @@ export interface ScaleXHealthRow {
   detail: string;
 }
 
-export type HealthTone = "ok" | "warn" | "info";
+export type HealthTone = 'ok' | 'warn' | 'info';
 
 export interface HealthLine {
   app: string;
@@ -37,8 +37,8 @@ export interface HealthSummary {
 
 function pairs(detail: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const part of String(detail || "").split(" ")) {
-    const i = part.indexOf("=");
+  for (const part of String(detail || '').split(' ')) {
+    const i = part.indexOf('=');
     if (i > 0) out[part.slice(0, i)] = part.slice(i + 1);
   }
   return out;
@@ -47,15 +47,15 @@ function pairs(detail: string): Record<string, string> {
 // "1/1" → tamamen hazır. Eşit değilse uygulama henüz ayağa kalkıyor demektir ve bu,
 // `spec.replicas` eşitliğine bakan playbook'un GÖREMEDİĞİ tek şey.
 function readyIsComplete(ready: string): boolean {
-  const m = /^(\d+)\/(\d+)$/.exec(ready || "");
-  return !!m && m[1] === m[2] && m[2] !== "0";
+  const m = /^(\d+)\/(\d+)$/.exec(ready || '');
+  return !!m && m[1] === m[2] && m[2] !== '0';
 }
 
 const RESOURCE_TR: Record<string, string> = {
-  pods: "pod",
-  events: "olay (event)",
-  poddisruptionbudgets: "PodDisruptionBudget",
-  configmaps: "ConfigMap",
+  pods: 'pod',
+  events: 'olay (event)',
+  poddisruptionbudgets: 'PodDisruptionBudget',
+  configmaps: 'ConfigMap',
 };
 
 export function humanizeHealth(rows: ScaleXHealthRow[], namespace?: string): HealthSummary {
@@ -67,51 +67,53 @@ export function humanizeHealth(rows: ScaleXHealthRow[], namespace?: string): Hea
     const base = { app: r.app, cluster: r.cluster };
 
     // ── YETKİ YOKLUĞU: bir hata değil, bir eksik. Kullanıcıya NE İSTEYECEĞİNİ söyler.
-    if (p.permission_missing === "yes") {
-      const res = RESOURCE_TR[p.resource] || p.resource || "kaynak";
+    if (p.permission_missing === 'yes') {
+      const res = RESOURCE_TR[p.resource] || p.resource || 'kaynak';
       lines.push({
-        ...base, tone: "info",
+        ...base,
+        tone: 'info',
         text: `${res} bilgisi okunamadı — portalın OCP kullanıcısının bu namespace'te yetkisi yok.`,
       });
       asks.add(
-        `Platform ekibinden isteyin: ${namespace ? `\`${namespace}\` namespace'inde ` : ""}`
-        + `portalın OCP kullanıcısına \`${p.verb || "list"} ${p.resource || "?"}\` yetkisi `
-        + "(genellikle `view` ClusterRole binding'i yeterli)."
+        `Platform ekibinden isteyin: ${namespace ? `\`${namespace}\` namespace'inde ` : ''}` +
+          `portalın OCP kullanıcısına \`${p.verb || 'list'} ${p.resource || '?'}\` yetkisi ` +
+          "(genellikle `view` ClusterRole binding'i yeterli).",
       );
       continue;
     }
 
-    if (r.step === "PODS") {
-      if (p.pods === "0") {
-        lines.push({ ...base, tone: "warn", text: "Hiç pod görünmüyor." });
+    if (r.step === 'PODS') {
+      if (p.pods === '0') {
+        lines.push({ ...base, tone: 'warn', text: 'Hiç pod görünmüyor.' });
         continue;
       }
       if (p.pod) {
-        const complete = readyIsComplete(p.ready || "");
+        const complete = readyIsComplete(p.ready || '');
         const restarts = Number(p.restarts || 0);
-        const bits = [`hazır ${p.ready || "?"}`, p.status || "?"];
+        const bits = [`hazır ${p.ready || '?'}`, p.status || '?'];
         if (restarts > 0) bits.push(`${restarts} yeniden başlatma`);
         if (p.age) bits.push(p.age);
         lines.push({
           ...base,
           // Hazır olmayan pod bir UYARI: "replica geldi ama uygulama ayağa kalkmadı"
           // durumu playbook'un başarı ölçütünden kaçıyor.
-          tone: complete && restarts === 0 ? "ok" : "warn",
-          text: `${p.pod} · ${bits.join(" · ")}`,
+          tone: complete && restarts === 0 ? 'ok' : 'warn',
+          text: `${p.pod} · ${bits.join(' · ')}`,
         });
         continue;
       }
     }
 
-    if (r.step === "EVENTS") {
-      if (p.events === "0") {
-        lines.push({ ...base, tone: "ok", text: "Uyarı olayı yok." });
+    if (r.step === 'EVENTS') {
+      if (p.events === '0') {
+        lines.push({ ...base, tone: 'ok', text: 'Uyarı olayı yok.' });
         continue;
       }
       if (p.reason) {
         lines.push({
-          ...base, tone: "warn",
-          text: `Uyarı olayı: ${p.reason}${p.object ? ` (${p.object})` : ""}${p.age ? ` · ${p.age}` : ""}`,
+          ...base,
+          tone: 'warn',
+          text: `Uyarı olayı: ${p.reason}${p.object ? ` (${p.object})` : ''}${p.age ? ` · ${p.age}` : ''}`,
         });
         continue;
       }
@@ -119,11 +121,11 @@ export function humanizeHealth(rows: ScaleXHealthRow[], namespace?: string): Hea
 
     // ESKI BICIM ya da tanınmayan satır: ham metni göster. Sessizce atmak, playbook'un
     // eski sürümü çalışırken sağlık bloğunu BOŞ bırakırdı.
-    const raw = String(r.detail || "").trim();
+    const raw = String(r.detail || '').trim();
     if (raw) {
       lines.push({
         ...base,
-        tone: r.status === "OK" ? "ok" : r.status === "FAIL" ? "warn" : "info",
+        tone: r.status === 'OK' ? 'ok' : r.status === 'FAIL' ? 'warn' : 'info',
         text: raw,
       });
     }
@@ -132,7 +134,7 @@ export function humanizeHealth(rows: ScaleXHealthRow[], namespace?: string): Hea
   // Blok YALNIZCA yetki uyarılarından ibaretse hiç açılmamalı: kullanıcıya iki satır
   // "okuyamadım" göstermek, ekranı doldurup hiçbir şey söylememek olurdu. İstenecek
   // yetkiler yine de döndürülür — çağıran onları ayrı ve sakin bir yerde gösterir.
-  const hasContent = lines.some((l) => l.tone !== "info");
+  const hasContent = lines.some((l) => l.tone !== 'info');
 
   return { lines, asks: [...asks], hasContent };
 }

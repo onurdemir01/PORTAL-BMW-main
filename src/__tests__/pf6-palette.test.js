@@ -20,17 +20,41 @@ const CSS = fs.readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8');
 
 // PF6 gri rampasi — tokens-palette.scss (gray-10 ... gray-95) + siyah/beyaz.
 const PF6_GRAYS = new Set([
-  '#ffffff', '#f2f2f2', '#e0e0e0', '#c7c7c7', '#a3a3a3', '#8c8c8c',
-  '#707070', '#4d4d4d', '#383838', '#292929', '#1f1f1f', '#151515', '#000000',
+  '#ffffff',
+  '#f2f2f2',
+  '#e0e0e0',
+  '#c7c7c7',
+  '#a3a3a3',
+  '#8c8c8c',
+  '#707070',
+  '#4d4d4d',
+  '#383838',
+  '#292929',
+  '#1f1f1f',
+  '#151515',
+  '#000000',
 ]);
 
 // Gri olmasi BEKLENEN token'lar: yuzeyler, kenarliklar, metin, masthead/nav.
 const GRAY_TOKENS = [
-  '--bg-base', '--bg-surface', '--bg-elevated', '--bg-inset',
-  '--border', '--border-subtle', '--border-strong',
-  '--text-primary', '--text-secondary', '--text-muted', '--text-on-dark',
-  '--masthead-bg', '--masthead-border',
-  '--nav-bg', '--nav-hover-bg', '--nav-current-bg', '--nav-text', '--nav-text-muted',
+  '--bg-base',
+  '--bg-surface',
+  '--bg-elevated',
+  '--bg-inset',
+  '--border',
+  '--border-subtle',
+  '--border-strong',
+  '--text-primary',
+  '--text-secondary',
+  '--text-muted',
+  '--text-on-dark',
+  '--masthead-bg',
+  '--masthead-border',
+  '--nav-bg',
+  '--nav-hover-bg',
+  '--nav-current-bg',
+  '--nav-text',
+  '--nav-text-muted',
 ];
 
 // `:root { ... }` ve `:root[data-theme="dark"] { ... }` bloklarini ayikla.
@@ -79,7 +103,10 @@ test('koyu tema: gri token’larin TAMAMI PF6 rampasindan', () => {
 
 test('NOTRLUK: hicbir gri token’da R/G/B sapmasi yok (PF5 geri gelmesin)', () => {
   const bad = [];
-  for (const [name, block] of [['acik', LIGHT], ['koyu', DARK]]) {
+  for (const [name, block] of [
+    ['acik', LIGHT],
+    ['koyu', DARK],
+  ]) {
     for (const t of GRAY_TOKENS) {
       const v = tokenValue(block, t);
       if (!v || !v.startsWith('#')) continue;
@@ -91,7 +118,17 @@ test('NOTRLUK: hicbir gri token’da R/G/B sapmasi yok (PF5 geri gelmesin)', () 
 
 test('PF5’in bilinen gri degerleri kaynakta KALMADI', () => {
   // Bu degerler PF5'e ozgudur; bir yerde kalmislarsa gecis eksik demektir.
-  const PF5 = ['#4f5255', '#3c3f42', '#b8bbbe', '#d2d2d2', '#8a8d90', '#6a6e73', '#212427', '#1b1d21', '#0f1214'];
+  const PF5 = [
+    '#4f5255',
+    '#3c3f42',
+    '#b8bbbe',
+    '#d2d2d2',
+    '#8a8d90',
+    '#6a6e73',
+    '#212427',
+    '#1b1d21',
+    '#0f1214',
+  ];
   // Yorum satirlari HARIC — aciklamalar farki ANLATMAK icin bu degerlerden bahsediyor.
   const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
   const found = PF5.filter((h) => code.toLowerCase().includes(h));
@@ -117,10 +154,13 @@ test('masthead/nav CSS ve bilesenlerinde SABIT renk kalmadi', () => {
   assert.deepEqual(hex, [], `masthead/nav CSS'inde sabit renk: ${hex.join(', ')}`);
 
   for (const f of ['components/layout/Masthead.tsx', 'components/layout/PageNav.tsx']) {
-    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+    const src = fs
+      .readFileSync(path.join(__dirname, '..', f), 'utf8')
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
-      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+      .split('\n')
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join('\n');
     const found = src.match(/#[0-9a-fA-F]{6}\b|text-white|bg-\[#[0-9a-fA-F]+\]/g) || [];
     assert.deepEqual(found, [], `${f}: sabit renk kaldi -> ${found.join(', ')}`);
   }
@@ -148,8 +188,11 @@ test('kose yaricapi PF6 olceginde (tiny 4px / small 6px)', () => {
 test('AKSAN USTU METIN: token var, buton onu okuyor, koyu temada kontrast yeterli', () => {
   assert.ok(tokenValue(LIGHT, '--text-on-accent'), '--text-on-accent acik temada yok');
   assert.ok(tokenValue(DARK, '--text-on-accent'), '--text-on-accent koyu temada yok');
-  assert.match(CSS, /\.btn-primary \{[\s\S]*?color: var\(--text-on-accent\);/,
-    'btn-primary hala sabit renk kullaniyor');
+  assert.match(
+    CSS,
+    /\.btn-primary \{[\s\S]*?color: var\(--text-on-accent\);/,
+    'btn-primary hala sabit renk kullaniyor',
+  );
 
   // Kontrast (WCAG 2.x nispi parlaklik). Eski koyu tema cifti (#2b9af3 + beyaz)
   // ~2.9:1 idi ve AA'yi GECMIYORDU; yeni cift bunu asmali.
@@ -164,10 +207,16 @@ test('AKSAN USTU METIN: token var, buton onu okuyor, koyu temada kontrast yeterl
     return (x + 0.05) / (y + 0.05);
   };
 
-  for (const [name, block] of [['acik', LIGHT], ['koyu', DARK]]) {
+  for (const [name, block] of [
+    ['acik', LIGHT],
+    ['koyu', DARK],
+  ]) {
     const bg = tokenValue(block, '--accent');
     const fg = tokenValue(block, '--text-on-accent');
     const r = ratio(bg, fg);
-    assert.ok(r >= 4.5, `${name} tema: aksan ustu metin kontrasti ${r.toFixed(2)}:1 — AA (4.5) altinda`);
+    assert.ok(
+      r >= 4.5,
+      `${name} tema: aksan ustu metin kontrasti ${r.toFixed(2)}:1 — AA (4.5) altinda`,
+    );
   }
 });

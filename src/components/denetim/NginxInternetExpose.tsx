@@ -1,7 +1,7 @@
 // src/components/denetim/NginxInternetExpose.tsx — "API'yi internete aç".
 //
 // Test ortamındaki API tanımlarını listeler ve her birinin yanında, tanımı internete
-// açık sunucuya (varsayılan GBNGXT07) BİREBİR kopyalayan bir buton sunar.
+// açık sunucuya (varsayılan ORNGXT07) BİREBİR kopyalayan bir buton sunar.
 //
 // Bir API = BİR DOSYA (`<api>.conf`); içindeki `location` blokları o API'nin
 // yollarıdır — liste "dosya + içindeki API'ler" şeklinde bu yüzden kuruluyor.
@@ -38,7 +38,8 @@ function ExposeConfigPanel({
   const [servers, setServers] = useState<AwxServer[]>([]);
   const [awxServerId, setAwxServerId] = useState(config.awxServerId || 0);
   const [templateId, setTemplateId] = useState(String(config.templateId || ''));
-  const [targetHost, setTargetHost] = useState(config.targetHost || 'GBNGXT07');
+  // Varsayilan hedef sunucudan gelir (kurum ayari nginx.exposeHedefi); bos olabilir.
+  const [targetHost, setTargetHost] = useState(config.targetHost || '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 
@@ -70,7 +71,7 @@ function ExposeConfigPanel({
       const r = await nginxExposeApi.saveConfig({
         awxServerId,
         templateId: tid,
-        targetHost: targetHost.trim() || 'GBNGXT07',
+        targetHost: targetHost.trim(),
       });
       if (r.ok) {
         setMsg({ tone: 'ok', text: 'Kaydedildi. Buton artık çalışır.' });
@@ -144,9 +145,7 @@ function ExposeConfigPanel({
 
         {msg && (
           <span
-            className={`text-[11px] ${
-              msg.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'
-            }`}
+            className={`text-[11px] ${msg.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'}`}
           >
             {msg.text}
           </span>
@@ -157,9 +156,9 @@ function ExposeConfigPanel({
         Template <Code>bmw_nginx/api_expose/api_expose.yaml</Code> için açılmalı ve{' '}
         <b>&quot;Prompt on launch&quot; → Variables</b> işaretli olmalıdır. İşaretli değilse AWX,
         Portal&apos;ın gönderdiği <Code>api</Code> / <Code>source_host</Code> /{' '}
-        <Code>target_host</Code> değişkenlerini <b>sessizce yok sayar</b> — iş başarılı görünür
-        ama yanlış (ya da hiç) API taşınır. Envanterde hem kaynak test sunucuları hem{' '}
-        <Code>{targetHost || 'GBNGXT07'}</Code> bulunmalıdır.
+        <Code>target_host</Code> değişkenlerini <b>sessizce yok sayar</b> — iş başarılı görünür ama
+        yanlış (ya da hiç) API taşınır. Envanterde hem kaynak test sunucuları hem{' '}
+        <Code>{targetHost || 'hedef sunucu'}</Code> bulunmalıdır.
       </p>
     </Panel>
   );
@@ -260,8 +259,7 @@ export function NginxInternetExpose() {
     }
   }
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

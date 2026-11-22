@@ -17,13 +17,26 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { username: 'onur', role: kimlik.role }, canViewPage: () => true }),
 }));
 const api = vi.hoisted(() => ({ karsilastir: vi.fn() }));
-vi.mock('@/api/appHubJvmKarsilastirApi', async (orig) => ({ ...(await orig<object>()), jvmKarsilastirApi: { karsilastir: api.karsilastir } }));
-vi.mock('@/api/appHubApi', () => ({ appHubApi: { detay: vi.fn(), ara: vi.fn().mockResolvedValue({ sonuclar: [] }) } }));
+vi.mock('@/api/appHubJvmKarsilastirApi', async (orig) => ({
+  ...(await orig<object>()),
+  jvmKarsilastirApi: { karsilastir: api.karsilastir },
+}));
+vi.mock('@/api/appHubApi', () => ({
+  appHubApi: { detay: vi.fn(), ara: vi.fn().mockResolvedValue({ sonuclar: [] }) },
+}));
 vi.mock('@/api/retirementApi', () => ({ retirementApi: { config: vi.fn() } }));
 vi.mock('@/components/server_hub/RetirementTab', () => ({ CreateModal: () => null }));
 vi.mock('@/components/app_hub/AramaKutusu', () => ({ default: () => null }));
 
-const bosGrup = { uyarilar: [], neden: null, sunucuyaOzgu: [], maskeli: [], karsilastirilamadi: [], esitSayisi: 3, olculenJvm: 3 };
+const bosGrup = {
+  uyarilar: [],
+  neden: null,
+  sunucuyaOzgu: [],
+  maskeli: [],
+  karsilastirilamadi: [],
+  esitSayisi: 3,
+  olculenJvm: 3,
+};
 const yanit = {
   ortam: 'PROD',
   nesil: 'hepsi',
@@ -31,26 +44,95 @@ const yanit = {
   ozet: { toplam: 3, ESIT: 1, FARKLI: 1, TEK_SUNUCU: 0, OLCULEMEDI: 0, BULUNAMADI: 1 },
   uygulamalar: [
     {
-      ad: 'MUSTERI', tabanAd: 'MUSTERI', durum: 'FARKLI', neden: null, sunucuSayisi: 3, jvmSayisi: 3, farkSayisi: 2, uyarilar: [],
+      ad: 'MUSTERI',
+      tabanAd: 'MUSTERI',
+      durum: 'FARKLI',
+      neden: null,
+      sunucuSayisi: 3,
+      jvmSayisi: 3,
+      farkSayisi: 2,
+      uyarilar: [],
       gruplar: [
         {
-          ...bosGrup, ortam: 'PROD', nesil: 8, durum: 'FARKLI', sunucuSayisi: 3, jvmSayisi: 3, farkSayisi: 2,
+          ...bosGrup,
+          ortam: 'PROD',
+          nesil: 8,
+          durum: 'FARKLI',
+          sunucuSayisi: 3,
+          jvmSayisi: 3,
+          farkSayisi: 2,
           jvmler: [
-            { etiket: 'GOJBAP01/MUSTERI', host: 'GOJBAP01', jvm: 'MUSTERI', kaynak: 'CALISAN', calisiyor: true, taze: true, taramaTarihi: null, olculdu: true, kesik: false },
+            {
+              etiket: 'GOJBAP01/MUSTERI',
+              host: 'GOJBAP01',
+              jvm: 'MUSTERI',
+              kaynak: 'CALISAN',
+              calisiyor: true,
+              taze: true,
+              taramaTarihi: null,
+              olculdu: true,
+              kesik: false,
+            },
           ],
           degerFarklari: [
-            { anahtar: '-Xmx', cogunluk: '2g', cogunlukUyeler: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'], degerler: [], sapanlar: [{ uye: 'GOJBAP03/MUSTERI', deger: '4g', normal: '4g' }], belirsiz: false },
+            {
+              anahtar: '-Xmx',
+              cogunluk: '2g',
+              cogunlukUyeler: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'],
+              degerler: [],
+              sapanlar: [{ uye: 'GOJBAP03/MUSTERI', deger: '4g', normal: '4g' }],
+              belirsiz: false,
+            },
           ],
-          eksikFazla: [{ anahtar: '-Dozel.ayar', olan: ['GOJBAP03/MUSTERI'], olmayan: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'], kesikte: [], degerler: [{ uye: 'GOJBAP03/MUSTERI', deger: 'acik' }], cogunlukta: false }],
+          eksikFazla: [
+            {
+              anahtar: '-Dozel.ayar',
+              olan: ['GOJBAP03/MUSTERI'],
+              olmayan: ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI'],
+              kesikte: [],
+              degerler: [{ uye: 'GOJBAP03/MUSTERI', deger: 'acik' }],
+              cogunlukta: false,
+            },
+          ],
           sunucuyaOzgu: [{ anahtar: '-Djboss.node.name', degerler: [], normal: null }],
         },
       ],
     },
     {
-      ad: 'KREDI', tabanAd: 'KREDI', durum: 'ESIT', neden: null, sunucuSayisi: 2, jvmSayisi: 2, farkSayisi: 0, uyarilar: [],
-      gruplar: [{ ...bosGrup, ortam: 'PROD', nesil: 7, durum: 'ESIT', sunucuSayisi: 2, jvmSayisi: 2, farkSayisi: 0, jvmler: [], degerFarklari: [], eksikFazla: [] }],
+      ad: 'KREDI',
+      tabanAd: 'KREDI',
+      durum: 'ESIT',
+      neden: null,
+      sunucuSayisi: 2,
+      jvmSayisi: 2,
+      farkSayisi: 0,
+      uyarilar: [],
+      gruplar: [
+        {
+          ...bosGrup,
+          ortam: 'PROD',
+          nesil: 7,
+          durum: 'ESIT',
+          sunucuSayisi: 2,
+          jvmSayisi: 2,
+          farkSayisi: 0,
+          jvmler: [],
+          degerFarklari: [],
+          eksikFazla: [],
+        },
+      ],
     },
-    { ad: 'YOKAPP', tabanAd: null, durum: 'BULUNAMADI', neden: 'Envanterde JBoss uygulaması olarak bulunamadı.', sunucuSayisi: 0, jvmSayisi: 0, farkSayisi: 0, uyarilar: [], gruplar: [] },
+    {
+      ad: 'YOKAPP',
+      tabanAd: null,
+      durum: 'BULUNAMADI',
+      neden: 'Envanterde JBoss uygulaması olarak bulunamadı.',
+      sunucuSayisi: 0,
+      jvmSayisi: 0,
+      farkSayisi: 0,
+      uyarilar: [],
+      gruplar: [],
+    },
   ],
 };
 
@@ -62,8 +144,24 @@ const konum = () => screen.getByTestId('konum').textContent;
 function sayfa(adres: string) {
   return render(
     <Routes>
-      <Route path="/application-hub/jvm-karsilastir" element={<><JvmKarsilastirPage /><KonumYaz /></>} />
-      <Route path="/application-hub" element={<><AppHubPage /><KonumYaz /></>} />
+      <Route
+        path="/application-hub/jvm-karsilastir"
+        element={
+          <>
+            <JvmKarsilastirPage />
+            <KonumYaz />
+          </>
+        }
+      />
+      <Route
+        path="/application-hub"
+        element={
+          <>
+            <AppHubPage />
+            <KonumYaz />
+          </>
+        }
+      />
     </Routes>,
     { initialEntries: [adres] },
   );
@@ -96,11 +194,16 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
   });
 
   it('JKU3 URL listesi açılışta karşılaştırılır; özet ve satırlar', async () => {
-    sayfa('/application-hub/jvm-karsilastir?uygulamalar=MUSTERI,KREDI,YOKAPP&ortam=PROD&nesil=hepsi');
+    sayfa(
+      '/application-hub/jvm-karsilastir?uygulamalar=MUSTERI,KREDI,YOKAPP&ortam=PROD&nesil=hepsi',
+    );
     const ozet = await screen.findByTestId('karsilastirma-ozeti');
     expect(ozet.textContent).toContain('3 uygulama:');
     expect(ozet.textContent).toContain('1 eşit, 1 farklı, 0 tek sunucu, 1 ölçülemedi/bulunamadı');
-    expect(api.karsilastir).toHaveBeenCalledWith({ uygulamalar: ['MUSTERI', 'KREDI', 'YOKAPP'], ortam: 'PROD', nesil: 'hepsi' }, expect.anything());
+    expect(api.karsilastir).toHaveBeenCalledWith(
+      { uygulamalar: ['MUSTERI', 'KREDI', 'YOKAPP'], ortam: 'PROD', nesil: 'hepsi' },
+      expect.anything(),
+    );
     const satirlar = screen.getAllByTestId('karsilastirma-satiri');
     expect(satirlar).toHaveLength(3);
     expect(within(satirlar[0]).getByText('Farklı')).toBeTruthy();
@@ -109,7 +212,9 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
     expect(within(satirlar[1]).getByText('Eşit')).toBeTruthy();
     expect(within(satirlar[2]).getByText('Bulunamadı')).toBeTruthy();
     expect(within(satirlar[2]).getByText(/Envanterde JBoss/)).toBeTruthy();
-    expect((screen.getByLabelText(/Uygulamalar/) as HTMLTextAreaElement).value).toBe('MUSTERI\nKREDI\nYOKAPP');
+    expect((screen.getByLabelText(/Uygulamalar/) as HTMLTextAreaElement).value).toBe(
+      'MUSTERI\nKREDI\nYOKAPP',
+    );
     expect(screen.queryByTestId('fark-ayrintisi')).toBeNull();
   });
 
@@ -136,7 +241,9 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
     const kutu = screen.getByLabelText(/Uygulamalar/);
     const dugme = screen.getByRole('button', { name: /Karşılaştır/ });
     expect(api.karsilastir).not.toHaveBeenCalled();
-    fireEvent.change(kutu, { target: { value: Array.from({ length: 21 }, (_, i) => `APP${i}`).join(',') } });
+    fireEvent.change(kutu, {
+      target: { value: Array.from({ length: 21 }, (_, i) => `APP${i}`).join(',') },
+    });
     expect((dugme as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/21 \/ 20 uygulama/)).toBeTruthy();
     fireEvent.change(kutu, { target: { value: 'MUSTERI a;b' } });
@@ -147,8 +254,13 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
     fireEvent.change(screen.getByLabelText(/^Nesil/), { target: { value: '8' } });
     fireEvent.click(dugme);
     await screen.findByTestId('karsilastirma-ozeti');
-    expect(api.karsilastir).toHaveBeenCalledWith({ uygulamalar: ['MUSTERI', 'KREDI'], ortam: 'PROD', nesil: 8 }, expect.anything());
-    expect(konum()).toBe('/application-hub/jvm-karsilastir?uygulamalar=MUSTERI%2CKREDI&ortam=PROD&nesil=8');
+    expect(api.karsilastir).toHaveBeenCalledWith(
+      { uygulamalar: ['MUSTERI', 'KREDI'], ortam: 'PROD', nesil: 8 },
+      expect.anything(),
+    );
+    expect(konum()).toBe(
+      '/application-hub/jvm-karsilastir?uygulamalar=MUSTERI%2CKREDI&ortam=PROD&nesil=8',
+    );
   });
 
   it('JKU6 belirsiz sapan, kesik metin ve tanınmayan ortam', async () => {
@@ -164,7 +276,11 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
               jvmler: [{ ...g.jvmler[0], kesik: true }],
               degerFarklari: [
                 {
-                  anahtar: '-Dmaster', cogunluk: null, cogunlukUyeler: [], degerler: [], belirsiz: true,
+                  anahtar: '-Dmaster',
+                  cogunluk: null,
+                  cogunlukUyeler: [],
+                  degerler: [],
+                  belirsiz: true,
                   sapanlar: [{ uye: 'GOJBAP02/MUSTERI', deger: 'GOJBAP01', normal: 'GOJBAP01' }],
                 },
               ],
@@ -177,10 +293,15 @@ describe('Application Hub — toplu JVM argümanı karşılaştırması', () => 
     });
     sayfa('/application-hub/jvm-karsilastir?uygulamalar=MUSTERI&ortam=PRP');
     fireEvent.click(await screen.findByRole('button', { name: 'MUSTERI ayrıntısı' }));
-    expect(api.karsilastir).toHaveBeenCalledWith({ uygulamalar: ['MUSTERI'], ortam: 'PROD', nesil: 'hepsi' }, expect.anything());
+    expect(api.karsilastir).toHaveBeenCalledWith(
+      { uygulamalar: ['MUSTERI'], ortam: 'PROD', nesil: 'hepsi' },
+      expect.anything(),
+    );
     expect((screen.getByLabelText(/^Ortam/) as HTMLSelectElement).value).toBe('PROD');
     const a = screen.getByTestId('fark-ayrintisi');
-    expect(within(a).getByText(/Belirsiz: değer bazı sunucularda kendi adını taşıyor/)).toBeTruthy();
+    expect(
+      within(a).getByText(/Belirsiz: değer bazı sunucularda kendi adını taşıyor/),
+    ).toBeTruthy();
     expect(within(a).getByText(/Karşılaştırılamadı \(1,/).textContent).toContain('-Dkesilen');
     expect(within(a).getByText(/kesik metin/)).toBeTruthy();
   });

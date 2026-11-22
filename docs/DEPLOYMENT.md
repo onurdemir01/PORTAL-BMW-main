@@ -12,11 +12,11 @@
 > `npm run dev` / `npm run dev:all` / `npm start` **KULLANILMAZ** (bkz. [SETUP-SIMPLE.md](SETUP-SIMPLE.md) —
 > bunlar yalnizca yerel gelistirme icindir, iki ayri port acar ve `.env.<env>` dosyalarini okumaz).
 
-Guncel uretim modeli (gblabt02):
+Guncel uretim modeli (orlabt02):
 
 ```
-Kullanici → https://bmwportal-d.fw.garanti.com.tr (kurumsal nginx, 443)
-          → proxy_pass http://10.151.162.147:3000
+Kullanici → https://bmwportal-d.fw.sirket.invalid (kurumsal nginx, 443)
+          → proxy_pass http://10.250.162.147:3000
           → node server/index.cjs <env>   (production: dist/ statik + /api ayni port)
           → MSSQL TBMWANS (tum kalici veri) · LDAP · AWX · MCP
 ```
@@ -52,8 +52,8 @@ baglandigini dogrular. Teshis: `./deploy/run.sh prod status`, `tail -n 60 logs/p
 
 | Hedef | Port | Amac |
 |---|---|---|
-| MSSQL (10.230.111.44) | 1453 TCP | TBMWANS — portal + envanter verisi |
-| LDAP (adds.fw.garanti.com.tr) | 636 TCP | LDAPS kimlik dogrulama |
+| MSSQL (10.253.111.44) | 1453 TCP | TBMWANS — portal + envanter verisi |
+| LDAP (adds.fw.sirket.invalid) | 636 TCP | LDAPS kimlik dogrulama |
 | AWX (maestro/maestro2) | 443 TCP | Ansible template/job |
 | Nobet API (gbnys) | 443 TCP | Nobetci bilgisi |
 | Dynatrace/Instana MCP | 443 TCP | Performance/AI Analist |
@@ -134,7 +134,7 @@ Depo herkese açıkken sunucu `https://github.com/onurdemir01/PORTAL-BMW-main.gi
 (bir kez, `was` kullanıcısıyla) — **salt-okunur deploy key**:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/portal_deploy -N "" -C "gblabt02 portal deploy (salt-okunur)"
+ssh-keygen -t ed25519 -f ~/.ssh/portal_deploy -N "" -C "orlabt02 portal deploy (salt-okunur)"
 cat ~/.ssh/portal_deploy.pub   # GitHub > depo > Settings > Deploy keys > Add (Allow write access KAPALI)
 cat >> ~/.ssh/config <<'EOF'
 Host github.com

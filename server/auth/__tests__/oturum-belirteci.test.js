@@ -39,7 +39,17 @@ function dinle(app) {
 function uygulama(store, secret, ad = 'connect.sid') {
   const app = express();
   app.use(bel.belirtecKatmani({ ad, secret }));
-  app.use(session({ name: ad, store, secret, genid: bel.kimlikUret, resave: false, saveUninitialized: false, rolling: true }));
+  app.use(
+    session({
+      name: ad,
+      store,
+      secret,
+      genid: bel.kimlikUret,
+      resave: false,
+      saveUninitialized: false,
+      rolling: true,
+    }),
+  );
   app.post('/giris', (req, res) => {
     req.session.regenerate(() => {
       req.session.user = { username: 'ayse' };
@@ -51,7 +61,9 @@ function uygulama(store, secret, ad = 'connect.sid') {
 }
 
 const cerezDegeri = (r, ad = 'connect.sid') => {
-  const c = r.headers.getSetCookie().find((x) => x.startsWith(`${ad}=`) && !x.startsWith(`${ad}=;`));
+  const c = r.headers
+    .getSetCookie()
+    .find((x) => x.startsWith(`${ad}=`) && !x.startsWith(`${ad}=;`));
   return c ? c.split(';')[0] : null;
 };
 const ben = async (url, cookie) => {
@@ -73,7 +85,10 @@ test('BT1 cerez rastgele belirtec; sunucudaki kimlik ozet ve cerezde yok', async
   // bir parcasi degil).
   const bagimsiz = `~${require('node:crypto').createHash('sha256').update(belirtec).digest('base64url').slice(0, 31)}`;
   assert.equal(sid, bagimsiz, 'kimlik belirtecin SHA-256 ozeti degil');
-  assert.ok(!belirtec.includes(sid.slice(1, 12)) && !sid.includes(belirtec.slice(0, 12)), 'kimlik belirtecten kopyalanmis');
+  assert.ok(
+    !belirtec.includes(sid.slice(1, 12)) && !sid.includes(belirtec.slice(0, 12)),
+    'kimlik belirtecten kopyalanmis',
+  );
   assert.ok(!c.includes(sid.slice(1)), 'sunucudaki kimlik cereze sizmis');
   assert.ok(!c.includes('s%3A') && !c.includes('s:'), 'cerez hala imzali express bicimde');
   // Her giris ayri belirtec.
@@ -116,16 +131,27 @@ test('BT3 DB`deki ozet cereze konamaz — gecerli anahtar bilinse bile', async (
   assert.equal(b2.user, null, 'DB`deki ozet + anahtar ile eski kapidan girildi');
   // Kontrol: imzalama gercekten express-session'in kabul ettigi bicimde (eski tur kimlikle calisir).
   const eskiSid = 'A'.repeat(32);
-  await new Promise((res) => store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'eski' } }, res));
-  const { body: b3 } = await ben(url, `connect.sid=${encodeURIComponent(("s:" + bel.imzala(eskiSid, secret)))}`);
-  assert.deepEqual(b3.user, { username: 'eski' }, 'imzalama yardimcisi express-session ile uyumsuz — BT3 hicbir sey olcmuyor');
+  await new Promise((res) =>
+    store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'eski' } }, res),
+  );
+  const { body: b3 } = await ben(
+    url,
+    `connect.sid=${encodeURIComponent('s:' + bel.imzala(eskiSid, secret))}`,
+  );
+  assert.deepEqual(
+    b3.user,
+    { username: 'eski' },
+    'imzalama yardimcisi express-session ile uyumsuz — BT3 hicbir sey olcmuyor',
+  );
 });
 
 test('BT4 eski bicimli oturumlar ayni anahtarla surer; anahtar degisirse (eskisi gibi) biter', async () => {
   const store = new session.MemoryStore();
   const eskiSid = 'Zx9'.padEnd(32, 'q');
-  await new Promise((res) => store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'onceki' } }, res));
-  const c = `connect.sid=${encodeURIComponent(("s:" + bel.imzala(eskiSid, 'degismeyen')))}`;
+  await new Promise((res) =>
+    store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'onceki' } }, res),
+  );
+  const c = `connect.sid=${encodeURIComponent('s:' + bel.imzala(eskiSid, 'degismeyen'))}`;
   const ayni = uygulama(store, 'degismeyen');
   const { r, body } = await ben(ayni, c);
   assert.deepEqual(body.user, { username: 'onceki' }, 'gecis mevcut oturumu dusurdu');
@@ -139,7 +165,16 @@ test('BT4 eski bicimli oturumlar ayni anahtarla surer; anahtar degisirse (eskisi
 test('BT5 bozuk / uydurma cerez: cokme yok, istemcinin sectigi kimlik benimsenmez', async () => {
   const store = new session.MemoryStore();
   const url = uygulama(store, 'k');
-  for (const v of ['v2.kisa', 'v2.', 'v2.%E0%A4%A', 's%3A', 's%3Aabc', 'duz-metin', `v2.${'!'.repeat(43)}`, '%']) {
+  for (const v of [
+    'v2.kisa',
+    'v2.',
+    'v2.%E0%A4%A',
+    's%3A',
+    's%3Aabc',
+    'duz-metin',
+    `v2.${'!'.repeat(43)}`,
+    '%',
+  ]) {
     const r = await fetch(`${url}/ben`, { headers: { cookie: `connect.sid=${v}` } });
     assert.equal(r.status, 200, `"${v}" sunucuyu dusurdu`);
     assert.equal((await r.json()).user, null);
@@ -147,7 +182,10 @@ test('BT5 bozuk / uydurma cerez: cokme yok, istemcinin sectigi kimlik benimsenme
   // Gecerli BICIMDE ama var olmayan belirtec: oturum yok; giris yapilinca kimlik
   // istemcinin gonderdiginden TUREMEZ (oturum sabitleme).
   const uydurma = `v2.${'B'.repeat(43)}`;
-  const g = await fetch(`${url}/giris`, { method: 'POST', headers: { cookie: `connect.sid=${uydurma}` } });
+  const g = await fetch(`${url}/giris`, {
+    method: 'POST',
+    headers: { cookie: `connect.sid=${uydurma}` },
+  });
   const yeni = cerezDegeri(g);
   assert.notEqual(yeni, `connect.sid=${uydurma}`, 'sunucu istemcinin sectigi belirteci benimsedi');
   assert.notEqual((await g.json()).sid, bel.kimlik('B'.repeat(43)));
@@ -179,8 +217,15 @@ test('BT7 hiz siniri anahtari kullanici basina ayri; ham belirteci tasimaz', () 
   assert.equal(cerez.oturumHizAnahtari({ headers: {} }), null);
   // Gercek hiz siniri bu yardimciyi kullanir (eski yazim "ilk noktaya kadar"i aliyordu:
   // `v2.<...>` cerezinde bu HERKES icin "v2" olur, tum kullanicilar tek butceyi paylasirdi).
-  const servis = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'service.cjs'), 'utf8');
-  assert.match(servis, /const oturum = oturumHizAnahtari\(req\);\s*if \(oturum\) return oturum;/, 'hiz siniri ortak yardimciyi kullanmiyor');
+  const servis = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'service.cjs'),
+    'utf8',
+  );
+  assert.match(
+    servis,
+    /const oturum = oturumHizAnahtari\(req\);\s*if \(oturum\) return oturum;/,
+    'hiz siniri ortak yardimciyi kullanmiyor',
+  );
 });
 
 test('BT8 gercek initAuth: belirtec cerezi, /me, oturum listesi, cikis', async () => {
@@ -188,7 +233,14 @@ test('BT8 gercek initAuth: belirtec cerezi, /me, oturum listesi, cikis', async (
   const asil = db.query;
   db.query = async () => ({ rows: [], rowCount: 0 });
   const eski = {};
-  const env = { SESSION_STORE: 'memory', LOCAL_USER: 'yereluser', LOCAL_USER_PASS: 'Guclu-Sifre-123!', LDAP_URL: undefined, SESSION_SECRET: undefined, SESSION_COOKIE_NAME: undefined };
+  const env = {
+    SESSION_STORE: 'memory',
+    LOCAL_USER: 'yereluser',
+    LOCAL_USER_PASS: 'Guclu-Sifre-123!',
+    LDAP_URL: undefined,
+    SESSION_SECRET: undefined,
+    SESSION_COOKIE_NAME: undefined,
+  };
   for (const k of Object.keys(env)) {
     eski[k] = process.env[k];
     if (env[k] === undefined) delete process.env[k];
@@ -206,7 +258,11 @@ test('BT8 gercek initAuth: belirtec cerezi, /me, oturum listesi, cikis', async (
     });
     assert.equal(g.status, 200);
     const c = cerezDegeri(g);
-    assert.match(c, /^connect\.sid=v2\.[A-Za-z0-9_-]{43}$/, `initAuth belirtec cerezi vermiyor: ${c}`);
+    assert.match(
+      c,
+      /^connect\.sid=v2\.[A-Za-z0-9_-]{43}$/,
+      `initAuth belirtec cerezi vermiyor: ${c}`,
+    );
     const belirtec = c.split('=')[1].slice(3);
     const h = { cookie: c };
     assert.equal((await fetch(`${url}/api/auth/me`, { headers: h })).status, 200);
@@ -214,12 +270,19 @@ test('BT8 gercek initAuth: belirtec cerezi, /me, oturum listesi, cikis', async (
     assert.equal(sid, bel.kimlik(belirtec), 'req.sessionID belirtecin ozeti degil');
     const liste = await (await fetch(`${url}/api/auth/sessions`, { headers: h })).text();
     assert.equal(JSON.parse(liste).sessions.filter((s) => s.current).length, 1);
-    assert.ok(!liste.includes(belirtec) && !liste.includes(sid), 'belirtec ya da kimlik oturum listesine sizdi');
+    assert.ok(
+      !liste.includes(belirtec) && !liste.includes(sid),
+      'belirtec ya da kimlik oturum listesine sizdi',
+    );
     // Sonraki yanitlarda cerez AYNI belirtecle yenilenir.
     const r2 = await fetch(`${url}/api/auth/session`, { headers: h });
     assert.equal(cerezDegeri(r2), c);
     await fetch(`${url}/api/auth/logout`, { method: 'POST', headers: h });
-    assert.equal((await fetch(`${url}/api/auth/me`, { headers: h })).status, 401, 'cikistan sonra belirtec hala gecerli');
+    assert.equal(
+      (await fetch(`${url}/api/auth/me`, { headers: h })).status,
+      401,
+      'cikistan sonra belirtec hala gecerli',
+    );
   } finally {
     db.query = asil;
     for (const k of Object.keys(env)) {
@@ -243,7 +306,10 @@ test('BT9 uretimde oturumlar bellekte tutuluyorsa acilista YUKSEK SESLE soylenir
     process.env.NODE_ENV = 'production';
     process.env.SESSION_STORE = 'memory';
     require('../index.cjs').initAuth(express());
-    assert.ok(yazilan.some((m) => /oturumlar BELLEKTE/.test(m) && /yeniden baslatmada/.test(m)), `uyari yok: ${yazilan.join(' | ')}`);
+    assert.ok(
+      yazilan.some((m) => /oturumlar BELLEKTE/.test(m) && /yeniden baslatmada/.test(m)),
+      `uyari yok: ${yazilan.join(' | ')}`,
+    );
     yazilan.length = 0;
     process.env.NODE_ENV = 'development';
     require('../index.cjs').initAuth(express());
@@ -263,8 +329,15 @@ test('BT10 dagitim betigi ve ornek ayar SESSION_SECRET`i SART KOSMAZ', () => {
   const path = require('node:path');
   const kok = path.join(__dirname, '..', '..', '..');
   const run = fs.readFileSync(path.join(kok, 'deploy/run.sh'), 'utf8');
-  const kod = run.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.doesNotMatch(kod, /SESSION_SECRET/, 'run.sh hala SESSION_SECRET`e bakiyor — bos ise baslatmayi reddeder');
+  const kod = run
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .join('\n');
+  assert.doesNotMatch(
+    kod,
+    /SESSION_SECRET/,
+    'run.sh hala SESSION_SECRET`e bakiyor — bos ise baslatmayi reddeder',
+  );
   const ornek = fs.readFileSync(path.join(kok, '.env.example'), 'utf8');
   assert.match(ornek, /^SESSION_SECRET=$/m, '.env.example bos birakilabildigini gostermiyor');
   assert.match(ornek, /SESSION_SECRET ZORUNLU DEGIL/);

@@ -20,7 +20,11 @@ function sahte(yol, exp) {
   require.cache[yol] = m;
 }
 
-const durum = { kolonlar: ['host', 'jboss_version', 'jboss7_version', 'jboss8_version'], kolonHata: false, sorgular: [] };
+const durum = {
+  kolonlar: ['host', 'jboss_version', 'jboss7_version', 'jboss8_version'],
+  kolonHata: false,
+  sorgular: [],
+};
 sahte(require.resolve('../../inventory/mssql.cjs'), {
   sql: { NVarChar: () => 'nv' },
   query: async (text) => {
@@ -31,12 +35,15 @@ sahte(require.resolve('../../inventory/mssql.cjs'), {
     }
     if (/UNION ALL/.test(text) || /SELECT '/.test(text)) {
       const rs = [];
-      if (text.includes("'jboss7_version'")) rs.push({ dim: 'jboss7_version', val: '7.3.5', n: 1, hosts: 1 });
-      if (text.includes("'jboss8_version'")) rs.push({ dim: 'jboss8_version', val: '8.1.6.1', n: 1, hosts: 1 });
+      if (text.includes("'jboss7_version'"))
+        rs.push({ dim: 'jboss7_version', val: '7.3.5', n: 1, hosts: 1 });
+      if (text.includes("'jboss8_version'"))
+        rs.push({ dim: 'jboss8_version', val: '8.1.6.1', n: 1, hosts: 1 });
       rs.push({ dim: 'jboss_version', val: '7.3.5 8.1.6.1', n: 1, hosts: 1 });
       return { recordset: rs };
     }
-    if (/COUNT\(\*\) AS rows_total/.test(text)) return { recordset: [{ rows_total: 1, host_total: 1 }] };
+    if (/COUNT\(\*\) AS rows_total/.test(text))
+      return { recordset: [{ rows_total: 1, host_total: 1 }] };
     return { recordset: [] };
   },
 });
@@ -69,7 +76,8 @@ test('EJ1 kolonlar varsa JBoss 7 / 8 kirilimi ve urun kartlari; eski JBoss kiril
   const b = await getir('/envanter/summary?source=hosts');
   assert.equal(b.ok, true);
   const anahtarlar = b.dims.map((d) => d.key);
-  for (const k of ['jboss_version', 'jboss7_version', 'jboss8_version']) assert.ok(anahtarlar.includes(k), k);
+  for (const k of ['jboss_version', 'jboss7_version', 'jboss8_version'])
+    assert.ok(anahtarlar.includes(k), k);
   const urun = Object.fromEntries(b.products.map((p) => [p.label, p.installed]));
   assert.equal(urun['JBoss 7'], 1);
   assert.equal(urun['JBoss 8'], 1);
@@ -81,7 +89,10 @@ test('EJ2 kolonlar YOKSA sorgu bozulmaz; yeni kirilimlar SQL e girmez, eksik ola
   durum.kolonlar = ['host', 'jboss_version'];
   const b = await getir('/envanter/summary?source=hosts');
   assert.equal(b.ok, true);
-  assert.ok(!durum.sorgular.some((s) => /jboss7_version|jboss8_version/.test(s) && !/sys\.columns/.test(s)), 'olmayan kolon SQL e girdi');
+  assert.ok(
+    !durum.sorgular.some((s) => /jboss7_version|jboss8_version/.test(s) && !/sys\.columns/.test(s)),
+    'olmayan kolon SQL e girdi',
+  );
   assert.deepEqual(b.eksikBoyutlar, ['JBoss 7 sürümü', 'JBoss 8 sürümü']);
   assert.ok(b.dims.some((d) => d.key === 'jboss_version'));
 });

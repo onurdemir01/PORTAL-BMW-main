@@ -28,7 +28,7 @@ const { parseDump } = require('../dump-parse.cjs');
 
 const NOW = Date.parse('2026-11-16T15:00:00Z');
 const TAZE = '2026-11-16T14:30:00Z';
-const GRUP = [{ id: 'glomo', label: 'Glomo', hosts: ['GBNGXP40', 'GBNGXP41', 'GBNGXAP34'] }];
+const GRUP = [{ id: 'glomo', label: 'Glomo', hosts: ['ORNGXP40', 'ORNGXP41', 'ORNGXAP34'] }];
 
 const pkg = (ns, app, o = {}) => ({
   ns,
@@ -53,7 +53,7 @@ function hesapla(v) {
 
 test('PT1 tum sunucular taze olculdu, her uygulama ayni -> esit', () => {
   const p = [pkg('glomo-ns', 'app-a'), pkg('glomo-ns', 'app-b', { version: null })];
-  const g = hesapla({ GBNGXP40: veri(p), GBNGXP41: veri(p), GBNGXAP34: veri(p) });
+  const g = hesapla({ ORNGXP40: veri(p), ORNGXP41: veri(p), ORNGXAP34: veri(p) });
   assert.equal(g.hukum, 'esit');
   assert.deepEqual(g.sayac, {
     uygulama: 2,
@@ -81,7 +81,7 @@ test('PT2 surum, dosyalar ve config farki ayri adlandirilir; cogunluk ilk varyan
     pkg('ns', 'dosya', { icerik: 'dddddddddddd', dosya: 30 }),
     pkg('ns', 'config', { config: '771b609c89a4' }),
   ];
-  const g = hesapla({ GBNGXP40: veri(ana), GBNGXP41: veri(ana), GBNGXAP34: veri(sapan) });
+  const g = hesapla({ ORNGXP40: veri(ana), ORNGXP41: veri(ana), ORNGXAP34: veri(sapan) });
   assert.equal(g.hukum, 'farkli');
   assert.equal(g.sayac.farkli, 3);
   const by = Object.fromEntries(g.apps.map((a) => [a.app, a]));
@@ -89,15 +89,15 @@ test('PT2 surum, dosyalar ve config farki ayri adlandirilir; cogunluk ilk varyan
   assert.equal(by.surum.yalnizVersion, false);
   assert.deepEqual(by.dosya.fark, ['icerik'], 'ayni surumde farkli dosyalar ayrica gorunmeli');
   assert.deepEqual(by.config.fark, ['config']);
-  assert.deepEqual(by.dosya.cogunluk.hosts, ['GBNGXP40', 'GBNGXP41']);
-  assert.equal(by.dosya.varyantlar[1].hosts[0], 'GBNGXAP34');
-  const hucre = by.config.sunucular.find((s) => s.host === 'GBNGXAP34');
+  assert.deepEqual(by.dosya.cogunluk.hosts, ['ORNGXP40', 'ORNGXP41']);
+  assert.equal(by.dosya.varyantlar[1].hosts[0], 'ORNGXAP34');
+  const hucre = by.config.sunucular.find((s) => s.host === 'ORNGXAP34');
   assert.equal(hucre.config, '771b609c89a4');
   // yalniz .version farki (dosyalar ayni) da esit DEGILDIR ama ayrica isaretlenir
   const v = hesapla({
-    GBNGXP40: veri([pkg('ns', 'x')]),
-    GBNGXP41: veri([pkg('ns', 'x')]),
-    GBNGXAP34: veri([pkg('ns', 'x', { version: null })]),
+    ORNGXP40: veri([pkg('ns', 'x')]),
+    ORNGXP41: veri([pkg('ns', 'x')]),
+    ORNGXAP34: veri([pkg('ns', 'x', { version: null })]),
   });
   assert.equal(v.hukum, 'farkli');
   assert.equal(v.apps[0].yalnizVersion, true);
@@ -106,9 +106,9 @@ test('PT2 surum, dosyalar ve config farki ayri adlandirilir; cogunluk ilk varyan
 test('PT3 dizin bir sunucuda yok ya da conf gosteriyor ama dizin yok -> eksik, once listelenir', () => {
   const tam = [pkg('ns', 'a-farkli'), pkg('ns', 'z-eksik')];
   const g = hesapla({
-    GBNGXP40: veri(tam),
-    GBNGXP41: veri([pkg('ns', 'a-farkli', { icerik: 'eeeeeeeeeeee' }), pkg('ns', 'z-eksik')]),
-    GBNGXAP34: veri([
+    ORNGXP40: veri(tam),
+    ORNGXP41: veri([pkg('ns', 'a-farkli', { icerik: 'eeeeeeeeeeee' }), pkg('ns', 'z-eksik')]),
+    ORNGXAP34: veri([
       pkg('ns', 'a-farkli'),
       {
         ...pkg('ns', 'z-eksik'),
@@ -128,46 +128,46 @@ test('PT3 dizin bir sunucuda yok ya da conf gosteriyor ama dizin yok -> eksik, o
       ['a-farkli', 'farkli'],
     ],
   );
-  assert.deepEqual(g.apps[0].yok, ['GBNGXAP34']);
-  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'GBNGXAP34').yok, true);
+  assert.deepEqual(g.apps[0].yok, ['ORNGXAP34']);
+  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'ORNGXAP34').yok, true);
   // listede hic olmayan (dizini silinmis, conf'u da yok) uygulama da eksik
   const h = hesapla({
-    GBNGXP40: veri([pkg('ns', 'b')]),
-    GBNGXP41: veri([pkg('ns', 'b')]),
-    GBNGXAP34: veri([]),
+    ORNGXP40: veri([pkg('ns', 'b')]),
+    ORNGXP41: veri([pkg('ns', 'b')]),
+    ORNGXAP34: veri([]),
   });
   assert.equal(h.apps[0].durum, 'eksik');
-  assert.deepEqual(h.apps[0].yok, ['GBNGXAP34']);
+  assert.deepEqual(h.apps[0].yok, ['ORNGXAP34']);
 });
 
 test('PT4 olculemeyen sunucu esit dedirtmez; fark varsa hukum farkli kalir', () => {
   const p = [pkg('ns', 'a')];
   const eski = hesapla({
-    GBNGXP40: veri(p),
-    GBNGXP41: veri(p),
-    GBNGXAP34: { ozet: { pkgs: null, dumpedAt: TAZE }, seenAt: TAZE },
+    ORNGXP40: veri(p),
+    ORNGXP41: veri(p),
+    ORNGXAP34: { ozet: { pkgs: null, dumpedAt: TAZE }, seenAt: TAZE },
   });
   assert.equal(eski.hukum, 'olculemedi');
-  assert.equal(eski.sunucular.find((s) => s.host === 'GBNGXAP34').durum, 'eski-betik');
+  assert.equal(eski.sunucular.find((s) => s.host === 'ORNGXAP34').durum, 'eski-betik');
   assert.equal(eski.sayac.olculen, 2);
 
-  const yok = hesapla({ GBNGXP40: veri(p), GBNGXP41: veri(p) });
+  const yok = hesapla({ ORNGXP40: veri(p), ORNGXP41: veri(p) });
   assert.equal(yok.hukum, 'olculemedi');
-  assert.equal(yok.sunucular.find((s) => s.host === 'GBNGXAP34').durum, 'dokum-yok');
+  assert.equal(yok.sunucular.find((s) => s.host === 'ORNGXAP34').durum, 'dokum-yok');
 
   const bayat = hesapla({
-    GBNGXP40: veri(p),
-    GBNGXP41: veri(p),
-    GBNGXAP34: veri(p, '2026-11-16T10:00:00Z'),
+    ORNGXP40: veri(p),
+    ORNGXP41: veri(p),
+    ORNGXAP34: veri(p, '2026-11-16T10:00:00Z'),
   });
   assert.equal(bayat.hukum, 'olculemedi', '5 saatlik olcum esit sayilmamali');
-  const b = bayat.sunucular.find((s) => s.host === 'GBNGXAP34');
+  const b = bayat.sunucular.find((s) => s.host === 'ORNGXAP34');
   assert.equal(b.durum, 'bayat');
   assert.match(b.neden, /5 saat/);
 
   const fark = hesapla({
-    GBNGXP40: veri(p),
-    GBNGXP41: veri([pkg('ns', 'a', { config: 'ffffffffffff' })]),
+    ORNGXP40: veri(p),
+    ORNGXP41: veri([pkg('ns', 'a', { config: 'ffffffffffff' })]),
   });
   assert.equal(fark.hukum, 'farkli', 'olculemeyen sunucu varken bile kesin fark gizlenmez');
 
@@ -178,17 +178,17 @@ test('PT4 olculemeyen sunucu esit dedirtmez; fark varsa hukum farkli kalir', () 
 
 test('PT5 hicbir sunucuda tanimli olmayan dizin karsilastirilmaz, tanimsiz sayilir', () => {
   const g = hesapla({
-    GBNGXP40: veri([pkg('ns', 'a'), pkg('ns', 'artik', { tanimli: false })]),
-    GBNGXP41: veri([pkg('ns', 'a')]),
-    GBNGXAP34: veri([pkg('ns', 'a'), pkg('ns', 'artik', { tanimli: false, icerik: 'x' })]),
+    ORNGXP40: veri([pkg('ns', 'a'), pkg('ns', 'artik', { tanimli: false })]),
+    ORNGXP41: veri([pkg('ns', 'a')]),
+    ORNGXAP34: veri([pkg('ns', 'a'), pkg('ns', 'artik', { tanimli: false, icerik: 'x' })]),
   });
   assert.equal(g.hukum, 'esit');
-  assert.deepEqual(g.tanimsiz, [{ key: 'ns/artik', hosts: ['GBNGXAP34', 'GBNGXP40'] }]);
+  assert.deepEqual(g.tanimsiz, [{ key: 'ns/artik', hosts: ['ORNGXAP34', 'ORNGXP40'] }]);
   // bir sunucuda tanimliysa karsilastirmaya girer
   const t = hesapla({
-    GBNGXP40: veri([pkg('ns', 'b', { tanimli: true })]),
-    GBNGXP41: veri([pkg('ns', 'b', { tanimli: false })]),
-    GBNGXAP34: veri([]),
+    ORNGXP40: veri([pkg('ns', 'b', { tanimli: true })]),
+    ORNGXP41: veri([pkg('ns', 'b', { tanimli: false })]),
+    ORNGXAP34: veri([]),
   });
   assert.equal(t.apps[0].key, 'ns/b');
   assert.equal(t.apps[0].durum, 'eksik');
@@ -197,7 +197,7 @@ test('PT5 hicbir sunucuda tanimli olmayan dizin karsilastirilmaz, tanimsiz sayil
 test('PT6 @@SPAPKG ayristirma: CRLF, bicim disi satir atlanir, bolum yoksa null', () => {
   const d = parseDump(
     [
-      '@@HOST GBNGXP40',
+      '@@HOST ORNGXP40',
       '@@SPAPKG',
       'ges-pension-fund-ch-prod\tfund-coach-app-v0\tvar\t0.0.11-1-prod\tc7e374461abb\tb7d870101bd9\t953\t2026-11-16 16:44\t1',
       'ns\tgone\tyok\t-\t-\t-\t0\t-\t1',
@@ -257,15 +257,15 @@ const satir = (app, icerik = 'aaaaaaaaaaaa') =>
 test('PT7 eski semadaki ozet yan dosyasi (pkgs yok) kullanilmaz, dokumden yeniden uretilir', () => {
   const dir = geciciDizin();
   const idx = require('../index.cjs');
-  const p = path.join(dir, 'raw', 'GBPKGT01.txt');
-  fs.writeFileSync(p, dokum('GBPKGT01', [satir('app-a')]));
+  const p = path.join(dir, 'raw', 'ORPKGT01.txt');
+  fs.writeFileSync(p, dokum('ORPKGT01', [satir('app-a')]));
   const st = fs.statSync(p);
   fs.writeFileSync(
-    path.join(dir, 'raw', 'GBPKGT01.summary.json'),
+    path.join(dir, 'raw', 'ORPKGT01.summary.json'),
     JSON.stringify({
       mtimeMs: st.mtimeMs,
       ingested: true,
-      host: 'GBPKGT01',
+      host: 'ORPKGT01',
       tree: [],
       certs: [],
       certUses: [],
@@ -274,19 +274,19 @@ test('PT7 eski semadaki ozet yan dosyasi (pkgs yok) kullanilmaz, dokumden yenide
       sslFiles: [],
     }),
   );
-  const sm = idx._loadSummaryForTest('GBPKGT01');
+  const sm = idx._loadSummaryForTest('ORPKGT01');
   assert.ok(Array.isArray(sm.pkgs), 'eski yan dosya pkgs olmadan donmemeli');
   assert.equal(sm.pkgs[0].app, 'app-a');
   assert.equal(sm.ozetSurumu, 2);
-  const yan = JSON.parse(fs.readFileSync(path.join(dir, 'raw', 'GBPKGT01.summary.json'), 'utf8'));
+  const yan = JSON.parse(fs.readFileSync(path.join(dir, 'raw', 'ORPKGT01.summary.json'), 'utf8'));
   assert.equal(yan.ozetSurumu, 2, 'yan dosya yeni semayla yeniden yazilmali');
 });
 
 test('PT8 uctan uca: raw dokumleri + _seen.json -> /drift/paket yaniti (MIGRATION_GROUPS)', () => {
   const dir = geciciDizin();
   const idx = require('../index.cjs');
-  const { MIGRATION_GROUPS } = require('../../audit/nginx-migration.cjs');
-  const glomo = MIGRATION_GROUPS.find((g) => g.id === 'glomo').newHosts;
+  const { migrationGroups } = require('../../audit/nginx-migration.cjs');
+  const glomo = migrationGroups().find((g) => g.id === 'glomo').newHosts;
   // Glomo: biri ayni surumde farkli dosyalarla (fund-coach olayi), biri dokumsuz
   glomo.slice(0, -1).forEach((h, i) => {
     fs.writeFileSync(
@@ -308,7 +308,7 @@ test('PT8 uctan uca: raw dokumleri + _seen.json -> /drift/paket yaniti (MIGRATIO
   assert.equal(r.ok, true);
   assert.deepEqual(
     r.groups.map((g) => g.id),
-    MIGRATION_GROUPS.map((g) => g.id),
+    migrationGroups().map((g) => g.id),
   );
   const g = r.groups.find((x) => x.id === 'glomo');
   assert.deepEqual(g.hosts, [...glomo].sort());
@@ -331,16 +331,16 @@ test('PT9 okunamayan uygulama esit sayilmaz; okunabilenler farkliysa hukum farkl
   const okunamaz = [
     { ...pkg('ns', 'a'), durum: 'okunamadi', icerik: null, config: null, dosya: null },
   ];
-  const g = hesapla({ GBNGXP40: veri(ok), GBNGXP41: veri(ok), GBNGXAP34: veri(okunamaz) });
+  const g = hesapla({ ORNGXP40: veri(ok), ORNGXP41: veri(ok), ORNGXAP34: veri(okunamaz) });
   assert.equal(g.hukum, 'olculemedi', 'okunamayan paket ESIT gosterilmemeli');
   assert.equal(g.sayac.olculemedi, 1);
   assert.equal(g.apps[0].durum, 'olculemedi');
-  assert.deepEqual(g.apps[0].okunamayan, ['GBNGXAP34']);
-  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'GBNGXAP34').okunamadi, true);
+  assert.deepEqual(g.apps[0].okunamayan, ['ORNGXAP34']);
+  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'ORNGXAP34').okunamadi, true);
   const f = hesapla({
-    GBNGXP40: veri(ok),
-    GBNGXP41: veri([pkg('ns', 'a', { icerik: 'ffffffffffff' })]),
-    GBNGXAP34: veri(okunamaz),
+    ORNGXP40: veri(ok),
+    ORNGXP41: veri([pkg('ns', 'a', { icerik: 'ffffffffffff' })]),
+    ORNGXAP34: veri(okunamaz),
   });
   assert.equal(f.hukum, 'farkli');
   assert.equal(f.apps[0].durum, 'farkli');
@@ -364,15 +364,15 @@ test('PT9 okunamayan uygulama esit sayilmaz; okunabilenler farkliysa hukum farkl
 });
 
 test('PT10 karsilastirilacak uygulama yoksa hukum esit degil', () => {
-  const g = hesapla({ GBNGXP40: veri([]), GBNGXP41: veri([]), GBNGXAP34: veri([]) });
+  const g = hesapla({ ORNGXP40: veri([]), ORNGXP41: veri([]), ORNGXAP34: veri([]) });
   assert.equal(g.sayac.olculen, 3);
   assert.equal(g.sayac.uygulama, 0);
   assert.equal(g.hukum, 'olculemedi');
   // yalniz tanimsiz dizinler de esitlik kaniti degildir
   const t = hesapla({
-    GBNGXP40: veri([pkg('ns', 'x', { tanimli: false })]),
-    GBNGXP41: veri([]),
-    GBNGXAP34: veri([]),
+    ORNGXP40: veri([pkg('ns', 'x', { tanimli: false })]),
+    ORNGXP41: veri([]),
+    ORNGXAP34: veri([]),
   });
   assert.equal(t.hukum, 'olculemedi');
 });
@@ -380,17 +380,17 @@ test('PT10 karsilastirilacak uygulama yoksa hukum esit degil', () => {
 test('PT11 kaynagindan eski .gz/.br esit dedirtmez (tum sunucularda ayni olsa da)', () => {
   const p = [pkg('ns', 'a')];
   const g = hesapla({
-    GBNGXP40: veri(p),
-    GBNGXP41: veri(p),
-    GBNGXAP34: veri([pkg('ns', 'a', { bayatSikistirma: 2 })]),
+    ORNGXP40: veri(p),
+    ORNGXP41: veri(p),
+    ORNGXAP34: veri([pkg('ns', 'a', { bayatSikistirma: 2 })]),
   });
   assert.equal(g.hukum, 'farkli');
   assert.deepEqual(g.apps[0].fark, ['sikistirma']);
-  assert.deepEqual(g.apps[0].bayatSikistirma, ['GBNGXAP34']);
-  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'GBNGXAP34').bayatSikistirma, 2);
+  assert.deepEqual(g.apps[0].bayatSikistirma, ['ORNGXAP34']);
+  assert.equal(g.apps[0].sunucular.find((s) => s.host === 'ORNGXAP34').bayatSikistirma, 2);
   const hepsi = [pkg('ns', 'a', { bayatSikistirma: 1 })];
   assert.equal(
-    hesapla({ GBNGXP40: veri(hepsi), GBNGXP41: veri(hepsi), GBNGXAP34: veri(hepsi) }).hukum,
+    hesapla({ ORNGXP40: veri(hepsi), ORNGXP41: veri(hepsi), ORNGXAP34: veri(hepsi) }).hukum,
     'farkli',
   );
 });

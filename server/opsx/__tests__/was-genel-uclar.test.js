@@ -46,7 +46,10 @@ function sahteDb(dunya) {
   return {
     async query(sql, params = []) {
       const s = String(sql).replace(/\s+/g, ' ').trim();
-      if (/FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(s) && /^SELECT TOP 1/.test(s)) {
+      if (
+        /FROM ansible_job_history WHERE job_id = \$1 AND awx_server_id = \$2/.test(s) &&
+        /^SELECT TOP 1/.test(s)
+      ) {
         if (dunya.dbHata) throw new Error('DB erisilemiyor (test)');
         return { rows: dunya.gecmis ? [{ ...dunya.gecmis }] : [] };
       }
@@ -95,14 +98,27 @@ const sessiz = { log() {}, warn() {}, error() {} };
 const SS_KAYNAK = handlerKaynagi(RUNNER_SRC, '/api/ansible/ss/job-status/:serverId/:jobId');
 async function ssJobStatus(dunya, user) {
   const handler = new Function(
-    'require', 'getServerById', 'getTokenForServer', 'awxRequestToServer', 'getJobOutputOnServer',
-    'stdoutCache', 'readCustom', 'applyOutputFilter', 'console',
+    'require',
+    'getServerById',
+    'getTokenForServer',
+    'awxRequestToServer',
+    'getJobOutputOnServer',
+    'stdoutCache',
+    'readCustom',
+    'applyOutputFilter',
+    'console',
     `return (${SS_KAYNAK});`,
   )(
     sahteRequire(dunya),
     () => ({ id: 1, url: 'https://awx.test' }),
     async () => 'tok',
-    async () => ({ id: 77, status: dunya.durum, playbook: dunya.playbook, finished: '2026-10-02T10:00:00Z', failed: false }),
+    async () => ({
+      id: 77,
+      status: dunya.durum,
+      playbook: dunya.playbook,
+      finished: '2026-10-02T10:00:00Z',
+      failed: false,
+    }),
     async () => ({ output: HAM }),
     { sil() {} },
     () => ({}),
@@ -118,7 +134,12 @@ async function ssJobStatus(dunya, user) {
 const OPSX_KAYNAK = handlerKaynagi(OPSX_SRC, '/api/opsx/job-status/:serverId/:jobId');
 async function opsxJobStatus(dunya, user) {
   const runner = {
-    getJobStatusOnServer: async () => ({ status: dunya.durum, playbook: dunya.playbook, finished: null, failed: false }),
+    getJobStatusOnServer: async () => ({
+      status: dunya.durum,
+      playbook: dunya.playbook,
+      finished: null,
+      failed: false,
+    }),
     getJobOutputOnServer: async () => ({ output: HAM }),
   };
   const handler = new Function('require', 'console', `return (${OPSX_KAYNAK});`)(
@@ -137,7 +158,7 @@ const WAS_OP_YML = 'bmw_portal/opsx_was/opsx_was_operation.yml';
 const gecmisWas = (platform = 'was-operation') => ({
   username: 'ali',
   template_id: 102,
-  params: JSON.stringify({ platform, app: 'APPX', host: 'GBWASP01', server: 'APPX' }),
+  params: JSON.stringify({ platform, app: 'APPX', host: 'ORWASP01', server: 'APPX' }),
 });
 
 test('GU1a ss/job-status WAS isi: sahibine 200 ama cikti EKRANDA ve ARSIVDE maskeli', async () => {
@@ -151,15 +172,26 @@ test('GU1a ss/job-status WAS isi: sahibine 200 ama cikti EKRANDA ve ARSIVDE mask
   // Platform gecmisten okundu: AWX playbook adi gelmese de maskelenir.
   const d2 = dunyaKur({ gecmis: gecmisWas('was-discover'), playbook: undefined });
   const r2 = await ssJobStatus(d2, ALI);
-  assert.doesNotMatch(r2.govde.output, new RegExp(GIZLI), 'platformdan taninan WAS isi maskelenmedi');
+  assert.doesNotMatch(
+    r2.govde.output,
+    new RegExp(GIZLI),
+    'platformdan taninan WAS isi maskelenmedi',
+  );
 });
 
 test('GU1b ss/job-status WAS isi: sahiplik FAIL-CLOSED (DB hatasi 503, kayitsiz is yalniz Admin)', async () => {
   let r = await ssJobStatus(dunyaKur({ gecmis: gecmisWas(), playbook: WAS_OP_YML }), VELI);
   assert.equal(r.kod, 403, JSON.stringify(r.govde));
   for (const user of [VELI, ALI, ADMIN]) {
-    r = await ssJobStatus(dunyaKur({ gecmis: gecmisWas(), playbook: WAS_OP_YML, dbHata: true }), user);
-    assert.equal(r.kod, 503, `${user.username}: DB hatasinda WAS isi acildi: ${JSON.stringify(r.govde)}`);
+    r = await ssJobStatus(
+      dunyaKur({ gecmis: gecmisWas(), playbook: WAS_OP_YML, dbHata: true }),
+      user,
+    );
+    assert.equal(
+      r.kod,
+      503,
+      `${user.username}: DB hatasinda WAS isi acildi: ${JSON.stringify(r.govde)}`,
+    );
   }
   r = await ssJobStatus(dunyaKur({ gecmis: null, playbook: WAS_OP_YML }), VELI);
   assert.equal(r.kod, 403, `kaydi olmayan WAS isi herkese acildi: ${JSON.stringify(r.govde)}`);
@@ -169,9 +201,16 @@ test('GU1b ss/job-status WAS isi: sahiplik FAIL-CLOSED (DB hatasi 503, kayitsiz 
 });
 
 test('GU1c ss/job-status WAS OLMAYAN isde davranis degismedi (fail-open, maskesiz ham cikti)', async () => {
-  const sonuc = await ssJobStatus(dunyaKur({ gecmis: null, playbook: 'bmw_portal/java_app_ops/java_app_ops.yml', dbHata: true }), VELI);
+  const sonuc = await ssJobStatus(
+    dunyaKur({ gecmis: null, playbook: 'bmw_portal/java_app_ops/java_app_ops.yml', dbHata: true }),
+    VELI,
+  );
   assert.equal(sonuc.kod, 200, JSON.stringify(sonuc.govde));
-  assert.match(sonuc.govde.output, new RegExp(GIZLI), 'WAS disi isin ciktisi degisti (kapsam disi)');
+  assert.match(
+    sonuc.govde.output,
+    new RegExp(GIZLI),
+    'WAS disi isin ciktisi degisti (kapsam disi)',
+  );
 });
 
 test('GU2 /api/opsx/job-status WAS isini HIC vermez (409 was_ucu), DB okunamasa bile', async () => {
@@ -181,11 +220,17 @@ test('GU2 /api/opsx/job-status WAS isini HIC vermez (409 was_ucu), DB okunamasa 
     assert.equal(r.govde.code, 'was_ucu');
     assert.doesNotMatch(JSON.stringify(r.govde), new RegExp(GIZLI));
   }
-  const r = await opsxJobStatus(dunyaKur({ gecmis: null, playbook: WAS_OP_YML, dbHata: true }), VELI);
+  const r = await opsxJobStatus(
+    dunyaKur({ gecmis: null, playbook: WAS_OP_YML, dbHata: true }),
+    VELI,
+  );
   assert.equal(r.kod, 409, `DB hatasinda WAS isi eski uctan acildi: ${JSON.stringify(r.govde)}`);
   // JBoss isi etkilenmez.
   const j = await opsxJobStatus(
-    dunyaKur({ gecmis: { username: 'ali', params: JSON.stringify({ platform: 'legacy' }) }, playbook: 'bmw_portal/java_app_ops/java_app_ops.yml' }),
+    dunyaKur({
+      gecmis: { username: 'ali', params: JSON.stringify({ platform: 'legacy' }) },
+      playbook: 'bmw_portal/java_app_ops/java_app_ops.yml',
+    }),
     ALI,
   );
   assert.equal(j.kod, 200, JSON.stringify(j.govde));

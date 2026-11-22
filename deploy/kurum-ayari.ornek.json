@@ -1,0 +1,995 @@
+{
+  "aciklama": "Kurum ayarinin KURGUSAL ornegi (server/util/kurum-ayari.cjs). Sunucu, cluster ve alan adlari uydurmadir (onek OR / oi / od, alan adlari .invalid); testler ve yerel gelistirme bunu kullanir. Uretimde gercek degerler repo disindaki dosyadadir (KURUM_AYAR_DOSYASI).",
+  "surum": 1,
+  "nginx": {
+    "intranetSunuculari": [
+      "ORNGXD50",
+      "ORNGXT50",
+      "ORNGXT51",
+      "ORNGXQ50",
+      "ORNGXP50",
+      "ORNGXP51",
+      "ORNGXP52",
+      "ORNGXP53",
+      "ORNGXAP50",
+      "ORNGXAP51"
+    ],
+    "ortamIstisnalari": {
+      "ORNGXT51": "EDU"
+    },
+    "internetRpNonprod": {
+      "DEV": ["ORNGXD01", "ORNGXD02"],
+      "TEST": ["ORNGXT33", "ORNGXT34"],
+      "QA": ["ORNGXQ01", "ORNGXQ02"]
+    },
+    "gocGruplari": {
+      "glomo": {
+        "eski": [
+          "ORRVPP07",
+          "ORRVPP08",
+          "ORRVPP09",
+          "ORRVPP10",
+          "ORRVPAP03",
+          "ORRVPAP04",
+          "ORRVPAP05",
+          "ORRVPAP06"
+        ],
+        "yeni": ["ORNGXP40", "ORNGXP41", "ORNGXP48", "ORNGXP49", "ORNGXAP34", "ORNGXAP35"]
+      },
+      "other": {
+        "eski": ["ORRVPP01", "ORRVPP02", "ORRVPAP01", "ORRVPAP02"],
+        "yeni": ["ORNGXP44", "ORNGXP45", "ORNGXP58", "ORNGXP59", "ORNGXAP32", "ORNGXAP33"]
+      }
+    },
+    "apiKumeleri": {
+      "mblcustomers": [
+        "ORNGWP01",
+        "ORNGWP02",
+        "ORNGWP03",
+        "ORNGWP04",
+        "ORNGWP05",
+        "ORNGWP06",
+        "ORNGWP07",
+        "ORNGWP08",
+        "ORNGWP09",
+        "ORNGWP10",
+        "ORNGWP11",
+        "ORNGWP12",
+        "ORNGWP13",
+        "ORNGWP14",
+        "ORNGWP15",
+        "ORNGWP16",
+        "ORNGWAP01",
+        "ORNGWAP02",
+        "ORNGWAP03",
+        "ORNGWAP04",
+        "ORNGWAP05",
+        "ORNGWAP06",
+        "ORNGWAP07",
+        "ORNGWAP08"
+      ],
+      "customers": [
+        "ORNGWP25",
+        "ORNGWP26",
+        "ORNGWP27",
+        "ORNGWP28",
+        "ORNGWP29",
+        "ORNGWP30",
+        "ORNGWP31",
+        "ORNGWP32",
+        "ORNGWAP22",
+        "ORNGWAP23",
+        "ORNGWAP24",
+        "ORNGWAP25"
+      ],
+      "mcustomers": [
+        "ORNGWAP10",
+        "ORNGWAP11",
+        "ORNGWAP12",
+        "ORNGWAP13",
+        "ORNGWP17",
+        "ORNGWP18",
+        "ORNGWP19",
+        "ORNGWP20",
+        "ORNGWP21",
+        "ORNGWP22",
+        "ORNGWP23",
+        "ORNGWP24",
+        "ORNGXAP30",
+        "ORNGXAP31",
+        "ORNGXP60",
+        "ORNGXP61",
+        "ORNGXP62",
+        "ORNGXP63"
+      ]
+    },
+    "apiGeneratorNonprod": {
+      "DEV": ["ORNGWD01", "ORNGWD02"],
+      "TEST": ["ORNGWT03", "ORNGWT04"],
+      "QA": ["ORNGWQ01", "ORNGWQ02"]
+    },
+    "rvp": {
+      "icAlan": "fw.sirket.invalid",
+      "sunucular": {
+        "ORNGXD02": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Dev → Internet SPA + Non-Glomo Dev"
+        },
+        "ORNGXT34": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Test -> İnternet SPA + Non-Glomo Test"
+        },
+        "ORNGXQ02": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "QA -> İnternet SPA + Non-Glomo QA"
+        },
+        "ORNGXT14": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Development"
+        },
+        "ORNGXT15": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Development"
+        },
+        "ORNGXT16": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Test"
+        },
+        "ORNGXT17": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Test"
+        },
+        "ORNGXT18": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → QA"
+        },
+        "ORNGXT19": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → QA"
+        },
+        "ORNGXT20": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Edu"
+        },
+        "ORNGXT21": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.30.1",
+          "amac": "Internet SPA → Edu"
+        },
+        "ORNGXP44": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXP45": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXP58": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXP59": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXAP32": {
+          "lokasyon": "Ankara",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXAP33": {
+          "lokasyon": "Ankara",
+          "domain": "odmz.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> CSO Internet"
+        },
+        "ORNGXD50": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Dev → Intranet"
+        },
+        "ORNGXT50": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Test -> Intranet"
+        },
+        "ORNGXQ50": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "QA -> Intranet"
+        },
+        "ORNGXP50": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORNGXP51": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORNGXP52": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORNGXP53": {
+          "lokasyon": "Pendik",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORNGXAP50": {
+          "lokasyon": "Ankara",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORNGXAP51": {
+          "lokasyon": "Ankara",
+          "domain": "fw.sirket.invalid",
+          "surum": "1.29.0 (nginx-plus-r35-p1)",
+          "amac": "Production -> Intranet"
+        },
+        "ORRNAT01": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.29.3 (nginx-plus-r36-p4)",
+          "amac": ""
+        },
+        "ORRNAP01": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.30.1",
+          "amac": ""
+        },
+        "ORRNAP02": {
+          "lokasyon": "Pendik",
+          "domain": "odmz.invalid",
+          "surum": "1.30.1",
+          "amac": ""
+        },
+        "ORRNAAP01": {
+          "lokasyon": "Ankara",
+          "domain": "odmz.invalid",
+          "surum": "1.30.1",
+          "amac": ""
+        },
+        "ORRNAAP02": {
+          "lokasyon": "Ankara",
+          "domain": "odmz.invalid",
+          "surum": "1.30.1",
+          "amac": ""
+        }
+      },
+      "kutular": {
+        "arkInternetNprAcik": ["ORNGXD02", "ORNGXT34", "ORNGXQ02"],
+        "nprKapali": [
+          "ORNGXT14",
+          "ORNGXT15",
+          "ORNGXT16",
+          "ORNGXT17",
+          "ORNGXT18",
+          "ORNGXT19",
+          "ORNGXT20",
+          "ORNGXT21"
+        ],
+        "arkInternetProd": [
+          "ORNGXP44",
+          "ORNGXP45",
+          "ORNGXP58",
+          "ORNGXP59",
+          "ORNGXAP32",
+          "ORNGXAP33"
+        ],
+        "arkIntranetNpr": ["ORNGXD50", "ORNGXT50", "ORNGXQ50"],
+        "arkIntranetProd": [
+          "ORNGXP50",
+          "ORNGXP51",
+          "ORNGXP52",
+          "ORNGXP53",
+          "ORNGXAP50",
+          "ORNGXAP51"
+        ],
+        "hostingInternetNprAcik": ["ORRNAT01"],
+        "hostingInternetProd": ["ORRNAP01", "ORRNAP02", "ORRNAAP01", "ORRNAAP02"]
+      }
+    },
+    "exposeHedefi": "ORNGXT07",
+    "yukTesti": {
+      "derlemeSunucusu": "ORLABT02",
+      "varsayilanYukSunuculari": ["ORNGXT34"]
+    }
+  },
+  "ocp": {
+    "platformKumeleri": {
+      "ark": [
+        "orocptest1",
+        "orocptest2",
+        "orocptest4",
+        "orocpqa1",
+        "orocpqa2",
+        "orocpankqa2",
+        "orocpprod1",
+        "orocpprod2",
+        "orocpankprod2",
+        "orocpprod4",
+        "orocpdrcprod1"
+      ],
+      "ark_ai": [
+        "orocparkaiprod1",
+        "orocparkaiprod2",
+        "orocpankarkaiprod1",
+        "orocparkaitest1",
+        "orocparkaitest2"
+      ],
+      "ark_lab": ["orocplab1", "orocplab2"],
+      "ark_edu": ["orocpedu1"],
+      "hosting": [
+        "orocp3rdprod1",
+        "orocp3rdprod2",
+        "orocpank3rdprod2",
+        "orocp3rdtest3",
+        "orocp3rdtest4"
+      ],
+      "istirak-hosting": [
+        "oiocp3rdprod1",
+        "oiocp3rdprod2",
+        "oiocpank3rdprod2",
+        "oiocp3rdtest3",
+        "oiocp3rdtest4"
+      ],
+      "wyden": [
+        "oiocp3rdwyprod1",
+        "oiocp3rdwyprod2",
+        "oiocpank3rdwyprod1",
+        "oiocp3rdwytest1",
+        "oiocp3rdwytest2"
+      ],
+      "metaco_das": ["odocpprod1", "odocpprod2", "odocpankprod1", "odocptest1"],
+      "metaco_gar": ["orocp3rdcwprod1", "orocp3rdcwprod2", "orocpank3rdcwprod1", "orocp3rdcwtest1"],
+      "instana": ["orocpinsprod2"],
+      "cicd": ["orocpcicd2", "orocpcicd3"]
+    },
+    "ortamKumeleri": {
+      "ark": {
+        "dev": ["orocptest1", "orocptest2", "orocptest4"],
+        "test": ["orocptest1", "orocptest2", "orocptest4"],
+        "qa": ["orocpqa1", "orocpqa2", "orocpankqa2"],
+        "prod": ["orocpprod1", "orocpprod2", "orocpprod4", "orocpankprod2", "orocpdrcprod1"]
+      }
+    },
+    "tohum": {
+      "envanter": {
+        "ark_lab": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocplab1": "https://api.orocplab1.fw.sirket.invalid:6443",
+            "orocplab2": "https://api.orocplab2.fw.sirket.invalid:6443"
+          }
+        },
+        "ark_edu": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocpedu1": "https://api.orocpedu1.fw.sirket.invalid:6443"
+          }
+        },
+        "ark_dev": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocptest1": "https://api.orocptest1.fw.sirket.invalid:6443",
+            "orocptest2": "https://api.orocptest2.fw.sirket.invalid:6443",
+            "orocptest4": "https://api.orocptest4.fw.sirket.invalid:6443"
+          }
+        },
+        "ark_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocptest1": "https://api.orocptest1.fw.sirket.invalid:6443",
+            "orocptest2": "https://api.orocptest2.fw.sirket.invalid:6443",
+            "orocptest4": "https://api.orocptest4.fw.sirket.invalid:6443"
+          }
+        },
+        "ark_qa": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocpqa1": "https://api.orocpqa1.fw.sirket.invalid:6443",
+            "orocpqa2": "https://api.orocpqa2.fw.sirket.invalid:6443",
+            "orocptest4": "https://api.orocptest4.fw.sirket.invalid:6443",
+            "orocpankqa2": "https://api.orocpankqa2.fw.sirket.invalid:6443"
+          }
+        },
+        "ark_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocpprod1": "https://api.orocpprod1.fw.sirket.invalid:6443",
+            "orocpprod2": "https://api.orocpprod2.fw.sirket.invalid:6443",
+            "orocpprod4": "https://api.orocpprod4.fw.sirket.invalid:6443",
+            "orocpankprod2": "https://api.orocpankprod2.fw.sirket.invalid:6443",
+            "orocpdrcprod1": "https://api.orocpdrcprod1.fw.sirket.invalid:6443"
+          }
+        },
+        "hosting_dev": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdtest3": "https://api.orocp3rdtest3.fw.sirket.invalid:6443",
+            "orocp3rdtest4": "https://api.orocp3rdtest4.fw.sirket.invalid:6443"
+          }
+        },
+        "hosting_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdtest3": "https://api.orocp3rdtest3.fw.sirket.invalid:6443",
+            "orocp3rdtest4": "https://api.orocp3rdtest4.fw.sirket.invalid:6443"
+          }
+        },
+        "hosting_qa": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdtest3": "https://api.orocp3rdtest3.fw.sirket.invalid:6443",
+            "orocp3rdtest4": "https://api.orocp3rdtest4.fw.sirket.invalid:6443"
+          }
+        },
+        "hosting_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdprod1": "https://api.orocp3rdprod1.fw.sirket.invalid:6443",
+            "orocp3rdprod2": "https://api.orocp3rdprod2.fw.sirket.invalid:6443",
+            "orocpank3rdprod2": "https://api.orocpank3rdprod2.fw.sirket.invalid:6443"
+          }
+        },
+        "istirak-hosting_dev": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdtest3": "https://api.oiocp3rdtest3.fw.teknoloji.invalid:6443",
+            "oiocp3rdtest4": "https://api.oiocp3rdtest4.fw.teknoloji.invalid:6443"
+          }
+        },
+        "istirak-hosting_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdtest3": "https://api.oiocp3rdtest3.fw.teknoloji.invalid:6443",
+            "oiocp3rdtest4": "https://api.oiocp3rdtest4.fw.teknoloji.invalid:6443"
+          }
+        },
+        "istirak-hosting_qa": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdtest3": "https://api.oiocp3rdtest3.fw.teknoloji.invalid:6443",
+            "oiocp3rdtest4": "https://api.oiocp3rdtest4.fw.teknoloji.invalid:6443"
+          }
+        },
+        "istirak-hosting_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdprod1": "https://api.oiocp3rdprod1.fw.teknoloji.invalid:6443",
+            "oiocp3rdprod2": "https://api.oiocp3rdprod2.fw.teknoloji.invalid:6443",
+            "oiocpank3rdprod2": "https://api.oiocpank3rdprod2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "metaco_das_test": {
+          "credentialKey": "svcac_das",
+          "clusters": {
+            "odocptest1": "https://api.odocptest1.fw.dijitalornek.invalid:6443"
+          }
+        },
+        "metaco_das_prod": {
+          "credentialKey": "svcac_das",
+          "clusters": {
+            "odocpprod1": "https://api.odocpprod1.fw.dijitalornek.invalid:6443"
+          }
+        },
+        "digital_assets_metaco_test": {
+          "credentialKey": "svcac_das",
+          "clusters": {
+            "odocptest1": "https://api.odocptest1.fw.dijitalornek.invalid:6443"
+          }
+        },
+        "digital_assets_metaco_prod": {
+          "credentialKey": "svcac_das",
+          "clusters": {
+            "odocpprod1": "https://api.odocpprod1.fw.dijitalornek.invalid:6443"
+          }
+        },
+        "metaco_gar_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdcwtest1": "https://api.orocp3rdcwtest1.fw.sirket.invalid:6443"
+          }
+        },
+        "metaco_gar_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocp3rdcwprod1": "https://api.orocp3rdcwprod1.fw.sirket.invalid:6443"
+          }
+        },
+        "wyden_dev": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "wyden_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "wyden_qa": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "wyden_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwyprod1": "https://api.oiocp3rdwyprod1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwyprod2": "https://api.oiocp3rdwyprod2.fw.teknoloji.invalid:6443",
+            "oiocpank3rdwyprod1": "https://api.oiocpank3rdwyprod1.fw.teknoloji.invalid:6443"
+          }
+        },
+        "digital_assets_wyden_dev": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "digital_assets_wyden_test": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "digital_assets_wyden_qa": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwytest1": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwytest2": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443"
+          }
+        },
+        "digital_assets_wyden_prod": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "oiocp3rdwyprod1": "https://api.oiocp3rdwyprod1.fw.teknoloji.invalid:6443",
+            "oiocp3rdwyprod2": "https://api.oiocp3rdwyprod2.fw.teknoloji.invalid:6443",
+            "oiocpank3rdwyprod1": "https://api.oiocpank3rdwyprod1.fw.teknoloji.invalid:6443"
+          }
+        },
+        "cicd": {
+          "credentialKey": "svcac_gar",
+          "clusters": {
+            "orocpcicd2": "https://api.orocpcicd2.fw.sirket.invalid:6443",
+            "orocpcicd3": "https://api.orocpcicd3.fw.sirket.invalid:6443"
+          }
+        }
+      },
+      "atlamaSunuculari": {
+        "orocpdrcprod1": "ordrcp51",
+        "orocpcicd2": "orccdp52",
+        "orocpcicd3": "orccdp53",
+        "orocp3rdprod1": "orhstp51",
+        "orocp3rdprod2": "orhstp52",
+        "orocpank3rdprod2": "orhstap81",
+        "oiocp3rdprod1": "oihstp51",
+        "oiocp3rdprod2": "oihstp52",
+        "oiocpank3rdprod2": "oihstap81",
+        "orocpinsprod2": "orinsp52",
+        "odocpprod1": "odmtcp51",
+        "odocpprod2": "odmtcp52",
+        "odocpankprod1": "odmtcap81",
+        "orocpcdsprod1": "orcdsp51",
+        "orocp3rdcwprod1": "ormtcp51",
+        "orocp3rdcwprod2": "ormtcp52",
+        "orocpank3rdcwprod1": "ormtcap81",
+        "oiocp3rdwyprod1": "orwydp51",
+        "oiocp3rdwyprod2": "orwydp52",
+        "orocp3rdaicprod1": "oroaip51",
+        "oiocpank3rdwyprod1": "orwydap51",
+        "orocpank3rdaiprod1": "oroaiap81",
+        "orocparkaiprod1": "oraaip51",
+        "orocparkaiprod2": "oraaip52",
+        "orocpankarkaiprod1": "oraaiap81",
+        "orocpprod1": "orarkp51",
+        "orocpprod2": "orarkp52",
+        "orocpankprod2": "orarkap82",
+        "orocpprod3": "orarkp53",
+        "orocpprod4": "orarkp54"
+      },
+      "terminalSunuculari": {
+        "ark_lab": "oraocp01",
+        "ark_edu": "oraocp01",
+        "ark_dev": "oraocp01",
+        "ark_test": "oraocp01",
+        "ark_qa": "oraocp01",
+        "ark_prod": "oraocp01",
+        "hosting_dev": "oraocp01",
+        "hosting_test": "oraocp01",
+        "hosting_qa": "oraocp01",
+        "hosting_prod": "oraocp01",
+        "istirak-hosting_dev": "oraocp01",
+        "istirak-hosting_test": "oraocp01",
+        "istirak-hosting_qa": "oraocp01",
+        "istirak-hosting_prod": "oraocp01",
+        "metaco_das_test": "odmtct01",
+        "metaco_das_prod": "odaocp01",
+        "metaco_gar_test": "odmtct01",
+        "metaco_gar_prod": "odaocp01",
+        "digital_assets_metaco_test": "odmtct01",
+        "digital_assets_metaco_prod": "odaocp01",
+        "digital_assets_wyden_dev": "oraocp01",
+        "digital_assets_wyden_test": "oraocp01",
+        "digital_assets_wyden_qa": "oraocp01",
+        "digital_assets_wyden_prod": "oraocp01",
+        "wyden_dev": "oraocp01",
+        "wyden_test": "oraocp01",
+        "wyden_qa": "oraocp01",
+        "wyden_prod": "oraocp01",
+        "cicd": "oraocp01"
+      },
+      "vaultAnahtarlari": [
+        {
+          "key_name": "svcac_gar",
+          "description": "Ornek Banka (fw.sirket.invalid) cluster'lari",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_gtek",
+          "description": "Ornek Teknoloji (fw.teknoloji.invalid)",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_das",
+          "description": "Dijital Varliklar (fw.dijitalornek.invalid)",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_dmz",
+          "description": "Ornek DMZ",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_gtekdmz",
+          "description": "Ornek Teknoloji DMZ",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_takasnet",
+          "description": "Takasnet",
+          "default_username": "svcac"
+        },
+        {
+          "key_name": "svcac_gohas",
+          "description": "Gohas",
+          "default_username": "svcac"
+        }
+      ],
+      "varsayilanKullanici": "svcac"
+    }
+  },
+  "cryptoHub": {
+    "kiracilar": {
+      "metaco_das_test": {
+        "bastion": "odmtct01",
+        "cluster": "odocptest1",
+        "apiUrl": "https://api.odocptest1.fw.dijitalornek.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "metaco_das_prod": {
+        "bastion": "odaocp01",
+        "cluster": "odocpprod1",
+        "apiUrl": "https://api.odocpprod1.fw.dijitalornek.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "metaco_das_prod_ank": {
+        "bastion": "odaocp01",
+        "cluster": "odocpankprod1",
+        "apiUrl": "https://api.odocpankprod1.fw.dijitalornek.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "metaco_gar_test": {
+        "bastion": "odmtct01",
+        "cluster": "orocp3rdcwtest1",
+        "apiUrl": "https://api.orocp3rdcwtest1.fw.sirket.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "metaco_gar_prod": {
+        "bastion": "odaocp01",
+        "cluster": "orocp3rdcwprod1",
+        "apiUrl": "https://api.orocp3rdcwprod1.fw.sirket.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "wyden_dev": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwytest1",
+        "apiUrl": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      },
+      "wyden_test": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwytest2",
+        "apiUrl": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml",
+        "resValuesPath": "/vhosting/setup-wyden/4-wyden/test2/1.14.0/ornek_values.yaml"
+      },
+      "wyden_qa_h2": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwytest1",
+        "apiUrl": "https://api.oiocp3rdwytest1.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml",
+        "resValuesPath": "/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/ornek_values.yaml"
+      },
+      "wyden_qa_h3": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwytest2",
+        "apiUrl": "https://api.oiocp3rdwytest2.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml",
+        "resValuesPath": "/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa2/ornek_values.yaml"
+      },
+      "wyden_prod_h3": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwyprod2",
+        "apiUrl": "https://api.oiocp3rdwyprod2.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml",
+        "resValuesPath": "/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod2/ornek_values.yaml"
+      },
+      "wyden_prod_h2": {
+        "bastion": "oraocp01",
+        "cluster": "oiocp3rdwyprod1",
+        "apiUrl": "https://api.oiocp3rdwyprod1.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml",
+        "resValuesPath": "/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod1/ornek_values.yaml"
+      },
+      "wyden_prod_ank": {
+        "bastion": "oraocp01",
+        "cluster": "oiocpank3rdwyprod1",
+        "apiUrl": "https://api.oiocpank3rdwyprod1.fw.teknoloji.invalid:6443",
+        "valuesDosyasi": "ornek_values.yaml"
+      }
+    }
+  },
+  "selfServis": {
+    "operasyonUyarilari": [
+      {
+        "sunucu": "ORJBOP07",
+        "uygulama": "-",
+        "aciklama": "Ornek Sorumlu ile iletisime gecilip batch bu sunucuda calisiyorsa ORJBOP08 sunucusunda calisacak sekilde ayarlanmali"
+      },
+      {
+        "sunucu": "ORJBOP08",
+        "uygulama": "-",
+        "aciklama": "Ornek Sorumlu ile iletisime gecilip batch bu sunucuda calisiyorsa ORJBOP07 sunucusunda calisacak sekilde ayarlanmali"
+      },
+      {
+        "sunucu": "ORJGKP01",
+        "uygulama": "ORNEKUYGULAMA-INQUIRY",
+        "aciklama": "01 sunucusu primary konumda Ornek Yetkili ile iletisime gecilip diger sunuculara primary status alinmali"
+      }
+    ]
+  },
+  "opsx": {
+    "dbIslemSunucusu": "ORLABT02",
+    "metadataHubTamRestart": ["ORABAT01", "ORABAT02", "ORABAP01", "ORABAP02"]
+  },
+  "webUygulama": {
+    "alanBolgeleri": [
+      {
+        "bolge": "dmz",
+        "icerir": "odmz.invalid",
+        "tier": "3-tier"
+      },
+      {
+        "bolge": "fw",
+        "icerir": "fw.sirket.invalid",
+        "tier": "2-tier"
+      }
+    ]
+  },
+  "smart": {
+    "domain": "KURUM"
+  },
+  "spaRapor": {
+    "glomoGecis": {
+      "seed": [
+        {
+          "namespace": "glomo-ornek01-prod",
+          "application": "ornek01-app-v0",
+          "set": 1,
+          "locations": ["/ornek01/"]
+        },
+        {
+          "namespace": "glomo-ornek02-prod",
+          "application": "ornek02-app-v0",
+          "set": 1,
+          "locations": ["/ornek02/"]
+        },
+        {
+          "namespace": "glomo-ornek03-prod",
+          "application": "ornek03-app-v0",
+          "set": 1,
+          "locations": ["/ornek03/"]
+        },
+        {
+          "namespace": "glomo-ornek04-prod",
+          "application": "ornek04-app-v0",
+          "set": 2,
+          "locations": ["/ornek04/"]
+        },
+        {
+          "namespace": "glomo-ornek05-prod",
+          "application": "ornek05-app-v0",
+          "set": 2,
+          "locations": ["/ornek05/"]
+        },
+        {
+          "namespace": "glomo-ornek06-prod",
+          "application": "ornek06-app-v0",
+          "set": 2,
+          "locations": ["/ornek06/"]
+        },
+        {
+          "namespace": "glomo-ornek07-prod",
+          "application": "ornek07-app-v0",
+          "set": 3,
+          "locations": ["/ornek07/"]
+        },
+        {
+          "namespace": "glomo-ornek08-prod",
+          "application": "ornek08-app-v0",
+          "set": 3,
+          "locations": ["/ornek08/"]
+        },
+        {
+          "namespace": "glomo-ornek09-prod",
+          "application": "ornek09-app-v0",
+          "set": 3,
+          "locations": ["/ornek09/"]
+        },
+        {
+          "namespace": "glomo-ornek10-prod",
+          "application": "ornek10-app-v0",
+          "set": 4,
+          "locations": ["/ornek10/"]
+        },
+        {
+          "namespace": "glomo-ornek11-prod",
+          "application": "ornek11-app-v0",
+          "set": 4,
+          "locations": ["/ornek11/"]
+        },
+        {
+          "namespace": "glomo-ornek12-prod",
+          "application": "ornek12-app-v0",
+          "set": 4,
+          "locations": ["/ornek12/"]
+        },
+        {
+          "namespace": "glomo-ornek13-prod",
+          "application": "ornek13-app-v0",
+          "set": 5,
+          "locations": ["/ornek13/"]
+        },
+        {
+          "namespace": "glomo-ornek14-prod",
+          "application": "ornek14-app-v0",
+          "set": 5,
+          "locations": ["/ornek14/"]
+        },
+        {
+          "namespace": "glomo-ornek15-prod",
+          "application": "ornek15-app-v0",
+          "set": 5,
+          "locations": ["/ornek15/"]
+        },
+        {
+          "namespace": "glomo-ornek16-prod",
+          "application": "ornek16-app-v0",
+          "set": 6,
+          "locations": ["/ornek16/"]
+        },
+        {
+          "namespace": "glomo-ornek17-prod",
+          "application": "ornek17-app-v0",
+          "set": 6,
+          "locations": ["/ornek17/"]
+        },
+        {
+          "namespace": "glomo-ornek18-prod",
+          "application": "ornek18-app-v0",
+          "set": 6,
+          "locations": ["/ornek18/"]
+        },
+        {
+          "namespace": "glomo-ornek19-prod",
+          "application": "ornek19-app-v0",
+          "set": 7,
+          "locations": ["/ornek19/"]
+        },
+        {
+          "namespace": "glomo-ornek20-prod",
+          "application": "ornek20-app-v0",
+          "set": 7,
+          "locations": ["/ornek20/"]
+        },
+        {
+          "namespace": "glomo-ornek21-prod",
+          "application": "ornek21-app-v0",
+          "set": 7,
+          "locations": ["/ornek21/"]
+        }
+      ],
+      "set7Talep": {
+        "ad": "set7-talep-2026-10-16",
+        "hedefSet": 7,
+        "aciklama": "KURGUSAL ornek talep listesi (gercegi kurum ayarinda).",
+        "uygulamalar": [
+          {
+            "namespace": "glomo-ornek10-prod",
+            "application": "ornek10-app-v0"
+          },
+          {
+            "namespace": "glomo-ornek16-prod",
+            "application": "ornek16-app-v0"
+          },
+          {
+            "namespace": "glomo-ornek17-prod",
+            "application": "ornek17-app-v0"
+          },
+          {
+            "namespace": "glomo-ornek19-prod",
+            "application": "ornek19-app-v0"
+          },
+          {
+            "namespace": "glomo-talep01-prod",
+            "application": "talep01-app-v0"
+          },
+          {
+            "namespace": "glomo-talep02-prod",
+            "application": "talep02-app-v0"
+          }
+        ]
+      }
+    }
+  }
+}

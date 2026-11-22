@@ -18,8 +18,13 @@ const restrictions = require('../restrictions.cjs');
 function withDb(rows, fn) {
   const orig = db.query;
   const calls = [];
-  db.query = async (sql, params) => { calls.push({ sql, params }); return { rows }; };
-  return Promise.resolve(fn(calls)).finally(() => { db.query = orig; });
+  db.query = async (sql, params) => {
+    calls.push({ sql, params });
+    return { rows };
+  };
+  return Promise.resolve(fn(calls)).finally(() => {
+    db.query = orig;
+  });
 }
 
 const KEY = 'ark/prod/c1/odeme-prod';
@@ -29,36 +34,69 @@ const GROUP = 'CN=odeme-ekibi,OU=Groups,DC=garanti,DC=com,DC=tr';
 
 test('kisitlama satiri YOKSA herkese acik (varsayilan-ACIK degismedi)', async () => {
   await withDb([], async () => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }), true);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }),
+      true,
+    );
   });
 });
 
-test('KULLANICI ADI grant\'i eskisi gibi calisir (grup alani bos)', async () => {
+test("KULLANICI ADI grant'i eskisi gibi calisir (grup alani bos)", async () => {
   await withDb([{ id: 1, username: 'ali', group_dn: null }], async () => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }), true);
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'veli', role: 'User' }), false);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }),
+      true,
+    );
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, { username: 'veli', role: 'User' }),
+      false,
+    );
   });
 });
 
-test('Admin her zaman gecer ve DB\'ye HIC gitmez', async () => {
+test("Admin her zaman gecer ve DB'ye HIC gitmez", async () => {
   await withDb([], async (calls) => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'x', role: 'Admin' }), true);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, { username: 'x', role: 'Admin' }),
+      true,
+    );
     assert.equal(calls.length, 0);
   });
 });
 
 test('grant OLMAYAN kisitli kaynak kapali kalir (grup ozelligi bunu ACMAZ)', async () => {
   await withDb([{ id: 1, username: null, group_dn: null }], async () => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User', groups: ['CN=baska,OU=x'] }), false);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, {
+        username: 'ali',
+        role: 'User',
+        groups: ['CN=baska,OU=x'],
+      }),
+      false,
+    );
   });
 });
 
 // ── YENI: grup grant'i ──────────────────────────────────────────────────────
 
-test('GRUP grant\'i: uye gecer, uye olmayan gecemez', async () => {
+test("GRUP grant'i: uye gecer, uye olmayan gecemez", async () => {
   await withDb([{ id: 1, username: null, group_dn: GROUP }], async () => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User', groups: [GROUP] }), true);
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'veli', role: 'User', groups: ['CN=baska,OU=x'] }), false);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, {
+        username: 'ali',
+        role: 'User',
+        groups: [GROUP],
+      }),
+      true,
+    );
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, {
+        username: 'veli',
+        role: 'User',
+        groups: ['CN=baska,OU=x'],
+      }),
+      false,
+    );
   });
 });
 
@@ -66,37 +104,86 @@ test('grup karsilastirmasi BUYUK/KUCUK HARF ve BOSLUK duyarsiz', async () => {
   // AD DN'leri kaynaga gore farkli yaziliyor ("CN=" / "cn=", bastan/sondan bosluk).
   // Duyarli bir karsilastirma, dogru gruptaki bir kisiyi SESSIZCE disarida birakirdi.
   await withDb([{ id: 1, username: null, group_dn: GROUP }], async () => {
-    const user = { username: 'ali', role: 'User', groups: ['  cn=odeme-ekibi,ou=groups,dc=garanti,dc=com,dc=tr  '] };
+    const user = {
+      username: 'ali',
+      role: 'User',
+      groups: ['  cn=odeme-ekibi,ou=groups,dc=garanti,dc=com,dc=tr  '],
+    };
     assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, user), true);
   });
 });
 
-test('oturumda grup YOKSA (LDAP kapali / yerel kullanici) kullanici adi grant\'i calismaya devam eder', async () => {
+test("oturumda grup YOKSA (LDAP kapali / yerel kullanici) kullanici adi grant'i calismaya devam eder", async () => {
   await withDb([{ id: 1, username: 'ali', group_dn: null }], async () => {
     // `groups` alani HIC yok — eski oturumlar ve yerel kullanicilar boyle.
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }), true);
+    assert.equal(
+      await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User' }),
+      true,
+    );
   });
 });
 
-test('grup grant\'i kullanici adi grant\'ini EZMEZ — ikisi de gecerlidir', async () => {
-  await withDb([
-    { id: 1, username: 'ali', group_dn: null },
-    { id: 1, username: null, group_dn: GROUP },
-  ], async () => {
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User', groups: [] }), true, 'kullanici adiyla');
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'veli', role: 'User', groups: [GROUP] }), true, 'grupla');
-    assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ayse', role: 'User', groups: [] }), false, 'ikisi de degilse');
-  });
+test("grup grant'i kullanici adi grant'ini EZMEZ — ikisi de gecerlidir", async () => {
+  await withDb(
+    [
+      { id: 1, username: 'ali', group_dn: null },
+      { id: 1, username: null, group_dn: GROUP },
+    ],
+    async () => {
+      assert.equal(
+        await restrictions.isAllowed('ocp_namespace', KEY, {
+          username: 'ali',
+          role: 'User',
+          groups: [],
+        }),
+        true,
+        'kullanici adiyla',
+      );
+      assert.equal(
+        await restrictions.isAllowed('ocp_namespace', KEY, {
+          username: 'veli',
+          role: 'User',
+          groups: [GROUP],
+        }),
+        true,
+        'grupla',
+      );
+      assert.equal(
+        await restrictions.isAllowed('ocp_namespace', KEY, {
+          username: 'ayse',
+          role: 'User',
+          groups: [],
+        }),
+        false,
+        'ikisi de degilse',
+      );
+    },
+  );
 });
 
-test('filterAllowed grup grant\'ini AYNI semantikle uygular', async () => {
+test("filterAllowed grup grant'ini AYNI semantikle uygular", async () => {
   const keys = ['ark/prod/c1/acik', 'ark/prod/c1/kisitli'];
-  await withDb([{ resource_key: 'ark/prod/c1/kisitli', username: null, group_dn: GROUP }], async () => {
-    const uye = await restrictions.filterAllowed('ocp_namespace', keys, { username: 'ali', role: 'User', groups: [GROUP] });
-    assert.deepEqual(uye, keys, 'grup uyesi ikisini de gormeli');
-    const yabanci = await restrictions.filterAllowed('ocp_namespace', keys, { username: 'veli', role: 'User', groups: [] });
-    assert.deepEqual(yabanci, ['ark/prod/c1/acik'], 'kisitli olan dusmeli, kisitsiz olan KALMALI');
-  });
+  await withDb(
+    [{ resource_key: 'ark/prod/c1/kisitli', username: null, group_dn: GROUP }],
+    async () => {
+      const uye = await restrictions.filterAllowed('ocp_namespace', keys, {
+        username: 'ali',
+        role: 'User',
+        groups: [GROUP],
+      });
+      assert.deepEqual(uye, keys, 'grup uyesi ikisini de gormeli');
+      const yabanci = await restrictions.filterAllowed('ocp_namespace', keys, {
+        username: 'veli',
+        role: 'User',
+        groups: [],
+      });
+      assert.deepEqual(
+        yabanci,
+        ['ark/prod/c1/acik'],
+        'kisitli olan dusmeli, kisitsiz olan KALMALI',
+      );
+    },
+  );
 });
 
 // ── `ocp_app` kaynak tipi ───────────────────────────────────────────────────
@@ -128,7 +215,11 @@ test('ocp_app kisiti namespace kisitindan BAGIMSIZ degerlendirilir', async () =>
 
 test('tek sorgu, anahtarlar parametreye KONMAZ, iki grant tablosu da okunur', async () => {
   await withDb([], async (calls) => {
-    await restrictions.isAllowed('ocp_namespace', KEY, { username: 'ali', role: 'User', groups: [GROUP] });
+    await restrictions.isAllowed('ocp_namespace', KEY, {
+      username: 'ali',
+      role: 'User',
+      groups: [GROUP],
+    });
     assert.equal(calls.length, 1);
     assert.match(calls[0].sql, /logx_v2_restriction_grants/);
     assert.match(calls[0].sql, /logx_v2_restriction_group_grants/);
@@ -147,9 +238,21 @@ test('listRestrictions grup tablosu YOKSA dusmez, kullanici grant`lariyla doner'
   db.query = async (sql) => {
     sorgular.push(String(sql));
     if (/logx_v2_restriction_group_grants/.test(sql)) {
-      throw Object.assign(new Error("Invalid object name 'logx_v2_restriction_group_grants'."), { number: 208 });
+      throw Object.assign(new Error("Invalid object name 'logx_v2_restriction_group_grants'."), {
+        number: 208,
+      });
     }
-    return { rows: [{ id: 1, resource_type: 'legacy_app', resource_key: 'a', grant_username: 'ali', grant_group: null }] };
+    return {
+      rows: [
+        {
+          id: 1,
+          resource_type: 'legacy_app',
+          resource_key: 'a',
+          grant_username: 'ali',
+          grant_group: null,
+        },
+      ],
+    };
   };
   try {
     const liste = await restrictions.listRestrictions();

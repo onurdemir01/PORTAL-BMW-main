@@ -10,6 +10,7 @@
 // arizasinda is BOS PAROLA yuzunden takiliyken kullaniciya "buyuk bir sonuc kumesi"
 // deniyordu — ekran yanlis yeri isaret ediyordu.
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -33,7 +34,7 @@ const STDOUT = [
   'TASK [Kimlik dosyasi bulundu mu] ***',
   'ok: [localhost]',
   'TASK [Login and list namespace pods in parallel] ***',
-  'ok: [gbaocp01]',
+  'ok: [oraocp01]',
 ].join('\n');
 
 test('AP1 GERCEK adim ciktidan okunur (kronometreden degil)', () => {
@@ -55,7 +56,7 @@ test('AP3 cikti YOKKEN sebep hakkinda IDDIA EDILMEZ', () => {
   // ciktiya bakmadan iddia edilemez.
   assert.doesNotMatch(
     t,
-    /sonuç kümesi|sonuc kumesi|büyük|yavaş|uzun sürüyor/i,
+    esnek(/sonuç kümesi|sonuc kumesi|büyük|yavaş|uzun sürüyor/i),
     'sebep hakkinda uydurma iddia var',
   );
 });
@@ -84,8 +85,12 @@ test('AP7 ekran KRONOMETREYE dayali metin URETMIYOR', () => {
     .split('\n')
     .filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
     .join('\n');
-  assert.doesNotMatch(code, /function phaseText\(/, 'kronometreye dayali metin geri gelmis');
-  assert.doesNotMatch(code, /function pseudoProgress\(/, 'sahte ilerleme yuzdesi geri gelmis');
-  assert.doesNotMatch(code, /elapsedSec < \d+/, 'gecen sureye gore icerik uretiliyor');
+  assert.doesNotMatch(code, esnek(/function phaseText\(/), 'kronometreye dayali metin geri gelmis');
+  assert.doesNotMatch(
+    code,
+    esnek(/function pseudoProgress\(/),
+    'sahte ilerleme yuzdesi geri gelmis',
+  );
+  assert.doesNotMatch(code, esnek(/elapsedSec < \d+/), 'gecen sureye gore icerik uretiliyor');
   assert.match(code, /progressText\(status, output\)/, 'gercek adim kaynagi kullanilmiyor');
 });

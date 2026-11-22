@@ -12,7 +12,15 @@
 //     '=', '+', '-', '@' ile basliyorsa metin alanlari tek tirnakla korunur (CSV formul enjeksiyonu).
 //   * urlDurumuOku / urlDurumuYaz: secim URL'de (?tab=yuktesti&yt=coklu&ref=&kosular=&olcu=&sira=); en cok 16 kosu.
 //   * seriStili: 16 kosu icin ayirt edilebilir cizgi (8 ton x duz / kesikli; ref kalin ve koyu).
-import type { NlCokluAday, NlCokluHiz, NlCokluKarsilastirma, NlCokluKosu, NlCokluOlcu, NlFark, NlKarar } from '@/api/nginxLoadtestApi';
+import type {
+  NlCokluAday,
+  NlCokluHiz,
+  NlCokluKarsilastirma,
+  NlCokluKosu,
+  NlCokluOlcu,
+  NlFark,
+  NlKarar,
+} from '@/api/nginxLoadtestApi';
 import type { Ton } from '@/components/server_hub/retirementStil';
 import { fmtNumber } from '@/utils/datetime';
 import { bantMetni, cpuMsMetni, kararBilgisi, mbMetni, ondalik, yuzde } from './yukTestiOrtak';
@@ -28,24 +36,118 @@ export const SIRALAMALAR: { id: CokluSiralama; ad: string }[] = [
 ];
 
 /** Olcu tanimlari: ekran adi, ipucu (teknik terim burada), deger metni, grafik birimi / olcegi. */
-export const OLCU_TANIM: Record<NlCokluOlcu, { ad: string; ipucu: string; metin: (x: number | null) => string; birim: string; olcek: number; basamak: number; csvBasamak: number }> = {
-  p95: { ad: 'Yanıt süresi (p95)', ipucu: 'İsteklerin %95’i bu sürede yanıtlandı (ms). Düşük iyi. Renk: kararın p95 kuralı (eşik ya da 3 × gürültü).', metin: (x) => (x == null ? '—' : `${ondalik(x, 1)} ms`), birim: 'ms', olcek: 1, basamak: 1, csvBasamak: 2 },
-  p99: { ad: 'Yanıt süresi (p99)', ipucu: 'En yavaş %1’in eşiği (ms). Kararda kuralı yok: renklendirilmez.', metin: (x) => (x == null ? '—' : `${ondalik(x, 1)} ms`), birim: 'ms', olcek: 1, basamak: 1, csvBasamak: 2 },
-  cpuMsIstek: { ad: 'İstek başına CPU', ipucu: 'Nginx worker CPU-ms/istek. Düşük iyi. Renk: kararın CPU kuralı (eşik ya da 3 × gürültü).', metin: cpuMsMetni, birim: 'ms', olcek: 1, basamak: 2, csvBasamak: 4 },
-  hostCpu: { ad: 'Sunucu CPU', ipucu: 'Hedefin toplam CPU kullanımı (%). Kararda kuralı yok: renklendirilmez.', metin: (x) => (x == null ? '—' : `%${ondalik(x, 0)}`), birim: '%', olcek: 1, basamak: 0, csvBasamak: 1 },
-  hata: { ad: 'Hata oranı', ipucu: 'Tekrarlar içindeki en yüksek hata oranı. Referans + %0,1’i aşan artış ya da 429 / 5xx kırmızı; iyileşme renklendirilmez.', metin: (x) => yuzde(x, 2), birim: '%', olcek: 100, basamak: 2, csvBasamak: 4 },
-  kapasite: { ad: 'Tahmini kapasite', ipucu: 'CPU’ya göre tahmini üst sınır (istek/sn). Kararda ayrı kuralı yok: renklendirilmez.', metin: (x) => (x == null ? '—' : `${fmtNumber(Math.round(x))}/sn`), birim: 'istek/sn', olcek: 1, basamak: 0, csvBasamak: 0 },
-  bantBps: { ad: 'Test trafiği', ipucu: 'Yük makinesinin aldığı test trafiği (Mbps, ölçüm fazı). Eski koşuda ölçülmedi. Renklendirilmez.', metin: bantMetni, birim: 'Mbps', olcek: 1e-6, basamak: 1, csvBasamak: 2 },
-  bellekMb: { ad: 'Nginx belleği', ipucu: 'Worker PSS ortalaması (MB); PSS yoksa RSS. PSS ile RSS karşılaştırılmaz. Renklendirilmez.', metin: mbMetni, birim: 'MB', olcek: 1, basamak: 0, csvBasamak: 1 },
+export const OLCU_TANIM: Record<
+  NlCokluOlcu,
+  {
+    ad: string;
+    ipucu: string;
+    metin: (x: number | null) => string;
+    birim: string;
+    olcek: number;
+    basamak: number;
+    csvBasamak: number;
+  }
+> = {
+  p95: {
+    ad: 'Yanıt süresi (p95)',
+    ipucu:
+      'İsteklerin %95’i bu sürede yanıtlandı (ms). Düşük iyi. Renk: kararın p95 kuralı (eşik ya da 3 × gürültü).',
+    metin: (x) => (x == null ? '—' : `${ondalik(x, 1)} ms`),
+    birim: 'ms',
+    olcek: 1,
+    basamak: 1,
+    csvBasamak: 2,
+  },
+  p99: {
+    ad: 'Yanıt süresi (p99)',
+    ipucu: 'En yavaş %1’in eşiği (ms). Kararda kuralı yok: renklendirilmez.',
+    metin: (x) => (x == null ? '—' : `${ondalik(x, 1)} ms`),
+    birim: 'ms',
+    olcek: 1,
+    basamak: 1,
+    csvBasamak: 2,
+  },
+  cpuMsIstek: {
+    ad: 'İstek başına CPU',
+    ipucu:
+      'Nginx worker CPU-ms/istek. Düşük iyi. Renk: kararın CPU kuralı (eşik ya da 3 × gürültü).',
+    metin: cpuMsMetni,
+    birim: 'ms',
+    olcek: 1,
+    basamak: 2,
+    csvBasamak: 4,
+  },
+  hostCpu: {
+    ad: 'Sunucu CPU',
+    ipucu: 'Hedefin toplam CPU kullanımı (%). Kararda kuralı yok: renklendirilmez.',
+    metin: (x) => (x == null ? '—' : `%${ondalik(x, 0)}`),
+    birim: '%',
+    olcek: 1,
+    basamak: 0,
+    csvBasamak: 1,
+  },
+  hata: {
+    ad: 'Hata oranı',
+    ipucu:
+      'Tekrarlar içindeki en yüksek hata oranı. Referans + %0,1’i aşan artış ya da 429 / 5xx kırmızı; iyileşme renklendirilmez.',
+    metin: (x) => yuzde(x, 2),
+    birim: '%',
+    olcek: 100,
+    basamak: 2,
+    csvBasamak: 4,
+  },
+  kapasite: {
+    ad: 'Tahmini kapasite',
+    ipucu: 'CPU’ya göre tahmini üst sınır (istek/sn). Kararda ayrı kuralı yok: renklendirilmez.',
+    metin: (x) => (x == null ? '—' : `${fmtNumber(Math.round(x))}/sn`),
+    birim: 'istek/sn',
+    olcek: 1,
+    basamak: 0,
+    csvBasamak: 0,
+  },
+  bantBps: {
+    ad: 'Test trafiği',
+    ipucu:
+      'Yük makinesinin aldığı test trafiği (Mbps, ölçüm fazı). Eski koşuda ölçülmedi. Renklendirilmez.',
+    metin: bantMetni,
+    birim: 'Mbps',
+    olcek: 1e-6,
+    basamak: 1,
+    csvBasamak: 2,
+  },
+  bellekMb: {
+    ad: 'Nginx belleği',
+    ipucu:
+      'Worker PSS ortalaması (MB); PSS yoksa RSS. PSS ile RSS karşılaştırılmaz. Renklendirilmez.',
+    metin: mbMetni,
+    birim: 'MB',
+    olcek: 1,
+    basamak: 0,
+    csvBasamak: 1,
+  },
 };
-export const OLCU_SIRASI: NlCokluOlcu[] = ['p95', 'p99', 'cpuMsIstek', 'hostCpu', 'hata', 'bantBps', 'bellekMb', 'kapasite'];
+export const OLCU_SIRASI: NlCokluOlcu[] = [
+  'p95',
+  'p99',
+  'cpuMsIstek',
+  'hostCpu',
+  'hata',
+  'bantBps',
+  'bellekMb',
+  'kapasite',
+];
 
 /** Kosu adi: etiket on planda, yoksa numara. */
-export const kosuEtiketi = (k: Pick<NlCokluKosu, 'id' | 'etiket'>) => (k.etiket && k.etiket.trim() ? k.etiket : `#${k.id}`);
+export const kosuEtiketi = (k: Pick<NlCokluKosu, 'id' | 'etiket'>) =>
+  k.etiket && k.etiket.trim() ? k.etiket : `#${k.id}`;
 
 // ── Fark metni (tek tabloda protokol / keepalive / sikistirma) ───────────────────────
 export type FarkKosu = Pick<NlCokluKosu, 'protokol' | 'kip' | 'ae' | 'sunucuAyar'>;
-export interface FarkParca { tur: 'protokol' | 'kip' | 'sikistirma' | 'static'; metin: string; farkli: boolean }
+export interface FarkParca {
+  tur: 'protokol' | 'kip' | 'sikistirma' | 'static';
+  metin: string;
+  farkli: boolean;
+}
 const PROTOKOL_METNI: Record<string, string> = { h1: 'HTTP/1.1', h2: 'HTTP/2' };
 const KIP_METNI: Record<string, string> = { ka: 'keepalive', yeni: 'keepalive yok' };
 const AE_METNI: Record<string, string> = { br: 'brotli', gzip: 'gzip', identity: 'sıkıştırmasız' };
@@ -57,23 +159,40 @@ function sikistirmaMetni(k: FarkKosu): string | null {
 
 /** Kosunun parcalari ve referanstan farkli olanlari. Bilinmeyen (eski kosu) parca yazilmaz, fark sayilmaz. */
 export function farkParcalari(k: FarkKosu, ref: FarkKosu): FarkParca[] {
-  const o: FarkParca[] = [{ tur: 'protokol', metin: PROTOKOL_METNI[k.protokol], farkli: k.protokol !== ref.protokol }];
-  if (k.kip) o.push({ tur: 'kip', metin: KIP_METNI[k.kip], farkli: !!ref.kip && k.kip !== ref.kip });
+  const o: FarkParca[] = [
+    { tur: 'protokol', metin: PROTOKOL_METNI[k.protokol], farkli: k.protokol !== ref.protokol },
+  ];
+  if (k.kip)
+    o.push({ tur: 'kip', metin: KIP_METNI[k.kip], farkli: !!ref.kip && k.kip !== ref.kip });
   // Sunucu ayari iki kosuda da biliniyorsa seviye / static kiyaslanir; biri eskiyse (sunucuAyar yok) bilinmiyor demektir.
   const ayarBilinir = !!k.sunucuAyar && !!ref.sunucuAyar;
   const s = sikistirmaMetni(k);
-  if (s) o.push({ tur: 'sikistirma', metin: s, farkli: !!ref.ae && (k.ae !== ref.ae || (ayarBilinir && k.sunucuAyar?.seviye !== ref.sunucuAyar?.seviye)) });
+  if (s)
+    o.push({
+      tur: 'sikistirma',
+      metin: s,
+      farkli:
+        !!ref.ae &&
+        (k.ae !== ref.ae || (ayarBilinir && k.sunucuAyar?.seviye !== ref.sunucuAyar?.seviye)),
+    });
   const st = k.sunucuAyar?.static === true;
   const rst = ref.sunucuAyar?.static === true;
-  if (st || (rst && k.sunucuAyar)) o.push({ tur: 'static', metin: st ? 'static' : 'static yok', farkli: ayarBilinir && st !== rst });
+  if (st || (rst && k.sunucuAyar))
+    o.push({
+      tur: 'static',
+      metin: st ? 'static' : 'static yok',
+      farkli: ayarBilinir && st !== rst,
+    });
   return o;
 }
 
 /** Sayfa notlari: farkli ayarlar karsilastiriliyorsa ve tek tekrarli kosu varsa (gurultu olculmedi). */
 export function karsilastirmaNotlari(v: Pick<NlCokluKarsilastirma, 'ref' | 'adaylar'>): string[] {
   const n: string[] = [];
-  if (v.adaylar.some((a) => farkParcalari(a, v.ref).some((p) => p.farkli))) n.push('Farklı protokol / sıkıştırma karşılaştırılıyor; karar yalnız referansa göredir.');
-  if ([v.ref, ...v.adaylar].some((k) => k.hizlar.some((h) => h.tekrar === 1))) n.push('Tek tekrarlı koşularda gürültü ölçülmedi: yüzde birkaçlık fark kesin değildir.');
+  if (v.adaylar.some((a) => farkParcalari(a, v.ref).some((p) => p.farkli)))
+    n.push('Farklı protokol / sıkıştırma karşılaştırılıyor; karar yalnız referansa göredir.');
+  if ([v.ref, ...v.adaylar].some((k) => k.hizlar.some((h) => h.tekrar === 1)))
+    n.push('Tek tekrarlı koşularda gürültü ölçülmedi: yüzde birkaçlık fark kesin değildir.');
   return n;
 }
 
@@ -110,7 +229,8 @@ const KARAR_SONUCU: Record<NlKarar, string> = {
 /** Bir olcunun cumle parcasi ("CPU %12 daha az" / "p95 değişmedi (gürültü içinde)" / "CPU ölçülmedi"). */
 function parca(ad: string, f: NlFark | null | undefined, az: string, cok: string): string {
   if (!f || f.durum === 'yok' || f.yuzde == null) return `${ad} ölçülmedi`;
-  if (f.durum === 'gurultu_ici' || f.durum === 'renklendirilmez') return `${ad} değişmedi (gürültü içinde)`;
+  if (f.durum === 'gurultu_ici' || f.durum === 'renklendirilmez')
+    return `${ad} değişmedi (gürültü içinde)`;
   return `${ad} ${yuzdeSade(f.yuzde)} daha ${f.yuzde < 0 ? az : cok}`;
 }
 
@@ -122,23 +242,39 @@ export function cumle(a: Pick<NlCokluAday, 'karar' | 'kademeFarki'>): string {
   return `Referansa göre ${parcalar.join(', ')} → ${KARAR_SONUCU[a.karar] ?? kararBilgisi(a.karar).etiket}`;
 }
 
-const sonaNull = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? Number.POSITIVE_INFINITY : x);
+const sonaNull = (x: number | null | undefined) =>
+  x == null || !Number.isFinite(x) ? Number.POSITIVE_INFINITY : x;
 /** Adaylari siralar (yeni dizi). cpu / p95: en buyuk iyilesme (en negatif fark) once; olculmeyen sona. */
 export function sirala(adaylar: NlCokluAday[], s: CokluSiralama): NlCokluAday[] {
   const l = adaylar.slice();
   const tarih = (k: NlCokluKosu) => sonaNull(k.createdAt ? Date.parse(k.createdAt) : null);
-  if (s === 'cpu') l.sort((x, y) => sonaNull(x.kademeFarki.cpu?.yuzde) - sonaNull(y.kademeFarki.cpu?.yuzde) || x.id - y.id);
-  else if (s === 'p95') l.sort((x, y) => sonaNull(x.kademeFarki.p95?.yuzde) - sonaNull(y.kademeFarki.p95?.yuzde) || x.id - y.id);
-  else if (s === 'etiket') l.sort((x, y) => kosuEtiketi(x).localeCompare(kosuEtiketi(y), 'tr', { numeric: true }) || x.id - y.id);
+  if (s === 'cpu')
+    l.sort(
+      (x, y) =>
+        sonaNull(x.kademeFarki.cpu?.yuzde) - sonaNull(y.kademeFarki.cpu?.yuzde) || x.id - y.id,
+    );
+  else if (s === 'p95')
+    l.sort(
+      (x, y) =>
+        sonaNull(x.kademeFarki.p95?.yuzde) - sonaNull(y.kademeFarki.p95?.yuzde) || x.id - y.id,
+    );
+  else if (s === 'etiket')
+    l.sort(
+      (x, y) =>
+        kosuEtiketi(x).localeCompare(kosuEtiketi(y), 'tr', { numeric: true }) || x.id - y.id,
+    );
   else l.sort((x, y) => tarih(x) - tarih(y) || x.id - y.id);
   return l;
 }
 
 /** Matris sutunlari: hizlarin birlesimi (artan). */
 export function hizlarBirlesimi(v: Pick<NlCokluKarsilastirma, 'ref' | 'adaylar'>): number[] {
-  return [...new Set([...v.ref.hizlar, ...v.adaylar.flatMap((a) => a.hizlar)].map((h) => h.hiz))].sort((a, b) => a - b);
+  return [
+    ...new Set([...v.ref.hizlar, ...v.adaylar.flatMap((a) => a.hizlar)].map((h) => h.hiz)),
+  ].sort((a, b) => a - b);
 }
-export const hizBul = (hizlar: NlCokluHiz[], hiz: number) => hizlar.find((h) => h.hiz === hiz) ?? null;
+export const hizBul = (hizlar: NlCokluHiz[], hiz: number) =>
+  hizlar.find((h) => h.hiz === hiz) ?? null;
 
 // ── CSV ──────────────────────────────────────────────────────────────────────────────
 const BOM = String.fromCharCode(0xfeff);
@@ -168,30 +304,111 @@ function csvFark(k: FarkKosu, ref: FarkKosu): string[] {
   const p = farkParcalari(k, ref);
   const evetHayir = (x: boolean | null) => (x == null ? '' : x ? 'evet' : 'hayır');
   return [
-    csvMetinHucre(p.map((x) => x.metin).join(' · ')), PROTOKOL_METNI[k.protokol], evetHayir(k.kip ? k.kip === 'ka' : null), k.ae ? AE_METNI[k.ae] : '',
-    k.sunucuAyar?.seviye != null ? String(k.sunucuAyar.seviye) : '', evetHayir(k.sunucuAyar ? k.sunucuAyar.static : null),
-    csvMetinHucre(p.filter((x) => x.farkli).map((x) => x.metin).join(', ')),
+    csvMetinHucre(p.map((x) => x.metin).join(' · ')),
+    PROTOKOL_METNI[k.protokol],
+    evetHayir(k.kip ? k.kip === 'ka' : null),
+    k.ae ? AE_METNI[k.ae] : '',
+    k.sunucuAyar?.seviye != null ? String(k.sunucuAyar.seviye) : '',
+    evetHayir(k.sunucuAyar ? k.sunucuAyar.static : null),
+    csvMetinHucre(
+      p
+        .filter((x) => x.farkli)
+        .map((x) => x.metin)
+        .join(', '),
+    ),
   ];
 }
 
 /** Ozet + secili olcu matrisi (siralanmis adaylarla). */
-export function csvMetni(v: NlCokluKarsilastirma, olcu: NlCokluOlcu, adaylar: NlCokluAday[] = v.adaylar): string {
+export function csvMetni(
+  v: NlCokluKarsilastirma,
+  olcu: NlCokluOlcu,
+  adaylar: NlCokluAday[] = v.adaylar,
+): string {
   const o = OLCU_TANIM[olcu];
   const st: string[][] = [];
-  st.push(['Koşu', 'Etiket', 'Rol', 'Tarih', 'Karar', 'Açıklama', 'CPU kademesi', 'CPU-ms/istek farkı %', 'p95 kademesi', 'p95 farkı %', 'Test trafiği farkı %', 'Bellek farkı %',
-    'Fark', 'Protokol', 'Keepalive', 'Sıkıştırma', 'Seviye', 'Static', 'Referanstan farklı']);
-  st.push([`#${v.ref.id}`, csvMetinHucre(v.ref.etiket), 'Referans', csvTarih(v.ref.createdAt), '', '', '', '', '', '', '', '', ...csvFark(v.ref, v.ref)]);
+  st.push([
+    'Koşu',
+    'Etiket',
+    'Rol',
+    'Tarih',
+    'Karar',
+    'Açıklama',
+    'CPU kademesi',
+    'CPU-ms/istek farkı %',
+    'p95 kademesi',
+    'p95 farkı %',
+    'Test trafiği farkı %',
+    'Bellek farkı %',
+    'Fark',
+    'Protokol',
+    'Keepalive',
+    'Sıkıştırma',
+    'Seviye',
+    'Static',
+    'Referanstan farklı',
+  ]);
+  st.push([
+    `#${v.ref.id}`,
+    csvMetinHucre(v.ref.etiket),
+    'Referans',
+    csvTarih(v.ref.createdAt),
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    ...csvFark(v.ref, v.ref),
+  ]);
   for (const a of adaylar) {
     const kf = a.kademeFarki;
-    st.push([`#${a.id}`, csvMetinHucre(a.etiket), 'Aday', csvTarih(a.createdAt), csvMetinHucre(kararBilgisi(a.karar).etiket), csvMetinHucre(cumle(a)),
-      kf.cpu ? String(kf.cpu.hiz) : '', csvSayi(kf.cpu?.yuzde, 1), kf.p95 ? String(kf.p95.hiz) : '', csvSayi(kf.p95?.yuzde, 1), csvSayi(kf.bant?.yuzde, 1), csvSayi(kf.bellek?.yuzde, 1), ...csvFark(a, v.ref)]);
+    st.push([
+      `#${a.id}`,
+      csvMetinHucre(a.etiket),
+      'Aday',
+      csvTarih(a.createdAt),
+      csvMetinHucre(kararBilgisi(a.karar).etiket),
+      csvMetinHucre(cumle(a)),
+      kf.cpu ? String(kf.cpu.hiz) : '',
+      csvSayi(kf.cpu?.yuzde, 1),
+      kf.p95 ? String(kf.p95.hiz) : '',
+      csvSayi(kf.p95?.yuzde, 1),
+      csvSayi(kf.bant?.yuzde, 1),
+      csvSayi(kf.bellek?.yuzde, 1),
+      ...csvFark(a, v.ref),
+    ]);
   }
-  for (const k of v.karsilastirilamaz) st.push([`#${k.id}`, csvMetinHucre(k.etiket), 'Karşılaştırılamaz', csvTarih(k.createdAt), '', csvMetinHucre(k.nedenler.map((n) => n.metin).join(' ')), '', '', '', '', '', '', ...csvFark(k, v.ref)]);
+  for (const k of v.karsilastirilamaz)
+    st.push([
+      `#${k.id}`,
+      csvMetinHucre(k.etiket),
+      'Karşılaştırılamaz',
+      csvTarih(k.createdAt),
+      '',
+      csvMetinHucre(k.nedenler.map((n) => n.metin).join(' ')),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ...csvFark(k, v.ref),
+    ]);
   st.push([]);
   const birim = olcu === 'hata' ? 'oran' : olcu === 'bantBps' ? 'bit/sn' : o.birim;
   st.push([csvMetinHucre(`${o.ad} (${birim})`)]);
   const hizlar = hizlarBirlesimi(v);
-  st.push(['Hız', ...[v.ref, ...adaylar].flatMap((k, i) => (i === 0 ? [csvMetinHucre(`#${k.id} ${kosuEtiketi(k)} (referans)`)] : [csvMetinHucre(`#${k.id} ${kosuEtiketi(k)}`), 'Fark %']))]);
+  st.push([
+    'Hız',
+    ...[v.ref, ...adaylar].flatMap((k, i) =>
+      i === 0
+        ? [csvMetinHucre(`#${k.id} ${kosuEtiketi(k)} (referans)`)]
+        : [csvMetinHucre(`#${k.id} ${kosuEtiketi(k)}`), 'Fark %'],
+    ),
+  ]);
   for (const h of hizlar) {
     const r = hizBul(v.ref.hizlar, h);
     const satir = [String(h), csvSayi(r ? r[olcu] : null, o.csvBasamak)];
@@ -205,7 +422,12 @@ export function csvMetni(v: NlCokluKarsilastirma, olcu: NlCokluOlcu, adaylar: Nl
 }
 
 // ── URL durumu ───────────────────────────────────────────────────────────────────────
-export interface CokluUrl { ref: number | null; kosular: number[]; olcu: NlCokluOlcu; sira: CokluSiralama }
+export interface CokluUrl {
+  ref: number | null;
+  kosular: number[];
+  olcu: NlCokluOlcu;
+  sira: CokluSiralama;
+}
 const numara = (s: string) => (/^\d{1,10}$/.test(s) && Number(s) > 0 ? Number(s) : null);
 export function urlDurumuOku(sp: URLSearchParams): CokluUrl {
   const kosular: number[] = [];
@@ -217,7 +439,7 @@ export function urlDurumuOku(sp: URLSearchParams): CokluUrl {
   const o = sp.get('olcu') as NlCokluOlcu | null;
   const s = sp.get('sira') as CokluSiralama | null;
   return {
-    ref: ref != null && kosular.includes(ref) ? ref : kosular[0] ?? null,
+    ref: ref != null && kosular.includes(ref) ? ref : (kosular[0] ?? null),
     kosular,
     // Kendi anahtari mi (`in` degil): ?olcu=toString / __proto__ / constructor prototipten gecip ekrani cokertirdi.
     olcu: o && Object.prototype.hasOwnProperty.call(OLCU_TANIM, o) ? o : 'p95',
@@ -241,7 +463,10 @@ export function urlDurumuYaz(sp: URLSearchParams, d: CokluUrl): URLSearchParams 
 
 // ── Grafik seri stili ────────────────────────────────────────────────────────────────
 /** i: aday sirasi (0..14). 8 ton (index.css --yt-seri-*), 9. kosudan itibaren ayni tonlar kesikli. */
-export function seriStili(i: number, ref = false): { renk: string; kalinlik: number; kesik: string | undefined } {
+export function seriStili(
+  i: number,
+  ref = false,
+): { renk: string; kalinlik: number; kesik: string | undefined } {
   if (ref) return { renk: 'var(--text-primary)', kalinlik: 3.5, kesik: undefined };
   return { renk: `var(--yt-seri-${(i % 8) + 1})`, kalinlik: 2, kesik: i >= 8 ? '6 4' : undefined };
 }

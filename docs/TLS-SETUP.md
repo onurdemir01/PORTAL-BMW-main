@@ -23,8 +23,8 @@ devre dışı kalır** — bu yüzden tek zincir dosyası her iki trafiği çöz
 ```powershell
 # 1) Zincirleri yakala (her hedef için — kurumsal ağda):
 powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost api.openai.com
-powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr -OutDir server\certs\mcp
-powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost instana-mcp.apps-3rd-t.fw.garanti.com.tr -OutDir server\certs\mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost dynatrace-mcp.apps-3rd-t.fw.sirket.invalid -OutDir server\certs\mcp
+powershell -ExecutionPolicy Bypass -File .\scripts\fetch-ca.ps1 -TargetHost instana-mcp.apps-3rd-t.fw.sirket.invalid -OutDir server\certs\mcp
 
 # 2) Birleşik bundle üret (public kökler + tüm kurumsal zincirler):
 node scripts\build-ca-bundle.cjs
@@ -59,9 +59,9 @@ Uygulamayı yeniden başlatın; boot logunda şunu görmelisiniz:
 
 Kurumsal internet çıkışı proxy'liyse:
 ```env
-HTTPS_PROXY=http://proxy.sirket.com.tr:8080
+HTTPS_PROXY=http://proxy.sirket.invalid:8080
 # Kurum İÇİ MCP route'ları proxy'ye GİTMEMELİ — yoksa proxy CONNECT'i keser (ECONNRESET):
-NO_PROXY=localhost,127.0.0.1,.fw.garanti.com.tr
+NO_PROXY=localhost,127.0.0.1,.fw.sirket.invalid
 ```
 MCP client `NO_PROXY`'yi host bazlı değerlendirir (suffix eşleşme; `server/mcp/client.cjs`).
 

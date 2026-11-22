@@ -71,9 +71,9 @@ async function sunucu() {
 const uygulamalar = (n) =>
   Array.from({ length: n }, (_, i) => ({
     app: `app${String(i).padStart(4, '0')}`,
-    host: `GBCJAP${String((i % 90) + 10)}`,
+    host: `ORCJAP${String((i % 90) + 10)}`,
     env: 'PROD',
-    domain: 'fw.garanti.com.tr',
+    domain: 'fw.sirket.invalid',
   }));
 
 beforeEach(() => {

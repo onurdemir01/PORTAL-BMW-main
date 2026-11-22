@@ -10,25 +10,30 @@ const { buildOcpExtraVars } = require('../ocp.cjs');
 
 test('buildOcpExtraVars(): tek bastion — eski payload birebir korunur (golden)', () => {
   const vars = buildOcpExtraVars({
-    env: 'lab', tenant: 'ark',
+    env: 'lab',
+    tenant: 'ark',
     clusters: ['c1', 'c2'],
-    hosts: { c1: 'GBAOCP01', c2: 'GBAOCP01' },
+    hosts: { c1: 'ORAOCP01', c2: 'ORAOCP01' },
   });
 
   // Eski sozlesme: skaler terminal_host + cluster basina oge.
-  assert.equal(vars.terminal_host, 'GBAOCP01');
-  assert.deepEqual(vars.ocp_clusters.map((c) => ({ env: c.env, tenant: c.tenant, cluster_name: c.cluster_name })), [
-    { env: 'lab', tenant: 'ark', cluster_name: 'c1' },
-    { env: 'lab', tenant: 'ark', cluster_name: 'c2' },
-  ]);
+  assert.equal(vars.terminal_host, 'ORAOCP01');
+  assert.deepEqual(
+    vars.ocp_clusters.map((c) => ({ env: c.env, tenant: c.tenant, cluster_name: c.cluster_name })),
+    [
+      { env: 'lab', tenant: 'ark', cluster_name: 'c1' },
+      { env: 'lab', tenant: 'ark', cluster_name: 'c2' },
+    ],
+  );
   // Yeni alanlar ustkume olarak eklenir.
-  assert.deepEqual(vars.terminal_hosts, ['GBAOCP01']);
-  assert.equal(vars.ocp_clusters[0].terminal_host, 'GBAOCP01');
+  assert.deepEqual(vars.terminal_hosts, ['ORAOCP01']);
+  assert.equal(vars.ocp_clusters[0].terminal_host, 'ORAOCP01');
 });
 
 test('buildOcpExtraVars(): cok bastion — her cluster kendi bastion bilgisini tasir', () => {
   const vars = buildOcpExtraVars({
-    env: 'dev', tenant: 'ark',
+    env: 'dev',
+    tenant: 'ark',
     clusters: ['c1', 'c2', 'c3'],
     hosts: { c1: 'jump02', c2: 'jump01', c3: 'jump02' },
   });
@@ -42,7 +47,8 @@ test('buildOcpExtraVars(): cok bastion — her cluster kendi bastion bilgisini t
 
 test('buildOcpExtraVars(): terminal_hosts benzersiz + sirali, skaler = ilk oge (deterministik)', () => {
   const vars = buildOcpExtraVars({
-    env: 'dev', tenant: 'ark',
+    env: 'dev',
+    tenant: 'ark',
     clusters: ['c1', 'c2', 'c3'],
     hosts: { c1: 'jump05', c2: 'jump01', c3: 'jump05' },
   });
@@ -52,7 +58,8 @@ test('buildOcpExtraVars(): terminal_hosts benzersiz + sirali, skaler = ilk oge (
 
   // Ayni girdi, farkli cluster sirasi → ayni bastion listesi (siralama girdiye bagli degil).
   const other = buildOcpExtraVars({
-    env: 'dev', tenant: 'ark',
+    env: 'dev',
+    tenant: 'ark',
     clusters: ['c3', 'c2', 'c1'],
     hosts: { c1: 'jump05', c2: 'jump01', c3: 'jump05' },
   });
@@ -61,11 +68,16 @@ test('buildOcpExtraVars(): terminal_hosts benzersiz + sirali, skaler = ilk oge (
 });
 
 test('buildOcpExtraVars(): tek cluster — payload minimal ve tutarli', () => {
-  const vars = buildOcpExtraVars({ env: 'lab', tenant: 'ark', clusters: ['solo'], hosts: { solo: 'gbaocp01' } });
+  const vars = buildOcpExtraVars({
+    env: 'lab',
+    tenant: 'ark',
+    clusters: ['solo'],
+    hosts: { solo: 'oraocp01' },
+  });
   assert.deepEqual(vars, {
-    terminal_host: 'gbaocp01',
-    terminal_hosts: ['gbaocp01'],
-    ocp_clusters: [{ env: 'lab', tenant: 'ark', cluster_name: 'solo', terminal_host: 'gbaocp01' }],
+    terminal_host: 'oraocp01',
+    terminal_hosts: ['oraocp01'],
+    ocp_clusters: [{ env: 'lab', tenant: 'ark', cluster_name: 'solo', terminal_host: 'oraocp01' }],
   });
 });
 
@@ -74,37 +86,63 @@ test('buildOcpExtraVars(): tek cluster — payload minimal ve tutarli', () => {
 // hic gonderilmez → playbook eski inventory yoluna duser (asamali gecis guvencesi).
 
 test('buildOcpExtraVars(): meta verilmezse cikti v2 ile BIREBIR ayni (regresyon)', () => {
-  const v2 = buildOcpExtraVars({ env: 'lab', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'b1' } });
-  assert.deepEqual(v2.ocp_clusters, [{ env: 'lab', tenant: 'ark', cluster_name: 'c1', terminal_host: 'b1' }]);
+  const v2 = buildOcpExtraVars({
+    env: 'lab',
+    tenant: 'ark',
+    clusters: ['c1'],
+    hosts: { c1: 'b1' },
+  });
+  assert.deepEqual(v2.ocp_clusters, [
+    { env: 'lab', tenant: 'ark', cluster_name: 'c1', terminal_host: 'b1' },
+  ]);
   assert.ok(!('api_url' in v2.ocp_clusters[0]), 'meta yokken api_url anahtari OLMAMALI');
   assert.ok(!('credential_key' in v2.ocp_clusters[0]));
 });
 
 test('buildOcpExtraVars(): meta doluysa api_url + credential_key tasinir', () => {
   const vars = buildOcpExtraVars({
-    env: 'prod', tenant: 'ark', clusters: ['gbocpprod1'], hosts: { gbocpprod1: 'gbarkp51' },
-    meta: { gbocpprod1: { api_url: 'https://api.gbocpprod1.fw.garanti.com.tr:6443', vault_credential_key: 'uxmid_gar' } },
+    env: 'prod',
+    tenant: 'ark',
+    clusters: ['orocpprod1'],
+    hosts: { orocpprod1: 'orarkp51' },
+    meta: {
+      orocpprod1: {
+        api_url: 'https://api.orocpprod1.fw.sirket.invalid:6443',
+        vault_credential_key: 'svcac_gar',
+      },
+    },
   });
   assert.deepEqual(vars.ocp_clusters[0], {
-    env: 'prod', tenant: 'ark', cluster_name: 'gbocpprod1', terminal_host: 'gbarkp51',
-    api_url: 'https://api.gbocpprod1.fw.garanti.com.tr:6443',
-    credential_key: 'uxmid_gar',
+    env: 'prod',
+    tenant: 'ark',
+    cluster_name: 'orocpprod1',
+    terminal_host: 'orarkp51',
+    api_url: 'https://api.orocpprod1.fw.sirket.invalid:6443',
+    credential_key: 'svcac_gar',
   });
 });
 
-test('buildOcpExtraVars(): PAROLA hicbir kosulda payload\'a girmez', () => {
+test("buildOcpExtraVars(): PAROLA hicbir kosulda payload'a girmez", () => {
   const vars = buildOcpExtraVars({
-    env: 'prod', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'b1' },
-    meta: { c1: { api_url: 'https://api.x:6443', vault_credential_key: 'uxmid_gar', password: 'GIZLI' } },
+    env: 'prod',
+    tenant: 'ark',
+    clusters: ['c1'],
+    hosts: { c1: 'b1' },
+    meta: {
+      c1: { api_url: 'https://api.x:6443', vault_credential_key: 'svcac_gar', password: 'GIZLI' },
+    },
   });
   const json = JSON.stringify(vars);
-  assert.ok(!json.includes('GIZLI'), 'meta icinde parola gelse bile payload\'a KOPYALANMAMALI');
+  assert.ok(!json.includes('GIZLI'), "meta icinde parola gelse bile payload'a KOPYALANMAMALI");
   assert.ok(!json.includes('password'), 'password anahtari hic olmamali');
 });
 
 test('buildOcpExtraVars(): kismi meta — yalniz dolu alan gonderilir', () => {
   const vars = buildOcpExtraVars({
-    env: 'qa', tenant: 'ark', clusters: ['a', 'b'], hosts: { a: 'b1', b: 'b1' },
+    env: 'qa',
+    tenant: 'ark',
+    clusters: ['a', 'b'],
+    hosts: { a: 'b1', b: 'b1' },
     meta: { a: { api_url: 'https://api.a:6443', vault_credential_key: null }, b: {} },
   });
   assert.equal(vars.ocp_clusters[0].api_url, 'https://api.a:6443');
@@ -118,47 +156,73 @@ test('buildOcpExtraVars(): kismi meta — yalniz dolu alan gonderilir', () => {
 // "'username' is undefined" → UC BASTION DA rescue'ya dustu, hicbir namespace donmedi.
 // Artik deger portaldan gelir.
 
-test('buildOcpExtraVars(): cluster satirindaki ocp_username payload\'a `username` olarak gider', () => {
+test("buildOcpExtraVars(): cluster satirindaki ocp_username payload'a `username` olarak gider", () => {
   const vars = buildOcpExtraVars({
-    env: 'prod', tenant: 'ark', clusters: ['gbocpankprod2'], hosts: { gbocpankprod2: 'GBARKAP82' },
+    env: 'prod',
+    tenant: 'ark',
+    clusters: ['orocpankprod2'],
+    hosts: { orocpankprod2: 'ORARKAP82' },
     meta: {
-      gbocpankprod2: {
-        api_url: 'https://api.gbocpankprod2.fw.garanti.com.tr:6443',
-        vault_credential_key: 'uxmid_gar',
-        ocp_username: 'uxmid',
+      orocpankprod2: {
+        api_url: 'https://api.orocpankprod2.fw.sirket.invalid:6443',
+        vault_credential_key: 'svcac_gar',
+        ocp_username: 'svcac',
       },
     },
   });
-  assert.equal(vars.ocp_clusters[0].username, 'uxmid');
+  assert.equal(vars.ocp_clusters[0].username, 'svcac');
 });
 
 test('buildOcpExtraVars(): ocp_username BOSSA anahtar HIC konmaz (playbook genel varsayilana duser)', () => {
   for (const empty of [null, '', undefined]) {
     const vars = buildOcpExtraVars({
-      env: 'prod', tenant: 'ark', clusters: ['c1'], hosts: { c1: 'b1' },
-      meta: { c1: { api_url: 'https://api.c1:6443', vault_credential_key: 'uxmid_gar', ocp_username: empty } },
+      env: 'prod',
+      tenant: 'ark',
+      clusters: ['c1'],
+      hosts: { c1: 'b1' },
+      meta: {
+        c1: {
+          api_url: 'https://api.c1:6443',
+          vault_credential_key: 'svcac_gar',
+          ocp_username: empty,
+        },
+      },
     });
-    assert.ok(!('username' in vars.ocp_clusters[0]), `bos deger (${JSON.stringify(empty)}) anahtar uretmemeli`);
+    assert.ok(
+      !('username' in vars.ocp_clusters[0]),
+      `bos deger (${JSON.stringify(empty)}) anahtar uretmemeli`,
+    );
   }
 });
 
 test('buildOcpExtraVars(): her cluster KENDI kullanici adiyla gider (tek degere sabitlenmez)', () => {
   const vars = buildOcpExtraVars({
-    env: 'prod', tenant: 'ark', clusters: ['a', 'b'], hosts: { a: 'b1', b: 'b2' },
+    env: 'prod',
+    tenant: 'ark',
+    clusters: ['a', 'b'],
+    hosts: { a: 'b1', b: 'b2' },
     meta: {
-      a: { api_url: 'https://api.a:6443', vault_credential_key: 'uxmid_gar', ocp_username: 'uxmid' },
-      b: { api_url: 'https://api.b:6443', vault_credential_key: 'uxmid_das', ocp_username: 'svc-das' },
+      a: {
+        api_url: 'https://api.a:6443',
+        vault_credential_key: 'svcac_gar',
+        ocp_username: 'svcac',
+      },
+      b: {
+        api_url: 'https://api.b:6443',
+        vault_credential_key: 'svcac_das',
+        ocp_username: 'svc-das',
+      },
     },
   });
-  assert.equal(vars.ocp_clusters.find((c) => c.cluster_name === 'a').username, 'uxmid');
+  assert.equal(vars.ocp_clusters.find((c) => c.cluster_name === 'a').username, 'svcac');
   assert.equal(vars.ocp_clusters.find((c) => c.cluster_name === 'b').username, 'svc-das');
 });
 
 // ── Genel varsayilan (runtime config) ────────────────────────────────────────
 
-test('buildOcpRuntimeVars(): defaultOcpUsername → `ocp_username` extra_var\'i', () => {
+test("buildOcpRuntimeVars(): defaultOcpUsername → `ocp_username` extra_var'i", () => {
   const { buildOcpRuntimeVars } = require('../ocp.cjs');
-  assert.equal(buildOcpRuntimeVars({ defaultOcpUsername: 'uxmid' }).ocp_username, 'uxmid');
+  assert.equal(buildOcpRuntimeVars({ defaultOcpUsername: 'svcac' }).ocp_username, 'svcac');
   // Bos ise anahtar HIC gonderilmez — playbook eski `username` degiskenine dusebilsin.
   assert.ok(!('ocp_username' in buildOcpRuntimeVars({ defaultOcpUsername: '' })));
   assert.ok(!('ocp_username' in buildOcpRuntimeVars({})));
@@ -167,10 +231,18 @@ test('buildOcpRuntimeVars(): defaultOcpUsername → `ocp_username` extra_var\'i'
 test('ocp-runtime-config: kabuk metakarakteri iceren kullanici adi ELENIR', () => {
   const cfg = require('../ocp-runtime-config.cjs');
   for (const bad of ['; rm -rf /', 'a b', '$(id)', '`id`', 'a|b']) {
-    assert.equal(cfg.normalize({ defaultOcpUsername: bad }).defaultOcpUsername, '', `reddedilmeli: ${bad}`);
+    assert.equal(
+      cfg.normalize({ defaultOcpUsername: bad }).defaultOcpUsername,
+      '',
+      `reddedilmeli: ${bad}`,
+    );
   }
-  for (const good of ['uxmid', 'svc-ocp', 'svc_ocp.1', 'user@realm']) {
-    assert.equal(cfg.normalize({ defaultOcpUsername: good }).defaultOcpUsername, good, `kabul edilmeli: ${good}`);
+  for (const good of ['svcac', 'svc-ocp', 'svc_ocp.1', 'user@realm']) {
+    assert.equal(
+      cfg.normalize({ defaultOcpUsername: good }).defaultOcpUsername,
+      good,
+      `kabul edilmeli: ${good}`,
+    );
   }
 });
 
@@ -178,14 +250,14 @@ test('ocp-runtime-config: anahtar YOKSA varsayilan, BILEREK bosaltilmissa bos ka
   const cfg = require('../ocp-runtime-config.cjs');
   // Bu ayrim olmadan ya hic kaydedilmemis kurulumlarda varsayilan kaybolur (her cluster
   // duser), ya da admin alani bilerek bosaltamaz.
-  assert.equal(cfg.normalize({}).defaultOcpUsername, 'uxmid');
+  assert.equal(cfg.normalize({}).defaultOcpUsername, 'svcac');
   assert.equal(cfg.normalize({ defaultOcpUsername: '' }).defaultOcpUsername, '');
 });
 
 // ── Coklu hedef + arsiv adlandirma (2026-08-09 kullanici istegi) ─────────────
 // LogX bir calistirmada tek (namespace, uygulama) cifti aliyordu; uc uygulamanin logunu
 // isteyen kullanici sihirbazi uc kez bastan calistirmak zorundaydi. Ayrica uretilen arsiv
-// adi yalnizca jump server + rastgele hash idi (gbarkp54__0dda63d4....zip) ve indirilen
+// adi yalnizca jump server + rastgele hash idi (orarkp54__0dda63d4....zip) ve indirilen
 // dosyanin neye ait oldugu anlasilmiyordu.
 
 test('normalizeTargets(): kirpar, bos olani atar, tekillestirir', () => {
@@ -193,12 +265,15 @@ test('normalizeTargets(): kirpar, bos olani atar, tekillestirir', () => {
   assert.deepEqual(
     normalizeTargets([
       { namespace: '  ns1 ', appName: ' app1 ' },
-      { namespace: 'ns1', appName: 'app1' },        // mukerrer
-      { namespace: 'ns1', appName: '' },            // uygulama bos → atilir
-      { namespace: '', appName: 'app2' },           // namespace bos → atilir
-      { namespace: 'ns2', app_name: 'app2' },       // playbook alan adi da kabul
+      { namespace: 'ns1', appName: 'app1' }, // mukerrer
+      { namespace: 'ns1', appName: '' }, // uygulama bos → atilir
+      { namespace: '', appName: 'app2' }, // namespace bos → atilir
+      { namespace: 'ns2', app_name: 'app2' }, // playbook alan adi da kabul
     ]),
-    [{ namespace: 'ns1', appName: 'app1' }, { namespace: 'ns2', appName: 'app2' }]
+    [
+      { namespace: 'ns1', appName: 'app1' },
+      { namespace: 'ns2', appName: 'app2' },
+    ],
   );
 });
 
@@ -219,16 +294,15 @@ test('normalizeTargets(): KARARLI sira (namespace, sonra uygulama)', () => {
       { namespace: 'ns1', appName: 'z' },
       { namespace: 'ns2', appName: 'a' },
       { namespace: 'ns2', appName: 'b' },
-    ]
+    ],
   );
 });
 
 test('normalizeTargets(): TEK nesne de kabul edilir (eski cagri sekli)', () => {
   const { normalizeTargets } = require('../ocp.cjs');
-  assert.deepEqual(
-    normalizeTargets({ namespace: 'ns1', appName: 'app1' }),
-    [{ namespace: 'ns1', appName: 'app1' }]
-  );
+  assert.deepEqual(normalizeTargets({ namespace: 'ns1', appName: 'app1' }), [
+    { namespace: 'ns1', appName: 'app1' },
+  ]);
 });
 
 test('slugPart(): dosya adina guvenli, kirpilmis parca uretir', () => {
@@ -257,7 +331,11 @@ test('normalizeTargets gecersiz karakterli namespace/uygulama adini 400 ile redd
     { namespace: 'ns;rm', appName: 'a' },
     { namespace: 'ns', appName: '$(id)' },
   ]) {
-    assert.throws(() => normalizeTargets([kotu]), (e) => e.status === 400, JSON.stringify(kotu));
+    assert.throws(
+      () => normalizeTargets([kotu]),
+      (e) => e.status === 400,
+      JSON.stringify(kotu),
+    );
   }
   assert.deepEqual(normalizeTargets([{ namespace: 'odeme-ns', appName: 'risk.engine_v3' }]), [
     { namespace: 'odeme-ns', appName: 'risk.engine_v3' },

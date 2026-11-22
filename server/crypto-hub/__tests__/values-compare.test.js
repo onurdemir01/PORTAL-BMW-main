@@ -22,7 +22,7 @@ const satirlar = (s) => s.split(String.fromCharCode(10));
 
 test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => {
   const a = {
-    path: '/vhosting/wyden/1.8.2/cldev1/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev1/ornek_values.yaml',
     lines: satirlar(
       ['global:', '  env: dev', '  replicas: 2', 'image:', '  tag: 1.8.2'].join(
         String.fromCharCode(10),
@@ -31,7 +31,7 @@ test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => 
   };
   // AYNI icerik, BASKA sira. Satir bazli bir diff burada "her sey farkli" derdi.
   const b = {
-    path: '/vhosting/wyden/1.8.2/cldev2/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev2/ornek_values.yaml',
     lines: satirlar(
       ['image:', '  tag: 1.8.2', 'global:', '  replicas: 2', '  env: dev'].join(
         String.fromCharCode(10),
@@ -54,7 +54,7 @@ test('VC1: anahtar bazli karsilastirma - sira degisikligi fark degildir', () => 
 
   // Gercek bir fark YAKALANMALI.
   const c = {
-    path: '/vhosting/wyden/1.8.2/cldev3/garanti_values.yaml',
+    path: '/vhosting/wyden/1.8.2/cldev3/ornek_values.yaml',
     lines: satirlar(
       'global:' +
         String.fromCharCode(10) +
@@ -308,7 +308,7 @@ test('VC8: sunucu sozlesmesi - chart/surum sunucuda cozulur, olculemezse UYGULAN
   bekle('crypto_hub_chart_ref', 'chart extra var olarak gonderilmiyor');
   bekle('crypto_hub_expect_version', 'kosan surum betige bildirilmiyor');
   bekle('chartRefOf(tenant)', 'chart katalogdan cozulmuyor');
-  bekle('versions.running', 'kosan surum taramadan okunmuyor');
+  assert.match(kod, /versions\??\.running/, 'kosan surum taramadan okunmuyor');
   // OLCULEMEDIYSE UYGULAMA YOK: "ayni surum" guvencesi verilemeyecegi icin durulur.
   bekle('ÖLÇÜLEMEDİ', 'kosan surum olculemediginde islem yine baslatiliyor');
   // AWX isi helm'den ONCE olmemeli.
@@ -419,7 +419,8 @@ test('CM4: sunucu sozlesmesi - yalniz data, merge patch, eslesme sunucuda', () =
   assert.ok(kod.includes('crypto_hub_cm_patch_b64'), 'patch base64 ile tasinmiyor');
   // ESLESME SUNUCUDA: istemci shared/ altindan import edemiyor; iki kopya eskirdi.
   assert.ok(
-    kod.includes('rolloutHedefleri(tenant && tenant.app, c.name)'),
+    kod.includes('rolloutHedefleri(tenant && tenant.app, c.name)') ||
+      kod.includes('rolloutHedefleri(tenant?.app, c.name)'),
     'rollout eslesmesi sunucuda cozulmuyor',
   );
 });

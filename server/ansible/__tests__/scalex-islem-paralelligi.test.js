@@ -19,7 +19,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const APP = path.join(__dirname, '..', 'bmw_portal', 'scalex', 'scalex_app');
+const APP = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'scalex', 'scalex_app');
 const TASKS = path.join(APP, 'tasks');
 const HAS_ANSIBLE = spawnSync('ansible-playbook', ['--version'], { stdio: 'ignore' }).status === 0;
 
@@ -106,7 +106,7 @@ function kostur({
     }));
     const vars = {
       target_matrix: matrix,
-      username: 'uxmid',
+      username: 'svcac',
       lp_sifre: 'gizli',
       oc_namespace: 'ns1',
       scalex_cluster_apps_effective: uygulamalar,

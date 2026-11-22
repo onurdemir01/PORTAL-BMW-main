@@ -83,16 +83,26 @@ function isProdEnv(raw) {
 
 // NOAPP: envanter betiginin "uygulama bulunamadi" yer tutucusu - gercek bir JVM DEGIL.
 function isNoApp(app) {
-  return String(app ?? '').trim().toUpperCase() === 'NOAPP';
+  return (
+    String(app ?? '')
+      .trim()
+      .toUpperCase() === 'NOAPP'
+  );
 }
 
 // v1 yalniz Linux. AIX satirlari listede GORUNUR ama secilemez.
 function isSelectableOs(os) {
-  return String(os ?? '').trim().toUpperCase() === 'LINUX';
+  return (
+    String(os ?? '')
+      .trim()
+      .toUpperCase() === 'LINUX'
+  );
 }
 
 function normalizeHost(h) {
-  return String(h ?? '').trim().toUpperCase();
+  return String(h ?? '')
+    .trim()
+    .toUpperCase();
 }
 
 // Envanter satirlarini ekran/dogrulama icin tek bicime getirir. Ayni host iki kez
@@ -113,9 +123,16 @@ function shapeInventoryHosts(rows) {
       envRaw: String(r?.env ?? '').trim(),
       os,
       wasVersion: String(r?.was_version ?? '').trim(),
-      status: String(r?.status ?? '').trim().toLowerCase(),
+      status: String(r?.status ?? '')
+        .trim()
+        .toLowerCase(),
       selectable: linux && validHost,
-      reason: (() => { if (!linux) return `İşletim sistemi ${os || 'bilinmiyor'} — bu sürümde yalnız Linux desteklenir.`; if (!validHost) return 'Sunucu adı beklenmeyen karakter içeriyor.'; return ''; })(),
+      reason: (() => {
+        if (!linux)
+          return `İşletim sistemi ${os || 'bilinmiyor'} — bu sürümde yalnız Linux desteklenir.`;
+        if (!validHost) return 'Sunucu adı beklenmeyen karakter içeriyor.';
+        return '';
+      })(),
     });
   }
   return out.sort((a, b) => byText(a.host, b.host));
@@ -124,7 +141,9 @@ function shapeInventoryHosts(rows) {
 // Kod noktasi sirasi. localeCompare KULLANILMAZ: sonucu ICU/isletim sistemi diline gore
 // degisir ("GB;03" bir makinede once, digerinde sonra gelir).
 function byText(a, b) {
-  if (a < b) return -1; if (a > b) return 1; return 0;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 // ── SIR MASKELEME ────────────────────────────────────────────────────────────
@@ -360,7 +379,7 @@ function computeWarnings(discovery, target, operation) {
       out.push({
         code: 'SON_CALISAN',
         message:
-          'Bu JVM\'in küme bilgisi ölçülemedi: kümesinde çalışan başka üye kalıp kalmadığı BİLİNMİYOR, ' +
+          "Bu JVM'in küme bilgisi ölçülemedi: kümesinde çalışan başka üye kalıp kalmadığı BİLİNMİYOR, " +
           'bu JVM son çalışan üye olabilir.' +
           (s.running ? ` Aynı adlı ${s.running} örnek başka sunucuda çalışıyor ölçüldü.` : '') +
           ` İşlem süresince uygulama hizmet veremeyebilir.${ek} Keşfedilmeyen sunucular hesaba katılmadı.`,
@@ -429,8 +448,11 @@ function gateOperation(target, operation) {
   }
   const allowed = ALLOWED_BY_STATE[target.state] || [];
   if (!allowed.includes(operation)) {
-    const neden =
-      (() => { if (target.state === 'STOPPED') return 'JVM zaten durmuş görünüyor'; if (target.state === 'RUNNING') return 'JVM zaten çalışıyor'; return `JVM durumu ${target.state}`; })();
+    const neden = (() => {
+      if (target.state === 'STOPPED') return 'JVM zaten durmuş görünüyor';
+      if (target.state === 'RUNNING') return 'JVM zaten çalışıyor';
+      return `JVM durumu ${target.state}`;
+    })();
     return {
       ok: false,
       status: 409,
@@ -537,7 +559,8 @@ function opResultMismatch(parsed, params) {
   if (!parsed) return '';
   const p = params || {};
   const farklar = [];
-  if (parsed.requestId && p.request_id && parsed.requestId !== String(p.request_id)) farklar.push('istek kimliği');
+  if (parsed.requestId && p.request_id && parsed.requestId !== String(p.request_id))
+    farklar.push('istek kimliği');
   if (parsed.host && p.host && parsed.host !== normalizeHost(p.host)) farklar.push('sunucu');
   if (parsed.server && p.server && parsed.server !== String(p.server)) farklar.push('JVM');
   return farklar.join(', ');
@@ -636,7 +659,8 @@ async function boundJobState(jobState, row) {
   try {
     const r = await jobState(Number(row.awx_server_id), Number(row.awx_job_id));
     if (r === true) return { terminal: true, finished: null };
-    if (r && typeof r === 'object' && r.terminal === true) return { terminal: true, finished: r.finished ?? null };
+    if (r && typeof r === 'object' && r.terminal === true)
+      return { terminal: true, finished: r.finished ?? null };
   } catch {
     /* AWX okunamadi: bitmis SAYILMAZ */
   }
@@ -707,7 +731,7 @@ async function releaseLocksForJob(db, awxServerId, awxJobId, finishedIso = null)
 
 // BAYAT KESIF (LB cifti korumasi, 2026-10-02): kesif, bu uygulamadaki SON islem BITMEDEN
 // baslamissa olcumleri o islemden onceki (ya da islem ortasindaki) durumu gosterir. Ornek:
-// ALI GBWASP01'i durdurur, is biter, kilit duser; VELI'nin ALI'nin isinden ONCE aldigi kesif
+// ALI ORWASP01'i durdurur, is biter, kilit duser; VELI'nin ALI'nin isinden ONCE aldigi kesif
 // 01'i hala "calisiyor" gosterir ve 02'yi SON_CALISAN uyarisi olmadan durdurtur. Kural:
 // kesfin AWX baslangic zamani > uygulamanin son islem bitis zamani (iki zaman da AWX'ten).
 // Donus: '' (gecerli) ya da red sebebi.
@@ -716,7 +740,8 @@ function staleDiscovery(discoveryStartedIso, lastOpFinishedIso) {
   if (!son) return '';
   const bas = isoOrNull(discoveryStartedIso);
   if (!bas) return 'keşfin başlangıç zamanı okunamadı';
-  if (bas <= son) return `keşif bu uygulamadaki son işlem bitmeden başlamış (son işlem ${son}, keşif ${bas})`;
+  if (bas <= son)
+    return `keşif bu uygulamadaki son işlem bitmeden başlamış (son işlem ${son}, keşif ${bas})`;
   return '';
 }
 

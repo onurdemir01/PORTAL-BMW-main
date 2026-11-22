@@ -10,18 +10,20 @@ import IpCheckSection from '@/components/self_service/IpCheckSection';
 import type { ServerIpCheckResult } from '@/api/selfServiceApi';
 
 const { mockIp, mockSunucu } = vi.hoisted(() => ({ mockIp: vi.fn(), mockSunucu: vi.fn() }));
-vi.mock('@/api/selfServiceApi', () => ({ selfServiceApi: { ipCheck: mockIp, serverIpCheck: mockSunucu } }));
+vi.mock('@/api/selfServiceApi', () => ({
+  selfServiceApi: { ipCheck: mockIp, serverIpCheck: mockSunucu },
+}));
 
 const LB: ServerIpCheckResult = {
   ok: true,
   sonuclar: [
     {
-      sunucu: 'GBAPAP01',
+      sunucu: 'ORAPAP01',
       bulundu: true,
-      eslenikler: ['GBAPWP01'],
+      eslenikler: ['ORAPWP01'],
       kayitlar: [
-        { host: 'GBAPAP01', ip: '10.0.0.1', neden: 'sunucu' },
-        { host: 'GBAPWP01', ip: '10.0.0.2', neden: 'web_eslenigi' },
+        { host: 'ORAPAP01', ip: '10.0.0.1', neden: 'sunucu' },
+        { host: 'ORAPWP01', ip: '10.0.0.2', neden: 'web_eslenigi' },
       ],
     },
   ],
@@ -42,7 +44,14 @@ function sorgula(metin: string) {
 
 describe('IpCheckSection', () => {
   beforeEach(() => {
-    mockIp.mockReset().mockResolvedValue({ ok: true, results: [{ ip: '10.0.0.1', found: false, matches: [] }], totalChecked: 1, totalFound: 0, truncated: 0, maxItems: 1000 });
+    mockIp.mockReset().mockResolvedValue({
+      ok: true,
+      results: [{ ip: '10.0.0.1', found: false, matches: [] }],
+      totalChecked: 1,
+      totalFound: 0,
+      truncated: 0,
+      maxItems: 1000,
+    });
     mockSunucu.mockReset().mockResolvedValue(LB);
   });
 
@@ -58,9 +67,9 @@ describe('IpCheckSection', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<IpCheckSection />);
-    sorgula('GBAPAP01 gbapap02');
+    sorgula('ORAPAP01 orapap02');
     expect(await screen.findByText("LB IP'leri")).toBeInTheDocument();
-    expect(mockSunucu).toHaveBeenCalledWith(['GBAPAP01', 'gbapap02']);
+    expect(mockSunucu).toHaveBeenCalledWith(['ORAPAP01', 'orapap02']);
     expect(mockIp).not.toHaveBeenCalled();
     expect(screen.getByText('10.0.0.2')).toBeInTheDocument();
     expect(screen.getByText('Web eşleniği')).toBeInTheDocument();
@@ -72,28 +81,31 @@ describe('IpCheckSection', () => {
 
   it('IC3 karışık liste', async () => {
     render(<IpCheckSection />);
-    sorgula('10.0.0.1, GBAPAP01');
+    sorgula('10.0.0.1, ORAPAP01');
     expect(await screen.findByText("LB IP'leri")).toBeInTheDocument();
     expect(await screen.findByText('Envanterde bulunamadı')).toBeInTheDocument();
     expect(mockIp).toHaveBeenCalledWith(['10.0.0.1']);
-    expect(mockSunucu).toHaveBeenCalledWith(['GBAPAP01']);
+    expect(mockSunucu).toHaveBeenCalledWith(['ORAPAP01']);
   });
 
   it('IC4 uyarılar görünür', async () => {
     mockSunucu.mockResolvedValue({
       ...LB,
-      sonuclar: [...LB.sonuclar, { sunucu: 'GBYOKP01', bulundu: false, eslenikler: [], kayitlar: [] }],
-      uyarilar: [{ sunucu: 'GBJBOP07', uygulama: '-', aciklama: 'batch kontrol edilmeli' }],
+      sonuclar: [
+        ...LB.sonuclar,
+        { sunucu: 'ORYOKP01', bulundu: false, eslenikler: [], kayitlar: [] },
+      ],
+      uyarilar: [{ sunucu: 'ORJBOP07', uygulama: '-', aciklama: 'batch kontrol edilmeli' }],
       gecersiz: ['A;B'],
       veriBayat: true,
       dijitalKanalOkundu: false,
       truncated: 3,
     });
     render(<IpCheckSection />);
-    sorgula('GBAPAP01');
+    sorgula('ORAPAP01');
     expect(await screen.findByText('Çalışma öncesi aksiyon gerekli')).toBeInTheDocument();
     expect(screen.getByText(/batch kontrol edilmeli/)).toBeInTheDocument();
-    expect(screen.getByText(/GBYOKP01/)).toBeInTheDocument();
+    expect(screen.getByText(/ORYOKP01/)).toBeInTheDocument();
     expect(screen.getByText(/A;B/)).toBeInTheDocument();
     expect(screen.getByText(/güncel değil/)).toBeInTheDocument();
     expect(screen.getByText(/Dijital kanal sunucu listesi okunamadı/)).toBeInTheDocument();

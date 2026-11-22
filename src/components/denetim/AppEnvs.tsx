@@ -21,7 +21,6 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => fmtNumber(n);
 
-
 export default function AppEnvs() {
   const [source, setSource] = useState('mw');
   const [data, setData] = useState<AppEnvsResult | null>(null);
@@ -91,8 +90,7 @@ export default function AppEnvs() {
     return needle ? list.filter((x) => x.app.toLowerCase().includes(needle)) : list;
   };
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">

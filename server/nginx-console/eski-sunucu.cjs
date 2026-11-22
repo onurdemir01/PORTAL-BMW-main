@@ -99,7 +99,7 @@ function esikGun() {
 }
 
 // Taze kumesine hem verilen ad hem kisa ad yazilir (guvenli yon): bir kaynak sunucuyu FQDN ile
-// (gbngxp09.bmw.local), dokum/baska tablo kisa adla (GBNGXP09) tutuyorsa kisa ad da GORULMUS
+// (orngxp09.bmw.local), dokum/baska tablo kisa adla (ORNGXP09) tutuyorsa kisa ad da GORULMUS
 // sayilmali; aksi halde canli sunucu eski sayilip temizlige aday olurdu (dogrulama bulgusu).
 function tazeEkle(set, h) {
   const H = norm(h);
@@ -108,7 +108,7 @@ function tazeEkle(set, h) {
   set.add(H.split('.')[0]);
 }
 
-const tabloYokMu = (e) => /Invalid object name/i.test(String((e && e.message) || ''));
+const tabloYokMu = (e) => /Invalid object name/i.test(String(e?.message || ''));
 
 // -- Sinyaller -------------------------------------------------------------------------
 
@@ -118,7 +118,7 @@ async function envanterOku(query) {
     `SELECT host FROM dbo.Inventory WHERE nginx_version IS NOT NULL AND LTRIM(RTRIM(nginx_version)) <> ''`,
   );
   const set = new Set();
-  for (const x of (r && r.recordset) || []) {
+  for (const x of r?.recordset || []) {
     const h = norm(x.host);
     if (!h) continue;
     set.add(h);
@@ -130,8 +130,10 @@ async function envanterOku(query) {
 
 async function varOlanTablolar(query) {
   const adlar = [...TBMWANS_TABLOLARI.map((t) => t.tablo), 'dbo.nginx_inventory'];
-  const r = await query(`SELECT ${adlar.map((t, i) => "OBJECT_ID('" + t + "') AS t" + i).join(', ')}`);
-  const satir = (r?.recordset?.[0]) || {};
+  const r = await query(
+    `SELECT ${adlar.map((t, i) => "OBJECT_ID('" + t + "') AS t" + i).join(', ')}`,
+  );
+  const satir = r?.recordset?.[0] || {};
   const set = new Set();
   adlar.forEach((t, i) => {
     if (satir[`t${i}`] != null) set.add(t);
@@ -149,14 +151,15 @@ async function tazeTbmwans(query, sql, varOlan, esikMs) {
       `SELECT DISTINCT UPPER(LTRIM(RTRIM(host))) AS host FROM ${t.tablo} WHERE scan_date >= @esik`,
       [{ name: 'esik', type: sql.Date, value: esikTarih }],
     );
-    for (const x of (r && r.recordset) || []) if (x.host) tazeEkle(taze, x.host);
+    for (const x of r?.recordset || []) if (x.host) tazeEkle(taze, x.host);
   }
   if (varOlan.has('dbo.nginx_inventory')) {
     const r = await query(`SELECT hostname, source_last_update FROM dbo.nginx_inventory`);
-    for (const x of (r && r.recordset) || []) {
+    for (const x of r?.recordset || []) {
       const h = norm(x.hostname);
       if (!h) continue;
-      const ms = x.source_last_update == null ? Number.NaN : new Date(x.source_last_update).getTime();
+      const ms =
+        x.source_last_update == null ? Number.NaN : new Date(x.source_last_update).getTime();
       if (Number.isNaN(ms) || ms >= esikMs) tazeEkle(taze, h);
     }
   }
@@ -206,7 +209,7 @@ function seenOku(dizin) {
   try {
     st = fs.statSync(p);
   } catch (e) {
-    if (e && e.code === 'ENOENT') return [];
+    if (e?.code === 'ENOENT') return [];
     throw e;
   }
   const j = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -228,7 +231,11 @@ async function hesapla() {
   const gun = esikGun();
   const simdi = bag.simdi();
   const esikMs = simdi - gun * GUN_MS;
-  const temel = { gun, esik: new Date(esikMs).toISOString(), hesaplandi: new Date(simdi).toISOString() };
+  const temel = {
+    gun,
+    esik: new Date(esikMs).toISOString(),
+    hesaplandi: new Date(simdi).toISOString(),
+  };
   try {
     // Uzun havuz: 14 gunluk tarama tablolarinda DISTINCT 30 sn'yi asabilir.
     const t = bag.tbmwans();
@@ -241,8 +248,8 @@ async function hesapla() {
     for (const [h, ms] of yerel) if (ms >= esikMs) tazeEkle(taze, h);
     return { ok: true, ...temel, envanter, taze, yerel, varOlan };
   } catch (e) {
-    console.warn('[NginxHub] eski sunucu hesabi yapilamadi, hicbir sunucu gizlenmez:', e && e.message);
-    return { ok: false, ...temel, hata: String((e && e.message) || e) };
+    console.warn('[NginxHub] eski sunucu hesabi yapilamadi, hicbir sunucu gizlenmez:', e?.message);
+    return { ok: false, ...temel, hata: String(e?.message || e) };
   }
 }
 
@@ -271,7 +278,8 @@ async function durum({ taze = false } = {}) {
     return v;
   }
   if (_durum) {
-    if (bag.simdi() - _durum.at >= (_durum.v.ok ? TTL_MS : HATA_TTL_MS)) ucusBaslat().catch(() => {});
+    if (bag.simdi() - _durum.at >= (_durum.v.ok ? TTL_MS : HATA_TTL_MS))
+      ucusBaslat().catch(() => {});
     return _durum.v;
   }
   return ucusBaslat();
@@ -279,7 +287,7 @@ async function durum({ taze = false } = {}) {
 
 /** Saf karar: durum + host -> eski mi. */
 function eskiMi(d, host) {
-  if (!d || !d.ok) return false;
+  if (!d?.ok) return false;
   const H = norm(host);
   if (!H) return false;
   const kisa = H.split('.')[0];
@@ -292,12 +300,12 @@ function eskiMi(d, host) {
  * gizlendigini toplar; `bilgi()` yanita yazilacak ozet. Hesap HIC firlatmaz (fail-closed: gizleme yok).
  */
 async function suzgec(req) {
-  const goster = String((req && req.query && req.query.eskiler) || '') === '1';
+  const goster = String(req?.query?.eskiler || '') === '1';
   let d;
   try {
     d = await durum();
   } catch (e) {
-    d = { ok: false, gun: esikGun(), hata: String((e && e.message) || e) };
+    d = { ok: false, gun: esikGun(), hata: String(e?.message || e) };
   }
   const gizli = new Set();
   const gizle = (h) => {
@@ -309,7 +317,7 @@ async function suzgec(req) {
     // Onbellek anahtari icin: eski kumesi hesabi ya da gosterme kipi degisince degisir.
     damga: `${d.ok ? 1 : 0}|${d.hesaplandi || ''}|${goster ? 1 : 0}`,
     eskiMi: (h) => !goster && eskiMi(d, h),
-    ayir(rows, anahtar = (r) => r && r.host) {
+    ayir(rows, anahtar = (r) => r?.host) {
       if (!Array.isArray(rows) || goster || !d.ok) return rows;
       return rows.filter((r) => !gizle(anahtar(r)));
     },
@@ -340,7 +348,7 @@ function temizlikBildir() {
     try {
       fn();
     } catch (e) {
-      console.warn('[NginxHub] temizlik dinleyicisi:', e && e.message);
+      console.warn('[NginxHub] temizlik dinleyicisi:', e?.message);
     }
   }
 }
@@ -378,7 +386,7 @@ async function adaylar() {
       `SELECT UPPER(LTRIM(RTRIM(host))) AS host, COUNT_BIG(*) AS n, CONVERT(varchar(10), MAX(scan_date), 23) AS son
          FROM ${t.tablo} GROUP BY UPPER(LTRIM(RTRIM(host)))`,
     );
-    for (const x of (r && r.recordset) || []) {
+    for (const x of r?.recordset || []) {
       if (!x.host) continue;
       const k = al(x.host);
       k.tbmwans[t.tablo] = Number(x.n) || 0;
@@ -390,7 +398,7 @@ async function adaylar() {
       const r = await db.query(
         `SELECT UPPER(LTRIM(RTRIM(host))) AS host, COUNT(*) AS n FROM ${t.tablo} WHERE host IS NOT NULL GROUP BY UPPER(LTRIM(RTRIM(host)))`,
       );
-      for (const x of (r && r.rows) || []) {
+      for (const x of r?.rows || []) {
         if (!x.host) continue;
         al(x.host).portal[t.tablo] = Number(x.n) || 0;
       }
@@ -445,13 +453,13 @@ async function parcaliSil(kaynak, tablo, H, butce, { normal = false } = {}) {
         { name: 'n', type: sql.Int, value: n },
         { name: 'h', type: sql.NVarChar(64), value: H },
       ]);
-      etkilenen = Number((r && r.rowsAffected && r.rowsAffected[0]) || 0);
+      etkilenen = Number(r?.rowsAffected?.[0] || 0);
     } else {
       const metin = normal
         ? `DELETE TOP (${n}) FROM ${tablo} WHERE UPPER(LTRIM(RTRIM(host))) = $1`
         : `DELETE TOP (${n}) FROM ${tablo} WHERE host = $1`;
       const r = await bag.portal().query(metin, [H], { tekrar: false });
-      etkilenen = Number((r && r.rowCount) || 0);
+      etkilenen = Number(r?.rowCount || 0);
     }
     silinen += etkilenen;
     if (etkilenen < n) return { silinen, bitti: true };
@@ -573,7 +581,14 @@ async function temizle(govde) {
     const sonuc = [];
     for (const H of v.hosts) {
       if (butce <= 0) {
-        sonuc.push({ host: H, islenmedi: true, tamam: false, silinenSatir: {}, dosyalar: [], hatalar: [] });
+        sonuc.push({
+          host: H,
+          islenmedi: true,
+          tamam: false,
+          silinenSatir: {},
+          dosyalar: [],
+          hatalar: [],
+        });
         continue;
       }
       const aday = harita.get(H);
@@ -612,7 +627,7 @@ async function temizle(govde) {
           }
         } catch (e) {
           // Parametre/sifre degil; DB'nin hata metni (izin yok, zaman asimi ...).
-          s.hatalar.push({ tablo, mesaj: String((e && e.message) || e).slice(0, 300) });
+          s.hatalar.push({ tablo, mesaj: String(e?.message || e).slice(0, 300) });
           eksik = true;
         }
       }
@@ -620,11 +635,12 @@ async function temizle(govde) {
         try {
           const f = hostDosyalariniSil(H);
           s.dosyalar = f.silinen;
-          if (f.atlanan.length) s.hatalar.push({ tablo: 'raw', mesaj: `atlanan dosya: ${f.atlanan.join(', ')}` });
+          if (f.atlanan.length)
+            s.hatalar.push({ tablo: 'raw', mesaj: `atlanan dosya: ${f.atlanan.join(', ')}` });
           s.seen = seenAnahtariniSil(H);
           bag.yerel()._unutHost?.(H);
         } catch (e) {
-          s.hatalar.push({ tablo: 'raw', mesaj: String((e && e.message) || e).slice(0, 300) });
+          s.hatalar.push({ tablo: 'raw', mesaj: String(e?.message || e).slice(0, 300) });
         }
       }
       s.tamam = !eksik && s.hatalar.length === 0;

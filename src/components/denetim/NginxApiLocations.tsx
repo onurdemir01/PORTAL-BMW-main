@@ -22,7 +22,6 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
-
 export function NginxApiLocations() {
   const [data, setData] = useState<NginxApiLocationsResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,8 +110,7 @@ export function NginxApiLocations() {
     setLimit(300);
   }
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -146,7 +144,9 @@ export function NginxApiLocations() {
           <Pill tone="warning">ortam farkı</Pill>
           <span>ortamlar arası limit farkı (kasıtlı olabilir) ·</span>
           <Pill tone="danger">küme içi limit farkı</Pill>
-          <span>aynı kümedeki (mblcustomers/customers/mcustomers) eş sunucular farklı limit taşıyor</span>
+          <span>
+            aynı kümedeki (mblcustomers/customers/mcustomers) eş sunucular farklı limit taşıyor
+          </span>
         </div>
       </Note>
 
@@ -172,7 +172,10 @@ export function NginxApiLocations() {
         description={
           <>
             {nf(Math.min(rows.length, limit))} / {nf(rows.length)} yol gösteriliyor ·{' '}
-            <GuncellemeRozeti etiket="tarama" tarih={data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate} />
+            <GuncellemeRozeti
+              etiket="tarama"
+              tarih={data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate}
+            />
           </>
         }
         actions={
@@ -225,16 +228,20 @@ export function NginxApiLocations() {
                   rows.map((r) => {
                     const covRows = r.clusters || [];
                     return [
-                    r.config,
-                    r.location,
-                    ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
-                    ...covRows.map((c) => `${c.present}/${c.total}`),
-                    ...covRows.map((c) => c.groups.map((g) => `${g.ip || '-'}/${g.srv || '-'} x${g.hosts.length}`).join(' | ')),
-                    ...covRows.map((c) => c.missing.join(' ')),
-                    ...covRows.map((c) => (c.notScanned || []).join(' ')),
-                    r.missingEnvs.join(' '),
-                    r.limitDrift ? 'EVET' : '',
-                    r.envLimitDrift ? 'EVET' : '',
+                      r.config,
+                      r.location,
+                      ...envs.map((e) => (r.envs[e] ? r.envs[e].hosts.join(' ') : '')),
+                      ...covRows.map((c) => `${c.present}/${c.total}`),
+                      ...covRows.map((c) =>
+                        c.groups
+                          .map((g) => `${g.ip || '-'}/${g.srv || '-'} x${g.hosts.length}`)
+                          .join(' | '),
+                      ),
+                      ...covRows.map((c) => c.missing.join(' ')),
+                      ...covRows.map((c) => (c.notScanned || []).join(' ')),
+                      r.missingEnvs.join(' '),
+                      r.limitDrift ? 'EVET' : '',
+                      r.envLimitDrift ? 'EVET' : '',
                     ];
                   }),
                 )
@@ -338,11 +345,12 @@ const LocationRow = React.memo(function LocationRow({
                   : c.present === c.total
                     ? 'success'
                     : 'warning';
-              const limitOzet = c.groups.length === 1
-                ? [c.groups[0].ip, c.groups[0].srv].filter(Boolean).join(' / ') || 'limit yok'
-                : c.groups.length > 1
-                  ? `${c.groups.length} farklı limit`
-                  : '';
+              const limitOzet =
+                c.groups.length === 1
+                  ? [c.groups[0].ip, c.groups[0].srv].filter(Boolean).join(' / ') || 'limit yok'
+                  : c.groups.length > 1
+                    ? `${c.groups.length} farklı limit`
+                    : '';
               return (
                 <Pill key={c.key} tone={tone}>
                   {c.label} {c.present}/{c.total}
@@ -385,17 +393,26 @@ const LocationRow = React.memo(function LocationRow({
               style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
             >
               <div className="mb-3">
-                <div className="text-[11px] font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
-                  Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok ve
-                  rate limitler eş sunucularda aynı mı?
+                <div
+                  className="text-[11px] font-semibold mb-1"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Sunucu kümeleri — bu API hangi gateway&apos;lerde var, hangilerinde yok ve rate
+                  limitler eş sunucularda aynı mı?
                 </div>
                 <div className="space-y-2">
                   {rowsCov.map((c) => (
                     <div key={c.key} className="flex flex-wrap items-start gap-2 text-[11px]">
-                      <span className="w-28 shrink-0 font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      <span
+                        className="w-28 shrink-0 font-semibold"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
                         {c.label}
                       </span>
-                      <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                      <span
+                        className="shrink-0 tabular-nums"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
                         {c.present}/{c.total}
                       </span>
                       <span className="flex flex-col gap-1">
@@ -407,18 +424,35 @@ const LocationRow = React.memo(function LocationRow({
                               <span
                                 className="px-1.5 py-0.5 rounded font-mono"
                                 style={{
-                                  background: c.limitDrift && gi > 0 ? 'var(--status-danger-bg)' : 'var(--status-success-bg)',
-                                  color: c.limitDrift && gi > 0 ? 'var(--status-danger)' : 'var(--status-success)',
+                                  background:
+                                    c.limitDrift && gi > 0
+                                      ? 'var(--status-danger-bg)'
+                                      : 'var(--status-success-bg)',
+                                  color:
+                                    c.limitDrift && gi > 0
+                                      ? 'var(--status-danger)'
+                                      : 'var(--status-success)',
                                 }}
-                                title={c.limitDrift ? 'bu sunucularda FARKLI limit' : 'tüm eş sunucularda aynı'}
+                                title={
+                                  c.limitDrift
+                                    ? 'bu sunucularda FARKLI limit'
+                                    : 'tüm eş sunucularda aynı'
+                                }
                               >
                                 IP {g.ip || '—'} · location {g.srv || '—'}
                               </span>
                               <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
                                 × {g.hosts.length}
                               </span>
-                              <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={g.hosts.join(', ')}>
-                                {g.hosts.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                              <span
+                                className="font-mono"
+                                style={{ color: 'var(--text-muted)' }}
+                                title={g.hosts.join(', ')}
+                              >
+                                {g.hosts
+                                  .slice(0, 6)
+                                  .map((h) => h.toLowerCase())
+                                  .join(', ')}
                                 {g.hosts.length > 6 ? ` +${g.hosts.length - 6}` : ''}
                               </span>
                             </span>
@@ -428,13 +462,23 @@ const LocationRow = React.memo(function LocationRow({
                           <span className="flex flex-wrap items-center gap-1">
                             <span
                               className="px-1.5 py-0.5 rounded"
-                              style={{ background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}
+                              style={{
+                                background: 'var(--status-danger-bg)',
+                                color: 'var(--status-danger)',
+                              }}
                               title="Sunucu tarandı ama bu location orada bulunamadı."
                             >
                               {c.missing.length} sunucuda YOK
                             </span>
-                            <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={c.missing.join(', ')}>
-                              {c.missing.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                            <span
+                              className="font-mono"
+                              style={{ color: 'var(--text-muted)' }}
+                              title={c.missing.join(', ')}
+                            >
+                              {c.missing
+                                .slice(0, 6)
+                                .map((h) => h.toLowerCase())
+                                .join(', ')}
                               {c.missing.length > 6 ? ` +${c.missing.length - 6}` : ''}
                             </span>
                           </span>
@@ -443,13 +487,23 @@ const LocationRow = React.memo(function LocationRow({
                           <span className="flex flex-wrap items-center gap-1">
                             <span
                               className="px-1.5 py-0.5 rounded"
-                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+                              style={{
+                                background: 'var(--bg-elevated)',
+                                color: 'var(--text-muted)',
+                              }}
                               title="Bu sunucu son taramada HİÇ satır üretmedi: ulaşılamamış ya da dbo.Inventory'de nginx_version boş olduğu için taramanın sunucu listesine hiç girmemiş olabilir. 'Yok' demek DEĞİLDİR — soru sorulmamıştır."
                             >
                               {c.notScanned!.length} sunucu taranmamış
                             </span>
-                            <span className="font-mono" style={{ color: 'var(--text-muted)' }} title={c.notScanned!.join(', ')}>
-                              {c.notScanned!.slice(0, 6).map((h) => h.toLowerCase()).join(', ')}
+                            <span
+                              className="font-mono"
+                              style={{ color: 'var(--text-muted)' }}
+                              title={c.notScanned!.join(', ')}
+                            >
+                              {c
+                                .notScanned!.slice(0, 6)
+                                .map((h) => h.toLowerCase())
+                                .join(', ')}
                               {c.notScanned!.length > 6 ? ` +${c.notScanned!.length - 6}` : ''}
                             </span>
                           </span>

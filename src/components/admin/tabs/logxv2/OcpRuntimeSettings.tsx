@@ -183,7 +183,10 @@ export default function OcpRuntimeSettings() {
       </div>
 
       <div>
-        <label htmlFor={`${alanId}-kesin`} className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+        <label
+          htmlFor={`${alanId}-kesin`}
+          className="block text-xs font-medium mb-1 text-[var(--text-secondary)]"
+        >
           Kesin yol (opsiyonel)
         </label>
         <input
@@ -201,14 +204,17 @@ export default function OcpRuntimeSettings() {
       </div>
 
       <div>
-        <label htmlFor={`${alanId}-kullanici`} className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+        <label
+          htmlFor={`${alanId}-kullanici`}
+          className="block text-xs font-medium mb-1 text-[var(--text-secondary)]"
+        >
           OCP kullanıcı adı — genel varsayılan
         </label>
         <input
           id={`${alanId}-kullanici`}
           value={cfg.defaultOcpUsername}
           onChange={(e) => patch({ defaultOcpUsername: e.target.value })}
-          placeholder="uxmid"
+          placeholder="svcac"
           className="w-full px-2.5 py-1.5 text-sm font-mono border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
         />
         {/* Bu alan olmadığında playbook `username` değerini yalnızca AWX'teki
@@ -226,7 +232,9 @@ export default function OcpRuntimeSettings() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {TIMEOUTS.map(({ key, label, help }) => (
           <div key={key}>
-            <label className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">{label}</label>
+            <label className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+              {label}
+            </label>
             <input
               type="number"
               min={10}

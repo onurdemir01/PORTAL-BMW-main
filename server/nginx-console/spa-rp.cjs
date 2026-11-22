@@ -237,10 +237,17 @@ function servisOf(service, host, RP, etiketler) {
   // sunucu grubunun da yerine gecer. Birden cok etiket ya da 'Ustune ekle' kipinde tanimin kendi
   // adi korunur (tanimin hangi servise ait oldugu bilinmez; uydurulmaz).
   const tek =
-    typeof etiketler === 'string' ? U(etiketler) : require('../audit/nginx-host-labels.cjs').tekEtiket(etiketler, host) || '';
-  if (tek && tek !== s) return s ? { servis: tek, servisKaynak: 'etiket', servisOto: s } : { servis: tek, servisKaynak: 'etiket' };
+    typeof etiketler === 'string'
+      ? U(etiketler)
+      : require('../audit/nginx-host-labels.cjs').tekEtiket(etiketler, host) || '';
+  if (tek && tek !== s)
+    return s
+      ? { servis: tek, servisKaynak: 'etiket', servisOto: s }
+      : { servis: tek, servisKaynak: 'etiket' };
   if (s) return { servis: s };
-  const g = (RP.groups || []).find((x) => x.oldHosts.includes(U(host)) || x.newHosts.includes(U(host)));
+  const g = (RP.groups || []).find(
+    (x) => x.oldHosts.includes(U(host)) || x.newHosts.includes(U(host)),
+  );
   if (!g) return { servis: '' };
   return { servis: g.id === 'glomo' ? 'GLOMO' : g.label, servisKaynak: 'grup' };
 }
@@ -254,7 +261,7 @@ function rpEnvOf(host, RP) {
 
 /** Tablo durumu: 'var' | 'yok' | 'okunamadi'. Satir dizisi yoksa 'var' SAYILMAZ. */
 function tabloDurumu(kaynak, ad) {
-  const t = kaynak && kaynak.tablolar ? kaynak.tablolar[ad] : null;
+  const t = kaynak?.tablolar ? kaynak.tablolar[ad] : null;
   if (t === 'yok') return 'yok';
   if (t === 'var' && Array.isArray(kaynak[ad])) return 'var';
   return 'okunamadi';
@@ -348,7 +355,11 @@ function olcumDurumu(r, ekKismi, kovaVar) {
     for (const n of ekKismi || []) kismi.push(n);
   }
   const o = {
-    durum: (() => { if (req7 > 0) return 'var'; if (kismi.length) return 'sifir-kismi'; return 'sifir'; })(),
+    durum: (() => {
+      if (req7 > 0) return 'var';
+      if (kismi.length) return 'sifir-kismi';
+      return 'sifir';
+    })(),
     req7,
     req24: num(r.req_24h),
     hc24: num(r.hc_24h),
@@ -416,7 +427,14 @@ function dizinTrafigi(host, adaylar, trfTablo, idx) {
     return o;
   }
   const hs = idx.host.get(host);
-  return { durum: 'olculemedi', neden: (() => { if (!hs) return 'host'; if (!hs.hk) return 'host-kipi-yok'; return 'satir-yok'; })() };
+  return {
+    durum: 'olculemedi',
+    neden: (() => {
+      if (!hs) return 'host';
+      if (!hs.hk) return 'host-kipi-yok';
+      return 'satir-yok';
+    })(),
+  };
 }
 
 const OLCULDU = new Set(['var', 'sifir', 'sifir-kismi']);
@@ -469,7 +487,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       ekle(hostIdx, h, key);
       ekle(hostRoute, h, `${ns}|${L(r.route)}`);
       // ETIKET KORUNAGI (resolveTarget ile ayni kural): etiket '-<ns>' ile bitmeli. Ozel alan
-      // adinin genel etiketi ('mobil.garanti.com.tr' -> 'mobil') kesifte OLMAYAN yabanci bir
+      // adinin genel etiketi ('mobil.sirket.invalid' -> 'mobil') kesifte OLMAYAN yabanci bir
       // hedefle ('mobil.vendor-cdn.net') eslesip uygulamaya 'kesin' baglanmasin.
       const lbl = ilkEtiket(h);
       const suf = '-' + ns;
@@ -545,7 +563,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     if (keys) return adAday(keys, 'ad');
     const env = L(envOfHost(host));
     const c = appEnvIdx.get(`${app}|${env}`);
-    if (c && c.size === 1) return { keys: c, esles: 'zayif' };
+    if (c?.size === 1) return { keys: c, esles: 'zayif' };
     // AYNI AD birden cok namespace'te: tanim hangisine ait bilinmez. Baglanmaz, ama adaylar
     // 'tanimsiz' da DEGILDIR - o ortamda onlara ait olabilecek bir tanim BILINIYOR.
     if (c && c.size > 1) return { aday: c };
@@ -641,7 +659,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       bag = locBagla(r, host);
       d = { ...base, yol: 'include' };
     }
-    if (bag && bag.aday) {
+    if (bag?.aday) {
       belirsiz += 1;
       for (const key of bag.aday) belirsizAday.add(key);
       continue;
@@ -664,7 +682,11 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   for (const r of satirlar('dir')) {
     const host = U(r.host);
     if (!host || !RP.prodNew.has(host) || !bit(r.conf_exists)) continue;
-    ekle(dizinSahip, `${host}|${U((String(L(r.application)) + "-" + L(r.namespace)))}`, `${L(r.namespace)}|${L(r.application)}`);
+    ekle(
+      dizinSahip,
+      `${host}|${U(String(L(r.application)) + '-' + L(r.namespace))}`,
+      `${L(r.namespace)}|${L(r.application)}`,
+    );
   }
   for (const r of satirlar('dir')) {
     const host = U(r.host);
@@ -710,7 +732,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       rol: 'prod-yeni',
       env: 'PROD',
       // Eslesen trafik satirinin vhost'u (diskteki ad); eslesmediyse bos.
-      vhost: (trafik && trafik.vhost) || '',
+      vhost: trafik?.vhost || '',
       location: `${ns}/${app}`,
       status: bit(r.app_deployed) ? 'OK' : 'MISSING_APP',
       ...servisOf('', host, RP, dirEtiket(r) || ''),
@@ -798,12 +820,16 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   };
 
   // ESLENIK SUNUCULAR (kullanici, 2026-11-12: "RP eslenik sunucular" 194/194 eksik gorunuyordu).
-  // Eslenik = AYNI servisi (vhost grubu: GLOMO, SAKLAMA ...) AYNI kurulumda (PROD eski GBRVP / yeni
-  // GBNGX ayri; non-prod tek) TASIYAN sunucular. Eskiden payda ortamin TUM RP sunuculariydi: QA'da
+  // Eslenik = AYNI servisi (vhost grubu: GLOMO, SAKLAMA ...) AYNI kurulumda (PROD eski ORRVP / yeni
+  // ORNGX ayri; non-prod tek) TASIYAN sunucular. Eskiden payda ortamin TUM RP sunuculariydi: QA'da
   // Q01 (Glomo) ve Q02 (Glomo disi) es degil; PROD'da eski + yeni filo birlikte sayiliyordu. Servisin
   // sunucu kumesi o gun taranmis tanimlardan cikar (hicbir uygulamasi olmayan sunucu servise ait
   // sayilmaz); taranmayan sunucu "eksik" sayilmaz.
-  const kurulumOf = (h) => { if (RP.prodOld.has(h)) return 'eski'; if (RP.prodNew.has(h)) return 'yeni'; return 'np'; };
+  const kurulumOf = (h) => {
+    if (RP.prodOld.has(h)) return 'eski';
+    if (RP.prodNew.has(h)) return 'yeni';
+    return 'np';
+  };
   const esKey = (d) => `${d.env || '?'}|${d.servis || '?'}|${kurulumOf(d.host)}`;
   const servisHostlari = new Map();
   for (const m of detay.values())
@@ -832,7 +858,8 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     // "kendi ortami" bilinmez; tum tanimlar kendi sayilir.
     const disi = ENV ? defs.filter((d) => d.env !== ENV) : [];
     const kendi = ENV ? defs.filter((d) => d.env === ENV) : defs;
-    if (disi.length) a.rpOrtamDisi = [...new Set(disi.map((d) => d.env || '?'))].sort(varsayilanSira);
+    if (disi.length)
+      a.rpOrtamDisi = [...new Set(disi.map((d) => d.env || '?'))].sort(varsayilanSira);
     // BASKA ORTAMIN OLCULMUS ISTEGI (K3): YALNIZ BILGI - rpReq7'ye eklenmez, rpIstek kararina
     // girmez. Yalniz uygulamaya AYRILABILEN ve OLCULMUS tanimlar: olculemeyen tanima 0
     // yazilmaz; paylasimli/belirsiz tanimin istegi bu uygulamaninki diye yazilmaz.
@@ -890,7 +917,8 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     }
     const esEksik = [];
     for (const [k, var_] of sahip)
-      for (const h of servisHostlari.get(k) || []) if (!var_.has(h) && taranan.has(h)) esEksik.push(h);
+      for (const h of servisHostlari.get(k) || [])
+        if (!var_.has(h) && taranan.has(h)) esEksik.push(h);
     a.rpEslenik = esEksik.length ? 'eksik' : 'tam';
     if (esEksik.length) a.rpEslenikEksik = [...new Set(esEksik)].sort(varsayilanSira);
     const enZayif = kendi.reduce((z, d) => Math.max(z, ESLES_SIRA.indexOf(d.esles)), 0);
@@ -923,7 +951,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     //   host-taranmadi  ortamin bir RP host'u o gun taranmadi: orada gorulmeyen bir tanim
     //               trafik aliyor olabilir (or. Ankara ulasilamadi, trafik Ankara'da)
     // KAPSAM ORTAMIN TAMAMI (dogrulama bulgusu P6b, 2026-10-01): eskiden yalniz tanimin
-    // BULUNDUGU tasima grubunun hostlarina bakiliyordu; tanim 'other' grubunda (GBRVPP01) 0
+    // BULUNDUGU tasima grubunun hostlarina bakiliyordu; tanim 'other' grubunda (ORRVPP01) 0
     // istekle bulunup Glomo Ankara taranmadiginda 'yok' yaziliyordu - oysa uygulama Ankara'da da
     // proxy ediliyor olabilir. 'tanimsiz' karari da ortamin TUM hostlarina bakar (tanimYokKarari);
     // "istek yok" ondan gevsek olamaz. rpHost paydasi (bilgi) tasima grubuyla kalir.
@@ -964,10 +992,17 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   const hostlar = [...RP.all].map((h) => {
     const rol = rolOf(h, RP);
     const hs = tIdx.host.get(h);
-    const trafik =
-      (() => { if (tablolar.trf !== 'var') return 'olculemedi'; if (!hs) { if (rol === 'prod-yeni' && !tIdx.hostKipi) return 'kaynak-yok'; return 'satir-yok'; } if (hs.satir > 0) return 'var'; return 'hata'; })();
+    const trafik = (() => {
+      if (tablolar.trf !== 'var') return 'olculemedi';
+      if (!hs) {
+        if (rol === 'prod-yeni' && !tIdx.hostKipi) return 'kaynak-yok';
+        return 'satir-yok';
+      }
+      if (hs.satir > 0) return 'var';
+      return 'hata';
+    })();
     const o = { host: h, env: rpEnvOf(h, RP), rol, taranan: taranan.has(h), trafik };
-    if (hs && hs.hata) o.trafikHata = hs.hata;
+    if (hs?.hata) o.trafikHata = hs.hata;
     if (rol === 'prod-yeni' && hs) o.hostKipi = hs.hk;
     // KOVA (7 gun): hicbir uygulamaya yazilmayan istekler; sifirdan buyukse yazilir.
     const kv = tIdx.kova.get(h);
@@ -1001,7 +1036,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
 
 /** Ayrinti paneli icin bir uygulamanin tanimlari (sirali, JSON'a hazir). */
 function rpTanimlari(detay, ns, app) {
-  const m = detay && detay.get(`${L(ns)}|${L(app)}`);
+  const m = detay?.get(`${L(ns)}|${L(app)}`);
   if (!m) return [];
   const ROL = { 'prod-eski': 0, nonprod: 1, 'prod-yeni': 2 };
   return [...m.values()]

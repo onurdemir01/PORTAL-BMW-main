@@ -19,8 +19,19 @@ const { spawnSync } = require('node:child_process');
 const express = require('express');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const BETIK = path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'files', 'app_hub_ocp.sh');
-const PLAYBOOK = process.env.APP_HUB_PLAYBOOK || path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
+const BETIK = path.join(
+  ROOT,
+  'server',
+  'ansible',
+  'playbooks',
+  'bmw_portal',
+  'app_hub',
+  'files',
+  'app_hub_ocp.sh',
+);
+const PLAYBOOK =
+  process.env.APP_HUB_PLAYBOOK ||
+  path.join(ROOT, 'server', 'ansible', 'playbooks', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
 
 function sahte(yol, exp) {
   const m = new Module(yol, null);
@@ -29,7 +40,10 @@ function sahte(yol, exp) {
   require.cache[yol] = m;
 }
 
-const bashVar = spawnSync('bash', ['-c', 'command -v awk timeout cut >/dev/null && echo ok'], { encoding: 'utf8' }).stdout.trim() === 'ok';
+const bashVar =
+  spawnSync('bash', ['-c', 'command -v awk timeout cut >/dev/null && echo ok'], {
+    encoding: 'utf8',
+  }).stdout.trim() === 'ok';
 const ansibleVar = spawnSync('ansible-playbook', ['--version'], { encoding: 'utf8' }).status === 0;
 
 function sahteOcKur() {
@@ -37,9 +51,26 @@ function sahteOcKur() {
   const oc = path.join(dir, 'oc');
   const T = '\t';
   const dep = [
-    ['OBJ', 'Deployment', 'musteri-api', '3', '2', '3', '2', 'RollingUpdate', 'musteri-api', '2026-01-01T00:00:00Z'].join(T),
+    [
+      'OBJ',
+      'Deployment',
+      'musteri-api',
+      '3',
+      '2',
+      '3',
+      '2',
+      'RollingUpdate',
+      'musteri-api',
+      '2026-01-01T00:00:00Z',
+    ].join(T),
     ['CONT', '-', '-', 'app', 'registry/x:1.2', '500m', '1Gi', '1', '2Gi'].join(T),
-    ['ENVRAW', 'app', 'JAVA_OPTS', 'deger', '-Xmx1g -XX:+UseG1GC -Dspring.profiles.active=prod -Ddb.password=gizli1 -Dfoo=bar --token=abc123 -Duser.timezone=Europe/Istanbul'].join(T),
+    [
+      'ENVRAW',
+      'app',
+      'JAVA_OPTS',
+      'deger',
+      '-Xmx1g -XX:+UseG1GC -Dspring.profiles.active=prod -Ddb.password=gizli1 -Dfoo=bar --token=abc123 -Duser.timezone=Europe/Istanbul',
+    ].join(T),
     ['ENVRAW', 'app', 'DB_PASSWORD', 'deger', 'cokgizli'].join(T),
     ['ENVRAW', 'app', 'JAVA_TOOL_OPTIONS', 'ref', 'secret:jto-secret'].join(T),
     ['ENVRAW', 'app', 'OTHER', 'deger', 'x'].join(T),
@@ -47,7 +78,9 @@ function sahteOcKur() {
     '',
   ].join('\n');
   const pods = [
-    ['POD', 'musteri-api-1', 'Running', 'worker-01', 'RCRC', '1,2,', '2026-11-08T08:00:00Z'].join(T),
+    ['POD', 'musteri-api-1', 'Running', 'worker-01', 'RCRC', '1,2,', '2026-11-08T08:00:00Z'].join(
+      T,
+    ),
     ['POD', 'musteri-api-2', 'Pending', '-', 'C', '0,', '-'].join(T),
     '',
   ].join('\n');
@@ -85,10 +118,24 @@ function betikKos(env, sureSiniri = false) {
   const kubeconfig = `/tmp/app-hub-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.kubeconfig`;
   try {
     const betik = BETIK.replace(/\\/g, '/');
-    const r = spawnSync(sureSiniri ? 'timeout' : 'bash', sureSiniri ? ['-k', '5', '1', 'bash', betik] : [betik], {
-      encoding: 'utf8',
-      env: { ...process.env, OC_BIN: oc.replace(/\\/g, '/'), OCP_URL: 'https://api.x:6443', OCP_USER: 'u', OCP_PASS: 'p', NS: 'musteri', APP: 'musteri-api', KUBECONFIG: kubeconfig, ...env },
-    });
+    const r = spawnSync(
+      sureSiniri ? 'timeout' : 'bash',
+      sureSiniri ? ['-k', '5', '1', 'bash', betik] : [betik],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          OC_BIN: oc.replace(/\\/g, '/'),
+          OCP_URL: 'https://api.x:6443',
+          OCP_USER: 'u',
+          OCP_PASS: 'p',
+          NS: 'musteri',
+          APP: 'musteri-api',
+          KUBECONFIG: kubeconfig,
+          ...env,
+        },
+      },
+    );
     assert.equal(fs.existsSync(kubeconfig), false, 'betik kendi kubeconfig dosyasini temizlemedi');
     return { ...r, calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8') };
   } finally {
@@ -97,64 +144,103 @@ function betikKos(env, sureSiniri = false) {
   }
 }
 
-test('AH1 betik: JVM env maskelenir, JVM disi env ve referans degeri yazilmaz', { skip: !bashVar && 'bash/awk yok' }, () => {
-  const r = betikKos({});
-  assert.equal(r.status, 0, r.stderr);
-  const satir = r.stdout.split('\n');
-  const env = satir.filter((l) => l.startsWith('ENV\t'));
-  assert.equal(env.length, 2, `ENV satirlari: ${env.join(' | ')}`);
-  const jo = env.find((l) => l.split('\t')[4] === 'JAVA_OPTS');
-  assert.ok(jo, 'JAVA_OPTS yok');
-  const deger = jo.split('\t').slice(6).join('\t');
-  assert.ok(deger.includes('-Xmx1g') && deger.includes('-XX:+UseG1GC'), deger);
-  assert.ok(deger.includes('-Dspring.profiles.active=prod'), 'beyaz listedeki deger kapandi');
-  assert.ok(deger.includes('-Duser.timezone=Europe/Istanbul'), deger);
-  assert.ok(deger.includes('-Ddb.password=***'), 'parola maskelenmedi');
-  assert.ok(deger.includes('-Dfoo=***'), 'beyaz liste disi -D acik kaldi');
-  for (const sir of ['gizli1', 'abc123', 'cokgizli', 'bar']) assert.ok(!r.stdout.includes(sir), `sir sizdi: ${sir}`);
-  const jto = env.find((l) => l.split('\t')[4] === 'JAVA_TOOL_OPTIONS');
-  assert.equal(jto.split('\t')[5], 'ref');
-  assert.ok(!satir.some((l) => l.includes('DB_PASSWORD')), 'JVM disi env yazildi');
-});
+test(
+  'AH1 betik: JVM env maskelenir, JVM disi env ve referans degeri yazilmaz',
+  { skip: !bashVar && 'bash/awk yok' },
+  () => {
+    const r = betikKos({});
+    assert.equal(r.status, 0, r.stderr);
+    const satir = r.stdout.split('\n');
+    const env = satir.filter((l) => l.startsWith('ENV\t'));
+    assert.equal(env.length, 2, `ENV satirlari: ${env.join(' | ')}`);
+    const jo = env.find((l) => l.split('\t')[4] === 'JAVA_OPTS');
+    assert.ok(jo, 'JAVA_OPTS yok');
+    const deger = jo.split('\t').slice(6).join('\t');
+    assert.ok(deger.includes('-Xmx1g') && deger.includes('-XX:+UseG1GC'), deger);
+    assert.ok(deger.includes('-Dspring.profiles.active=prod'), 'beyaz listedeki deger kapandi');
+    assert.ok(deger.includes('-Duser.timezone=Europe/Istanbul'), deger);
+    assert.ok(deger.includes('-Ddb.password=***'), 'parola maskelenmedi');
+    assert.ok(deger.includes('-Dfoo=***'), 'beyaz liste disi -D acik kaldi');
+    for (const sir of ['gizli1', 'abc123', 'cokgizli', 'bar'])
+      assert.ok(!r.stdout.includes(sir), `sir sizdi: ${sir}`);
+    const jto = env.find((l) => l.split('\t')[4] === 'JAVA_TOOL_OPTIONS');
+    assert.equal(jto.split('\t')[5], 'ref');
+    assert.ok(!satir.some((l) => l.includes('DB_PASSWORD')), 'JVM disi env yazildi');
+  },
+);
 
-test('AH2 betik: tur, pod -> node, rollout CRD yoksa NOTE (hata degil), yalniz login + get', { skip: !bashVar && 'bash/awk yok' }, () => {
-  const r = betikKos({});
-  assert.match(r.stdout, /^OBJ\tDeployment\tmusteri-api\t3\t2/m);
-  assert.match(r.stdout, /^POD\tmusteri-api-1\tRunning\tworker-01\t2\/2\t3\t/m);
-  assert.match(r.stdout, /^POD\tmusteri-api-2\tPending\t-\t0\/1\t0\t/m);
-  assert.match(r.stdout, /^NOTE\trollouts\.argoproj\.io bu cluster'da tanimli degil/m);
-  assert.ok(!/^ERR\t/m.test(r.stdout), r.stdout);
-  assert.match(r.stdout, /^END\t1\t2$/m);
-  const altKomutlar = new Set(r.calls.trim().split('\n').map((l) => l.split(' ')[0]));
-  assert.deepEqual([...altKomutlar].sort(), ['get', 'login'], `salt okunur degil: ${[...altKomutlar]}`);
-  assert.ok(!/OCP_PASS|--password=p\b/.test(r.stdout));
-});
+test(
+  'AH2 betik: tur, pod -> node, rollout CRD yoksa NOTE (hata degil), yalniz login + get',
+  { skip: !bashVar && 'bash/awk yok' },
+  () => {
+    const r = betikKos({});
+    assert.match(r.stdout, /^OBJ\tDeployment\tmusteri-api\t3\t2/m);
+    assert.match(r.stdout, /^POD\tmusteri-api-1\tRunning\tworker-01\t2\/2\t3\t/m);
+    assert.match(r.stdout, /^POD\tmusteri-api-2\tPending\t-\t0\/1\t0\t/m);
+    assert.match(r.stdout, /^NOTE\trollouts\.argoproj\.io bu cluster'da tanimli degil/m);
+    assert.ok(!/^ERR\t/m.test(r.stdout), r.stdout);
+    assert.match(r.stdout, /^END\t1\t2$/m);
+    const altKomutlar = new Set(
+      r.calls
+        .trim()
+        .split('\n')
+        .map((l) => l.split(' ')[0]),
+    );
+    assert.deepEqual(
+      [...altKomutlar].sort(),
+      ['get', 'login'],
+      `salt okunur degil: ${[...altKomutlar]}`,
+    );
+    assert.ok(!/OCP_PASS|--password=p\b/.test(r.stdout));
+  },
+);
 
-test('AH3 betik: gecersiz namespace / ad / kubeconfig -> ERR, oc HIC cagrilmaz', { skip: !bashVar && 'bash/awk yok' }, () => {
-  for (const env of [{ NS: 'Kotu NS' }, { APP: 'a;rm -rf /' }, { KUBECONFIG: '/etc/passwd' }, { OCP_URL: '' }]) {
-    const r = betikKos(env);
-    assert.notEqual(r.status, 0);
-    assert.match(r.stdout, /^ERR\t/m);
-    assert.equal(r.calls.trim(), '', `oc cagrildi: ${r.calls}`);
-  }
-});
+test(
+  'AH3 betik: gecersiz namespace / ad / kubeconfig -> ERR, oc HIC cagrilmaz',
+  { skip: !bashVar && 'bash/awk yok' },
+  () => {
+    for (const env of [
+      { NS: 'Kotu NS' },
+      { APP: 'a;rm -rf /' },
+      { KUBECONFIG: '/etc/passwd' },
+      { OCP_URL: '' },
+    ]) {
+      const r = betikKos(env);
+      assert.notEqual(r.status, 0);
+      assert.match(r.stdout, /^ERR\t/m);
+      assert.equal(r.calls.trim(), '', `oc cagrildi: ${r.calls}`);
+    }
+  },
+);
 
-test('AH3b betik: graceful TERM yolunda kosuya ozel kubeconfig temizlenir', { skip: !bashVar && 'bash/timeout yok' }, () => {
-  const r = betikKos({ APP_HUB_FAKE_SLEEP: '2' }, true);
-  assert.notEqual(r.status, 0, 'sure siniri betigi durdurmadi');
-});
+test(
+  'AH3b betik: graceful TERM yolunda kosuya ozel kubeconfig temizlenir',
+  { skip: !bashVar && 'bash/timeout yok' },
+  () => {
+    const r = betikKos({ APP_HUB_FAKE_SLEEP: '2' }, true);
+    assert.notEqual(r.status, 0, 'sure siniri betigi durdurmadi');
+  },
+);
 
-test('AH3c betik: workload, pod ve HPA okuma hatasi ERR + nonzero olur', { skip: !bashVar && 'bash/awk yok' }, () => {
-  for (const [kind, mesaj] of Object.entries({ deployment: 'deployment okunamadi', pods: 'pod listesi okunamadi', hpa: 'hpa okunamadi' })) {
-    const r = betikKos({ APP_HUB_FAKE_FAIL_KIND: kind });
-    assert.notEqual(r.status, 0, `${kind} hatasi basarili cikti:\n${r.stdout}`);
-    assert.match(r.stdout, new RegExp(`^ERR\\t${mesaj}`, 'm'), r.stdout);
-    assert.match(r.stdout, /^END\t/m, 'kismi veri END ile sinirlanmadi');
-  }
-  const timeout = betikKos({ APP_HUB_FAKE_TIMEOUT_KIND: 'pods' });
-  assert.notEqual(timeout.status, 0, `pod timeout basarili cikti:\n${timeout.stdout}`);
-  assert.match(timeout.stdout, /^ERR\tpod listesi okunamadi: command timed out/m);
-});
+test(
+  'AH3c betik: workload, pod ve HPA okuma hatasi ERR + nonzero olur',
+  { skip: !bashVar && 'bash/awk yok' },
+  () => {
+    for (const [kind, mesaj] of Object.entries({
+      deployment: 'deployment okunamadi',
+      pods: 'pod listesi okunamadi',
+      hpa: 'hpa okunamadi',
+    })) {
+      const r = betikKos({ APP_HUB_FAKE_FAIL_KIND: kind });
+      assert.notEqual(r.status, 0, `${kind} hatasi basarili cikti:\n${r.stdout}`);
+      assert.match(r.stdout, new RegExp(`^ERR\\t${mesaj}`, 'm'), r.stdout);
+      assert.match(r.stdout, /^END\t/m, 'kismi veri END ile sinirlanmadi');
+    }
+    const timeout = betikKos({ APP_HUB_FAKE_TIMEOUT_KIND: 'pods' });
+    assert.notEqual(timeout.status, 0, `pod timeout basarili cikti:\n${timeout.stdout}`);
+    assert.match(timeout.stdout, /^ERR\tpod listesi okunamadi: command timed out/m);
+  },
+);
 
 test('AH4 betik kaynagi: oc yalniz login ve get ile cagrilir (metin bekcisi)', () => {
   const s = fs.readFileSync(BETIK, 'utf8');
@@ -173,8 +259,12 @@ test('AH5 playbook: # yorum yok, kimlik gorevleri no_log, set_stats fail oncesi,
   assert.ok(!s.includes('\\"'), 'Jinja icinde kacisli tirnak');
   const bloklar = s.split(/\n\s*- name: /);
   for (const b of bloklar) {
-    if (/resolved_password|OCP_PASS/.test(b) && !/^"Gecici|^"Betik|^"Bastion sonuclari|^"Her hedefin/.test(b)) {
-      if (/resolved_password:|OCP_PASS:/.test(b)) assert.match(b, /no_log: true/, `no_log eksik: ${b.slice(0, 60)}`);
+    if (
+      /resolved_password|OCP_PASS/.test(b) &&
+      !/^"Gecici|^"Betik|^"Bastion sonuclari|^"Her hedefin/.test(b)
+    ) {
+      if (/resolved_password:|OCP_PASS:/.test(b))
+        assert.match(b, /no_log: true/, `no_log eksik: ${b.slice(0, 60)}`);
     }
   }
   const iStats = s.indexOf('ansible.builtin.set_stats');
@@ -186,92 +276,134 @@ test('AH5 playbook: # yorum yok, kimlik gorevleri no_log, set_stats fail oncesi,
 
 test('AH5b playbook: gecici kimlik ve betik normal/rescue yolunda temizlenir, kalinti fail-closed', () => {
   const s = fs.readFileSync(PLAYBOOK, 'utf8');
-  const okuma = s.split('- name: "Okuma"')[1]?.split('- name: "Application Hub OCP - sonuclari topla ve yayinla"')[0] || '';
+  const okuma =
+    s
+      .split('- name: "Okuma"')[1]
+      ?.split('- name: "Application Hub OCP - sonuclari topla ve yayinla"')[0] || '';
   const always = okuma.split('\n      always:\n');
   assert.equal(always.length, 2, 'temizlik block always sinirinda degil');
   const normal = always[0];
   const temizlik = always[1];
-  assert.ok(!normal.includes('Gecici kubeconfig dosyalari silinir'), 'kubeconfig temizligi normal block icinde kaldi');
+  assert.ok(
+    !normal.includes('Gecici kubeconfig dosyalari silinir'),
+    'kubeconfig temizligi normal block icinde kaldi',
+  );
   assert.match(temizlik, /Gecici kubeconfig dosyalari silinir/);
   assert.match(temizlik, /Betik silinir/);
-  assert.match(temizlik, /my_targets \| default\(\[\]\)/, 'erken hata yolunda tanimsiz my_targets korunmuyor');
+  assert.match(
+    temizlik,
+    /my_targets \| default\(\[\]\)/,
+    'erken hata yolunda tanimsiz my_targets korunmuyor',
+  );
   assert.match(temizlik, /Gecici kubeconfig temizligi dogrulanir/);
   assert.match(temizlik, /Gecici betik temizligi dogrulanir/);
   assert.match(temizlik, /Gecici dosyalar kaldiysa host basarisiz/);
-  assert.match(temizlik, /selectattr\('stat\.exists', 'equalto', true\) \| list \| length == 0/, 'kalinti fail-closed exact denetlenmiyor');
+  assert.match(
+    temizlik,
+    /selectattr\('stat\.exists', 'equalto', true\) \| list \| length == 0/,
+    'kalinti fail-closed exact denetlenmiyor',
+  );
 });
 
-test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi birakmaz', { skip: !ansibleVar && 'ansible-playbook yok' }, () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'apphub-cleanup-'));
-  const appDir = path.join(tmp, 'bmw_portal', 'app_hub');
-  const varsDir = path.join(tmp, 'bmw_portal', 'bmw_openshift_jobs', 'global_variables');
-  const fixturePlaybook = path.join(appDir, 'app_hub_ocp.yml');
-  const fakeOc = path.join(tmp, 'oc');
-  const jobId = (process.pid % 100000) * 10000 + (Date.now() % 10000);
-  const kubeconfig = `/tmp/app-hub-${jobId}-c1-demo.kubeconfig`;
-  const scriptPrefix = `.app_hub_ocp.${jobId}.`;
-  try {
-    fs.mkdirSync(path.join(appDir, 'files'), { recursive: true });
-    fs.mkdirSync(varsDir, { recursive: true });
-    fs.copyFileSync(BETIK, path.join(appDir, 'files', 'app_hub_ocp.sh'));
-    fs.writeFileSync(path.join(varsDir, 'credentials.yaml'), '---\n');
-    fs.writeFileSync(
-      fakeOc,
-      [
-        '#!/bin/bash',
-        'if [ "$1" = login ]; then : > "$KUBECONFIG"; exit 0; fi',
-        'if [ "$1" = get ]; then exit 0; fi',
-        'exit 9',
-        '',
-      ].join('\n'),
-      { mode: 0o755 },
-    );
-    const marker = '        - name: "Bastion sonuclari"';
-    const kaynak = fs.readFileSync(PLAYBOOK, 'utf8');
-    assert.ok(kaynak.includes(marker), 'sentetik hata noktasi bulunamadi');
-    fs.writeFileSync(
-      fixturePlaybook,
-      kaynak
-        .replace('            prefix: .app_hub_ocp.', `            prefix: ${scriptPrefix}`)
-        .replace(
-          marker,
-          '        - name: "Sentetik kubeconfig kalintisi"\n          ansible.builtin.copy:\n            dest: "' + kubeconfig + '"\n            content: "fixture"\n            mode: "0600"\n\n' +
-            '        - name: "Sentetik okuma sonrasi hata"\n          ansible.builtin.fail:\n            msg: "fixture failure"\n\n' + marker,
-        ),
-    );
-    const extra = JSON.stringify({
-      terminal_hosts: ['localhost'],
-      ocp_clusters: [{ cluster_name: 'c1', terminal_host: 'localhost', api_url: 'https://api.example', username: 'u' }],
-      app_hub_targets: [{ cluster: 'c1', namespace: 'demo' }],
-      app_hub_app: 'demo',
-      oc_binary: fakeOc,
-      tower_job_id: jobId,
-    });
-    const r = spawnSync('ansible-playbook', [fixturePlaybook, '-i', 'localhost,', '--connection=local', '-e', extra], { encoding: 'utf8' });
-    assert.notEqual(r.status, 0, `sentetik hata job'u dusurmedi:\n${r.stdout}\n${r.stderr}`);
-    assert.match(r.stdout, /TASK \[Gecici kubeconfig dosyalari silinir\]/);
-    assert.match(r.stdout, /TASK \[Betik silinir\]/);
-    assert.equal(fs.existsSync(kubeconfig), false, 'kubeconfig sentetik hata sonrasi kaldi');
-    const sonrakiBetikler = fs.readdirSync('/var/tmp').filter((x) => x.startsWith(scriptPrefix));
-    assert.deepEqual(sonrakiBetikler, [], 'bu fixture gecici betigi sentetik hata sonrasi kaldi');
+test(
+  'AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi birakmaz',
+  { skip: !ansibleVar && 'ansible-playbook yok' },
+  () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'apphub-cleanup-'));
+    const appDir = path.join(tmp, 'bmw_portal', 'app_hub');
+    const varsDir = path.join(tmp, 'bmw_portal', 'bmw_openshift_jobs', 'global_variables');
+    const fixturePlaybook = path.join(appDir, 'app_hub_ocp.yml');
+    const fakeOc = path.join(tmp, 'oc');
+    const jobId = (process.pid % 100000) * 10000 + (Date.now() % 10000);
+    const kubeconfig = `/tmp/app-hub-${jobId}-c1-demo.kubeconfig`;
+    const scriptPrefix = `.app_hub_ocp.${jobId}.`;
+    try {
+      fs.mkdirSync(path.join(appDir, 'files'), { recursive: true });
+      fs.mkdirSync(varsDir, { recursive: true });
+      fs.copyFileSync(BETIK, path.join(appDir, 'files', 'app_hub_ocp.sh'));
+      fs.writeFileSync(path.join(varsDir, 'credentials.yaml'), '---\n');
+      fs.writeFileSync(
+        fakeOc,
+        [
+          '#!/bin/bash',
+          'if [ "$1" = login ]; then : > "$KUBECONFIG"; exit 0; fi',
+          'if [ "$1" = get ]; then exit 0; fi',
+          'exit 9',
+          '',
+        ].join('\n'),
+        { mode: 0o755 },
+      );
+      const marker = '        - name: "Bastion sonuclari"';
+      const kaynak = fs.readFileSync(PLAYBOOK, 'utf8');
+      assert.ok(kaynak.includes(marker), 'sentetik hata noktasi bulunamadi');
+      fs.writeFileSync(
+        fixturePlaybook,
+        kaynak
+          .replace('            prefix: .app_hub_ocp.', `            prefix: ${scriptPrefix}`)
+          .replace(
+            marker,
+            '        - name: "Sentetik kubeconfig kalintisi"\n          ansible.builtin.copy:\n            dest: "' +
+              kubeconfig +
+              '"\n            content: "fixture"\n            mode: "0600"\n\n' +
+              '        - name: "Sentetik okuma sonrasi hata"\n          ansible.builtin.fail:\n            msg: "fixture failure"\n\n' +
+              marker,
+          ),
+      );
+      const extra = JSON.stringify({
+        terminal_hosts: ['localhost'],
+        ocp_clusters: [
+          {
+            cluster_name: 'c1',
+            terminal_host: 'localhost',
+            api_url: 'https://api.example',
+            username: 'u',
+          },
+        ],
+        app_hub_targets: [{ cluster: 'c1', namespace: 'demo' }],
+        app_hub_app: 'demo',
+        oc_binary: fakeOc,
+        tower_job_id: jobId,
+      });
+      const r = spawnSync(
+        'ansible-playbook',
+        [fixturePlaybook, '-i', 'localhost,', '--connection=local', '-e', extra],
+        { encoding: 'utf8' },
+      );
+      assert.notEqual(r.status, 0, `sentetik hata job'u dusurmedi:\n${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /TASK \[Gecici kubeconfig dosyalari silinir\]/);
+      assert.match(r.stdout, /TASK \[Betik silinir\]/);
+      assert.equal(fs.existsSync(kubeconfig), false, 'kubeconfig sentetik hata sonrasi kaldi');
+      const sonrakiBetikler = fs.readdirSync('/var/tmp').filter((x) => x.startsWith(scriptPrefix));
+      assert.deepEqual(sonrakiBetikler, [], 'bu fixture gecici betigi sentetik hata sonrasi kaldi');
 
-    const cleanupMarker = '        - name: "Gecici kubeconfig dosyalari silinir"';
-    const cleanupStart = fs.readFileSync(fixturePlaybook, 'utf8').split(cleanupMarker);
-    assert.equal(cleanupStart.length, 2, 'kubeconfig cleanup mutation noktasi tek degil');
-    const cleanupMutation = path.join(appDir, 'app_hub_ocp_cleanup_mutation.yml');
-    fs.writeFileSync(
-      cleanupMutation,
-      cleanupStart[0] + cleanupMarker + cleanupStart[1].replace('            state: absent', '            state: touch'),
-    );
-    const m = spawnSync('ansible-playbook', [cleanupMutation, '-i', 'localhost,', '--connection=local', '-e', extra], { encoding: 'utf8' });
-    assert.notEqual(m.status, 0, 'cleanup no-op mutasyonu job basarisi olmamali');
-    assert.match(m.stdout, /Application Hub gecici kimlik veya betik dosyasi temizlenemedi/);
-    assert.equal(fs.existsSync(kubeconfig), true, `cleanup mutasyonu gercek kalinti uretmedi:\n${m.stdout}\n${m.stderr}`);
-  } finally {
-    fs.rmSync(kubeconfig, { force: true });
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
+      const cleanupMarker = '        - name: "Gecici kubeconfig dosyalari silinir"';
+      const cleanupStart = fs.readFileSync(fixturePlaybook, 'utf8').split(cleanupMarker);
+      assert.equal(cleanupStart.length, 2, 'kubeconfig cleanup mutation noktasi tek degil');
+      const cleanupMutation = path.join(appDir, 'app_hub_ocp_cleanup_mutation.yml');
+      fs.writeFileSync(
+        cleanupMutation,
+        cleanupStart[0] +
+          cleanupMarker +
+          cleanupStart[1].replace('            state: absent', '            state: touch'),
+      );
+      const m = spawnSync(
+        'ansible-playbook',
+        [cleanupMutation, '-i', 'localhost,', '--connection=local', '-e', extra],
+        { encoding: 'utf8' },
+      );
+      assert.notEqual(m.status, 0, 'cleanup no-op mutasyonu job basarisi olmamali');
+      assert.match(m.stdout, /Application Hub gecici kimlik veya betik dosyasi temizlenemedi/);
+      assert.equal(
+        fs.existsSync(kubeconfig),
+        true,
+        `cleanup mutasyonu gercek kalinti uretmedi:\n${m.stdout}\n${m.stderr}`,
+      );
+    } finally {
+      fs.rmSync(kubeconfig, { force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  },
+);
 
 const C = require('../canli.cjs');
 
@@ -280,7 +412,15 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
   const c = C.satirlariCoz([
     ['OBJ', 'Rollout', 'app', '4', '4', '4', '4', '', 'argo-app', '2026-01-01T00:00:00Z'].join(T),
     ['CONT', 'Rollout', 'app', 'main', 'img:1', '1', '2Gi', '<no value>', ''].join(T),
-    ['ENV', 'Rollout', 'app', 'main', 'JAVA_OPTS', 'deger', '-Xmx2g -Dsecret.key=sizdi -Dfile.encoding=UTF-8'].join(T),
+    [
+      'ENV',
+      'Rollout',
+      'app',
+      'main',
+      'JAVA_OPTS',
+      'deger',
+      '-Xmx2g -Dsecret.key=sizdi -Dfile.encoding=UTF-8',
+    ].join(T),
     ['ENV', 'Rollout', 'app', 'main', 'JAVA_TOOL_OPTIONS', 'ref', 'configmap:jvm'].join(T),
     ['POD', 'app-1', 'Running', 'node-a', '1/1', '0', '2026-11-08T00:00:00Z'].join(T),
     ['POD', 'app-2', 'Running', 'node-a', '1/1', '7', '-'].join(T),
@@ -297,22 +437,48 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
   assert.equal(n.gitops, 'argo-app');
   assert.equal(n.containerlar[0].limit.cpu, null, '<no value> bos sayilmadi');
   const e = n.containerlar[0].jvmEnv;
-  assert.equal(e[0].deger, '-Xmx2g -Dsecret.key=*** -Dfile.encoding=UTF-8', 'Portal ikinci maske katmani calismadi');
+  assert.equal(
+    e[0].deger,
+    '-Xmx2g -Dsecret.key=*** -Dfile.encoding=UTF-8',
+    'Portal ikinci maske katmani calismadi',
+  );
   assert.equal(e[1].kaynak, 'referans');
-  assert.deepEqual(c.nodelar, [{ ad: 'node-a', pod: 2 }, { ad: 'node-b', pod: 1 }]);
+  assert.deepEqual(c.nodelar, [
+    { ad: 'node-a', pod: 2 },
+    { ad: 'node-b', pod: 1 },
+  ]);
   assert.equal(c.podlar[1].restart, 7);
   assert.equal(c.podlar[1].baslama, null);
   assert.equal(c.hpa[0].max, 8);
   assert.deepEqual(c.notlar, ['bir not']);
   assert.deepEqual(c.hatalar, ['bir hata']);
   assert.equal(c.bitti, true);
-  const s = C.sonucuCoz({ overall_status: 'partial', results: [{ cluster: 'c1', namespace: 'n', ok: true, lines: ['END\t0\t0'] }, { cluster: 'c2', namespace: 'n', ok: false, error: 'login dustu', lines: ['ERR\toc login basarisiz'] }] });
+  const s = C.sonucuCoz({
+    overall_status: 'partial',
+    results: [
+      { cluster: 'c1', namespace: 'n', ok: true, lines: ['END\t0\t0'] },
+      {
+        cluster: 'c2',
+        namespace: 'n',
+        ok: false,
+        error: 'login dustu',
+        lines: ['ERR\toc login basarisiz'],
+      },
+    ],
+  });
   assert.equal(s.hedefler[0].ok, true);
   assert.equal(s.hedefler[1].ok, false);
   assert.match(s.hedefler[1].hata, /login dustu · oc login basarisiz/);
-  const yarim = C.sonucuCoz({ results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['OBJ\tDeployment\tx\t1\t1\t1\t1'] }] });
+  const yarim = C.sonucuCoz({
+    results: [
+      { cluster: 'c', namespace: 'n', ok: true, lines: ['OBJ\tDeployment\tx\t1\t1\t1\t1'] },
+    ],
+  });
   assert.equal(yarim.hedefler[0].ok, false, 'END gelmeyen (kesilen) cikti tamam sayildi');
-  const errYutma = C.sonucuCoz({ overall_status: 'ok', results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['ERR\tforbidden', 'END\t0\t0'] }] });
+  const errYutma = C.sonucuCoz({
+    overall_status: 'ok',
+    results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['ERR\tforbidden', 'END\t0\t0'] }],
+  });
   assert.equal(errYutma.hedefler[0].ok, false, 'ERR satiri basarili hedef sayildi');
   assert.equal(errYutma.genel, 'failed', 'ERR satiri genel basari arkasinda gizlendi');
   assert.equal(C.statsOku({ ansible_stats: { data: { app_hub_ocp_result: { a: 1 } } } }).a, 1);
@@ -321,18 +487,34 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
 // ── Router ve veri birlestirme: sahte TBMWANS / Portal DB / Server Hub ─────────────
 const SQL = { NVarChar: () => 'nvarchar' };
 const sorgu = { yanit: /** @type {(t?: any, p?: any) => any} */ (() => ({ recordset: [] })) };
-sahte(require.resolve('../../inventory/mssql.cjs'), { sql: SQL, query: async (t, p) => sorgu.yanit(t, p) });
+sahte(require.resolve('../../inventory/mssql.cjs'), {
+  sql: SQL,
+  query: async (t, p) => sorgu.yanit(t, p),
+});
 const portalDb = {
   yanit: /** @type {(t?: any, p?: any) => any} */ (async () => ({ rows: [] })),
-  transaction: /** @type {(work: any) => any} */ (async (work) => work({ query: async () => ({ rows: [], rowCount: 0 }) })),
+  transaction: /** @type {(work: any) => any} */ (
+    async (work) => work({ query: async () => ({ rows: [], rowCount: 0 }) })
+  ),
 };
-sahte(require.resolve('../../db/index.cjs'), { query: (t, p) => portalDb.yanit(t, p), transaction: (work) => portalDb.transaction(work) });
-sahte(require.resolve('../../config/apps-table.cjs'), { getAppsTable: () => 'MWAppsInventory', getWasAppsTable: () => 'WASAppsInventory' });
+sahte(require.resolve('../../db/index.cjs'), {
+  query: (t, p) => portalDb.yanit(t, p),
+  transaction: (work) => portalDb.transaction(work),
+});
+sahte(require.resolve('../../config/apps-table.cjs'), {
+  getAppsTable: () => 'MWAppsInventory',
+  getWasAppsTable: () => 'WASAppsInventory',
+});
 const hub = { hosts: [], agir: new Map() };
 sahte(require.resolve('../../server-hub/index.cjs'), {
   getAssessment: async () => ({ hosts: hub.hosts, latestScan: '2026-11-08' }),
   loadJvmAgir: async () => hub.agir,
-  hostDetail: (h, agir) => ({ jvms: h.jvms.map((j) => ({ ...j, jvmArgs: (agir.get(`${j.gen}|${j.name.toLowerCase()}`) || {}).jvm_args || null })) }),
+  hostDetail: (h, agir) => ({
+    jvms: h.jvms.map((j) => ({
+      ...j,
+      jvmArgs: (agir.get(`${j.gen}|${j.name.toLowerCase()}`) || {}).jvm_args || null,
+    })),
+  }),
 });
 sahte(require.resolve('../../retirement/discover.cjs'), {
   parseAppName: (a) => {
@@ -340,8 +522,36 @@ sahte(require.resolve('../../retirement/discover.cjs'), {
     return m ? { base: m[1], env: 'X' } : { base: String(a), env: 'PROD' };
   },
   discover: async () => ({
-    targets: [{ host: 'GOJBAP01', appName: 'MUSTERI', env: 'PROD', site: 'Pendik', gen: 8, tier: '3-tier', web: [{ host: 'GOJBWP01', serverName: 'musteri.bank', product: 'RHA', kaynak: 'ajp', trafik: { durum: 'var', req7: 1200 } }] }],
-    summary: { trafik: { vhost: 1, var: 1, yok: 0, olculemedi: 0, req7Toplam: 1200, altSinir: false, okunamadi: null } },
+    targets: [
+      {
+        host: 'GOJBAP01',
+        appName: 'MUSTERI',
+        env: 'PROD',
+        site: 'Pendik',
+        gen: 8,
+        tier: '3-tier',
+        web: [
+          {
+            host: 'GOJBWP01',
+            serverName: 'musteri.bank',
+            product: 'RHA',
+            kaynak: 'ajp',
+            trafik: { durum: 'var', req7: 1200 },
+          },
+        ],
+      },
+    ],
+    summary: {
+      trafik: {
+        vhost: 1,
+        var: 1,
+        yok: 0,
+        olculemedi: 0,
+        req7Toplam: 1200,
+        altSinir: false,
+        okunamadi: null,
+      },
+    },
   }),
 });
 sahte(require.resolve('../../auth/index.cjs'), {
@@ -353,7 +563,9 @@ sahte(require.resolve('../../auth/index.cjs'), {
     next();
   },
 });
-sahte(require.resolve('../../auth/visibility.cjs'), { requireVisiblePrefix: () => (_q, _s, n) => n() });
+sahte(require.resolve('../../auth/visibility.cjs'), {
+  requireVisiblePrefix: () => (_q, _s, n) => n(),
+});
 sahte(require.resolve('../../audit/index.cjs'), { auditMutations: () => (_q, _s, n) => n() });
 
 const awx = { durum: { status: 'running', artifacts: {} }, okumalar: 0 };
@@ -401,13 +613,23 @@ test('AH7 Admin disi kullanici aramaya ve ayrintiya ulasamaz', async () => {
 
 test('AH8 arama: JBoss -D/-T/-Q taban ada toplanir, okunamayan tip ayri soylenir', async () => {
   sorgu.yanit = (t) => {
-    if (t.includes('MWAppsInventory')) return { recordset: [{ app: 'MUSTERI', host: 'H1' }, { app: 'MUSTERI-T', host: 'H2' }, { app: 'MUSTERIX', host: 'H3' }] };
+    if (t.includes('MWAppsInventory'))
+      return {
+        recordset: [
+          { app: 'MUSTERI', host: 'H1' },
+          { app: 'MUSTERI-T', host: 'H2' },
+          { app: 'MUSTERIX', host: 'H3' },
+        ],
+      };
     if (t.includes('WASAppsInventory')) throw new Error('WAS tablosu yok');
     return { recordset: [{ app: 'musteri-api', ns: 2, cl: 3 }] };
   };
   const r = await V.ara('musteri');
   const jb = r.sonuclar.filter((s) => s.tip === 'jboss');
-  assert.deepEqual(jb.map((s) => s.ad), ['MUSTERI', 'MUSTERIX']);
+  assert.deepEqual(
+    jb.map((s) => s.ad),
+    ['MUSTERI', 'MUSTERIX'],
+  );
   assert.deepEqual(jb[0].varyantlar, ['MUSTERI', 'MUSTERI-T']);
   assert.equal(jb[0].ozet, '2 sunucu');
   assert.equal(r.okunamayan.length, 1);
@@ -415,12 +637,15 @@ test('AH8 arama: JBoss -D/-T/-Q taban ada toplanir, okunamayan tip ayri soylenir
   assert.ok(r.sonuclar.some((s) => s.tip === 'ocp' && s.ozet.includes('2 namespace')));
 });
 
-test('AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tablonun (Turkce / CS) collation\'ina birakilmaz', async () => {
+test("AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tablonun (Turkce / CS) collation'ina birakilmaz", async () => {
   // Sahte DB, Turkce / CS collation gibi davranir: sorgu ad kolonunu Latin1_General_CI_AI ile karsilastirmiyorsa
   // eslesme BUYUK/kucuk harfe duyarlidir (gercekte 'geinternet' GEINTERNET'i bulmuyordu).
   const metinler = [];
   const tablo = {
-    MWAppsInventory: [{ app: 'GEINTERNETBRANCH-T', host: 'GEJBOT03' }, { app: 'GEINTERNETBRANCH-D', host: 'GEJBOT03' }],
+    MWAppsInventory: [
+      { app: 'GEINTERNETBRANCH-T', host: 'GEJBOT03' },
+      { app: 'GEINTERNETBRANCH-D', host: 'GEJBOT03' },
+    ],
     WASAppsInventory: [{ app: 'GEINTERNETWAS', n: 1 }],
     Openshift_Inventory: [{ app: 'geinternet-api', ns: 1, cl: 1 }],
   };
@@ -434,20 +659,64 @@ test('AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tab
   };
   for (const q of ['geinternet', 'GeInternet', 'GEINTERNET']) {
     const r = await V.ara(q);
-    assert.deepEqual(r.sonuclar.map((s) => `${s.tip}:${s.ad}`).sort(), ['jboss:GEINTERNETBRANCH', 'ocp:geinternet-api', 'was:GEINTERNETWAS'], q);
-    assert.deepEqual(r.sonuclar.find((s) => s.tip === 'jboss').varyantlar, ['GEINTERNETBRANCH-D', 'GEINTERNETBRANCH-T'], q);
+    assert.deepEqual(
+      r.sonuclar.map((s) => `${s.tip}:${s.ad}`).sort(),
+      ['jboss:GEINTERNETBRANCH', 'ocp:geinternet-api', 'was:GEINTERNETWAS'],
+      q,
+    );
+    assert.deepEqual(
+      r.sonuclar.find((s) => s.tip === 'jboss').varyantlar,
+      ['GEINTERNETBRANCH-D', 'GEINTERNETBRANCH-T'],
+      q,
+    );
   }
   assert.equal(metinler.length, 9);
-  for (const t of metinler) assert.match(t, /(app|application) COLLATE Latin1_General_CI_AI LIKE '%' \+ @q \+ '%'/);
+  for (const t of metinler)
+    assert.match(t, /(app|application) COLLATE Latin1_General_CI_AI LIKE '%' \+ @q \+ '%'/);
 });
 
 test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -> GB', async () => {
   sorgu.yanit = (t) => {
-    if (t.includes('FROM dbo.MWAppsInventory')) return { recordset: [{ app: 'MUSTERI', host: 'gojbap01', env: 'Production', jboss_version: 'EAP 8.0', jdk_type: 'OpenJDK', jre_version: '17', min_heap: '1024', max_heap: '4096', app_path: '/vhosting8/x' }] };
-    if (t.includes('FROM dbo.Inventory')) return { recordset: [{ host: 'GOJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }] };
+    if (t.includes('FROM dbo.MWAppsInventory'))
+      return {
+        recordset: [
+          {
+            app: 'MUSTERI',
+            host: 'gojbap01',
+            env: 'Production',
+            jboss_version: 'EAP 8.0',
+            jdk_type: 'OpenJDK',
+            jre_version: '17',
+            min_heap: '1024',
+            max_heap: '4096',
+            app_path: '/vhosting8/x',
+          },
+        ],
+      };
+    if (t.includes('FROM dbo.Inventory'))
+      return {
+        recordset: [{ host: 'GOJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }],
+      };
     return { recordset: [] };
   };
-  hub.hosts = [{ host: 'GOJBAP01', fresh: true, scanDate: '2026-11-08', jvms: [{ name: 'MUSTERI', gen: 8, running: true, runningKnown: true, autoStart: 'true', ports: [8080] }, { name: 'BASKA', gen: 8, running: true }] }];
+  hub.hosts = [
+    {
+      host: 'GOJBAP01',
+      fresh: true,
+      scanDate: '2026-11-08',
+      jvms: [
+        {
+          name: 'MUSTERI',
+          gen: 8,
+          running: true,
+          runningKnown: true,
+          autoStart: 'true',
+          ports: [8080],
+        },
+        { name: 'BASKA', gen: 8, running: true },
+      ],
+    },
+  ];
   hub.agir = new Map([['8|musteri', { jvm_args: '-Xmx4g -Dsifre=*** -Dfile.encoding=UTF-8' }]]);
   const d = await V.jbossDetay('MUSTERI');
   assert.equal(d.sunucular.length, 1);
@@ -469,13 +738,19 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
     throw new Error('TBMWANS ulasilamiyor');
   };
   const okunamadi = await V.jbossDetay('MUSTERI');
-  assert.ok(okunamadi && okunamadi.kaynaklar.envanter.hata, 'envanter okunamadi ama "yok" (null) dondu');
+  assert.ok(
+    okunamadi && okunamadi.kaynaklar.envanter.hata,
+    'envanter okunamadi ama "yok" (null) dondu',
+  );
 });
 
 test('AH10 onbellek: ayni anahtar tek ucus, hata onbellege yazilmaz', async () => {
   let n = 0;
   const uret = () => new Promise((r) => setTimeout(() => r(++n), 20));
-  const [a, b] = await Promise.all([_ic.onbellekli('k1', false, uret), _ic.onbellekli('k1', false, uret)]);
+  const [a, b] = await Promise.all([
+    _ic.onbellekli('k1', false, uret),
+    _ic.onbellekli('k1', false, uret),
+  ]);
   assert.equal(a, 1);
   assert.equal(b, 1);
   assert.equal(await _ic.onbellekli('k1', false, uret), 1);
@@ -487,7 +762,20 @@ test('AH10 onbellek: ayni anahtar tek ucus, hata onbellege yazilmaz', async () =
 test('AH11 WAS: was_ozeti sunucular[].jvm okunur; okunamayan durum "parametre yok" sayilmaz; eski tarayici null', () => {
   const oz = {
     sunucular: [
-      { profil: 'AppSrv01', dugum: 'n1', ad: 'srv1', jvm: { yol: '/x/server.xml', durum: 'OKUNDU', ilk_heap_mb: 512, en_cok_heap_mb: 2048, jvm_argumanlari: '-Xquickstart -Dapp.ortam=***', sistem_ozellikleri: [{ ad: 'java.security.policy', deger: '/opt/p' }], ozellik_kesildi: false } },
+      {
+        profil: 'AppSrv01',
+        dugum: 'n1',
+        ad: 'srv1',
+        jvm: {
+          yol: '/x/server.xml',
+          durum: 'OKUNDU',
+          ilk_heap_mb: 512,
+          en_cok_heap_mb: 2048,
+          jvm_argumanlari: '-Xquickstart -Dapp.ortam=***',
+          sistem_ozellikleri: [{ ad: 'java.security.policy', deger: '/opt/p' }],
+          ozellik_kesildi: false,
+        },
+      },
       { ad: 'srv2', jvm: { yol: '/y/server.xml', durum: 'IZIN' } },
       { ad: 'srv3' },
     ],
@@ -513,8 +801,20 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
     if (t.includes('FROM dbo.MWAppsInventory'))
       return {
         recordset: [
-          { app: 'MUSTERI', host: 'gojbap01', env: 'Production', domain: 'dom-a', jboss_version: 'EAP 8.0' },
-          { app: 'MUSTERI', host: 'gojbap01', env: 'Production', domain: 'dom-b', jboss_version: 'EAP 8.0' },
+          {
+            app: 'MUSTERI',
+            host: 'gojbap01',
+            env: 'Production',
+            domain: 'dom-a',
+            jboss_version: 'EAP 8.0',
+          },
+          {
+            app: 'MUSTERI',
+            host: 'gojbap01',
+            env: 'Production',
+            domain: 'dom-b',
+            jboss_version: 'EAP 8.0',
+          },
         ],
       };
     return { recordset: [] };
@@ -525,8 +825,25 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
       fresh: true,
       scanDate: '2026-11-11',
       jvms: [
-        { name: 'MUSTERI', gen: 8, running: true, runningKnown: true, runningSrc: 'PS', invStatus: 'running', mismatch: [], domain: 'dom-a' },
-        { name: 'MUSTERI', gen: 0, running: false, runningKnown: true, invStatus: 'stopped', mismatch: [], domain: 'dom-b' },
+        {
+          name: 'MUSTERI',
+          gen: 8,
+          running: true,
+          runningKnown: true,
+          runningSrc: 'PS',
+          invStatus: 'running',
+          mismatch: [],
+          domain: 'dom-a',
+        },
+        {
+          name: 'MUSTERI',
+          gen: 0,
+          running: false,
+          runningKnown: true,
+          invStatus: 'stopped',
+          mismatch: [],
+          domain: 'dom-b',
+        },
       ],
     },
   ];
@@ -537,7 +854,11 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
   const [a, b] = d.sunucular[0].jvmler;
   assert.equal(a.durumKaynagi, 'PS');
   assert.equal(a.envanterDurumu, 'running');
-  assert.equal(b.durumKaynagi, 'ENVANTER', 'taramada gorulmeyen JVM envanterden geldigini soylemiyor');
+  assert.equal(
+    b.durumKaynagi,
+    'ENVANTER',
+    'taramada gorulmeyen JVM envanterden geldigini soylemiyor',
+  );
   assert.equal(b.calisiyor, false);
 });
 
@@ -550,18 +871,51 @@ test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina
     if (t.includes('FROM dbo.Openshift_Inventory'))
       return {
         recordset: [
-          { cluster: 'gbocp4prod1', namespace: 'account-management-ch-prod', application: 'account-mngt-app-v0' },
-          { cluster: 'gbocp4prod2', namespace: 'baska-ns-prod', application: 'account-mngt-app-v0' },
-          { cluster: 'gbocp4dev1', namespace: 'account-management-ch-dev', application: 'account-mngt-app-v0' },
+          {
+            cluster: 'orocp4prod1',
+            namespace: 'account-management-ch-prod',
+            application: 'account-mngt-app-v0',
+          },
+          {
+            cluster: 'orocp4prod2',
+            namespace: 'baska-ns-prod',
+            application: 'account-mngt-app-v0',
+          },
+          {
+            cluster: 'orocp4dev1',
+            namespace: 'account-management-ch-dev',
+            application: 'account-mngt-app-v0',
+          },
         ],
       };
     if (t.includes('FROM dbo.BMW_Application_Usage')) return { recordset: usage };
     return { recordset: [] };
   };
   usage.push(
-    { cluster: '', namespace: 'account-management-ch-prod', req_total: '1040346', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
-    { cluster: '', namespace: 'baska-ns-prod', req_total: '5', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
-    { cluster: 'gbocp4prod2', namespace: 'baska-ns-prod', req_total: '42', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
+    {
+      cluster: '',
+      namespace: 'account-management-ch-prod',
+      req_total: '1040346',
+      window_days: 7,
+      measured: true,
+      scan_date: new Date('2026-11-16T00:00:00Z'),
+    },
+    {
+      cluster: '',
+      namespace: 'baska-ns-prod',
+      req_total: '5',
+      window_days: 7,
+      measured: true,
+      scan_date: new Date('2026-11-16T00:00:00Z'),
+    },
+    {
+      cluster: 'orocp4prod2',
+      namespace: 'baska-ns-prod',
+      req_total: '42',
+      window_days: 7,
+      measured: true,
+      scan_date: new Date('2026-11-16T00:00:00Z'),
+    },
   );
   const d = await V.ocpDetay('account-mngt-app-v0');
   const y = (ns) => d.yerler.find((x) => x.namespace === ns);
@@ -570,18 +924,38 @@ test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina
     { toplam: 1040346, gun: 7, olculdu: true, tarih: '2026-11-16', tumCluster: true },
     "cluster '' kullanim satiri envanter satirina eslesmedi (ekranda 'olculemedi')",
   );
-  assert.equal(typeof y('account-management-ch-prod').istek.toplam, 'number', 'BIGINT string sayiya cevrilmedi');
-  assert.equal(y('baska-ns-prod').istek.toplam, 42, 'ayni cluster satiri varken bos cluster satiri secildi');
+  assert.equal(
+    typeof y('account-management-ch-prod').istek.toplam,
+    'number',
+    'BIGINT string sayiya cevrilmedi',
+  );
+  assert.equal(
+    y('baska-ns-prod').istek.toplam,
+    42,
+    'ayni cluster satiri varken bos cluster satiri secildi',
+  );
   assert.equal(y('baska-ns-prod').istek.tumCluster, false);
-  assert.equal(y('account-management-ch-dev').istek, null, 'olcumu olmayan namespace olculmus gorundu');
+  assert.equal(
+    y('account-management-ch-dev').istek,
+    null,
+    'olcumu olmayan namespace olculmus gorundu',
+  );
 });
 
 test('AH14 canli sonuc: controller-local history, template, app ve hedefler exact olmadan okunmaz ya da kaydedilmez', async () => {
-  const hedefler = [{ cluster: 'c1', namespace: 'ns-a' }, { cluster: 'c2', namespace: 'ns-b' }];
+  const hedefler = [
+    { cluster: 'c1', namespace: 'ns-a' },
+    { cluster: 'c2', namespace: 'ns-b' },
+  ];
   const history = (ek = {}) => ({
     template_id: 77,
     template_name: C.TEMPLATE_NAME,
-    params: JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: 'demo', app_hub_targets: hedefler, ...ek }),
+    params: JSON.stringify({
+      platform: 'app-hub-ocp',
+      app_hub_app: 'demo',
+      app_hub_targets: hedefler,
+      ...ek,
+    }),
   });
   let historyRows = [history()];
   let kayitHatasi = false;
@@ -590,14 +964,20 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   const kayitlar = new Map();
   portalDb.yanit = async (t, p) => {
     if (/FROM ansible_job_history/.test(t)) {
-      assert.match(t, /awx_server_id = \$1 AND job_id = \$2/, 'controller-local history sorgusu gevsetildi');
+      assert.match(
+        t,
+        /awx_server_id = \$1 AND job_id = \$2/,
+        'controller-local history sorgusu gevsetildi',
+      );
       return { rows: Number(p[0]) === 2 ? historyRows : [] };
     }
     if (/FROM app_hub_ocp_canli WHERE uygulama/.test(t)) return { rows: [] };
     return { rows: [] };
   };
   portalDb.transaction = async (work) => {
-    const onceKayitlar = new Map([...kayitlar].map(([k, v]) => [k, { app: v.app, targets: v.targets.map((x) => ({ ...x })) }]));
+    const onceKayitlar = new Map(
+      [...kayitlar].map(([k, v]) => [k, { app: v.app, targets: v.targets.map((x) => ({ ...x })) }]),
+    );
     const onceInsert = insertler.length;
     try {
       return await work({
@@ -606,7 +986,16 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
           if (/SELECT uygulama, cluster, namespace/.test(t)) {
             assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)/);
             const eski = kayitlar.get(key);
-            return { rows: eski ? eski.targets.map((x) => ({ uygulama: eski.app, cluster: x.cluster, namespace: x.namespace })) : [], rowCount: eski ? eski.targets.length : 0 };
+            return {
+              rows: eski
+                ? eski.targets.map((x) => ({
+                    uygulama: eski.app,
+                    cluster: x.cluster,
+                    namespace: x.namespace,
+                  }))
+                : [],
+              rowCount: eski ? eski.targets.length : 0,
+            };
           }
           if (/INSERT INTO app_hub_ocp_canli/.test(t)) {
             assert.match(t, /FROM OPENJSON\(\$3\)/);
@@ -644,7 +1033,11 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
       ...ek,
     },
   });
-  const durum = (artifacts = artifact(), templateId = 77) => ({ status: 'successful', artifacts, templateId });
+  const durum = (artifacts = artifact(), templateId = 77) => ({
+    status: 'successful',
+    artifacts,
+    templateId,
+  });
   awx.durum = durum();
   awx.okumalar = 0;
 
@@ -652,7 +1045,15 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(insertler.length, 2, 'exact sahipli sonuc kalici envantere yazilmadi');
 
-  for (const rows of [[], [history({ platform: 'baska' })], [{ ...history(), template_name: 'Baska template' }], [{ ...history(), template_id: 0 }], [history({ app_hub_app: 'baska' })], [{ ...history(), params: '{bozuk' }], [history(), history()]]) {
+  for (const rows of [
+    [],
+    [history({ platform: 'baska' })],
+    [{ ...history(), template_name: 'Baska template' }],
+    [{ ...history(), template_id: 0 }],
+    [history({ app_hub_app: 'baska' })],
+    [{ ...history(), params: '{bozuk' }],
+    [history(), history()],
+  ]) {
     historyRows = rows;
     const once = awx.okumalar;
     r = await istek('GET', '/ocp/canli/2/900?ad=demo');
@@ -662,7 +1063,11 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   historyRows = [history()];
   const once = awx.okumalar;
   r = await istek('GET', '/ocp/canli/3/900?ad=demo');
-  assert.equal(r.body.upstreamStatus || r.status, 404, 'baska controller ayni job id ile kabul edildi');
+  assert.equal(
+    r.body.upstreamStatus || r.status,
+    404,
+    'baska controller ayni job id ile kabul edildi',
+  );
   assert.equal(awx.okumalar, once, 'yanlis controller isi AWX tarafindan okundu');
 
   historyRows = [history()];
@@ -670,10 +1075,24 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
     artifact({ app: '' }),
     artifact({ app: 'baska' }),
     artifact({ results: [{ cluster: 'c1', namespace: 'ns-a', ok: true, lines: ['END\t0\t0'] }] }),
-    artifact({ results: [...hedefler, { cluster: 'c3', namespace: 'ns-c' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
-    artifact({ results: [hedefler[0], hedefler[0]].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+    artifact({
+      results: [...hedefler, { cluster: 'c3', namespace: 'ns-c' }].map((h) => ({
+        ...h,
+        ok: true,
+        lines: ['END\t0\t0'],
+      })),
+    }),
+    artifact({
+      results: [hedefler[0], hedefler[0]].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })),
+    }),
     // Ayni sayida hedef ama biri farkli: yalniz sayiyi degil hedeflerin kendisini de karsilastir.
-    artifact({ results: [hedefler[0], { cluster: 'c2', namespace: 'ns-z' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+    artifact({
+      results: [hedefler[0], { cluster: 'c2', namespace: 'ns-z' }].map((h) => ({
+        ...h,
+        ok: true,
+        lines: ['END\t0\t0'],
+      })),
+    }),
   ]) {
     awx.durum = durum(raw);
     const once = insertler.length;
@@ -685,16 +1104,28 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   historyRows = [{ ...history(), template_id: 999 }];
   awx.durum = durum(artifact(), 77);
   r = await istek('GET', '/ocp/canli/2/900?ad=demo');
-  assert.equal(r.body.upstreamStatus || r.status, 409, 'farkli pozitif history/live template ID kabul edildi');
+  assert.equal(
+    r.body.upstreamStatus || r.status,
+    409,
+    'farkli pozitif history/live template ID kabul edildi',
+  );
   historyRows = [history()];
   awx.durum = durum(artifact(), null);
   r = await istek('GET', '/ocp/canli/2/900?ad=demo');
-  assert.equal(r.body.upstreamStatus || r.status, 409, 'AWX template kimligi olculemeden is kabul edildi');
+  assert.equal(
+    r.body.upstreamStatus || r.status,
+    409,
+    'AWX template kimligi olculemeden is kabul edildi',
+  );
 
   historyRows = [history({ app_hub_targets: [{ cluster: 'c1', namespace: 'ns-a' }] })];
   awx.durum = durum();
   r = await istek('GET', '/ocp/canli/2/900?ad=demo');
-  assert.equal(r.body.upstreamStatus || r.status, 409, 'history ile artifact hedefleri farkli ama kabul edildi');
+  assert.equal(
+    r.body.upstreamStatus || r.status,
+    409,
+    'history ile artifact hedefleri farkli ama kabul edildi',
+  );
 
   historyRows = [history()];
   awx.durum = durum();
@@ -715,9 +1146,19 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   eksikYazim = false;
 
   const onceParalel = insertler.length;
-  const paralel = await Promise.all([istek('GET', '/ocp/canli/2/903?ad=demo'), istek('GET', '/ocp/canli/2/903?ad=demo')]);
-  assert.deepEqual(paralel.map((x) => x.status), [200, 200]);
-  assert.equal(insertler.length, onceParalel + 2, 'paralel poll ayni job hedeflerini iki kez yazdi');
+  const paralel = await Promise.all([
+    istek('GET', '/ocp/canli/2/903?ad=demo'),
+    istek('GET', '/ocp/canli/2/903?ad=demo'),
+  ]);
+  assert.deepEqual(
+    paralel.map((x) => x.status),
+    [200, 200],
+  );
+  assert.equal(
+    insertler.length,
+    onceParalel + 2,
+    'paralel poll ayni job hedeflerini iki kez yazdi',
+  );
 
   portalDb.yanit = async (t) => {
     if (/FROM ansible_job_history/.test(t)) throw new Error('history unavailable');

@@ -7,13 +7,13 @@
 //
 // ONERI MOTORU YALNIZ KULLANICININ SAYDIGI SUNUCULARI VERIR (karar, 2026-10-05). Excel'de olup
 // burada OLMAYANLAR bilerek disaridadir:
-//   - Edu asamasi (GBNGXT39/40/41/42, intranet GBNGXT51) ve Ankara QA intranet (GBNGXAQ50),
+//   - Edu asamasi (ORNGXT39/40/41/42, intranet ORNGXT51) ve Ankara QA intranet (ORNGXAQ50),
 //   - Ankara'nin sunucu adi olmayan "Hazir degil" satirlari,
-//   - Internet API tipi GBNGXT07 — 2026-10-01'de onayli reverse proxy listesinin DISINDA birakildi.
+//   - Internet API tipi ORNGXT07 — 2026-10-01'de onayli reverse proxy listesinin DISINDA birakildi.
 // Bir kutuya sunucu eklenecekse once kullaniciya sorulur; bu dosyaya kendiliginden sunucu eklenmez.
 //
 // AMAC KOLONU ILE KULLANICININ ETIKETI AYRISABILIR: ARK + internet + Non-Glomo'nun production
-// karsiligi kullanicinin kararina gore GBNGXP44/45/58/59 + GBNGXAP32/33'tur (2026-11-12: kapatilan GBNGXAP28/29
+// karsiligi kullanicinin kararina gore ORNGXP44/45/58/59 + ORNGXAP32/33'tur (2026-11-12: kapatilan ORNGXAP28/29
 // yerine kullanicinin onayiyla; alt ag Ankara DMZ blogu varsayildi); Excel bu sunuculari
 // "Production -> CSO Internet" diye etiketler. Karar kullanicinindir, `amac` alani Excel'in kendi
 // metnini AYNEN tasir (ekranda ikisi birden gorunur, biri digerini gizlemez).
@@ -36,79 +36,48 @@ export interface RvpSunucu {
   amac: string;
 }
 
-/** Excel'den alinan ustveri. Anahtar = sunucu adi. */
-const ENV: Record<string, RvpSunucu> = {};
-const ekle = (
-  host: string,
-  lokasyon: 'Pendik' | 'Ankara',
-  domain: string,
-  surum: string,
-  amac: string,
-) => {
-  ENV[host] = { host, lokasyon, domain, surum, amac };
-};
-
-const V129 = '1.29.0 (nginx-plus-r35-p1)';
-const DMZ = 'gtdmz.com.tr';
-const FW = 'fw.garanti.com.tr';
-
-// ARK / Non-Production / internet SPA + Non-Glomo (non-prod ortami da internete acik)
-ekle('GBNGXD02', 'Pendik', DMZ, V129, 'Dev → Internet SPA + Non-Glomo Dev');
-ekle('GBNGXT34', 'Pendik', DMZ, V129, 'Test -> İnternet SPA + Non-Glomo Test');
-ekle('GBNGXQ02', 'Pendik', DMZ, V129, 'QA -> İnternet SPA + Non-Glomo QA');
-
-// ARK / Non-Production / non-prod ortami internete ACILMAYAN havuz (ic domain)
-ekle('GBNGXT14', 'Pendik', FW, '1.30.1', 'Internet SPA → Development');
-ekle('GBNGXT15', 'Pendik', FW, '1.30.1', 'Internet SPA → Development');
-ekle('GBNGXT16', 'Pendik', FW, '1.30.1', 'Internet SPA → Test');
-ekle('GBNGXT17', 'Pendik', FW, '1.30.1', 'Internet SPA → Test');
-ekle('GBNGXT18', 'Pendik', FW, '1.30.1', 'Internet SPA → QA');
-ekle('GBNGXT19', 'Pendik', FW, '1.30.1', 'Internet SPA → QA');
-ekle('GBNGXT20', 'Pendik', FW, '1.30.1', 'Internet SPA → Edu');
-ekle('GBNGXT21', 'Pendik', FW, '1.30.1', 'Internet SPA → Edu');
-
-// ARK / Production / internet (kullanicinin verdigi liste; Excel etiketi "CSO Internet")
-ekle('GBNGXP44', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
-ekle('GBNGXP45', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
-ekle('GBNGXP58', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
-ekle('GBNGXP59', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
-ekle('GBNGXAP32', 'Ankara', DMZ, V129, 'Production -> CSO Internet');
-ekle('GBNGXAP33', 'Ankara', DMZ, V129, 'Production -> CSO Internet');
-
-// ARK / intranet
-ekle('GBNGXD50', 'Pendik', FW, V129, 'Dev → Intranet');
-ekle('GBNGXT50', 'Pendik', FW, V129, 'Test -> Intranet');
-ekle('GBNGXQ50', 'Pendik', FW, V129, 'QA -> Intranet');
-ekle('GBNGXP50', 'Pendik', FW, V129, 'Production -> Intranet');
-ekle('GBNGXP51', 'Pendik', FW, V129, 'Production -> Intranet');
-ekle('GBNGXP52', 'Pendik', FW, V129, 'Production -> Intranet');
-ekle('GBNGXP53', 'Pendik', FW, V129, 'Production -> Intranet');
-ekle('GBNGXAP50', 'Ankara', FW, V129, 'Production -> Intranet');
-ekle('GBNGXAP51', 'Ankara', FW, V129, 'Production -> Intranet');
-
-// Hosting (Excel'de amac kolonu BOS — uydurma etiket yazilmaz)
-ekle('GBRNAT01', 'Pendik', DMZ, '1.29.3 (nginx-plus-r36-p4)', '');
-ekle('GBRNAP01', 'Pendik', DMZ, '1.30.1', '');
-ekle('GBRNAP02', 'Pendik', DMZ, '1.30.1', '');
-ekle('GBRNAAP01', 'Ankara', DMZ, '1.30.1', '');
-ekle('GBRNAAP02', 'Ankara', DMZ, '1.30.1', '');
+/**
+ * Kurum ayari `nginx.rvp` (sunucu adlari ve ic alan adi repoda degil, K17; sunucu GET /rvp-alt-aglari ile
+ * verir). `kutular` karar tablosunun her kutusunun sunuculari, `sunucular` Excel'den alinan ustveri.
+ */
+export type RvpKutu =
+  | 'arkInternetNprAcik'
+  | 'nprKapali'
+  | 'arkInternetProd'
+  | 'arkIntranetNpr'
+  | 'arkIntranetProd'
+  | 'hostingInternetNprAcik'
+  | 'hostingInternetProd';
+export interface RvpAyari {
+  /** Iç domain (non-prod internete acilmayan havuz ve intranet RP'leri). */
+  icAlan: string;
+  sunucular: Record<string, Omit<RvpSunucu, 'host'>>;
+  kutular: Partial<Record<RvpKutu, string[]>>;
+}
+export const BOS_RVP_AYARI: RvpAyari = { icAlan: '', sunucular: {}, kutular: {} };
 
 /** Ustveriyi olmayan sunucu icin UYDURMAZ: bilinmeyen ad ekranda apacik gorunur. */
-export function rvpSunucu(host: string): RvpSunucu {
-  return ENV[host] || { host, lokasyon: 'Pendik', domain: '?', surum: '?', amac: '' };
+export function rvpSunucu(host: string, ayar: RvpAyari = BOS_RVP_AYARI): RvpSunucu {
+  const u = ayar.sunucular[host];
+  return u ? { host, ...u } : { host, lokasyon: 'Pendik', domain: '?', surum: '?', amac: '' };
 }
-const liste = (...h: string[]) => h.map(rvpSunucu);
 
-const NPR_KAPALI = [
-  'GBNGXT14',
-  'GBNGXT15',
-  'GBNGXT16',
-  'GBNGXT17',
-  'GBNGXT18',
-  'GBNGXT19',
-  'GBNGXT20',
-  'GBNGXT21',
-];
+/** Kutunun sunuculari; ayarda yoksa kutu TANIMSIZ (bos liste "sunucu yok" demek olurdu). */
+function kutu(ayar: RvpAyari, ad: RvpKutu, not?: string): RvpBlok {
+  const hosts = ayar.kutular[ad] || [];
+  if (!hosts.length)
+    return {
+      durum: 'tanimsiz',
+      sunucular: [],
+      not: `Kurum ayarında bu kutunun sunucuları yok (nginx.rvp.kutular.${ad}).`,
+    };
+  return {
+    durum: 'sunucu',
+    sunucular: hosts.map((h) => rvpSunucu(h, ayar)),
+    ...(not ? { not } : {}),
+  };
+}
+const icAlanMetni = (ayar: RvpAyari) => (ayar.icAlan ? ` (${ayar.icAlan})` : '');
 
 /** Self Servis > "Nginx - RVP Operations" otomasyonu (RVP tanimlari YALNIZ ARK cluster'i icin). */
 export const RVP_YOLU = '/self-service/nginx-rvp-operations';
@@ -158,7 +127,7 @@ export function rvpSiradakiSoru(s: RvpSecim): 'backend' | 'kitle' | 'glomo' | 'n
 }
 
 /** Karar tablosu (kullanici, 2026-10-05). Eksik secimde null doner — ekran soruyu sormaya devam eder. */
-export function rvpOner(s: RvpSecim): RvpOneri | null {
+export function rvpOner(s: RvpSecim, ayar: RvpAyari = BOS_RVP_AYARI): RvpOneri | null {
   if (rvpSiradakiSoru(s) !== null) return null;
 
   if (s.backend === 'hicbiri')
@@ -192,16 +161,14 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
         'sunucuları, o ortamın da internete açılıp açılmayacağına göre değişir.',
       nonProd:
         s.nprAcik === 'evet'
-          ? { durum: 'sunucu', sunucular: liste('GBNGXD02', 'GBNGXT34', 'GBNGXQ02') }
-          : {
-              durum: 'sunucu',
-              sunucular: liste(...NPR_KAPALI),
-              not:
-                'Non-production ortamı internete açılmayacak: bu havuz iç domainde ' +
-                '(fw.garanti.com.tr) durur. Aşama sırası Dev → T14/T15, Test → T16/T17, ' +
-                'QA → T18/T19, Edu → T20/T21.',
-            },
-      prod: { durum: 'sunucu', sunucular: liste('GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33') },
+          ? kutu(ayar, 'arkInternetNprAcik')
+          : kutu(
+              ayar,
+              'nprKapali',
+              `Non-production ortamı internete açılmayacak: bu havuz iç domainde${icAlanMetni(ayar)} ` +
+                'durur. Aşama sırası Dev → T14/T15, Test → T16/T17, QA → T18/T19, Edu → T20/T21.',
+            ),
+      prod: kutu(ayar, 'arkInternetProd'),
     };
 
   if (s.backend === 'ark')
@@ -210,9 +177,9 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
       baslik: 'ARK · intranet',
       aciklama:
         'Uygulama kurum içine hizmet edecek (Step, Connect, Corpus gibi). Reverse proxy katmanı ' +
-        'iç domainde (fw.garanti.com.tr) durur.',
-      nonProd: { durum: 'sunucu', sunucular: liste('GBNGXD50', 'GBNGXT50', 'GBNGXQ50') },
-      prod: { durum: 'sunucu', sunucular: liste('GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51') },
+        `iç domainde${icAlanMetni(ayar)} durur.`,
+      nonProd: kutu(ayar, 'arkIntranetNpr'),
+      prod: kutu(ayar, 'arkIntranetProd'),
     };
 
   if (internet)
@@ -224,16 +191,14 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
         'o ortamın da internete açılıp açılmayacağına göre değişir.',
       nonProd:
         s.nprAcik === 'evet'
-          ? { durum: 'sunucu', sunucular: liste('GBRNAT01') }
-          : {
-              durum: 'sunucu',
-              sunucular: liste(...NPR_KAPALI),
-              not:
-                'Non-production ortamı internete açılmayacak: iç domaindeki (fw.garanti.com.tr) ' +
-                'havuz kullanılır. Aşama sırası Dev → T14/T15, Test → T16/T17, QA → T18/T19, ' +
-                'Edu → T20/T21.',
-            },
-      prod: { durum: 'sunucu', sunucular: liste('GBRNAP01', 'GBRNAP02', 'GBRNAAP01', 'GBRNAAP02') },
+          ? kutu(ayar, 'hostingInternetNprAcik')
+          : kutu(
+              ayar,
+              'nprKapali',
+              `Non-production ortamı internete açılmayacak: iç domaindeki${icAlanMetni(ayar)} havuz ` +
+                'kullanılır. Aşama sırası Dev → T14/T15, Test → T16/T17, QA → T18/T19, Edu → T20/T21.',
+            ),
+      prod: kutu(ayar, 'hostingInternetProd'),
     };
 
   // Hosting + intranet: PRODUCTION KARSILIGI HENUZ TANIMLI DEGIL (kullanici, 2026-10-05:
@@ -245,7 +210,7 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
     aciklama:
       'Backend Hosting üzerinde koşuyor ve uygulama kurum içine hizmet edecek. Non-production için ' +
       'iç domaindeki havuz kullanılır; production karşılığı henüz tanımlı değil.',
-    nonProd: { durum: 'sunucu', sunucular: liste(...NPR_KAPALI) },
+    nonProd: kutu(ayar, 'nprKapali'),
     prod: {
       durum: 'tanimsiz',
       sunucular: [],

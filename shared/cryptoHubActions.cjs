@@ -213,7 +213,7 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
           kind: 'manual',
           writes: false,
           title: 'İş birimi: "Trading" kapatılır',
-          note: 'Garanti BBVA Kripto Mobil tarafında Trading kapatılmadan podlara dokunulmaz.',
+          note: 'Kripto Mobil tarafında Trading kapatılmadan podlara dokunulmaz.',
           source: 'Wyden runbook adım 6',
         });
       }
@@ -296,7 +296,7 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
         kind: 'command',
         writes: true,
         title: `Helm upgrade (aynı sürüm ${ver})`,
-        command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./garanti_values.yaml`,
+        command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./${tenant.valuesDosyasi || '<values dosyasi>'}`,
         note: 'Sürüm değişmiyor; chart dizini koşan sürümün dizini olmalı.',
         source: 'Metaco runbook (upgrade)',
       });
@@ -305,7 +305,7 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
         kind: 'command',
         writes: true,
         title: `Helm upgrade (aynı sürüm ${ver})`,
-        command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <garanti_values.yaml yolu>`,
+        command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <${tenant.valuesDosyasi || 'values dosyasi'} yolu>`,
         note: 'Sürüm değişmiyor; yalnız values yeniden uygulanıyor.',
         unknown: !kosan,
         source: 'Wyden runbook (upgrade)',
@@ -372,7 +372,7 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
           kind: 'command',
           writes: true,
           title: 'Helm upgrade',
-          command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./garanti_values.yaml`,
+          command: `helm upgrade --install --namespace=${tenant.namespace} ${tenant.helmRelease} ./harmonize/ -f ./${tenant.valuesDosyasi || '<values dosyasi>'}`,
           source: 'Metaco runbook (upgrade) ',
         },
         {
@@ -391,7 +391,7 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
           kind: 'command',
           writes: true,
           title: 'Helm upgrade',
-          command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <garanti_values.yaml yolu>`,
+          command: `helm upgrade --install ${tenant.helmRelease} ${tenant.chartName || 'wyden/wyden'} --version ${ver} -f <${tenant.valuesDosyasi || 'values dosyasi'} yolu>`,
           note: 'Values dosyası setup-wyden ağacından seçilir (ortam + sürüm + cluster klasörü); yol doğrulanmalı.',
           unknown: true,
           source: 'Wyden runbook (upgrade) adım 10',
@@ -442,12 +442,24 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     // sessizce BASKA bir surume goturebilirdi. Tahmin etmektense ACMIYORUZ: ekran
     // sebebini yazar ve komutlar yine gosterilir.
     runnable: portaldanKosar,
-    runnableNote: (() => { if (portaldanKosar) return 'Bu işlemi Portal çalıştırabilir: aşağıdaki panelden önce farkı görün, isterseniz ' +
-        'helm template ile oluşacak nesneleri önizleyin, sonra uygulayın. Sürüm DEĞİŞMEZ — ' +
-        'koşan sürüm hem Portal hem bastion tarafında ayrıca doğrulanır.'; if (action.key === 'values_rollout') return 'Bu uygulamada chart, bastion diskindeki bir dizinden kuruluyor ve doğru dizin ' +
+    runnableNote: (() => {
+      if (portaldanKosar)
+        return (
+          'Bu işlemi Portal çalıştırabilir: aşağıdaki panelden önce farkı görün, isterseniz ' +
+          'helm template ile oluşacak nesneleri önizleyin, sonra uygulayın. Sürüm DEĞİŞMEZ — ' +
+          'koşan sürüm hem Portal hem bastion tarafında ayrıca doğrulanır.'
+        );
+      if (action.key === 'values_rollout')
+        return (
+          'Bu uygulamada chart, bastion diskindeki bir dizinden kuruluyor ve doğru dizin ' +
           'koşan sürüme bağlı; Portal tahmin etmemek için işlemi kendisi çalıştırmıyor. ' +
-          'Aşağıdaki komutlar elle koşulur.'; return "Bu işlem Portal'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. " +
-          'Yazan playbook bağlandığında onay bu ekrandan verilecek.'; })(),
+          'Aşağıdaki komutlar elle koşulur.'
+        );
+      return (
+        "Bu işlem Portal'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. " +
+        'Yazan playbook bağlandığında onay bu ekrandan verilecek.'
+      );
+    })(),
   };
 }
 

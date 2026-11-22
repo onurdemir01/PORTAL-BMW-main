@@ -21,8 +21,8 @@ const {
   YANIT_BOS_DIZI,
 } = require('../spa-discovery.cjs');
 const { rpTanimlari, normLoc, pencereSaat, KODLAR } = require('../spa-rp.cjs');
-const { internetRpHosts, _INTRANET_HOSTS } = require('../../audit/nginx-hosts.cjs');
-const { MIGRATION_GROUPS } = require('../../audit/nginx-migration.cjs');
+const { internetRpHosts, intranetHosts } = require('../../audit/nginx-hosts.cjs');
+const { migrationGroups } = require('../../audit/nginx-migration.cjs');
 const { normalize } = require('../../util/guard-text.cjs');
 
 const KOK = path.join(__dirname, '..', '..', '..');
@@ -34,7 +34,7 @@ const GUN = '2026-10-01';
 
 // ── FIXTURE ────────────────────────────────────────────────────────────────────────────
 const D = (o) => ({
-  cluster: 'gbocptest1',
+  cluster: 'orocptest1',
   namespace: 'kart-test',
   route: 'r',
   host: '',
@@ -49,15 +49,15 @@ const D = (o) => ({
   scan_date: GUN,
   ...o,
 });
-/** Kurumsal adresli uygulama route'u: <app>-<ns>.apps(-t).fw.garanti.com.tr */
+/** Kurumsal adresli uygulama route'u: <app>-<ns>.apps(-t).fw.sirket.invalid */
 const A = (app, ns, o = {}) => {
   const prod = ns.endsWith('-prod');
   return D({
     route: app,
     workload: app,
     namespace: ns,
-    host: `${app}-${ns}.${prod ? 'apps' : 'apps-t'}.fw.garanti.com.tr`,
-    cluster: prod ? 'gbocpprod1' : 'gbocptest1',
+    host: `${app}-${ns}.${prod ? 'apps' : 'apps-t'}.fw.sirket.invalid`,
+    cluster: prod ? 'orocpprod1' : 'orocptest1',
     ...o,
   });
 };
@@ -170,7 +170,7 @@ const byNs = (r) => Object.fromEntries(r.apps.map((a) => [`${a.namespace}/${a.ap
 
 // TEST ortaminda iki uygulama: biri iki RP host'unda tanimli, biri hicbirinde.
 const T_DISC = [A('kart-ui', 'kart-test'), A('bos-ui', 'kart-test')];
-const T_TANIM = [LOC('GBNGXT33', 'kart-test', 'kart-ui'), LOC('GBNGXT34', 'kart-test', 'kart-ui')];
+const T_TANIM = [LOC('ORNGXT33', 'kart-test', 'kart-ui'), LOC('ORNGXT34', 'kart-test', 'kart-ui')];
 
 // ── RP'DE TANIMLI MI ──────────────────────────────────────────────────────────────────
 test('SR1 non-prod include tanimi: tanimli, yol include, host 2/2; tanimsiz yalniz tam taramada', () => {
@@ -186,12 +186,12 @@ test('SR1 non-prod include tanimi: tanimli, yol include, host 2/2; tanimsiz yaln
 });
 
 test('SR2 beklenen RP host u TARANMAMISSA tanimsiz DENMEZ: olculemedi + neden', () => {
-  // GBNGXT34 o gun satir uretmedi (ignore_unreachable) -> tanim orada olabilir.
+  // ORNGXT34 o gun satir uretmedi (ignore_unreachable) -> tanim orada olabilir.
   const r = run(T_DISC, K({ cfg: [T_TANIM[0]] }));
   const b = by(r);
   assert.equal(b['bos-ui'].rp, 'olculemedi', 'taranmamis host varken tanimsiz uretildi');
   assert.equal(b['bos-ui'].rpNeden, 'host-taranmadi');
-  assert.deepEqual(r.rpKapsam.taranmayan.TEST, ['GBNGXT34'], 'taranmayan host kapsamda yok');
+  assert.deepEqual(r.rpKapsam.taranmayan.TEST, ['ORNGXT34'], 'taranmayan host kapsamda yok');
   // Tanim bulunduysa eksik host 'tanimli'yi DUSURMEZ; rpHost bunu soyler.
   assert.equal(b['kart-ui'].rp, 'tanimli');
   assert.equal(b['kart-ui'].rpHost, '1/2');
@@ -231,7 +231,7 @@ test('SR5 kapsam disi: EDU (RP listesi yok), ortamsiz namespace, ARK disi platfo
   const disc = [
     A('edu-ui', 'kart-edu'),
     A('ortamsiz-ui', 'kart'),
-    A('host-ui', 'kart-test', { cluster: 'gbocp3rdtest3' }),
+    A('host-ui', 'kart-test', { cluster: 'orocp3rdtest3' }),
   ];
   const b = by(run(disc, K({ cfg: [...T_TANIM] })));
   assert.equal(b['edu-ui'].rp, 'kapsam-disi');
@@ -252,7 +252,7 @@ test('SR6 K4: RP kolonlari yalniz SPA ve internet/karisik; digerleri uygulanamaz
   ];
   const cfg = [
     ...T_TANIM.map((x) => ({ ...x, application: 'intra-ui', location_path: '/intra-ui/' })),
-    LOC('GBNGXT33', 'kart-test', 'api-svc'),
+    LOC('ORNGXT33', 'kart-test', 'api-svc'),
   ];
   const b = by(run(disc, K({ cfg })));
   assert.equal(b['intra-ui'].ag, 'intranet');
@@ -268,7 +268,7 @@ test('SR6 K4: RP kolonlari yalniz SPA ve internet/karisik; digerleri uygulanamaz
 
 test('SR7 eski yazim: -prod EKSIZ ciplak upstream KESIF host una ek-prod ile baglanir', () => {
   const disc = [A('x-app-v1', 'digital-banking-ch-prod')];
-  const cfg = [...PROD_ALL.map(IZ), PRX('GBRVPP01', 'x-app-v1-digital-banking-ch')];
+  const cfg = [...PROD_ALL.map(IZ), PRX('ORRVPP01', 'x-app-v1-digital-banking-ch')];
   const a = by(run(disc, K({ cfg })))['x-app-v1'];
   assert.equal(a.rp, 'tanimli', 'ciplak upstream eslesmedi');
   assert.deepEqual(a.rpYol, ['proxy']);
@@ -279,7 +279,7 @@ test('SR8 ad kalibina UYMAYAN SPA nin proxy tanimi bulunur (isSpaApp suzgeci YOK
   const disc = [A('eski-portal', 'odeme-prod')];
   const cfg = [
     ...PROD_ALL.map(IZ),
-    PRX('GBRVPP02', 'eski-portal-odeme-prod.apps.fw.garanti.com.tr'),
+    PRX('ORRVPP02', 'eski-portal-odeme-prod.apps.fw.sirket.invalid'),
   ];
   const r = run(disc, K({ cfg }));
   const a = by(r)['eski-portal'];
@@ -289,12 +289,12 @@ test('SR8 ad kalibina UYMAYAN SPA nin proxy tanimi bulunur (isSpaApp suzgeci YOK
   const r2 = run(
     disc,
     K({
-      cfg: [...PROD_ALL.map(IZ), PRX('GBRVPP02', 'onur')],
+      cfg: [...PROD_ALL.map(IZ), PRX('ORRVPP02', 'onur')],
       ups: [
         {
-          host: 'GBRVPP02',
+          host: 'ORRVPP02',
           name: 'onur',
-          server: 'eski-portal-odeme-prod.apps.fw.garanti.com.tr:443',
+          server: 'eski-portal-odeme-prod.apps.fw.sirket.invalid:443',
           scan_date: GUN,
         },
       ],
@@ -310,7 +310,7 @@ test('SR9 yeni PROD dizin kurulumu tanimdir (K3); olcum kaynagi yok; conf yoksa 
   const disc = [A('eski-portal', 'odeme-prod')];
   const dir = (o) => [
     {
-      host: 'GBNGXP44',
+      host: 'ORNGXP44',
       namespace: 'odeme-prod',
       application: 'eski-portal',
       hys_deployed: 1,
@@ -342,21 +342,21 @@ const ESKI = '20260901000000'; // scan_date'ten 30 gun once: tam pencere
 
 test('SR10 LOADERR (service/env/location NULL) tanimi olculemedi yapar; "yok" DEGIL', () => {
   const trf = [
-    LOADERR('GBNGXT33', 'KART-TEST', 'log dosyasi yok: /web_log/kart.log'),
-    TRF('GBNGXT34', 'KART-TEST', '/kart-ui/', { first_seen: ESKI }),
+    LOADERR('ORNGXT33', 'KART-TEST', 'log dosyasi yok: /web_log/kart.log'),
+    TRF('ORNGXT34', 'KART-TEST', '/kart-ui/', { first_seen: ESKI }),
   ];
   const a = istekOf(trf);
   assert.equal(a.rpIstek, 'olculemedi', 'okunamayan log "istek yok" a dustu');
   assert.equal(a.rpOlcum, '1/2');
   assert.equal(a.rpReq7, 0, 'olculen tanimin sifiri yazilir');
   const t = rpTanimlari(run(T_DISC, K({ cfg: T_TANIM, trf })).rpDetay, 'kart-test', 'kart-ui');
-  const t33 = t.find((d) => d.host === 'GBNGXT33');
+  const t33 = t.find((d) => d.host === 'ORNGXT33');
   assert.equal(t33.trafik.durum, 'olculemedi');
   assert.equal(t33.trafik.neden, 'log');
   assert.match(t33.trafik.hata, /log dosyasi yok/);
   // vhost '*' (betigin tum sunucu hatasi) da ayni host'taki tum tanimlari olculemedi yapar.
   assert.equal(
-    istekOf([LOADERR('GBNGXT33', '*', 'tarih hesaplanamadi'), trf[1]]).rpIstek,
+    istekOf([LOADERR('ORNGXT33', '*', 'tarih hesaplanamadi'), trf[1]]).rpIstek,
     'olculemedi',
   );
 });
@@ -369,7 +369,7 @@ test('SR11 location bicimi betikle ayni: "^~ /x/" olculur, "= /x" olculemez', ()
   assert.equal(normLoc('^~/bosluksuz'), null);
   assert.equal(normLoc('@adli'), null);
   const onekli = T_TANIM.map((x) => ({ ...x, location_path: '^~ /kart-ui/' }));
-  const trf = ['GBNGXT33', 'GBNGXT34'].map((h) =>
+  const trf = ['ORNGXT33', 'ORNGXT34'].map((h) =>
     TRF(h, 'KART-TEST', '/kart-ui/', { req_7d: 4, req_24h: 1, first_seen: ESKI }),
   );
   const a = istekOf(trf, onekli);
@@ -381,8 +381,8 @@ test('SR11 location bicimi betikle ayni: "^~ /x/" olculur, "= /x" olculemez', ()
 
 test('SR12 0 istek ancak tam pencerede "yok"; kisa pencere / sampled / first_seen yok -> kismi', () => {
   const iki = (o33, o34 = o33) => [
-    TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', o33),
-    TRF('GBNGXT34', 'KART-TEST', '/kart-ui/', o34),
+    TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', o33),
+    TRF('ORNGXT34', 'KART-TEST', '/kart-ui/', o34),
   ];
   const yok = istekOf(iki({ first_seen: ESKI }));
   assert.equal(yok.rpIstek, 'yok');
@@ -410,12 +410,12 @@ test('SR12 0 istek ancak tam pencerede "yok"; kisa pencere / sampled / first_see
 
 test('SR13 istek var: mirror tanimlar TOPLANIR, son istek en yenisi', () => {
   const a = istekOf([
-    TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', {
+    TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', {
       req_7d: 5,
       req_24h: 1,
       last_seen: '20260930101010',
     }),
-    TRF('GBNGXT34', 'KART-TEST', '/kart-ui/', {
+    TRF('ORNGXT34', 'KART-TEST', '/kart-ui/', {
       req_7d: 7,
       req_24h: 2,
       last_seen: '20260930121212',
@@ -429,13 +429,13 @@ test('SR13 istek var: mirror tanimlar TOPLANIR, son istek en yenisi', () => {
 });
 
 test('SR14 trafik satiri yok: host hic satir uretmediyse "host", digerleri varsa "satir-yok"', () => {
-  const t33 = TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI });
+  const t33 = TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI });
   const r = run(T_DISC, K({ cfg: T_TANIM, trf: [t33] }));
   assert.equal(by(r)['kart-ui'].rpIstek, 'olculemedi', 'olculmeyen host "yok" sayildi');
-  const t34 = rpTanimlari(r.rpDetay, 'kart-test', 'kart-ui').find((d) => d.host === 'GBNGXT34');
+  const t34 = rpTanimlari(r.rpDetay, 'kart-test', 'kart-ui').find((d) => d.host === 'ORNGXT34');
   assert.equal(t34.trafik.neden, 'host');
-  const r2 = run(T_DISC, K({ cfg: T_TANIM, trf: [t33, TRF('GBNGXT34', 'KART-TEST', '/baska/')] }));
-  const t34b = rpTanimlari(r2.rpDetay, 'kart-test', 'kart-ui').find((d) => d.host === 'GBNGXT34');
+  const r2 = run(T_DISC, K({ cfg: T_TANIM, trf: [t33, TRF('ORNGXT34', 'KART-TEST', '/baska/')] }));
+  const t34b = rpTanimlari(r2.rpDetay, 'kart-test', 'kart-ui').find((d) => d.host === 'ORNGXT34');
   assert.equal(t34b.trafik.neden, 'satir-yok');
   // Trafik tablosu yoksa tanimli satirlarin hepsi olculemedi.
   const r3 = run(T_DISC, K({ cfg: T_TANIM, trf: null, tablolar: { trf: 'yok' } }));
@@ -447,12 +447,12 @@ test('SR15 PROD: eski proxy olculur, olcum kaynagi olmayan yeni dizin tanimi 0 i
   const disc = [A('eski-portal', 'odeme-prod')];
   const cfg = [
     ...PROD_ALL.map(IZ),
-    PRX('GBRVPP01', 'eski-portal-odeme-prod.apps.fw.garanti.com.tr'),
+    PRX('ORRVPP01', 'eski-portal-odeme-prod.apps.fw.sirket.invalid'),
   ];
-  const trf = [TRF('GBRVPP01', 'GLOMO-PROD', '/x/', { first_seen: ESKI })];
+  const trf = [TRF('ORRVPP01', 'GLOMO-PROD', '/x/', { first_seen: ESKI })];
   const dir = [
     {
-      host: 'GBNGXP44',
+      host: 'ORNGXP44',
       namespace: 'odeme-prod',
       application: 'eski-portal',
       hys_deployed: 1,
@@ -521,7 +521,7 @@ test('SR18 ag: "" TLS yok -> diger, NULL -> bilinmiyor, ikisi birden karisik; ro
     A('null-ui', 'kart-test', { termination: null }),
     A('bos-tls', 'kart-test', { termination: '' }),
     A('cift', 'kart-test'),
-    A('cift', 'kart-test', { cluster: 'gbocptest2' }),
+    A('cift', 'kart-test', { cluster: 'orocptest2' }),
   ];
   const b = by(buildSpaDiscovery(disc, [], [], [], K()));
   assert.equal(b['null-ui'].ag, 'bilinmiyor');
@@ -534,14 +534,14 @@ test('SR18 ag: "" TLS yok -> diger, NULL -> bilinmiyor, ikisi birden karisik; ro
 test('SR19 ag capraz kontrolu envanterle celisirse UYARIR, ag degerini EZMEZ', () => {
   const inv = [
     {
-      cluster_name: 'gbocptest1',
+      cluster_name: 'orocptest1',
       namespace_name: 'kart-test',
       route_name: 'kart-ui',
       route_address: 'x',
       termination_type: 'reencrypt',
     },
     {
-      cluster_name: 'gbocptest1',
+      cluster_name: 'orocptest1',
       namespace_name: 'kart-test',
       route_name: 'bos-ui',
       route_address: 'y',
@@ -574,13 +574,13 @@ test('SR19 ag capraz kontrolu envanterle celisirse UYARIR, ag degerini EZMEZ', (
       [A('c-ui', 'kart-test')],
       [
         {
-          cluster_name: 'gbocptest2',
+          cluster_name: 'orocptest2',
           namespace_name: 'kart-test',
           route_name: 'c-ui',
           termination_type: 'reencrypt',
         },
         {
-          cluster_name: 'gbocptest1',
+          cluster_name: 'orocptest1',
           namespace_name: 'kart-test',
           route_name: 'c-ui',
           termination_type: 'passthrough',
@@ -595,19 +595,21 @@ test('SR19 ag capraz kontrolu envanterle celisirse UYARIR, ag degerini EZMEZ', (
 });
 
 // ── LISTE VE BOYUT ─────────────────────────────────────────────────────────────────────
-test('SR20 internet RP listesi TEK yerden: GBNGXT07 yok, intranet ile kesisim yok, PROD = tasima gruplari', () => {
-  assert.ok(!RP.all.has('GBNGXT07'), 'GBNGXT07 RP sayildi (kullanici: SAYILMAZ)');
-  for (const h of RP.all) assert.ok(!_INTRANET_HOSTS.has(h), `${h} hem internet RP hem intranet`);
-  const grup = new Set(MIGRATION_GROUPS.flatMap((g) => [...g.oldHosts, ...g.newHosts]));
+test('SR20 internet RP listesi TEK yerden: ORNGXT07 yok, intranet ile kesisim yok, PROD = tasima gruplari', () => {
+  assert.ok(!RP.all.has('ORNGXT07'), 'ORNGXT07 RP sayildi (kullanici: SAYILMAZ)');
+  const intranet = new Set(intranetHosts());
+  assert.ok(intranet.size > 0, 'ornek ayarda intranet listesi bos');
+  for (const h of RP.all) assert.ok(!intranet.has(h), `${h} hem internet RP hem intranet`);
+  const grup = new Set(migrationGroups().flatMap((g) => [...g.oldHosts, ...g.newHosts]));
   assert.deepEqual(new Set(PROD_ALL), grup, 'PROD RP listesi tasima gruplarindan ayristi');
-  assert.deepEqual(RP.byEnv.DEV, ['GBNGXD01', 'GBNGXD02']);
-  assert.deepEqual(RP.byEnv.TEST, ['GBNGXT33', 'GBNGXT34']);
-  assert.deepEqual(RP.byEnv.QA, ['GBNGXQ01', 'GBNGXQ02']);
+  assert.deepEqual(RP.byEnv.DEV, ['ORNGXD01', 'ORNGXD02']);
+  assert.deepEqual(RP.byEnv.TEST, ['ORNGXT33', 'ORNGXT34']);
+  assert.deepEqual(RP.byEnv.QA, ['ORNGXQ01', 'ORNGXQ02']);
   assert.equal(RP.byEnv.EDU, undefined, 'EDU icin internet RP listesi yok (kapsam disi)');
   // KOPYA YOK: PROD hostlari nginx-hosts.cjs'te ELLE yazilmaz.
   const src = read('server/audit/nginx-hosts.cjs');
   assert.ok(
-    !/GBRVPP0[1-9]'|GBNGXP4[0-9]'/.test(src),
+    !/ORRVPP0[1-9]'|ORNGXP4[0-9]'/.test(src),
     'PROD RP listesi nginx-hosts.cjs e kopyalanmis',
   );
 });
@@ -624,7 +626,7 @@ test('SR21 yanit butcesi: 10 bin uygulamalik satir listesi 8 MB onbellek sinirin
     const app = `odeme-talimat-${i}-app-v1`;
     const spa = i % 2 === 0;
     disc.push(A(app, ns, { is_spa: spa ? 1 : 0 }));
-    disc.push(A(app, ns, { cluster: 'gbocptest2', is_spa: spa ? 1 : 0 }));
+    disc.push(A(app, ns, { cluster: 'orocptest2', is_spa: spa ? 1 : 0 }));
     use.push({
       namespace: ns,
       app,
@@ -636,7 +638,7 @@ test('SR21 yanit butcesi: 10 bin uygulamalik satir listesi 8 MB onbellek sinirin
       note: '',
     });
     if (spa) {
-      for (const h of ['GBNGXT33', 'GBNGXT34']) {
+      for (const h of ['ORNGXT33', 'ORNGXT34']) {
         cfg.push(LOC(h, ns, app, { location_path: `/${app}/`, include_name: `kart-${app}-${ns}` }));
         trf.push(
           TRF(h, 'KART-TEST', `/${app}/`, { req_7d: 10, req_24h: 2, last_seen: '20260930101010' }),
@@ -684,9 +686,9 @@ test('SR21b yanit butcesi GERCEKCI profilde: iki route, uzun FQDN, bes ortam, PR
     const prod = env === 'prod';
     const spa = i % 2 === 0;
     const term = i % 7 === 0 ? 'reencrypt' : 'passthrough';
-    for (const cl of prod ? ['gbocpprod1', 'gbocpprod2'] : ['gbocptest1', 'gbocptest2']) {
+    for (const cl of prod ? ['orocpprod1', 'orocpprod2'] : ['orocptest1', 'orocptest2']) {
       for (const suf of ['', '-int']) {
-        const host = `${app}${suf}-${ns}.${prod ? 'apps' : 'apps-t'}.fw.garanti.com.tr`;
+        const host = `${app}${suf}-${ns}.${prod ? 'apps' : 'apps-t'}.fw.sirket.invalid`;
         disc.push(
           D({
             cluster: cl,
@@ -707,7 +709,11 @@ test('SR21b yanit butcesi GERCEKCI profilde: iki route, uzun FQDN, bes ortam, PR
           namespace_name: ns,
           route_name: app + suf,
           route_address: host,
-          termination_type: (() => { if (suf) return 'reencrypt'; if (i % 13 === 0) return 'edge'; return term; })(),
+          termination_type: (() => {
+            if (suf) return 'reencrypt';
+            if (i % 13 === 0) return 'edge';
+            return term;
+          })(),
         });
       }
     }
@@ -789,12 +795,12 @@ test('SR26 upstream okunamadi / yok / bos: takma adli PROD proxy varken PROD "ta
   // Takma adla yazilmis proxy_pass (proxy_ssl_name yok): analyzer target_url'e takma adi yazar;
   // gercek arka uc YALNIZ Nginx_Audit_Upstreams'ten bulunur (ayri is, 2 gun saklama).
   const disc = [A('eski-portal', 'odeme-prod')];
-  const cfg = [...PROD_ALL.map(IZ), PRX('GBRVPP02', 'onur')];
+  const cfg = [...PROD_ALL.map(IZ), PRX('ORRVPP02', 'onur')];
   const ups = [
     {
-      host: 'GBRVPP02',
+      host: 'ORRVPP02',
       name: 'onur',
-      server: 'eski-portal-odeme-prod.apps.fw.garanti.com.tr:443',
+      server: 'eski-portal-odeme-prod.apps.fw.sirket.invalid:443',
       scan_date: GUN,
     },
   ];
@@ -819,25 +825,25 @@ test('SR26 upstream okunamadi / yok / bos: takma adli PROD proxy varken PROD "ta
     assert.equal(r.rpKapsam.hedefCozulemeyen.PROD, 1, `upstream ${ad}: kapsamda sayilmadi`);
   }
   // NOKTALI (gercek FQDN) cozulemeyen hedef tanimsiz'i BOZMAZ: arka uc biliniyor, kesifte yok.
-  const yabanci = run(disc, K({ cfg: [...PROD_ALL.map(IZ), PRX('GBRVPP02', 'baska.vendor.net')] }));
+  const yabanci = run(disc, K({ cfg: [...PROD_ALL.map(IZ), PRX('ORRVPP02', 'baska.vendor.net')] }));
   assert.equal(by(yabanci)['eski-portal'].rp, 'tanimsiz');
   // Baska ortamin cozulemeyen takma adi bu ortamin kararini etkilemez.
   const testte = run(
     [A('bos-ui', 'kart-test')],
-    K({ cfg: [...RP.byEnv.TEST.map(IZ), PRX('GBRVPP02', 'onur')] }),
+    K({ cfg: [...RP.byEnv.TEST.map(IZ), PRX('ORRVPP02', 'onur')] }),
   );
   assert.equal(by(testte)['bos-ui'].rp, 'tanimsiz');
 });
 
 test('SR28 paylasilan adres / ad carpismasi: tanim uygulamaya AYRILAMAZ - "kesin" ve "istek var" yazilmaz', () => {
   // P8: iki is yuku ayni adresi paylasiyor (path tabanli route); PROD RP yalniz /hesap/'i proxy ediyor.
-  const host = 'online.garantibbva.com.tr';
+  const host = 'online.ornekbanka.invalid';
   const disc = [
     A('hesap-ui', 'online-prod', { host, route: 'hesap' }),
     A('kart-ui', 'online-prod', { host, route: 'kart' }),
   ];
-  const cfg = [...PROD_ALL.map(IZ), PRX('GBRVPP07', host, { location_path: '/hesap/' })];
-  const trf = [TRF('GBRVPP07', 'GLOMO-PROD', '/hesap/', { req_7d: 900, req_24h: 100 })];
+  const cfg = [...PROD_ALL.map(IZ), PRX('ORRVPP07', host, { location_path: '/hesap/' })];
+  const trf = [TRF('ORRVPP07', 'GLOMO-PROD', '/hesap/', { req_7d: 900, req_24h: 100 })];
   const b = by(run(disc, K({ cfg, trf })));
   for (const ad of ['hesap-ui', 'kart-ui']) {
     assert.equal(b[ad].rpEsles, 'paylasimli', `${ad}: paylasilan adres kesin baglandi`);
@@ -862,39 +868,39 @@ test('SR28 paylasilan adres / ad carpismasi: tanim uygulamaya AYRILAMAZ - "kesin
   assert.equal(bg.mavi.rpIstek, 'var');
   // P3: genel DNS etiketi ('mobil') kesifte OLMAYAN yabanci hedefe ('mobil.vendor-cdn.net') baglanmaz.
   const disc3 = [
-    A('mobil-web', 'mobil-prod', { host: 'mobil.garanti.com.tr' }),
-    A('bonus-mobil', 'bonus-prod', { host: 'mobil.bonus.com.tr' }),
+    A('mobil-web', 'mobil-prod', { host: 'mobil.sirket.invalid' }),
+    A('kart-mobil', 'kart-prod', { host: 'mobil.kart.invalid' }),
   ];
   const b3 = by(
-    run(disc3, K({ cfg: [...PROD_ALL.map(IZ), PRX('GBRVPP07', 'mobil.vendor-cdn.net')] })),
+    run(disc3, K({ cfg: [...PROD_ALL.map(IZ), PRX('ORRVPP07', 'mobil.vendor-cdn.net')] })),
   );
   assert.equal(b3['mobil-web'].rp, 'tanimsiz', 'genel etiket yabanci hedefle eslesti');
-  assert.equal(b3['bonus-mobil'].rp, 'tanimsiz');
+  assert.equal(b3['kart-mobil'].rp, 'tanimsiz');
   // P9: '<app>-<ns>' bolme carpismasi (odeme-ui + kart-prod = odeme + ui-kart-prod) -> belirsiz.
   const disc9 = [
-    A('odeme-ui', 'kart-prod', { host: 'odeme.garanti.com.tr' }),
-    A('odeme', 'ui-kart-prod', { host: 'odeme2.garanti.com.tr' }),
+    A('odeme-ui', 'kart-prod', { host: 'odeme.sirket.invalid' }),
+    A('odeme', 'ui-kart-prod', { host: 'odeme2.sirket.invalid' }),
   ];
   const b9 = byNs(
-    run(disc9, K({ cfg: [...PROD_ALL.map(IZ), PRX('GBRVPP07', 'odeme-ui-kart-prod')] })),
+    run(disc9, K({ cfg: [...PROD_ALL.map(IZ), PRX('ORRVPP07', 'odeme-ui-kart-prod')] })),
   );
   for (const k of ['kart-prod/odeme-ui', 'ui-kart-prod/odeme']) {
     assert.equal(b9[k].rpEsles, 'belirsiz', `${k}: ad carpismasi kesin baglandi`);
     assert.equal(b9[k].rpIstek, 'ayrilamaz');
   }
   // Ayrilamayan tanim + uygulamanin KENDI tanimi 0 istek (tam pencere): "yok" DEGIL - alt sinir.
-  const hostT = 'online.garanti.com.tr';
+  const hostT = 'online.sirket.invalid';
   const discT = [
     A('hesap-ui', 'online-test', { host: hostT, route: 'hesap' }),
     A('kart-ui', 'online-test', { host: hostT, route: 'kart' }),
   ];
   const cfgT = [
-    LOC('GBNGXT33', 'online-test', 'hesap-ui'),
-    PRX('GBNGXT34', hostT, { vhost: 'ONLINE-TEST', env: 'TEST', location_path: '/online/' }),
+    LOC('ORNGXT33', 'online-test', 'hesap-ui'),
+    PRX('ORNGXT34', hostT, { vhost: 'ONLINE-TEST', env: 'TEST', location_path: '/online/' }),
   ];
   const trfT = [
-    TRF('GBNGXT33', 'KART-TEST', '/hesap-ui/', { first_seen: ESKI }),
-    TRF('GBNGXT34', 'ONLINE-TEST', '/online/', { req_7d: 50, first_seen: ESKI }),
+    TRF('ORNGXT33', 'KART-TEST', '/hesap-ui/', { first_seen: ESKI }),
+    TRF('ORNGXT34', 'ONLINE-TEST', '/online/', { req_7d: 50, first_seen: ESKI }),
   ];
   const bT = by(run(discT, K({ cfg: cfgT, trf: trfT })));
   assert.equal(
@@ -908,17 +914,17 @@ test('SR28 paylasilan adres / ad carpismasi: tanim uygulamaya AYRILAMAZ - "kesin
 
 test('SR29 ortamin bir RP sunucusu TARANMAMISKEN 0 istek "yok" DEGIL: kismi + host-taranmadi', () => {
   const disc = [A('odeme-ui-app-v1', 'odeme-prod')];
-  const hedef = 'odeme-ui-app-v1-odeme-prod.apps.fw.garanti.com.tr';
-  const ankarasiz = PROD_ALL.filter((h) => !/^GBRVPAP0[3-6]$/.test(h)).map(IZ);
+  const hedef = 'odeme-ui-app-v1-odeme-prod.apps.fw.sirket.invalid';
+  const ankarasiz = PROD_ALL.filter((h) => !/^ORRVPAP0[3-6]$/.test(h)).map(IZ);
   const kos = (cfg, trf) => by(run(disc, K({ cfg, trf })))['odeme-ui-app-v1'];
-  // P6: tanim Pendik'te (GBRVPP07), tam pencerede 0 istek; Ankara (GBRVPAP03-06) taranmadi.
-  const p6 = kos([...ankarasiz, PRX('GBRVPP07', hedef)], [TRF('GBRVPP07', 'GLOMO-PROD', '/x/')]);
+  // P6: tanim Pendik'te (ORRVPP07), tam pencerede 0 istek; Ankara (ORRVPAP03-06) taranmadi.
+  const p6 = kos([...ankarasiz, PRX('ORRVPP07', hedef)], [TRF('ORRVPP07', 'GLOMO-PROD', '/x/')]);
   assert.equal(p6.rp, 'tanimli');
   assert.equal(p6.rpIstek, 'kismi', 'Ankara taranmamisken "istek yok" dendi');
   assert.deepEqual(p6.rpIstekNeden, ['host-taranmadi']);
   assert.equal(p6.rpOlcum, '1/1');
-  // P6b: tanim BASKA tasima grubunda (GBRVPP01): ortamin taranmayan hostu yine kapsamda.
-  const p6b = kos([...ankarasiz, PRX('GBRVPP01', hedef)], [TRF('GBRVPP01', 'GLOMO-PROD', '/x/')]);
+  // P6b: tanim BASKA tasima grubunda (ORRVPP01): ortamin taranmayan hostu yine kapsamda.
+  const p6b = kos([...ankarasiz, PRX('ORRVPP01', hedef)], [TRF('ORRVPP01', 'GLOMO-PROD', '/x/')]);
   assert.equal(
     p6b.rpIstek,
     'kismi',
@@ -926,15 +932,15 @@ test('SR29 ortamin bir RP sunucusu TARANMAMISKEN 0 istek "yok" DEGIL: kismi + ho
   );
   // Kontrol: Ankara taranmis ve orada da tanim yok -> "yok".
   const tam = kos(
-    [...PROD_ALL.map(IZ), PRX('GBRVPP07', hedef)],
-    [TRF('GBRVPP07', 'GLOMO-PROD', '/x/')],
+    [...PROD_ALL.map(IZ), PRX('ORRVPP07', hedef)],
+    [TRF('ORRVPP07', 'GLOMO-PROD', '/x/')],
   );
   assert.equal(tam.rpIstek, 'yok');
   assert.equal(tam.rpIstekNeden, undefined);
   // Istek GORULDUYSE taranmayan host "var"i dusurmez.
   const var_ = kos(
-    [...ankarasiz, PRX('GBRVPP07', hedef)],
-    [TRF('GBRVPP07', 'GLOMO-PROD', '/x/', { req_7d: 3 })],
+    [...ankarasiz, PRX('ORRVPP07', hedef)],
+    [TRF('ORRVPP07', 'GLOMO-PROD', '/x/', { req_7d: 3 })],
   );
   assert.equal(var_.rpIstek, 'var');
   // P7: TEST - T33 tanimli ve 0 istek; T34 taranmadi.
@@ -942,8 +948,8 @@ test('SR29 ortamin bir RP sunucusu TARANMAMISKEN 0 istek "yok" DEGIL: kismi + ho
     run(
       [A('kart-ui', 'kart-test')],
       K({
-        cfg: [LOC('GBNGXT33', 'kart-test', 'kart-ui')],
-        trf: [TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI })],
+        cfg: [LOC('ORNGXT33', 'kart-test', 'kart-ui')],
+        trf: [TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI })],
       }),
     ),
   )['kart-ui'];
@@ -954,10 +960,10 @@ test('SR29 ortamin bir RP sunucusu TARANMAMISKEN 0 istek "yok" DEGIL: kismi + ho
 test('SR30 ayni adli uygulama iki namespace te + flat LOC: hicbir aday "tanimsiz" olmaz (belirsiz)', () => {
   // Analyzer flat duzende ns='' ve app=stem yazar; adin birden cok namespace'te olmasi gercekci.
   const disc = [
-    A('kampanya', 'a-test', { host: 'kampanya.a.garanti.com.tr' }),
-    A('kampanya', 'b-test', { host: 'kampanya.b.garanti.com.tr' }),
+    A('kampanya', 'a-test', { host: 'kampanya.a.sirket.invalid' }),
+    A('kampanya', 'b-test', { host: 'kampanya.b.sirket.invalid' }),
   ];
-  const flat = LOC('GBNGXT33', '', 'kampanya', { status: 'NAME_MISMATCH' });
+  const flat = LOC('ORNGXT33', '', 'kampanya', { status: 'NAME_MISMATCH' });
   const r = run(disc, K({ cfg: [...RP.byEnv.TEST.map(IZ), flat] }));
   const b = byNs(r);
   for (const k of ['a-test/kampanya', 'b-test/kampanya']) {
@@ -973,7 +979,7 @@ test('SR30 ayni adli uygulama iki namespace te + flat LOC: hicbir aday "tanimsiz
   const ad = by(
     run(
       [A('kart-ui', 'kart-test')],
-      K({ cfg: [IZ('GBNGXT34'), LOC('GBNGXT33', '', 'kart-ui-kart-test')] }),
+      K({ cfg: [IZ('ORNGXT34'), LOC('ORNGXT33', '', 'kart-ui-kart-test')] }),
     ),
   )['kart-ui'];
   assert.equal(ad.rp, 'tanimli');
@@ -984,22 +990,22 @@ test('SR31 "-prod" eki YALNIZ PROD RP de denenir: TEST RP deki ciplak ad PROD uy
   const disc = [A('kart-ui-app-v1', 'kart-prod'), A('kart-ui-app-v1', 'kart-test')];
   const inv = [
     {
-      cluster_name: 'gbocpprod1',
+      cluster_name: 'orocpprod1',
       namespace_name: 'kart-prod',
       route_name: 'kart-ui-app-v1',
-      route_address: 'kart-ui-app-v1-kart-prod.apps.fw.garanti.com.tr',
+      route_address: 'kart-ui-app-v1-kart-prod.apps.fw.sirket.invalid',
       termination_type: 'passthrough',
     },
     {
-      cluster_name: 'gbocptest1',
+      cluster_name: 'orocptest1',
       namespace_name: 'kart-test',
       route_name: 'kart-ui-app-v1',
-      route_address: 'kart-ui-app-v1-kart-test.apps-t.fw.garanti.com.tr',
+      route_address: 'kart-ui-app-v1-kart-test.apps-t.fw.sirket.invalid',
       termination_type: 'passthrough',
     },
   ];
   const tam = [...PROD_ALL.map(IZ), ...RP.byEnv.TEST.map(IZ)];
-  const testRp = PRX('GBNGXT33', 'kart-ui-app-v1-kart', { vhost: 'KART-TEST', env: 'TEST' });
+  const testRp = PRX('ORNGXT33', 'kart-ui-app-v1-kart', { vhost: 'KART-TEST', env: 'TEST' });
   // Iki kapi: kesif indeksi (envantersiz) ve resolveTarget'in kendi '-prod' denemesi (envanterli).
   for (const [ad, ek] of [
     ['envantersiz', {}],
@@ -1010,7 +1016,7 @@ test('SR31 "-prod" eki YALNIZ PROD RP de denenir: TEST RP deki ciplak ad PROD uy
     assert.equal(p.rpSorun, undefined, ad);
   }
   // Kontrol: AYNI ciplak ad PROD RP'de -> ek-prod ile baglanir (eski PROD yazim kurali).
-  const b2 = byNs(run(disc, K({ cfg: [...tam, PRX('GBRVPP07', 'kart-ui-app-v1-kart')] }), { inv }));
+  const b2 = byNs(run(disc, K({ cfg: [...tam, PRX('ORRVPP07', 'kart-ui-app-v1-kart')] }), { inv }));
   assert.equal(b2['kart-prod/kart-ui-app-v1'].rp, 'tanimli');
   assert.equal(b2['kart-prod/kart-ui-app-v1'].rpEsles, 'ek-prod');
 });
@@ -1055,7 +1061,7 @@ test('SR32 dizin tablosu config ten FARKLI gunden: yeni PROD taranmis sayilmaz, 
 test('SR33 Dynatrace cluster lari TOPLANIR: pasif cluster in 0 i "istek yok" yapmaz; sira onemsiz', () => {
   const disc = [
     A('odeme-ui-app-v1', 'odeme-prod'),
-    A('odeme-ui-app-v1', 'odeme-prod', { cluster: 'gbocpprod2' }),
+    A('odeme-ui-app-v1', 'odeme-prod', { cluster: 'orocpprod2' }),
   ];
   const U = (cluster, o = {}) => ({
     cluster,
@@ -1071,8 +1077,8 @@ test('SR33 Dynatrace cluster lari TOPLANIR: pasif cluster in 0 i "istek yok" yap
   });
   const kos = (use) => by(run(disc, K(), { use }))['odeme-ui-app-v1'];
   for (const use of [
-    [U('gbocpprod1'), U('gbocpprod2', { req_total: 900 })],
-    [U('gbocpprod2', { req_total: 900 }), U('gbocpprod1')],
+    [U('orocpprod1'), U('orocpprod2', { req_total: 900 })],
+    [U('orocpprod2', { req_total: 900 }), U('orocpprod1')],
   ]) {
     const a = kos(use);
     assert.equal(
@@ -1082,28 +1088,28 @@ test('SR33 Dynatrace cluster lari TOPLANIR: pasif cluster in 0 i "istek yok" yap
     );
     assert.equal(a.reqShown, 900);
   }
-  const yarim = kos([U('gbocpprod1', { measured: 0 }), U('gbocpprod2')]);
+  const yarim = kos([U('orocpprod1', { measured: 0 }), U('orocpprod2')]);
   assert.equal(yarim.istek, 'olculemedi', 'bir cluster olculemedi ve 0 istek: "yok" dendi');
   assert.equal(yarim.usage.olcum, '1/2');
   assert.equal(
-    kos([U('gbocpprod1', { services_total: 0 }), U('gbocpprod2', { services_total: 0 })]).istek,
+    kos([U('orocpprod1', { services_total: 0 }), U('orocpprod2', { services_total: 0 })]).istek,
     'servis-yok',
   );
-  assert.equal(kos([U('gbocpprod1'), U('gbocpprod2')]).istek, 'yok');
+  assert.equal(kos([U('orocpprod1'), U('orocpprod2')]).istek, 'yok');
   // Ayni cluster in ESKI gunu yeni gununu ezmez (sira ne olursa olsun).
   assert.equal(
     kos([
-      U('gbocpprod1', { req_total: 5, scan_date: '2026-09-28' }),
-      U('gbocpprod1'),
-      U('gbocpprod2'),
+      U('orocpprod1', { req_total: 5, scan_date: '2026-09-28' }),
+      U('orocpprod1'),
+      U('orocpprod2'),
     ]).istek,
     'yok',
   );
   assert.equal(
     kos([
-      U('gbocpprod1'),
-      U('gbocpprod1', { req_total: 5, scan_date: '2026-09-28' }),
-      U('gbocpprod2'),
+      U('orocpprod1'),
+      U('orocpprod1', { req_total: 5, scan_date: '2026-09-28' }),
+      U('orocpprod2'),
     ]).istek,
     'yok',
   );
@@ -1116,7 +1122,7 @@ test('SR38 YALNIZ baska ortamin RP sinde tanimli: KENDI ortaminda tanimsiz/olcul
   // (TEST) RP'lerinde tanimi yok. Kullanici karari (2026-10-02): kendi ortaminda 'tanimsiz'
   // sayilsin (ortamin RP hostlari taranmamissa 'olculemedi'), baska ortamdaki tanim uyari.
   const disc = [A('kart-ui', 'kart-test')];
-  const prodRp = PRX('GBRVPP07', 'kart-ui-kart-test.apps-t.fw.garanti.com.tr', {
+  const prodRp = PRX('ORRVPP07', 'kart-ui-kart-test.apps-t.fw.sirket.invalid', {
     status: 'NON_PROD_TARGET',
   });
   const tam = [...RP.byEnv.TEST.map(IZ), prodRp];
@@ -1134,8 +1140,12 @@ test('SR38 YALNIZ baska ortamin RP sinde tanimli: KENDI ortaminda tanimsiz/olcul
   assert.equal(t.length, 1);
   assert.equal(t[0].env, 'PROD');
   // Ortamin bir RP host'u taranmadi: tanimsiz DENMEZ (olculemedi + neden), uyari yine var.
-  const b = by(run(disc, K({ cfg: [IZ('GBNGXT33'), prodRp] })))['kart-ui'];
-  assert.equal(b.rp, 'olculemedi', 'T34 taranmamisken ortam disi tanimli uygulamaya tanimsiz dendi');
+  const b = by(run(disc, K({ cfg: [IZ('ORNGXT33'), prodRp] })))['kart-ui'];
+  assert.equal(
+    b.rp,
+    'olculemedi',
+    'T34 taranmamisken ortam disi tanimli uygulamaya tanimsiz dendi',
+  );
   assert.equal(b.rpNeden, 'host-taranmadi');
   assert.deepEqual(b.rpSorun, ['ORTAM_DISI']);
   // PROD uygulamasi yalniz TEST RP'de (LOC ns ile baglaniyor): PROD tam tarandi -> tanimsiz.
@@ -1143,7 +1153,11 @@ test('SR38 YALNIZ baska ortamin RP sinde tanimli: KENDI ortaminda tanimsiz/olcul
     run(
       [A('odeme-ui', 'odeme-prod')],
       K({
-        cfg: [...PROD_ALL.map(IZ), ...RP.byEnv.TEST.map(IZ), LOC('GBNGXT33', 'odeme-prod', 'odeme-ui')],
+        cfg: [
+          ...PROD_ALL.map(IZ),
+          ...RP.byEnv.TEST.map(IZ),
+          LOC('ORNGXT33', 'odeme-prod', 'odeme-ui'),
+        ],
       }),
     ),
   )['odeme-ui'];
@@ -1153,7 +1167,7 @@ test('SR38 YALNIZ baska ortamin RP sinde tanimli: KENDI ortaminda tanimsiz/olcul
   const e = by(
     run(
       [A('edu-ui', 'kart-edu')],
-      K({ cfg: [...RP.byEnv.TEST.map(IZ), LOC('GBNGXT33', 'kart-edu', 'edu-ui')] }),
+      K({ cfg: [...RP.byEnv.TEST.map(IZ), LOC('ORNGXT33', 'kart-edu', 'edu-ui')] }),
     ),
   )['edu-ui'];
   assert.equal(e.rp, 'kapsam-disi');
@@ -1161,24 +1175,24 @@ test('SR38 YALNIZ baska ortamin RP sinde tanimli: KENDI ortaminda tanimsiz/olcul
   assert.deepEqual(e.rpSorun, ['ORTAM_DISI']);
   // Ortamsiz namespace: kendi ortami bilinmez, tanim 'tanimli' kalir ve ORTAM_DISI yazilmaz.
   const o = by(
-    run([A('ortamsiz-ui', 'kart')], K({ cfg: [LOC('GBNGXT33', 'kart', 'ortamsiz-ui')] })),
+    run([A('ortamsiz-ui', 'kart')], K({ cfg: [LOC('ORNGXT33', 'kart', 'ortamsiz-ui')] })),
   )['ortamsiz-ui'];
   assert.equal(o.rp, 'tanimli');
   assert.equal(o.rpSorun, undefined);
 });
 
-// KARISIK DURUM (K3, 2026-10-02): TEST uygulamasi TEST RP'de (GBNGXT33) tanimli ve olculmus
+// KARISIK DURUM (K3, 2026-10-02): TEST uygulamasi TEST RP'de (ORNGXT33) tanimli ve olculmus
 // gercek 0 (pencere 30 gun, sampled=0, iki TEST RP'si de tarandi); ayrica PROD RP'nin
-// (GBRVPP07) test adresine proxy'si 900 istek aliyor.
+// (ORRVPP07) test adresine proxy'si 900 istek aliyor.
 const K3_DISC = [A('kart-ui', 'kart-test')];
-const K3_PRX = PRX('GBRVPP07', 'kart-ui-kart-test.apps-t.fw.garanti.com.tr', {
+const K3_PRX = PRX('ORRVPP07', 'kart-ui-kart-test.apps-t.fw.sirket.invalid', {
   status: 'NON_PROD_TARGET',
 });
-const K3_CFG = [...RP.byEnv.TEST.map(IZ), LOC('GBNGXT33', 'kart-test', 'kart-ui'), K3_PRX];
-const K3_KENDI0 = TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI });
+const K3_CFG = [...RP.byEnv.TEST.map(IZ), LOC('ORNGXT33', 'kart-test', 'kart-ui'), K3_PRX];
+const K3_KENDI0 = TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: ESKI });
 // Baska ortamin satirinda son istek ve KISA pencere (2 gun) var: ikisi de kendi satirina
 // SIZMAMALI (rpSon / rpPencereSa yalniz kendi ortaminin olculen tanimlarindan).
-const K3_DISI900 = TRF('GBRVPP07', 'GLOMO-PROD', '/x/', {
+const K3_DISI900 = TRF('ORRVPP07', 'GLOMO-PROD', '/x/', {
   req_7d: 900,
   req_24h: 90,
   last_seen: '20260930235959',
@@ -1202,7 +1216,11 @@ test('SR39 karisik durum (K3): karar ve sayilar YALNIZ kendi ortamindan; baska o
   // o tanimin durumu ayrinti panelinde kendi satirinda.
   assert.deepEqual(a.rpSorun, ['ORTAM_DISI'], 'baska ortamin tanim durumu kendi sorununa girdi');
   assert.deepEqual(a.rpOrtamDisi, ['PROD']);
-  assert.equal(a.rpIstek, 'yok', 'baska ortamin istegi kendi ortaminin kararina girdi (eski toplama)');
+  assert.equal(
+    a.rpIstek,
+    'yok',
+    'baska ortamin istegi kendi ortaminin kararina girdi (eski toplama)',
+  );
   assert.equal(a.rpIstekNeden, undefined);
   assert.equal(a.rpReq7, 0, 'baska ortamin istegi kendi sayisina eklendi');
   assert.equal(a.rpReq24, 0);
@@ -1222,13 +1240,16 @@ test('SR39 karisik durum (K3): karar ve sayilar YALNIZ kendi ortamindan; baska o
   assert.equal(rr.appSummary.spaRpIstek.yok, 1, 'ozet "istek yok" kirilimi K3 ile tutarsiz');
   assert.equal(rr.appSummary.spaRpIstek.var, undefined);
   // Kendi istegi de varsa: sayi YALNIZ kendi (50), 950 DEGIL; 'var' kendi istegiyle.
-  const v = k3([TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { req_7d: 50, req_24h: 5 }), K3_DISI900]);
+  const v = k3([TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { req_7d: 50, req_24h: 5 }), K3_DISI900]);
   assert.equal(v.rpIstek, 'var');
   assert.equal(v.rpReq7, 50, 'kendi sayisina baska ortamin istegi eklendi');
   assert.equal(v.rpReq24, 5);
   assert.equal(v.rpReq7Disi, 900);
   // Kendi penceresi kisa (0, 2 gun): 'kismi' kalir; 900 kismi'yi 'var'a CEVIRMEZ.
-  const k = k3([TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: '20260929000000' }), K3_DISI900]);
+  const k = k3([
+    TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { first_seen: '20260929000000' }),
+    K3_DISI900,
+  ]);
   assert.equal(k.rpIstek, 'kismi');
   assert.deepEqual(k.rpIstekNeden, ['pencere']);
   assert.equal(k.rpReq7, 0);
@@ -1239,12 +1260,15 @@ test('SR39 karisik durum (K3): karar ve sayilar YALNIZ kendi ortamindan; baska o
   assert.equal(kendi.rpIstek, 'yok');
   // Baska ortamdaki tanim OLCULEMEDIYSE (LOADERR) bilgi yazilmaz - olculmeyene 0 yazilmaz;
   // kendi karari bundan ETKILENMEZ (eskiden '2/2' yerine '1/2' olup 'olculemedi' oluyordu).
-  const olcmedi = k3([K3_KENDI0, LOADERR('GBRVPP07', 'GLOMO-PROD', 'log dosyasi yok')]);
+  const olcmedi = k3([K3_KENDI0, LOADERR('ORRVPP07', 'GLOMO-PROD', 'log dosyasi yok')]);
   assert.equal(olcmedi.rpReq7Disi, undefined);
   assert.equal(olcmedi.rpIstek, 'yok', 'baska ortamin olculemeyen tanimi kendi kararini dusurdu');
   assert.equal(olcmedi.rpOlcum, '1/1');
   // Baska ortamin olculmus 0'i bilgi olarak YAZILMAZ (kisa pencerede "7 gunde yok" degil).
-  const sifir = k3([K3_KENDI0, TRF('GBRVPP07', 'GLOMO-PROD', '/x/', { first_seen: '20260930000000' })]);
+  const sifir = k3([
+    K3_KENDI0,
+    TRF('ORRVPP07', 'GLOMO-PROD', '/x/', { first_seen: '20260930000000' }),
+  ]);
   assert.equal(sifir.rpReq7Disi, undefined, 'baska ortamin (alt sinir) 0 i bilgi olarak yazildi');
 });
 
@@ -1257,7 +1281,7 @@ const HTRF = (host, vhost, o = {}) => ({
   vhost,
   service: null,
   env: null,
-  location: `@${String(vhost).toLowerCase()}.irp.garantibbva.com.tr`,
+  location: `@${String(vhost).toLowerCase()}.irp.ornekbanka.invalid`,
   req_24h: 0,
   req_7d: 0,
   hc_24h: 0,
@@ -1297,7 +1321,7 @@ const ypKos = (trf, o = {}) => {
     [A(YP_APP, YP_NS)],
     K({
       cfg: [...PROD_ALL.map(IZ), ...(o.cfg || [])],
-      dir: o.dir || [DIZIN('GBNGXP40', YP_NS, YP_APP)],
+      dir: o.dir || [DIZIN('ORNGXP40', YP_NS, YP_APP)],
       trf,
       ...(o.k || {}),
     }),
@@ -1307,7 +1331,7 @@ const ypKos = (trf, o = {}) => {
 
 test('SR40 dizin tanimi host kipi satirina baglanir: vhost=<app>-<ns> (harf duyarsiz), istek var / gercek 0', () => {
   const v = ypKos([
-    HTRF('GBNGXP40', YP_VH, { req_7d: 120, req_24h: 12, hc_24h: 3, last_seen: '20260930101010' }),
+    HTRF('ORNGXP40', YP_VH, { req_7d: 120, req_24h: 12, hc_24h: 3, last_seen: '20260930101010' }),
   ]);
   assert.equal(v.a.rp, 'tanimli');
   assert.deepEqual(v.a.rpYol, ['dizin']);
@@ -1317,59 +1341,62 @@ test('SR40 dizin tanimi host kipi satirina baglanir: vhost=<app>-<ns> (harf duya
   assert.equal(v.a.rpSon, '20260930101010');
   assert.equal(v.a.rpOlcum, '1/1');
   assert.equal(v.t[0].vhost, YP_VH, 'ayrinti panelinde eslesen vhost yok');
-  assert.equal(v.t[0].trafik.ad, `${YP_VH}.irp.garantibbva.com.tr`, 'server_name gosterilmiyor');
+  assert.equal(v.t[0].trafik.ad, `${YP_VH}.irp.ornekbanka.invalid`, 'server_name gosterilmiyor');
   assert.equal(v.r.rpKapsam.hostKipi, true);
   // GERCEK 0: tam pencere, sampled=0, kova yok -> "istek yok".
-  const s = ypKos([HTRF('GBNGXP40', YP_VH)]);
+  const s = ypKos([HTRF('ORNGXP40', YP_VH)]);
   assert.equal(s.a.rpIstek, 'yok');
   assert.equal(s.a.rpReq7, 0);
   assert.equal(s.a.rpPencereSa, 720);
   // Diskteki harf (Odeme-UI...) eslesmeyi bozmaz.
-  assert.equal(ypKos([HTRF('GBNGXP40', 'Odeme-UI-App-V1-Odeme-Prod', { req_7d: 4 })]).a.rpIstek, 'var');
+  assert.equal(
+    ypKos([HTRF('ORNGXP40', 'Odeme-UI-App-V1-Odeme-Prod', { req_7d: 4 })]).a.rpIstek,
+    'var',
+  );
   // Yedek aday conf_name govdesi: conf.d ve application-confs ayni adla yazilir.
-  const yedek = ypKos([HTRF('GBNGXP40', `${YP_VH}-2`, { req_7d: 7 })], {
-    dir: [DIZIN('GBNGXP40', YP_NS, YP_APP, { conf_name: `${YP_VH}-2.conf` })],
+  const yedek = ypKos([HTRF('ORNGXP40', `${YP_VH}-2`, { req_7d: 7 })], {
+    dir: [DIZIN('ORNGXP40', YP_NS, YP_APP, { conf_name: `${YP_VH}-2.conf` })],
   });
   assert.equal(yedek.a.rpIstek, 'var', 'conf_name govdesi denenmedi');
   // ek-prod ile baglanan dizin satiri (ns '-prod'suz): vhost dizin satirinin KENDI ns'iyle.
-  const ek = ypKos([HTRF('GBNGXP40', `${YP_APP}-odeme`, { req_7d: 9 })], {
-    dir: [DIZIN('GBNGXP40', 'odeme', YP_APP)],
+  const ek = ypKos([HTRF('ORNGXP40', `${YP_APP}-odeme`, { req_7d: 9 })], {
+    dir: [DIZIN('ORNGXP40', 'odeme', YP_APP)],
   });
   assert.equal(ek.a.rpEsles, 'ek-prod');
   assert.equal(ek.a.rpIstek, 'var');
   // Pencere kurallari location kipiyle ayni: sampled=1 / kisa pencere / first_seen yok -> kismi.
   for (const o of [{ sampled: 1 }, { first_seen: '20260930220000' }, { first_seen: null }]) {
-    const k = ypKos([HTRF('GBNGXP40', YP_VH, o)]).a;
+    const k = ypKos([HTRF('ORNGXP40', YP_VH, o)]).a;
     assert.equal(k.rpIstek, 'kismi', `0 istek alt sinir degil: ${JSON.stringify(o)}`);
     assert.deepEqual(k.rpIstekNeden, ['pencere']);
   }
   // 7 GUN SINIRI host kipinde de: 167 saat -> kismi(pencere), 168 saat -> yok (kova yok).
-  const h167 = ypKos([HTRF('GBNGXP40', YP_VH, { first_seen: '20260924010000' })]).a;
+  const h167 = ypKos([HTRF('ORNGXP40', YP_VH, { first_seen: '20260924010000' })]).a;
   assert.equal(h167.rpIstek, 'kismi', 'host kipinde 167 saatlik 0 "yok" sayildi');
   assert.deepEqual(h167.rpIstekNeden, ['pencere']);
-  const h168 = ypKos([HTRF('GBNGXP40', YP_VH, { first_seen: '20260924000000' })]).a;
+  const h168 = ypKos([HTRF('ORNGXP40', YP_VH, { first_seen: '20260924000000' })]).a;
   assert.equal(h168.rpIstek, 'yok');
   assert.equal(h168.rpPencereSa, 168);
 });
 
 test('SR41 host kipinde eslesme YOKSA olculemedi (0 DEGIL): satir yok / host kipi yok / host yok / HLOADERR / HOST|*', () => {
-  const baska = HTRF('GBNGXP41', 'baska-app-odeme-prod'); // host kipi o gun calisti
+  const baska = HTRF('ORNGXP41', 'baska-app-odeme-prod'); // host kipi o gun calisti
   for (const [ad, trf, neden] of [
-    ['vhost satiri yok', [HTRF('GBNGXP40', 'baska-app-odeme-prod')], 'satir-yok'],
+    ['vhost satiri yok', [HTRF('ORNGXP40', 'baska-app-odeme-prod')], 'satir-yok'],
     ['sunucuda hic satir yok', [baska], 'host'],
     [
       'sunucuda yalniz location kipi satiri',
-      [TRF('GBNGXP40', 'GLOMO-PROD', '/glomo/'), baska],
+      [TRF('ORNGXP40', 'GLOMO-PROD', '/glomo/'), baska],
       'host-kipi-yok',
     ],
     [
       'HLOADERR (access_log off)',
-      [HERR('GBNGXP40', YP_VH, 'access_log off - vhost loglamiyor'), baska],
+      [HERR('ORNGXP40', YP_VH, 'access_log off - vhost loglamiyor'), baska],
       'log',
     ],
     [
       'HOST|* tarih hatasi olcumu ezer',
-      [HTRF('GBNGXP40', YP_VH, { req_7d: 5 }), LOADERR('GBNGXP40', '*', 'tarih hesaplanamadi')],
+      [HTRF('ORNGXP40', YP_VH, { req_7d: 5 }), LOADERR('ORNGXP40', '*', 'tarih hesaplanamadi')],
       'log',
     ],
   ]) {
@@ -1379,15 +1406,15 @@ test('SR41 host kipinde eslesme YOKSA olculemedi (0 DEGIL): satir yok / host kip
     assert.equal(t[0].trafik.durum, 'olculemedi', ad);
     assert.equal(t[0].trafik.neden, neden, ad);
   }
-  const herr = ypKos([HERR('GBNGXP40', YP_VH, 'access_log off - vhost loglamiyor')]).t[0];
+  const herr = ypKos([HERR('ORNGXP40', YP_VH, 'access_log off - vhost loglamiyor')]).t[0];
   assert.match(herr.trafik.hata, /access_log off/, 'HLOADERR sebebi panele tasinmiyor');
   assert.equal(herr.vhost, YP_VH);
   // HLOADERR baska bir vhost'un location kipi hatasini ZEHIRLEMEZ (ayri haritalar).
-  const loc = LOC('GBNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
+  const loc = LOC('ORNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
   const ayri = ypKos(
     [
-      TRF('GBNGXP40', 'GLOMO-PROD', '/odeme/', { req_7d: 2 }),
-      HERR('GBNGXP40', 'GLOMO-PROD', 'ayni adli host kipi hatasi'),
+      TRF('ORNGXP40', 'GLOMO-PROD', '/odeme/', { req_7d: 2 }),
+      HERR('ORNGXP40', 'GLOMO-PROD', 'ayni adli host kipi hatasi'),
     ],
     { cfg: [loc], dir: [] },
   );
@@ -1399,50 +1426,54 @@ test('SR41 host kipinde eslesme YOKSA olculemedi (0 DEGIL): satir yok / host kip
 });
 
 test('SR42 kova (eslesmeyen Host / IP / alansiz) uygulamaya EKLENMEZ ama o sunucudaki 0 i alt sinir yapar', () => {
-  const sifir = HTRF('GBNGXP40', YP_VH);
+  const sifir = HTRF('ORNGXP40', YP_VH);
   for (const loc of ['@_', '@ip', '@-']) {
-    const { a, t, r } = ypKos([sifir, HKOVA('GBNGXP40', loc, 31)]);
+    const { a, t, r } = ypKos([sifir, HKOVA('ORNGXP40', loc, 31)]);
     assert.equal(a.rpIstek, 'kismi', `${loc}: atanamayan istek varken "istek yok" dendi`);
     assert.deepEqual(a.rpIstekNeden, ['eslesmeyen-host']);
     assert.equal(a.rpReq7, 0, `${loc}: kova uygulamaya eklendi`);
     assert.equal(t[0].trafik.atanmamis, 31);
-    const h = r.rpKapsam.hostlar.find((x) => x.host === 'GBNGXP40');
+    const h = r.rpKapsam.hostlar.find((x) => x.host === 'ORNGXP40');
     assert.ok(h.kova, `${loc}: kova sunucu kapsaminda gorunmuyor`);
   }
   // Kova BASKA sunucudaysa bu tanimin 0'i etkilenmez.
-  assert.equal(ypKos([sifir, HKOVA('GBNGXP41', '@_', 31)]).a.rpIstek, 'yok');
+  assert.equal(ypKos([sifir, HKOVA('ORNGXP41', '@_', 31)]).a.rpIstek, 'yok');
   // Istek varsa kova "var"i dusurmez.
   assert.equal(
-    ypKos([HTRF('GBNGXP40', YP_VH, { req_7d: 3 }), HKOVA('GBNGXP40', '@_', 31)]).a.rpIstek,
+    ypKos([HTRF('ORNGXP40', YP_VH, { req_7d: 3 }), HKOVA('ORNGXP40', '@_', 31)]).a.rpIstek,
     'var',
   );
   // Kova bir uygulamanin vhost'u sayilmaz ('_' adli dizin satiri yok sayilir).
-  const kovaApp = ypKos([HKOVA('GBNGXP40', '@_', 31)]);
+  const kovaApp = ypKos([HKOVA('ORNGXP40', '@_', 31)]);
   assert.equal(kovaApp.t[0].trafik.neden, 'satir-yok');
 });
 
 test('SR43 eski analyzer (hicbir yerde "@" satiri yok): dizin tanimi kaynak-yok (eski davranis); yeni PROD servis vhost u location kipinde OLCULUR', () => {
   // Eski betik/analyzer: yeni PROD'da yalniz servis vhost'larinin LOAD satirlari var.
-  const eski = ypKos([TRF('GBRVPP01', 'GLOMO-PROD', '/x/'), TRF('GBNGXP40', 'GLOMO-PROD', '/g/')]);
-  assert.equal(eski.a.rpIstek, 'kaynak-yok', 'host kipi hic yokken dizin tanimi olculemedi/yok oldu');
+  const eski = ypKos([TRF('ORRVPP01', 'GLOMO-PROD', '/x/'), TRF('ORNGXP40', 'GLOMO-PROD', '/g/')]);
+  assert.equal(
+    eski.a.rpIstek,
+    'kaynak-yok',
+    'host kipi hic yokken dizin tanimi olculemedi/yok oldu',
+  );
   assert.equal(eski.t[0].trafik, null);
   assert.equal(eski.r.rpKapsam.hostKipi, false);
   const hostOf = (r, h) => r.rpKapsam.hostlar.find((x) => x.host === h);
   // Sunucu durumu: location kipi satiri olan yeni PROD sunucusu 'var' (servis vhost'lari
   // olculuyor); hic satiri olmayan yeni PROD sunucusu host kipi yokken 'kaynak-yok'.
-  assert.equal(hostOf(eski.r, 'GBNGXP40').trafik, 'var');
-  assert.equal(hostOf(eski.r, 'GBNGXP41').trafik, 'kaynak-yok');
-  assert.equal(hostOf(eski.r, 'GBRVPP02').trafik, 'satir-yok', 'eski PROD kaynak-yok sayildi');
+  assert.equal(hostOf(eski.r, 'ORNGXP40').trafik, 'var');
+  assert.equal(hostOf(eski.r, 'ORNGXP41').trafik, 'kaynak-yok');
+  assert.equal(hostOf(eski.r, 'ORRVPP02').trafik, 'satir-yok', 'eski PROD kaynak-yok sayildi');
   // Host kipi calisinca: satiri olmayan yeni PROD sunucusu artik 'satir-yok' (olculemedi
   // tarafi), host kipi satir sayisi kapsamda.
-  const yeni = ypKos([HTRF('GBNGXP40', YP_VH)]);
-  assert.equal(hostOf(yeni.r, 'GBNGXP40').trafik, 'var');
-  assert.equal(hostOf(yeni.r, 'GBNGXP40').hostKipi, 1);
-  assert.equal(hostOf(yeni.r, 'GBNGXP41').trafik, 'satir-yok');
+  const yeni = ypKos([HTRF('ORNGXP40', YP_VH)]);
+  assert.equal(hostOf(yeni.r, 'ORNGXP40').trafik, 'var');
+  assert.equal(hostOf(yeni.r, 'ORNGXP40').hostKipi, 1);
+  assert.equal(hostOf(yeni.r, 'ORNGXP41').trafik, 'satir-yok');
   // YENI PROD SERVIS VHOST'U (<SERVICE>-PROD.conf, location'li): location kipinde olculur
   // (eskiden rol 'prod-yeni' oldugu icin hep kaynak-yok'tu).
-  const loc = LOC('GBNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
-  const s = ypKos([TRF('GBNGXP40', 'GLOMO-PROD', '/odeme/', { req_7d: 6 })], {
+  const loc = LOC('ORNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
+  const s = ypKos([TRF('ORNGXP40', 'GLOMO-PROD', '/odeme/', { req_7d: 6 })], {
     cfg: [loc],
     dir: [],
   });
@@ -1450,17 +1481,23 @@ test('SR43 eski analyzer (hicbir yerde "@" satiri yok): dizin tanimi kaynak-yok 
   assert.equal(s.a.rpIstek, 'var', 'yeni PROD servis vhost u olculmuyor');
   // Eski PROD proxy + yeni PROD dizin, ikisi de olculmus 0 (tam pencere): artik "yok"
   // (eskiden dizin kaynak-yok oldugu icin hep 'kismi' idi - SR15).
-  const iki = ypKos([TRF('GBRVPP01', 'GLOMO-PROD', '/x/'), HTRF('GBNGXP40', YP_VH)], {
-    cfg: [PRX('GBRVPP01', `${YP_VH}.apps.fw.garanti.com.tr`)],
+  const iki = ypKos([TRF('ORRVPP01', 'GLOMO-PROD', '/x/'), HTRF('ORNGXP40', YP_VH)], {
+    cfg: [PRX('ORRVPP01', `${YP_VH}.apps.fw.sirket.invalid`)],
   });
   assert.deepEqual(iki.a.rpYol, ['dizin', 'proxy']);
   assert.equal(iki.a.rpIstek, 'yok');
   assert.equal(iki.a.rpOlcum, '2/2');
   // Biri olculemedi (HLOADERR) -> 'olculemedi'; biri istek aliyor -> 'var'.
   assert.equal(
-    ypKos([TRF('GBRVPP01', 'GLOMO-PROD', '/x/'), HERR('GBNGXP40', YP_VH, 'log dosyasi yok: /web_log/spa-prod-bmw-nginx.log')], {
-      cfg: [PRX('GBRVPP01', `${YP_VH}.apps.fw.garanti.com.tr`)],
-    }).a.rpIstek,
+    ypKos(
+      [
+        TRF('ORRVPP01', 'GLOMO-PROD', '/x/'),
+        HERR('ORNGXP40', YP_VH, 'log dosyasi yok: /web_log/spa-prod-bmw-nginx.log'),
+      ],
+      {
+        cfg: [PRX('ORRVPP01', `${YP_VH}.apps.fw.sirket.invalid`)],
+      },
+    ).a.rpIstek,
     'olculemedi',
   );
 });
@@ -1471,15 +1508,17 @@ test('SR45 conf_name yedegi BASKA uygulamanin vhost unu baglamaz: yalniz <app>-<
   // Analyzer conf_name'i cekirdek eslesmesiyle yazar: 'ui/odeme-prod' satirina
   // 'kart-ui-odeme-prod.conf' (servis oneki 'kart' atilarak) dusebilir. Kosulsuz yedek,
   // ui'nin kendi vhost satiri yokken kart-ui'nin 500 istegini ui'ye "kesin var" yaziyordu.
-  const H = 'GBNGXP40';
+  const H = 'ORNGXP40';
   const disc = [A('kart-ui', 'odeme-prod'), A('ui', 'odeme-prod')];
-  const kos = (dir, trf) =>
-    by(run(disc, K({ cfg: PROD_ALL.map(IZ), dir, trf })));
+  const kos = (dir, trf) => by(run(disc, K({ cfg: PROD_ALL.map(IZ), dir, trf })));
   const kartTrf = [HTRF(H, 'kart-ui-odeme-prod', { req_7d: 500 })];
   for (const [ad, dir] of [
     [
       'kart-ui dizini de var',
-      [DIZIN(H, 'odeme-prod', 'kart-ui'), DIZIN(H, 'odeme-prod', 'ui', { conf_name: 'kart-ui-odeme-prod.conf' })],
+      [
+        DIZIN(H, 'odeme-prod', 'kart-ui'),
+        DIZIN(H, 'odeme-prod', 'ui', { conf_name: 'kart-ui-odeme-prod.conf' }),
+      ],
     ],
     ['yalniz ui dizini', [DIZIN(H, 'odeme-prod', 'ui', { conf_name: 'kart-ui-odeme-prod.conf' })]],
   ]) {
@@ -1492,7 +1531,8 @@ test('SR45 conf_name yedegi BASKA uygulamanin vhost unu baglamaz: yalniz <app>-<
     assert.equal(t.vhost, '', `${ad}: tanim baska uygulamanin vhost una baglandi`);
   }
   assert.equal(
-    kos([DIZIN(H, 'odeme-prod', 'kart-ui'), DIZIN(H, 'odeme-prod', 'ui')], kartTrf)['kart-ui'].rpReq7,
+    kos([DIZIN(H, 'odeme-prod', 'kart-ui'), DIZIN(H, 'odeme-prod', 'ui')], kartTrf)['kart-ui']
+      .rpReq7,
     500,
   );
   // '-N' yedegi BASKA bir dizin satirinin '<app>-<ns>'i ise aday degil (o ad onun vhost'u).
@@ -1514,10 +1554,15 @@ test('SR45 conf_name yedegi BASKA uygulamanin vhost unu baglamaz: yalniz <app>-<
 });
 
 test('SR46 ayni conf.d adina iki dizin satiri (<app>-<ns> bolme carpismasi): trafik AYRILAMAZ, "kesin var" yazilmaz', () => {
-  const H = 'GBNGXP40';
+  const H = 'ORNGXP40';
   const trf = [HTRF(H, 'kart-ui-x-prod', { req_7d: 42 })];
   const iki = [DIZIN(H, 'x-prod', 'kart-ui'), DIZIN(H, 'ui-x-prod', 'kart')];
-  const r = by(run([A('kart-ui', 'x-prod'), A('kart', 'ui-x-prod')], K({ cfg: PROD_ALL.map(IZ), dir: iki, trf })));
+  const r = by(
+    run(
+      [A('kart-ui', 'x-prod'), A('kart', 'ui-x-prod')],
+      K({ cfg: PROD_ALL.map(IZ), dir: iki, trf }),
+    ),
+  );
   for (const app of ['kart-ui', 'kart']) {
     assert.equal(r[app].rp, 'tanimli', app);
     assert.equal(r[app].rpEsles, 'belirsiz', `${app}: carpisan dizin tanimi kesin sayildi`);
@@ -1525,7 +1570,9 @@ test('SR46 ayni conf.d adina iki dizin satiri (<app>-<ns> bolme carpismasi): tra
     assert.equal(r[app].rpReq7, undefined, app);
   }
   // Diger satirin uygulamasi kesifte olmasa da ad isgal edilmis: yine ayrilamaz.
-  const tek = by(run([A('kart-ui', 'x-prod')], K({ cfg: PROD_ALL.map(IZ), dir: iki, trf })))['kart-ui'];
+  const tek = by(run([A('kart-ui', 'x-prod')], K({ cfg: PROD_ALL.map(IZ), dir: iki, trf })))[
+    'kart-ui'
+  ];
   assert.equal(tek.rpIstek, 'ayrilamaz');
   // Carpisma yoksa kesin ve 'var'.
   const yalniz = by(
@@ -1539,17 +1586,27 @@ test('SR46 ayni conf.d adina iki dizin satiri (<app>-<ns> bolme carpismasi): tra
 test('SR47 host kipinde sampled=1 kovadan geliyorsa (pencere tam) neden yalniz "eslesmeyen-host"; pencere kisaysa ikisi', () => {
   // nginx_spa_traffic.sh (2026-10-02): logda @_/@ip/@- istegi varsa o logun uygulamalari
   // sampled=1. Pencere tam iken bunun sebebi pencere DEGIL: ipucu "pencere kisa" demesin.
-  const kova = HKOVA('GBNGXP40', '@ip', 31);
-  const tam = ypKos([HTRF('GBNGXP40', YP_VH, { sampled: 1 }), kova]).a;
+  const kova = HKOVA('ORNGXP40', '@ip', 31);
+  const tam = ypKos([HTRF('ORNGXP40', YP_VH, { sampled: 1 }), kova]).a;
   assert.equal(tam.rpIstek, 'kismi');
-  assert.deepEqual(tam.rpIstekNeden, ['eslesmeyen-host'], 'kova kaynakli sampled pencere diye yazildi');
-  const kisa = ypKos([HTRF('GBNGXP40', YP_VH, { sampled: 1, first_seen: '20260930220000' }), kova]).a;
+  assert.deepEqual(
+    tam.rpIstekNeden,
+    ['eslesmeyen-host'],
+    'kova kaynakli sampled pencere diye yazildi',
+  );
+  const kisa = ypKos([
+    HTRF('ORNGXP40', YP_VH, { sampled: 1, first_seen: '20260930220000' }),
+    kova,
+  ]).a;
   assert.deepEqual(kisa.rpIstekNeden, ['pencere', 'eslesmeyen-host']);
   // Kova YOKSA sampled=1 pencere sayilir (eski veri okunamadi) - alt sinir dusmez.
-  assert.deepEqual(ypKos([HTRF('GBNGXP40', YP_VH, { sampled: 1 })]).a.rpIstekNeden, ['pencere']);
+  assert.deepEqual(ypKos([HTRF('ORNGXP40', YP_VH, { sampled: 1 })]).a.rpIstekNeden, ['pencere']);
   // Location kipi bu istisnayi ALMAZ: sampled=1 daima pencere.
-  const loc = LOC('GBNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
-  const l = ypKos([TRF('GBNGXP40', 'GLOMO-PROD', '/odeme/', { sampled: 1 }), kova], { cfg: [loc], dir: [] }).a;
+  const loc = LOC('ORNGXP40', YP_NS, YP_APP, { vhost: 'GLOMO-PROD', location_path: '/odeme/' });
+  const l = ypKos([TRF('ORNGXP40', 'GLOMO-PROD', '/odeme/', { sampled: 1 }), kova], {
+    cfg: [loc],
+    dir: [],
+  }).a;
   assert.deepEqual(l.rpIstekNeden, ['pencere']);
 });
 
@@ -1558,9 +1615,16 @@ test('SR47 host kipinde sampled=1 kovadan geliyorsa (pencere tam) neden yalniz "
 // DEGISTIRMEZ. Eski davranis (toplama) geri gelirse asagidaki her vaka kirmiziya doner.
 test('SR48 K3: kendi ortaminin tanimi olculemediyse baska ortamin 900 istegi karari KURTARMAZ (olculemedi / kaynak-yok / ayrilamaz)', () => {
   // (b) Kendi tanimi LOADERR: eskiden PROD RP'nin 900 istegi satira 'var 900' yazdiriyordu.
-  const b = k3([LOADERR('GBNGXT33', 'KART-TEST', 'log dosyasi yok: /web_log/kart.log'), K3_DISI900]);
+  const b = k3([
+    LOADERR('ORNGXT33', 'KART-TEST', 'log dosyasi yok: /web_log/kart.log'),
+    K3_DISI900,
+  ]);
   assert.equal(b.rp, 'tanimli');
-  assert.equal(b.rpIstek, 'olculemedi', 'baska ortamin istegi kendi olculemeyen taniminin yerine gecti');
+  assert.equal(
+    b.rpIstek,
+    'olculemedi',
+    'baska ortamin istegi kendi olculemeyen taniminin yerine gecti',
+  );
   assert.equal(b.rpOlcum, '0/1');
   assert.equal(b.rpReq7, undefined, 'olculemeyen hucreye sayi yazildi');
   assert.equal(b.rpReq24, undefined);
@@ -1572,33 +1636,41 @@ test('SR48 K3: kendi ortaminin tanimi olculemediyse baska ortamin 900 istegi kar
   assert.equal(h.rpReq7Disi, 900);
   // kaynak-yok: PROD uygulamasinin kendi tanimi yalniz yeni PROD dizini ve o gun HICBIR yerde
   // host kipi satiri yok; TEST RP'deki (ortam disi) include tanimi 900 istek aliyor.
-  const ky = ypKos([TRF('GBNGXT33', 'KART-TEST', `/${YP_APP}/`, { req_7d: 900 })], {
-    cfg: [LOC('GBNGXT33', YP_NS, YP_APP)],
+  const ky = ypKos([TRF('ORNGXT33', 'KART-TEST', `/${YP_APP}/`, { req_7d: 900 })], {
+    cfg: [LOC('ORNGXT33', YP_NS, YP_APP)],
   }).a;
   assert.equal(ky.rp, 'tanimli');
   assert.deepEqual(ky.rpYol, ['dizin']);
   assert.deepEqual(ky.rpOrtamDisi, ['TEST']);
-  assert.equal(ky.rpIstek, 'kaynak-yok', 'baska ortamin istegi olcum kaynagi olmayan kendi taniminin yerine gecti');
+  assert.equal(
+    ky.rpIstek,
+    'kaynak-yok',
+    'baska ortamin istegi olcum kaynagi olmayan kendi taniminin yerine gecti',
+  );
   assert.equal(ky.rpOlcum, undefined);
   assert.equal(ky.rpReq7, undefined);
   assert.equal(ky.rpReq7Disi, 900);
   // ayrilamaz: kendi (PROD dizin) tanimi conf.d ad carpismasiyla 'belirsiz' (SR46); TEST
   // RP'deki ortam disi tanim 900 istek aliyor -> yine 'ayrilamaz', sayi yok.
-  const H = 'GBNGXP40';
+  const H = 'ORNGXP40';
   const ay = by(
     run(
       [A('kart-ui', 'x-prod'), A('kart', 'ui-x-prod')],
       K({
-        cfg: [...PROD_ALL.map(IZ), LOC('GBNGXT33', 'x-prod', 'kart-ui')],
+        cfg: [...PROD_ALL.map(IZ), LOC('ORNGXT33', 'x-prod', 'kart-ui')],
         dir: [DIZIN(H, 'x-prod', 'kart-ui'), DIZIN(H, 'ui-x-prod', 'kart')],
         trf: [
           HTRF(H, 'kart-ui-x-prod', { req_7d: 42 }),
-          TRF('GBNGXT33', 'KART-TEST', '/kart-ui/', { req_7d: 900 }),
+          TRF('ORNGXT33', 'KART-TEST', '/kart-ui/', { req_7d: 900 }),
         ],
       }),
     ),
   )['kart-ui'];
-  assert.equal(ay.rpIstek, 'ayrilamaz', 'baska ortamin istegi ayrilamayan kendi taniminin yerine gecti');
+  assert.equal(
+    ay.rpIstek,
+    'ayrilamaz',
+    'baska ortamin istegi ayrilamayan kendi taniminin yerine gecti',
+  );
   assert.equal(ay.rpEsles, 'belirsiz');
   assert.equal(ay.rpReq7, undefined);
   assert.equal(ay.rpReq7Disi, 900);
@@ -1612,30 +1684,47 @@ test('SR49 K3: YALNIZ baska ortamda tanimli -> rp tanimsiz, rpIstek uygulanamaz;
   const rr = run(K3_DISC, K({ cfg: cfgDisi, trf: [K3_DISI900] }));
   const c = by(rr)['kart-ui'];
   assert.equal(c.rp, 'tanimsiz');
-  assert.equal(c.rpIstek, 'uygulanamaz', 'kendi ortaminda tanimsiz uygulamada RP istegi baska ortamdan hesaplandi');
+  assert.equal(
+    c.rpIstek,
+    'uygulanamaz',
+    'kendi ortaminda tanimsiz uygulamada RP istegi baska ortamdan hesaplandi',
+  );
   assert.deepEqual(c.rpSorun, ['ORTAM_DISI']);
   assert.deepEqual(c.rpOrtamDisi, ['PROD']);
   assert.equal(c.rpReq7Disi, 900, 'baska ortamin olculmus istegi bilgi olarak yazilmadi');
-  for (const f of ['rpReq7', 'rpReq24', 'rpOlcum', 'rpIstekNeden', 'rpSon', 'rpPencereSa', 'rpYol', 'rpHost', 'rpEsles'])
+  for (const f of [
+    'rpReq7',
+    'rpReq24',
+    'rpOlcum',
+    'rpIstekNeden',
+    'rpSon',
+    'rpPencereSa',
+    'rpYol',
+    'rpHost',
+    'rpEsles',
+  ])
     assert.equal(c[f], undefined, `${f} baska ortamin taniminden yazildi`);
   assert.equal(rr.appSummary.spaRp.tanimsiz, 1);
   assert.equal(rr.appSummary.spaRpIstek.uygulanamaz, 1);
   // Ortamin bir RP host'u taranmadi: rp 'olculemedi' (host-taranmadi), rpIstek yine
   // 'uygulanamaz' (mevcut tablo: kendi ortaminda tanim bulunamayan satirda istek sorulmaz);
   // 900 'olculemedi'yi de degistirmez.
-  const o = k3([K3_DISI900], [IZ('GBNGXT33'), K3_PRX]);
+  const o = k3([K3_DISI900], [IZ('ORNGXT33'), K3_PRX]);
   assert.equal(o.rp, 'olculemedi');
   assert.equal(o.rpNeden, 'host-taranmadi');
   assert.equal(o.rpIstek, 'uygulanamaz');
   assert.equal(o.rpReq7Disi, 900);
   // Baska ortamin tanimi olculemedi (LOADERR) ya da olculmus 0: bilgi yazilmaz.
-  assert.equal(k3([LOADERR('GBRVPP07', 'GLOMO-PROD', 'izin yok')], cfgDisi).rpReq7Disi, undefined);
-  assert.equal(k3([TRF('GBRVPP07', 'GLOMO-PROD', '/x/')], cfgDisi).rpReq7Disi, undefined);
+  assert.equal(k3([LOADERR('ORRVPP07', 'GLOMO-PROD', 'izin yok')], cfgDisi).rpReq7Disi, undefined);
+  assert.equal(k3([TRF('ORRVPP07', 'GLOMO-PROD', '/x/')], cfgDisi).rpReq7Disi, undefined);
   // Iki baska ortam tanimi: biri 900, biri olculemedi -> bilgi yalniz olculenin istegi (900);
   // olculemeyen tanim toplami bozmaz (NaN / 0 yazilmaz).
   const iki = k3(
-    [K3_DISI900, LOADERR('GBRVPP08', 'GLOMO-PROD', 'izin yok')],
-    [...cfgDisi, PRX('GBRVPP08', 'kart-ui-kart-test.apps-t.fw.garanti.com.tr', { location_path: '/y/' })],
+    [K3_DISI900, LOADERR('ORRVPP08', 'GLOMO-PROD', 'izin yok')],
+    [
+      ...cfgDisi,
+      PRX('ORRVPP08', 'kart-ui-kart-test.apps-t.fw.sirket.invalid', { location_path: '/y/' }),
+    ],
   );
   assert.equal(iki.rpReq7Disi, 900);
   // Baska ortamin AYRILAMAYAN tanimi ('<app>-<ns>' carpismasi -> belirsiz): istegi bu
@@ -1644,13 +1733,17 @@ test('SR49 K3: YALNIZ baska ortamda tanimli -> rp tanimsiz, rpIstek uygulanamaz;
     run(
       [A('kart-ui', 'x-prod'), A('kart', 'ui-x-prod')],
       K({
-        cfg: [...PROD_ALL.map(IZ), LOC('GBNGXT33', '', 'kart-ui-x-prod')],
-        trf: [TRF('GBNGXT33', 'KART-TEST', '/kart-ui-x-prod/', { req_7d: 900 })],
+        cfg: [...PROD_ALL.map(IZ), LOC('ORNGXT33', '', 'kart-ui-x-prod')],
+        trf: [TRF('ORNGXT33', 'KART-TEST', '/kart-ui-x-prod/', { req_7d: 900 })],
       }),
     ),
   );
   for (const app of ['kart-ui', 'kart']) {
-    assert.deepEqual(bel[app].rpOrtamDisi, ['TEST'], `${app}: belirsiz tanim baglanmadi (test bos)`);
+    assert.deepEqual(
+      bel[app].rpOrtamDisi,
+      ['TEST'],
+      `${app}: belirsiz tanim baglanmadi (test bos)`,
+    );
     assert.equal(bel[app].rpReq7Disi, undefined, `${app}: ayrilamayan tanimin istegi yazildi`);
   }
 });
@@ -1662,24 +1755,27 @@ test('SR50 K3: ozet kirilimlari suzgec kodlariyla tutarli; baska ortamin zayif/s
   //   c-ui  kendi ortaminda tanim yok            -> rp 'tanimsiz', rpIstek 'uygulanamaz'
   // Eski toplama davranisinda ucu de 'var 900' idi; "RP istegi var" suzgeci ucunu getirirdi.
   const prx = (app, loc) =>
-    PRX('GBRVPP07', `${app}-kart-test.apps-t.fw.garanti.com.tr`, {
+    PRX('ORRVPP07', `${app}-kart-test.apps-t.fw.sirket.invalid`, {
       location_path: loc,
       status: 'NON_PROD_TARGET',
     });
   const cfg = [
     ...RP.byEnv.TEST.map(IZ),
-    LOC('GBNGXT33', 'kart-test', 'a-ui'),
-    LOC('GBNGXT33', 'kart-test', 'b-ui', { vhost: 'B-TEST' }),
+    LOC('ORNGXT33', 'kart-test', 'a-ui'),
+    LOC('ORNGXT33', 'kart-test', 'b-ui', { vhost: 'B-TEST' }),
     prx('a-ui', '/a/'),
     prx('b-ui', '/b/'),
     prx('c-ui', '/c/'),
   ];
   const trf = [
-    TRF('GBNGXT33', 'KART-TEST', '/a-ui/'),
-    LOADERR('GBNGXT33', 'B-TEST', 'izin yok'),
-    ...['/a/', '/b/', '/c/'].map((l) => TRF('GBRVPP07', 'GLOMO-PROD', l, { req_7d: 900 })),
+    TRF('ORNGXT33', 'KART-TEST', '/a-ui/'),
+    LOADERR('ORNGXT33', 'B-TEST', 'izin yok'),
+    ...['/a/', '/b/', '/c/'].map((l) => TRF('ORRVPP07', 'GLOMO-PROD', l, { req_7d: 900 })),
   ];
-  const r = run([A('a-ui', 'kart-test'), A('b-ui', 'kart-test'), A('c-ui', 'kart-test')], K({ cfg, trf }));
+  const r = run(
+    [A('a-ui', 'kart-test'), A('b-ui', 'kart-test'), A('c-ui', 'kart-test')],
+    K({ cfg, trf }),
+  );
   const b = by(r);
   assert.deepEqual(
     ['a-ui', 'b-ui', 'c-ui'].map((x) => [b[x].rp, b[x].rpIstek, b[x].rpReq7, b[x].rpReq7Disi]),
@@ -1700,8 +1796,8 @@ test('SR50 K3: ozet kirilimlari suzgec kodlariyla tutarli; baska ortamin zayif/s
       [A('odeme-ui', 'odeme-prod')],
       K({
         cfg: [
-          PRX('GBRVPP07', 'odeme-ui-odeme-prod.apps.fw.garanti.com.tr'),
-          LOC('GBNGXT33', '', 'odeme-ui-odeme-prod', { status: 'BROKEN_INCLUDE' }),
+          PRX('ORRVPP07', 'odeme-ui-odeme-prod.apps.fw.sirket.invalid'),
+          LOC('ORNGXT33', '', 'odeme-ui-odeme-prod', { status: 'BROKEN_INCLUDE' }),
         ],
       }),
     ),
@@ -1741,7 +1837,8 @@ function sahteDb(ayar = {}) {
     if (t.includes('FROM dbo.BMW_Spa_Discovery_Run')) return ver(ayar.runs || []);
     if (t.includes('FROM dbo.BMW_Spa_Discovery d')) return ver(ayar.disc || T_DISC);
     if (t.includes('FROM dbo.BMW_Openshift_Route_Inventory')) return (dus('envanter'), ver([]));
-    if (t.includes('FROM dbo.BMW_Application_Usage')) return (dus('dynatrace'), ver(ayar.usage || []));
+    if (t.includes('FROM dbo.BMW_Application_Usage'))
+      return (dus('dynatrace'), ver(ayar.usage || []));
     if (t.includes('FROM dbo.Nginx_Config_Audit'))
       return (dus('cfg'), ver(suz(ayar.cfg || T_TANIM)));
     if (t.includes('FROM dbo.Nginx_Intranet_Audit')) return (dus('dir'), ver(suz(ayar.dir)));
@@ -1791,12 +1888,12 @@ test('SR24 uc nokta: envanter / Dynatrace / config sorgusu DUSERSE olculemedi; h
 
 test('SR24b uc nokta: upstream sorgusu DUSERSE takma adli PROD proxy li uygulama "tanimsiz" olmaz', async () => {
   const disc = [A('eski-portal', 'odeme-prod')];
-  const cfg = [...PROD_ALL.map(IZ), PRX('GBRVPP02', 'onur')];
+  const cfg = [...PROD_ALL.map(IZ), PRX('ORRVPP02', 'onur')];
   const ups = [
     {
-      host: 'GBRVPP02',
+      host: 'ORRVPP02',
       name: 'onur',
-      server: 'eski-portal-odeme-prod.apps.fw.garanti.com.tr:443',
+      server: 'eski-portal-odeme-prod.apps.fw.sirket.invalid:443',
       scan_date: GUN,
     },
   ];
@@ -1850,34 +1947,56 @@ test('SR26a yalniz ARK: ARK disi uygulama / cluster / kapsam / payda yok', async
   am.loaded = true;
   am.exports = {
     getClusterTree: async () => ({
-      prod: { ark: ['gbocpprod1', 'gbocpprod2'], hosting: ['gbocp3rdprod1'], wyden: ['giocp3rdwyprod1'] },
+      prod: {
+        ark: ['orocpprod1', 'orocpprod2'],
+        hosting: ['orocp3rdprod1'],
+        wyden: ['oiocp3rdwyprod1'],
+      },
     }),
   };
   require.cache[ADMIN] = am;
   try {
     const disc = [
       A('kart-ui', 'kart-prod'),
-      A('kart-ui', 'kart-prod', { cluster: 'gbocpprod2' }),
-      A('hosting-ui', 'host-prod', { cluster: 'gbocp3rdprod1' }),
-      A('wyden-ui', 'wy-prod', { cluster: 'giocp3rdwyprod1' }),
+      A('kart-ui', 'kart-prod', { cluster: 'orocpprod2' }),
+      A('hosting-ui', 'host-prod', { cluster: 'orocp3rdprod1' }),
+      A('wyden-ui', 'wy-prod', { cluster: 'oiocp3rdwyprod1' }),
     ];
-    const runs = ['gbocpprod1', 'gbocpprod2', 'gbocp3rdprod1', 'giocp3rdwyprod1', 'daocpprod1'].map((cluster) => ({
-      cluster,
-      durum: cluster === 'daocpprod1' ? 'login' : 'ok',
-      routes: 1,
-      spa: 1,
-      scan_date: GUN,
-    }));
+    const runs = ['orocpprod1', 'orocpprod2', 'orocp3rdprod1', 'oiocp3rdwyprod1', 'odocpprod1'].map(
+      (cluster) => ({
+        cluster,
+        durum: cluster === 'odocpprod1' ? 'login' : 'ok',
+        routes: 1,
+        spa: 1,
+        scan_date: GUN,
+      }),
+    );
     sahteDb({ disc, runs, sema: { run: 1 } });
     const r = await hesapla();
     const b = by(r);
     assert.ok(b['kart-ui'], 'ARK uygulamasi kayboldu');
     assert.equal(b['hosting-ui'], undefined, 'hosting uygulamasi listede');
     assert.equal(b['wyden-ui'], undefined, 'wyden uygulamasi listede');
-    assert.deepEqual(r.clusters, ['gbocpprod1', 'gbocpprod2'], 'cluster suzgecinde ARK disi cluster');
-    assert.equal(r.coverage.total, 2, `kapsam ARK disi cluster sayiyor: ${JSON.stringify(r.coverage)}`);
-    assert.equal(r.coverage.failed, 0, 'ARK disi cluster login hatasi kapsam panelini kirmizi yapti');
-    assert.deepEqual([b['kart-ui'].kapsamVar, b['kart-ui'].kapsamToplam, b['kart-ui'].kapsamDurum], [2, 2, 'tam'], 'payda ARK disi prod cluster sayiyor');
+    assert.deepEqual(
+      r.clusters,
+      ['orocpprod1', 'orocpprod2'],
+      'cluster suzgecinde ARK disi cluster',
+    );
+    assert.equal(
+      r.coverage.total,
+      2,
+      `kapsam ARK disi cluster sayiyor: ${JSON.stringify(r.coverage)}`,
+    );
+    assert.equal(
+      r.coverage.failed,
+      0,
+      'ARK disi cluster login hatasi kapsam panelini kirmizi yapti',
+    );
+    assert.deepEqual(
+      [b['kart-ui'].kapsamVar, b['kart-ui'].kapsamToplam, b['kart-ui'].kapsamDurum],
+      [2, 2, 'tam'],
+      'payda ARK disi prod cluster sayiyor',
+    );
   } finally {
     if (once) require.cache[ADMIN] = once;
     else delete require.cache[ADMIN];
@@ -1891,8 +2010,14 @@ test('SR26a yalniz ARK: ARK disi uygulama / cluster / kapsam / payda yok', async
 // (surucu STRING dondurur), scan_date DATE (Date nesnesi), is yuku Rollout, kesif cluster'i dolu.
 test('SR51 uc nokta: cluster kolonu BOS Dynatrace satiri ARK suzgecinde dusmez; Intranet SPA raporuna kadar tasinir', async () => {
   const disc = [
-    A('account-mngt-open-dd-app-v0', 'account-management-ch-prod', { termination: 'reencrypt', workload_kind: 'Rollout' }),
-    A('ai-channel-catalog-app-v0', 'ai-channel-management-prod', { termination: 'reencrypt', workload_kind: 'Rollout' }),
+    A('account-mngt-open-dd-app-v0', 'account-management-ch-prod', {
+      termination: 'reencrypt',
+      workload_kind: 'Rollout',
+    }),
+    A('ai-channel-catalog-app-v0', 'ai-channel-management-prod', {
+      termination: 'reencrypt',
+      workload_kind: 'Rollout',
+    }),
     A('kart-ui', 'kart-prod', { termination: 'reencrypt' }),
   ];
   const tarih = new Date(Date.UTC(2026, 10, 16));
@@ -1912,7 +2037,7 @@ test('SR51 uc nokta: cluster kolonu BOS Dynatrace satiri ARK suzgecinde dusmez; 
     U('account-management-ch-prod', 'account-mngt-open-dd-app-v0', { req_total: '1040346' }),
     U('ai-channel-management-prod', 'ai-channel-catalog-app-v0', { services_total: 0 }),
     // ACIKCA ARK DISI cluster'in satiri hala atilir (ayni ad baska platformda olcumu tasimaz).
-    U('kart-prod', 'kart-ui', { cluster: 'gbocp3rdprod1', req_total: '999' }),
+    U('kart-prod', 'kart-ui', { cluster: 'orocp3rdprod1', req_total: '999' }),
   ];
   sahteDb({ disc, usage });
   const r = await hesapla();
@@ -1923,7 +2048,11 @@ test('SR51 uc nokta: cluster kolonu BOS Dynatrace satiri ARK suzgecinde dusmez; 
   assert.equal(acc.reqShown, 1040346);
   assert.deepEqual(acc.usage, { scanDate: '2026-11-16', windowDays: 7, services: 1 });
   assert.equal(b['ai-channel-catalog-app-v0'].istek, 'servis-yok');
-  assert.equal(b['kart-ui'].istek, 'olcum-yok', 'ARK disi cluster in olcumu ARK uygulamasina yazildi');
+  assert.equal(
+    b['kart-ui'].istek,
+    'olcum-yok',
+    'ARK disi cluster in olcumu ARK uygulamasina yazildi',
+  );
 
   const intranet = require('../../spa-report/intranet.cjs');
   intranet.onbellekSil();
@@ -1938,7 +2067,13 @@ test('SR51 uc nokta: cluster kolonu BOS Dynatrace satiri ARK suzgecinde dusmez; 
   assert.ok(s, `intranet satiri yok: ${JSON.stringify(rapor.rows.map((x) => x.application))}`);
   assert.equal(s.istek, 'var');
   assert.equal(s.req, 1040346);
-  assert.deepEqual(s.dynatrace, { scanDate: '2026-11-16', windowDays: 7, services: 1, note: '', olcum: '' });
+  assert.deepEqual(s.dynatrace, {
+    scanDate: '2026-11-16',
+    windowDays: 7,
+    services: 1,
+    note: '',
+    olcum: '',
+  });
   assert.equal(satir['ai-channel-catalog-app-v0'].istek, 'servis-yok');
   assert.equal(rapor.dynatraceTarihi, '2026-11-16');
 });
@@ -2012,16 +2147,16 @@ test('SR36 ayrinti ucu: bellek ozeti yokken AYNI ANDA gelen tiklamalar TEK tam h
 test('SR44 uc nokta: yeni PROD trafik satirlari okunur; "@" satiri varsa dizin tanimi olculur, yoksa kaynak-yok; panel olcumu tasir', async () => {
   const disc = [A(YP_APP, YP_NS)];
   const cfg = PROD_ALL.map(IZ);
-  const dir = [DIZIN('GBNGXP40', YP_NS, YP_APP)];
+  const dir = [DIZIN('ORNGXP40', YP_NS, YP_APP)];
   // Eski analyzer: '@' satiri yok -> eski davranis (kaynak-yok).
-  sahteDb({ disc, cfg, dir, trf: [TRF('GBRVPP01', 'GLOMO-PROD', '/x/')] });
+  sahteDb({ disc, cfg, dir, trf: [TRF('ORRVPP01', 'GLOMO-PROD', '/x/')] });
   let r = await hesapla();
   assert.equal(by(r)[YP_APP].rpIstek, 'kaynak-yok');
   assert.equal(r.rpKapsam.hostKipi, false);
-  // Host kipi satiri: sahte DB satirlari host parametresine gore suzer - GBNGXP40 sorgunun
+  // Host kipi satiri: sahte DB satirlari host parametresine gore suzer - ORNGXP40 sorgunun
   // host listesinde degilse satir gelmez ve bu kontrol kirmiziya doner.
   nc._spaSifirlaForTest();
-  sahteDb({ disc, cfg, dir, trf: [HTRF('GBNGXP40', YP_VH, { req_7d: 42, req_24h: 4 })] });
+  sahteDb({ disc, cfg, dir, trf: [HTRF('ORNGXP40', YP_VH, { req_7d: 42, req_24h: 4 })] });
   const g = await cagir(uclar.kesif, {});
   const satir = g.body.apps.find((a) => a.application === YP_APP);
   assert.equal(satir.rpIstek, 'var', 'uc nokta yeni PROD host kipi satirini okumuyor');
@@ -2032,7 +2167,7 @@ test('SR44 uc nokta: yeni PROD trafik satirlari okunur; "@" satiri varsa dizin t
   assert.equal(p.body.kapsam.hostKipi, true, 'ayrinti ucu host kipi durumunu tasimiyor');
   assert.equal(p.body.tanimlar[0].vhost, YP_VH);
   assert.equal(p.body.tanimlar[0].trafik.req7, 42);
-  assert.equal(p.body.tanimlar[0].trafik.ad, `${YP_VH}.irp.garantibbva.com.tr`);
+  assert.equal(p.body.tanimlar[0].trafik.ad, `${YP_VH}.irp.ornekbanka.invalid`);
   nc._spaSifirlaForTest();
 });
 
@@ -2308,10 +2443,14 @@ test('KP1 4/4 Tam ve 3/4 Kismi', () => {
   assert.equal(tam.kapsamToplam, 4);
 
   const kismi = by(
-    run(['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)), K(), {
-      katalog: P4,
-      runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'ok']),
-    }),
+    run(
+      ['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)),
+      K(),
+      {
+        katalog: P4,
+        runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'ok']),
+      },
+    ),
   )['x-app-v0'];
   assert.equal(kismi.kapsamDurum, 'kismi');
   assert.equal(kismi.kapsamVar, 3);
@@ -2320,10 +2459,14 @@ test('KP1 4/4 Tam ve 3/4 Kismi', () => {
 
 test('KP2 ERISILEMEYEN cluster PAYDAYA GIRMEZ (uydurma eksiklik raporu yok)', () => {
   const r = by(
-    run(['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)), K(), {
-      katalog: P4,
-      runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'login']),
-    }),
+    run(
+      ['p1', 'p2', 'p3'].map((c) => AC('x-app-v0', 'x-prod', c)),
+      K(),
+      {
+        katalog: P4,
+        runs: RUN(['p1', 'ok'], ['p2', 'ok'], ['p3', 'ok'], ['p4', 'login']),
+      },
+    ),
   )['x-app-v0'];
   assert.equal(r.kapsamToplam, 3, 'erisilemeyen cluster paydaya girmis');
   assert.equal(r.kapsamDurum, 'tam', 'erisilemeyen cluster yuzunden Kismi denmis');
@@ -2345,9 +2488,9 @@ test('KP3 "kismi" TARANDI sayilir (route varligi guvenilir)', () => {
 
 test('KP4 KATALOG OKUNAMAZSA oran IDDIA EDILMEZ', () => {
   // Uydurma bir payda ile oran yazmak, var olmayan bir eksiklik raporlamak olurdu.
-  const r = by(run([AC('x-app-v0', 'x-prod', 'p1')], K(), { katalog: null, runs: RUN(['p1', 'ok']) }))[
-    'x-app-v0'
-  ];
+  const r = by(
+    run([AC('x-app-v0', 'x-prod', 'p1')], K(), { katalog: null, runs: RUN(['p1', 'ok']) }),
+  )['x-app-v0'];
   assert.equal(r.kapsamDurum, 'olculemedi');
   assert.equal(r.kapsamToplam, 0);
   // Cluster katalogda YOKSA da oran iddia edilmez
@@ -2379,19 +2522,27 @@ test('SR-RS1 RP servisi tanimin config satirindan; yalniz kendi ortaminin taniml
   assert.equal(b['kart-ui'].rpServisGrup, undefined);
   assert.equal(b['bos-ui'].rpServis, undefined, 'tanimsiz uygulamada servis yazilmaz');
   // ORTAM DISI (K3): PROD RP'nin test adresine proxy'si servis listesine GIRMEZ.
-  const disi = PRX('GBRVPP07', 'kart-ui-kart-test.apps-t.fw.garanti.com.tr', { service: 'GLOMO' });
+  const disi = PRX('ORRVPP07', 'kart-ui-kart-test.apps-t.fw.sirket.invalid', { service: 'GLOMO' });
   const b2 = by(run(T_DISC, K({ cfg: [...T_TANIM, disi] })));
-  assert.ok((b2['kart-ui'].rpSorun || []).includes('ORTAM_DISI'), 'fixture ortam disi tanim uretmedi');
+  assert.ok(
+    (b2['kart-ui'].rpSorun || []).includes('ORTAM_DISI'),
+    'fixture ortam disi tanim uretmedi',
+  );
   assert.deepEqual(b2['kart-ui'].rpServis, ['KART']);
 });
 
 test('SR-RS2 yeni PROD dizin tanimi: Glomo grubunda GLOMO, diger grupta grup adi + isaret (tek ad uydurulmaz)', () => {
-  const glomoYeni = MIGRATION_GROUPS.find((g) => g.id === 'glomo').newHosts[0];
-  const digerEski = MIGRATION_GROUPS.find((g) => g.id === 'other').oldHosts[0];
-  const digerYeni = MIGRATION_GROUPS.find((g) => g.id === 'other').newHosts[0];
-  const digerEtiket = MIGRATION_GROUPS.find((g) => g.id === 'other').label;
+  const glomoYeni = migrationGroups().find((g) => g.id === 'glomo').newHosts[0];
+  const digerEski = migrationGroups().find((g) => g.id === 'other').oldHosts[0];
+  const digerYeni = migrationGroups().find((g) => g.id === 'other').newHosts[0];
+  const digerEtiket = migrationGroups().find((g) => g.id === 'other').label;
   const disc = [A('glo-ui', 'odeme-prod'), A('web-ui', 'odeme-prod')];
-  const cfg = [PRX(digerEski, 'web-ui-odeme-prod.apps.fw.garanti.com.tr', { service: 'WEBFORMS', vhost: 'WEBFORMS-PROD' })];
+  const cfg = [
+    PRX(digerEski, 'web-ui-odeme-prod.apps.fw.sirket.invalid', {
+      service: 'WEBFORMS',
+      vhost: 'WEBFORMS-PROD',
+    }),
+  ];
   const dir = [DIZIN(glomoYeni, 'odeme-prod', 'glo-ui'), DIZIN(digerYeni, 'odeme-prod', 'web-ui')];
   const r = run(disc, K({ cfg, dir }));
   const b = by(r);
@@ -2413,17 +2564,23 @@ test('SR-RS2 yeni PROD dizin tanimi: Glomo grubunda GLOMO, diger grupta grup adi
 test('SR-ESKI uc nokta: eski sunucunun RP tanim satirlari hesaptan dusurulur, eskiGizli yazilir', async () => {
   const es = require('../eski-sunucu.cjs');
   const asil = es.suzgec;
-  const eskiler = new Set(['GBNGXT33', 'GBNGXT34']);
+  const eskiler = new Set(['ORNGXT33', 'ORNGXT34']);
   const gorulen = new Set();
   es.suzgec = async () => ({
     ayir: (rows) => rows.filter((r) => (eskiler.has(r.host) ? (gorulen.add(r.host), false) : true)),
-    bilgi: () => ({ sayi: gorulen.size, hostlar: [...gorulen].sort(), gun: 14, gosteriliyor: false, olculemedi: false }),
+    bilgi: () => ({
+      sayi: gorulen.size,
+      hostlar: [...gorulen].sort(),
+      gun: 14,
+      gosteriliyor: false,
+      olculemedi: false,
+    }),
   });
   try {
     sahteDb();
     const r = await hesapla();
     assert.notEqual(by(r)['kart-ui'].rp, 'tanimli', 'eski sunucunun tanimi RP kararina girdi');
-    assert.deepEqual(r.eskiGizli.hostlar, ['GBNGXT33', 'GBNGXT34']);
+    assert.deepEqual(r.eskiGizli.hostlar, ['ORNGXT33', 'ORNGXT34']);
     assert.ok(Object.keys(r).includes('eskiGizli'), 'eskiGizli JSON govdesine girmiyor');
   } finally {
     es.suzgec = asil;
@@ -2442,17 +2599,17 @@ test('SR-ES eslenik servis bazli: baska servisin sunucusu eksik sayilmaz; ayni s
   const disc = [A('kart-ui', 'kart-test'), A('pos-ui', 'kart-test'), A('tek-ui', 'kart-test')];
   const cfg = [
     // KART servisi T33 + T34'te (kart-ui iki sunucuda)
-    LOC('GBNGXT33', 'kart-test', 'kart-ui'),
-    LOC('GBNGXT34', 'kart-test', 'kart-ui'),
+    LOC('ORNGXT33', 'kart-test', 'kart-ui'),
+    LOC('ORNGXT34', 'kart-test', 'kart-ui'),
     // tek-ui KART servisinde yalniz T33'te -> eksik T34
-    LOC('GBNGXT33', 'kart-test', 'tek-ui'),
+    LOC('ORNGXT33', 'kart-test', 'tek-ui'),
     // pos-ui BASKA servis (POS) ve yalniz T33'te; POS'u tasiyan tek sunucu T33 -> tam
-    LOC('GBNGXT33', 'kart-test', 'pos-ui', { service: 'POS', vhost: 'POS-TEST' }),
+    LOC('ORNGXT33', 'kart-test', 'pos-ui', { service: 'POS', vhost: 'POS-TEST' }),
   ];
   const b = by(run(disc, K({ cfg })));
   assert.equal(b['kart-ui'].rpEslenik, 'tam');
   assert.equal(b['pos-ui'].rpEslenik, 'tam', 'baska servisin sunucusu (T34) eksik sayildi');
   assert.equal(b['pos-ui'].rpHost, '1/2', 'bilgi alani (ortamin tum RP leri) ayni kaldi');
   assert.equal(b['tek-ui'].rpEslenik, 'eksik');
-  assert.deepEqual(b['tek-ui'].rpEslenikEksik, ['GBNGXT34']);
+  assert.deepEqual(b['tek-ui'].rpEslenikEksik, ['ORNGXT34']);
 });

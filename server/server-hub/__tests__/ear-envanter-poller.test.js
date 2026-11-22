@@ -37,6 +37,7 @@ const PLAYBOOK = path.join(
   '..',
   '..',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'ear_envanter.yml',
@@ -146,11 +147,20 @@ test('EPO3 SOZLESME: extraVars playbook basligi ve assert regexleri', () => {
   // FAZ 2: deployment kontrolu yalniz kosu parametresi ACIK iken gonderilir (kapaliyken eskisiyle birebir).
   assert.ok(!('ear_deployment_kontrol' in ev), 'kapali kosuda Faz 2 degiskeni gitti');
   const acik = poller.extraVarsOf(
-    kosu({ parametreler: JSON.stringify({ kokler: '/vhosting', okuma_kullanicisi: 'was', deployment_kontrolu: 'ACIK' }) }),
+    kosu({
+      parametreler: JSON.stringify({
+        kokler: '/vhosting',
+        okuma_kullanicisi: 'was',
+        deployment_kontrolu: 'ACIK',
+      }),
+    }),
     parti(),
   );
   assert.equal(acik.ear_deployment_kontrol, true);
-  assert.ok(belgeli.has('ear_deployment_kontrol'), 'Faz 2 degiskeni playbook basliginda belgeli degil');
+  assert.ok(
+    belgeli.has('ear_deployment_kontrol'),
+    'Faz 2 degiskeni playbook basliginda belgeli degil',
+  );
 });
 
 test('EPO4 set_stats eslesmesi', () => {
@@ -233,7 +243,10 @@ test('EPO7 parti baslatma kurallari', async () => {
   // Basari: is numarasi yazilir, extraVars dogru.
   let gelen;
   poller.kur({
-    launch: async (req, key, ad, ev) => { gelen = { req, key, ev }; return { jobId: 900, awxServerId: 2, status: 'pending' }; },
+    launch: async (req, key, ad, ev) => {
+      gelen = { req, key, ev };
+      return { jobId: 900, awxServerId: 2, status: 'pending' };
+    },
   });
   const db1 = partiDb();
   F.dbKur(db1);
@@ -337,17 +350,29 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
     redactSecrets: (s) => s,
   });
   const db = F.sahteDb([
-    [/SELECT TOP 1 \* FROM ear_envanter_partileri/, () => ({ rows: [parti({ durum: partiDurum })] })],
+    [
+      /SELECT TOP 1 \* FROM ear_envanter_partileri/,
+      () => ({ rows: [parti({ durum: partiDurum })] }),
+    ],
     [
       /SET durum = 'CALISIYOR', baslatma_denemesi/,
-      () => { partiDurum = 'CALISIYOR'; return { rowCount: 1 }; },
+      () => {
+        partiDurum = 'CALISIYOR';
+        return { rowCount: 1 };
+      },
     ],
     [/SELECT \* FROM ear_envanter_kosulari WHERE id/, () => ({ rows: [kosu({ durum: parent })] })],
-    [/FROM ear_envanter_kosulari k LEFT JOIN ear_envanter_hostlari/, () => ({ rows: [{ beklenen: 2 }] })],
+    [
+      /FROM ear_envanter_kosulari k LEFT JOIN ear_envanter_hostlari/,
+      () => ({ rows: [{ beklenen: 2 }] }),
+    ],
     [/SET durum = 'IPTAL'.*durum = 'BEKLIYOR'/s, () => ({ rowCount: 0 })],
     [
       /UPDATE ear_envanter_kosulari\s+SET durum = \$2/,
-      () => { parent = 'IPTAL'; return { rowCount: 1 }; },
+      () => {
+        parent = 'IPTAL';
+        return { rowCount: 1 };
+      },
     ],
     [/SELECT awx_server_id, awx_job_id FROM ear_envanter_partileri/, () => ({ rows: [] })],
     [
@@ -356,7 +381,10 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
     ],
     [
       /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
-      (p) => { kayit = { serverId: p[1], jobId: p[2], hata: p[4] }; return { rowCount: 1 }; },
+      (p) => {
+        kayit = { serverId: p[1], jobId: p[2], hata: p[4] };
+        return { rowCount: 1 };
+      },
     ],
   ]);
   F.dbKur(db);
@@ -388,10 +416,18 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   let kurtarma = null;
   const db2 = partiDb({
     ek: [
-      [/UPDATE p\s+SET awx_server_id/, () => { throw new Error('DB write timeout'); }],
+      [
+        /UPDATE p\s+SET awx_server_id/,
+        () => {
+          throw new Error('DB write timeout');
+        },
+      ],
       [
         /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
-        (p) => { kurtarma = p; return { rowCount: 1 }; },
+        (p) => {
+          kurtarma = p;
+          return { rowCount: 1 };
+        },
       ],
     ],
   });
@@ -412,7 +448,9 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   // ayni controller-local kimlige yazilmali; `awx_job_id IS NULL` korlugu notu yutmamali.
   yenidenYukle();
   sahteModul(RUNNER_YOLU, {
-    cancelJobOnServer: async () => { throw new Error('AWX cancel timeout'); },
+    cancelJobOnServer: async () => {
+      throw new Error('AWX cancel timeout');
+    },
     redactSecrets: (s) => s,
   });
   poller.kur({ launch: async () => ({ jobId: 902, awxServerId: 4, status: 'pending' }) });
@@ -447,7 +485,9 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   // Satirda farkli job varsa kimligini ezme; rowCount=0'i yutma ve collision notunu ayri yaz.
   yenidenYukle();
   sahteModul(RUNNER_YOLU, {
-    cancelJobOnServer: async () => { throw new Error('cancel reddedildi'); },
+    cancelJobOnServer: async () => {
+      throw new Error('cancel reddedildi');
+    },
     redactSecrets: (s) => s,
   });
   poller.kur({ launch: async () => ({ jobId: 903, awxServerId: 5, status: 'pending' }) });
@@ -455,11 +495,19 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
   let cakismaNotu = null;
   const db4 = partiDb({
     ek: [
-      [/UPDATE p\s+SET awx_server_id/, () => { throw new Error('write belirsiz'); }],
+      [
+        /UPDATE p\s+SET awx_server_id/,
+        () => {
+          throw new Error('write belirsiz');
+        },
+      ],
       [/COALESCE\(awx_server_id, 0\) = \$2 AND awx_job_id = \$3/, () => ({ rowCount: 0 })],
       [
         /UPDATE ear_envanter_partileri SET hata = \$2 WHERE id = \$1/,
-        (p) => { cakismaNotu = p[1]; return { rowCount: 1 }; },
+        (p) => {
+          cakismaNotu = p[1];
+          return { rowCount: 1 };
+        },
       ],
     ],
   });
@@ -535,30 +583,55 @@ test('EPO9 zamanlayici (iki plan)', async () => {
 
   yenidenYukle();
   F.dbKur(ayarDb([{ anahtar: 'p1_acik', deger: 'ACIK' }]));
-  sahteModul(REG_YOLU, { getByKey: async () => ({ enabled: true }), getEffectiveTemplateId: () => null });
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => null,
+  });
   assert.deepEqual(await poller.zamanlayiciyiKontrolEt(pazar), { atlandi: 'template_yok' });
 
   yenidenYukle();
   const db = ayarDb([{ anahtar: 'p1_acik', deger: 'ACIK' }]);
   F.dbKur(db);
-  sahteModul(REG_YOLU, { getByKey: async () => ({ enabled: true }), getEffectiveTemplateId: () => 55 });
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => 55,
+  });
   sahteModul(INV_YOLU, {
-    query: async () => ({ recordset: [{ host: 'appsrv01', env: 'PROD' }, { host: 'appsrv02', env: 'TEST' }] }),
+    query: async () => ({
+      recordset: [
+        { host: 'appsrv01', env: 'PROD' },
+        { host: 'appsrv02', env: 'TEST' },
+      ],
+    }),
   });
   const k = await poller.zamanlayiciyiKontrolEt(pazar);
   assert.equal(k.id, 77);
   const ins = db.cagrilar.find((c) => /INSERT INTO ear_envanter_kosulari/.test(c.sql));
-  assert.deepEqual([ins.params[0], ins.params[1], ins.params[2]], ['OZET', 'ZAMANLAYICI', 'FILO'], 'P1 OZET filo');
+  assert.deepEqual(
+    [ins.params[0], ins.params[1], ins.params[2]],
+    ['OZET', 'ZAMANLAYICI', 'FILO'],
+    'P1 OZET filo',
+  );
   assert.equal(ins.params[7], 'P1-2026-11-08', 'anahtar plan + TR tarihi');
-  assert.deepEqual(JSON.parse(ins.params[9]), ['H-2026-11-08'], 'eski haftalik anahtar da engeller');
+  assert.deepEqual(
+    JSON.parse(ins.params[9]),
+    ['H-2026-11-08'],
+    'eski haftalik anahtar da engeller',
+  );
   assert.match(ins.sql, /zamanlayici_anahtari IN \(SELECT value FROM OPENJSON\(\$10\)\)/);
   assert.equal(ins.opts.tekrar, false, 'kosu acma yeniden denenmemeli');
 
   // 3 Ocak 2027 02:30: P1 OZET ornegi P2 TAM ile birlesir -> kosu ACILMAZ.
   yenidenYukle();
-  const db2 = ayarDb([{ anahtar: 'p1_acik', deger: 'ACIK' }, { anahtar: 'p2_acik', deger: 'ACIK' }]);
+  const db2 = ayarDb([
+    { anahtar: 'p1_acik', deger: 'ACIK' },
+    { anahtar: 'p2_acik', deger: 'ACIK' },
+  ]);
   F.dbKur(db2);
-  sahteModul(REG_YOLU, { getByKey: async () => ({ enabled: true }), getEffectiveTemplateId: () => 55 });
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => 55,
+  });
   const b = await poller.zamanlayiciyiKontrolEt(new Date('2027-01-02T23:30:00Z'));
   assert.deepEqual(b, { atlandi: 'tam_ile_birlesti', anahtar: 'P1-2027-01-03' });
   assert.ok(!db2.cagrilar.some((c) => /INSERT INTO ear_envanter_kosulari/.test(c.sql)));
@@ -567,18 +640,34 @@ test('EPO9 zamanlayici (iki plan)', async () => {
   const t = await poller.zamanlayiciyiKontrolEt(new Date('2027-01-03T00:30:00Z'));
   assert.equal(t.id, 77);
   const ins2 = db2.cagrilar.find((c) => /INSERT INTO ear_envanter_kosulari/.test(c.sql));
-  assert.deepEqual([ins2.params[0], ins2.params[7], ins2.params[9]], ['TAM', 'P2-2027-01-03', null]);
+  assert.deepEqual(
+    [ins2.params[0], ins2.params[7], ins2.params[9]],
+    ['TAM', 'P2-2027-01-03', null],
+  );
 
   // Acilamayan plan (hedef yok): 10 dk beklenir, her turda yeniden denenmez.
   yenidenYukle();
-  const db3 = ayarDb([{ anahtar: 'p1_acik', deger: 'ACIK' }, { anahtar: 'p1_kapsam', deger: 'ORTAM:YOK' }]);
+  const db3 = ayarDb([
+    { anahtar: 'p1_acik', deger: 'ACIK' },
+    { anahtar: 'p1_kapsam', deger: 'ORTAM:YOK' },
+  ]);
   F.dbKur(db3);
-  sahteModul(REG_YOLU, { getByKey: async () => ({ enabled: true }), getEffectiveTemplateId: () => 55 });
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true }),
+    getEffectiveTemplateId: () => 55,
+  });
   sahteModul(INV_YOLU, { query: async () => ({ recordset: [{ host: 'appsrv01', env: 'PROD' }] }) });
   const h = await poller.zamanlayiciyiKontrolEt(pazar);
   assert.match(h.hata, /Seçilen ortamlarda sunucu yok \(YOK\)/);
-  assert.equal(await poller.zamanlayiciyiKontrolEt(new Date(pazar.getTime() + 60000)), null, 'bekleme suresi');
-  assert.ok((await poller.zamanlayiciyiKontrolEt(new Date(pazar.getTime() + 11 * 60000))).hata, '10 dk sonra yeniden');
+  assert.equal(
+    await poller.zamanlayiciyiKontrolEt(new Date(pazar.getTime() + 60000)),
+    null,
+    'bekleme suresi',
+  );
+  assert.ok(
+    (await poller.zamanlayiciyiKontrolEt(new Date(pazar.getTime() + 11 * 60000))).hata,
+    '10 dk sonra yeniden',
+  );
 });
 
 test('EPO15 kapsam cozucu', async () => {
@@ -596,21 +685,32 @@ test('EPO15 kapsam cozucu', async () => {
   });
   F.dbKur(
     F.sahteDb([
-      [/WITH son AS \(SELECT host, MAX\(kosu_id\) AS kosu_id FROM ear_envanter_hostlari GROUP BY host\)/, () => ({
-        rows: [
-          { host: 'APPSRV01', durum: 'TAM' },
-          { host: 'APPSRV02', durum: 'ULASILAMADI' },
-          { host: 'APPSRV03', durum: 'KOK_YOK' },
-          { host: 'APPSRV04', durum: 'KISMI' },
-        ],
-      })],
+      [
+        /WITH son AS \(SELECT host, MAX\(kosu_id\) AS kosu_id FROM ear_envanter_hostlari GROUP BY host\)/,
+        () => ({
+          rows: [
+            { host: 'APPSRV01', durum: 'TAM' },
+            { host: 'APPSRV02', durum: 'ULASILAMADI' },
+            { host: 'APPSRV03', durum: 'KOK_YOK' },
+            { host: 'APPSRV04', durum: 'KISMI' },
+          ],
+        }),
+      ],
       [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 5 }] })],
     ]),
   );
   const adlar = async (k) => (await poller.kapsamHedefleri(k)).hedefler.map((x) => x.host);
-  assert.deepEqual(await adlar('ORTAM:TEST'), ['APPSRV02', 'APPSRV04'], 'birebir + normalize + cok ortamli sunucu');
+  assert.deepEqual(
+    await adlar('ORTAM:TEST'),
+    ['APPSRV02', 'APPSRV04'],
+    'birebir + normalize + cok ortamli sunucu',
+  );
   assert.deepEqual(await adlar('ORTAM:PROD'), ['APPSRV01', 'APPSRV04'], 'PREPROD gelmez');
-  assert.deepEqual(await adlar('SORUNLU'), ['APPSRV02', 'APPSRV04', 'APPSRV05'], 'TAM / KOK_YOK olmayan + hic taranmamis');
+  assert.deepEqual(
+    await adlar('SORUNLU'),
+    ['APPSRV02', 'APPSRV04', 'APPSRV05'],
+    'TAM / KOK_YOK olmayan + hic taranmamis',
+  );
   assert.equal((await adlar('FILO')).length, 5);
   await assert.rejects(poller.kapsamHedefleri('HEPSI'), (e) => e.status === 400);
   assert.deepEqual(await poller.ortamlar(), [
@@ -622,7 +722,10 @@ test('EPO15 kapsam cozucu', async () => {
   assert.deepEqual([o.sunucu, o.parti, o.ornek], [2, 1, ['APPSRV01', 'APPSRV04']]);
   const k = await poller.kosuOlustur({ kip: 'OZET', kapsam: 'ORTAM:test,PROD', baslatan: 'ayse' });
   assert.equal(k.beklenen, 3);
-  await assert.rejects(poller.kosuOlustur({ kip: 'OZET', kapsam: 'ORTAM:', baslatan: 'ayse' }), (e) => e.status === 400);
+  await assert.rejects(
+    poller.kosuOlustur({ kip: 'OZET', kapsam: 'ORTAM:', baslatan: 'ayse' }),
+    (e) => e.status === 400,
+  );
 });
 
 test('EPO10 sozde istek', () => {
@@ -668,7 +771,10 @@ test('EPO11 kosu acma', async () => {
 
   let baslatildi = null;
   poller.kur({
-    launch: async (req, key, ad, ev) => { baslatildi = ev; return { jobId: 5, awxServerId: 0 }; },
+    launch: async (req, key, ad, ev) => {
+      baslatildi = ev;
+      return { jobId: 5, awxServerId: 0 };
+    },
   });
   const db = F.sahteDb([
     [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 41 }] })],

@@ -1,54 +1,104 @@
-import React, { useEffect, useId, useRef, useState } from "react";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
-import { playbookRegistryApi, type PlaybookRegistryEntry, type SilinenVarsayilan } from "@/api/playbookRegistryApi";
-import { ansibleApi, type AwxServer } from "@/api/ansibleApi";
-import { toast } from "@/hooks/useToast";
-import Card from "@/components/common/Card";
-import Badge from "@/components/common/Badge";
-import Button from "@/components/common/Button";
-import EmptyState from "@/components/common/EmptyState";
-import LoadError from "@/components/common/LoadError";
-import { Select } from "@/components/ui/Form";
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import {
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  CommandLineIcon,
+  ArrowUturnLeftIcon,
+} from '@heroicons/react/24/outline';
+import {
+  playbookRegistryApi,
+  type PlaybookRegistryEntry,
+  type SilinenVarsayilan,
+} from '@/api/playbookRegistryApi';
+import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
+import { toast } from '@/hooks/useToast';
+import Card from '@/components/common/Card';
+import Badge from '@/components/common/Badge';
+import Button from '@/components/common/Button';
+import EmptyState from '@/components/common/EmptyState';
+import LoadError from '@/components/common/LoadError';
+import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
-import { fmtDateTime } from "@/utils/datetime";
-import { useOnay } from "@/components/common/OnayPenceresi";
+import { fmtDateTime } from '@/utils/datetime';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 // SEED'DEKI HER KATEGORI BURADA OLMAK ZORUNDA. Liste `mssql-setup.cjs`
 // PLAYBOOK_REGISTRY_SEED ile ayrisirsa, kategorisi listede olmayan bir satiri admin
 // duzenleyip kaydettiginde Select mevcut degeri gosteremez ve kategori SESSIZCE
 // "genel"e duser — kayit bozulur, kimse fark etmez. `opsx`, `telnet`, `filex` ve
 // `scalex` tam olarak bu durumdaydi.
-const CATEGORIES = ["genel", "jvm", "network", "system", "openshift", "logx", "opsx", "telnet", "filex", "scalex", "nginx"];
-const SOURCE_TYPES = ["awx_template", "repo_file", "external_script"];
+const CATEGORIES = [
+  'genel',
+  'jvm',
+  'network',
+  'system',
+  'openshift',
+  'logx',
+  'opsx',
+  'telnet',
+  'filex',
+  'scalex',
+  'nginx',
+];
+const SOURCE_TYPES = ['awx_template', 'repo_file', 'external_script'];
 
 type FormState = {
-  keyName: string; displayName: string; description: string; category: string;
-  awxTemplateId: string; awxServerId: string; enabled: boolean;
-  sourceType: string; isReadonly: boolean; visibility: string; sortOrder: string;
+  keyName: string;
+  displayName: string;
+  description: string;
+  category: string;
+  awxTemplateId: string;
+  awxServerId: string;
+  enabled: boolean;
+  sourceType: string;
+  isReadonly: boolean;
+  visibility: string;
+  sortOrder: string;
 };
 const EMPTY_FORM: FormState = {
-  keyName: "", displayName: "", description: "", category: "genel", awxTemplateId: "", awxServerId: "", enabled: true,
-  sourceType: "awx_template", isReadonly: true, visibility: "User,Admin", sortOrder: "0",
+  keyName: '',
+  displayName: '',
+  description: '',
+  category: 'genel',
+  awxTemplateId: '',
+  awxServerId: '',
+  enabled: true,
+  sourceType: 'awx_template',
+  isReadonly: true,
+  visibility: 'User,Admin',
+  sortOrder: '0',
 };
 
 // Bir kaydın template ID'sinin nereden geldiğini gösterir — admin'in "neden bu araç
 // sohbette görünmüyor" sorusuna anında yanıt vermesi için (bkz. getEffectiveTemplateId).
 function SourceBadge({ row }: { row: PlaybookRegistryEntry }) {
-  if (row.awxTemplateId) return <Badge className="bg-emerald-50 text-emerald-700">DB: #{row.awxTemplateId}</Badge>;
-  if (row.effectiveTemplateId) return <Badge className="bg-blue-50 text-blue-700">.env: {row.envVarName}</Badge>;
-  return <Badge weight="normal" className="bg-gray-50 text-gray-400">Tanımsız</Badge>;
+  if (row.awxTemplateId)
+    return <Badge className="bg-emerald-50 text-emerald-700">DB: #{row.awxTemplateId}</Badge>;
+  if (row.effectiveTemplateId)
+    return <Badge className="bg-blue-50 text-blue-700">.env: {row.envVarName}</Badge>;
+  return (
+    <Badge weight="normal" className="bg-gray-50 text-gray-400">
+      Tanımsız
+    </Badge>
+  );
 }
 
 // Silme onayı metni (2026-11-02). Kaydı Portal'ın bir özelliği kullanıyorsa bunu söyler (silme
 // yine serbest); varsayılan kayıtsa yeniden başlatmada geri gelmeyeceğini ve nereden geri
 // yükleneceğini söyler.
-export function silmeOnayMetni(row: Pick<PlaybookRegistryEntry, "displayName" | "kullanan" | "varsayilan">): string {
+export function silmeOnayMetni(
+  row: Pick<PlaybookRegistryEntry, 'displayName' | 'kullanan' | 'varsayilan'>,
+): string {
   const parcalar = [`"${row.displayName}" kaydını silmek istediğinize emin misiniz?`];
-  if (row.kullanan) parcalar.push(`Bu kaydı ${row.kullanan} kullanıyor; silerseniz o ekran çalışmaz.`);
+  if (row.kullanan)
+    parcalar.push(`Bu kaydı ${row.kullanan} kullanıyor; silerseniz o ekran çalışmaz.`);
   if (row.varsayilan)
-    parcalar.push('Bu bir varsayılan kayıt: yeniden başlatmada geri gelmez; "Silinen varsayılanlar" bölümünden geri yükleyebilirsiniz.');
-  return parcalar.join("\n\n");
+    parcalar.push(
+      'Bu bir varsayılan kayıt: yeniden başlatmada geri gelmez; "Silinen varsayılanlar" bölümünden geri yükleyebilirsiniz.',
+    );
+  return parcalar.join('\n\n');
 }
 
 export default function PlaybookRegistryTab() {
@@ -79,7 +129,7 @@ export default function PlaybookRegistryTab() {
       setSilinenler(r.silinenHata ? null : r.silinenVarsayilanlar || []);
       setSilinenHata(r.silinenHata || null);
     } catch (e: unknown) {
-      setYuklemeHatasi(e instanceof Error && e.message ? e.message : "İstek başarısız.");
+      setYuklemeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.');
     } finally {
       if (!sessiz) setLoading(false);
     }
@@ -89,11 +139,16 @@ export default function PlaybookRegistryTab() {
     if (!alive()) return;
     await reload();
     // AWX sunucu listesi — "hangi AWX'te" seçici için (yapılandırılmış olanlar).
-    ansibleApi.servers().then((r) => { if (alive() && r.ok) setServers(r.servers.filter((s) => s.configured)); }).catch(() => {});
+    ansibleApi
+      .servers()
+      .then((r) => {
+        if (alive() && r.ok) setServers(r.servers.filter((s) => s.configured));
+      })
+      .catch(() => {});
   }, []);
 
   function serverName(id: number | null): string {
-    if (!id) return "";
+    if (!id) return '';
     return servers.find((s) => s.id === id)?.name || `#${id}`;
   }
 
@@ -106,21 +161,30 @@ export default function PlaybookRegistryTab() {
   function openEdit(row: PlaybookRegistryEntry) {
     setEditId(row.id);
     setForm({
-      keyName: row.keyName, displayName: row.displayName, description: row.description,
-      category: row.category, awxTemplateId: row.awxTemplateId ? String(row.awxTemplateId) : "",
-      awxServerId: row.awxServerId ? String(row.awxServerId) : "", enabled: row.enabled,
-      sourceType: row.sourceType || "awx_template", isReadonly: row.isReadonly !== false,
-      visibility: row.visibility || "User,Admin", sortOrder: String(row.sortOrder ?? 0),
+      keyName: row.keyName,
+      displayName: row.displayName,
+      description: row.description,
+      category: row.category,
+      awxTemplateId: row.awxTemplateId ? String(row.awxTemplateId) : '',
+      awxServerId: row.awxServerId ? String(row.awxServerId) : '',
+      enabled: row.enabled,
+      sourceType: row.sourceType || 'awx_template',
+      isReadonly: row.isReadonly !== false,
+      visibility: row.visibility || 'User,Admin',
+      sortOrder: String(row.sortOrder ?? 0),
     });
     setShowForm(true);
   }
 
   async function handleSave() {
     if (!editId && !/^[a-z0-9_]+$/.test(form.keyName.trim())) {
-      toast.error("Anahtar adı yalnızca küçük harf, rakam ve alt çizgi içerebilir.");
+      toast.error('Anahtar adı yalnızca küçük harf, rakam ve alt çizgi içerebilir.');
       return;
     }
-    if (!form.displayName.trim()) { toast.error("Görünen ad zorunlu."); return; }
+    if (!form.displayName.trim()) {
+      toast.error('Görünen ad zorunlu.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -132,17 +196,21 @@ export default function PlaybookRegistryTab() {
         enabled: form.enabled,
         sourceType: form.sourceType,
         isReadonly: form.isReadonly,
-        visibility: form.visibility.trim() || "User,Admin",
+        visibility: form.visibility.trim() || 'User,Admin',
         sortOrder: Number(form.sortOrder) || 0,
       };
       if (editId) {
         const r = await playbookRegistryApi.update(editId, payload);
-        if (r.ok && r.playbook) { setRows((prev) => prev.map((x) => (x.id === editId ? r.playbook! : x))); toast.success("Kayıt güncellendi."); }
-        else toast.error(r.message || "Güncellenemedi.");
+        if (r.ok && r.playbook) {
+          setRows((prev) => prev.map((x) => (x.id === editId ? r.playbook! : x)));
+          toast.success('Kayıt güncellendi.');
+        } else toast.error(r.message || 'Güncellenemedi.');
       } else {
         const r = await playbookRegistryApi.create({ keyName: form.keyName.trim(), ...payload });
-        if (r.ok && r.playbook) { setRows((prev) => [...prev, r.playbook!]); toast.success("Kayıt eklendi."); }
-        else toast.error(r.message || "Eklenemedi.");
+        if (r.ok && r.playbook) {
+          setRows((prev) => [...prev, r.playbook!]);
+          toast.success('Kayıt eklendi.');
+        } else toast.error(r.message || 'Eklenemedi.');
       }
       setShowForm(false);
     } finally {
@@ -156,26 +224,38 @@ export default function PlaybookRegistryTab() {
   const formRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!showForm) return;
-    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    formRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    formRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
   }, [showForm, editId]);
 
   async function handleDelete(row: PlaybookRegistryEntry) {
-    if (!(await onayla({ baslik: "Kaydı sil", metin: silmeOnayMetni(row), onayMetni: "Sil", tehlikeli: true }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Kaydı sil',
+        metin: silmeOnayMetni(row),
+        onayMetni: 'Sil',
+        tehlikeli: true,
+      }))
+    )
+      return;
     const r = await playbookRegistryApi.remove(row.id);
     if (r.ok) {
       setRows((prev) => prev.filter((x) => x.id !== row.id));
-      toast.success("Kayıt silindi.");
+      toast.success('Kayıt silindi.');
       if (r.varsayilan) void reload(true);
-    } else toast.error(r.message || "Silinemedi.");
+    } else toast.error(r.message || 'Silinemedi.');
   }
 
   async function handleGeriYukle(s: SilinenVarsayilan) {
     setGeriYuklenen(s.keyName);
     try {
       const r = await playbookRegistryApi.geriYukle(s.keyName);
-      if (r.ok) { toast.success(`"${s.displayName}" geri yüklendi.`); await reload(true); }
-      else toast.error(r.message || "Geri yüklenemedi.");
+      if (r.ok) {
+        toast.success(`"${s.displayName}" geri yüklendi.`);
+        await reload(true);
+      } else toast.error(r.message || 'Geri yüklenemedi.');
     } finally {
       setGeriYuklenen(null);
     }
@@ -190,9 +270,9 @@ export default function PlaybookRegistryTab() {
         <p className="text-sm text-gray-500 max-w-xl">
           AI Analist'in sohbette kendi kararıyla çağırabildiği salt-okunur tanılama playbook'ları
           (JVM, network, disk, sistem sağlığı, vb.). Template ID admin ekranından (DB) VEYA
-          <code className="mx-1 px-1 bg-gray-100 rounded font-mono text-xs">.env</code>'deki
-          ilgili değişkenden alınabilir — hiçbiri tanımlı değilse araç sohbette hiç görünmez
-          (hata gösterilmez).
+          <code className="mx-1 px-1 bg-gray-100 rounded font-mono text-xs">.env</code>'deki ilgili
+          değişkenden alınabilir — hiçbiri tanımlı değilse araç sohbette hiç görünmez (hata
+          gösterilmez).
         </p>
         <Button variant="primary" onClick={openAdd} icon={<PlusIcon className="w-4 h-4" />}>
           Yeni Kayıt
@@ -201,132 +281,177 @@ export default function PlaybookRegistryTab() {
 
       {showForm && (
         <div ref={formRef} className="scroll-mt-4">
-        <Card padding="md" className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`${formId}-key`} className="text-xs text-gray-500 block mb-1">Anahtar Adı (key_name) *</label>
-              <input
-                id={`${formId}-key`}
-                value={form.keyName}
-                onChange={(e) => setForm((f) => ({ ...f, keyName: e.target.value }))}
-                disabled={!!editId}
-                placeholder="ör. dns_lookup_check"
-                className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono disabled:bg-gray-100 disabled:text-gray-400"
-              />
-              {editId && <p className="text-[11px] text-gray-400 mt-0.5">Oluşturulduktan sonra değiştirilemez.</p>}
+          <Card padding="md" className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor={`${formId}-key`} className="text-xs text-gray-500 block mb-1">
+                  Anahtar Adı (key_name) *
+                </label>
+                <input
+                  id={`${formId}-key`}
+                  value={form.keyName}
+                  onChange={(e) => setForm((f) => ({ ...f, keyName: e.target.value }))}
+                  disabled={!!editId}
+                  placeholder="ör. dns_lookup_check"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono disabled:bg-gray-100 disabled:text-gray-400"
+                />
+                {editId && (
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Oluşturulduktan sonra değiştirilemez.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor={`${formId}-ad`} className="text-xs text-gray-500 block mb-1">
+                  Görünen Ad *
+                </label>
+                <input
+                  id={`${formId}-ad`}
+                  value={form.displayName}
+                  onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
+                  placeholder="ör. DNS Çözümleme Kontrolü"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                />
+              </div>
             </div>
             <div>
-              <label htmlFor={`${formId}-ad`} className="text-xs text-gray-500 block mb-1">Görünen Ad *</label>
-              <input
-                id={`${formId}-ad`}
-                value={form.displayName}
-                onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                placeholder="ör. DNS Çözümleme Kontrolü"
+              <label htmlFor={`${formId}-aciklama`} className="text-xs text-gray-500 block mb-1">
+                Açıklama (AI'a ne yaptığını anlatır)
+              </label>
+              <textarea
+                id={`${formId}-aciklama`}
+                value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                rows={2}
+                placeholder="Bu playbook ne yapar, ne zaman kullanılmalı..."
                 className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400"
               />
             </div>
-          </div>
-          <div>
-            <label htmlFor={`${formId}-aciklama`} className="text-xs text-gray-500 block mb-1">Açıklama (AI'a ne yaptığını anlatır)</label>
-            <textarea
-              id={`${formId}-aciklama`}
-              value={form.description}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              rows={2}
-              placeholder="Bu playbook ne yapar, ne zaman kullanılmalı..."
-              className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor={`${formId}-kategori`} className="text-xs text-gray-500 block mb-1">
+                  Kategori
+                </label>
+                <Select
+                  id={`${formId}-kategori`}
+                  sizeVariant="sm"
+                  value={form.category}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label htmlFor={`${formId}-template`} className="text-xs text-gray-500 block mb-1">
+                  AWX Template ID (opsiyonel — boşsa .env'e bakılır)
+                </label>
+                <input
+                  id={`${formId}-template`}
+                  type="number"
+                  value={form.awxTemplateId}
+                  onChange={(e) => setForm((f) => ({ ...f, awxTemplateId: e.target.value }))}
+                  placeholder="ör. 47"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono"
+                />
+              </div>
+            </div>
             <div>
-              <label htmlFor={`${formId}-kategori`} className="text-xs text-gray-500 block mb-1">Kategori</label>
+              <label htmlFor={`${formId}-sunucu`} className="text-xs text-gray-500 block mb-1">
+                AWX Sunucusu (template bu sunucuda aranır — yanlışsa "AWX HTTP 404")
+              </label>
               <Select
-                id={`${formId}-kategori`}
+                id={`${formId}-sunucu`}
                 sizeVariant="sm"
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                value={form.awxServerId}
+                onChange={(e) => setForm((f) => ({ ...f, awxServerId: e.target.value }))}
               >
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value="">Varsayılan (.env / ilk sunucu)</option>
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (#{s.id})
+                  </option>
+                ))}
               </Select>
             </div>
-            <div>
-              <label htmlFor={`${formId}-template`} className="text-xs text-gray-500 block mb-1">AWX Template ID (opsiyonel — boşsa .env'e bakılır)</label>
-              <input
-                id={`${formId}-template`}
-                type="number"
-                value={form.awxTemplateId}
-                onChange={(e) => setForm((f) => ({ ...f, awxTemplateId: e.target.value }))}
-                placeholder="ör. 47"
-                className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono"
-              />
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label htmlFor={`${formId}-kaynak`} className="text-xs text-gray-500 block mb-1">
+                  Kaynak Tipi
+                </label>
+                <Select
+                  id={`${formId}-kaynak`}
+                  sizeVariant="sm"
+                  value={form.sourceType}
+                  onChange={(e) => setForm((f) => ({ ...f, sourceType: e.target.value }))}
+                >
+                  {SOURCE_TYPES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label
+                  htmlFor={`${formId}-gorunurluk`}
+                  className="text-xs text-gray-500 block mb-1"
+                >
+                  Görünürlük (CSV rol listesi)
+                </label>
+                <input
+                  id={`${formId}-gorunurluk`}
+                  value={form.visibility}
+                  onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}
+                  placeholder="User,Admin"
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono"
+                />
+              </div>
+              <div>
+                <label htmlFor={`${formId}-sira`} className="text-xs text-gray-500 block mb-1">
+                  Sıra
+                </label>
+                <input
+                  id={`${formId}-sira`}
+                  type="number"
+                  value={form.sortOrder}
+                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                />
+              </div>
             </div>
-          </div>
-          <div>
-            <label htmlFor={`${formId}-sunucu`} className="text-xs text-gray-500 block mb-1">
-              AWX Sunucusu (template bu sunucuda aranır — yanlışsa "AWX HTTP 404")
-            </label>
-            <Select
-              id={`${formId}-sunucu`}
-              sizeVariant="sm"
-              value={form.awxServerId}
-              onChange={(e) => setForm((f) => ({ ...f, awxServerId: e.target.value }))}
-            >
-              <option value="">Varsayılan (.env / ilk sunucu)</option>
-              {servers.map((s) => <option key={s.id} value={s.id}>{s.name} (#{s.id})</option>)}
-            </Select>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label htmlFor={`${formId}-kaynak`} className="text-xs text-gray-500 block mb-1">Kaynak Tipi</label>
-              <Select
-                id={`${formId}-kaynak`}
-                sizeVariant="sm"
-                value={form.sourceType}
-                onChange={(e) => setForm((f) => ({ ...f, sourceType: e.target.value }))}
-              >
-                {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+                />
+                Etkin (kapatılırsa sohbette hiç görünmez)
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={form.isReadonly}
+                  onChange={(e) => setForm((f) => ({ ...f, isReadonly: e.target.checked }))}
+                />
+                Salt-okunur (yalnızca tanılama, sistemi değiştirmez)
+              </label>
             </div>
-            <div>
-              <label htmlFor={`${formId}-gorunurluk`} className="text-xs text-gray-500 block mb-1">Görünürlük (CSV rol listesi)</label>
-              <input
-                id={`${formId}-gorunurluk`}
-                value={form.visibility}
-                onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}
-                placeholder="User,Admin"
-                className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400 font-mono"
-              />
-            </div>
-            <div>
-              <label htmlFor={`${formId}-sira`} className="text-xs text-gray-500 block mb-1">Sıra</label>
-              <input
-                id={`${formId}-sira`}
-                type="number"
-                value={form.sortOrder}
-                onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-                className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:border-blue-400"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" checked={form.enabled} onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} />
-              Etkin (kapatılırsa sohbette hiç görünmez)
-            </label>
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" checked={form.isReadonly} onChange={(e) => setForm((f) => ({ ...f, isReadonly: e.target.checked }))} />
-              Salt-okunur (yalnızca tanılama, sistemi değiştirmez)
-            </label>
-          </div>
-          {/* ORTAK DUGME BILESENI (2026-10-08): elle yazilmis siyah "Kaydet" koyu temada
+            {/* ORTAK DUGME BILESENI (2026-10-08): elle yazilmis siyah "Kaydet" koyu temada
               kapali gibi gorunuyordu (kullanici: "inaktifmis gibi duruyor ama tiklanabiliyor"). */}
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>İptal</Button>
-            <Button variant="primary" size="sm" onClick={handleSave} loading={saving}>
-              {saving ? "Kaydediliyor..." : "Kaydet"}
-            </Button>
-          </div>
-        </Card>
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>
+                İptal
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSave} loading={saving}>
+                {saving ? 'Kaydediliyor...' : 'Kaydet'}
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
@@ -338,7 +463,10 @@ export default function PlaybookRegistryTab() {
           testId="playbook-yukleme-hatasi"
         />
       ) : rows.length === 0 ? (
-        <EmptyState icon={<CommandLineIcon className="w-6 h-6" />} title="Henüz playbook kaydı yok." />
+        <EmptyState
+          icon={<CommandLineIcon className="w-6 h-6" />}
+          title="Henüz playbook kaydı yok."
+        />
       ) : (
         <div className="space-y-2">
           {rows.map((row) => (
@@ -349,20 +477,36 @@ export default function PlaybookRegistryTab() {
                   {row.displayName}
                   {!row.enabled && <span className="ml-2 text-xs text-gray-400">(devre dışı)</span>}
                 </div>
-                <div className="text-xs text-slate-400 font-mono mt-0.5">{row.keyName} · {row.handler}</div>
-                {row.description && <div className="text-xs text-slate-500 mt-0.5">{row.description}</div>}
-                {row.kullanan && <div className="text-xs text-slate-500 mt-0.5">Kullanan: {row.kullanan}</div>}
+                <div className="text-xs text-slate-400 font-mono mt-0.5">
+                  {row.keyName} · {row.handler}
+                </div>
+                {row.description && (
+                  <div className="text-xs text-slate-500 mt-0.5">{row.description}</div>
+                )}
+                {row.kullanan && (
+                  <div className="text-xs text-slate-500 mt-0.5">Kullanan: {row.kullanan}</div>
+                )}
               </div>
               {row.awxServerId && (
-                <Badge className="bg-violet-50 text-violet-700">AWX: {serverName(row.awxServerId)}</Badge>
+                <Badge className="bg-violet-50 text-violet-700">
+                  AWX: {serverName(row.awxServerId)}
+                </Badge>
               )}
               {!row.isReadonly && <Badge className="bg-red-50 text-red-600">değiştirici</Badge>}
               <SourceBadge row={row} />
-              <button onClick={() => openEdit(row)} aria-label={`${row.displayName} kaydını düzenle`} className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors">
+              <button
+                onClick={() => openEdit(row)}
+                aria-label={`${row.displayName} kaydını düzenle`}
+                className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors"
+              >
                 <PencilSquareIcon className="w-4 h-4" />
               </button>
-              {row.handler !== "ocp_cluster" && (
-                <button onClick={() => handleDelete(row)} aria-label={`${row.displayName} kaydını sil`} className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors">
+              {row.handler !== 'ocp_cluster' && (
+                <button
+                  onClick={() => handleDelete(row)}
+                  aria-label={`${row.displayName} kaydını sil`}
+                  className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                >
                   <TrashIcon className="w-4 h-4" />
                 </button>
               )}
@@ -374,15 +518,16 @@ export default function PlaybookRegistryTab() {
       {!yuklemeHatasi && (silinenHata || (silinenler && silinenler.length > 0)) && (
         <section className="space-y-2" data-testid="silinen-varsayilanlar">
           <h3 className="text-sm font-medium text-slate-700">
-            {silinenler ? `Silinen varsayılanlar (${silinenler.length})` : "Silinen varsayılanlar"}
+            {silinenler ? `Silinen varsayılanlar (${silinenler.length})` : 'Silinen varsayılanlar'}
           </h3>
           {silinenHata ? (
             <p className="text-xs text-red-600">Silinen varsayılanlar okunamadı: {silinenHata}</p>
           ) : (
             <>
               <p className="text-xs text-gray-500">
-                Bu varsayılan kayıtlar silindi ve yeniden başlatmada geri eklenmez. Geri yüklenen kayıt
-                varsayılan değerleriyle gelir; Template ID ve AWX sunucusu yeniden girilmelidir.
+                Bu varsayılan kayıtlar silindi ve yeniden başlatmada geri eklenmez. Geri yüklenen
+                kayıt varsayılan değerleriyle gelir; Template ID ve AWX sunucusu yeniden
+                girilmelidir.
               </p>
               {(silinenler || []).map((s) => (
                 <Card key={s.keyName} padding="sm" className="flex flex-wrap items-center gap-3">
@@ -392,8 +537,8 @@ export default function PlaybookRegistryTab() {
                     <div className="text-xs text-slate-400 font-mono mt-0.5">{s.keyName}</div>
                     {(s.deletedBy || s.deletedAt) && (
                       <div className="text-xs text-slate-500 mt-0.5">
-                        Silen: {s.deletedBy || "bilinmiyor"}
-                        {s.deletedAt ? ` · ${fmtDateTime(s.deletedAt)}` : ""}
+                        Silen: {s.deletedBy || 'bilinmiyor'}
+                        {s.deletedAt ? ` · ${fmtDateTime(s.deletedAt)}` : ''}
                       </div>
                     )}
                   </div>

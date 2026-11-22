@@ -18,6 +18,12 @@
 //   RA6  sunucu adi yazimi korunur (kucuk harfli target_hosts: once_hazir, once_hata DEGIL); eslestirme harf duyarsiz
 //   RA7  liste satiri kaynak / awxWorkflowId tasir; Portal kaydinda kaynak null
 //   RA8  rcOnceOf: yalniz JSON, rc_once sozluk, satir dizisi; bozuk / YAML / dizi -> null
+//   RA13 sunucuda sakli once (2026-11-21, Portal'siz + workflow'suz): eslesen once kaydi ve rc_once yoksa once
+//        goruntusu sonra sonucunun once_goruntu satirlarindan kurulur (BOOT'suz alinmaz) ve Portal kuraliyla sonuclanir
+//   RA12 alim durumu (2026-11-21, "job'i calistirdim, sayfaya hicbir sey gelmedi; Yenile calismiyor"): son tarama,
+//        sablon, biten is sayisi, is basina sonuc + neden (Portal'dan baslatilmis, set_stats yok, baska sablon, hata);
+//        sablon yoksa neden; AWX okunamazsa hata; suren tarama varken ikinci cagri AYNI sozu bekler (cift tarama yok);
+//        /reboot-check/awx-alim ?tara=1 2 dk sinirini atlar ve taramayi bekler, :id ucundan ONCE tanimli
 'use strict';
 
 const { test, beforeEach, afterEach } = require('node:test');
@@ -271,6 +277,7 @@ function awxKur(isler, { liste = null, okunamaz = new Set() } = {}) {
   const okunan = [];
   sahteModul(RUNNER_YOLU, {
     redactSecrets: (s) => s,
+    getServerById: (id) => (id === 2 ? { id, name: 'Maestro2' } : null),
     listTemplateJobsOnServer: async (serverId, templateId) => {
       assert.deepEqual([serverId, templateId], [2, 77]);
       return (liste || Object.keys(isler).map(Number)).map((id) => ({
@@ -359,14 +366,14 @@ test('RA2 workflow: once kayit acar, ayni workflow sonra ayni kayda baglanir ve 
       502: {
         workflowJobId: 7000,
         started: '2026-11-17T09:30:00Z',
-        artifacts: { reboot_check_result: SONRA_SONUC(['GBNGXT13']) },
+        artifacts: { reboot_check_result: SONRA_SONUC(['ORNGXT13']) },
       },
       501: {
         workflowJobId: 7000,
         started: '2026-11-17T08:00:00Z',
         artifacts: {
-          reboot_check_result: ONCE_SONUC(['GBNGXT13']),
-          rc_once: { GBNGXT13: BOOT('GBNGXT13') },
+          reboot_check_result: ONCE_SONUC(['ORNGXT13']),
+          rc_once: { ORNGXT13: BOOT('ORNGXT13') },
         },
       },
     },
@@ -382,14 +389,14 @@ test('RA2 workflow: once kayit acar, ayni workflow sonra ayni kayda baglanir ve 
   assert.deepEqual([k.once_job_id, k.sonra_job_id], [501, 502]);
   assert.match(k.created_by, /^awx:unix-ekip$/);
   assert.match(k.notes, /AWX'ten alındı: iş #501, workflow #7000, başlatan unix-ekip/);
-  assert.deepEqual(JSON.parse(k.hosts_json), ['GBNGXT13']);
+  assert.deepEqual(JSON.parse(k.hosts_json), ['ORNGXT13']);
   assert.equal(k.status, 'tamam', 'Portal degerlendirmesi: fark yok, olculdu -> tamam');
   const ozet = JSON.parse(k.ozet_json);
   assert.equal(ozet.once.alinan, 1);
   assert.equal(ozet.sonra.sorunsuz, 1);
   // Alinan kayit Portal'in rc_once girdisini kurabilir (Portal'dan sonra da calisir).
   assert.deepEqual(rc.onceGirdisi(JSON.parse(k.once_json).sunucular), {
-    GBNGXT13: BOOT('GBNGXT13'),
+    ORNGXT13: BOOT('ORNGXT13'),
   });
 });
 
@@ -529,10 +536,10 @@ test("RA5 ayni is iki kez alinmaz; yazilan kolonlar DDL/ALTER'de", async () => {
 });
 
 test('RA6 kucuk harfli hedef: yazim korunur, once_hazir', async () => {
-  awxKur({ 950: { artifacts: { reboot_check_result: ONCE_SONUC(['gbngxt13']) } } });
+  awxKur({ 950: { artifacts: { reboot_check_result: ONCE_SONUC(['orngxt13']) } } });
   await awx.awxIsleriniAl({ zorla: true });
   const k = db.satirlar[0];
-  assert.deepEqual(JSON.parse(k.hosts_json), ['gbngxt13']);
+  assert.deepEqual(JSON.parse(k.hosts_json), ['orngxt13']);
   assert.equal(k.status, 'once_hazir');
 });
 
@@ -655,5 +662,191 @@ test("RA9b iki aday da sunuculari kapsiyor: rc_once hangi once'den geldiyse o ka
     db.satirlar.find((r) => r.once_job_id === 612).sonra_job_id,
     null,
     'daha yeni A,B,C kaydi secilmez',
+  );
+});
+
+test('RA12 alim durumu: neden, hata, tek tarama, uc', async () => {
+  sahteModul(REG_YOLU, { getByKey: async () => null, getEffectiveTemplateId: () => null });
+  await awx.awxIsleriniAl({ simdi: 1_000_000 });
+  let d = awx.alimDurumu();
+  assert.equal(d.neden, 'template_yok');
+  assert.equal(d.sablon, null);
+  assert.equal(d.sonTarama, new Date(1_000_000).toISOString());
+
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true, awxServerId: 2 }),
+    getEffectiveTemplateId: () => 77,
+  });
+  db.satirlar.push({ id: 900, once_server_id: 2, once_job_id: 10, status: 'tamam' });
+  db.portalIsleri = [11];
+  awxKur(
+    {
+      10: {},
+      11: {},
+      12: { artifacts: {} },
+      13: { templateId: 99, artifacts: {} },
+      14: {},
+      15: { artifacts: { reboot_check_result: ONCE_SONUC(['A']) } },
+    },
+    { okunamaz: new Set([14]) },
+  );
+  await awx.awxIsleriniAl({ simdi: 2_000_000, zorla: true });
+  d = awx.alimDurumu();
+  assert.equal(d.neden, null);
+  assert.equal(d.hata, null);
+  assert.deepEqual(d.sablon, { templateId: 77, serverId: 2, sunucuAdi: 'Maestro2' });
+  assert.equal(d.bulunan, 6);
+  const by = Object.fromEntries(d.isler.map((x) => [x.jobId, x]));
+  assert.deepEqual(
+    d.isler.map((x) => x.jobId),
+    [15, 14, 13, 12, 11, 10],
+    'en yeni is ustte',
+  );
+  assert.equal(by[10].neden, 'portal_bilinen');
+  assert.equal(by[11].neden, 'portal_gecmisi');
+  assert.equal(by[12].neden, 'set_stats_yok');
+  assert.equal(by[13].neden, 'baska_sablon');
+  assert.equal(by[14].sonuc, 'hata');
+  assert.match(by[14].mesaj, /AWX zaman asimi/);
+  assert.equal(by[15].sonuc, 'alindi');
+  assert.equal(by[15].faz, 'once');
+  assert.ok(Number.isInteger(by[15].kayitId) && by[15].kayitId > 0);
+
+  // AWX listesi okunamazsa hata durumda gorunur, eski is sonuclari korunur.
+  sahteModul(RUNNER_YOLU, {
+    redactSecrets: (x) => x,
+    listTemplateJobsOnServer: async () => {
+      throw new Error('AWX baglanti hatasi');
+    },
+  });
+  await assert.rejects(awx.awxIsleriniAl({ simdi: 3_000_000, zorla: true }));
+  d = awx.alimDurumu();
+  assert.match(d.hata, /AWX baglanti hatasi/);
+  assert.equal(d.bulunan, null);
+  assert.equal(d.isler.length, 6);
+
+  // Suren tarama varken: zorlasiz cagri ona katilir; zorla (Yenile) cagri suren taramaya KATILMAZ (o tarama AWX'i
+  // Yenile'den once listelemis olabilir), bitince BIR yeni tarama kuyruga girer; kuyruktakine sonraki zorla katilir.
+  let liste = 0;
+  let birak;
+  let bekle;
+  const kilitle = () => {
+    bekle = new Promise((r) => {
+      birak = r;
+    });
+  };
+  sahteModul(RUNNER_YOLU, {
+    redactSecrets: (x) => x,
+    getServerById: () => null,
+    listTemplateJobsOnServer: async () => {
+      liste += 1;
+      await bekle;
+      return [];
+    },
+  });
+  // (1) zorlasiz cagri suren taramaya katilir: AWX bir kez listelenir.
+  kilitle();
+  let a = awx.awxIsleriniAl({ simdi: 4_000_000, zorla: true });
+  assert.equal(awx.alimDurumu().tariyor, true, 'tarama suruyor gorunur');
+  const n = awx.awxIsleriniAl({ simdi: 4_000_001 });
+  birak();
+  assert.deepEqual(await Promise.all([a, n]), [{ alinan: [] }, { alinan: [] }]);
+  assert.equal(liste, 1, 'zorlasiz cagri yeni tarama baslatmaz');
+  // (2) zorla cagrilar suren taramaya katilmaz; bitince TEK yeni tarama (ikinci zorla ona katilir).
+  liste = 0;
+  kilitle();
+  a = awx.awxIsleriniAl({ zorla: true });
+  const b = awx.awxIsleriniAl({ zorla: true });
+  const c = awx.awxIsleriniAl({ zorla: true });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(liste, 1, 'kuyruktaki tarama suren bitmeden baslamaz');
+  birak();
+  assert.deepEqual(await Promise.all([a, b, c]), [{ alinan: [] }, { alinan: [] }, { alinan: [] }]);
+  assert.equal(liste, 2, 'suren + kuyruktaki tek tarama');
+  assert.equal(awx.alimDurumu().tariyor, false);
+  assert.equal(awx.alimDurumu().hata, null);
+
+  // Playbook Kayitlari OKUNAMAZSA "sablon tanimsiz" denmez: hata yazilir, eski sablon gosterilmez.
+  sahteModul(REG_YOLU, {
+    getByKey: async () => {
+      throw new Error('Portal DB baglantisi yok');
+    },
+    getEffectiveTemplateId: () => 77,
+  });
+  await assert.rejects(awx.awxIsleriniAl({ zorla: true }));
+  d = awx.alimDurumu();
+  assert.equal(d.neden, null);
+  assert.match(d.hata, /Portal DB baglantisi yok/);
+  assert.equal(d.sablon, null);
+  sahteModul(REG_YOLU, {
+    getByKey: async () => ({ enabled: true, awxServerId: 2 }),
+    getEffectiveTemplateId: () => 77,
+  });
+
+  // Uc: ?tara=1 siniri atlar ve taramayi bekler; :id ucundan once tanimli.
+  const rcMod = require('../reboot-check.cjs');
+  const yollar = [];
+  const isleyici = {};
+  const router = {
+    get: (yol, fn) => {
+      yollar.push(yol);
+      isleyici[yol] = fn;
+    },
+    post: () => {},
+  };
+  rcMod.mount(router, { launch: async () => ({}), HOST_RE: /.*/, limit: null });
+  assert.ok(yollar.indexOf('/reboot-check/awx-alim') >= 0);
+  assert.ok(
+    yollar.indexOf('/reboot-check/awx-alim') < yollar.indexOf('/reboot-check/:id'),
+    ':id ucundan once',
+  );
+  liste = 0;
+  const cevap = (q) =>
+    new Promise((res) => {
+      isleyici['/reboot-check/awx-alim']({ query: q }, { json: (o) => res(o) });
+    });
+  sahteModul(RUNNER_YOLU, {
+    redactSecrets: (x) => x,
+    listTemplateJobsOnServer: async () => {
+      liste += 1;
+      return [];
+    },
+  });
+  // Az once taranmis gibi: 2 dk siniri dolmadi; tara=1 yine de taramali.
+  await awx.awxIsleriniAl({ zorla: true });
+  liste = 0;
+  let o = await cevap({});
+  assert.equal(liste, 0, 'tara yoksa AWX okunmaz');
+  assert.equal(o.ok, true);
+  o = await cevap({ tara: '1' });
+  assert.equal(liste, 1, 'tara=1: 2 dk dolmadan da tarar');
+  assert.equal(o.durum.bulunan, 0);
+});
+
+test('RA13 eslesmeyen sonra: rc_once yoksa sunucudaki sakli once (once_goruntu) kullanilir', async () => {
+  const sonra = SONRA_SONUC(['E', 'F']);
+  sonra.sunucular.E.once_kaynak = 'sunucu';
+  sonra.sunucular.E.once_goruntu = BOOT('E');
+  sonra.sunucular.F.once_kaynak = 'sunucu';
+  sonra.sunucular.F.once_goruntu = ['URUN|NGINX||'];
+  sonra.sunucular.F.once_var = false;
+  awxKur({
+    901: { artifacts: { reboot_check_result: sonra }, extraVarsHam: '{"rc_faz":"sonra"}' },
+  });
+  await awx.awxIsleriniAl({ zorla: true });
+  const k = db.satirlar.find((r) => r.sonra_job_id === 901);
+  assert.ok(k, 'kayit acildi');
+  const once = JSON.parse(k.once_json);
+  assert.equal(once.kaynak, 'sunucu');
+  assert.deepEqual(
+    rc.onceGirdisi(once.sunucular),
+    { E: BOOT('E') },
+    "BOOT'suz sakli goruntu alinmaz",
+  );
+  assert.doesNotMatch(k.notes, /bulunamadı/);
+  assert.equal(JSON.parse(k.ozet_json).once.job, 'sunucu');
+  assert.deepEqual(
+    awx.sakliOnceOf({ X: { once_goruntu: ['URUN|A||'] }, 'kotu ad': { once_goruntu: BOOT('x') } }),
+    null,
   );
 });

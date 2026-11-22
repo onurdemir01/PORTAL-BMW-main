@@ -96,9 +96,12 @@ export function useSistemAyarlari() {
   const yukle = useCallback(async () => {
     const no = ++yuklemeNo.current;
     try {
-      const r = await okJson<{ ok: boolean; values?: ConfigValue[]; message?: string; error?: string }>(
-        await fetch(UC),
-      );
+      const r = await okJson<{
+        ok: boolean;
+        values?: ConfigValue[];
+        message?: string;
+        error?: string;
+      }>(await fetch(UC));
       if (!r.ok) throw new Error(r.message || r.error || 'Sunucu hatası.');
       if (!bagliRef.current || no !== yuklemeNo.current) return;
       const map: Record<string, ConfigValue> = {};
@@ -120,12 +123,9 @@ export function useSistemAyarlari() {
     }
   }, []);
 
-  useAsyncEffect(
-    async (alive) => {
-      if (alive()) await yukle();
-    },
-    [],
-  );
+  useAsyncEffect(async (alive) => {
+    if (alive()) await yukle();
+  }, []);
 
   const tekrarDene = useCallback(() => {
     setDurum('yukleniyor');

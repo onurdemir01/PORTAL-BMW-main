@@ -18,14 +18,14 @@ IF NOT EXISTS (SELECT 1 FROM portal_elements WHERE element_key = @elemKey)
 
 -- 2) Rol kurallari — OpsX/LogX ile AYNI varsayilan (Admin + User).
 --    Kisitlama sayfa bazinda degil, KAYNAK bazinda yapilir (namespace/uygulama).
-IF NOT EXISTS (SELECT 1 FROM portal_element_visibility WHERE element_key = 'ScaleX' AND principal_id = 'Admin')
+IF NOT EXISTS (SELECT 1 FROM portal_element_visibility WHERE element_key = @elemKey AND principal_id = 'Admin')
   INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
-  VALUES ('ScaleX', 'role', 'Admin', 1);
+  VALUES (@elemKey, 'role', 'Admin', 1);
 
-IF NOT EXISTS (SELECT 1 FROM portal_element_visibility WHERE element_key = 'ScaleX' AND principal_id = 'User')
+IF NOT EXISTS (SELECT 1 FROM portal_element_visibility WHERE element_key = @elemKey AND principal_id = 'User')
   INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
-  VALUES ('ScaleX', 'role', 'User', 1);
+  VALUES (@elemKey, 'role', 'User', 1);
 
 -- 3) Dogrulama — iki satir donmeli (Admin, User).
 SELECT element_key, principal_type, principal_id, allow
-  FROM portal_element_visibility WHERE element_key = 'ScaleX';
+  FROM portal_element_visibility WHERE element_key = @elemKey;

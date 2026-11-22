@@ -41,7 +41,7 @@
 /** Kurumsal standart kalip: ad icinde "-app-v" / "-app-emb-v" GECER. */
 const SPA_RE = /-app(-emb)?-v/i;
 
-/** "app-ns.apps.fw.garanti.com.tr" -> "app-ns"; nokta yoksa dizginin kendisi. */
+/** "app-ns.apps.fw.sirket.invalid" -> "app-ns"; nokta yoksa dizginin kendisi. */
 const labelOf = (s) =>
   String(s == null ? '' : s)
     .trim()
@@ -58,7 +58,7 @@ const isSpaApp = (app) => SPA_RE.test(String(app == null ? '' : app).trim());
 
 /**
  * ROUTE ADRESI / ETIKET icin: "<app>-<ns>" kalibinda, uygulama adi henuz ayrilmamis.
- * Yalniz ILK ETIKETE bakar — "apps.fw.garanti.com.tr" kuyrugu her adreste ayni ve
+ * Yalniz ILK ETIKETE bakar — "apps.fw.sirket.invalid" kuyrugu her adreste ayni ve
  * alan adindan SPA cikarimi yapilmamali.
  *
  * isSpaApp ile AYNI kurali uyguluyor olmasi bugunku kuralin "icerir" tipinde olmasindan;

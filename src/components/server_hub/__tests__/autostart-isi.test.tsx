@@ -26,7 +26,12 @@ const m = vi.hoisted(() => ({
   jvmAutoStart: vi.fn(),
 }));
 const addJob = vi.hoisted(() => vi.fn());
-const toastM = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }));
+const toastM = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+}));
 vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob }) }));
 vi.mock('@/hooks/useToast', () => ({ toast: toastM }));
 vi.mock('@/api/serverHubApi', async (orig) => ({
@@ -49,8 +54,10 @@ import {
   _sifirlaForTest,
 } from '@/components/server_hub/autoStartIsi';
 
-const APP = 'GBCJAP01';
-const satir = (action: string, durum: string, mesaj: string) => ({ line: `RESULT\t${action}\t${durum}\t${mesaj}` });
+const APP = 'ORCJAP01';
+const satir = (action: string, durum: string, mesaj: string) => ({
+  line: `RESULT\t${action}\t${durum}\t${mesaj}`,
+});
 const JVM = (name: string, o: Record<string, unknown> = {}) => ({
   gen: 7,
   name,
@@ -79,7 +86,13 @@ const DETAY = () => ({
   findings: [],
   jvms: [
     JVM('durmus'),
-    JVM('kosan', { running: true, runningSrc: 'PS', autoStart: 'true', serverState: 'running', ports: [8080] }),
+    JVM('kosan', {
+      running: true,
+      runningSrc: 'PS',
+      autoStart: 'true',
+      serverState: 'running',
+      ports: [8080],
+    }),
   ],
   vhosts: [],
   init: [],
@@ -128,18 +141,36 @@ beforeEach(() => {
 
 describe('AI1 sonuç satırı ve Kapat engeli', () => {
   it('OK / SKIP / FAIL', () => {
-    expect(sonucSatiri(satir('jboss_autostart_on', 'OK', 'pay auto-start=true'))).toEqual({ durum: 'OK', mesaj: 'pay auto-start=true' });
+    expect(sonucSatiri(satir('jboss_autostart_on', 'OK', 'pay auto-start=true'))).toEqual({
+      durum: 'OK',
+      mesaj: 'pay auto-start=true',
+    });
     expect(sonucSatiri({ line: 'cikti yok' })).toBeNull();
-    expect(autoStartSonucu('successful', satir('jboss_autostart_on', 'OK', 'dogrulandi'), true, 5)).toEqual({ tur: 'ok', mesaj: 'dogrulandi', deger: 'true', jobId: 5 });
-    expect(autoStartSonucu('successful', satir('jboss_autostart_off', 'SKIP', 'zaten false'), false, 5).tur).toBe('skip');
-    expect(autoStartSonucu('successful', satir('jboss_autostart_off', 'SKIP', 'zaten false'), false, 5).deger).toBe('false');
-    const f = autoStartSonucu('failed', satir('jboss_autostart_off', 'FAIL', 'pay su an CALISIYOR'), false, 5);
+    expect(
+      autoStartSonucu('successful', satir('jboss_autostart_on', 'OK', 'dogrulandi'), true, 5),
+    ).toEqual({ tur: 'ok', mesaj: 'dogrulandi', deger: 'true', jobId: 5 });
+    expect(
+      autoStartSonucu('successful', satir('jboss_autostart_off', 'SKIP', 'zaten false'), false, 5)
+        .tur,
+    ).toBe('skip');
+    expect(
+      autoStartSonucu('successful', satir('jboss_autostart_off', 'SKIP', 'zaten false'), false, 5)
+        .deger,
+    ).toBe('false');
+    const f = autoStartSonucu(
+      'failed',
+      satir('jboss_autostart_off', 'FAIL', 'pay su an CALISIYOR'),
+      false,
+      5,
+    );
     expect(f).toEqual({ tur: 'fail', mesaj: 'pay su an CALISIYOR', deger: null, jobId: 5 });
     expect(autoStartSonucu('successful', null, true, 5).tur).toBe('fail');
     expect(autoStartSonucu('error', null, true, 5).mesaj).toMatch(/iş error/);
   });
   it('çalışan JVM Kapat engeli; ölçülemeyen JVM engel değil', () => {
-    expect(kapatEngeli({ running: true, runningKnown: true, runningSrc: 'PS' })).toMatch(/çalışıyor/);
+    expect(kapatEngeli({ running: true, runningKnown: true, runningSrc: 'PS' })).toMatch(
+      /çalışıyor/,
+    );
     expect(kapatEngeli({ running: false, runningKnown: true })).toBe('');
     expect(kapatEngeli({ running: true, runningKnown: false })).toBe('');
     expect(kapatEngeli({ running: true, runningSrc: 'UNMEASURED' })).toBe('');
@@ -166,16 +197,30 @@ describe('AI2 autoStartBaslat', () => {
     m.jobStatus.mockResolvedValueOnce({ ok: true, status: 'running', output: 'x' });
     await fetchStatus();
     expect(autoStartIsVar(`${APP}|7|pay`)).toBe(true);
-    m.jobStatus.mockResolvedValueOnce({ ok: true, status: 'failed', output: '', result: satir('jboss_autostart_on', 'FAIL', "host controller'a baglanilamadi - HICBIR SEY DEGISMEDI") });
+    m.jobStatus.mockResolvedValueOnce({
+      ok: true,
+      status: 'failed',
+      output: '',
+      result: satir(
+        'jboss_autostart_on',
+        'FAIL',
+        "host controller'a baglanilamadi - HICBIR SEY DEGISMEDI",
+      ),
+    });
     await fetchStatus();
     expect(autoStartIsVar(`${APP}|7|pay`)).toBe(false);
-    expect(toastM.error).toHaveBeenCalledWith(expect.stringContaining("host controller'a baglanilamadi"), expect.any(Number));
+    expect(toastM.error).toHaveBeenCalledWith(
+      expect.stringContaining("host controller'a baglanilamadi"),
+      expect.any(Number),
+    );
     expect(onBitti).toHaveBeenCalledWith(expect.objectContaining({ tur: 'fail', deger: null }));
     expect(isMetni({ jobId: 901, durum: 'running', baslangic: 0 })).toBe('#901 · koşuyor');
   });
   it('başlatma reddedilince kayıt temizlenir (yeniden denenebilir)', async () => {
     m.jvmAutoStart.mockResolvedValue({ ok: false, message: 'kosan son taramada ÇALIŞIYOR' });
-    expect(await autoStartBaslat({ host: APP, gen: 7, jvm: 'kosan', ac: false, addJob })).toBe(false);
+    expect(await autoStartBaslat({ host: APP, gen: 7, jvm: 'kosan', ac: false, addJob })).toBe(
+      false,
+    );
     expect(toastM.error).toHaveBeenCalledWith('kosan son taramada ÇALIŞIYOR');
     expect(autoStartIsVar(`${APP}|7|kosan`)).toBe(false);
     expect(addJob).not.toHaveBeenCalled();
@@ -201,29 +246,46 @@ describe('AI3 Ayrıntı penceresi', () => {
     expect(within(kosan).getByText('çalışıyor — kapatılamaz')).toBeInTheDocument();
     expect(within(tr).queryByText('açık')).toBeNull();
     fireEvent.click(within(tr).getByRole('button', { name: 'Aç' }));
-    expect(await screen.findByText(/durmus \(JBoss 7\) için auto-start AÇILACAK/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/durmus \(JBoss 7\) için auto-start AÇILACAK/),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Auto-start aç' }));
-    await waitFor(() => expect(within(tr).getByRole('status')).toHaveTextContent('#901 · kuyrukta'));
+    await waitFor(() =>
+      expect(within(tr).getByRole('status')).toHaveTextContent('#901 · kuyrukta'),
+    );
     expect(within(tr).queryByRole('button', { name: 'Aç' })).toBeNull();
     const { fetchStatus } = addJob.mock.calls[0][0];
     // sunucu da doğrulanan değeri taşır
     const sonra = DETAY();
-    sonra.jvms[0] = JVM('durmus', { autoStart: 'true', autoStartTarama: 'false', autoStartDogrulama: { jobId: 901, at: '2026-11-14T10:00:00Z' } });
+    sonra.jvms[0] = JVM('durmus', {
+      autoStart: 'true',
+      autoStartTarama: 'false',
+      autoStartDogrulama: { jobId: 901, at: '2026-11-14T10:00:00Z' },
+    });
     m.host.mockResolvedValue({ ok: true, host: sonra });
     m.jobStatus.mockResolvedValueOnce({
       ok: true,
       status: 'successful',
       output: '',
-      result: satir('jboss_autostart_on', 'OK', 'durmus auto-start=true (host=m, CLI ile dogrulandi)'),
+      result: satir(
+        'jboss_autostart_on',
+        'OK',
+        'durmus auto-start=true (host=m, CLI ile dogrulandi)',
+      ),
       autoStart: { dogrulandi: true, deger: 'true' },
     });
     await act(async () => {
       await fetchStatus();
     });
     expect(await within(tr).findByText('açık')).toBeInTheDocument();
-    expect(within(tr).getByTestId('autostart-dogrulandi')).toHaveTextContent('iş #901 · tarama bekleniyor');
+    expect(within(tr).getByTestId('autostart-dogrulandi')).toHaveTextContent(
+      'iş #901 · tarama bekleniyor',
+    );
     expect(within(tr).getByRole('button', { name: 'Kapat' })).toBeInTheDocument();
-    expect(toastM.success).toHaveBeenCalledWith(expect.stringContaining('AÇILDI (CLI ile doğrulandı, iş #901)'), expect.any(Number));
+    expect(toastM.success).toHaveBeenCalledWith(
+      expect.stringContaining('AÇILDI (CLI ile doğrulandı, iş #901)'),
+      expect.any(Number),
+    );
     expect(m.overview).toHaveBeenCalledTimes(1);
     // tam filo taze okuması (fresh) yok
     expect(m.host.mock.calls.every((c) => c[1] !== true)).toBe(true);
@@ -233,7 +295,9 @@ describe('AI3 Ayrıntı penceresi', () => {
 describe('AI4 Özet yalnız bu sunucunun etiketleri', () => {
   it('retireEtiketleri host ile', async () => {
     render(<ServerHubPage />);
-    const satirEl = (await screen.findByRole('button', { name: `${APP} ayrıntısı` })).closest('tr')!;
+    const satirEl = (await screen.findByRole('button', { name: `${APP} ayrıntısı` })).closest(
+      'tr',
+    )!;
     fireEvent.click(within(satirEl).getByRole('button', { name: 'Ayrıntı' }));
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledWith(false, APP));
   });
@@ -251,7 +315,9 @@ describe('AI5 iş çubuğundan kaldırılan iş', () => {
     try {
       m.jvmAutoStart.mockResolvedValue({ ok: true, jobId: 902, awxServerId: 1 });
       const onBitti = vi.fn();
-      expect(await autoStartBaslat({ host: APP, gen: 7, jvm: 'pay', ac: true, addJob, onBitti })).toBe(true);
+      expect(
+        await autoStartBaslat({ host: APP, gen: 7, jvm: 'pay', ac: true, addJob, onBitti }),
+      ).toBe(true);
       const { fetchStatus } = addJob.mock.calls[0][0];
       // izleyici bir kez yokladı (koşuyor), sonra kullanıcı sekmeyi kapattı: fetchStatus bir daha çağrılmaz
       // izleyici yedek döngünün ilk turundan hemen önce yokladı (9. sn)
@@ -262,10 +328,17 @@ describe('AI5 iş çubuğundan kaldırılan iş', () => {
       // yedek döngü 10. sn'de döner: izleyici yakın zamanda yokladığı için EK istek atmaz
       await vi.advanceTimersByTimeAsync(2_000);
       expect(m.jobStatus).toHaveBeenCalledTimes(1);
-      m.jobStatus.mockResolvedValue({ ok: true, status: 'successful', output: '', result: satir('jboss_autostart_on', 'OK', 'pay auto-start=true') });
+      m.jobStatus.mockResolvedValue({
+        ok: true,
+        status: 'successful',
+        output: '',
+        result: satir('jboss_autostart_on', 'OK', 'pay auto-start=true'),
+      });
       await vi.advanceTimersByTimeAsync(20_000);
       expect(autoStartIsVar(`${APP}|7|pay`)).toBe(false);
-      expect(onBitti).toHaveBeenCalledWith(expect.objectContaining({ tur: 'ok', deger: 'true', jobId: 902 }));
+      expect(onBitti).toHaveBeenCalledWith(
+        expect.objectContaining({ tur: 'ok', deger: 'true', jobId: 902 }),
+      );
       const n = m.jobStatus.mock.calls.length;
       await vi.advanceTimersByTimeAsync(60_000);
       expect(m.jobStatus.mock.calls.length).toBe(n);
@@ -312,9 +385,18 @@ describe('AI6 pencere kapanıp açılınca sonuç yeni pencereye', () => {
     const hostOnce = m.host.mock.calls.length;
     // sunucu doğrulanan değeri /host'ta taşır (AS4)
     const sonra = DETAY();
-    sonra.jvms[0] = JVM('durmus', { autoStart: 'true', autoStartTarama: 'false', autoStartDogrulama: { jobId: 904, at: '2026-11-14T10:00:00Z' } });
+    sonra.jvms[0] = JVM('durmus', {
+      autoStart: 'true',
+      autoStartTarama: 'false',
+      autoStartDogrulama: { jobId: 904, at: '2026-11-14T10:00:00Z' },
+    });
     m.host.mockResolvedValue({ ok: true, host: sonra });
-    m.jobStatus.mockResolvedValueOnce({ ok: true, status: 'successful', output: '', result: satir('jboss_autostart_on', 'OK', 'ok') });
+    m.jobStatus.mockResolvedValueOnce({
+      ok: true,
+      status: 'successful',
+      output: '',
+      result: satir('jboss_autostart_on', 'OK', 'ok'),
+    });
     await act(async () => {
       await fetchStatus();
     });
@@ -332,11 +414,18 @@ describe('AI7 FAIL satırda kalır', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-start aç' }));
     await waitFor(() => expect(within(tr).getByRole('status')).toHaveTextContent('#905'));
     const { fetchStatus } = addJob.mock.calls[0][0];
-    m.jobStatus.mockResolvedValueOnce({ ok: true, status: 'failed', output: '', result: satir('jboss_autostart_on', 'FAIL', "host controller'a baglanilamadi") });
+    m.jobStatus.mockResolvedValueOnce({
+      ok: true,
+      status: 'failed',
+      output: '',
+      result: satir('jboss_autostart_on', 'FAIL', "host controller'a baglanilamadi"),
+    });
     await act(async () => {
       await fetchStatus();
     });
-    expect(await within(tr).findByTestId('autostart-basarisiz')).toHaveTextContent("iş #905 başarısız: host controller'a baglanilamadi");
+    expect(await within(tr).findByTestId('autostart-basarisiz')).toHaveTextContent(
+      "iş #905 başarısız: host controller'a baglanilamadi",
+    );
     expect(within(tr).getByRole('button', { name: 'Aç' })).toBeInTheDocument();
   });
 });
@@ -346,7 +435,9 @@ describe('AI8 tazeleme düşerse uyarı', () => {
     shOnbellek.yaz(`host:${APP}`, DETAY());
     m.host.mockRejectedValue(new Error('ag yok'));
     render(<ServerHubPage />);
-    const satirEl = (await screen.findByRole('button', { name: `${APP} ayrıntısı` })).closest('tr')!;
+    const satirEl = (await screen.findByRole('button', { name: `${APP} ayrıntısı` })).closest(
+      'tr',
+    )!;
     fireEvent.click(within(satirEl).getByRole('button', { name: 'Ayrıntı' }));
     expect(await screen.findByTestId('ayrinti-tazelenemedi')).toHaveTextContent('ag yok');
   });

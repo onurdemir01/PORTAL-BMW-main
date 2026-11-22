@@ -15,6 +15,8 @@
 // Metin server/util/guard-text.cjs normalize() ile duzlestirilir (prettier'den bagimsiz).
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -62,7 +64,14 @@ const API = codeOnly(read('api/opsxApi.ts'));
 const WIZARD = codeOnly(read('components/opsx/OpsXWizardPage.tsx'));
 
 // Turkce buyuk/kucuk harf ve sapkasiz yazim dahil.
-const SELECT_ALL = [/t[uü]m[uü]n[uü]/, /hepsini\s*se[cç]/, /select\s*all/, /selectall/, /toggleall/, /t[uü]m[uü]\s*se[cç]/];
+const SELECT_ALL = [
+  /t[uü]m[uü]n[uü]/,
+  /hepsini\s*se[cç]/,
+  /select\s*all/,
+  /selectall/,
+  /toggleall/,
+  /t[uü]m[uü]\s*se[cç]/,
+];
 const lowerTr = (s) => String(s).toLocaleLowerCase('tr-TR');
 
 test('UI1 WAS adimlarinda "Tumunu sec" / select-all YOK', () => {
@@ -78,7 +87,14 @@ test('UI1 WAS adimlarinda "Tumunu sec" / select-all YOK', () => {
     assert.ok(WAS_STEP_FILES.includes(known), `${known} WAS adim listesinde yok`);
   }
   // Pozitif kontrol: desenler gercek "Tumunu Sec" yazimlarini YAKALIYOR (bekci kor degil).
-  for (const sample of ['Tümünü Seç', 'TÜMÜNÜ SEÇ', 'tumunu sec', 'Hepsini seç', 'Select all', 'toggleAll']) {
+  for (const sample of [
+    'Tümünü Seç',
+    'TÜMÜNÜ SEÇ',
+    'tumunu sec',
+    'Hepsini seç',
+    'Select all',
+    'toggleAll',
+  ]) {
     assert.ok(
       SELECT_ALL.some((re) => re.test(lowerTr(sample))),
       `desen "${sample}" yazimini yakalamiyor`,
@@ -101,7 +117,7 @@ test('UI2 JVM secimi RADYO ve TEK anahtar; onSubmit TEK hedef verir', () => {
   // Secim TEK metin anahtari; dizi/Set ile coklu secim yok.
   assert.match(JVM, /const \[selectedKey, setSelectedKey\] = useState\(''\)/);
   assert.doesNotMatch(JVM, /useState<\s*(Set|string\[\]|WasTarget\[\]|Record)/);
-  assert.doesNotMatch(JVM, /setSelectedKey\(\s*\(/, 'secim bir onceki secime EKLENMEMELI');
+  assert.doesNotMatch(JVM, esnek(/setSelectedKey\(\s*\(/), 'secim bir onceki secime EKLENMEMELI');
   assert.match(JVM, /onChange=\{\(\) => \{ setSelectedKey\(k\); setOperation\(null\); \}\}/);
   // Secilemeyen (olculemeyen / coklu surec / kimliksiz) satirin radyosu kapali.
   assert.match(JVM, /disabled=\{busy \|\| !t\.selectable\}/);
@@ -123,7 +139,10 @@ test('UI3 API govdesi ve sihirbaz TEK host gonderir; limit yok', () => {
 
   const run = between(WIZARD, 'async function runWas(', 'const wasEnv', 'runWas');
   assert.match(run, /if \(busyRef\.current\) return;/, 'WAS islemi cift tik kilidinden gecmeli');
-  assert.match(run, /opsxWasApi\.run\(\{ app: wasSel\.app, host: wasTarget\.host, profile: wasTarget\.profile,/);
+  assert.match(
+    run,
+    /opsxWasApi\.run\(\{ app: wasSel\.app, host: wasTarget\.host, profile: wasTarget\.profile,/,
+  );
   assert.doesNotMatch(run, /\bhosts\s*:/);
   assert.doesNotMatch(run, /\blimit\b/);
   assert.match(run, /confirmed: v\.confirmed, confirmText: v\.confirmText,/);
@@ -132,16 +151,33 @@ test('UI3 API govdesi ve sihirbaz TEK host gonderir; limit yok', () => {
 test('UI4 onay: JVM adi ELLE yazilir, onay kutusu ve uyari kabulu ayrica', () => {
   assert.match(CONFIRM, /onPaste=\{\(e\) => e\.preventDefault\(\)\}/, 'yapistirma kapali olmali');
   assert.match(CONFIRM, /onDrop=\{\(e\) => e\.preventDefault\(\)\}/, 'surukle-birak kapali olmali');
-  assert.match(CONFIRM, /const \[typed, setTyped\] = useState\(''\)/, 'alan BOS baslamali (on doldurma yok)');
-  assert.doesNotMatch(CONFIRM, /useState\(target\.server\)/);
+  assert.match(
+    CONFIRM,
+    /const \[typed, setTyped\] = useState\(''\)/,
+    'alan BOS baslamali (on doldurma yok)',
+  );
+  assert.doesNotMatch(CONFIRM, esnek(/useState\(target\.server\)/));
   assert.match(CONFIRM, /const nameOk = typed === target\.server;/);
-  assert.match(CONFIRM, /const canSubmit = !busy && nameOk && consent && \(warnings\.length === 0 \|\| ack\);/);
+  assert.match(
+    CONFIRM,
+    /const canSubmit = !busy && nameOk && consent && \(warnings\.length === 0 \|\| ack\);/,
+  );
   assert.match(CONFIRM, /disabled=\{!canSubmit\}/);
-  assert.match(CONFIRM, /onConfirm\(\{ confirmed: consent, confirmText: typed, ackWarnings: warnings\.length > 0 && ack \}\)/);
+  assert.match(
+    CONFIRM,
+    esnek(
+      /onConfirm\(\{ confirmed: consent, confirmText: typed, ackWarnings: warnings\.length > 0 && ack \}\)/,
+    ),
+  );
 });
 
 test('UI5 OLCULEMEDI ayri (sari); bilinmeyen durum OLCULEMEDI, asla Durmus', () => {
-  const states = between(LABELS, 'export const WAS_STATE_INFO', 'export function wasStateInfo', 'WAS_STATE_INFO');
+  const states = between(
+    LABELS,
+    'export const WAS_STATE_INFO',
+    'export function wasStateInfo',
+    'WAS_STATE_INFO',
+  );
   const clsOf = (name) => {
     const m = states.match(new RegExp(`${name}: \\{ label: '([^']*)', cls: '([^']*)'`));
     assert.ok(m, `${name} etiketi bulunamadi`);
@@ -152,8 +188,14 @@ test('UI5 OLCULEMEDI ayri (sari); bilinmeyen durum OLCULEMEDI, asla Durmus', () 
   assert.match(olc.cls, /yellow/, 'OLCULEMEDI sari olmali');
   assert.notEqual(olc.cls, stop.cls, 'OLCULEMEDI ile STOPPED ayni gorunmemeli');
   assert.notEqual(olc.label, stop.label);
-  assert.match(LABELS, /return WAS_STATE_INFO\[state as WasState\] \|\| WAS_STATE_INFO\.OLCULEMEDI;/);
-  assert.match(LABELS, /return WAS_RESULT_INFO\[code as WasOpResultCode\] \|\| WAS_RESULT_INFO\.OLCULEMEDI;/);
+  assert.match(
+    LABELS,
+    /return WAS_STATE_INFO\[state as WasState\] \|\| WAS_STATE_INFO\.OLCULEMEDI;/,
+  );
+  assert.match(
+    LABELS,
+    /return WAS_RESULT_INFO\[code as WasOpResultCode\] \|\| WAS_RESULT_INFO\.OLCULEMEDI;/,
+  );
   // Sonuc paneli: bilinmeyen sonuc sari ve "gercek durum bilinmiyor".
   assert.match(RESULT, /Ölçülemedi — gerçek durum bilinmiyor/);
   assert.match(RESULT, /: 'bg-yellow-50 border-yellow-200 text-yellow-800'/);
@@ -162,7 +204,12 @@ test('UI5 OLCULEMEDI ayri (sari); bilinmeyen durum OLCULEMEDI, asla Durmus', () 
 test('UI6 sihirbaz: Legacy -> urun secimi -> WAS; JBoss coklu secim adimlari WAS akisina girmez', () => {
   assert.match(WIZARD, /setStep\(p === 'legacy' \? 'legacy_product' : 'ocp_target'\)/);
   assert.match(WIZARD, /setStep\(p === 'was' \? 'was_app' : 'legacy_app'\)/);
-  const wasRender = between(WIZARD, "{step === 'legacy_product' &&", "{step === 'legacy_app' &&", 'WAS render');
+  const wasRender = between(
+    WIZARD,
+    "{step === 'legacy_product' &&",
+    "{step === 'legacy_app' &&",
+    'WAS render',
+  );
   for (const s of ['was_app', 'was_jvm', 'was_confirm', 'was_done']) {
     assert.ok(wasRender.includes(`{step === '${s}'`), `${s} adimi WAS render blogunda yok`);
   }

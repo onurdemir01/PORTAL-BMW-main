@@ -15,6 +15,7 @@
 //   AS4 kayitta playbook yolu bos: 409, BASLATILMAZ (eskiden kor baslatiliyordu)
 //   AS5 template hicbir yerde yok: hata "sunucu yok" der, "job template bulunamadi" DEMEZ
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -85,14 +86,24 @@ yer('../../../db/index.cjs', {
     if (/^\s*SELECT \* FROM logx_v2_jobs WHERE request_id/.test(sql)) return { rows: [] };
     if (/^\s*INSERT INTO logx_v2_jobs/.test(sql)) {
       return {
-        rows: [{ id: 1, request_id: 'R1', job_type: 'legacy_discovery', awx_server_id: params[2], awx_job_id: params[3], status: 'pending' }],
+        rows: [
+          {
+            id: 1,
+            request_id: 'R1',
+            job_type: 'legacy_discovery',
+            awx_server_id: params[2],
+            awx_job_id: params[3],
+            status: 'pending',
+          },
+        ],
       };
     }
     throw new Error(`taklit DB tanimiyor: ${sql.slice(0, 80)}`);
   },
 });
 yer('../../../ansible/playbook-registry.cjs', {
-  getByKey: async (k) => (k === 'logx_legacy_discovery' ? { keyName: k, displayName: k, enabled: true, ...kayit } : null),
+  getByKey: async (k) =>
+    k === 'logx_legacy_discovery' ? { keyName: k, displayName: k, enabled: true, ...kayit } : null,
   getEffectiveTemplateId: (row) => row.templateId,
   updateServerId: async (k, no) => {
     guncellenen.push([k, no]);
@@ -101,7 +112,11 @@ yer('../../../ansible/playbook-registry.cjs', {
 });
 yer('../requests.cjs', { getRequestRow: async () => ({ username: 'kullanici1' }) });
 yer('../../../auth/users.cjs', {
-  getUserIdentity: async () => ({ username: 'kullanici1', displayName: 'Kullanici Bir', mail: 'k1@ornek.test' }),
+  getUserIdentity: async () => ({
+    username: 'kullanici1',
+    displayName: 'Kullanici Bir',
+    mail: 'k1@ornek.test',
+  }),
 });
 yer('../../audit.cjs', {});
 
@@ -111,10 +126,17 @@ function sablon(no, id, playbook, durum = 200) {
   sunucular[no].liste.push({ id, name: `Sablon ${id}`, playbook });
   sunucular[no].sablonlar.set(id, {
     durum,
-    govde: { id, name: `Sablon ${id}`, playbook, ask_variables_on_launch: true, survey_enabled: false },
+    govde: {
+      id,
+      name: `Sablon ${id}`,
+      playbook,
+      ask_variables_on_launch: true,
+      survey_enabled: false,
+    },
   });
 }
-const baslatma = (no) => istekler.filter((i) => i.startsWith(`${no} POST`) && i.endsWith('/launch/'));
+const baslatma = (no) =>
+  istekler.filter((i) => i.startsWith(`${no} POST`) && i.endsWith('/launch/'));
 
 test('AS1 alternatifte ayni playbook: baslar, kayit duzeltilir', async () => {
   sablon(2, 501, 'roles/logx/logx_legacy_discovery.yml');
@@ -167,7 +189,7 @@ test('AS5 template hicbir yerde yok: "sunucu yok" denir, "template bulunamadi" d
       assert.equal(e.code, 'awx_server_missing');
       assert.match(e.message, /AWX sunucusu bulunamadı/);
       assert.match(e.message, /logx_legacy_discovery/);
-      assert.doesNotMatch(e.message, /job template bulunamadı/);
+      assert.doesNotMatch(e.message, esnek(/job template bulunamadı/));
       return true;
     },
   );

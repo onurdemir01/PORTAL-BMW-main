@@ -8,6 +8,8 @@
 //           F) durum/sapma  G) uc yuzeyi  H) portal↔playbook sozlesmesi
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -255,8 +257,8 @@ test('A21 kesif: workload alanlari ayrisir', () => {
   );
 });
 test('A22 kesif: imaj `/` ve `:` iceriyor — parseDetailPairs bozulmamali', () => {
-  const p = result.parseDetailPairs('image=registry.gar.com.tr:5000/team/app:1.2.3-rc');
-  assert.equal(p.image, 'registry.gar.com.tr:5000/team/app:1.2.3-rc');
+  const p = result.parseDetailPairs('image=registry.sirket.invalid:5000/team/app:1.2.3-rc');
+  assert.equal(p.image, 'registry.sirket.invalid:5000/team/app:1.2.3-rc');
 });
 test('A23 kesif: ISO zaman damgasi `:` iceriyor', () => {
   const p = result.parseDetailPairs('created_at=2026-08-28T10:00:00Z created_by=ali');
@@ -432,12 +434,12 @@ test('B11 katalogda PAROLA yok, yalnizca vault degisken ADI', () => {
     tenant: 'ark',
     clusters: ['c1'],
     hosts: { c1: 'j1' },
-    meta: { c1: { api_url: 'https://a:6443', vault_credential_key: 'uxmid_gar' } },
+    meta: { c1: { api_url: 'https://a:6443', vault_credential_key: 'svcac_gar' } },
   });
   const s = JSON.stringify(cat);
   for (const bad of ['password', 'parola', 'secret'])
     assert.ok(!s.toLowerCase().includes(bad), bad);
-  assert.equal(cat.clusters.c1.credential, 'uxmid_gar');
+  assert.equal(cat.clusters.c1.credential, 'svcac_gar');
 });
 
 test('B12 vault anahtari on kontrolu calistirma yolunda cagriliyor', () => {
@@ -1028,7 +1030,7 @@ test("H4 api_url playbook regex'ini saglar", () => {
     clusters: ['c1'],
     hosts: { c1: 'j' },
     meta: {
-      c1: { api_url: 'https://api.gbocpprod1.fw.garanti.com.tr:6443', vault_credential_key: 'k' },
+      c1: { api_url: 'https://api.orocpprod1.fw.sirket.invalid:6443', vault_credential_key: 'k' },
     },
   }).clusters.c1;
   assert.match(c.api_url, RE);
@@ -1450,7 +1452,7 @@ test('J2 sapma tazeleme GERCEKTEN bir uctan cagriliyor', () => {
   );
   assert.match(
     codeOnly(INDEX),
-    /parsed\.mode === 'state'/,
+    /parsed\??\.mode === 'state'/,
     'tazeleme `state` kesfinin bitisine bagli olmali',
   );
 });
@@ -1677,7 +1679,7 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   for (const c of ornekler) {
     assert.match(
       c,
-      /environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/,
+      esnek(/environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/),
       `ornek durumda belirsiz ortam: ${c}`,
     );
     assert.match(c, /\.\.\.ortak/, `ornek durum herkesIcin degil: ${c}`);
@@ -1900,7 +1902,11 @@ test('N5 admin kategori listesi seed ile AYRISMIYOR', () => {
 
   const seeded = new Set((setup.match(/category: '([a-z_]+)'/g) || []).map((m) => m.slice(11, -1)));
   const listed = new Set(
-    JSON.parse((tab.match(/const CATEGORIES = (\[[^\]]*\])/) || [])[1].replace(/"/g, '"')),
+    JSON.parse(
+      (tab.match(/const CATEGORIES = (\[[^\]]*\])/) || [])[1]
+        .replace(/'/g, '"')
+        .replace(/,\s*\]$/, ']'),
+    ),
   );
 
   const missing = [...seeded].filter((c) => !listed.has(c)).sort();
@@ -2037,7 +2043,7 @@ test('P1 isin GERCEK SONUCU denetime yaziliyor', () => {
   // olmali. Sonra yazilsaydi dry_run calistirmalari hic iz birakmazdi.
   const fin = code.slice(code.indexOf('async function finalizeOperation'));
   assert.ok(
-    fin.indexOf('scalex_finalize') < fin.indexOf("parsed.mode !== 'apply'"),
+    fin.indexOf('scalex_finalize') < fin.search(/parsed\??\.mode !== 'apply'/),
     'sonuc izi `apply` kontrolunden SONRA — dry_run calistirmalari iz birakmaz',
   );
 });
@@ -2414,7 +2420,11 @@ test('S7 ortak CRUD tablosu ARANABILIR', () => {
   assert.match(t, /searchable/, 'arama destegi yok');
   // Arama TUM kolonlarda: kullanici aradiginin hangi kolonda oldugunu bilmek
   // zorunda kalmamali.
-  assert.match(t, /columns\.some\(\(c\) => String\(r\[c\.key\]/, 'arama tum kolonlarda calismiyor');
+  assert.match(
+    t,
+    esnek(/columns\.some\(\(c\) => String\(r\[c\.key\]/),
+    'arama tum kolonlarda calismiyor',
+  );
   // Kisa listede kutu gosterilmemeli.
   assert.match(t, /rows\.length >= SEARCH_MIN_ROWS/, 'kisa listede de arama kutusu cikiyor');
   // Bos sonucta "kayit yok" demek yaniltici olurdu — arama yuzunden bos oldugu

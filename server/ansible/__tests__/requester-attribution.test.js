@@ -3,8 +3,8 @@
 // URETIM (2026-09-07): kullanici KENDI actigi LogX isinde, AWX extra_vars'inda
 // baska bir calisanin adini gordu:
 //
-//   "requester_email": "onurdemir3@garantibbva.com.tr",
-//   "requester_name":  "Onur Demir"
+//   "requester_email": "denemekisi3@ornekbanka.invalid",
+//   "requester_name":  "Deneme Kisi"
 //
 // SEBEP LDAP DEGILDI. `runner.launchJobOnServer(serverId, templateId, extraVars,
 // limit, requester = null)` — LogX v2 bu fonksiyonu DORT argumanla cagiriyordu,
@@ -16,6 +16,7 @@
 // Bu bekci iki seyi birden kilitler: (1) kullanici GECIRILIYOR, (2) gecirilemedigi
 // durumda bu VERIDE gorunur oluyor.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -113,7 +114,7 @@ test('RA4 kullanici adi BILINIYORSA ad varsayilana DUSMEZ', () => {
 // YINE DEFAULT_REQUESTER'a, kod deposundaki sabit calisanin adresine dusuyordu.
 // Kullanicinin gordugu satir bir sonraki iste de aynen cikacakti:
 //
-//   "requester_email": "onurdemir3@garantibbva.com.tr"
+//   "requester_email": "denemekisi3@ornekbanka.invalid"
 //
 // Bildirimin gittigi yer E-POSTADIR. Kullanici adini gecirmek, sorunun
 // GORUNEN yarisini duzeltip ISLEYEN yarisini yerinde birakmakti.
@@ -262,7 +263,9 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
   const dizgi = sites.filter(
     (s) =>
       s.count >= 5 &&
-      (/^['"`]/.test(s.requester) || /\.username\b/.test(s.requester) || /^(null|undefined)$/.test(s.requester)),
+      (/^['"`]/.test(s.requester) ||
+        /\.username\b/.test(s.requester) ||
+        /^(null|undefined)$/.test(s.requester)),
   );
   assert.deepEqual(
     dizgi.map((s) => `${s.file}: 5. arguman '${s.requester}'`),
@@ -280,7 +283,7 @@ test('RA7 HER launchJobOnServer cagrisi tetikleyeni geciriyor', () => {
 // HTTP istegi YOK (`req` null) ve atif `req?.session?.user` uzerinden yapildigi icin
 // DOGRUDAN DEFAULT_REQUESTER'a dustu:
 //
-//   "requester_name": "Onur Demir", "requester_is_fallback": true
+//   "requester_name": "Deneme Kisi", "requester_is_fallback": true
 //
 // Oysa talep kaydi `username`i tasiyor; kimlik oradan (portal_users / LDAP) cozulmeli.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,10 +295,14 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   const sig = 'async function performSsLaunch(';
   const i = src.indexOf(sig);
   assert.ok(i >= 0, 'performSsLaunch bulunamadi');
-  let depth = 0, close = -1;
+  let depth = 0,
+    close = -1;
   for (let k = i + sig.length - 1; k < src.length; k++) {
     if (src[k] === '(') depth++;
-    else if (src[k] === ')' && --depth === 0) { close = k; break; }
+    else if (src[k] === ')' && --depth === 0) {
+      close = k;
+      break;
+    }
   }
   assert.ok(close > 0, 'parametre listesi kapanmadi');
   const fn = bodyOf(src.slice(close), '{');
@@ -303,7 +310,7 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   // Hatanin kendisi: dogrudan `req?.session?.user` ile withRequesterVars cagrisi.
   assert.doesNotMatch(
     fn,
-    /withRequesterVars\(\s*extraVars\s*,\s*req\?\.session\?\.user\s*\)/,
+    esnek(/withRequesterVars\(\s*extraVars\s*,\s*req\?\.session\?\.user\s*\)/),
     'withRequesterVars dogrudan req.session.user aliyor — poller yolunda req null, atif sabit kisiye duser',
   );
   // Kimlik username uzerinden cozuluyor mu (e-posta dahil; bkz. RA5 mantigi).
@@ -311,7 +318,15 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   // Cozum SONUCU withRequesterVars'a geciriliyor mu.
   const arg = (fn.match(/withRequesterVars\(\s*extraVars\s*,\s*([A-Za-z_$][\w$]*)\s*\)/) || [])[1];
   assert.ok(arg && arg !== 'req', 'withRequesterVars cozulen kullaniciyi almiyor');
-  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{[^}]*mail:\\s*ident\\.mail'), 'cozulen e-posta gecirilmiyor');
+  assert.match(
+    fn,
+    new RegExp(arg + '\\s*=\\s*\\{[^}]*mail:\\s*ident\\.mail'),
+    'cozulen e-posta gecirilmiyor',
+  );
   // Cozulemezse en azindan username gitmeli (requester_username = bilinmiyor OLMAMALI).
-  assert.match(fn, new RegExp(arg + '\\s*=\\s*\\{\\s*username\\s*\\}'), 'cozulemeyen durumda username bile gecirilmiyor');
+  assert.match(
+    fn,
+    new RegExp(arg + '\\s*=\\s*\\{\\s*username\\s*\\}'),
+    'cozulemeyen durumda username bile gecirilmiyor',
+  );
 });

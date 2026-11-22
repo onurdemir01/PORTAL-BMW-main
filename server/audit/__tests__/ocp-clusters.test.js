@@ -24,7 +24,10 @@ test('kume VERIDEN cikarilir - o ortamda namespace barindiran cluster"lar', () =
     [app({ prod: [{ cluster: 'p1' }, { cluster: 'p2' }] }), app({ prod: [{ cluster: 'p1' }] })],
     ENVS,
   );
-  assert.deepEqual(out.prod.map((c) => c.cluster), ['p1', 'p2']);
+  assert.deepEqual(
+    out.prod.map((c) => c.cluster),
+    ['p1', 'p2'],
+  );
   assert.deepEqual(out.dev, [], 'veride hic dev yoksa kume BOS - uydurulmaz');
 });
 
@@ -54,13 +57,24 @@ test('AYNI cluster"da birden fazla namespace: uygulama BIR kez sayilir', () => {
 
 test('ortamlar birbirine karismaz', () => {
   const out = envClustersFromApps(
-    [app({ prod: [{ cluster: 'ortak' }], test: [{ cluster: 'ortak' }, { cluster: 'yalniz-test' }] })],
+    [
+      app({
+        prod: [{ cluster: 'ortak' }],
+        test: [{ cluster: 'ortak' }, { cluster: 'yalniz-test' }],
+      }),
+    ],
     ENVS,
   );
   // AYNI cluster iki ortamda da gorunebilir - bu NORMALDIR, ocp-platforms.cjs'te
   // belgelenen gercek durum budur.
-  assert.deepEqual(out.prod.map((c) => c.cluster), ['ortak']);
-  assert.deepEqual(out.test.map((c) => c.cluster), ['ortak', 'yalniz-test']);
+  assert.deepEqual(
+    out.prod.map((c) => c.cluster),
+    ['ortak'],
+  );
+  assert.deepEqual(
+    out.test.map((c) => c.cluster),
+    ['ortak', 'yalniz-test'],
+  );
 });
 
 test('ilgilenilmeyen ortam sessizce ATILIR (cokme yok)', () => {
@@ -71,11 +85,7 @@ test('ilgilenilmeyen ortam sessizce ATILIR (cokme yok)', () => {
 
 test('bozuk/eksik kayitlar cokertmez', () => {
   const out = envClustersFromApps(
-    [
-      app({ prod: [{ cluster: '' }, { cluster: null }, { cluster: 'gecerli' }] }),
-      app(null),
-      null,
-    ],
+    [app({ prod: [{ cluster: '' }, { cluster: null }, { cluster: 'gecerli' }] }), app(null), null],
     ENVS,
   );
   assert.deepEqual(out.prod, [{ cluster: 'gecerli', apps: 1 }], 'bos cluster adi sayilmaz');
@@ -108,23 +118,28 @@ test('DR gibi az uygulamali cluster GIZLENMEZ - gorunur kalir', () => {
 // ── RESMI KUME (2026-10-14, kullanici ARK listesini verdi) ─────────────────────────────
 test('RK1 resmi listeli ortamda n = resmi liste (0 uygulamali cluster dahil); liste disi cluster "beklenmeyen"; listesiz ortam veriden', () => {
   const { envClustersResmi } = require('../ocp-clusters.cjs');
-  const { ENV_CLUSTERS } = require('../ocp-platforms.cjs');
-  // Kullanici duzeltmesi: gbocptest4 dev + test (qa DEGIL; Ansible ark_qa grubunda olsa da).
-  assert.deepEqual(ENV_CLUSTERS.ark.dev, ['gbocptest1', 'gbocptest2', 'gbocptest4']);
-  assert.deepEqual(ENV_CLUSTERS.ark.test, ['gbocptest1', 'gbocptest2', 'gbocptest4']);
-  assert.deepEqual(ENV_CLUSTERS.ark.qa, ['gbocpqa1', 'gbocpqa2', 'gbocpankqa2']);
+  const ENV_CLUSTERS = require('../ocp-platforms.cjs').ortamKumeleri();
+  // Kullanici duzeltmesi: orocptest4 dev + test (qa DEGIL; Ansible ark_qa grubunda olsa da).
+  assert.deepEqual(ENV_CLUSTERS.ark.dev, ['orocptest1', 'orocptest2', 'orocptest4']);
+  assert.deepEqual(ENV_CLUSTERS.ark.test, ['orocptest1', 'orocptest2', 'orocptest4']);
+  assert.deepEqual(ENV_CLUSTERS.ark.qa, ['orocpqa1', 'orocpqa2', 'orocpankqa2']);
   assert.equal(ENV_CLUSTERS.ark.prod.length, 5);
   const apps = [
-    { envs: { qa: [{ cluster: 'gbocpqa1' }, { cluster: 'gbocptest4' }], edu: [{ cluster: 'gbocpedu1' }] } },
-    { envs: { qa: [{ cluster: 'gbocpqa1' }] } },
+    {
+      envs: {
+        qa: [{ cluster: 'orocpqa1' }, { cluster: 'orocptest4' }],
+        edu: [{ cluster: 'orocpedu1' }],
+      },
+    },
+    { envs: { qa: [{ cluster: 'orocpqa1' }] } },
   ];
   const { kumeler, kaynak } = envClustersResmi(apps, ['qa', 'edu'], ENV_CLUSTERS.ark);
   assert.deepEqual(kumeler.qa, [
-    { cluster: 'gbocpqa1', apps: 2 },
-    { cluster: 'gbocpqa2', apps: 0 },
-    { cluster: 'gbocpankqa2', apps: 0 },
-    { cluster: 'gbocptest4', apps: 1, beklenmeyen: true },
+    { cluster: 'orocpqa1', apps: 2 },
+    { cluster: 'orocpqa2', apps: 0 },
+    { cluster: 'orocpankqa2', apps: 0 },
+    { cluster: 'orocptest4', apps: 1, beklenmeyen: true },
   ]);
   assert.deepEqual(kaynak, { qa: 'resmi', edu: 'veri' });
-  assert.deepEqual(kumeler.edu, [{ cluster: 'gbocpedu1', apps: 1 }]);
+  assert.deepEqual(kumeler.edu, [{ cluster: 'orocpedu1', apps: 1 }]);
 });

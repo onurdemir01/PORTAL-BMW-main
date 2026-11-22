@@ -13,7 +13,10 @@ const path = require('node:path');
 
 const oku = (p) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
 const kodOnly = (s) =>
-  s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  s
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
 
 const SERVICE = oku('service.cjs');
 const RUNNER = oku('ansible/runner.cjs');
@@ -51,7 +54,11 @@ test('LB3 tetikleyici bilinmiyorken GERCEK BIR KISIYE atfedilmiyor', () => {
   );
   assert.match(govde, /FALLBACK_REQUESTER_LABEL/, 'notr etiket kullanilmiyor');
   // ADRES yine varsayilana dusmeli: Teams cozemedigi adreste bildirimi DUSURUR.
-  assert.match(govde, /rawEmail \|\| DEFAULT_REQUESTER\.email/, 'adres varsayilani kalkmis — bildirim hic gitmez');
+  assert.match(
+    govde,
+    /rawEmail \|\| DEFAULT_REQUESTER\.email/,
+    'adres varsayilani kalkmis — bildirim hic gitmez',
+  );
   // Kim tetikledigi HER ZAMAN gonderilmeli.
   assert.match(govde, /requester_username/, 'gercek tetikleyici gonderilmiyor');
   assert.match(govde, /requester_is_fallback/, 'varsayilana dusuldugu bildirilmiyor');
@@ -102,22 +109,37 @@ test('LB6 KALICI red TEKRAR DENENMIYOR', () => {
 // ── LB7: GORUNURLUK YOKLAMASI 401'DE DURUYOR ───────────────────────────────
 
 test('LB7 401 yoklama dongusunu DURDURUYOR (cift istek tuzagi kapali)', () => {
-  const api = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'api', 'adminApi.ts'), 'utf8');
+  const api = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'api', 'adminApi.ts'),
+    'utf8',
+  );
   const ctx = fs.readFileSync(
     path.join(__dirname, '..', '..', 'src', 'contexts', 'AuthContext.tsx'),
     'utf8',
   );
   // `safeJson` HTTP durumunu kontrol etmez: 401'de `version` undefined -> `?? 0`
   // -> `0 !== mevcut` -> haritayi yeniden cek. Yani her turda IKI istek.
-  assert.match(api, /if \(res\.status === 401\) return \{ version: 0, unauthorized: true \}/,
-    '401 hala sessizce 0`a dusuyor — her turda ikinci bir istek tetiklenir');
+  assert.match(
+    api,
+    /if \(res\.status === 401\) return \{ version: 0, unauthorized: true \}/,
+    '401 hala sessizce 0`a dusuyor — her turda ikinci bir istek tetiklenir',
+  );
   // 2026-10-02 (oturum Faz B): 401'de kullaniciyi dusurme karari artik YALNIZCA
   // sessionGuard'in (imzali 401). Imzali 401 kapiyi kapatir ve sonraki yoklamalar AGA
   // HIC CIKMAZ (sessionGuard SG testleri) — "dongu sonsuza dek ag'i dover" boylece
   // kapali. Burada kalan sart: 401'de haritayi YENIDEN CEKMEMEK (cift istek tuzagi).
-  assert.match(ctx, /if \(unauthorized\) return;/,
-    '401`de erken donulmuyor — haritayi yeniden cekip cift istek uretir');
-  const gk = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'api', 'sessionGuard.ts'), 'utf8');
-  assert.match(gk, /if \(_bitti && !muafMi\(yol\)\) return sentetik401\(\);/,
-    'kapi kapaliyken istekler hala aga cikiyor — yoklama sonsuza dek doner');
+  assert.match(
+    ctx,
+    /if \(unauthorized\) return;/,
+    '401`de erken donulmuyor — haritayi yeniden cekip cift istek uretir',
+  );
+  const gk = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'api', 'sessionGuard.ts'),
+    'utf8',
+  );
+  assert.match(
+    gk,
+    /if \(_bitti && !muafMi\(yol\)\) return sentetik401\(\);/,
+    'kapi kapaliyken istekler hala aga cikiyor — yoklama sonsuza dek doner',
+  );
 });

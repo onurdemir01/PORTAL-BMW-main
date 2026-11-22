@@ -24,7 +24,8 @@ export function ogeyeKaydir(el: HTMLElement, ustCubuk: HTMLElement | null, harek
   const pay = (ustCubuk?.getBoundingClientRect().height ?? 0) + PAY;
   const kap = kaydirmaKabi(el);
   if (kap) {
-    const hedef = kap.scrollTop + el.getBoundingClientRect().top - kap.getBoundingClientRect().top - pay;
+    const hedef =
+      kap.scrollTop + el.getBoundingClientRect().top - kap.getBoundingClientRect().top - pay;
     kap.scrollTo?.({ top: Math.max(0, hedef), behavior: davranis });
     return;
   }

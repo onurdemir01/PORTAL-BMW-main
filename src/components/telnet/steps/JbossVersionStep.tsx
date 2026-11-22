@@ -5,13 +5,13 @@
 // MAJÖR SÜRÜM BAZINDA GRUPLANIR (bkz. OpsX'in JbossVersionStep.tsx dosya başı notu) —
 // aynı hata (bir minör sürüm seçilince diğer minör sürümdeki host'ların hiç görünmemesi)
 // burada da vardı, OpsX ile AYNI düzeltme uygulandı.
-import React, { useMemo, useState } from "react";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { telnetApi, type TelnetHost } from "@/api/telnetApi";
-import { majorOfHost, normalizeJbossVersion } from "@/utils/jboss";
+import React, { useMemo, useState } from 'react';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { telnetApi, type TelnetHost } from '@/api/telnetApi';
+import { majorOfHost, normalizeJbossVersion } from '@/utils/jboss';
 
-const UNKNOWN_LABEL = "Bilinmiyor";
+const UNKNOWN_LABEL = 'Bilinmiyor';
 
 const JbossVersionStep: React.FC<{
   app: string;
@@ -23,18 +23,21 @@ const JbossVersionStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useAsyncEffect(async (alive) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await telnetApi.getHosts(app);
-      if (alive()) setHosts(r.hosts ?? []);
-    } catch (err) {
-      if (alive()) setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (alive()) setLoading(false);
-    }
-  }, [app]);
+  useAsyncEffect(
+    async (alive) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await telnetApi.getHosts(app);
+        if (alive()) setHosts(r.hosts ?? []);
+      } catch (err) {
+        if (alive()) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [app],
+  );
 
   // Majör bazında gruplanir, ama gruptaki GERÇEK sürümler de gösterilir (OpsX'in
   // JbossVersionStep'iyle AYNI davranış).
@@ -64,19 +67,32 @@ const JbossVersionStep: React.FC<{
   function toggle(version: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(version)) next.delete(version); else next.add(version);
+      if (next.has(version)) next.delete(version);
+      else next.add(version);
       return next;
     });
   }
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Sunucular yükleniyor...</div>;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (loading)
+    return (
+      <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+        Sunucular yükleniyor...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
 
   if (hosts.length === 0) {
     return (
       <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
         <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <span><strong>{app}</strong> için envanterde sunucu bulunamadı.</span>
+        <span>
+          <strong>{app}</strong> için envanterde sunucu bulunamadı.
+        </span>
       </div>
     );
   }
@@ -84,16 +100,19 @@ const JbossVersionStep: React.FC<{
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-[var(--text-secondary)]">Hangi JBoss sürümündeki sunucularla test yapmak istiyorsunuz?</p>
+        <p className="text-sm text-[var(--text-secondary)]">
+          Hangi JBoss sürümündeki sunucularla test yapmak istiyorsunuz?
+        </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
-          Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span> · birden fazla sürüm birlikte seçilebilir
+          Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span> · birden
+          fazla sürüm birlikte seçilebilir
         </p>
       </div>
 
       <div className="space-y-1.5">
         {versions.map(({ major, count, actual }) => (
           <label
-            key={major || "(unknown)"}
+            key={major || '(unknown)'}
             className="w-full flex items-center gap-3 px-4 py-3 border border-[var(--border)] rounded-xl cursor-pointer hover:border-[var(--accent)] hover:shadow-sm transition-all has-[:checked]:border-[var(--accent)]"
           >
             <input
@@ -108,8 +127,11 @@ const JbossVersionStep: React.FC<{
                 {major ? `JBoss ${major}` : UNKNOWN_LABEL}
               </span>
               {actual.length > 0 && (
-                <span className="block mt-0.5 text-[11px] text-[var(--text-muted)] font-mono truncate" title={actual.join(", ")}>
-                  {actual.join(", ")}
+                <span
+                  className="block mt-0.5 text-[11px] text-[var(--text-muted)] font-mono truncate"
+                  title={actual.join(', ')}
+                >
+                  {actual.join(', ')}
                 </span>
               )}
             </span>

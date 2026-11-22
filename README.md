@@ -34,7 +34,7 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 | [docs/SCALEX.md](docs/SCALEX.md) | **ScaleX** — OCP replica durdurma/geri alma/ölçekleme; kapılar, yetki, tuzaklar |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operasyon ve yönetişim runbook'u |
 | [docs/LOGX-V2-PLAYBOOKS.md](docs/LOGX-V2-PLAYBOOKS.md) | LogX v2 Ansible playbook kurulum rehberi |
-| [docs/AWX-KOPYALAMA-HARITASI.md](docs/AWX-KOPYALAMA-HARITASI.md) | `server/ansible/bmw_portal/` ağacının AWX projesine birebir kopyalanması ve nedeni |
+| [docs/AWX-KOPYALAMA-HARITASI.md](docs/AWX-KOPYALAMA-HARITASI.md) | `server/ansible/playbooks/bmw_portal/` ağacının AWX projesine birebir kopyalanması ve nedeni |
 | [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md) | **Zorunlu kalite kapıları** ve repo hijyeni (herkes ve her ajan için) |
 | [docs/STANDARTLAR.md](docs/STANDARTLAR.md) | Mühendislik standartları ve mimari karar kayıtları (ADR) |
 | [deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy](deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy) | **Kurumsal Jenkins işi**: kurulum → test + kapsam → derleme → paket (kurumsal Sonar kapsamı buradan gelir) |
@@ -96,7 +96,7 @@ Aşağıdaki tablolar özet referanstır.
 | `NODE_ENV` | Ortam | `production` |
 | `SESSION_SECRET` | İsteğe bağlı. Oturum bu anahtara bağlı değildir; boş kalabilir ya da değişebilir (bkz. `docs/OTURUM-YONETIMI.md`) | *(boş)* |
 | `LOGX_PROXY_PORT` | LogX iframe izolasyon portu (dev) | `5056` |
-| `LOGX_PROXY_PUBLIC_URL` | LogX izolasyon hostname'i (**prod/nginx'te zorunlu**) | `https://portal-logx.sirket.com.tr` |
+| `LOGX_PROXY_PUBLIC_URL` | LogX izolasyon hostname'i (**prod/nginx'te zorunlu**) | `https://portal-logx.sirket.invalid` |
 
 ### Yerel Fallback Kullanıcıları
 
@@ -127,7 +127,7 @@ LDAP erişilemediğinde veya geliştirme ortamında kullanılır.
 
 | Değişken | Açıklama | Örnek |
 |----------|----------|-------|
-| `LDAP_URL` | LDAP sunucu URL | `ldaps://adds.sirket.com.tr:636` |
+| `LDAP_URL` | LDAP sunucu URL | `ldaps://adds.sirket.invalid:636` |
 | `LDAP_BASE_DN` | Arama tabanı | `DC=sirket,DC=com,DC=tr` |
 | `LDAP_BIND_DN` | Servis hesabı DN | `CN=svc,OU=Users,DC=...` |
 | `LDAP_BIND_PASSWORD` | Servis hesabı şifresi | |
@@ -161,7 +161,7 @@ LDAP erişilemediğinde veya geliştirme ortamında kullanılır.
 
 **Neden `NOBETCI_API_HOST`?**
 Nöbet API'si kurumsal iç hostname kullanır. Lokalde DNS çözümlenemiyor olabilir.
-- Kurumsal sunucuda (`gbaocp01` gibi) bu değişken gerekmez — DNS zaten çalışır
+- Kurumsal sunucuda (`oraocp01` gibi) bu değişken gerekmez — DNS zaten çalışır
 - Lokal geliştirmede `NOBETCI_API_HOST=<IP>` ile DNS bypass yapılabilir
 - API başarısız olursa Nöbet Listesi sayfasındaki manuel kayıtlar otomatik fallback olarak kullanılır
 
@@ -169,9 +169,9 @@ Nöbet API'si kurumsal iç hostname kullanır. Lokalde DNS çözümlenemiyor ola
 
 | Değişken | Açıklama | Örnek |
 |----------|----------|-------|
-| `DT_MANAGED_MCP_URL` | Dynatrace **Managed** MCP (https + `/mcp`!) | `https://dynatrace-mcp.sirket.com.tr/mcp` |
+| `DT_MANAGED_MCP_URL` | Dynatrace **Managed** MCP (https + `/mcp`!) | `https://dynatrace-mcp.sirket.invalid/mcp` |
 | `DT_DEFAULT_ENV_ALIAS` | Varsayılan environment alias | `takim-managed-test` |
-| `INSTANA_MCP_URL` | Instana MCP | `https://instana-mcp.sirket.com.tr/mcp` |
+| `INSTANA_MCP_URL` | Instana MCP | `https://instana-mcp.sirket.invalid/mcp` |
 | `INSTANA_API_TOKEN_*` / `INSTANA_BASE_URL_*` | nonprod/prod token + base-url | |
 | `CORP_CA_CERT_PATH` | Kurumsal CA zinciri (`scripts/fetch-mcp-ca.sh` üretir) | `server/certs/mcp/ca-chain.pem` |
 | `MCP_TLS_INSECURE` | Geçici: sertifika doğrulamasını kapat (CA varsa yok sayılır) | `1` |

@@ -5,11 +5,14 @@
 //
 //   LM1 parola maskelenir; sema, kullanici, sunucu, port kalir; kimliksiz URL degismez
 //   LM2 dosya satiri (formatArgs) Error yigininda da maskeler
+//   LM6 maskeleme zinciri, tek desenli eski gizli alan maskesi ve eski Bearer sinifiyla birebir ayni cikti
+//       (2026-11-20, Sonar S5843 karmasiklik 27 / S5869: gizli alan iki adim oldu; esdeger rastgele derlem)
 'use strict';
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { kimlikMaskele, formatArgs } = require('../log.cjs');
+const { kimlikMaskele, formatArgs, gizliAlanMaskele } = require('../log.cjs');
+const H = require('./fixtures/regex-esdeger.cjs');
 
 test('LM1 parola maskelenir, gerisi kalir', () => {
   assert.equal(
@@ -81,4 +84,130 @@ test('LM5 sorgu parametresi ve JSON gizli alanlari maskelenir', () => {
   assert.doesNotMatch(j1, /ak_live_12345/);
   assert.doesNotMatch(j1, /cs_999/);
   assert.match(j1, /"user":"ali"/);
+});
+
+// Eski zincir (2026-11-20 oncesi): yalniz referans.
+const ESKI = {
+  URL_KIMLIK: /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/gi,
+  AUTH_SCHEME: /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi,
+  JWT_RE: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g,
+  COOKIE_HDR_RE: /\b(Set-Cookie|Cookie)\s*:\s*([^\r\n]+)/gi,
+  SID_KV_RE: /\b(__Host-portal\.sid|connect\.sid)=([^;\s,&]+)/gi,
+  SECRET_KV_RE:
+    /([?&"']?\b(?:password|passwd|pwd|parola|sifre|secret|token|access_token|refresh_token|api[_-]?key|apikey|client_secret|authorization|sig)\b["']?\s*(?:=|:)\s*["']?)([^"'\s&;,}]{1,})/gi,
+};
+const eskiGizli = (metin) =>
+  metin.replace(ESKI.SECRET_KV_RE, (m, prefix, val) => {
+    if (val === '***' || val === '[MASKED]' || /^(?:Bearer|Basic)$/i.test(val)) return m;
+    return `${prefix}***`;
+  });
+const eskiZincir = (metin) =>
+  eskiGizli(
+    metin
+      .replace(ESKI.URL_KIMLIK, '$1$2:***@')
+      .replace(ESKI.COOKIE_HDR_RE, '$1: [MASKED]')
+      .replace(ESKI.SID_KV_RE, '$1=[MASKED]')
+      .replace(ESKI.AUTH_SCHEME, '$1 ***')
+      .replace(ESKI.JWT_RE, 'eyJ***'),
+  );
+
+const LOG_TOKEN = [
+  'password',
+  'PassWord',
+  'passwd',
+  'pwd',
+  'parola',
+  'sifre',
+  'secret',
+  'client_secret',
+  'token',
+  'access_token',
+  'refresh_token',
+  'api_key',
+  'api-key',
+  'apikey',
+  'APIKEY',
+  'authorization',
+  'sig',
+  'signature',
+  'x',
+  'ab1',
+  '=',
+  '=',
+  ':',
+  ':',
+  ' ',
+  ' ',
+  '"',
+  "'",
+  '&',
+  '?',
+  ';',
+  ',',
+  '}',
+  '.',
+  '_',
+  '-',
+  '\t',
+  '\n',
+  '***',
+  '[MASKED]',
+  'Bearer',
+  'Basic',
+  'abcdefgh',
+  'eyJabcdefghij',
+  'http://',
+  'u:p@h',
+  'Cookie',
+  'connect.sid=',
+  '\u212a', // Kelvin isareti: /i altinda k ile eslesmez
+  '\u017f',
+  'ş',
+];
+
+const LOG_ONEK = ['password=', 'token: "', '?api_key=', '{"secret":"', 'x pwd = ', "&sig='"];
+
+test('LM6 zincir eski tek desenli gizli alan maskesiyle birebir ayni, kotu girdide hizli', () => {
+  H.esdeger({
+    eski: eskiGizli,
+    yeni: gizliAlanMaskele,
+    kip: 'fn',
+    tokenlar: LOG_TOKEN,
+    el: [
+      'token=a.password:"x"',
+      'password=token=abc',
+      'a password=x token=y',
+      'password=***',
+      'token="[MASKED]"',
+      'authorization: Bearer',
+      '?token=abc&password=def',
+      'x-token=abc',
+      'mytoken=abc',
+      'token  =  "v"',
+      "'api-key': 'v'",
+      'pwd=',
+      'pwd="',
+    ],
+    onek: LOG_ONEK,
+    adet: 40000,
+    maks: 20,
+    enAzEslesen: 12000,
+  });
+  H.esdeger({
+    eski: eskiZincir,
+    yeni: kimlikMaskele,
+    kip: 'fn',
+    tokenlar: LOG_TOKEN,
+    onek: LOG_ONEK,
+    adet: 20000,
+    maks: 20,
+    enAzEslesen: 6000,
+  });
+  for (const kotu of [
+    `password${' '.repeat(50000)}x`,
+    `${'password '.repeat(10000)}`,
+    `token=${'a'.repeat(100000)}`,
+    `${'token='.repeat(15000)}`,
+  ])
+    H.hizli(gizliAlanMaskele, kotu, { kip: 'fn' });
 });

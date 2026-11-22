@@ -14,6 +14,8 @@
 //   SE9  setup: mevcut kurulumlara iki kolon ALTER ile eklenir
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,9 +24,16 @@ const path = require('node:path');
 const e = require('../ss-erisim.cjs');
 
 const DN_MW = 'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr';
-const kullanici = (groups) => ({ username: 'osmankoz', role: 'User', groups });
+const kullanici = (groups) => ({ username: 'ornekkisi', role: 'User', groups });
 const ADMIN = { username: 'onurdemir', role: 'Admin', groups: [] };
-const oge = (ek) => ({ id: 'x', title: 'T', awxServerId: 2, awxTemplateId: 7, enabled: true, ...ek });
+const oge = (ek) => ({
+  id: 'x',
+  title: 'T',
+  awxServerId: 2,
+  awxTemplateId: 7,
+  enabled: true,
+  ...ek,
+});
 
 test('SE1 mod: eski kayit acik = herkes; kapali; bilinmeyen = kapali', () => {
   assert.equal(e.ssErisimModu(oge({ accessMode: null })), 'herkes');
@@ -37,7 +46,11 @@ test('SE1 mod: eski kayit acik = herkes; kapali; bilinmeyen = kapali', () => {
 });
 
 test('SE2 admin her kipte erisir; kapali red, herkes acik', () => {
-  for (const ek of [{ enabled: false }, { accessMode: 'ekipler', accessGroups: [] }, { accessMode: 'herkes' }]) {
+  for (const ek of [
+    { enabled: false },
+    { accessMode: 'ekipler', accessGroups: [] },
+    { accessMode: 'herkes' },
+  ]) {
     assert.equal(e.ssErisimVar(oge(ek), ADMIN), true, JSON.stringify(ek));
   }
   assert.equal(e.ssErisimVar(oge({ enabled: false }), kullanici([DN_MW])), false);
@@ -49,10 +62,17 @@ test('SE3 ekipler: DN / CN / harf / bosluk eslesir; uye olmayan ve grupsuz red',
   const dnIle = oge({ accessMode: 'ekipler', accessGroups: [DN_MW] });
   const cnIle = oge({ accessMode: 'ekipler', accessGroups: ['gt-middleware'] });
   assert.equal(e.ssErisimVar(dnIle, kullanici([DN_MW])), true);
-  assert.equal(e.ssErisimVar(dnIle, kullanici(['cn=gt-middleware, ou=groups, dc=fw,dc=garanti,dc=com,dc=tr'])), true);
+  assert.equal(
+    e.ssErisimVar(dnIle, kullanici(['cn=gt-middleware, ou=groups, dc=fw,dc=garanti,dc=com,dc=tr'])),
+    true,
+  );
   assert.equal(e.ssErisimVar(cnIle, kullanici([DN_MW])), true);
   const iki = oge({ accessMode: 'ekipler', accessGroups: ['GT-Network', DN_MW] });
-  assert.equal(e.ssErisimVar(iki, kullanici(['CN=GT-Network,OU=Groups,DC=fw'])), true, 'ikinci ekip');
+  assert.equal(
+    e.ssErisimVar(iki, kullanici(['CN=GT-Network,OU=Groups,DC=fw'])),
+    true,
+    'ikinci ekip',
+  );
   assert.equal(e.ssErisimVar(dnIle, kullanici(['CN=GT-Network,OU=Groups,DC=fw'])), false);
   assert.equal(e.ssErisimVar(dnIle, kullanici([])), false);
   assert.equal(e.ssErisimVar(dnIle, { username: 'x', role: 'User' }), false);
@@ -61,13 +81,25 @@ test('SE3 ekipler: DN / CN / harf / bosluk eslesir; uye olmayan ve grupsuz red',
 
 test('SE4 kayitli tam DN, ayni CN li baska OU daki gruba acilmaz', () => {
   const item = oge({ accessMode: 'ekipler', accessGroups: [DN_MW] });
-  assert.equal(e.ssErisimVar(item, kullanici(['CN=GT-Middleware,OU=Eski,DC=fw,DC=garanti,DC=com,DC=tr'])), false);
+  assert.equal(
+    e.ssErisimVar(item, kullanici(['CN=GT-Middleware,OU=Eski,DC=fw,DC=garanti,DC=com,DC=tr'])),
+    false,
+  );
 });
 
 test('SE5 bos ya da okunamayan grup listesi kimseye acmaz', () => {
-  assert.equal(e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: [] }), kullanici([DN_MW])), false);
-  assert.equal(e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: null }), kullanici([DN_MW])), false);
-  assert.equal(e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: ['  '] }), kullanici([DN_MW])), false);
+  assert.equal(
+    e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: [] }), kullanici([DN_MW])),
+    false,
+  );
+  assert.equal(
+    e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: null }), kullanici([DN_MW])),
+    false,
+  );
+  assert.equal(
+    e.ssErisimVar(oge({ accessMode: 'ekipler', accessGroups: ['  '] }), kullanici([DN_MW])),
+    false,
+  );
   assert.equal(e.grupListesiOku('{bozuk'), null);
   assert.equal(e.grupListesiOku('{"a":1}'), null);
   assert.deepEqual(e.grupListesiOku(null), []);
@@ -86,8 +118,15 @@ test('SE6 dogrulama', () => {
   const cok = Array.from({ length: e.GRUP_TAVAN + 1 }, (_, i) => `G${i}`);
   assert.match(e.ssErisimDogrula({ mode: 'ekipler', groups: cok }).hata, /En fazla/);
 
-  const d = e.ssErisimDogrula({ mode: 'ekipler', groups: [` ${DN_MW} `, DN_MW.toLowerCase(), 'GT-Network'] });
-  assert.deepEqual(d, { enabled: true, accessMode: 'ekipler', accessGroups: [DN_MW, 'GT-Network'] });
+  const d = e.ssErisimDogrula({
+    mode: 'ekipler',
+    groups: [` ${DN_MW} `, DN_MW.toLowerCase(), 'GT-Network'],
+  });
+  assert.deepEqual(d, {
+    enabled: true,
+    accessMode: 'ekipler',
+    accessGroups: [DN_MW, 'GT-Network'],
+  });
   assert.deepEqual(e.ssErisimDogrula({ mode: 'kapali', groups: ['GT-Network'] }), {
     enabled: false,
     accessMode: 'kapali',
@@ -103,16 +142,25 @@ test('SE7 liste: admin hepsini gorur; kullanici yalniz erisebildigini, grup list
     oge({ id: 'c', accessMode: 'ekipler', accessGroups: ['GT-Network'] }),
     oge({ id: 'd', accessMode: null, accessGroups: [] }),
   ];
-  assert.deepEqual(e.ssKullaniciListesi(items, ADMIN).map((i) => i.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(
+    e.ssKullaniciListesi(items, ADMIN).map((i) => i.id),
+    ['a', 'b', 'c', 'd'],
+  );
   assert.deepEqual(e.ssKullaniciListesi(items, ADMIN)[1].accessGroups, [DN_MW]);
   const gorunen = e.ssKullaniciListesi(items, kullanici([DN_MW]));
-  assert.deepEqual(gorunen.map((i) => i.id), ['b', 'd']);
+  assert.deepEqual(
+    gorunen.map((i) => i.id),
+    ['b', 'd'],
+  );
   for (const i of gorunen) {
     assert.equal('accessGroups' in i, false, 'grup listesi kullaniciya gitti');
     assert.equal('accessMode' in i, false);
   }
   assert.deepEqual(items[1].accessGroups, [DN_MW], 'kaynak liste degistirildi');
-  assert.deepEqual(e.ssKullaniciListesi(items, kullanici([])).map((i) => i.id), ['d']);
+  assert.deepEqual(
+    e.ssKullaniciListesi(items, kullanici([])).map((i) => i.id),
+    ['d'],
+  );
 });
 
 const RUNNER = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
@@ -128,22 +176,38 @@ test('SE8 runner: sunucu tarafi kontrol ve atomik yazim', () => {
 
   const launch = blok("app.post('/api/ansible/launch-ss/:serverId/:templateId'", 2000);
   assert.match(launch, /ssErisim\.ssErisimVar\(i, req\.session\?\.user\)/);
-  assert.doesNotMatch(launch, /isAdmin \|\| i\.enabled/, 'eski enabled-only kontrol geri geldi');
+  assert.doesNotMatch(
+    launch,
+    esnek(/isAdmin \|\| i\.enabled/),
+    'eski enabled-only kontrol geri geldi',
+  );
 
   const survey = blok("app.get('/api/ansible/survey/:serverId/:templateId'", 1500);
   const kontrol = survey.indexOf('ssErisim.ssErisimVar(');
   const token = survey.indexOf('getTokenForServer(');
   assert.ok(kontrol > 0 && kontrol < token, 'survey AWX e gitmeden once erisimi kontrol etmiyor');
-  assert.match(survey.slice(0, kontrol), /role !== 'Admin'/, 'admin muafiyeti yok (ScaleX penceresi kirilir)');
+  assert.match(
+    survey.slice(0, kontrol),
+    /role !== 'Admin'/,
+    'admin muafiyeti yok (ScaleX penceresi kirilir)',
+  );
 
   assert.match(
     RUNNER,
-    /app\.get\('\/api\/ansible\/template-detail\/:serverId\/:templateId', requireAuth, requireAnsiblePage,/,
+    esnek(
+      /app\.get\('\/api\/ansible\/template-detail\/:serverId\/:templateId', requireAuth, requireAnsiblePage,/,
+    ),
   );
-  assert.match(RUNNER, /app\.post\('\/api\/ansible\/ss\/items\/:id\/access', requireAuth, requireAdmin,/);
+  assert.match(
+    RUNNER,
+    /app\.post\('\/api\/ansible\/ss\/items\/:id\/access', requireAuth, requireAdmin,/,
+  );
 
   const yaz = blok('async function writeSsItems(items', 3600);
-  assert.match(yaz, /BEGIN TRAN;[\s\S]*DELETE FROM ansible_ss_items;[\s\S]*COMMIT TRAN;[\s\S]*ROLLBACK TRAN;/);
+  assert.match(
+    yaz,
+    /BEGIN TRAN;[\s\S]*DELETE FROM ansible_ss_items;[\s\S]*COMMIT TRAN;[\s\S]*ROLLBACK TRAN;/,
+  );
   assert.match(yaz, /access_mode, access_groups\) VALUES/);
   const satir = blok('function ssRowToItem(r)', 900);
   assert.match(satir, /accessMode: r\.access_mode/);

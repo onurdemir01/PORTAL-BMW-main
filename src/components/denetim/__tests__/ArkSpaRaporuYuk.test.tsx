@@ -38,7 +38,7 @@ const satir = (application: string, traffic: ArkYuk | null): ArkSatir => ({
   namespace: 'kart-prod',
   application,
   location: `/${application}/`,
-  hosts: ['GBNGXP40', 'GBNGXP41'],
+  hosts: ['ORNGXP40', 'ORNGXP41'],
   vhosts: ['GLOMO-PROD'],
   team: [],
   traffic,
@@ -55,7 +55,10 @@ const RAPOR: ArkRapor = {
   trafficReady: true,
   services: [{ service: 'GLOMO', rows: 2, apps: 2, declared: 0 }],
   rows: [
-    satir('kisa-app-v1', yuk({ state: 'unknown', pencereSaat: 68, firstSeen: '20260929031500', kismi: ['pencere'] })),
+    satir(
+      'kisa-app-v1',
+      yuk({ state: 'unknown', pencereSaat: 68, firstSeen: '20260929031500', kismi: ['pencere'] }),
+    ),
     satir('atil-app-v1', yuk({})),
   ],
 };

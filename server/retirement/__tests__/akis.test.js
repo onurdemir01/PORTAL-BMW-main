@@ -13,6 +13,8 @@
 //      adimlari KOSTURMUYOR; dusurmek ekibin unutmasina, "bitti" demek yanlis guven.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -90,7 +92,11 @@ test('AK6 GERI ALINDIYSA bekleme/DELETE atlanir, silme devre disi yazilir', () =
     'geri alinmis hedefte silme devre disi yazilmiyor',
   );
   const bekleme = SRC.slice(SRC.indexOf('const beklemeDurum'), SRC.indexOf('const beklemeBilgi'));
-  assert.match(bekleme, /geriAlindi \? 'atlandi'/, 'geri alinmis hedefte bekleme atlanmiyor');
+  assert.match(
+    bekleme,
+    esnek(/geriAlindi \? 'atlandi'/),
+    'geri alinmis hedefte bekleme atlanmiyor',
+  );
 });
 
 test('AK7 UYGULANAN web sonucu sunucudan DONUYOR (akis onu okuyor)', () => {

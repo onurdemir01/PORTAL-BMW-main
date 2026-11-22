@@ -1,0 +1,1215 @@
+---
+# LogX v2 - OCP pod discovery, log collection and archive staging
+# Location:
+#   bmw_automation_folder/portal_tamplates/logx_ocp_discover_fetch.yml
+# Global variables:
+#   bmw_openshift_jobs/global_variables/credentials.yaml
+#   bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml
+#
+# Required extra_vars (v2 - per-cluster bastion):
+#   terminal_host: ORAOCP01              # legacy scalar (= terminal_hosts[0]); still accepted alone
+#   terminal_hosts: [ORAOCP01, ORAOCP02] # optional; unique, sorted list of bastions
+#   ocp_targets:                          # COKLU HEDEF (namespace, app) ciftleri
+#     - namespace: reference-applications-prod
+#       app_name: parallel-composition-v3
+#     - namespace: das-trading-qa
+#       app_name: risk-engine
+#   archive_id: 0dda63d4                  # calistirmayi benzersizlestiren kisa kimlik
+#
+#   # Geriye uyum (ocp_targets YOKSA tek hedef bunlardan kurulur):
+#   oc_namespace_input: application-namespace   # `namespace` REZERVE ad; portal bunu yollar
+#   namespace: application-namespace            # eski ad, geriye uyum icin hala okunur
+#   app_name: application-name-fragment
+#   ocp_clusters:
+#     - env: lab
+#       tenant: ark
+#       cluster_name: orocplab2
+#       terminal_host: ORAOCP01          # optional; when absent the scalar terminal_host is used
+#       api_url: https://api...:6443     # portal (v3); yoksa inventory dosyasina duser
+#       credential_key: svcac_gar        # vault degisken ADI (parola DEGIL)
+#       username: svcac                  # oc login kullanicisi; yoksa `ocp_username`
+#   ocp_username: svcac                  # portalin GENEL varsayilani (cluster'da yoksa)
+#
+# ASIL KAYNAK PORTALDIR. openshift_inventory_vars.yaml yalnizca FALLBACK'tir: portal
+# api_url/credential_key/username gonderiyorsa o dosya hic okunmasa da is calisir.
+#   staging_dir: /target/staging/path
+#   fallback_dir: /tmp/logx_fallback
+#
+# ARSIV ADI ARTIK BURADA KURULUR. Is birimi = (cluster x namespace x uygulama); her birim
+# KENDI arsivini uretir ve adi
+#   <cluster>__<namespace>__<uygulama>__<archive_id>.zip
+# olur. Eskiden ad yalnizca bastion adi + rastgele hash idi ve indirilen dosyanin neye ait
+# oldugu anlasilmiyordu (kullanici geri bildirimi, 2026-08-09).
+#
+# Output:
+#   artifacts.logx_result — legacy tekil alanlar (ilk arsiv) korunur; `staged_files[]`
+#   uretilen HER arsivi tasir (birim basina bir oge: cluster/namespace/app_name/filename).
+
+- name: "Validate input and add terminal hosts dynamically"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    # AWX'TEKI KOPYA GUNCEL MI? — bu damga o soruyu portalin cevaplamasi icin var.
+    #
+    # Bu playbook AWX projesine ELLE kopyalanir. Kopyalanmadiginda ya da eksik
+    # kopyalandiginda AWX ESKI surumu kosar; portalda gorunen hata repodaki
+    # (duzeltilmis) koda ait olur ve teshis SAATLERCE yanlis yerde aranir —
+    # 2026-09-07'de tam olarak bu oldu: #3297277 zaten duzeltilmisti.
+    #
+    # Deger `npm run playbook:rev` ile uretilir (dosya iceriginin sha256'sinin ilk
+    # 10 hanesi). ELLE DEGISTIRMEYIN — bekci PV1 icerikle damgayi karsilastirir.
+    logx_playbook_revision: "8d168fbd82"
+    # `namespace` BIR JINJA GLOBAL'IDIR — degiskeniniz degil.
+    #
+    # Burada eskiden `namespace | default('')` yaziyordu. `namespace` extra_var olarak
+    # gelmediginde bu ifade BOS STRING'e DUSMEZ: Jinja'nin kendi `namespace` yapicisini
+    # (bir Python TIPI) dondurur. Ansible bunu fact olarak saklayamaz ve is, sebebi
+    # anlasilmaz bir mesajla play 1'de duser:
+    #   Error while resolving value for 'oc_namespace': Type 'type' is unsupported
+    #   for variable storage
+    # Portal her zaman `oc_namespace_input` gonderdigi icin uretimde bu dal hic
+    # secilmiyordu; yine de yerel calistirma/dogrulamayi imkansiz kiliyordu ve
+    # portal bir gun o alani gondermeyi birakirsa TESHIS EDILEMEZ bir ariza olurdu.
+    # `lookup('vars', ...)` ayni geriye-uyum niyetini korur, Jinja global'ine carpmaz.
+    oc_namespace: "{{ oc_namespace_input | default(lookup('vars', 'namespace', default='')) }}"
+    # COKLU HEDEF: portal (namespace, app_name) ciftlerini `ocp_targets` ile yollar.
+    # Gondermezse (eski portal surumu) tekil alanlardan tek elemanli liste kurulur —
+    # tek hedef, coklu hedefin ozel halidir; iki ayri kod yolu YOK.
+    logx_targets: >-
+      {{
+        (ocp_targets | default([], true))
+        if (ocp_targets | default([], true) | length > 0)
+        else ([{'namespace': oc_namespace, 'app_name': app_name | default('')}])
+      }}
+    # Etkin bastion listesi: acik liste > legacy skaler > cluster-basina degerler.
+    logx_bastions: >-
+      {{
+        (terminal_hosts | default([]) | union([terminal_host | default('')]))
+        | union(ocp_clusters | default([]) | selectattr('terminal_host', 'defined')
+                                          | map(attribute='terminal_host') | list)
+        | map('trim') | reject('equalto', '') | unique | sort | list
+      }}
+
+  tasks:
+    # KIMLIK DOSYASI KAPISI — HER SEYDEN ONCE.
+    #
+    # Uretimde (AWX #3296360) kimlik dosyasi bulunamadigi halde is CALISMAYA DEVAM
+    # ETTI: parola bos kaldi, `oc login` patladi ve kullanici iki adim sonrasinin
+    # belirtisini ("Missing or incomplete configuration info ... ~/.kube/config")
+    # gordu — yapacak hicbir seyin olmadigi bir yere yonlendirildi.
+    #
+    # Bu gorev, o zincirin ILK halkasini kesiyor: dosya yoksa is BURADA, denenen
+    # yollari TEK TEK yazarak durur.
+    - name: "Kimlik dosyasi bulundu mu"
+      ansible.builtin.assert:
+        that:
+          - logx_credentials_file | length > 0
+        fail_msg: >-
+          Kimlik dosyasi (credentials.yaml) bulunamadi. Denenen yollar:
+          {{ logx_credentials_candidates | join(' , ') }} .
+          Bu playbook AWX reposunda bmw_openshift_jobs/ ile ayni kok altinda
+          durmalidir; tasindiysa yol derinligi degismis olabilir.
+        success_msg: "Kimlik dosyasi bulundu: {{ logx_credentials_file }}"
+      vars:
+        logx_credentials_candidates:
+          - "{{ playbook_dir }}/../../../bmw_openshift_jobs/global_variables/credentials.yaml"
+          - "{{ playbook_dir }}/../../bmw_openshift_jobs/global_variables/credentials.yaml"
+          - "{{ playbook_dir }}/../bmw_openshift_jobs/global_variables/credentials.yaml"
+        logx_credentials_file: >-
+          {{ lookup('first_found', logx_credentials_candidates, errors='ignore') | default('', true) }}
+
+    # DAMGA EN BASTA YAYINLANIR.
+    #
+    # `logx_result`i yayinlayan set_stats en SONDADIR; is ondan once duserse portal
+    # HICBIR artifact goremez ve "AWX'teki kopya eski mi" sorusunu soramaz —
+    # #3297277'de tam olarak bu oldu. set_stats cagrilari birikir, bu yuzden damgayi
+    # burada, hicbir seyin patlayamayacagi noktada yayinlamak onu ARIZA ANINDA DA
+    # okunabilir yapar. Damganin YOKLUGU da bir cevaptir: kopya damgadan eskidir.
+    - name: "Publish the playbook revision stamp"
+      ansible.builtin.set_stats:
+        data:
+          logx_playbook_revision: "{{ logx_playbook_revision }}"
+        per_host: false
+
+    - name: "Validate required input variables"
+      ansible.builtin.assert:
+        that:
+          - logx_bastions | length > 0
+          - ocp_clusters is defined
+          - ocp_clusters is sequence
+          - ocp_clusters | length > 0
+          - logx_targets | length > 0
+          # Her hedef HEM namespace HEM uygulama adi tasimali; biri bos ise o birim
+          # sessizce "hicbir pod eslesmedi" gibi gorunurdu.
+          - logx_targets | rejectattr('namespace', 'defined') | list | length == 0
+          - logx_targets | rejectattr('app_name', 'defined') | list | length == 0
+          - logx_targets | map(attribute='namespace') | map('trim') | select('equalto', '') | list | length == 0
+          - logx_targets | map(attribute='app_name') | map('trim') | select('equalto', '') | list | length == 0
+          - staging_dir is defined
+          - staging_dir | string | trim | length > 0
+          - fallback_dir is defined
+          - fallback_dir | string | trim | length > 0
+          # Arsiv ADINI artik playbook kurar (cluster/namespace/uygulama bilgisi burada);
+          # portal yalnizca calistirmayi benzersizlestiren kisa bir kimlik gonderir.
+          - archive_id is defined
+          - archive_id is match('^[A-Za-z0-9]{4,32}$')
+        fail_msg: >-
+          Zorunlu degiskenler eksik ya da gecersiz →
+          bastion: {{ logx_bastions | length }}, cluster: {{ ocp_clusters | default([]) | length }},
+          hedef: {{ logx_targets | length }}, archive_id: {{ archive_id | default('(yok)') }}.
+          Tumu bossa AWX job template'inde "Prompt on launch" (extra variables) kapali olabilir.
+
+    - name: "Add every bastion to dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: logx_terminal
+        oc_namespace: "{{ oc_namespace }}"
+        logx_targets: "{{ logx_targets }}"
+      loop: "{{ logx_bastions }}"
+      changed_when: false
+
+
+- name: "LogX v2 - Discover pods and collect OCP logs"
+  hosts: logx_terminal
+  # Bir bastion cokse bile digerleri devam etsin (varsayilan deger; niyet acik olsun diye yazili).
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+
+  vars_files:
+    # KIMLIK DOSYASI: YOL DERINLIGINDEN BAGIMSIZ ARANIR.
+    #
+    # URETIM ARIZASI (AWX #3296360/#3296365/#3296411): bu satir
+    # `../../bmw_openshift_jobs/...` idi, yani playbook'un AWX reposunda IKI seviye
+    # derinde durdugunu varsayiyordu. Playbook `bmw_portal/logx/ocp/` altina (UC seviye)
+    # tasininca kimlik dosyasi bulunamadi. Ansible bunu HATA SAYMADI: sessizce devam etti,
+    # `lookup('vars', credential_key)` BOS dondu, `oc login --password=''` patladi ve
+    # ekranda "Missing or incomplete configuration info" yazdi — yani GERCEK HATANIN
+    # IKI ADIM SONRASININ belirtisi.
+    #
+    # Hangi modulun ayakta kaldigi bunu birebir dogruluyordu: telnet_openshift/ ve
+    # opsx_openshift_dump/ (iki seviye) calisiyor, logx/ocp/ (uc seviye) kirilmisti.
+    #
+    # Artik birden fazla derinlik denenir: playbook AWX reposunda nereye tasinirsa
+    # tasinsin kimlik dosyasi bulunur.
+    #
+    # DOSYA BULUNAMAZSA NE OLUR: burada `errors='ignore'` VAR, ama bu SESSIZLIK
+    # DEMEK DEGIL. Ilk tasarimda lookup'in sert patlamasi birakilmisti; o zaman bu
+    # uc playbook YEREL OLARAK HIC `--syntax-check` edilemiyordu (kimlik dosyasi
+    # repo disinda). Kontrol, hemen asagidaki `Kimlik dosyasi bulundu mu` gorevine
+    # tasindi: orada denenen yollar TEK TEK yazilarak is DURDURULUR. Boylece hem
+    # mesaj daha acik, hem playbook yerel olarak dogrulanabilir kaliyor.
+    - >-
+      {{ lookup('first_found', [
+           playbook_dir ~ '/../../../bmw_openshift_jobs/global_variables/credentials.yaml',
+           playbook_dir ~ '/../../bmw_openshift_jobs/global_variables/credentials.yaml',
+           playbook_dir ~ '/../bmw_openshift_jobs/global_variables/credentials.yaml'
+         ], errors='ignore') | default('/dev/null', true) }}
+    # openshift_inventory_vars.yaml OPSIYONEL: portal artik api_url'i extra_vars ile
+    # gonderiyor. Dosya yoksa playbook CALISMAYA DEVAM EDER (bu yuzden burada
+    # `errors='ignore'` VAR — kimlik dosyasindan farki bu); yalnizca portal metadata
+    # gondermeyen (eski) cagrilarda geriye donus icin durur. Derinlikler yukaridakiyle
+    # AYNI sirada denenir.
+    - >-
+      {{ lookup('first_found', [
+           playbook_dir ~ '/../../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml',
+           playbook_dir ~ '/../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml',
+           playbook_dir ~ '/../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'
+         ], errors='ignore') | default('/dev/null', true) }}
+
+  vars:
+    # oc'nin yolu SABIT DEGIL — bkz. logx_ocp_namespace_discovery.yml'deki ayni desen.
+    # Sirasiyla: extra_vars `oc_binary` override'i > aday yollar > PATH (command -v oc).
+    oc_binary: ""
+    # /bin/oc ILK: kurumsal bastion'larda oc gercekte burada. (Uretimde
+    # /usr/local/bin/oc varsayimi TUM bastion'larin ayni anda dusmesine yol acmisti.)
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+    logx_job_id: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
+    # inventory_hostname DAHIL: iki farkli bastion adi ayni makineye cozulurse (or.
+    # ORAOCP01 ve oraocp01.bmw.com) ayni dizini paylasip birbirinin arsivini silerlerdi.
+    remote_host_slug: "{{ inventory_hostname | lower | regex_replace('[^a-z0-9._-]', '-') }}"
+    remote_work_dir: "/tmp/logx_v2_ocp_fetch_{{ logx_job_id }}_{{ remote_host_slug }}"
+    # Arsivler calisma dizininin YANINA yazilir: `archive` modulu kaynak dizinin ICINE
+    # yazarsa kendi ciktisini arsivlemeye calisirdi.
+    # Arsiv DOGRUDAN staging'e (ya da fallback'e) yazilir — ara bir "zips" dizini yok.
+    # Legacy (logx_legacy_transfer.yml) da boyle calisiyor ve UretimDE calisan yol bu.
+    staging_archive_mode: "0775"
+    oc_list_timeout: 120
+    oc_log_timeout: 300
+
+  tasks:
+    # HATA YALITIMI — HAZIRLIK GOREVLERI DE BLOK ICINDE.
+    #
+    # URETIM (AWX #3297277): asagidaki uc gorev BLOK DISINDAYDI ve tek bir eksik
+    # degisken uc ayri sonucu birden uretti:
+    #
+    #   1. "Validate requested cluster records" `no_log: true` tasidigi icin Ansible
+    #      sebebi "censored" diye GIZLEDI — ham ciktida tek kelime tanilama yoktu.
+    #   2. Tek bastion FAIL olunca Ansible "NO MORE HOSTS LEFT" ile KALAN PLAY'LERI
+    #      ATLADI; PLAY RECAP'te localhost ok=3 kaldi, yani toplayici play HIC KOSMADI.
+    #   3. `set_stats` yayinlanmadigi icin portal `logx_result` bulamadi ve
+    #      "beklenmeyen bir hata olustu" diye HICBIR SEY SOYLEMEYEN mesaji bastı.
+    #
+    # Asagidaki play 3'te duran "Clear any host errors so aggregation always runs"
+    # gorevi bunu ONLEDIGINI soyluyordu — ONLEMIYOR: o gorev play 3'un ICINDE ve
+    # play 3 hic baslamiyor.
+    #
+    # Blok/rescue zincirin ILK halkasini kesiyor: host FAIL olmadigi icin toplayici
+    # play kosar, sonuc yayinlanir ve kullanici GERCEK sebebi EKRANDA gorur.
+    - name: "Prepare and validate cluster records (failure-isolated)"
+      block:
+        - name: "Initialize working facts"
+          ansible.builtin.set_fact:
+            resolved_clusters: []
+            validation_errors: []
+            fetch_units: []
+            cluster_pod_matches: []
+            pod_fetch_targets: []
+            cluster_fetch_results: []
+            staged_unit_files: []
+            # KOSULLU set edilen HER degisken burada da ilklenir. `staging_error` yalnizca
+            # fallback gerektiginde yaziliyordu; her sey yolunda gidince tanimsiz kaliyor ve
+            # asagidaki ozet gorevi "'staging_error' is undefined" ile dusuyordu — dort arsiv
+            # de staging'e yazilmisken calistirma "failed" raporlaniyordu (2026-08-10, uretim).
+            staging_error: ''
+          changed_when: false
+
+        # Cok-bastion: her bastion YALNIZ kendi cluster'larini toplar. Cluster ogelerinde
+        # terminal_host yoksa (eski payload) tum liste tek bastion'da islenir; kismi tanimli
+        # payload'da sahipsizler ilk (alfabetik) bastion'a dusurulur — sessiz kayip olmaz.
+        - name: "Select the cluster subset that belongs to this bastion"
+          ansible.builtin.set_fact:
+            my_ocp_clusters: >-
+              {{
+                (ocp_clusters | selectattr('terminal_host', 'defined')
+                              | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+                +
+                ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+                 if inventory_hostname == ((groups['logx_terminal'] | default([])) | sort | first)
+                 else [])
+              }}
+          changed_when: false
+
+          # DIKKAT — asagidaki mesajdaki apostrof CIFT TIRNAKLI string icinde durur.
+          # Jinja, ters-boluyle kacirilmis apostrofu YAML gibi yorumlamaz: tek tirnakli
+          # bir string apostrofta BITER ve kalan harfler sozdizimi sanilir —
+          #   template error while templating string: expected token ')', got 'nda'
+          # 2026-08-09'da uc playbook da uretimde bu yuzden dustu.
+        - name: "Validate requested cluster records"
+          ansible.builtin.set_fact:
+            validation_errors: >-
+              {{
+                validation_errors + ([{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'status': 'error',
+                  'error': (
+                  (
+                    'OCP kullanici adi tanimli degil (oc login --username). Admin > OCP '
+                    ~ 'Yapilandirma > OCP Cluster Hiyerarsisi satirindaki "OCP Kullanici Adi" '
+                    ~ "alanini doldurun ya da OCP Calistirma Ayarlari'nda genel varsayilani girin: "
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  ) if (resolved_username | trim | length == 0) else (
+                    'Cluster kimligi cozulemedi (parola bos). credential_key='
+                    ~ (item.credential_key | default('?')) ~ ' — kimlik dosyasi okunamadi '
+                    ~ 'ya da bu anahtar credentials.yaml icinde tanimli degil: '
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  )
+                  ) if (has_portal_meta | bool) or (inv_has | bool) else (
+                    'Cluster inventory record not found: '
+                    ~ (item.tenant | default('missing-tenant')) ~ '_'
+                    ~ (item.env | default('missing-env')) ~ '/'
+                    ~ (item.cluster_name | default('missing-cluster-name'))
+                  ),
+                  'pods_matched': [],
+                  'pods_failed': []
+                }] if not cluster_exists else [])
+              }}
+          vars:
+            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+            # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            inv_has: >-
+              {{ clusters is defined
+                 and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined
+                 and clusters[inventory_key][item.cluster_name].url is defined
+                 and clusters[inventory_key][item.cluster_name].password is defined }}
+            resolved_url: >-
+              {{ item.api_url if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+            resolved_password: >-
+              {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+            # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+            # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+            # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
+            cluster_exists: >-
+              {{
+                item.tenant is defined and
+                item.env is defined and
+                item.cluster_name is defined and
+                ((has_portal_meta | bool) or (inv_has | bool)) and
+                (resolved_username | trim | length > 0) and
+                (resolved_password | trim | length > 0)
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          no_log: true
+          changed_when: false
+
+      rescue:
+        - name: "Record the preparation failure"
+          ansible.builtin.set_fact:
+            prepare_failed: true
+            prepare_error: >-
+              {{
+                'Cluster hazirlik/dogrulama adimi dustu (gorev: '
+                ~ (ansible_failed_task.name | default('bilinmiyor'))
+                ~ '): '
+                ~ (ansible_failed_result.msg
+                   | default(ansible_failed_result.stderr
+                             | default('sebep bildirilmedi (gorev no_log tasiyor olabilir)', true), true))
+              }}
+          changed_when: false
+
+        # SIZDIRMAYAN TANILAMA — burada `no_log` BILEREK YOK.
+        #
+        # Yukaridaki gorev `no_log: true` tasidigi icin sebebi Ansible "censored"
+        # yapar. Bu gorev ayni karari BESLEYEN girdileri yazar; hicbiri gizli degil:
+        # cluster adi, credential_key ADI ve dort BOOLEAN. Parolanin KENDISI hicbir
+        # dalda basilmaz — yalnizca "cozuldu mu" sorusunun cevabi basilir.
+        - name: "Explain the preparation failure without leaking secrets"
+          ansible.builtin.debug:
+            msg: >-
+              {{ item.cluster_name | default('?') }} →
+              credential_key={{ item.credential_key | default('YOK') }},
+              portal_metadata={{ (item.api_url | default('') | string | trim | length > 0)
+                                 and (item.credential_key | default('') | string | trim | length > 0) }},
+              envanter_kaydi={{ clusters is defined
+                                and clusters[(item.tenant | default('')) ~ '_' ~ (item.env | default(''))] is defined
+                                and clusters[(item.tenant | default('')) ~ '_' ~ (item.env | default(''))][item.cluster_name | default('')] is defined }},
+              kullanici_adi_dolu={{ ((item.username | default('', true))
+                                     or (ocp_username | default('', true))
+                                     or (username | default('', true))) | trim | length > 0 }},
+              parola_cozuldu={{ (lookup('vars', item.credential_key | default('__tanimsiz__'), default='')
+                                 | string | trim | length) > 0 }}
+          loop: "{{ my_ocp_clusters | default(ocp_clusters | default([]), true) }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          changed_when: false
+
+        # GUVENLI VARSAYILANLAR: hazirlik yarida kaldiysa asagidaki fact'ler TANIMSIZ
+        # kalmis olabilir. Toplayici play ve rescue'nun kendi gorevleri bunlari okur;
+        # tanimsiz birakmak "yanlis hata" uretir (2026-08-10'daki staging_error tuzagi).
+        - name: "Fall back to safe defaults so the aggregator can still publish"
+          ansible.builtin.set_fact:
+            my_ocp_clusters: "{{ my_ocp_clusters | default(ocp_clusters | default([]), true) }}"
+            resolved_clusters: []
+            validation_errors: "{{ validation_errors | default([]) }}"
+            cluster_fetch_results: "{{ cluster_fetch_results | default([]) }}"
+            fetch_units: []
+            cluster_pod_matches: []
+            pod_fetch_targets: []
+            staged_unit_files: []
+            staging_error: ''
+          changed_when: false
+
+        # Dogrulama hatalari (varsa) da tasinir: asil blok `prepare_failed` yuzunden
+        # ATLANACAK, yani onun icindeki "Append validation errors" gorevi kosmayacak.
+        - name: "Keep validation errors even when preparation failed"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: "{{ cluster_fetch_results + validation_errors }}"
+          changed_when: false
+
+        - name: "Record the preparation failure for every requested cluster"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: >-
+              {{
+                cluster_fetch_results + [{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'namespace': '',
+                  'app_name': '',
+                  'status': 'error',
+                  'error': prepare_error,
+                  'pods_matched': [],
+                  'pods_failed': []
+                }]
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          when: >-
+            (item.cluster_name | default('')) not in
+            (cluster_fetch_results | map(attribute='cluster_name') | list)
+          changed_when: false
+
+        # Toplayici, arsivin NEDEN olmadigini bu ozetten okur; yoksa "cluster'lar ok
+        # ama arsiv yok, sebep bos" gibi anlasilmaz bir sonuc uretir.
+        - name: "Record a preparation failure summary for the aggregator"
+          ansible.builtin.set_fact:
+            logx_bastion_summary:
+              terminal_host: "{{ inventory_hostname }}"
+              files: []
+              staging_error: "{{ prepare_error }}"
+              archive_created: false
+              staged_ok: false
+          when: logx_bastion_summary is not defined
+          changed_when: false
+
+    # HATA IZOLASYONU: bu bastion'a ait tum is block icinde. Herhangi bir adim coker
+    # (or. oc bulunamadi, SSH/login hatasi) rescue devreye girer, YALNIZ bu bastion'in
+    # cluster'lari hata olarak isaretlenir ve host FAIL sayilmaz. Boylece hem diger
+    # bastion'lar hem de toplayici play (set_stats yazari) calismaya devam eder.
+    # Hazirlik dustuyse bu blok ATLANIR: rescue zaten her cluster icin sebebi
+    # yazdi ve devam etmek yalnizca ikinci, yaniltici bir hata uretirdi.
+    - name: "Collect this bastion's clusters (failure-isolated)"
+      when: not (prepare_failed | default(false))
+      # ignore_unreachable SART: rescue yalnizca GOREV hatalarini yakalar, SSH/DNS kesintisini
+      # (unreachable) YAKALAMAZ. O durumda host "unreachable" isaretlenir, tum bastion'lar
+      # boyle duserse Ansible "NO MORE HOSTS LEFT" ile sonraki play'leri ATLAR ve toplayici
+      # play (tek set_stats yazari) yine calismaz — yani orijinal uretim hatasi tekrarlanir.
+      # Bununla host unreachable olsa bile play akisi surer ve toplayici play, o bastion'in
+      # cluster'larini "Bastion did not report a result" olarak isaretler.
+      ignore_unreachable: true
+      block:
+        - name: "Resolve valid cluster connection records"
+          ansible.builtin.set_fact:
+            resolved_clusters: >-
+              {{
+                resolved_clusters + ([{
+                  'cluster_name': item.cluster_name,
+                  'env': item.env,
+                  'tenant': item.tenant,
+                  'inventory_key': inventory_key,
+                  'url': resolved_url,
+                  'username': resolved_username,
+                  'password': resolved_password
+                }] if cluster_exists else [])
+              }}
+          vars:
+            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            # v3: portal api_url + credential_key gonderiyorsa O kullanilir; gondermiyorsa
+            # eski inventory yoluna dusulur. Ikisi de yoksa cluster "bulunamadi" sayilir.
+            has_portal_meta: >-
+              {{ (item.api_url | default('') | string | trim | length > 0)
+                 and (item.credential_key | default('') | string | trim | length > 0) }}
+            inv_has: >-
+              {{ clusters is defined
+                 and clusters[inventory_key] is defined
+                 and clusters[inventory_key][item.cluster_name] is defined
+                 and clusters[inventory_key][item.cluster_name].url is defined
+                 and clusters[inventory_key][item.cluster_name].password is defined }}
+            resolved_url: >-
+              {{ item.api_url if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].url if (inv_has | bool) else '') }}
+            resolved_password: >-
+              {{ lookup('vars', item.credential_key, default='') if (has_portal_meta | bool)
+                 else (clusters[inventory_key][item.cluster_name].password if (inv_has | bool) else '') }}
+            # `oc login --username`. Oncelik: cluster satiri (portal) > portalin genel
+            # varsayilani (ocp_username) > AWX inventory dosyasindaki eski `username`.
+            # Ucu de yoksa BOS kalir ve cluster dogrulamada elenir — daha once bu durumda
+            # Jinja "'username' is undefined" ile TUM bastion'u dusuruyordu (2026-08-09).
+            resolved_username: >-
+              {{ (item.username | default('', true))
+                 or (ocp_username | default('', true))
+                 or (username | default('', true)) }}
+            cluster_exists: >-
+              {{
+                item.tenant is defined and
+                item.env is defined and
+                item.cluster_name is defined and
+                ((has_portal_meta | bool) or (inv_has | bool)) and
+                (resolved_username | trim | length > 0) and
+                (resolved_password | trim | length > 0)
+              }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          no_log: true
+          changed_when: false
+
+        # ── oc kesfi (namespace_discovery.yml ile AYNI desen) ────────────────────
+        - name: "Probe candidate oc paths"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop: "{{ oc_probe_paths }}"
+          register: oc_stats
+          changed_when: false
+          # Bir aday yolun stat izni yoksa TUM bastion dusmesin — karar tek noktada
+          # (asagidaki oc_bin bos mu) verilir.
+          failed_when: false
+
+        - name: "Collect usable oc paths"
+          ansible.builtin.set_fact:
+            oc_stat_hits: >-
+              {{
+                oc_stats.results | default([])
+                | selectattr('stat', 'defined')
+                | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+                | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+                | map(attribute='stat.path') | list
+              }}
+          changed_when: false
+
+        - name: "Fall back to PATH lookup when no candidate matched"
+          ansible.builtin.shell: command -v oc || true
+          args:
+            executable: /bin/bash
+          register: oc_which
+          when: oc_stat_hits | length == 0
+          changed_when: false
+          failed_when: false
+
+        - name: "Resolve the oc binary for this bastion"
+          ansible.builtin.set_fact:
+            oc_bin: >-
+              {{
+                oc_stat_hits[0] if (oc_stat_hits | length > 0)
+                else (oc_which.stdout | default('', true) | trim)
+              }}
+          changed_when: false
+
+        - name: "Fail when no usable oc binary was found"
+          ansible.builtin.fail:
+            msg: >-
+              Bu sunucuda 'oc' bulunamadi. Denenen yollar: {{ oc_probe_paths | join(', ') }};
+              PATH aramasi (command -v oc) da sonucsuz kaldi.
+          when: oc_bin | length == 0
+
+        # IS BIRIMI = (cluster x hedef). Her birim KENDI dizinine toplanir ve KENDI
+        # arsivini uretir; boylece indirilen zip'in hangi cluster/namespace/uygulamaya
+        # ait oldugu ADINDAN bellidir (eskiden ad yalnizca bastion + rastgele hash'ti).
+        - name: "Build fetch units (cluster x target)"
+          ansible.builtin.set_fact:
+            fetch_units: >-
+              {{
+                fetch_units + [{
+                  'cluster_name': item.0.cluster_name,
+                  'url': item.0.url,
+                  'username': item.0.username,
+                  'password': item.0.password,
+                  'namespace': item.1.namespace,
+                  'app_name': item.1.app_name,
+                  'slug': unit_slug,
+                  'work_dir': remote_work_dir ~ '/' ~ unit_slug,
+                  'staging_archive_path': staging_dir ~ '/' ~ unit_slug ~ '.zip',
+                  'fallback_archive_path': fallback_dir ~ '/' ~ unit_slug ~ '.zip',
+                  'archive_name': unit_slug ~ '.zip'
+                }]
+              }}
+          vars:
+            # Parca basina 60 karakter kirpma + guvenli karakter kumesi: dosya adi
+            # sinirina (255) takilmadan okunabilir kalsin.
+            part_cluster: "{{ item.0.cluster_name | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            part_ns: "{{ item.1.namespace | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            part_app: "{{ item.1.app_name | lower | regex_replace('[^a-z0-9._-]', '-') | truncate(60, true, '') }}"
+            unit_slug: "{{ part_cluster ~ '__' ~ part_ns ~ '__' ~ part_app ~ '__' ~ archive_id }}"
+          loop: "{{ resolved_clusters | product(logx_targets) | list }}"
+          loop_control:
+            label: "{{ item.0.cluster_name }}/{{ item.1.namespace }}/{{ item.1.app_name }}"
+          no_log: true
+          changed_when: false
+
+        - name: "Reset remote working directory"
+          ansible.builtin.file:
+            path: "{{ remote_work_dir }}"
+            state: absent
+          changed_when: false
+
+        - name: "Create per-unit working directories"
+          ansible.builtin.file:
+            path: "{{ item.work_dir }}"
+            state: directory
+            mode: '0700'
+          loop: "{{ fetch_units }}"
+          loop_control:
+            label: "{{ item.slug }}"
+          changed_when: false
+
+        - name: "Login and list namespace pods in parallel"
+          ansible.builtin.shell: |
+            set -o pipefail
+            umask 077
+
+            export KUBECONFIG="/tmp/logx-pods-{{ logx_job_id }}-{{ unit.slug }}.kubeconfig"
+
+            cleanup() {
+              rm -f "${KUBECONFIG}"
+            }
+            trap cleanup EXIT
+
+            if ! login_err="$("{{ oc_bin }}" login \
+              --server={{ unit.url | quote }} \
+              --username={{ unit.username | quote }} \
+              --password={{ unit.password | quote }} \
+              --insecure-skip-tls-verify=true \
+              2>&1 >/dev/null)"; then
+              echo "LOGIN_FAILED: ${login_err}" >&2
+              exit 1
+            fi
+
+            "{{ oc_bin }}" get pods \
+              --namespace={{ unit.namespace | quote }} \
+              --output=name
+          args:
+            executable: /bin/bash
+          loop: "{{ fetch_units }}"
+          loop_control:
+            loop_var: unit
+            label: "{{ unit.slug }}"
+          register: pod_list_jobs
+          async: "{{ oc_list_timeout }}"
+          poll: 0
+          changed_when: false
+          no_log: true
+
+        - name: "Wait for pod listing jobs"
+          ansible.builtin.async_status:
+            jid: "{{ item.ansible_job_id }}"
+          loop: "{{ pod_list_jobs.results | default([]) }}"
+          loop_control:
+            # Dongu degiskeni `unit` (eskiden `cluster`); etiket de ondan okunmali.
+            # `item.cluster` kalinca Ansible etiketi templateleyemeyip GOREVI DUSURUYORDU
+            # ve hata "'dict object' has no attribute 'cluster'" olarak sonuca yaziliyordu.
+            label: "{{ item.unit.slug }}"
+          register: pod_list_wait
+          until: pod_list_wait.finished
+          retries: 120
+          delay: 1
+          ignore_errors: true
+          changed_when: false
+          no_log: true
+
+        # Eslesme olcutu DEGISMEDI: pod adinda uygulama adinin gecmesi. Degisen tek sey,
+        # olcutun artik BIRIMIN kendi uygulama adiyla yapilmasi (eskiden tek bir global
+        # `app_name` vardi).
+        - name: "Filter pod names in memory"
+          ansible.builtin.set_fact:
+            cluster_pod_matches: >-
+              {{
+                cluster_pod_matches + [
+                  item.item.unit | combine({
+                    'list_status': 'error' if failed_now else 'ok',
+                    'list_error': (
+                      item.stderr | default(item.msg | default('Unknown OpenShift error'), true)
+                    ) if failed_now else '',
+                    'pods': (
+                      item.stdout_lines | default([])
+                      | map('regex_replace', '^pod/', '')
+                      | select('search', item.item.unit.app_name | regex_escape)
+                      | list
+                    ) if not failed_now else []
+                  })
+                ]
+              }}
+          vars:
+            failed_now: "{{ item.failed | default(false) or (item.rc | default(0) | int != 0) }}"
+          loop: "{{ pod_list_wait.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.unit.slug }}"
+          no_log: true
+          changed_when: false
+
+        - name: "Build pod log fetch targets"
+          ansible.builtin.set_fact:
+            pod_fetch_targets: >-
+              {{
+                pod_fetch_targets + (
+                  item.pods
+                  | map('community.general.dict_kv', 'pod')
+                  | map('combine', {
+                      'cluster_name': item.cluster_name,
+                      'namespace': item.namespace,
+                      'slug': item.slug,
+                      'work_dir': item.work_dir,
+                      'url': item.url,
+                      'username': item.username,
+                      'password': item.password
+                    })
+                  | list
+                )
+              }}
+          loop: "{{ cluster_pod_matches }}"
+          loop_control:
+            label: "{{ item.slug }}"
+          when:
+            - item.list_status == 'ok'
+            - item.pods | length > 0
+          no_log: true
+          changed_when: false
+
+        - name: "Login and collect each pod log in parallel"
+          ansible.builtin.shell: |
+            set -o pipefail
+            umask 077
+
+            export KUBECONFIG="/tmp/logx-logs-{{ logx_job_id }}-{{ target.slug }}-{{ target.pod }}.kubeconfig"
+            output_file={{ (target.work_dir ~ '/' ~ target.pod ~ '.log') | quote }}
+
+            cleanup() {
+              rm -f "${KUBECONFIG}"
+            }
+            trap cleanup EXIT
+
+            if ! login_err="$("{{ oc_bin }}" login \
+              --server={{ target.url | quote }} \
+              --username={{ target.username | quote }} \
+              --password={{ target.password | quote }} \
+              --insecure-skip-tls-verify=true \
+              2>&1 >/dev/null)"; then
+              echo "LOGIN_FAILED: ${login_err}" >&2
+              exit 1
+            fi
+
+            "{{ oc_bin }}" logs \
+              --namespace={{ target.namespace | quote }} \
+              {{ target.pod | quote }} \
+              > "${output_file}"
+          args:
+            executable: /bin/bash
+          loop: "{{ pod_fetch_targets }}"
+          loop_control:
+            loop_var: target
+            label: "{{ target.slug }}/{{ target.pod }}"
+          register: log_fetch_jobs
+          async: "{{ oc_log_timeout }}"
+          poll: 0
+          changed_when: false
+          no_log: true
+
+        - name: "Wait for pod log collection jobs"
+          ansible.builtin.async_status:
+            jid: "{{ item.ansible_job_id }}"
+          loop: "{{ log_fetch_jobs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.target.slug }}/{{ item.target.pod }}"
+          register: log_fetch_wait
+          until: log_fetch_wait.finished
+          retries: 300
+          delay: 1
+          ignore_errors: true
+          changed_when: false
+          no_log: true
+
+        - name: "Build per-cluster collection results"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: >-
+              {{
+                cluster_fetch_results + [{
+                  'cluster_name': cluster_item.cluster_name,
+                  'namespace': cluster_item.namespace,
+                  'app_name': cluster_item.app_name,
+                  'status': cluster_status,
+                  'error': cluster_error,
+                  'pods_matched': cluster_item.pods,
+                  'pods_failed': failed_pods
+                }]
+              }}
+          vars:
+            fetch_results_for_cluster: >-
+              {{
+                log_fetch_wait.results | default([])
+                | selectattr('item.target.slug', 'equalto', cluster_item.slug)
+                | list
+              }}
+            failed_pods: >-
+              {{
+                fetch_results_for_cluster
+                | selectattr('failed', 'defined')
+                | selectattr('failed', 'equalto', true)
+                | map(attribute='item.target.pod')
+                | map('community.general.dict_kv', 'pod')
+                | list
+              }}
+            cluster_status: >-
+              {{
+                'error' if cluster_item.list_status == 'error'
+                else ('no_match' if cluster_item.pods | length == 0
+                else ('partial' if failed_pods | length > 0 else 'ok'))
+              }}
+            cluster_error: "{{ cluster_item.list_error if cluster_item.list_status == 'error' else '' }}"
+          loop: "{{ cluster_pod_matches }}"
+          loop_control:
+            loop_var: cluster_item
+            label: "{{ cluster_item.slug }}"
+          no_log: true
+          changed_when: false
+
+        - name: "Append cluster validation errors"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: "{{ cluster_fetch_results + validation_errors }}"
+          changed_when: false
+
+        - name: "Count collected log files per unit"
+          ansible.builtin.find:
+            paths: "{{ item.work_dir }}"
+            patterns: '*.log'
+            file_type: file
+          loop: "{{ fetch_units }}"
+          loop_control:
+            label: "{{ item.slug }}"
+          register: collected_log_files
+          changed_when: false
+
+        # Yalnizca LOG URETEN birimler arsivlenir. Bos bir birim (hicbir pod eslesmedi)
+        # bos bir zip uretmemeli — kullanici indirip icini bos bulmasin; durumu
+        # `clusters[].status = no_match` olarak zaten gorur.
+        - name: "Select units that produced logs"
+          ansible.builtin.set_fact:
+            archivable_units: >-
+              {{
+                collected_log_files.results | default([])
+                | selectattr('matched', 'defined')
+                | selectattr('matched', 'gt', 0)
+                | map(attribute='item') | list
+              }}
+          changed_when: false
+
+        # ══════════════════════════════════════════════════════════════════════
+        # ARSIVLEME + STAGING — legacy (logx_legacy_transfer.yml) ile AYNI DESEN
+        # ══════════════════════════════════════════════════════════════════════
+        # ONCEKI SURUM `dzdo -u was mkdir/chmod 2777` ile staging dizinini KENDISI
+        # hazirlamaya calisiyordu. Uretimde bu `dzdo: unknown user: was` ile dustu
+        # (bastion'larda "was" diye bir kullanici yok), arsivler bastion'in yerel
+        # /tmp fallback'ine yazildi ve portal onlari GOREMEDIGI icin indirme 404
+        # verdi. Legacy tarafi yillardir calisiyor ve dzdo KULLANMIYOR: /sw mount'u
+        # zaten hazir varsayar, sadece `stat` ile bakar ve arsivi DOGRUDAN oraya
+        # yazar. Ayni yol buraya uyarlandi.
+        # Legacy (logx_legacy_transfer.yml) staging dizinini OLUSTURMAZ, yalnizca
+        # `stat` ile bakar. Onceki surumde buradaki `file: state=directory` her
+        # calistirmada `PermissionError: Operation not permitted: /sw/BMW_PORTAL/logs/ocp`
+        # veriyordu: dizin zaten var (mode 2777) ve sahibi baska bir kullanici, chmod
+        # denemesi dusuyordu. Gorev hicbir ise yaramadigi icin KALDIRILDI.
+        - name: "Check staging directory"
+          ansible.builtin.stat:
+            path: "{{ staging_dir }}"
+            follow: true
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          register: staging_dir_stat
+          failed_when: false
+          changed_when: false
+
+        - name: "Create each unit archive directly in the staging directory"
+          community.general.archive:
+            path: "{{ item.work_dir }}/*.log"
+            dest: "{{ item.staging_archive_path }}"
+            format: zip
+            mode: "{{ staging_archive_mode }}"
+            force_archive: true
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: staging_archive_results
+          when:
+            - staging_dir_stat.stat.exists | default(false)
+            - staging_dir_stat.stat.isdir | default(false)
+          # Tek bir birim yazilamazsa digerleri denenmeye devam etsin; karar asagida
+          # dosyanin GERCEKTEN var olup olmadigina bakilarak verilir.
+          failed_when: false
+          changed_when: false
+
+        # Staging'e yazilamayan birimler (dizin yok / yetki yok / disk dolu) fallback'e.
+        - name: "Select units that still need a fallback archive"
+          ansible.builtin.set_fact:
+            fallback_units: >-
+              {{
+                staging_archive_results.results | default([])
+                | selectattr('failed', 'defined') | selectattr('failed')
+                | map(attribute='item') | list
+                if (staging_archive_results.results is defined)
+                else archivable_units
+              }}
+          changed_when: false
+
+        - name: "Record why staging was unusable"
+          ansible.builtin.set_fact:
+            staging_error: >-
+              {{
+                ('Staging dizini kullanilamiyor: ' ~ staging_dir)
+                if not (staging_dir_stat.stat.isdir | default(false))
+                else (staging_archive_results.results | default([])
+                      | selectattr('failed', 'defined') | selectattr('failed')
+                      | map(attribute='msg') | select() | list | join(' | '))
+              }}
+          when: fallback_units | length > 0
+          changed_when: false
+
+        - name: "Ensure fallback directory exists on terminal host"
+          ansible.builtin.file:
+            path: "{{ fallback_dir }}"
+            state: directory
+            mode: "0750"
+          when: fallback_units | length > 0
+          failed_when: false
+          changed_when: false
+
+        - name: "Create fallback archives for units staging could not take"
+          community.general.archive:
+            path: "{{ item.work_dir }}/*.log"
+            dest: "{{ item.fallback_archive_path }}"
+            format: zip
+            mode: "{{ staging_archive_mode }}"
+            force_archive: true
+          loop: "{{ fallback_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          failed_when: false
+          changed_when: false
+
+        # Nerede olustuysa ORASI kaydedilir — bildirilen yol her zaman GERCEK yoldur.
+        - name: "Stat staging archives"
+          ansible.builtin.stat:
+            path: "{{ item.staging_archive_path }}"
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: staging_stats
+          failed_when: false
+          changed_when: false
+
+        - name: "Stat fallback archives"
+          ansible.builtin.stat:
+            path: "{{ item.fallback_archive_path }}"
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          loop: "{{ archivable_units }}"
+          loop_control:
+            label: "{{ item.archive_name }}"
+          register: fallback_stats
+          failed_when: false
+          changed_when: false
+
+        - name: "Record produced archives"
+          ansible.builtin.set_fact:
+            staged_unit_files: >-
+              {{
+                staged_unit_files + ([{
+                  'terminal_host': inventory_hostname,
+                  'cluster_name': item.0.item.cluster_name,
+                  'namespace': item.0.item.namespace,
+                  'app_name': item.0.item.app_name,
+                  'filename': item.0.item.archive_name,
+                  'staged_path': (item.0.item.staging_archive_path
+                                  if in_staging else item.0.item.fallback_archive_path),
+                  'size_bytes': (item.0.stat.size if in_staging else item.1.stat.size) | default(0) | int,
+                  'is_fallback': (not in_staging)
+                }] if (in_staging or in_fallback) else [])
+              }}
+          vars:
+            in_staging: "{{ item.0.stat.exists | default(false) and (item.0.stat.size | default(0) | int > 0) }}"
+            in_fallback: "{{ item.1.stat.exists | default(false) and (item.1.stat.size | default(0) | int > 0) }}"
+          loop: "{{ staging_stats.results | default([]) | zip(fallback_stats.results | default([])) | list }}"
+          loop_control:
+            label: "{{ item.0.item.archive_name }}"
+          changed_when: false
+
+        # Hicbir arsiv uretilemediyse bu bastion BASARISIZDIR — sessizce "success"
+        # raporlamak kullaniciya bos bir indirme ekrani gosterirdi.
+        - name: "Fail when no archive could be produced"
+          ansible.builtin.fail:
+            msg: >-
+              Hicbir arsiv olusturulamadi. staging_dir={{ staging_dir }}
+              (mevcut={{ staging_dir_stat.stat.isdir | default(false) }}),
+              fallback_dir={{ fallback_dir }}. Ayrinti: {{ staging_error | default('-') }}
+          when:
+            - archivable_units | length > 0
+            - staged_unit_files | length == 0
+
+        - name: "Record this bastion's archive summary as a host fact"
+          ansible.builtin.set_fact:
+            logx_bastion_summary:
+              terminal_host: "{{ inventory_hostname }}"
+              files: "{{ staged_unit_files }}"
+              staging_error: "{{ staging_error | default('') }}"
+              archive_created: "{{ (archivable_units | length > 0) | bool }}"
+              staged_ok: "{{ (staged_unit_files | length > 0) | bool }}"
+          changed_when: false
+
+        - name: "Clean remote temporary log files"
+          ansible.builtin.file:
+            path: "{{ remote_work_dir }}"
+            state: absent
+          # Yalnizca EN AZ BIR arsiv uretildiyse temizle; uretilemediyse ham loglar
+          # bastion'da kalsin ki operator elle alabilsin. Arsivlerin KENDISI staging
+          # (ya da fallback) dizininde durur, burada silinmez.
+          when: staged_unit_files | length > 0
+          changed_when: false
+
+      rescue:
+        - name: "Record the bastion-level failure"
+          ansible.builtin.set_fact:
+            bastion_error: >-
+              {{
+                ansible_failed_result.msg
+                | default(ansible_failed_result.stderr | default('Bilinmeyen bastion hatasi', true), true)
+              }}
+          changed_when: false
+
+        # Katalog dogrulama hatalari block DISINDA uretilmisti; block coktugu icin
+        # "Append ..." gorevi calismadi — burada eklenir ki kaybolmasinlar.
+        - name: "Keep validation errors even when the bastion failed"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: "{{ cluster_fetch_results + (validation_errors | default([])) }}"
+          changed_when: false
+
+        - name: "Mark this bastion's unfinished clusters as failed"
+          ansible.builtin.set_fact:
+            cluster_fetch_results: >-
+              {{
+                cluster_fetch_results + [{
+                  'cluster_name': item.cluster_name | default('unknown'),
+                  'namespace': '',
+                  'app_name': '',
+                  'status': 'error',
+                  'error': bastion_error,
+                  'pods_matched': [],
+                  'pods_failed': []
+                }]
+              }}
+          loop: "{{ my_ocp_clusters | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
+          when: >-
+            (item.cluster_name | default('')) not in
+            (cluster_fetch_results | default([]) | map(attribute='cluster_name') | list)
+          changed_when: false
+
+        # SESSIZ HATA ONLEME: cluster sonuclari uretildikten SONRA cokuldugunde (or. arsiv
+        # olusturma assert'i veya staging fallback'inin de dusmesi) yukaridaki `when` filtresi
+        # her cluster'i eler ('ok' durumdalar) ve ozet fact'i HIC yazilmazdi. Bu durumda
+        # toplayici play "cluster'lar ok ama arsiv yok, sebep bos" gibi anlasilmaz bir sonuc
+        # uretiyordu. Ozeti burada da yazariz — hata sebebi staging_error uzerinden tasinir.
+        - name: "Record a failure summary so the aggregator can explain the missing archive"
+          ansible.builtin.set_fact:
+            logx_bastion_summary:
+              terminal_host: "{{ inventory_hostname }}"
+              files: []
+              staging_error: "{{ bastion_error }}"
+              archive_created: false
+              staged_ok: false
+          when: logx_bastion_summary is not defined
+          changed_when: false
+
+
+# Tek yazar: tum bastion'larin ozetlerini birlestirip logx_result'i yayinlar. Cikti sekli
+# tek-bastion'daki ile UYUMLUDUR — eski tekil alanlar (terminal_host/staged_path/filename/
+# size_bytes/is_fallback) ILK arsivi gosterir, yeni `staged_files[]` hepsini tasir.
+- name: "Aggregate per-bastion results and publish a single logx_result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    # Yalnizca RAPOR VEREN bastion'larin arsiv meta'si (cluster sonuclari ayri fact'te:
+    # cluster_fetch_results — boylece staged_files gereksiz sismez).
+    bastion_summaries: >-
+      {{
+        (groups['logx_terminal'] | default([]) | sort)
+        | map('extract', hostvars, 'logx_bastion_summary')
+        | select('defined') | list
+      }}
+    # Her bastion, URETTIGI HER BIRIM icin bir arsiv kaydi tasir (files[]); hepsi tek
+    # duz listede toplanir. Portal bu listedeki HER oge icin ayri bir indirme tokeni
+    # uretir (bkz. server/logx/v2/index.cjs).
+    staged_files: >-
+      {{ bastion_summaries | map(attribute='files') | select('defined') | list | flatten }}
+
+  tasks:
+    # Ek sigorta: block/rescue sayesinde hicbir host FAIL olmamali; yine de
+    # ileride play2ye korumasiz bir gorev eklenirse bu play calismaya devam etsin.
+    - name: "Clear any host errors so aggregation always runs"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Initialize merged cluster list"
+      ansible.builtin.set_fact:
+        merged_clusters: []
+      changed_when: false
+
+    # KRITIK: raporlamayan (erisilemez / play2'de erken dusen) bastion'in cluster'lari
+    # SESSIZCE KAYBOLMAMALI — aksi halde overall_status 'success' cikar ve kullanici
+    # eksik arsivi tam sanardi. Istenen HER cluster icin sahibinden sonuc aranir.
+    # Bir cluster BIRDEN COK satir dondurebilir: her (namespace, uygulama) cifti ayri bir
+    # is birimidir ve ayri raporlanir. `reported` bir LISTEDIR ve tamami eklenir.
+    - name: "Collect each requested cluster's result from its own bastion"
+      ansible.builtin.set_fact:
+        merged_clusters: >-
+          {{
+            merged_clusters + (reported if (reported | length > 0) else [{
+              'cluster_name': item.cluster_name | default('unknown'),
+              'namespace': '',
+              'app_name': '',
+              'status': 'error',
+              'error': 'Bastion did not report a result (unreachable or failed early): ' ~ owner_host,
+              'pods_matched': [],
+              'pods_failed': []
+            }])
+          }}
+      vars:
+        # Sahipsiz cluster'in sahibi play2 ile AYNI kuralla belirlenir (ilk alfabetik bastion).
+        owner_host: "{{ item.terminal_host | default((groups['logx_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).cluster_fetch_results | default([], true) }}"
+        reported: "{{ host_results | selectattr('cluster_name', 'equalto', item.cluster_name | default('')) | list }}"
+      loop: "{{ ocp_clusters }}"
+      loop_control:
+        label: "{{ item.cluster_name | default('?') }}"
+      changed_when: false
+
+    - name: "Publish final LogX result"
+      ansible.builtin.set_stats:
+        data:
+          logx_result:
+            # `{%- ... -%}` SART: YAML katlamali skalerde satir sonlari BOSLUGA doner ve
+            # `{% set %}` etiketleri arasindaki bosluklar ciktiya sizar. `| trim` yalniz
+            # IFADENIN SONUCUNU kirpar, etiketlerden gelen bu bosluklari DEGIL — deger
+            # uretimde "      failed" olarak yayinlanmisti. Bosluk denetimi tek cozum.
+            overall_status: >-
+              {%- set ok_count = merged_clusters | selectattr('status', 'equalto', 'ok') | list | length -%}
+              {%- set partial_count = merged_clusters | selectattr('status', 'equalto', 'partial') | list | length -%}
+              {%- set error_count = merged_clusters | selectattr('status', 'equalto', 'error') | list | length -%}
+              {%- set no_match_count = merged_clusters | selectattr('status', 'equalto', 'no_match') | list | length -%}
+              {%- set archive_created = staged_files | length > 0 -%}
+              {%- set staged_ok = bastion_summaries | selectattr('staged_ok') | list | length > 0 -%}
+              {{-
+                (
+                  'failed' if error_count > 0 and ok_count == 0 and partial_count == 0
+                  else ('no_match' if not archive_created and no_match_count > 0 and error_count == 0
+                  else ('success' if staged_ok and error_count == 0 and partial_count == 0
+                  else ('partial' if staged_ok else 'failed')))
+                ) | trim
+              -}}
+            clusters: "{{ merged_clusters }}"
+            terminal_host: "{{ (staged_files | map(attribute='terminal_host') | list | first) | default('', true) }}"
+            staged_path: "{{ (staged_files | map(attribute='staged_path') | list | first) | default('', true) }}"
+            filename: "{{ (staged_files | map(attribute='filename') | list | first) | default('', true) }}"
+            size_bytes: "{{ (staged_files | map(attribute='size_bytes') | list | first) | default(0, true) }}"
+            is_fallback: "{{ (staged_files | map(attribute='is_fallback') | list | first) | default(false, true) }}"
+            staging_error: "{{ bastion_summaries | map(attribute='staging_error') | select() | list | join(' | ') }}"
+            staged_files: "{{ staged_files }}"
+        per_host: false

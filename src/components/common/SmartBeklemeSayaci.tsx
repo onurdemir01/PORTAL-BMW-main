@@ -138,7 +138,8 @@ export function duyuruMetni(esik: string, d: SayacDurumu): string {
   return ozetMetni(d);
 }
 
-const SINIRSIZ_ACIKLAMA = "Süre sınırı yok — talep onaylanana ya da Smart'ta reddedilene kadar bekler.";
+const SINIRSIZ_ACIKLAMA =
+  "Süre sınırı yok — talep onaylanana ya da Smart'ta reddedilene kadar bekler.";
 
 function tarihMs(v: string | null | undefined): number | null {
   if (!v) return null;
@@ -231,13 +232,30 @@ const STIL = `
 
 /** Cita silueti: tek renk (currentColor), saga bakar. Uzak bacaklar yari saydam (derinlik). */
 function Cita() {
-  const bacak = { fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+  const bacak = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  } as const;
   return (
     <svg className="sbs-cita" viewBox="0 0 64 34" aria-hidden="true" focusable="false">
       <g className="sbs-egim">
         <g className="sbs-beden">
-          <path className="sbs-bacak sbs-b-au" d="M19.5 18 L18 25.6 L20 32.4 L21.8 32.6" strokeWidth={1.9} opacity={0.5} {...bacak} />
-          <path className="sbs-bacak sbs-b-ou" d="M39.5 19 L40 26 L39.8 32.4 L41.8 32.6" strokeWidth={1.9} opacity={0.5} {...bacak} />
+          <path
+            className="sbs-bacak sbs-b-au"
+            d="M19.5 18 L18 25.6 L20 32.4 L21.8 32.6"
+            strokeWidth={1.9}
+            opacity={0.5}
+            {...bacak}
+          />
+          <path
+            className="sbs-bacak sbs-b-ou"
+            d="M39.5 19 L40 26 L39.8 32.4 L41.8 32.6"
+            strokeWidth={1.9}
+            opacity={0.5}
+            {...bacak}
+          />
           <path
             className="sbs-kuyruk"
             d="M13.5 14.5 C9 13.5 6 15.5 4.5 19 C3.5 21.5 3.6 24 5.2 24.6"
@@ -248,12 +266,28 @@ function Cita() {
             fill="currentColor"
             d="M13 14 C17 11.2 27 12.2 35 12 C40 11.8 44 12.4 46 15 C47.5 17.5 46.5 21 42.5 21.6 C37 22.2 33 19.6 27 19.8 C22 20 19.5 21.8 16 21 C12.5 20.2 11.6 16.5 13 14 Z"
           />
-          <path fill="currentColor" d="M41 13.5 C44 10.5 47 9 50 8.6 L51.5 13.2 C49 14 47 15.6 45.5 17.5 Z" />
+          <path
+            fill="currentColor"
+            d="M41 13.5 C44 10.5 47 9 50 8.6 L51.5 13.2 C49 14 47 15.6 45.5 17.5 Z"
+          />
           <ellipse fill="currentColor" cx={51.3} cy={10.6} rx={3.6} ry={2.9} />
-          <path fill="currentColor" d="M53.5 9.6 C55.6 9.8 56.8 10.8 56.6 11.8 C56.4 12.7 54.6 13.1 52.8 12.9 Z" />
+          <path
+            fill="currentColor"
+            d="M53.5 9.6 C55.6 9.8 56.8 10.8 56.6 11.8 C56.4 12.7 54.6 13.1 52.8 12.9 Z"
+          />
           <path fill="currentColor" d="M48.6 8.6 L49.2 6.6 L50.8 8.1 Z" />
-          <path className="sbs-bacak sbs-b-ay" d="M17 18 L15.4 25.6 L17.6 32.4 L19.4 32.6" strokeWidth={2.2} {...bacak} />
-          <path className="sbs-bacak sbs-b-oy" d="M42 19 L42.6 26 L42.4 32.4 L44.4 32.6" strokeWidth={2.2} {...bacak} />
+          <path
+            className="sbs-bacak sbs-b-ay"
+            d="M17 18 L15.4 25.6 L17.6 32.4 L19.4 32.6"
+            strokeWidth={2.2}
+            {...bacak}
+          />
+          <path
+            className="sbs-bacak sbs-b-oy"
+            d="M42 19 L42.6 26 L42.4 32.4 L44.4 32.6"
+            strokeWidth={2.2}
+            {...bacak}
+          />
         </g>
       </g>
     </svg>
@@ -266,7 +300,15 @@ function Bayrak() {
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 4; c++) {
       kareler.push(
-        <rect key={`${r}-${c}`} x={2.6 + c * 2.6} y={1 + r * 2.6} width={2.6} height={2.6} fill="currentColor" opacity={(r + c) % 2 === 0 ? 1 : 0.25} />,
+        <rect
+          key={`${r}-${c}`}
+          x={2.6 + c * 2.6}
+          y={1 + r * 2.6}
+          width={2.6}
+          height={2.6}
+          fill="currentColor"
+          opacity={(r + c) % 2 === 0 ? 1 : 0.25}
+        />,
       );
     }
   }
@@ -401,7 +443,11 @@ export function SmartBeklemeSayaci({
       {stil}
       <div aria-hidden="true">
         <div className="sbs-deger" data-testid="sbs-deger">
-          {sinirsiz ? gecenMetni(d.gecenMs) : d.evre === 'bitti' ? 'Süre doldu' : sureMetni(d.kalanMs ?? 0)}
+          {sinirsiz
+            ? gecenMetni(d.gecenMs)
+            : d.evre === 'bitti'
+              ? 'Süre doldu'
+              : sureMetni(d.kalanMs ?? 0)}
         </div>
         {sinirsiz ? (
           <>
@@ -412,10 +458,13 @@ export function SmartBeklemeSayaci({
           </>
         ) : (
           <div className="sbs-alt">
-            <span>{d.evre === 'bitti' ? 'Talep zaman aşımına uğruyor' : 'Zaman aşımına kalan'}</span>
+            <span>
+              {d.evre === 'bitti' ? 'Talep zaman aşımına uğruyor' : 'Zaman aşımına kalan'}
+            </span>
             <span>·</span>
             <span>
-              Son tarih <time dateTime={new Date(deadlineMs as number).toISOString()}>{sonTarih}</time>
+              Son tarih{' '}
+              <time dateTime={new Date(deadlineMs as number).toISOString()}>{sonTarih}</time>
             </span>
           </div>
         )}
@@ -424,10 +473,17 @@ export function SmartBeklemeSayaci({
         <div className="sbs-alan">
           <div className="sbs-cizgi" />
           {!sinirsiz && (
-            <div className="sbs-dolu" style={{ width: `calc((100% - ${FIGUR_W}px) * ${oran} + ${FIGUR_W / 2}px)` }} />
+            <div
+              className="sbs-dolu"
+              style={{ width: `calc((100% - ${FIGUR_W}px) * ${oran} + ${FIGUR_W / 2}px)` }}
+            />
           )}
           <div className={sinirsiz ? 'sbs-serit sbs-serit--devriye' : 'sbs-serit'}>
-            <div className="sbs-konum" data-testid="sbs-konum" style={{ left: sinirsiz ? 0 : `${oran * 100}%` }}>
+            <div
+              className="sbs-konum"
+              data-testid="sbs-konum"
+              style={{ left: sinirsiz ? 0 : `${oran * 100}%` }}
+            >
               <HizCizgileri />
               <span className="sbs-yon">
                 <Cita />

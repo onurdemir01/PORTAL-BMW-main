@@ -31,26 +31,117 @@ function stub(rel, exports) {
   require.cache[p] = m;
 }
 
-const APP = 'GBCJAP01';
+const APP = 'ORCJAP01';
 const gun = new Date().toISOString().slice(0, 10);
 const SEMA = {
-  Server_Hub_Hosts: ['id', 'scan_date', 'host', 'products', 'wall_s', 'cpu_s', 'note', 'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at'],
+  Server_Hub_Hosts: [
+    'id',
+    'scan_date',
+    'host',
+    'products',
+    'wall_s',
+    'cpu_s',
+    'note',
+    'scan_ver',
+    'rec_counts',
+    'scan_errors',
+    'proc_visibility',
+    'sock_visibility',
+    'loaded_at',
+  ],
   Server_Hub_Init: ['id', 'scan_date', 'host', 'root', 'file', 'status', 'sha512'],
   Server_Hub_Jboss: ['id', 'scan_date', 'host', 'gen', 'host_name', 'host_state', 'cli', 'note'],
-  Server_Hub_Jvms: ['id', 'scan_date', 'host', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports', 'running_src', 'cfg_src', 'jvm_args'],
+  Server_Hub_Jvms: [
+    'id',
+    'scan_date',
+    'host',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+    'running_src',
+    'cfg_src',
+    'jvm_args',
+  ],
   Server_Hub_Web: ['id', 'scan_date', 'host', 'product', 'running', 'syntax', 'detail'],
-  Server_Hub_Vhosts: ['id', 'scan_date', 'host', 'product', 'listen', 'server_name', 'aliases', 'access_log', 'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file'],
+  Server_Hub_Vhosts: [
+    'id',
+    'scan_date',
+    'host',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
+  ],
   Server_Hub_Ips: ['id', 'scan_date', 'host', 'ip', 'iface', 'used_by', 'is_primary'],
   Server_Hub_Sshd: ['id', 'scan_date', 'host', 'max_sessions', 'max_startups', 'active_sessions'],
 };
-const jvm = (ad, ek) => ({ id: ad, scan_date: gun, host: APP, gen: 7, jvm: ad, grp: 'g', running: 0, auto_start: 'false', server_state: 'stopped', ports: '', running_src: 'PS_ABSENT', cfg_src: 'CLI_WILDCARD', ...ek });
+const jvm = (ad, ek) => ({
+  id: ad,
+  scan_date: gun,
+  host: APP,
+  gen: 7,
+  jvm: ad,
+  grp: 'g',
+  running: 0,
+  auto_start: 'false',
+  server_state: 'stopped',
+  ports: '',
+  running_src: 'PS_ABSENT',
+  cfg_src: 'CLI_WILDCARD',
+  ...ek,
+});
 let loadedAt = new Date(Date.now() - 3600 * 1000).toISOString();
 const satirlar = () => ({
-  Server_Hub_Hosts: [{ id: 1, scan_date: gun, host: APP, products: 'JBOSS7', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1', rec_counts: '', scan_errors: '', proc_visibility: 'FULL', sock_visibility: 'PID', loaded_at: loadedAt }],
-  Server_Hub_Jboss: [{ id: 1, scan_date: gun, host: APP, gen: 7, host_name: 'm', host_state: 'running', cli: 'OK', note: '' }],
+  Server_Hub_Hosts: [
+    {
+      id: 1,
+      scan_date: gun,
+      host: APP,
+      products: 'JBOSS7',
+      wall_s: 1,
+      cpu_s: 0.1,
+      note: '',
+      scan_ver: '2.1',
+      rec_counts: '',
+      scan_errors: '',
+      proc_visibility: 'FULL',
+      sock_visibility: 'PID',
+      loaded_at: loadedAt,
+    },
+  ],
+  Server_Hub_Jboss: [
+    {
+      id: 1,
+      scan_date: gun,
+      host: APP,
+      gen: 7,
+      host_name: 'm',
+      host_state: 'running',
+      cli: 'OK',
+      note: '',
+    },
+  ],
   Server_Hub_Jvms: [
     jvm('durmus'),
-    jvm('kosan', { running: 1, running_src: 'PS', auto_start: 'true', server_state: 'running', ports: '8080' }),
+    jvm('kosan', {
+      running: 1,
+      running_src: 'PS',
+      auto_start: 'true',
+      server_state: 'running',
+      ports: '8080',
+    }),
     jvm('gizli', { running_src: 'UNMEASURED', auto_start: 'true', server_state: 'unknown' }),
   ],
 });
@@ -70,7 +161,8 @@ stub('../../inventory/mssql.cjs', {
       semaOkuma += 1;
       if (semaDussun) throw new Error('Timeout expired');
       const out = [];
-      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g)) for (const c of SEMA[m[1]] || []) out.push({ tbl: m[1], name: c });
+      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g))
+        for (const c of SEMA[m[1]] || []) out.push({ tbl: m[1], name: c });
       return { recordset: out };
     }
     if (/sys\.columns WHERE object_id/.test(s)) return { recordset: [] };
@@ -83,13 +175,23 @@ stub('../../db/index.cjs', { query: async () => ({ rows: [] }) });
 stub('../../auth/index.cjs', { requireAuth: (_q, _s, n) => n() });
 stub('../../auth/visibility.cjs', { requireVisiblePrefix: () => (_q, _s, n) => n() });
 stub('../../audit/index.cjs', { auditPortal: () => {} });
-stub('../../ansible/playbook-registry.cjs', { getByKey: async () => ({ enabled: true, awxServerId: 1 }), getEffectiveTemplateId: () => 77 });
+stub('../../ansible/playbook-registry.cjs', {
+  getByKey: async () => ({ enabled: true, awxServerId: 1 }),
+  getEffectiveTemplateId: () => 77,
+});
 stub('../../opsx/index.cjs', {
   extractStatsKey: (a, k) => (a && a[k] && typeof a[k] === 'object' ? a[k] : null),
 });
 
 // Sahte AWX: sablon tek GET / liste sayaclari, baslatilan isler, is durumlari.
-const awx = { ozet: 0, liste: 0, launch: [], durum: new Map(), ozetDussun: false, playbook: 'bmw_automation_folder/server_hub/server_hub_fix.yml' };
+const awx = {
+  ozet: 0,
+  liste: 0,
+  launch: [],
+  durum: new Map(),
+  ozetDussun: false,
+  playbook: 'bmw_automation_folder/server_hub/server_hub_fix.yml',
+};
 stub('../../ansible/runner.cjs', {
   getServers: () => [{ id: 1 }],
   getTemplateSummaryOnServer: async (_s, id) => {
@@ -106,7 +208,8 @@ stub('../../ansible/runner.cjs', {
     awx.launch.push({ serverId, templateId, extraVars, jobId });
     return { jobId, status: 'pending' };
   },
-  getJobStatusOnServer: async (_s, jobId) => awx.durum.get(jobId) || { status: 'running', artifacts: {} },
+  getJobStatusOnServer: async (_s, jobId) =>
+    awx.durum.get(jobId) || { status: 'running', artifacts: {} },
   getJobOutputOnServer: async () => ({ output: '' }),
 });
 
@@ -158,7 +261,12 @@ const post = (kok, body) =>
   });
 const al = (url) => fetch(url, { signal: AbortSignal.timeout(5000) });
 const sonuc = (action, durum, mesaj = 'x') => ({
-  server_hub_fix_result: { host: APP, action, plan_only: false, line: `RESULT\t${action}\t${durum}\t${mesaj}` },
+  server_hub_fix_result: {
+    host: APP,
+    action,
+    plan_only: false,
+    line: `RESULT\t${action}\t${durum}\t${mesaj}`,
+  },
 });
 
 test('AS1 dogrulama katmani', () => {
@@ -173,9 +281,16 @@ test('AS1 dogrulama katmani', () => {
   const k = kur({ simdi: () => simdi });
   const h = { host: APP, scanDate: gun, loadedAt: simdi - 1000 };
   const j = { gen: 7, name: 'Pay', autoStart: 'false' };
-  const sr = (action, durum, ek = {}) => ({ action, plan_only: false, line: `RESULT\t${action}\t${durum}\tm`, ...ek });
+  const sr = (action, durum, ek = {}) => ({
+    action,
+    plan_only: false,
+    line: `RESULT\t${action}\t${durum}\tm`,
+    ...ek,
+  });
   // bilinmeyen is: katmanin isi degil (cagiran onbellegi siler)
-  assert.deepEqual(k.isBitti(1, 5, 'successful', sr('jboss_autostart_on', 'OK')), { kayitli: false });
+  assert.deepEqual(k.isBitti(1, 5, 'successful', sr('jboss_autostart_on', 'OK')), {
+    kayitli: false,
+  });
   // FAIL / PLAN / baska eylem / failed durum: deger YOK
   for (const [st, r] of [
     ['failed', sr('jboss_autostart_on', 'FAIL')],
@@ -201,7 +316,9 @@ test('AS1 dogrulama katmani', () => {
   const ok = k.isBitti(1, 8, 'successful', sr('jboss_autostart_on', 'OK'));
   assert.equal(ok.dogrulandi, true);
   assert.equal(ok.deger, 'true');
-  assert.deepEqual(k.isBitti(1, 8, 'successful', sr('jboss_autostart_on', 'OK')), { kayitli: false });
+  assert.deepEqual(k.isBitti(1, 8, 'successful', sr('jboss_autostart_on', 'OK')), {
+    kayitli: false,
+  });
   const u = k.uygulaJvm(h, j);
   assert.equal(u.autoStart, 'true');
   assert.equal(u.autoStartTarama, 'false');
@@ -230,7 +347,14 @@ test('AS2 calisan JVM de KAPAT 400, is acilmaz; olculemeyen kapi degil; durmus J
     const d = await post(kok, { jvm: 'durmus', enable: true });
     assert.equal(d.status, 200);
     assert.equal(awx.launch.length, 2);
-    assert.deepEqual(awx.launch[1].extraVars, { target_host: APP, action: 'jboss_autostart_on', plan_only: false, reload: false, gen: 7, jvm: 'durmus' });
+    assert.deepEqual(awx.launch[1].extraVars, {
+      target_host: APP,
+      action: 'jboss_autostart_on',
+      plan_only: false,
+      reload: false,
+      gen: 7,
+      jvm: 'durmus',
+    });
     assert.match(d.headers.get('server-timing'), /^assess;dur=\d+, launch;dur=\d+$/);
   });
 });
@@ -258,13 +382,20 @@ test('AS4 uctan uca: dogrulanan deger /host ta, ikinci tik zaten, onbellek silin
     const d = await (await post(kok, { jvm: 'durmus', enable: true })).json();
     assert.equal(d.ok, true);
     const jobId = d.jobId;
-    awx.durum.set(jobId, { status: 'successful', artifacts: sonuc('jboss_autostart_on', 'OK', 'durmus auto-start=true (CLI ile dogrulandi)') });
+    awx.durum.set(jobId, {
+      status: 'successful',
+      artifacts: sonuc('jboss_autostart_on', 'OK', 'durmus auto-start=true (CLI ile dogrulandi)'),
+    });
     const okuma0 = tamOkuma;
     const js = await (await al(`${kok}/job-status/1/${jobId}`)).json();
     assert.equal(js.status, 'successful');
     assert.deepEqual(js.autoStart, { dogrulandi: true, deger: 'true' });
     const h = await al(`${kok}/host/${APP}`);
-    assert.equal(h.headers.get('server-timing'), 'sh;desc="onbellek"', 'auto-start isi bitince onbellek silindi');
+    assert.equal(
+      h.headers.get('server-timing'),
+      'sh;desc="onbellek"',
+      'auto-start isi bitince onbellek silindi',
+    );
     assert.equal(tamOkuma, okuma0, 'auto-start isi bitince tam okuma yapildi');
     const j = (await h.json()).host.jvms.find((x) => x.name === 'durmus');
     assert.equal(j.autoStart, 'true', 'dogrulanan deger ayrintida yok');
@@ -272,7 +403,10 @@ test('AS4 uctan uca: dogrulanan deger /host ta, ikinci tik zaten, onbellek silin
     assert.equal(j.autoStartDogrulama.jobId, jobId);
     const ikinci = await post(kok, { jvm: 'durmus', enable: true });
     assert.equal(ikinci.status, 400);
-    assert.match((await ikinci.json()).message, new RegExp(`zaten auto-start AÇIK.*iş #${jobId} ile doğrulandı`));
+    assert.match(
+      (await ikinci.json()).message,
+      new RegExp(`zaten auto-start AÇIK.*iş #${jobId} ile doğrulandı`),
+    );
     assert.equal(awx.launch.length, 1, 'ayni is ikinci kez acildi');
     // Baska is (or. tarama; katmanda kaydi yok) bitince onbellek eskisi gibi silinir.
     awx.durum.set(4242, { status: 'successful', artifacts: {} });
@@ -294,15 +428,26 @@ test('AS5 preflight: tek okuma dusunce liste yedek yolu; ayni hata kodlari', asy
   assert.equal(awx.liste, 1);
   awx.ozetDussun = false;
   assert.throws(
-    () => pf.sablonKontrol({ name: 'x', playbook: 'a/b.yml', ask_variables: true }, { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } }),
+    () =>
+      pf.sablonKontrol(
+        { name: 'x', playbook: 'a/b.yml', ask_variables: true },
+        { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } },
+      ),
     (e) => e.status === 409 && e.code === 'awx_template_playbook_mismatch',
   );
   assert.throws(
-    () => pf.sablonKontrol({ name: 'x', playbook: 'server_hub_fix.yml', ask_variables: false }, { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } }),
+    () =>
+      pf.sablonKontrol(
+        { name: 'x', playbook: 'server_hub_fix.yml', ask_variables: false },
+        { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } },
+      ),
     (e) => e.status === 409 && e.code === 'awx_prompt_on_launch_disabled',
   );
   pf.sablonKontrol(null, { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } }); // fail-open
-  pf.sablonKontrol({ name: 'x', playbook: 'server_hub_fix.yml', ask_variables: null }, { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } });
+  pf.sablonKontrol(
+    { name: 'x', playbook: 'server_hub_fix.yml', ask_variables: null },
+    { templateId: 77, key: 'server_hub_fix', extraVars: { a: 1 } },
+  );
 });
 
 test('AS6 etiket hesabi onbellegi (ayni girdi -> yeniden hesap yok)', async () => {
@@ -320,7 +465,11 @@ test('AS6 etiket hesabi onbellegi (ayni girdi -> yeniden hesap yok)', async () =
       ],
     };
   };
-  const bag = { getAssessment: async () => a, ayarlar: { oku: async () => ({ etiketler: { R1: 'KESIN' } }) }, kontrol: { kontrolleriOku: async () => kontroller } };
+  const bag = {
+    getAssessment: async () => a,
+    ayarlar: { oku: async () => ({ etiketler: { R1: 'KESIN' } }) },
+    kontrol: { kontrolleriOku: async () => kontroller },
+  };
   const hesap = etiketHesabiKur({ ...bag, etiketleFn });
   const r1 = await hesap(false);
   const r2 = await hesap(false);
@@ -367,8 +516,15 @@ test('AS6b ?host= suzgeci etiketleri gercekten daraltir', async () => {
       const kok = `http://127.0.0.1:${srv.address().port}`;
       const tum = await (await al(`${kok}/retire-etiketleri`)).json();
       const tek = await (await al(`${kok}/retire-etiketleri?host=${APP}`)).json();
-      assert.deepEqual(tum.etiketler.map((e) => e.anahtar), ['e1', 'e2']);
-      assert.deepEqual(tek.etiketler.map((e) => e.anahtar), ['e1'], 'host suzgeci daraltmadi');
+      assert.deepEqual(
+        tum.etiketler.map((e) => e.anahtar),
+        ['e1', 'e2'],
+      );
+      assert.deepEqual(
+        tek.etiketler.map((e) => e.anahtar),
+        ['e1'],
+        'host suzgeci daraltmadi',
+      );
       assert.deepEqual(tek.ozet, tum.ozet, 'ozet filo geneli kalmali');
       assert.equal(tek.etiketler[0].kopyaSayisi, 2);
     } finally {
@@ -477,7 +633,11 @@ test('AS9 saat tabani: loaded_at +3 saat kaymis olsa da dogrulama katmani kalir'
     awx.durum.set(d.jobId, { status: 'successful', artifacts: sonuc('jboss_autostart_on', 'OK') });
     await al(`${kok}/job-status/1/${d.jobId}`);
     const det = await (await al(`${kok}/host/${APP}`)).json();
-    assert.equal(det.host.jvms.find((x) => x.name === 'durmus').autoStart, 'true', 'ekran eski degere dondu');
+    assert.equal(
+      det.host.jvms.find((x) => x.name === 'durmus').autoStart,
+      'true',
+      'ekran eski degere dondu',
+    );
     const ikinci = await post(kok, { jvm: 'durmus', enable: true });
     assert.equal(ikinci.status, 400);
     assert.equal(awx.launch.length, 1, 'ayni is ikinci kez acildi');
@@ -512,7 +672,12 @@ test('AS11 bulgu katmani: dogrulanan auto-start bulgusunun dugmesi kalkar', () =
   const { kur } = require('../autostart-dogrulama.cjs');
   const k = kur();
   const h = { host: APP, scanDate: gun, loadedAt: 1000 };
-  const f = { host: APP, code: 'REBOOT_RISK', fixable: true, fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'pay' } };
+  const f = {
+    host: APP,
+    code: 'REBOOT_RISK',
+    fixable: true,
+    fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'pay' },
+  };
   assert.equal(k.uygulaBulgu(h, f), f, 'katman bosken bulgu degismemeli');
   k.isKaydet(1, 60, { host: APP, gen: 7, jvm: 'pay', action: 'jboss_autostart_on', h });
   k.isBitti(1, 60, 'successful', OK_SATIRI('jboss_autostart_on'));
@@ -538,12 +703,22 @@ test('AS11b /findings ve /host bulgulari katmanli', async () => {
     // onbellekteki degerlendirmeye bu JVM icin auto-start ON oneren bir bulgu ekle
     const a = await SH.getAssessment(false);
     const h = a.hosts.find((x) => x.host === APP);
-    h.findings.push({ severity: 'danger', area: 'jvm', code: 'REBOOT_RISK', text: 't', fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'durmus' } });
-    const fl = (await (await al(`${kok}/findings`)).json()).findings.find((f) => f.code === 'REBOOT_RISK');
+    h.findings.push({
+      severity: 'danger',
+      area: 'jvm',
+      code: 'REBOOT_RISK',
+      text: 't',
+      fix: { action: 'jboss_autostart_on', gen: 7, jvm: 'durmus' },
+    });
+    const fl = (await (await al(`${kok}/findings`)).json()).findings.find(
+      (f) => f.code === 'REBOOT_RISK',
+    );
     assert.ok(fl, 'bulgu listede yok');
     assert.equal(fl.fix, null, '/findings dugmesi kalkmadi');
     assert.equal(fl.autoStartDogrulama.jobId, d.jobId);
-    const df = (await (await al(`${kok}/host/${APP}`)).json()).host.findings.find((f) => f.code === 'REBOOT_RISK');
+    const df = (await (await al(`${kok}/host/${APP}`)).json()).host.findings.find(
+      (f) => f.code === 'REBOOT_RISK',
+    );
     assert.equal(df.fix, null, '/host bulgusu dugmesini kaybetmedi');
   });
 });
@@ -551,8 +726,16 @@ test('AS11b /findings ve /host bulgulari katmanli', async () => {
 test('AS13 iliski bayat grafik yalniz ayni tarama verisinden', async () => {
   const { iliskiHesabiKur } = require('../iliski-uclar.cjs');
   let simdi = 1000;
-  let a = { tableMissing: false, latestScan: gun, hosts: [{ host: APP, loadedAt: 100, jvms: [], findings: [] }] };
-  const hesap = iliskiHesabiKur({ getAssessment: async () => a, iliskiVerisi: async () => ({}), simdi: () => simdi });
+  let a = {
+    tableMissing: false,
+    latestScan: gun,
+    hosts: [{ host: APP, loadedAt: 100, jvms: [], findings: [] }],
+  };
+  const hesap = iliskiHesabiKur({
+    getAssessment: async () => a,
+    iliskiVerisi: async () => ({}),
+    simdi: () => simdi,
+  });
   const ilk = await hesap(false);
   // ayni veri, yeni nesne (onbellek tazelendi): bayat grafik hemen
   a = { ...a, hosts: [{ ...a.hosts[0] }] };

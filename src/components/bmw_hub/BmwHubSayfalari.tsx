@@ -26,7 +26,10 @@ export function IpSorguPage() {
 export function OcpSorguPage() {
   return (
     <div className="space-y-5">
-      <SectionHeader title="OCP Uygulama Sorgu" subtitle="OpenShift namespace / uygulama envanterinde arama." />
+      <SectionHeader
+        title="OCP Uygulama Sorgu"
+        subtitle="OpenShift namespace / uygulama envanterinde arama."
+      />
       <OpenshiftCheckSection />
     </div>
   );

@@ -1,7 +1,7 @@
 // server/audit/__tests__/spa-traffic-proxy.test.js - Denetim > Nginx SPA, PROD PROXY satirlarinin
 // yuk olcumu (2026-10-02 dogrulama bulgusu).
 //
-// Eski GBRVP* sunucularindaki proxy_pass satirlari (kind='proxy') cozulup PROD matrisine
+// Eski ORRVP* sunucularindaki proxy_pass satirlari (kind='proxy') cozulup PROD matrisine
 // status='PROXY' SPA satiri gibi katilir (denetim.cjs). Bu satirlar trafik tanimina da
 // (trafikTanim: anahtar -> tanimin sunuculari) GIRMELIDIR: yoksa o gun satiri olmayan eski
 // mirror (zaman asimi) yok sayilir ve hucre "yuk yok - atil aday" olur.
@@ -11,7 +11,7 @@
 // surecte n:4 donmek o onbellek yuzunden PROD proxy dalini hic acmazdi; node --test her
 // dosyayi ayri surecte kosar.
 //
-//   T10 proxy satirlari tanimin sunucularina girer: GBRVPP08'in o gun satiri yoksa idle DEGIL
+//   T10 proxy satirlari tanimin sunucularina girer: ORRVPP08'in o gun satiri yoksa idle DEGIL
 'use strict';
 
 const { test, before, after } = require('node:test');
@@ -21,7 +21,14 @@ const path = require('node:path');
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 const gec = (_req, _res, next) => next();
 
@@ -40,14 +47,14 @@ async function query(text) {
   if (t.includes('SELECT DISTINCT TOP 30')) return rs([{ d: GUN }]);
   if (t.includes('FROM dbo.Nginx_Config_Audit') && t.includes("kind = 'proxy'")) {
     return rs(
-      ['GBRVPP07', 'GBRVPP08'].map((host) => ({
+      ['ORRVPP07', 'ORRVPP08'].map((host) => ({
         service: 'GLOMO',
         env: 'PROD',
         host,
         vhost: 'GLOMO-PROD',
         location_path: '/kart/',
-        upstream_name: 'kart-app-v1-kart-prod.apps.fw.garanti.com.tr',
-        target_url: 'https://kart-app-v1-kart-prod.apps.fw.garanti.com.tr/',
+        upstream_name: 'kart-app-v1-kart-prod.apps.fw.sirket.invalid',
+        target_url: 'https://kart-app-v1-kart-prod.apps.fw.sirket.invalid/',
       })),
     );
   }
@@ -109,14 +116,14 @@ const hucre = (j) => {
 
 test('T10 PROD proxy satirlari tanimin sunucularina girer: satirsiz eski mirror varken idle DEGIL', async () => {
   // Kontrol: iki eski sunucu da 8 gun olculmus, istek yok -> gercekten idle (dal aciliyor).
-  const iki = await getir([LOAD('GBRVPP07'), LOAD('GBRVPP08')]);
+  const iki = await getir([LOAD('ORRVPP07'), LOAD('ORRVPP08')]);
   const c0 = hucre(iki);
   assert.equal(c0.status, 'PROXY');
   assert.equal(c0.traffic.state, 'idle');
   assert.equal(c0.traffic.hosts, 2);
 
-  // GBRVPP08'in o gun satiri yok (trafik adimi zaman asimina dustu): "yuk yok" DENMEZ.
-  const tek = await getir([LOAD('GBRVPP07')]);
+  // ORRVPP08'in o gun satiri yok (trafik adimi zaman asimina dustu): "yuk yok" DENMEZ.
+  const tek = await getir([LOAD('ORRVPP07')]);
   const c = hucre(tek);
   assert.equal(c.status, 'PROXY');
   assert.equal(c.traffic.state, 'unknown', 'satiri olmayan eski mirror yok sayildi - "atil aday"');

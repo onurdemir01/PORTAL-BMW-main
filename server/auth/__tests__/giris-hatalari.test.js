@@ -18,6 +18,7 @@
 //   GH10 HTTP: AYNI hatali sifre AD'ye yalnizca BIR kez gider (AD kilit esigi bilinmeden
 //        hesaplari korur), sayaca yazilmaz; dogru sifre hemen calisir
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -54,8 +55,20 @@ ldap.authenticateLdap = async (username, password, lookup) => {
 function adKullanicilari(tablo) {
   return async (username, password) => {
     if (!(username in tablo)) throw new Error('ldap_user_not_found');
-    if (tablo[username] !== password) throw ldap.adHatasi(new Error('80090308: LdapErr: DSID-0C09044E, comment: AcceptSecurityContext error, data 52e, v4563'));
-    return { username, role: 'User', displayName: username, mail: '', authSource: 'ldap', groups: [] };
+    if (tablo[username] !== password)
+      throw ldap.adHatasi(
+        new Error(
+          '80090308: LdapErr: DSID-0C09044E, comment: AcceptSecurityContext error, data 52e, v4563',
+        ),
+      );
+    return {
+      username,
+      role: 'User',
+      displayName: username,
+      mail: '',
+      authSource: 'ldap',
+      groups: [],
+    };
   };
 }
 
@@ -112,7 +125,7 @@ test('GH2 LDAP erisilemez + yerel eslesme yok -> 503', async () => {
   const r = await giris('ayse', 'dogru');
   assert.equal(r.status, 503);
   assert.equal(r.body.code, 'ldap_erisilemez');
-  assert.doesNotMatch(r.body.error, /şifre hatalı/);
+  assert.doesNotMatch(r.body.error, esnek(/şifre hatalı/));
   // Yerel hesap yine calisir (mevcut davranis).
   const y = await giris('yereladmin', 'Guclu-Admin-456!');
   assert.equal(y.status, 200);
@@ -145,7 +158,8 @@ test('GH5 yerel hesap harf duyarsiz', async () => {
 });
 
 test('GT1 esik ve ustel bekleme; basari sifirlar', () => {
-  for (let i = 1; i <= 4; i++) assert.equal(throttle.hataKaydet('u').retryAfter, 0, `${i}. hatada kilit`);
+  for (let i = 1; i <= 4; i++)
+    assert.equal(throttle.hataKaydet('u').retryAfter, 0, `${i}. hatada kilit`);
   assert.equal(throttle.kontrol('u').ok, true);
   assert.equal(throttle.hataKaydet('u').retryAfter, 30);
   assert.deepEqual(throttle.kontrol('u'), { ok: false, retryAfter: 30 });
@@ -174,7 +188,10 @@ test('GT2 son hatadan 15 dk sonra sayac unutulur', () => {
 
 test('GT3 bellek sinirli', () => {
   for (let i = 0; i < throttle.KAYIT_UST + 50; i++) throttle.hataKaydet(`k${i}`);
-  assert.ok(throttle._kayitlar.size <= throttle.KAYIT_UST, `kayit sayisi ${throttle._kayitlar.size}`);
+  assert.ok(
+    throttle._kayitlar.size <= throttle.KAYIT_UST,
+    `kayit sayisi ${throttle._kayitlar.size}`,
+  );
   simdi += 16 * DK;
   throttle.hataKaydet('yeni');
   assert.equal(throttle._kayitlar.size, 1, 'bayat kayitlar budanmadi');
@@ -245,7 +262,14 @@ test('GH9 HTTP: UPN girildiyse userPrincipalName ile aranir, sifre kirpilmadan g
   adDavranisi = async (u, p, lookup) => {
     gelenSifre = p;
     assert.deepEqual(lookup, { attr: 'userPrincipalName', value: 'ayse@kurum.com' });
-    return { username: 'ayse', role: 'User', displayName: 'A', mail: '', authSource: 'ldap', groups: [] };
+    return {
+      username: 'ayse',
+      role: 'User',
+      displayName: 'A',
+      mail: '',
+      authSource: 'ldap',
+      groups: [],
+    };
   };
   const r = await giris('Ayse@Kurum.com', ' bosluklu ');
   assert.equal(r.status, 200);
@@ -255,20 +279,39 @@ test('GH9 HTTP: UPN girildiyse userPrincipalName ile aranir, sifre kirpilmadan g
 test('GT5 ayni hatali sifre pencere icinde taninir; sifre saklanmaz', () => {
   throttle.hataKaydet('Ayse', 'EskiSifre!1');
   assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 90, 'ayni hatali sifre taninmadi');
-  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!2'), 0, 'FARKLI sifre "ayni" sayildi — dogru sifre de reddedilirdi');
-  assert.equal(throttle.ayniHataliSifre('veli', 'EskiSifre!1'), 0, 'baska kullanicinin sifresi eslesti');
+  assert.equal(
+    throttle.ayniHataliSifre('ayse', 'EskiSifre!2'),
+    0,
+    'FARKLI sifre "ayni" sayildi — dogru sifre de reddedilirdi',
+  );
+  assert.equal(
+    throttle.ayniHataliSifre('veli', 'EskiSifre!1'),
+    0,
+    'baska kullanicinin sifresi eslesti',
+  );
   assert.equal(throttle.ayniHataliSifre('hic-yok', 'x'), 0);
   // Bellekteki kayit sifreyi DUZ tasimaz.
   const kayit = throttle._kayitlar.get('ayse');
-  assert.ok(!JSON.stringify({ ...kayit, sonOzet: kayit.sonOzet.toString('latin1') }).includes('EskiSifre'), 'sifre bellekte duz duruyor');
+  assert.ok(
+    !JSON.stringify({ ...kayit, sonOzet: kayit.sonOzet.toString('latin1') }).includes('EskiSifre'),
+    'sifre bellekte duz duruyor',
+  );
   assert.equal(kayit.sonOzet.length, 32);
   // Pencere: 1 sn kala hala taninir, dolunca AD'ye yeniden gidilebilir.
   simdi += 89 * 1000;
   assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 1);
   simdi += 1000;
-  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 0, 'pencere dolmasina ragmen hala engelli');
+  assert.equal(
+    throttle.ayniHataliSifre('ayse', 'EskiSifre!1'),
+    0,
+    'pencere dolmasina ragmen hala engelli',
+  );
   simdi += 30 * 1000;
-  assert.equal(throttle.ayniHataliSifre('ayse', 'EskiSifre!1'), 0, 'pencere disinda negatif / anlamsiz deger donuyor');
+  assert.equal(
+    throttle.ayniHataliSifre('ayse', 'EskiSifre!1'),
+    0,
+    'pencere disinda negatif / anlamsiz deger donuyor',
+  );
   // Basarili giris kaydi siler.
   throttle.hataKaydet('ayse', 'x');
   throttle.basariKaydet('ayse');
@@ -287,7 +330,11 @@ test('GH10 HTTP: ayni hatali sifre AD`ye bir kez gider, sayaca yazilmaz; dogru s
     assert.equal(r.body.code, 'kimlik_tekrar');
     assert.match(r.body.error, /yeniden gönderilmedi/);
   }
-  assert.equal(adCagrisi.length, 1, 'ayni hatali sifre AD`ye yeniden gitti — AD kilidine dogru ilerler');
+  assert.equal(
+    adCagrisi.length,
+    1,
+    'ayni hatali sifre AD`ye yeniden gitti — AD kilidine dogru ilerler',
+  );
   // Sayaca yazilmadi: 8 denemeye ragmen bekleme YOK (esik 5).
   assert.equal(throttle.kontrol('ayse').ok, true, 'tekrar denemeleri kullanicinin hakkini yedi');
   // Alan adli / buyuk harfli yazim da ayni kullanicidir.

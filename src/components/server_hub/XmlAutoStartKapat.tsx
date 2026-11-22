@@ -46,11 +46,15 @@ export function xmlKapatilabilir(j: XmlKapatJvm): boolean {
 
 /** Bu JBoss sürümünün domain'inde host XML ile kapatılabilecek JVM adları. */
 export function xmlKapatAdaylari(jvms: XmlKapatJvm[], gen: number | undefined): string[] {
-  return (jvms || []).filter((j) => Number(j.gen) === Number(gen) && xmlKapatilabilir(j)).map((j) => j.name);
+  return (jvms || [])
+    .filter((j) => Number(j.gen) === Number(gen) && xmlKapatilabilir(j))
+    .map((j) => j.name);
 }
 
 /** Sunucu düzeyi engel (sunucu da aynı kapıyı uygular); boş = engel yok. */
-export function xmlKapatSunucuEngeli(h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined): string {
+export function xmlKapatSunucuEngeli(
+  h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
+): string {
   if (h?.schemaUnknown === true) return 'Server Hub şeması okunamadı — eylemler kapalı';
   if (h?.fresh === false) return 'tarama bayat ya da son yükleme dışlandı — eylemler kapalı';
   return '';
@@ -84,7 +88,8 @@ export function xmlSonucunuAyristir(result: unknown): XmlKapatAyrisik {
   const plan: XmlKapatAyrisik['plan'] = {};
   for (const l of Array.isArray(r.xmlplan) ? r.xmlplan : []) {
     const p = String(l || '').split('\t');
-    if (p[0] === 'PLAN' && (p[1] === 'dosya' || p[1] === 'host' || p[1] === 'yedek')) plan[p[1]] = p.slice(2).join(' ');
+    if (p[0] === 'PLAN' && (p[1] === 'dosya' || p[1] === 'host' || p[1] === 'yedek'))
+      plan[p[1]] = p.slice(2).join(' ');
   }
   return { genel: satirAyir(r.line || ''), ogeler, plan };
 }
@@ -101,7 +106,11 @@ const BTN =
 const btn = (primary = false): React.CSSProperties =>
   primary
     ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }
-    : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
+    : {
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      };
 
 export function XmlAutoStartKapatPenceresi({
   host,
@@ -144,7 +153,12 @@ export function XmlAutoStartKapatPenceresi({
     setAsama(plan ? 'planning' : 'applying');
     setIsNo(null);
     try {
-      const r = await serverHubApi.jvmAutoStartXml({ host, gen, jvms, asama: plan ? 'plan' : 'uygula' });
+      const r = await serverHubApi.jvmAutoStartXml({
+        host,
+        gen,
+        jvms,
+        asama: plan ? 'plan' : 'uygula',
+      });
       if (!r.ok || r.jobId == null) {
         toast.error(r.message || 'İş başlatılamadı.');
         setAsama(geri);
@@ -169,7 +183,9 @@ export function XmlAutoStartKapatPenceresi({
           onBitti();
         },
       );
-      toast.success(`${plan ? 'Plan' : 'Uygulama'} işi başladı (#${r.jobId}). Sonuç bu pencerede görünecek.`);
+      toast.success(
+        `${plan ? 'Plan' : 'Uygulama'} işi başladı (#${r.jobId}). Sonuç bu pencerede görünecek.`,
+      );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
       setAsama(geri);
@@ -211,9 +227,10 @@ export function XmlAutoStartKapatPenceresi({
               Auto-start&apos;ı kapat (host XML) — {host} · JBoss {gen}
             </div>
             <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              Bu sunucuda JBoss {gen} domain&apos;i kapalı (taramada host controller çalışmıyordu); auto-start CLI ile
-              değiştirilemez. Aşağıdaki {jvms.length} JVM&apos;in auto-start&apos;ı host XML dosyasında doğrudan{' '}
-              <b>false</b> yapılır — reboot&apos;ta açılmazlar. Yalnız kapatma yapılır.
+              Bu sunucuda JBoss {gen} domain&apos;i kapalı (taramada host controller çalışmıyordu);
+              auto-start CLI ile değiştirilemez. Aşağıdaki {jvms.length} JVM&apos;in
+              auto-start&apos;ı host XML dosyasında doğrudan <b>false</b> yapılır — reboot&apos;ta
+              açılmazlar. Yalnız kapatma yapılır.
             </div>
           </div>
           <button
@@ -244,19 +261,28 @@ export function XmlAutoStartKapatPenceresi({
             role="alert"
             data-testid="xml-kapat-prod-uyari"
           >
-            <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--status-danger)' }} />
+            <ExclamationTriangleIcon
+              className="w-4 h-4 shrink-0 mt-0.5"
+              style={{ color: 'var(--status-danger)' }}
+            />
             <div>
-              <b>{envGroup === 'Production' ? 'PRODUCTION sunucusu.' : 'Ortamı bilinmeyen sunucu (Production sayıldı).'}</b>{' '}
-              Host XML elle değil betikle değişir ama yine de canlı yapılandırma dosyasıdır: bu JVM&apos;ler bir sonraki
-              reboot&apos;ta açılmaz. Uygulamaların gerçekten retire edilmiş olduğundan emin olun.
+              <b>
+                {envGroup === 'Production'
+                  ? 'PRODUCTION sunucusu.'
+                  : 'Ortamı bilinmeyen sunucu (Production sayıldı).'}
+              </b>{' '}
+              Host XML elle değil betikle değişir ama yine de canlı yapılandırma dosyasıdır: bu
+              JVM&apos;ler bir sonraki reboot&apos;ta açılmaz. Uygulamaların gerçekten retire
+              edilmiş olduğundan emin olun.
             </div>
           </div>
         )}
         {asama === 'ask' && (
           <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-            Önce sunucuda <b>plan</b> koşar: dosya, host adı, her JVM&apos;in mevcut değeri ve yedek yeri gösterilir,
-            hiçbir şey değişmez. Planı gördükten sonra onaylarsınız. Uygulamada önce yedek alınır; betik yazmadan önce
-            ve sonra host controller&apos;ın hâlâ kapalı olduğunu kontrol eder, açıldıysa değişikliği geri alır.
+            Önce sunucuda <b>plan</b> koşar: dosya, host adı, her JVM&apos;in mevcut değeri ve yedek
+            yeri gösterilir, hiçbir şey değişmez. Planı gördükten sonra onaylarsınız. Uygulamada
+            önce yedek alınır; betik yazmadan önce ve sonra host controller&apos;ın hâlâ kapalı
+            olduğunu kontrol eder, açıldıysa değişikliği geri alır.
           </p>
         )}
         {asama === 'planning' && (
@@ -270,7 +296,11 @@ export function XmlAutoStartKapatPenceresi({
           </p>
         )}
         {kosuyor && isNo != null && (
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="xml-kapat-arka-plan">
+          <p
+            className="text-[11px]"
+            style={{ color: 'var(--text-muted)' }}
+            data-testid="xml-kapat-arka-plan"
+          >
             Pencereyi kapatabilirsiniz: iş arka planda sürer, sonucu iş çubuğunda görünür.
           </p>
         )}
@@ -306,9 +336,16 @@ export function XmlAutoStartKapatPenceresi({
               <table className="w-full text-[11px]">
                 <tbody>
                   {sonuc.ogeler.map((o) => (
-                    <tr key={o.jvm} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <tr
+                      key={o.jvm}
+                      className="border-t"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
                       <td className="py-0.5 pr-2 font-mono font-semibold">{o.jvm}</td>
-                      <td className="py-0.5 pr-2 font-semibold" style={{ color: DURUM_RENK[o.durum] || 'var(--text-primary)' }}>
+                      <td
+                        className="py-0.5 pr-2 font-semibold"
+                        style={{ color: DURUM_RENK[o.durum] || 'var(--text-primary)' }}
+                      >
                         {o.durum}
                       </td>
                       <td className="py-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -327,15 +364,26 @@ export function XmlAutoStartKapatPenceresi({
           </div>
         )}
         {planSorunu && (
-          <p className="text-[12px]" style={{ color: 'var(--status-warning)' }} data-testid="xml-kapat-plan-sorunu">
+          <p
+            className="text-[12px]"
+            style={{ color: 'var(--status-warning)' }}
+            data-testid="xml-kapat-plan-sorunu"
+          >
             {planSorunu}
           </p>
         )}
         {planHazir && prod && (
-          <label className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-primary)' }}>
-            <input type="checkbox" checked={prodOnay} onChange={(e) => setProdOnay(e.target.checked)} />
-            Bu bir {envGroup === 'Production' ? 'Production' : 'ortamı bilinmeyen'} sunucu; bu JVM&apos;lerin reboot&apos;ta
-            açılmayacağını anladım
+          <label
+            className="flex items-center gap-2 text-[12px]"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            <input
+              type="checkbox"
+              checked={prodOnay}
+              onChange={(e) => setProdOnay(e.target.checked)}
+            />
+            Bu bir {envGroup === 'Production' ? 'Production' : 'ortamı bilinmeyen'} sunucu; bu
+            JVM&apos;lerin reboot&apos;ta açılmayacağını anladım
           </label>
         )}
         <div className="flex items-center gap-2 justify-end">
@@ -364,7 +412,11 @@ export function XmlAutoStartKapatPenceresi({
               className={BTN}
               disabled={!uygulanabilir}
               title={uygulanabilir ? undefined : 'Production onayını işaretleyin'}
-              style={{ ...btn(true), background: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}
+              style={{
+                ...btn(true),
+                background: 'var(--status-danger)',
+                borderColor: 'var(--status-danger)',
+              }}
             >
               Onayla ve uygula
             </button>

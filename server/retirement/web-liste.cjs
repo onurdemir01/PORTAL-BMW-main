@@ -23,7 +23,9 @@ const IHS_KOK = '/usr/IBMIHS';
 
 /** Urun ailesi: IHS|IBMIHS -> IHS, RHA|APACHE -> RHA, digerleri ''. (server_hub_fix.sh:28 ile ayni.) */
 function urunAilesi(p) {
-  const u = String(p || '').trim().toUpperCase();
+  const u = String(p || '')
+    .trim()
+    .toUpperCase();
   if (u === 'IHS' || u === 'IBMIHS') return 'IHS';
   if (u === 'RHA' || u === 'APACHE') return 'RHA';
   return '';
@@ -31,8 +33,8 @@ function urunAilesi(p) {
 
 /** Girdinin conf dosyasinin kanonik (mutlak) yolu: IHS goreli ad -> /usr/IBMIHS/conf/<ad>; digerleri oldugu gibi. */
 function webConfKanonik(w) {
-  const c = String((w && w.confFile) || '');
-  if (!c || c.includes('/') || urunAilesi(w && w.product) !== 'IHS') return c;
+  const c = String(w?.confFile || '');
+  if (!c || c.includes('/') || urunAilesi(w?.product) !== 'IHS') return c;
   return `${IHS_KOK}/conf/${c}`;
 }
 
@@ -43,7 +45,7 @@ function webAnahtar(w) {
 /** Ayni FIZIKSEL dosya + ServerName + urun ailesi icin ayni anahtar (goreli/mutlak IHS yazimi esit;
  *  IHS ile RHA etiketli girdiler ayri - kesifteki "RHA birlesmez" kuraliyla tutarli). */
 function webKanonikAnahtar(w) {
-  return `${webAnahtar({ ...w, confFile: webConfKanonik(w) })}|${urunAilesi(w && w.product)}`;
+  return `${webAnahtar({ ...w, confFile: webConfKanonik(w) })}|${urunAilesi(w?.product)}`;
 }
 
 const kosmadi = (w) => !!w && (w.status == null || w.status === 'pending') && w.jobId == null;
@@ -57,7 +59,8 @@ function oncelik(w) {
   return Object.hasOwn(ONCELIK, s) ? ONCELIK[s] : null;
 }
 /** Is acilmis (jobId), dosyayi kapatan/kapatmis (running/ok) ya da durumu bilinmeyen girdi: HIC atilmaz. */
-const kalici = (w) => !w || w.jobId != null || w.status === 'running' || w.status === 'ok' || oncelik(w) == null;
+const kalici = (w) =>
+  !w || w.jobId != null || w.status === 'running' || w.status === 'ok' || oncelik(w) == null;
 
 /**
  * Ayni fiziksel dosya + ServerName (kanonik anahtar) icin web listesi:
@@ -71,7 +74,9 @@ const kalici = (w) => !w || w.jobId != null || w.status === 'running' || w.statu
  */
 function webTekille(liste) {
   if (!Array.isArray(liste)) return { liste, atilan: 0 };
-  const kapali = new Set(liste.filter((w) => w && (w.status === 'running' || w.status === 'ok')).map(webKanonikAnahtar));
+  const kapali = new Set(
+    liste.filter((w) => w && (w.status === 'running' || w.status === 'ok')).map(webKanonikAnahtar),
+  );
   const temsilci = new Map();
   for (const w of liste) {
     if (kalici(w)) continue;
@@ -83,7 +88,10 @@ function webTekille(liste) {
   }
   const out = [];
   for (const w of liste) {
-    if (kalici(w)) { out.push(w); continue; }
+    if (kalici(w)) {
+      out.push(w);
+      continue;
+    }
     if (temsilci.get(webKanonikAnahtar(w)) !== w) continue;
     const c = webConfKanonik(w);
     out.push(kosmadi(w) && c !== String(w.confFile || '') ? { ...w, confFile: c } : w);
@@ -103,23 +111,46 @@ function webTekille(liste) {
 function webYenidenDeneHazirla(liste) {
   const YENIDEN = new Set(['failed', 'skip']);
   const kaynak = Array.isArray(liste) ? liste : [];
-  const suren = new Set(kaynak.filter((w) => w && w.status === 'running').map(webKanonikAnahtar));
+  const suren = new Set(kaynak.filter((w) => w?.status === 'running').map(webKanonikAnahtar));
   const gorulen = new Set();
   const out = [];
   const secilen = [];
   let surenYuzunden = 0;
   for (const w of kaynak) {
-    if (!w || !YENIDEN.has(w.status)) { out.push(w); continue; }
+    if (!w || !YENIDEN.has(w.status)) {
+      out.push(w);
+      continue;
+    }
     const k = webKanonikAnahtar(w);
-    if (suren.has(k)) { surenYuzunden += 1; out.push(w); continue; }
+    if (suren.has(k)) {
+      surenYuzunden += 1;
+      out.push(w);
+      continue;
+    }
     if (gorulen.has(k)) continue;
     gorulen.add(k);
-    const y = { ...w, oncekiJobId: w.jobId ?? null, oncekiMesaj: w.message ?? null, status: 'pending', jobId: null,
-      message: 'yeniden denenecek', yenidenDene: true, confFile: webConfKanonik(w) };
+    const y = {
+      ...w,
+      oncekiJobId: w.jobId ?? null,
+      oncekiMesaj: w.message ?? null,
+      status: 'pending',
+      jobId: null,
+      message: 'yeniden denenecek',
+      yenidenDene: true,
+      confFile: webConfKanonik(w),
+    };
     out.push(y);
     secilen.push(y);
   }
   return { liste: out, secilen, surenYuzunden };
 }
 
-module.exports = { webAnahtar, webKanonikAnahtar, webConfKanonik, urunAilesi, webTekille, webYenidenDeneHazirla, IHS_KOK };
+module.exports = {
+  webAnahtar,
+  webKanonikAnahtar,
+  webConfKanonik,
+  urunAilesi,
+  webTekille,
+  webYenidenDeneHazirla,
+  IHS_KOK,
+};

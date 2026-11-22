@@ -60,7 +60,7 @@ async function disKaynaklar() {
       })
       .catch((e) => ({
         okunamadi: true,
-        hata: (e && e.message) || 'okunamadı',
+        hata: e?.message || 'okunamadı',
         indeks: new Map(),
         uygulama: 0,
       })),
@@ -80,7 +80,7 @@ async function disKaynaklar() {
       .then((r) => ({ okunamadi: false, indeks: olcumIndeksi(r.recordset || []) }))
       .catch((e) => ({
         okunamadi: true,
-        hata: (e && e.message) || 'okunamadı',
+        hata: e?.message || 'okunamadı',
         indeks: new Map(),
       })),
   ]);
@@ -129,7 +129,7 @@ async function retirementHedefleri() {
       })),
     };
   } catch (e) {
-    return { okunamadi: true, hata: (e && e.message) || 'okunamadı', hedefler: [] };
+    return { okunamadi: true, hata: e?.message || 'okunamadı', hedefler: [] };
   }
 }
 
@@ -142,11 +142,11 @@ async function caprazVeri() {
 /** /overview ve etiket uclari icin JSON ozeti (indeksler disari cikmaz). */
 function caprazDurumu(c) {
   if (!c) return null;
-  const k = (x, ek) => ({ okunamadi: !!(x && x.okunamadi), hata: (x && x.hata) || '', ...ek });
+  const k = (x, ek) => ({ okunamadi: !!x?.okunamadi, hata: x?.hata || '', ...ek });
   return {
-    ocp: k(c.ocp, { uygulama: (c.ocp && c.ocp.uygulama) || 0 }),
+    ocp: k(c.ocp, { uygulama: c.ocp?.uygulama || 0 }),
     kullanim: k(c.kullanim, {
-      olcum: c.kullanim && c.kullanim.indeks ? c.kullanim.indeks.size : 0,
+      olcum: c.kullanim?.indeks ? c.kullanim.indeks.size : 0,
     }),
     retirement: k(c.retirement, { hedef: c.retirement ? c.retirement.hedefler.length : 0 }),
   };

@@ -155,7 +155,10 @@ function Rozet({ durum }: { durum: string }) {
         ? 'var(--accent)'
         : 'var(--status-warning)';
   return (
-    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border" style={{ color: renk, borderColor: renk }}>
+    <span
+      className="text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+      style={{ color: renk, borderColor: renk }}
+    >
       {IS_ETIKET[durum] || durum}
     </span>
   );
@@ -177,8 +180,14 @@ function AdayTablosu({
   if (!satirlar.length) return null;
   const hepsi = satirlar.every((x) => secili.has(anahtar(x)));
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
-      <div className="px-3 py-2 text-xs font-semibold flex items-center gap-2" style={{ background: 'var(--bg-elevated)' }}>
+    <div
+      className="rounded-lg border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
+      <div
+        className="px-3 py-2 text-xs font-semibold flex items-center gap-2"
+        style={{ background: 'var(--bg-elevated)' }}
+      >
         <input
           type="checkbox"
           aria-label={`${baslik}: tümünü seç`}
@@ -211,7 +220,11 @@ function AdayTablosu({
           </thead>
           <tbody>
             {satirlar.map((x) => (
-              <tr key={anahtar(x)} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+              <tr
+                key={anahtar(x)}
+                className="border-t"
+                style={{ borderColor: 'var(--border-subtle)' }}
+              >
                 <td className="px-3 py-1">
                   <input
                     type="checkbox"
@@ -234,9 +247,12 @@ function AdayTablosu({
                   {x.jvm} <span style={{ color: 'var(--text-muted)' }}>JBoss {x.gen}</span>
                 </td>
                 <td className="px-3 py-1">
-                  {x.running ? 'çalışıyor' : 'durmuş'} · auto-start {x.autoStart === 'true' ? 'açık' : 'kapalı'}
+                  {x.running ? 'çalışıyor' : 'durmuş'} · auto-start{' '}
+                  {x.autoStart === 'true' ? 'açık' : 'kapalı'}
                 </td>
-                <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>{x.scanDate || '—'}</td>
+                <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>
+                  {x.scanDate || '—'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -248,7 +264,10 @@ function AdayTablosu({
 
 function OgeTablosu({ ogeler }: { ogeler: ShTopluOge[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+    <div
+      className="overflow-x-auto rounded-lg border"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
       <table className="w-full text-[12px]">
         <thead>
           <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
@@ -262,7 +281,11 @@ function OgeTablosu({ ogeler }: { ogeler: ShTopluOge[] }) {
         </thead>
         <tbody>
           {ogeler.map((o) => (
-            <tr key={o.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+            <tr
+              key={o.id}
+              className="border-t align-top"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
               <td className="px-3 py-1 font-mono">{o.host}</td>
               <td className="px-3 py-1 font-mono">
                 {o.jvm} <span style={{ color: 'var(--text-muted)' }}>JBoss {o.gen}</span>
@@ -308,13 +331,20 @@ export default function TopluAutoStartTab() {
   // Host XML (domain kapalı) seçimi: domain anahtarları (host|gen); varsayılan boş (prod dahil bilinçli seçim).
   const [xmlSecili, setXmlSecili] = useState<Set<string>>(new Set());
   // Host XML onay penceresi: plan (olusturma) ya da uygulama onayı; prodOnay sunucuya gönderilir.
-  const [xmlOnay, setXmlOnay] = useState<{ tur: 'plan' | 'uygula'; kapsam: XmlOnayKapsami[]; uyari?: string } | null>(null);
+  const [xmlOnay, setXmlOnay] = useState<{
+    tur: 'plan' | 'uygula';
+    kapsam: XmlOnayKapsami[];
+    uyari?: string;
+  } | null>(null);
   const [izlenen, setIzlenen] = useState<number | null>(null);
   const [okunanIs, setIs] = useState<ShTopluIs | null>(null);
   const [ogeler, setOgeler] = useState<ShTopluOge[]>([]);
   const [gonderiliyor, setGonderiliyor] = useState(false);
   // Kategori seçimi izlenen işe bağlı: başka iş / yeni toplu iş açılınca seçim kendiliğinden düşer (inceleme B-F8).
-  const [kategoriSecimi, setKategoriSecimi] = useState<{ isId: number | null; k: TopluKategori | null }>({ isId: null, k: null });
+  const [kategoriSecimi, setKategoriSecimi] = useState<{
+    isId: number | null;
+    k: TopluKategori | null;
+  }>({ isId: null, k: null });
   // Bu ekranda daha once gorulen dogrulanmis ogeler (yayin bir kez; ilk okumada gorulenler yayilmaz: eski sonuc).
   const yayilan = useRef<{ isId: number | null; ids: Set<number> }>({ isId: null, ids: new Set() });
 
@@ -322,7 +352,10 @@ export default function TopluAutoStartTab() {
     setYukleniyor(true);
     setHata(null);
     try {
-      const [a, l] = await Promise.all([serverHubApi.topluAutoStartAdaylar(fresh), serverHubApi.topluAutoStartListe()]);
+      const [a, l] = await Promise.all([
+        serverHubApi.topluAutoStartAdaylar(fresh),
+        serverHubApi.topluAutoStartListe(),
+      ]);
       if (!a.ok) throw new Error(a.message || 'Aday listesi okunamadı.');
       setVeri(a);
       setSecili(new Set(a.adaylar.map(anahtar)));
@@ -376,7 +409,9 @@ export default function TopluAutoStartTab() {
   const setKategori = (k: TopluKategori | null) => setKategoriSecimi({ isId: izlenen, k });
   // YOKLAMA: yalniz sekme gorunurken ve is yururken (ya da yarim kalmis isin calisan ogesi varken).
   const yuruyor =
-    !!is && (YURUYEN.has(is.durum) || (is.durum === 'YARIM_KALDI' && ogeler.some((o) => o.durum === 'CALISIYOR')));
+    !!is &&
+    (YURUYEN.has(is.durum) ||
+      (is.durum === 'YARIM_KALDI' && ogeler.some((o) => o.durum === 'CALISIYOR')));
   const onayBekliyor = !!is && is.durum === 'PLAN_HAZIR';
   useEffect(() => {
     if (!gorunur || izlenen == null || (!yuruyor && !onayBekliyor)) return undefined;
@@ -388,7 +423,10 @@ export default function TopluAutoStartTab() {
     );
     return () => clearInterval(t);
   }, [gorunur, izlenen, yuruyor, onayBekliyor, durumOku]);
-  const planKalanMs = onayBekliyor && is?.planBitisAt ? new Date(is.planBitisAt).getTime() + PLAN_GECERLILIK_MS - simdi : null;
+  const planKalanMs =
+    onayBekliyor && is?.planBitisAt
+      ? new Date(is.planBitisAt).getTime() + PLAN_GECERLILIK_MS - simdi
+      : null;
   const planDoldu = planKalanMs != null && planKalanMs <= 0;
 
   const adaylar = useMemo(() => veri?.adaylar || [], [veri]);
@@ -405,7 +443,11 @@ export default function TopluAutoStartTab() {
 
   // İnceleme 2026-11-15 #2: sunucu prod_onay 400'ü döndüyse kapsamın TAMAMI prod işaretli yeniden sorulur (sunucu
   // mesajı en çok 5 sunucu sayar; ekran tahmini yanılmış demektir).
-  const prodOnayIste = (tur: 'plan' | 'uygula', liste: { host: string; gen: number; jvm: string }[], mesaj?: string) =>
+  const prodOnayIste = (
+    tur: 'plan' | 'uygula',
+    liste: { host: string; gen: number; jvm: string }[],
+    mesaj?: string,
+  ) =>
     setXmlOnay({
       tur,
       kapsam: xmlKapsami(liste.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, prod: true }))),
@@ -448,7 +490,11 @@ export default function TopluAutoStartTab() {
       let okunan: ShTopluIs | null = null;
       let okunamadi = false;
       try {
-        okunan = belirsizSonrasiIs(await serverHubApi.topluAutoStartListe(), baslangic, oncekiSonId);
+        okunan = belirsizSonrasiIs(
+          await serverHubApi.topluAutoStartListe(),
+          baslangic,
+          oncekiSonId,
+        );
       } catch {
         okunamadi = true;
       }
@@ -459,19 +505,25 @@ export default function TopluAutoStartTab() {
     }
   };
 
-  const planla = () => gonder(secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, eylem: x.eylem })));
+  const planla = () =>
+    gonder(secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, eylem: x.eylem })));
   const xmlProdMu = (host: string) => xmlGruplari.some((g) => g.host === host && g.prod);
   // Host XML planı: önce kapsam penceresi (prod varsa işaret); pencere onaylayınca toplu iş açılır.
   const xmlPlanla = () => {
     if (!xmlSecim.length || aktifVar) return;
-    setXmlOnay({ tur: 'plan', kapsam: xmlKapsami(xmlSecim.map((x) => ({ ...x, prod: xmlProdMu(x.host) }))) });
+    setXmlOnay({
+      tur: 'plan',
+      kapsam: xmlKapsami(xmlSecim.map((x) => ({ ...x, prod: xmlProdMu(x.host) }))),
+    });
   };
   const xmlIs = ogeler.some(xmlOgesiMi);
 
   const onayGonder = async (id: number, prodOnay?: boolean) => {
     setGonderiliyor(true);
     try {
-      const r = prodOnay ? await serverHubApi.topluAutoStartOnayla(id, { prodOnay: true }) : await serverHubApi.topluAutoStartOnayla(id);
+      const r = prodOnay
+        ? await serverHubApi.topluAutoStartOnayla(id, { prodOnay: true })
+        : await serverHubApi.topluAutoStartOnayla(id);
       if (!r.ok && r.code === 'prod_onay' && !prodOnay && xmlIs)
         prodOnayIste(
           'uygula',
@@ -500,11 +552,25 @@ export default function TopluAutoStartTab() {
       const gecen = ogeler.filter((o) => o.durum === 'PLAN_GECTI');
       setXmlOnay({
         tur: 'uygula',
-        kapsam: xmlKapsami(gecen.map((o) => ({ host: o.host, gen: o.gen, jvm: o.jvm, prod: prodOgesiMi(o, veri?.adaylarXml) }))),
+        kapsam: xmlKapsami(
+          gecen.map((o) => ({
+            host: o.host,
+            gen: o.gen,
+            jvm: o.jvm,
+            prod: prodOgesiMi(o, veri?.adaylarXml),
+          })),
+        ),
       });
       return;
     }
-    if (!(await onayla({ baslik: 'Toplu auto-start', metin: onayMetni(ogeler, isBasina), onayMetni: 'Onayla ve uygula' }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Toplu auto-start',
+        metin: onayMetni(ogeler, isBasina),
+        onayMetni: 'Onayla ve uygula',
+      }))
+    )
+      return;
     await onayGonder(is.id);
   };
 
@@ -548,7 +614,9 @@ export default function TopluAutoStartTab() {
   const uygulamaIsSayisi = acilanIsSayisi(ogeler, 'uygulama');
   // "yarım kaldı" iki ayrı şey: sonucu belirsiz (AWX'te sürüyor olabilir; JVM kilitli) ve hiç çalıştırılmayan.
   const belirsizSayisi = ogeler.filter(belirsizMi).length;
-  const calistirilmayanSayisi = ogeler.filter((o) => o.durum === 'YARIM_KALDI' && !belirsizMi(o)).length;
+  const calistirilmayanSayisi = ogeler.filter(
+    (o) => o.durum === 'YARIM_KALDI' && !belirsizMi(o),
+  ).length;
   const dusenler = ogeler.filter((o) => o.durum === 'DUSTU');
   const bitti = !!is && !YURUYEN.has(is.durum) && is.durum !== 'PLAN_HAZIR';
   // Hic uygulanmadiysa (hepsi planda / onayda dustu ya da iptal) ozet yesil 'Tamamlandi' degil, notr.
@@ -560,7 +628,11 @@ export default function TopluAutoStartTab() {
       {onayPenceresi}
       <XmlOnayPenceresi
         acik={xmlOnay !== null}
-        baslik={xmlOnay?.tur === 'plan' ? 'Host XML ile auto-start kapat — plan' : 'Host XML ile auto-start kapat — uygula'}
+        baslik={
+          xmlOnay?.tur === 'plan'
+            ? 'Host XML ile auto-start kapat — plan'
+            : 'Host XML ile auto-start kapat — uygula'
+        }
         aciklama={
           xmlOnay?.tur === 'plan'
             ? 'Önce salt okunur plan çalışır (dosya, host adı, JVM başına mevcut değer); hiçbir şey değişmez. Uygulama için plandan sonra ayrıca onay istenir.'
@@ -572,13 +644,19 @@ export default function TopluAutoStartTab() {
         onIptal={() => setXmlOnay(null)}
         onOnayla={xmlOnayla}
       />
-      <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <section
+        className="rounded-xl border p-4 space-y-3"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Auto-start uyumsuz JVM’ler</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Auto-start uyumsuz JVM’ler
+            </h2>
             <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-              Yalnız taze taramada şeması okunan, tanımlı ve çalışma durumu ölçülmüş JVM’ler listelenir. Düğme önce her JVM’in
-              canlı değerini salt okunur bir planla okur; artık uyumsuz olmayanlar düşer. Sonra onay istenir.
+              Yalnız taze taramada şeması okunan, tanımlı ve çalışma durumu ölçülmüş JVM’ler
+              listelenir. Düğme önce her JVM’in canlı değerini salt okunur bir planla okur; artık
+              uyumsuz olmayanlar düşer. Sonra onay istenir.
               {veri?.latestScan ? ` Son tarama: ${veri.latestScan}.` : ''}
             </p>
           </div>
@@ -593,7 +671,10 @@ export default function TopluAutoStartTab() {
           </button>
         </div>
         {hata && (
-          <div className="text-[12px] rounded-lg border px-3 py-2" style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}>
+          <div
+            className="text-[12px] rounded-lg border px-3 py-2"
+            style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}
+          >
             {hata}
           </div>
         )}
@@ -606,10 +687,24 @@ export default function TopluAutoStartTab() {
               </div>
             )}
             {!adaylar.length && !veri.schemaUnknown && (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Taze taramada uyumsuz JVM yok.</div>
+              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                Taze taramada uyumsuz JVM yok.
+              </div>
             )}
-            <AdayTablosu baslik="AÇ — çalışıyor ama auto-start kapalı (reboot sonrası açılmaz)" satirlar={acAdaylar} secili={secili} setSecili={setSecili} kilitli={aktifVar} />
-            <AdayTablosu baslik="KAPAT — durmuş ama auto-start açık (reboot’ta açılır)" satirlar={kapatAdaylar} secili={secili} setSecili={setSecili} kilitli={aktifVar} />
+            <AdayTablosu
+              baslik="AÇ — çalışıyor ama auto-start kapalı (reboot sonrası açılmaz)"
+              satirlar={acAdaylar}
+              secili={secili}
+              setSecili={setSecili}
+              kilitli={aktifVar}
+            />
+            <AdayTablosu
+              baslik="KAPAT — durmuş ama auto-start açık (reboot’ta açılır)"
+              satirlar={kapatAdaylar}
+              secili={secili}
+              setSecili={setSecili}
+              kilitli={aktifVar}
+            />
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 type="button"
@@ -620,9 +715,14 @@ export default function TopluAutoStartTab() {
                 Planla ({fmtNumber(secim.length)} JVM)
               </button>
               {limit != null && (
-                <span className="text-[11px] tabular-nums" style={{ color: limitAsti ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+                <span
+                  className="text-[11px] tabular-nums"
+                  style={{ color: limitAsti ? 'var(--status-danger)' : 'var(--text-muted)' }}
+                >
                   {fmtNumber(secim.length)} / {fmtNumber(limit)} JVM
-                  {limitAsti ? ' — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın' : ''}
+                  {limitAsti
+                    ? ' — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın'
+                    : ''}
                 </span>
               )}
               {isBasina != null && secim.length > 0 && (
@@ -645,12 +745,16 @@ export default function TopluAutoStartTab() {
               // Domain kapalı (host XML) adayları burada değil, aşağıdaki ayrı bölümde.
               <details className="text-[12px]">
                 <summary className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>
-                  Uyumsuz görünen ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM (nedeniyle)
+                  Uyumsuz görünen ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM
+                  (nedeniyle)
                 </summary>
                 <ul className="mt-1 space-y-0.5">
                   {veri.dislananlar.map((x) => (
                     <li key={anahtar(x)}>
-                      <span className="font-mono">{x.host}/{x.jvm}</span> — {x.neden}
+                      <span className="font-mono">
+                        {x.host}/{x.jvm}
+                      </span>{' '}
+                      — {x.neden}
                     </li>
                   ))}
                 </ul>
@@ -675,12 +779,17 @@ export default function TopluAutoStartTab() {
       {is && (
         <section
           className="rounded-xl border p-4 space-y-3"
-          style={{ borderColor: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+          style={{
+            borderColor: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--border-subtle)',
+            background: 'var(--bg-surface)',
+          }}
           aria-label={`Toplu iş #${is.id}`}
         >
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Toplu iş #{is.id}</h2>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Toplu iş #{is.id}
+              </h2>
               <Rozet durum={is.durum} />
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                 açan {is.olusturan}
@@ -691,18 +800,32 @@ export default function TopluAutoStartTab() {
             </div>
             <div className="flex items-center gap-2">
               {is.durum === 'PLAN_HAZIR' && (
-                <button type="button" className="btn-primary text-xs" disabled={gonderiliyor || !say('PLAN_GECTI') || planDoldu} onClick={() => void onayVer()}>
+                <button
+                  type="button"
+                  className="btn-primary text-xs"
+                  disabled={gonderiliyor || !say('PLAN_GECTI') || planDoldu}
+                  onClick={() => void onayVer()}
+                >
                   Onayla ve uygula ({fmtNumber(say('PLAN_GECTI'))} JVM)
                 </button>
               )}
-              {(is.durum === 'PLAN_HAZIR' || is.durum === 'PLANLANIYOR' || is.durum === 'CALISIYOR') && (
-                <button type="button" className="btn-secondary text-xs" onClick={() => void iptalEt()}>
+              {(is.durum === 'PLAN_HAZIR' ||
+                is.durum === 'PLANLANIYOR' ||
+                is.durum === 'CALISIYOR') && (
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => void iptalEt()}
+                >
                   İptal
                 </button>
               )}
             </div>
           </div>
-          <div className="text-[12px] tabular-nums flex gap-3 flex-wrap" style={{ color: 'var(--text-secondary)' }}>
+          <div
+            className="text-[12px] tabular-nums flex gap-3 flex-wrap"
+            style={{ color: 'var(--text-secondary)' }}
+          >
             <span>{fmtNumber(ogeler.length)} JVM</span>
             {(planIsSayisi > 0 || uygulamaIsSayisi > 0) && (
               <span data-testid="toplu-awx-isleri">
@@ -711,11 +834,18 @@ export default function TopluAutoStartTab() {
                 {isBasina != null ? ` (iş başına en çok ${fmtNumber(isBasina)} JVM)` : ''}
               </span>
             )}
-            <span>uygulanacak / uygulanan {fmtNumber(ogeler.length - say('DUSTU') - say('SECIM') - say('ADAY') - say('PLANLANIYOR'))}</span>
+            <span>
+              uygulanacak / uygulanan{' '}
+              {fmtNumber(
+                ogeler.length - say('DUSTU') - say('SECIM') - say('ADAY') - say('PLANLANIYOR'),
+              )}
+            </span>
             <span>düşen {fmtNumber(say('DUSTU'))}</span>
             <span style={{ color: 'var(--status-success)' }}>OK {fmtNumber(say('OK'))}</span>
             <span>zaten hedefte {fmtNumber(say('SKIP'))}</span>
-            <span style={{ color: say('FAIL') ? 'var(--status-danger)' : undefined }}>başarısız {fmtNumber(say('FAIL'))}</span>
+            <span style={{ color: say('FAIL') ? 'var(--status-danger)' : undefined }}>
+              başarısız {fmtNumber(say('FAIL'))}
+            </span>
             {belirsizSayisi > 0 && (
               <span
                 style={{ color: 'var(--status-danger)' }}
@@ -731,13 +861,24 @@ export default function TopluAutoStartTab() {
               </span>
             )}
           </div>
-          {is.hata && <div className="text-[12px]" style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}>{is.hata}</div>}
+          {is.hata && (
+            <div
+              className="text-[12px]"
+              style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}
+            >
+              {is.hata}
+            </div>
+          )}
           {is.durum === 'PLAN_HAZIR' && (
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Plan canlı değerleri okumayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık onay süresi
-              planlama BİTTİĞİNDE başladı (planlamanın kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden planlanmalı. Not: “AÇ” adayının JVM’i plan anında durmuşsa plan bunu ayırmaz (auto-start açmak durmuş JVM’e zarar
-              vermez; reboot’ta açılır).
-              {xmlIs ? ' Host XML: uygulamada betik dosyayı yeniden okur, önce yedek alır; host controller o an kapalı olmalı.' : ''}
+              Plan canlı değerleri okumayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''}{' '}
+              itibarıyla bitirdi. 15 dakikalık onay süresi planlama BİTTİĞİNDE başladı (planlamanın
+              kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden planlanmalı. Not: “AÇ”
+              adayının JVM’i plan anında durmuşsa plan bunu ayırmaz (auto-start açmak durmuş JVM’e
+              zarar vermez; reboot’ta açılır).
+              {xmlIs
+                ? ' Host XML: uygulamada betik dosyayı yeniden okur, önce yedek alır; host controller o an kapalı olmalı.'
+                : ''}
               {dusenler.length ? ` ${fmtNumber(dusenler.length)} JVM düştü (nedeni tabloda).` : ''}
               {planKalanMs != null && (
                 <span style={{ color: planDoldu ? 'var(--status-danger)' : undefined }}>
@@ -762,14 +903,23 @@ export default function TopluAutoStartTab() {
               {hicUygulanmadi
                 ? `Uygulanan JVM yok: ${fmtNumber(say('DUSTU'))} düştü, ${fmtNumber(say('IPTAL'))} iptal — nedeni tabloda (canlı değeri zaten hedefte olanlar da “düştü” sayılır).`
                 : is.durum === 'BITTI' && !say('FAIL') && !say('YARIM_KALDI')
-                ? `Tamamlandı: ${fmtNumber(say('OK'))} JVM değişti, ${fmtNumber(say('SKIP'))} zaten hedefteydi.`
-                : `Özet: ${fmtNumber(say('OK'))} OK, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın, sonra sunucuyu yeniden tarayın.`}
+                  ? `Tamamlandı: ${fmtNumber(say('OK'))} JVM değişti, ${fmtNumber(say('SKIP'))} zaten hedefteydi.`
+                  : `Özet: ${fmtNumber(say('OK'))} OK, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın, sonra sunucuyu yeniden tarayın.`}
             </div>
           )}
-          <TopluKategoriFiltresi ogeler={ogeler} basarisiz={AUTOSTART_BASARISIZ} secili={kategori} onSec={setKategori} />
+          <TopluKategoriFiltresi
+            ogeler={ogeler}
+            basarisiz={AUTOSTART_BASARISIZ}
+            secili={kategori}
+            onSec={setKategori}
+          />
           <OgeTablosu ogeler={kategoriyeGore(ogeler, AUTOSTART_BASARISIZ, kategori)} />
           {bitti && (
-            <button type="button" className="btn-secondary text-xs" onClick={() => void adaylariYukle(true)}>
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() => void adaylariYukle(true)}
+            >
               Listeyi yenile
             </button>
           )}

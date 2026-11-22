@@ -53,13 +53,17 @@ async function sunucu(fn) {
   const poller = require('../ear-envanter-poller.cjs');
   const asil = poller.kosuOlustur;
   const cagrilar = [];
-  poller.kosuOlustur = async (a) => { cagrilar.push(a); return { id: 9, beklenen: (a.hedefler || []).length || 1000, partiSayisi: 1 }; };
+  poller.kosuOlustur = async (a) => {
+    cagrilar.push(a);
+    return { id: 9, beklenen: (a.hedefler || []).length || 1000, partiSayisi: 1 };
+  };
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
-  app.use(
-    (req, res, next) => { req.session = { user: { username: 'ayse', role: 'Admin' } }; return next(); },
-  );
+  app.use((req, res, next) => {
+    req.session = { user: { username: 'ayse', role: 'Admin' } };
+    return next();
+  });
   const router = express.Router();
   require('../ear-envanter.cjs').mount(router, { launch: async () => ({}), audit: () => {} });
   app.use('/api/server-hub', router);
@@ -282,11 +286,22 @@ test('EU9 CSV akisi eksiksiz, suzgec gider, degisirse kesilir', async () => {
   let toplam = 12000;
   const db = F.sahteDb([
     [/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 0, m: 0 }] })],
-    [/COUNT\(\*\) OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/, (params) => {
-      const [off, lim] = params.slice(-2);
-      const n = Math.max(0, Math.min(lim, toplam - off));
-      return { rows: Array.from({ length: n }, (_, i) => ({ host: `H${off + i}`, ad: 'A.ear', kosu_id: 1, uyg_no: off + i, toplam })) };
-    }],
+    [
+      /COUNT\(\*\) OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/,
+      (params) => {
+        const [off, lim] = params.slice(-2);
+        const n = Math.max(0, Math.min(lim, toplam - off));
+        return {
+          rows: Array.from({ length: n }, (_, i) => ({
+            host: `H${off + i}`,
+            ad: 'A.ear',
+            kosu_id: 1,
+            uyg_no: off + i,
+            toplam,
+          })),
+        };
+      },
+    ],
   ]);
   F.dbKur(db);
   await sunucu(async (kok) => {
@@ -301,20 +316,33 @@ test('EU9 CSV akisi eksiksiz, suzgec gider, degisirse kesilir', async () => {
     assert.ok(metin.startsWith('sunucu;'));
     assert.ok(satirlar[1].startsWith('H0;') && satirlar.at(-1).startsWith('H11999;'));
     assert.equal(new Set(satirlar.slice(1).map((x) => x.split(';')[0])).size, 12000, 'tekrar yok');
-    const sorgular = db.cagrilar.filter((c) => /OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(c.sql));
-    assert.deepEqual(sorgular.map((c) => c.params.slice(-2)), [[0, 1], [0, 5000], [5000, 5000], [10000, 5000]]);
+    const sorgular = db.cagrilar.filter((c) =>
+      /OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(c.sql),
+    );
+    assert.deepEqual(
+      sorgular.map((c) => c.params.slice(-2)),
+      [
+        [0, 1],
+        [0, 5000],
+        [5000, 5000],
+        [10000, 5000],
+      ],
+    );
     for (const c of sorgular) {
       assert.match(c.sql, /u\.jboss = \$\d+/, 'ekrandaki suzgec CSV ye de uygulanir');
       assert.match(c.sql, /ORDER BY u\.jsp DESC/);
     }
-    const kotu = await fetch(`${kok}/ear/disa-aktar/uygulamalar.csv?f=${encodeURIComponent('[{"k":"yok","op":"esit","v":"a"}]')}`);
+    const kotu = await fetch(
+      `${kok}/ear/disa-aktar/uygulamalar.csv?f=${encodeURIComponent('[{"k":"yok","op":"esit","v":"a"}]')}`,
+    );
     assert.equal(kotu.status, 400, 'gecersiz suzgec baslik gitmeden reddedilir');
     // Akis sirasinda toplam degisir: yarim dosya "tam" sanilmasin, baglanti kesilsin.
     let n = 0;
     const asil = db.mod.query;
     db.mod.query = async (sql, params) => {
       const r2 = await asil(sql, params);
-      if (/OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(sql) && ++n === 3) toplam = 11000;
+      if (/OVER\(\) AS toplam\s+FROM ear_envanter_uygulamalari/.test(sql) && ++n === 3)
+        toplam = 11000;
       return r2;
     };
     await assert.rejects(
@@ -340,7 +368,10 @@ test('EU9 CSV akisi eksiksiz, suzgec gider, degisirse kesilir', async () => {
 
 test('EU10 warlar set izi vermez; degerler kolonu dogrular', async () => {
   const db = F.sahteDb([
-    [/FROM ear_envanter_warlari w\s+JOIN son/, () => ({ rows: [{ host: 'H1', ad: 'A.war', kutuphane_seti: 'abc', toplam: 1 }] })],
+    [
+      /FROM ear_envanter_warlari w\s+JOIN son/,
+      () => ({ rows: [{ host: 'H1', ad: 'A.war', kutuphane_seti: 'abc', toplam: 1 }] }),
+    ],
   ]);
   F.dbKur(db);
   await sunucu(async (kok) => {
@@ -359,7 +390,11 @@ test('EU11 yapi farki parametresi ve OZET kopya', async () => {
   const asilHam = alim.hamOku;
   poller.kosuOku = async (id) => ({ id, kaynak: 'PORTAL', parametreler: '{}' });
   alim.hamOku = async () =>
-    F.paketYap({ ...F.ornekYuk(), kip: 'OZET', uygulamalar: [{ ...F.ornekUygulama(), satirlar: [] }] });
+    F.paketYap({
+      ...F.ornekYuk(),
+      kip: 'OZET',
+      uygulamalar: [{ ...F.ornekUygulama(), satirlar: [] }],
+    });
   try {
     await sunucu(async (kok) => {
       assert.equal((await fetch(`${kok}/ear/yapi-farki?a=1:H1&b=2:H2:0`)).status, 400);
@@ -375,14 +410,24 @@ test('EU11 yapi farki parametresi ve OZET kopya', async () => {
 
 test('EU12 eslenik uclari', async () => {
   require('../ear-envanter-eslenik.cjs')._sifirlaForTest();
-  const db = F.sahteDb([[/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 0, m: 0 }] })]]);
+  const db = F.sahteDb([
+    [/SELECT COUNT\(\*\) AS n, MAX\(id\) AS m/, () => ({ rows: [{ n: 0, m: 0 }] })],
+  ]);
   F.dbKur(db);
   await sunucu(async (kok) => {
-    const r = await (await fetch(`${kok}/ear/eslenikler?tur=ortamlar_arasi&karar=FARKLI_KUTUPHANE&limit=10`)).json();
+    const r = await (
+      await fetch(`${kok}/ear/eslenikler?tur=ortamlar_arasi&karar=FARKLI_KUTUPHANE&limit=10`)
+    ).json();
     assert.deepEqual([r.ok, r.toplam, r.satirlar], [true, 0, []]);
-    assert.equal((await fetch(`${kok}/ear/eslenik?tur=ORTAM_ICI&ad=A.ear&ortam=PROD&jboss=8`)).status, 409);
+    assert.equal(
+      (await fetch(`${kok}/ear/eslenik?tur=ORTAM_ICI&ad=A.ear&ortam=PROD&jboss=8`)).status,
+      409,
+    );
     assert.equal((await fetch(`${kok}/ear/eslenik?ad=`)).status, 400);
-    assert.equal((await fetch(`${kok}/ear/eslenik?tur=NESIL&ad=A.ear&host=k%C3%B6t%C3%BC`)).status, 400);
+    assert.equal(
+      (await fetch(`${kok}/ear/eslenik?tur=NESIL&ad=A.ear&host=k%C3%B6t%C3%BC`)).status,
+      400,
+    );
     const csv = await fetch(`${kok}/ear/disa-aktar/eslenikler.csv?tur=ORTAMLAR_ARASI`);
     assert.equal(csv.status, 200);
     assert.match(csv.headers.get('content-disposition'), /eslenikler_ortamlar_arasi_/);

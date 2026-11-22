@@ -2,7 +2,7 @@
 // server/server-hub/cift-satir.cjs - Server_Hub_* son tarama satirlarinda CIFT SATIR ayiklama.
 //
 // URETIM (2026-11-14, TBMWANS): dbo.Server_Hub_Jvms ayni (host, gen, jvm, scan_date=2026-11-14) icin
-// BIREBIR ayni iki satir tuttu, yalniz id farkli (GBSTPQ01/8/GBSTPMAINWEB 408954 + 408983; GBSTPQ02
+// BIREBIR ayni iki satir tuttu, yalniz id farkli (ORSTPQ01/8/ORSTPMAINWEB 408954 + 408983; ORSTPQ02
 // 28 satir arayla). Etki: degerlendirme her JVM'i iki kez listeledi, Toplu Auto-Start ikisini birden
 // gonderdi ve sunucu "Ayni JVM iki kez secilmis" diye reddetti.
 // Kok neden Ansible tarafinda (server_hub_merge.py ayni makineyi iki envanter adiyla tek segmente
@@ -50,7 +50,7 @@ function tekillestir(tablo, satirlar) {
     return v == null || !Number.isFinite(n) ? null : n;
   };
   const temizle = (r) => {
-    if (r && Object.prototype.hasOwnProperty.call(r, ID_KOLON)) delete r[ID_KOLON];
+    if (r && Object.hasOwn(r, ID_KOLON)) delete r[ID_KOLON];
     return r;
   };
   if (!kolonlar) return { satirlar: liste.map(temizle), atilan: 0 };
@@ -58,9 +58,8 @@ function tekillestir(tablo, satirlar) {
   const kalan = [];
   const kalanId = [];
   let atilan = 0;
-  for (let i = 0; i < liste.length; i += 1) {
-    const r = liste[i];
-    const k = kolonlar.map((c) => anahtarDegeri(r && r[c])).join('\u0001');
+  for (const r of liste) {
+    const k = kolonlar.map((c) => anahtarDegeri(r?.[c])).join('\u0001');
     const id = idAl(r);
     if (!yer.has(k)) {
       yer.set(k, kalan.length);

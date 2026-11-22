@@ -79,7 +79,10 @@ export default function RequestsSidePanel() {
   // NEDEN alindiMs (2026-10-15 denetim): panel daraltilip acilinca kartlar yenileme yaniti
   // gelmeden saklanmis yanitla kurulur; kayma yanitin GELDIGI andan olculmezse kalan sure
   // yanitin yasi kadar fazla gorunur.
-  const [sunucuSaati, setSunucuSaati] = useState<{ serverNow: string | null; alindiMs: number } | null>(null);
+  const [sunucuSaati, setSunucuSaati] = useState<{
+    serverNow: string | null;
+    alindiMs: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [cancellingId, setCancellingId] = useState<number | null>(null);
@@ -174,7 +177,10 @@ export default function RequestsSidePanel() {
       try {
         const r = await ansibleApi.ssJobStatus(det.awxServerId!, t.jobId!);
         if (!alive || !r.ok) return;
-        setJobOutputCache((prev) => ({ ...prev, [jobOutputOpenId]: { status: r.status, output: r.output || '' } }));
+        setJobOutputCache((prev) => ({
+          ...prev,
+          [jobOutputOpenId]: { status: r.status, output: r.output || '' },
+        }));
       } catch {
         /* gecici hata: bir sonraki tik tekrar dener */
       }
@@ -234,17 +240,25 @@ export default function RequestsSidePanel() {
   // hemen tazelenir. Kullanici paneli acikca daraltmis olsa da (rozet sayisi icin) yoklanir.
   useEffect(() => {
     const hasPending = tickets.some((t) => t.status === 'PENDING');
-    const timer = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      void load();
-    }, hasPending ? 15_000 : 60_000);
+    const timer = setInterval(
+      () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        void load();
+      },
+      hasPending ? 15_000 : 60_000,
+    );
     return () => clearInterval(timer);
   }, [tickets, load]);
   useEffect(() => {
-    const gorundu = () => { if (document.visibilityState === 'visible') void load(); };
+    const gorundu = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
     document.addEventListener('visibilitychange', gorundu);
     window.addEventListener('focus', gorundu);
-    return () => { document.removeEventListener('visibilitychange', gorundu); window.removeEventListener('focus', gorundu); };
+    return () => {
+      document.removeEventListener('visibilitychange', gorundu);
+      window.removeEventListener('focus', gorundu);
+    };
   }, [load]);
 
   // Ayni sekmede acilan talebi ANINDA yakala (yukaridaki 1. kanal).
@@ -275,8 +289,11 @@ export default function RequestsSidePanel() {
     setCancellingId(id);
     try {
       const r = await ansibleApi.cancelSmartTicket(id, note.trim());
-      if (r.ok) { setIptalSor(null); toast.success('Talep iptal edildi.'); await load(); }
-      else toast.error(r.message || 'İptal edilemedi.');
+      if (r.ok) {
+        setIptalSor(null);
+        toast.success('Talep iptal edildi.');
+        await load();
+      } else toast.error(r.message || 'İptal edilemedi.');
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -311,7 +328,10 @@ export default function RequestsSidePanel() {
               {/* Nabiz atan halka: kullanici onayi tamamlamadan sayfadan ayrilabiliyor ve
                   bekleyen talebi fark etmiyordu (2026-09-24). Halka animasyonsuz modda
                   (prefers-reduced-motion) sabit kalir; sayi her durumda gorunur. */}
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 motion-safe:animate-ping" aria-hidden="true" />
+              <span
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400 motion-safe:animate-ping"
+                aria-hidden="true"
+              />
               <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-amber-500 rounded-full">
                 {pendingCount}
               </span>
@@ -342,7 +362,10 @@ export default function RequestsSidePanel() {
                   Taleplerim
                   {onayBekleyenCount > 0 && (
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 motion-safe:animate-pulse" aria-hidden="true" />
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-amber-500 motion-safe:animate-pulse"
+                        aria-hidden="true"
+                      />
                       {onayBekleyenCount} onay bekliyor
                     </span>
                   )}
@@ -370,11 +393,15 @@ export default function RequestsSidePanel() {
               <div className="mb-3 space-y-2">
                 {onayBekleyenCount > 0 && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-                    <b>{onayBekleyenCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca talep
+                    <b>{onayBekleyenCount} talebiniz Smart’ta bekliyor.</b> Onaylar tamamlanınca
+                    talep
                     <b> “Kapama Onayı”</b> adımına düşer; orada <b>TAMAMLA</b>’ya basılmadan iş
                     <b> başlamaz</b>.{' '}
                     {genelSureVar ? (
-                      <>Süre sınırı var: kalan süre her talebin kartında görünür; dolarsa iş başlamaz.</>
+                      <>
+                        Süre sınırı var: kalan süre her talebin kartında görünür; dolarsa iş
+                        başlamaz.
+                      </>
                     ) : (
                       <>Süre sınırı yok; talep onaylanana ya da reddedilene kadar bekler.</>
                     )}
@@ -382,8 +409,9 @@ export default function RequestsSidePanel() {
                 )}
                 {pencereBekleyenCount > 0 && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">
-                    <b>{pencereBekleyenCount} talebiniz onaylandı, pencere bekleniyor.</b> İş OCO penceresi
-                    açılınca kendiliğinden başlar; kalan süre talebin kartında görünür, dolarsa iş başlamaz.
+                    <b>{pencereBekleyenCount} talebiniz onaylandı, pencere bekleniyor.</b> İş OCO
+                    penceresi açılınca kendiliğinden başlar; kalan süre talebin kartında görünür,
+                    dolarsa iş başlamaz.
                   </div>
                 )}
               </div>
@@ -442,11 +470,15 @@ export default function RequestsSidePanel() {
                           {formatDate(t.createdAt)}
                           {t.externalTicketId ? ` · Smart #${t.externalTicketId}` : ''}
                           {t.smartStateName ? ` · ${t.smartStateName}` : ''}
-                          {t.status === 'PENDING' && t.approvedAt ? ' · Onaylandı, pencere bekleniyor' : ''}
+                          {t.status === 'PENDING' && t.approvedAt
+                            ? ' · Onaylandı, pencere bekleniyor'
+                            : ''}
                           {t.jobId ? ` · Job #${t.jobId}` : ''}
                         </div>
                         {t.status === 'PENDING' && kapamaOnayinda(t.smartStateName) && (
-                          <div className="mt-2"><KapamaOnayiUyarisi smartNo={t.externalTicketId} kompakt /></div>
+                          <div className="mt-2">
+                            <KapamaOnayiUyarisi smartNo={t.externalTicketId} kompakt />
+                          </div>
                         )}
                         {t.status === 'ERROR' && t.errorMessage && (
                           <div className="text-[11px] mt-1 text-red-600">{t.errorMessage}</div>
@@ -581,12 +613,15 @@ export default function RequestsSidePanel() {
                         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           Job #{t?.jobId}
                           {t?.externalTicketId ? ` · Smart #${t.externalTicketId}` : ''}
-                          {out && !['successful', 'failed', 'error', 'canceled'].includes(String(out.status || '').toLowerCase()) && (
-                            <span className="ml-2 inline-flex items-center gap-1 text-emerald-600">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              canlı · 3 sn
-                            </span>
-                          )}
+                          {out &&
+                            !['successful', 'failed', 'error', 'canceled'].includes(
+                              String(out.status || '').toLowerCase(),
+                            ) && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-emerald-600">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                canlı · 3 sn
+                              </span>
+                            )}
                         </div>
                       </div>
                       <button
@@ -626,20 +661,29 @@ export default function RequestsSidePanel() {
         size="sm"
         footer={
           <div className="flex justify-end gap-2">
-            <button onClick={() => setIptalSor(null)} className="px-3 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]">Kapat</button>
+            <button
+              onClick={() => setIptalSor(null)}
+              className="px-3 py-1.5 text-xs border border-[var(--border)] rounded-lg hover:bg-[var(--bg-elevated)]"
+            >
+              Kapat
+            </button>
             <button
               onClick={iptalEt}
               disabled={iptalSor != null && cancellingId === iptalSor.id}
               className="px-3 py-1.5 text-xs rounded-lg text-white disabled:opacity-50"
               style={{ background: 'var(--status-danger)' }}
             >
-              {iptalSor != null && cancellingId === iptalSor.id ? 'İptal ediliyor…' : 'Talebi iptal et'}
+              {iptalSor != null && cancellingId === iptalSor.id
+                ? 'İptal ediliyor…'
+                : 'Talebi iptal et'}
             </button>
           </div>
         }
       >
         <div className="space-y-2.5 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-          <p>Onay gelse bile otomasyon artık <b>tetiklenmeyecek</b>.</p>
+          <p>
+            Onay gelse bile otomasyon artık <b>tetiklenmeyecek</b>.
+          </p>
           <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
             Smart tarafındaki kayıt açık kalır; onu Smart ekranından ayrıca kapatmanız gerekir.
           </p>

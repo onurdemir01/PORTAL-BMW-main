@@ -12,10 +12,10 @@ const { modulTaklitSecenegi } = require('../../__tests__/fixtures/modul-taklit.c
 let tv, rv, ov, legacy, nextId;
 
 function resetFakeDb() {
-  tv = [];      // { id, table_name, is_active }
-  rv = [];      // { table_visibility_id, role_name, can_view }
-  ov = [];      // { table_visibility_id, username, override_type }
-  legacy = [];  // { role_name, tables }
+  tv = []; // { id, table_name, is_active }
+  rv = []; // { table_visibility_id, role_name, can_view }
+  ov = []; // { table_visibility_id, username, override_type }
+  legacy = []; // { role_name, tables }
   nextId = 1;
 }
 
@@ -27,15 +27,22 @@ function paramVal(params, name) {
 async function fakeQuery(sqlText, params) {
   const s = String(sqlText).replace(/\s+/g, ' ').trim();
 
-  if (s.includes("IF NOT EXISTS (SELECT 1 FROM inventory_table_visibility WHERE table_name = '*')")) {
-    if (!tv.find((r) => r.table_name === '*')) tv.push({ id: nextId++, table_name: '*', is_active: true });
+  if (
+    s.includes("IF NOT EXISTS (SELECT 1 FROM inventory_table_visibility WHERE table_name = '*')")
+  ) {
+    if (!tv.find((r) => r.table_name === '*'))
+      tv.push({ id: nextId++, table_name: '*', is_active: true });
     return { recordset: [] };
   }
   if (s.startsWith('SELECT table_name, is_active FROM inventory_table_visibility')) {
     return { recordset: tv.map((r) => ({ table_name: r.table_name, is_active: r.is_active })) };
   }
-  if (s.startsWith("SELECT table_name FROM inventory_table_visibility WHERE is_active = 0")) {
-    return { recordset: tv.filter((r) => r.table_name !== '*' && !r.is_active).map((r) => ({ table_name: r.table_name })) };
+  if (s.startsWith('SELECT table_name FROM inventory_table_visibility WHERE is_active = 0')) {
+    return {
+      recordset: tv
+        .filter((r) => r.table_name !== '*' && !r.is_active)
+        .map((r) => ({ table_name: r.table_name })),
+    };
   }
   if (s.startsWith('INSERT INTO inventory_table_visibility (table_name) VALUES')) {
     tv.push({ id: nextId++, table_name: paramVal(params, 't'), is_active: true });
@@ -61,7 +68,11 @@ async function fakeQuery(sqlText, params) {
     return { recordset: tv.map((r) => ({ id: r.id, table_name: r.table_name })) };
   }
   if (s.startsWith('INSERT INTO inventory_table_role_visibility')) {
-    rv.push({ table_visibility_id: paramVal(params, 'id'), role_name: paramVal(params, 'r'), can_view: true });
+    rv.push({
+      table_visibility_id: paramVal(params, 'id'),
+      role_name: paramVal(params, 'r'),
+      can_view: true,
+    });
     return { recordset: [] };
   }
   if (s.startsWith('DELETE FROM inventory_table_role_visibility WHERE role_name')) {
@@ -69,7 +80,10 @@ async function fakeQuery(sqlText, params) {
     rv = rv.filter((r) => r.role_name !== role);
     return { recordset: [] };
   }
-  if (s.includes('FROM inventory_table_role_visibility rv') && s.includes('JOIN inventory_table_visibility tv')) {
+  if (
+    s.includes('FROM inventory_table_role_visibility rv') &&
+    s.includes('JOIN inventory_table_visibility tv')
+  ) {
     const results = [];
     for (const r of rv) {
       if (!r.can_view) continue;
@@ -80,7 +94,10 @@ async function fakeQuery(sqlText, params) {
     }
     return { recordset: results };
   }
-  if (s.includes('FROM inventory_table_user_override o') && s.includes('JOIN inventory_table_visibility tv')) {
+  if (
+    s.includes('FROM inventory_table_user_override o') &&
+    s.includes('JOIN inventory_table_visibility tv')
+  ) {
     const username = paramVal(params, 'u');
     const results = [];
     for (const o of ov) {
@@ -134,9 +151,15 @@ test('migrateLegacyVisibleTablesIfNeeded(): eski tablo da BOSSA DEFAULT_VISIBLE 
   // guncellendi: EnvanterApps -> MWAppsInventory. Test o listeyi TAKIP eder.
   await inv._reconcileTableVisibility(['Inventory', 'MWAppsInventory', 'OpenshiftInventory']);
   await inv._migrateLegacyVisibleTablesIfNeeded();
-  const userRows = rv.filter((r) => r.role_name === 'User').map((r) => tv.find((t) => t.id === r.table_visibility_id)?.table_name).sort();
+  const userRows = rv
+    .filter((r) => r.role_name === 'User')
+    .map((r) => tv.find((t) => t.id === r.table_visibility_id)?.table_name)
+    .sort();
   assert.deepEqual(userRows, ['Inventory', 'MWAppsInventory', 'OpenshiftInventory']);
-  const adminIsStar = rv.some((r) => r.role_name === 'Admin' && tv.find((t) => t.id === r.table_visibility_id)?.table_name === '*');
+  const adminIsStar = rv.some(
+    (r) =>
+      r.role_name === 'Admin' && tv.find((t) => t.id === r.table_visibility_id)?.table_name === '*',
+  );
   assert.ok(adminIsStar, 'Admin varsayilan olarak * (tum tablolar) olmali');
 });
 
@@ -146,7 +169,10 @@ test('migrateLegacyVisibleTablesIfNeeded(): eski CSV satirlari (hem "*" hem list
   legacy.push({ role_name: 'Admin', tables: '*' });
   await inv._migrateLegacyVisibleTablesIfNeeded();
 
-  const userTables = rv.filter((r) => r.role_name === 'User').map((r) => tv.find((t) => t.id === r.table_visibility_id)?.table_name).sort();
+  const userTables = rv
+    .filter((r) => r.role_name === 'User')
+    .map((r) => tv.find((t) => t.id === r.table_visibility_id)?.table_name)
+    .sort();
   assert.deepEqual(userTables, ['EnvanterApps', 'Inventory']);
   assert.ok(!userTables.includes('Secret'));
 
@@ -163,7 +189,11 @@ test('migrateLegacyVisibleTablesIfNeeded(): rol-gorunurlugu ZATEN doluysa TEKRAR
   inv._resetVisibleTablesTestState();
   legacy.push({ role_name: 'User', tables: 'Inventory' }); // tekrar eklense bile
   await inv._migrateLegacyVisibleTablesIfNeeded();
-  assert.equal(rv.length, countAfterFirst, 'zaten dolu oldugu icin ikinci cagri hicbir sey degistirmemeli');
+  assert.equal(
+    rv.length,
+    countAfterFirst,
+    'zaten dolu oldugu icin ikinci cagri hicbir sey degistirmemeli',
+  );
 });
 
 test('readVisibleTables(): eski API seklini ({User:[...], Admin:"*"}) BIREBIR korur', async () => {

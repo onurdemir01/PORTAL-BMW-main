@@ -42,11 +42,22 @@ function GrupSatiri({
   async function yaz(sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL') {
     setMesgul(true);
     try {
-      const r = await serverHubApi.iliskiGrupKontrol({ anahtar: g.anahtar, sonuc, aciklama: not.trim(), imza: g.imza });
+      const r = await serverHubApi.iliskiGrupKontrol({
+        anahtar: g.anahtar,
+        sonuc,
+        aciklama: not.trim(),
+        imza: g.imza,
+      });
       onDegisti(r.grup);
       setForm(null);
       setNot('');
-      toast.success(sonuc === 'GERI_AL' ? 'Kontrol geri alındı.' : sonuc === 'DOGRULANDI' ? 'Grup doğrulandı.' : 'Yanlış alarm olarak işaretlendi.');
+      toast.success(
+        sonuc === 'GERI_AL'
+          ? 'Kontrol geri alındı.'
+          : sonuc === 'DOGRULANDI'
+            ? 'Grup doğrulandı.'
+            : 'Yanlış alarm olarak işaretlendi.',
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -54,10 +65,20 @@ function GrupSatiri({
     }
   }
   return (
-    <li className="rounded-lg border px-3 py-2 space-y-2" style={{ borderColor: 'var(--border-subtle)' }} data-testid="grup-satiri">
+    <li
+      className="rounded-lg border px-3 py-2 space-y-2"
+      style={{ borderColor: 'var(--border-subtle)' }}
+      data-testid="grup-satiri"
+    >
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold">{g.ortam || 'ortam bilinmiyor'}</span>
-        <span style={MUTED}>{g.nesil === 'WAS' ? 'WebSphere' : g.nesil === '?' ? 'JBoss nesli bilinmiyor' : `JBoss ${g.nesil}`}</span>
+        <span style={MUTED}>
+          {g.nesil === 'WAS'
+            ? 'WebSphere'
+            : g.nesil === '?'
+              ? 'JBoss nesli bilinmiyor'
+              : `JBoss ${g.nesil}`}
+        </span>
         <Rozet metin={kr.metin} ton={kr.ton} />
         <Rozet metin={k.metin} ton={k.ton} />
         <span style={MUTED}>{g.ozet}</span>
@@ -86,7 +107,8 @@ function GrupSatiri({
       {form ? (
         <div className="space-y-1.5">
           <label className="block text-[11px] font-semibold" htmlFor={`grup-not-${g.anahtar}`}>
-            {form === 'DOGRULANDI' ? 'Neye bakıldı, kim onayladı?' : 'Neden yanlış alarm?'} <span style={MUTED}>(zorunlu)</span>
+            {form === 'DOGRULANDI' ? 'Neye bakıldı, kim onayladı?' : 'Neden yanlış alarm?'}{' '}
+            <span style={MUTED}>(zorunlu)</span>
           </label>
           <textarea
             id={`grup-not-${g.anahtar}`}
@@ -95,13 +117,29 @@ function GrupSatiri({
             rows={2}
             maxLength={1000}
             className="w-full px-2 py-1.5 text-xs border rounded-lg"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
           />
           <div className="flex gap-2 justify-end">
-            <button type="button" className={BTN} style={btnStil()} onClick={() => setForm(null)} disabled={mesgul}>
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil()}
+              onClick={() => setForm(null)}
+              disabled={mesgul}
+            >
               İptal
             </button>
-            <button type="button" className={BTN} style={btnStil(true)} onClick={() => yaz(form)} disabled={mesgul || not.trim().length < 5}>
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil(true)}
+              onClick={() => yaz(form)}
+              disabled={mesgul || not.trim().length < 5}
+            >
               Kaydet
             </button>
           </div>
@@ -109,17 +147,35 @@ function GrupSatiri({
       ) : (
         <div className="flex flex-wrap gap-2">
           {g.karar === 'RETIRE_ADAYI' && g.durum !== 'DOGRULANDI' && g.durum !== 'BILINMIYOR' && (
-            <button type="button" className={BTN} style={btnStil()} onClick={() => setForm('DOGRULANDI')}>
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil()}
+              onClick={() => setForm('DOGRULANDI')}
+            >
               Doğrulandı olarak işaretle
             </button>
           )}
-          {g.durum !== 'YANLIS_ALARM' && g.durum !== 'BILINMIYOR' && (g.karar === 'RETIRE_ADAYI' || g.karar === 'SUPHELI') && (
-            <button type="button" className={BTN} style={btnStil()} onClick={() => setForm('YANLIS_ALARM')}>
-              Yanlış alarm
-            </button>
-          )}
+          {g.durum !== 'YANLIS_ALARM' &&
+            g.durum !== 'BILINMIYOR' &&
+            (g.karar === 'RETIRE_ADAYI' || g.karar === 'SUPHELI') && (
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                onClick={() => setForm('YANLIS_ALARM')}
+              >
+                Yanlış alarm
+              </button>
+            )}
           {g.kontrol && g.durum !== 'BILINMIYOR' && (
-            <button type="button" className={BTN} style={btnStil()} onClick={() => yaz('GERI_AL')} disabled={mesgul}>
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil()}
+              onClick={() => yaz('GERI_AL')}
+              disabled={mesgul}
+            >
               Kontrolü geri al
             </button>
           )}
@@ -143,7 +199,8 @@ export default function GrupKontrolu({
   return (
     <div className="space-y-1.5" data-testid="grup-kontrolu">
       <div className="text-[11px] font-semibold" style={MUTED}>
-        Ortam ve kurulum bazında karar · Retirement kaydı yalnız doğrulanmış “Retire adayı” gruptan açılır
+        Ortam ve kurulum bazında karar · Retirement kaydı yalnız doğrulanmış “Retire adayı” gruptan
+        açılır
       </div>
       {okunamadi && (
         <div className="text-xs" style={{ color: 'var(--status-danger)' }}>
@@ -156,7 +213,9 @@ export default function GrupKontrolu({
             key={g.anahtar}
             g={g}
             onRetirementAc={onRetirementAc}
-            onDegisti={(yeni) => setListe((l) => l.map((x) => (x.anahtar === yeni.anahtar ? yeni : x)))}
+            onDegisti={(yeni) =>
+              setListe((l) => l.map((x) => (x.anahtar === yeni.anahtar ? yeni : x)))
+            }
           />
         ))}
       </ul>

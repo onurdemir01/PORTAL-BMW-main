@@ -427,7 +427,7 @@ test('U8 hiz: 2000 sunucu / 24 bin JVM + etiketler 1,5 sn altinda', () => {
     const ek = env === 'PROD' ? '' : `-${env[0]}`;
     hosts.push(
       H(
-        `GBXXAP${String(i).padStart(4, '0')}`,
+        `ORXXAP${String(i).padStart(4, '0')}`,
         env,
         Array.from({ length: 12 }, (_, k) =>
           J(`app${(i * 7 + k) % 900}${ek}`, {

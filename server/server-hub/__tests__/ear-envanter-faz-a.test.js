@@ -24,6 +24,7 @@ const PLAYBOOK = path.join(
   KOK,
   'server',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'ear_envanter.yml',
@@ -32,6 +33,7 @@ const BETIK = path.join(
   KOK,
   'server',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'files',
@@ -230,9 +232,18 @@ test('FA2 was_ozeti / baglanti_ozeti: yoksa null; KAPALI yazilir; beyaz liste', 
 
 test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi ayrimi, eski pakette yok', () => {
   const sunucu = (jvm) => {
-    const s = { profil: 'P', hucre: 'c', dugum: 'n', ad: 'srv1', tur: 'APPLICATION_SERVER', uclar: [], uygulamalar: [] };
+    const s = {
+      profil: 'P',
+      hucre: 'c',
+      dugum: 'n',
+      ad: 'srv1',
+      tur: 'APPLICATION_SERVER',
+      uclar: [],
+      uygulamalar: [],
+    };
     if (jvm !== undefined) s.jvm = jvm;
-    return JSON.parse(alim.wasOzeti({ was: { kokler: [], dosyalar: [], sunucular: [s] } })).sunucular[0];
+    return JSON.parse(alim.wasOzeti({ was: { kokler: [], dosyalar: [], sunucular: [s] } }))
+      .sunucular[0];
   };
   // Eski tarayici: alan yok -> ozette de yok (olculmedi; 'parametre yok' DEGIL)
   assert.equal('jvm' in sunucu(undefined), false);
@@ -243,7 +254,8 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
     jvm_girisi: 1,
     ilk_heap_mb: '512',
     en_cok_heap_mb: 2048,
-    jvm_argumanlari: '-Xmx2g\t-Dapp.secret=SIR_1 -Djava.awt.headless=true --password=SIR_2 -Ddb.url=jdbc://u:SIR_3@h',
+    jvm_argumanlari:
+      '-Xmx2g\t-Dapp.secret=SIR_1 -Djava.awt.headless=true --password=SIR_2 -Ddb.url=jdbc://u:SIR_3@h',
     sistem_ozellikleri: [
       { ad: 'java.security.policy', deger: '/p', gizli: 1 },
       { ad: 'com.ibm.ozel', deger: 'jdbc://u:SIR_4@h' },
@@ -258,7 +270,8 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
     jvm_girisi: 1,
     ilk_heap_mb: 512,
     en_cok_heap_mb: 2048,
-    jvm_argumanlari: '-Xmx2g -Dapp.secret=*** -Djava.awt.headless=true --password=*** -Ddb.url=jdbc://u:***@h',
+    jvm_argumanlari:
+      '-Xmx2g -Dapp.secret=*** -Djava.awt.headless=true --password=*** -Ddb.url=jdbc://u:***@h',
     sistem_ozellikleri: [
       { ad: 'java.security.policy', deger: '/p' },
       { ad: 'com.ibm.ozel', deger: 'jdbc://u:***@h' },
@@ -267,9 +280,12 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
     ],
     ozellik_kesildi: false,
   });
-  assert.ok(!JSON.stringify(j).includes('SIR_'), 'sir was_ozeti JSON\'una girdi');
+  assert.ok(!JSON.stringify(j).includes('SIR_'), "sir was_ozeti JSON'una girdi");
   // Olculemedi: yalniz yol + durum; listede olmayan durum HATA
-  assert.deepEqual(sunucu({ yol: '/y', durum: 'IZIN', jvm_argumanlari: '-Dx=SIR_7' }).jvm, { yol: '/y', durum: 'IZIN' });
+  assert.deepEqual(sunucu({ yol: '/y', durum: 'IZIN', jvm_argumanlari: '-Dx=SIR_7' }).jvm, {
+    yol: '/y',
+    durum: 'IZIN',
+  });
   assert.deepEqual(sunucu({ durum: 'JVM_YOK' }).jvm, { yol: '', durum: 'JVM_YOK' });
   assert.deepEqual(sunucu({ durum: 'UYDURMA' }).jvm, { yol: '', durum: 'HATA' });
   assert.deepEqual(sunucu(null).jvm, { yol: '', durum: 'HATA' });
@@ -277,12 +293,19 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
   const cok = sunucu({
     durum: 'OKUNDU',
     jvm_argumanlari: '-Xa '.repeat(1000),
-    sistem_ozellikleri: Array.from({ length: 130 }, (_, i) => ({ ad: `java.p${i}`, deger: String(i) })),
+    sistem_ozellikleri: Array.from({ length: 130 }, (_, i) => ({
+      ad: `java.p${i}`,
+      deger: String(i),
+    })),
   }).jvm;
   assert.equal(cok.sistem_ozellikleri.length, 100);
   assert.equal(cok.ozellik_kesildi, true);
   assert.ok(cok.jvm_argumanlari.length <= 2100);
-  assert.deepEqual([cok.ilk_heap_mb, cok.en_cok_heap_mb], [null, null], 'heap yoksa null (0 DEGIL)');
+  assert.deepEqual(
+    [cok.ilk_heap_mb, cok.en_cok_heap_mb],
+    [null, null],
+    'heap yoksa null (0 DEGIL)',
+  );
 });
 
 test('FA3 kolonlar: hostKaydi / bosHostKaydi, SQL, CREATE TABLE ve gec kolon', () => {

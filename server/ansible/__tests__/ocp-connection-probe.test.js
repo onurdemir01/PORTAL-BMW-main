@@ -35,12 +35,23 @@ function fakeHttp({ statusCode = 200, body = '', destroyError = null } = {}) {
 test('OCP probe kucuk 2xx/401/403/500 sozlesmesini korur', async () => {
   for (const [statusCode, body, expected] of [
     [200, '{"gitVersion":"v1"}', { ok: true }],
-    [401, 'unauthorized', { ok: false, message: 'Erişilebilir ama kimlik doğrulama başarısız (HTTP 401).' }],
-    [403, 'forbidden', { ok: false, message: 'Erişilebilir ama kimlik doğrulama başarısız (HTTP 403).' }],
+    [
+      401,
+      'unauthorized',
+      { ok: false, message: 'Erişilebilir ama kimlik doğrulama başarısız (HTTP 401).' },
+    ],
+    [
+      403,
+      'forbidden',
+      { ok: false, message: 'Erişilebilir ama kimlik doğrulama başarısız (HTTP 403).' },
+    ],
     [500, 'boom', { ok: false, message: 'HTTP 500: boom' }],
   ]) {
     const fake = fakeHttp({ statusCode, body });
-    const actual = await probe({ apiUrl: 'http://cluster.test', token: 't' }, { httpLib: fake.lib });
+    const actual = await probe(
+      { apiUrl: 'http://cluster.test', token: 't' },
+      { httpLib: fake.lib },
+    );
     assert.deepEqual(actual, expected);
   }
 });

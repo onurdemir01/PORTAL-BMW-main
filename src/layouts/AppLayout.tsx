@@ -6,21 +6,22 @@
 //
 // Nav, >=lg ekranlarda sabit acik; kucuk ekranlarda masthead'deki toggle ile
 // acilan bir overlay (PF "drawer" davranisi).
-import React, { Suspense, useContext, useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import Masthead from "@/components/layout/Masthead";
-import PageNav from "@/components/layout/PageNav";
-import SessionTimeoutModal from "@/components/SessionTimeoutModal";
-import PageErrorBoundary from "@/components/common/PageErrorBoundary";
-import { AuthContext } from "@/contexts/AuthContext";
-import { ToastContainer } from "@/components/common/Toast";
-import { toast as globalToast } from "@/hooks/useToast";
-import { CommandPalette } from "@/components/common/CommandPalette";
-import { AppDataProvider } from "@/contexts/AppContext";
-import { JobTrackerProvider } from "@/contexts/JobTrackerContext";
-import JobTrackerBar from "@/components/common/JobTrackerBar";
-import RequestsSidePanel from "@/components/self_service/RequestsSidePanel";
-import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import React, { Suspense, useContext, useEffect, useState } from 'react';
+import { Outlet, useLocation } from 'react-router-dom';
+import Masthead from '@/components/layout/Masthead';
+import { KurumAyarUyarisi } from '@/components/layout/KurumAyarUyarisi';
+import PageNav from '@/components/layout/PageNav';
+import SessionTimeoutModal from '@/components/SessionTimeoutModal';
+import PageErrorBoundary from '@/components/common/PageErrorBoundary';
+import { AuthContext } from '@/contexts/AuthContext';
+import { ToastContainer } from '@/components/common/Toast';
+import { toast as globalToast } from '@/hooks/useToast';
+import { CommandPalette } from '@/components/common/CommandPalette';
+import { AppDataProvider } from '@/contexts/AppContext';
+import { JobTrackerProvider } from '@/contexts/JobTrackerContext';
+import JobTrackerBar from '@/components/common/JobTrackerBar';
+import RequestsSidePanel from '@/components/self_service/RequestsSidePanel';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 // Sayfa yuklenirken icerik alanini dolduran iskelet. Spinner yerine iskelet:
 // gelecek icerigin KABA HATLARINI gosterdigi icin gecis "yukleniyor -> icerik"
@@ -28,11 +29,15 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 function PageSkeleton() {
   return (
     <div className="animate-pulse space-y-4" aria-busy="true" aria-label="Sayfa yükleniyor">
-      <div className="h-7 w-64 rounded-md" style={{ background: "var(--bg-elevated)" }} />
-      <div className="h-4 w-96 max-w-full rounded" style={{ background: "var(--bg-elevated)" }} />
+      <div className="h-7 w-64 rounded-md" style={{ background: 'var(--bg-elevated)' }} />
+      <div className="h-4 w-96 max-w-full rounded" style={{ background: 'var(--bg-elevated)' }} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pt-2">
         {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-28 rounded-xl border" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }} />
+          <div
+            key={i}
+            className="h-28 rounded-xl border"
+            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+          />
         ))}
       </div>
     </div>
@@ -42,8 +47,15 @@ function PageSkeleton() {
 export default function AppLayout() {
   const location = useLocation();
   const {
-    showTimeoutModal, extendSession, dismissTimeoutModal, timeoutExtendable, extendFailed, logout, countdown,
-    girisNotu, girisNotunuTemizle,
+    showTimeoutModal,
+    extendSession,
+    dismissTimeoutModal,
+    timeoutExtendable,
+    extendFailed,
+    logout,
+    countdown,
+    girisNotu,
+    girisNotunuTemizle,
   } = useContext(AuthContext);
   // Giris notu (or. esanli oturum siniri): toast kabi burada dogar, not burada gosterilir.
   useEffect(() => {
@@ -60,7 +72,9 @@ export default function AppLayout() {
   useDocumentTitle();
 
   const [navOpen, setNavOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 1024);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 1024,
+  );
 
   useEffect(() => {
     function onResize() {
@@ -69,8 +83,8 @@ export default function AppLayout() {
       setNavOpen(!mobile);
     }
     onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   // Mobilde sayfa degisince nav'i kapat.
@@ -82,116 +96,127 @@ export default function AppLayout() {
 
   return (
     <AppDataProvider>
-    <JobTrackerProvider>
-      <div className="flex flex-col h-screen overflow-hidden" style={{ background: "var(--bg-base)" }}>
-        {/* ICERIGE ATLA (2026-08-28). Klavye kullanicisi HER sayfada once masthead'i
+      <JobTrackerProvider>
+        <div
+          className="flex flex-col h-screen overflow-hidden"
+          style={{ background: 'var(--bg-base)' }}
+        >
+          {/* ICERIGE ATLA (2026-08-28). Klavye kullanicisi HER sayfada once masthead'i
             (menu ac/kapa, arama, tema, kullanici menusu) sonra sol menudeki ~15
             baglantiyi geciyordu — yani asil icerige ulasmak icin her seferinde 20'ye
             yakin Tab. `:focus-visible` tabani zaten vardi (index.css); eksik olan tek
             parca buydu.
             Gorunmez ama ODAKLANINCA gorunur: `sr-only` + `focus:not-sr-only`. */}
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-md focus:no-underline"
-          style={{ background: "var(--accent)", color: "var(--text-on-accent)" }}
-        >
-          İçeriğe atla
-        </a>
-        <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-3 focus:py-2 focus:rounded-md focus:no-underline"
+            style={{ background: 'var(--accent)', color: 'var(--text-on-accent)' }}
+          >
+            İçeriğe atla
+          </a>
+          <Masthead onToggleNav={() => setNavOpen((v) => !v)} />
+          <KurumAyarUyarisi />
 
-        <div className="flex flex-1 min-h-0 relative">
-          {/* MENU ACILIP KAPANIRKEN HAFIF ANIMASYON (2026-10-15, kullanici: "sol menunun
+          <div className="flex flex-1 min-h-0 relative">
+            {/* MENU ACILIP KAPANIRKEN HAFIF ANIMASYON (2026-10-15, kullanici: "sol menunun
               kapanmasi icin cok hafif bir animasyon"). Eskiden menu `navOpen && ...` ile
               KALDIRILIYORDU: kapanirken animasyon olamazdi. Artik hep yerinde; masaustunde
               genislik + saydamlik, mobilde yandan kayma ~220 ms. Kapaliyken `inert`: klavye
               odagi ve ekran okuyucu gizli menuye girmez. Hareket azaltma tercihi index.css'teki
               genel kuralla (prefers-reduced-motion) gecisi aninda yapar. */}
-          {isMobile && (
+            {isMobile && (
+              <div
+                className="fixed inset-0 z-30"
+                style={{
+                  background: 'rgba(3,3,3,0.5)',
+                  top: 'var(--masthead-h)',
+                  opacity: navOpen ? 1 : 0,
+                  pointerEvents: navOpen ? 'auto' : 'none',
+                  transition: 'opacity 220ms ease-out',
+                }}
+                onClick={() => setNavOpen(false)}
+                aria-hidden="true"
+              />
+            )}
             <div
-              className="fixed inset-0 z-30"
-              style={{
-                background: "rgba(3,3,3,0.5)",
-                top: "var(--masthead-h)",
-                opacity: navOpen ? 1 : 0,
-                pointerEvents: navOpen ? "auto" : "none",
-                transition: "opacity 220ms ease-out",
-              }}
-              onClick={() => setNavOpen(false)}
-              aria-hidden="true"
-            />
-          )}
-          <div
-            className={isMobile ? "fixed left-0 z-40 h-full" : "relative flex-shrink-0 overflow-hidden"}
-            style={
-              isMobile
-                ? {
-                    top: "var(--masthead-h)",
-                    bottom: 0,
-                    height: "auto",
-                    transform: navOpen ? "translateX(0)" : "translateX(-100%)",
-                    transition: "transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1)",
-                  }
-                : {
-                    width: navOpen ? "var(--nav-w)" : 0,
-                    opacity: navOpen ? 1 : 0,
-                    transition: "width 220ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 180ms ease-out",
-                  }
-            }
-            inert={!navOpen}
-            data-nav-acik={navOpen ? "evet" : "hayir"}
-          >
-            <PageNav onNavigate={() => { if (isMobile) setNavOpen(false); }} />
-          </div>
+              className={
+                isMobile ? 'fixed left-0 z-40 h-full' : 'relative flex-shrink-0 overflow-hidden'
+              }
+              style={
+                isMobile
+                  ? {
+                      top: 'var(--masthead-h)',
+                      bottom: 0,
+                      height: 'auto',
+                      transform: navOpen ? 'translateX(0)' : 'translateX(-100%)',
+                      transition: 'transform 220ms cubic-bezier(0.2, 0.7, 0.3, 1)',
+                    }
+                  : {
+                      width: navOpen ? 'var(--nav-w)' : 0,
+                      opacity: navOpen ? 1 : 0,
+                      transition:
+                        'width 220ms cubic-bezier(0.2, 0.7, 0.3, 1), opacity 180ms ease-out',
+                    }
+              }
+              inert={!navOpen}
+              data-nav-acik={navOpen ? 'evet' : 'hayir'}
+            >
+              <PageNav
+                onNavigate={() => {
+                  if (isMobile) setNavOpen(false);
+                }}
+              />
+            </div>
 
-          {/* `id` skip-link'in hedefi; `tabIndex={-1}` olmadan bazi tarayicilar
+            {/* `id` skip-link'in hedefi; `tabIndex={-1}` olmadan bazi tarayicilar
               atlamadan sonra odagi GERCEKTEN buraya tasimaz ve bir sonraki Tab yine
               masthead'e doner — yani baglanti gorsel olarak calisir, klavye icin
               calismaz. */}
-          <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 overflow-y-auto">
-            <div className="px-4 py-5 lg:px-6 lg:py-6">
-              {/* Bir sayfa render sırasında patlarsa masthead ve menü ayakta kalsın,
+            <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 overflow-y-auto">
+              <div className="px-4 py-5 lg:px-6 lg:py-6">
+                {/* Bir sayfa render sırasında patlarsa masthead ve menü ayakta kalsın,
                   kullanıcı BEYAZ EKRAN yerine hata mesajı görsün (bkz. PageErrorBoundary).
                   `key` olarak yol verilir: başka bir sayfaya geçince sınır sıfırlanır,
                   aksi halde hata kartı yeni sayfada da takılı kalırdı. */}
-              <PageErrorBoundary key={location.pathname}>
-                {/* SUSPENSE SINIRI BURADA (2026-08-28). Eskiden App.tsx'te TUM
+                <PageErrorBoundary key={location.pathname}>
+                  {/* SUSPENSE SINIRI BURADA (2026-08-28). Eskiden App.tsx'te TUM
                     <Routes>'u sariyordu: lazy bir sayfaya hard reload yapildiginda
                     masthead ve menu de dahil HICBIR SEY cizilmiyor, ekranda yalnizca
                     ortada bir spinner duruyordu — sonra kabuk aniden beliriyordu.
                     Sinir Outlet'in etrafina alininca kabuk AYAKTA KALIR, yalnizca
                     icerik alani yuklenir. Iskelet, PageErrorBoundary ile ayni yerde
                     olmali: ikisi de "yalnizca sayfa" kapsaminda. */}
-                <Suspense fallback={<PageSkeleton />}>
-                  <Outlet />
-                </Suspense>
-              </PageErrorBoundary>
-            </div>
-          </main>
+                  <Suspense fallback={<PageSkeleton />}>
+                    <Outlet />
+                  </Suspense>
+                </PageErrorBoundary>
+              </div>
+            </main>
 
-          {/* "Taleplerim" paneli — eskiden yalnizca Self Service sayfasinin icindeydi,
+            {/* "Taleplerim" paneli — eskiden yalnizca Self Service sayfasinin icindeydi,
               2026-08-20'den beri HER sayfada sag kenarda duruyor (kullanici talebi:
               "hangi sayfaya gidersek gidelim kenarda her zaman gozuksun"). Kullanici
               daraltirsa ince bir serite kuculur, tercih localStorage'da saklanir.
               <lg ekranlarda gizli: 340px'lik panel dar ekranda icerigi ezerdi. */}
-          <div className="hidden lg:block flex-shrink-0 overflow-y-auto py-6 pr-4">
-            <RequestsSidePanel />
+            <div className="hidden lg:block flex-shrink-0 overflow-y-auto py-6 pr-4">
+              <RequestsSidePanel />
+            </div>
           </div>
-        </div>
 
-        <SessionTimeoutModal
-          isOpen={showTimeoutModal}
-          countdown={countdown}
-          extendable={timeoutExtendable}
-          extendFailed={extendFailed}
-          onExtend={extendSession}
-          onDismiss={dismissTimeoutModal}
-          onLogout={logout}
-        />
-        <ToastContainer />
-        <CommandPalette />
-        <JobTrackerBar />
-      </div>
-    </JobTrackerProvider>
+          <SessionTimeoutModal
+            isOpen={showTimeoutModal}
+            countdown={countdown}
+            extendable={timeoutExtendable}
+            extendFailed={extendFailed}
+            onExtend={extendSession}
+            onDismiss={dismissTimeoutModal}
+            onLogout={logout}
+          />
+          <ToastContainer />
+          <CommandPalette />
+          <JobTrackerBar />
+        </div>
+      </JobTrackerProvider>
     </AppDataProvider>
   );
 }

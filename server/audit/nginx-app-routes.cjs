@@ -17,7 +17,7 @@
 // playbook o URL'i baska bir namespace'e cozer ve tanim yanlis yere gider.
 //
 // ── ESKI AKIS NEDEN HIC DEGISMIYOR ────────────────────────────────────────────────────
-// `prod_create.yaml` (eski GBRVP* sunuculari) tamamen URL'e bagli: `upstream_host`'u
+// `prod_create.yaml` (eski ORRVP* sunuculari) tamamen URL'e bagli: `upstream_host`'u
 // input_url'den tureteiyor, namespace/application HIC okumuyor. Portal cozumu yapip
 // `input_url`'i GERCEK bir route adresi olarak gonderdigi icin o akis aynen calisir -
 // playbook tarafinda tek satir degisiklik gerekmez. Dahasi `nginx_ops.yml`'in yeni filo
@@ -101,7 +101,7 @@ function routesForApp(routeRows, namespace, application) {
       const adTutar = L(r.route_name) === app;
       if (!adresTutar && !adTutar) continue;
       // AYNI ADRES BIRDEN FAZLA CLUSTER'DA: ayni cevaptir, coklu aday DEGIL.
-      // (prod'da ns/app gbocpprod1/2/4'te birden duruyor.)
+      // (prod'da ns/app orocpprod1/2/4'te birden duruyor.)
       const v = gorulen.get(url) || {
         url,
         routeName: String(r.route_name || '').trim(),

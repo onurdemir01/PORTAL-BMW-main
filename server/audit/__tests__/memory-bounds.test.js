@@ -162,7 +162,8 @@ test('SP5 `drain` tek turda TUR TAVANINDAN fazlasini aktarmaz', async () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     let metin = '';
     for (let i = 0; i < n; i++) {
-      metin += JSON.stringify({ ts: 'x', entry: { username: 'u', action: 'a', detail: 'd' } }) + '\n';
+      metin +=
+        JSON.stringify({ ts: 'x', entry: { username: 'u', action: 'a', detail: 'd' } }) + '\n';
     }
     fs.writeFileSync(file, metin);
 
@@ -234,7 +235,14 @@ test('VC1 `verifyChain` TUM tabloyu tek sorguda ISTEMEZ ve zinciri sayfalar aras
   let prev = '';
   for (let i = 1; i <= N; i++) {
     const h = hash(prev, 'u', 'a', `d${i}`);
-    rows.push({ id: i, username: 'u', action: 'a', detail: `d${i}`, prev_hash: prev, entry_hash: h });
+    rows.push({
+      id: i,
+      username: 'u',
+      action: 'a',
+      detail: `d${i}`,
+      prev_hash: prev,
+      entry_hash: h,
+    });
     prev = h;
   }
 
@@ -243,7 +251,11 @@ test('VC1 `verifyChain` TUM tabloyu tek sorguda ISTEMEZ ve zinciri sayfalar aras
     async query(sql, params) {
       sorgular.push({ sql, params });
       if (/COUNT\(\*\)/.test(sql)) return { rows: [{ total: N }] };
-      assert.match(sql, /OFFSET .* FETCH NEXT/, 'zincir sorgusu SAYFASIZ — tum tablo bellege gider');
+      assert.match(
+        sql,
+        /OFFSET .* FETCH NEXT/,
+        'zincir sorgusu SAYFASIZ — tum tablo bellege gider',
+      );
       const [offset, limit] = params;
       return { rows: rows.slice(offset, offset + limit) };
     },
@@ -274,7 +286,14 @@ test('VC2 SAYFA SINIRINDAKI kurcalama gorulur (zincir sayfa basinda sifirlanmiyo
   let prev = '';
   for (let i = 1; i <= N; i++) {
     const h = hash(prev, 'u', 'a', `d${i}`);
-    rows.push({ id: i, username: 'u', action: 'a', detail: `d${i}`, prev_hash: prev, entry_hash: h });
+    rows.push({
+      id: i,
+      username: 'u',
+      action: 'a',
+      detail: `d${i}`,
+      prev_hash: prev,
+      entry_hash: h,
+    });
     prev = h;
   }
   // TAM SAYFA SINIRINDA (2001. kayit, ikinci sayfanin ILK satiri) zinciri kopar:

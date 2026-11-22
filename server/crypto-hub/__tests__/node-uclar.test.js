@@ -45,7 +45,12 @@ test('N6 /node-change kapilari (yetki, prod, bayat, Smart yok, indeks yok, gerek
     r = await post(K.nodecu, GOVDE({ grup: 'UIS:X' }));
     assert.equal(r.body.blocked, 'node_girdi');
     // Yeni deger: rol kumesi, bicim (rol + neden govdede), bos onayi, eski govde (nodeId).
-    for (const yeni of [undefined, {}, { rpc: 'https://a.invalid', ws: 'wss://a.invalid' }, { rpc: 7 }]) {
+    for (const yeni of [
+      undefined,
+      {},
+      { rpc: 'https://a.invalid', ws: 'wss://a.invalid' },
+      { rpc: 7 },
+    ]) {
       r = await post(K.nodecu, GOVDE({ yeni }));
       assert.equal(r.status, 400, JSON.stringify(yeni));
       assert.equal(r.body.blocked, 'node_girdi');
@@ -123,7 +128,10 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
       // D4: Istanbul talebinden sonra Ankara onerisi
       assert.equal(r.body.esTalepOnerisi.tenant, 'metaco_das_prod_ank');
       assert.equal(r.body.esTalepOnerisi.esTalepId, r.body.talepId);
-      assert.ok(!('nodeId' in r.body.esTalepOnerisi), 'Ankara onerisi deger/node tasiyor (kullanici yeniden yazar)');
+      assert.ok(
+        !('nodeId' in r.body.esTalepOnerisi),
+        'Ankara onerisi deger/node tasiyor (kullanici yeniden yazar)',
+      );
       const ist = r.body;
       const meta = h.d.smartCreated[0].metadata;
       assert.equal(meta.JRENV, 'Production_9');
@@ -141,7 +149,10 @@ test('N6b prod kiracida ad yazdirma (prod acik benzetimi)', () =>
       const ank = h.d.rows.find((x) => x.id === r.body.talepId);
       assert.equal(ank.es_talep_id, ist.talepId);
       assert.equal(ank.lokasyon, 'Ankara');
-      assert.match(h.d.smartCreated[1].metadata.ACIKLAMA, new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`));
+      assert.match(
+        h.d.smartCreated[1].metadata.ACIKLAMA,
+        new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`),
+      );
       assert.equal(r.body.esTalepOnerisi, undefined, 'Ankara talebinde yeniden oneri');
       // Yanlis es talep
       r = await h.istek('POST', '/node-change', K.nodecu, {
@@ -259,18 +270,33 @@ test('N8 openSmartTicket argumanlari birebir; preflight + prefill bilet ONCESI',
     assert.deepEqual(a.detail, { ask_limit_on_launch: false });
     assert.deepEqual(a.resolvedLaunchOptions, {});
     assert.deepEqual(a.specFields, [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }]);
-    assert.deepEqual(a.pendingLaunchExtras, { onayZamanAsimiDk: 1440, yutmaKorumasi: true, launchOncesi: 'crypto_hub_node', overrides: {} });
+    assert.deepEqual(a.pendingLaunchExtras, {
+      onayZamanAsimiDk: 1440,
+      yutmaKorumasi: true,
+      launchOncesi: 'crypto_hub_node',
+      overrides: {},
+    });
     assert.equal(a.extraVars.crypto_hub_node_yeni_b64, '', 'bekleyen pakette deger var');
     assert.ok(!('crypto_hub_node_id' in a.extraVars));
-    assert.ok('crypto_hub_node_yeni_b64' in h.d.preflight[0].ev, 'preflight yeni_b64 anahtarini gormedi');
+    assert.ok(
+      'crypto_hub_node_yeni_b64' in h.d.preflight[0].ev,
+      'preflight yeni_b64 anahtarini gormedi',
+    );
     assert.equal(a.auditAction, 'crypto_hub_node_change_ticket_open');
-    assert.equal(a.overrides.smartApproval.flowKey, 'FLOW_OPENSHIFT', 'OpsX OpenShift flow key kullanilmadi');
+    assert.equal(
+      a.overrides.smartApproval.flowKey,
+      'FLOW_OPENSHIFT',
+      'OpsX OpenShift flow key kullanilmadi',
+    );
     assert.equal(a.extraVars.zorunlu_alan, 'varsayilan', 'prefill sonucu bilete gitmedi');
     assert.equal(a.extraVars.crypto_hub_node_talep, r.body.talepId);
     const i = (x) => h.d.sira.indexOf(x);
     assert.ok(i('preflight') >= 0 && i('preflight') < i('prefill'), h.d.sira.join(','));
     assert.ok(i('prefill') < i('openSmartTicket'));
-    assert.ok(i('sablon:55') >= 0 && i('sablon:55') < i('openSmartTicket'), 'OpsX OpenShift template degiskenleri okunmadi');
+    assert.ok(
+      i('sablon:55') >= 0 && i('sablon:55') < i('openSmartTicket'),
+      'OpsX OpenShift template degiskenleri okunmadi',
+    );
     assert.equal(h.d.smartCreated[0].flowKey, 'FLOW_OPENSHIFT');
     assert.equal(h.d.smartCreated[0].integrationKey, 'RFF');
     const t = h.d.smartTickets[0];
@@ -331,7 +357,10 @@ const ps = (h, talepId) => h.d.rows.find((x) => x.id === talepId).plan_sha;
 const BASKA_SHA = 'f'.repeat(64);
 
 function isBitir(h, jobId, lines, status = 'successful') {
-  h.d.jobs.set(jobId, { status, artifacts: { crypto_hub_ops_result: { tenant: T, action: 'node_change', lines } } });
+  h.d.jobs.set(jobId, {
+    status,
+    artifacts: { crypto_hub_ops_result: { tenant: T, action: 'node_change', lines } },
+  });
 }
 
 test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek denetim', () =>
@@ -404,11 +433,20 @@ test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek d
     // Farkli plan_sha + fail de kabul edilmez (baska talebin satiri olabilir).
     const baskaFail = await kapanis(GOVDE(), (b) => {
       onayla(h, b.ticketId, 8800 + b.talepId);
-      isBitir(h, 8800 + b.talepId, [`NODESUM\t${T}\tfail\t${BASKA_SHA}\t${b.talepId}\tYAZMA`], 'failed');
+      isBitir(
+        h,
+        8800 + b.talepId,
+        [`NODESUM\t${T}\tfail\t${BASKA_SHA}\t${b.talepId}\tYAZMA`],
+        'failed',
+      );
     });
     assert.equal(baskaFail.durum, 'OLCULEMEDI');
     // NODESUM yok -> OLCULEMEDI (BASARILI uydurulmaz); baska talebin / kimliksiz basari sayilmaz.
-    for (const satir of [[], (b) => [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t99999\t-`], [`NODESUM\t${T}\tok\t-\t-\t-`]]) {
+    for (const satir of [
+      [],
+      (b) => [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t99999\t-`],
+      [`NODESUM\t${T}\tok\t-\t-\t-`],
+    ]) {
       const row = await kapanis(GOVDE(), (b) => {
         onayla(h, b.ticketId, 8000 + b.talepId);
         isBitir(h, 8000 + b.talepId, typeof satir === 'function' ? satir(b) : satir, 'failed');
@@ -430,21 +468,45 @@ test('N9 tarama: Smart durumlari ve AWX sonucu; NODESUM yok -> OLCULEMEDI; tek d
     await Promise.all([h.NODE.nodeSonuclariniTara(), h.NODE.nodeSonuclariniTara()]);
     const sonra = h.d.audits.filter((x) => x.action === 'crypto_hub_node_change_result');
     assert.equal(sonra.length - once, 1, 'sonuc denetimi iki kez yazildi');
-    assert.equal(sonra[sonra.length - 1].opts.username, 'nodecu', 'denetim talep sahibi adina degil');
+    assert.equal(
+      sonra[sonra.length - 1].opts.username,
+      'nodecu',
+      'denetim talep sahibi adina degil',
+    );
   }));
 
 test('N9b ACILIYOR > 10 dk kapanir (bilet varsa sahiplenilir); yetim > 1440 dk kapanir', () =>
   ile(async (h) => {
     const eski = (dk) => new Date(Date.now() - dk * 60000);
     const yeni = (o) => {
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: eski(1), ...o };
+      const r = {
+        id: h.d.nextId++,
+        tenant_key: T,
+        grup: G_EVM,
+        kilit: `k${h.d.nextId}`,
+        durum: 'ACILIYOR',
+        smart_ticket_id: null,
+        external_ticket_id: null,
+        awx_server_id: null,
+        awx_job_id: null,
+        kapandi_at: null,
+        username: 'u',
+        created_at: eski(1),
+        ...o,
+      };
       h.d.rows.push(r);
       return r;
     };
     const a = yeni({ created_at: eski(5) });
     const b = yeni({ created_at: eski(11) });
     const c = yeni({ created_at: eski(11) });
-    h.d.smartTickets.push({ id: 444, external_ticket_id: 'SM-444', status: 'PENDING', pending_launch_json: JSON.stringify({ extraVars: { crypto_hub_node_talep: c.id, x: 1 } }), created_at: new Date() });
+    h.d.smartTickets.push({
+      id: 444,
+      external_ticket_id: 'SM-444',
+      status: 'PENDING',
+      pending_launch_json: JSON.stringify({ extraVars: { crypto_hub_node_talep: c.id, x: 1 } }),
+      created_at: new Date(),
+    });
     const d = yeni({ durum: 'BEKLIYOR', external_ticket_id: 'SM-1', created_at: eski(1000) });
     const e = yeni({ durum: 'BEKLIYOR', external_ticket_id: 'SM-2', created_at: eski(1441) });
     await h.NODE.nodeSonuclariniTara();
@@ -463,7 +525,11 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
   ile(async (h) => {
     let r = await h.istek('GET', '/tenants', K.nodecu);
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.apps.map((a) => a.app), ['metaco'], 'node-only kullaniciya Wyden dali dondu');
+    assert.deepEqual(
+      r.body.apps.map((a) => a.app),
+      ['metaco'],
+      'node-only kullaniciya Wyden dali dondu',
+    );
     const envs = r.body.apps[0].domains.flatMap((d) => d.envs);
     assert.ok(envs.every((e) => e.nodeOnly === true));
     assert.equal(envs.find((e) => e.key === 'metaco_das_test').nodeOpen, true);
@@ -473,15 +539,28 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
     r = await h.istek('GET', '/tenants', K.yetkisiz);
     assert.deepEqual(r.body.apps, []);
     r = await h.istek('GET', '/tenants', K.wydenci);
-    assert.deepEqual(r.body.apps.map((a) => a.app), ['wyden']);
+    assert.deepEqual(
+      r.body.apps.map((a) => a.app),
+      ['wyden'],
+    );
 
-    r = await h.istek('POST', '/ops', K.nodecu, { tenant: T, action: 'rollout', targets: ['deployment/x'], confirmed: true });
+    r = await h.istek('POST', '/ops', K.nodecu, {
+      tenant: T,
+      action: 'rollout',
+      targets: ['deployment/x'],
+      confirmed: true,
+    });
     assert.equal(r.status, 403, 'node-only kullanici /ops rollout calistirdi');
     r = await h.istek('GET', `/overview?tenant=${T}`, K.nodecu);
     assert.equal(r.status, 403);
     // /ops node islemlerini TANIMAZ - metaco yetkilisi icin de.
     for (const action of ['node_change', 'node_env_get']) {
-      r = await h.istek('POST', '/ops', K.metacocu, { tenant: T, action, targets: ['deployment/x'], confirmed: true });
+      r = await h.istek('POST', '/ops', K.metacocu, {
+        tenant: T,
+        action,
+        targets: ['deployment/x'],
+        confirmed: true,
+      });
       assert.equal(r.status, 400, `/ops ${action} kabul etti`);
     }
     assert.equal(h.d.launches.length, 0);
@@ -502,7 +581,7 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
 
     // isErisimKarari node dali yalniz node islerinde
     const RES = h.RES;
-    const { tenantOf, isOpen } = require('../../../shared/cryptoHubTenants.cjs');
+    const { tenantOf, isOpen } = require('../kiracilar.cjs');
     const N = require('../../../shared/cryptoHubNodes.cjs');
     const karar = (action, o = {}) =>
       RES.isErisimKarari({
@@ -520,7 +599,11 @@ test('N10 erisim: node-only kullanici yalniz node uclari; /tenants isaretleri; i
     assert.equal(karar('rollout'), false, 'node dali diger islere uygulandi');
     assert.equal(karar('node_change', { nodeGorunen: false }), false);
     assert.equal(karar('node_change', { nodeAcik: null }), false, 'nodeAcik yokken acik sayildi');
-    assert.equal(karar('node_change', { user: { username: 'baska', role: 'User' } }), false, 'sahiplik aranmadi');
+    assert.equal(
+      karar('node_change', { user: { username: 'baska', role: 'User' } }),
+      false,
+      'sahiplik aranmadi',
+    );
   }));
 
 test('N10b okuma uclari: launch, ayni okuma tekrar, sonuc bellege; is gecmisi adi', () =>
@@ -582,7 +665,10 @@ test('N10b okuma uclari: launch, ayni okuma tekrar, sonuc bellege; is gecmisi ad
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.flowKey, 'FLOW_OPENSHIFT');
     assert.match(r.body.metadata.ACIKLAMA, /nbxplorer-mainnet \(BTC\)/);
-    assert.match(r.body.metadata.ACIKLAMA, /Yeni node \(maskeli\): p2p=\(önizleme\); rpc=\(önizleme\)/);
+    assert.match(
+      r.body.metadata.ACIKLAMA,
+      /Yeni node \(maskeli\): p2p=\(önizleme\); rpc=\(önizleme\)/,
+    );
     assert.equal(h.d.smartCreated.length, once, 'onizleme Smart bileti acti');
     assert.equal(h.d.rows.length, 1, 'onizleme satir yazdi');
   }));
@@ -605,16 +691,30 @@ test('N11 deger DB/pending/denetim/Smart/log/gecmise duz gitmez; yalniz sifreli 
     const insert = h.d.logs.findIndex((l) => /^INSERT INTO crypto_hub_node_changes/.test(l));
     assert.ok(insert >= 0);
     const tumParam = JSON.stringify(h.d.dbParams);
-    assert.ok(!tumParam.includes(SIR) && !tumParam.includes(yeniB64), 'DB parametrelerinde duz deger');
+    assert.ok(
+      !tumParam.includes(SIR) && !tumParam.includes(yeniB64),
+      'DB parametrelerinde duz deger',
+    );
     const t = h.d.smartTickets.find((x) => x.id === b.ticketId);
-    assert.ok(t.pending_launch_json.includes('"crypto_hub_node_yeni_b64":""'), 'pending yer tutucusu yok');
+    assert.ok(
+      t.pending_launch_json.includes('"crypto_hub_node_yeni_b64":""'),
+      'pending yer tutucusu yok',
+    );
     // Onay sonrasi kanca: gercek launchOncesiDegerEkle sifreli kolondan degeri koyar.
     const k = await h.kanca(b.ticketId);
     assert.equal(k.extraVars.crypto_hub_node_yeni_b64, yeniB64);
-    assert.equal(JSON.parse(t.pending_launch_json).extraVars.crypto_hub_node_yeni_b64, '', 'kanca bekleyen paketi degistirdi');
+    assert.equal(
+      JSON.parse(t.pending_launch_json).extraVars.crypto_hub_node_yeni_b64,
+      '',
+      'kanca bekleyen paketi degistirdi',
+    );
     // performSsLaunch is gecmisine / denetime redactExtraVarsForHistory(specFields) yazar: ***gizli***.
     const pl = JSON.parse(t.pending_launch_json);
-    const gecmis = require('../../ansible/runner.cjs').redactExtraVarsForHistory(k.extraVars, pl.specFields, pl.overrides);
+    const gecmis = require('../../ansible/runner.cjs').redactExtraVarsForHistory(
+      k.extraVars,
+      pl.specFields,
+      pl.overrides,
+    );
     assert.equal(gecmis.crypto_hub_node_yeni_b64, '***gizli***');
     assert.ok(!JSON.stringify(gecmis).includes(yeniB64));
     onayla(h, b.ticketId, 6001);
@@ -626,9 +726,14 @@ test('N11 deger DB/pending/denetim/Smart/log/gecmise duz gitmez; yalniz sifreli 
     assert.equal(row.yeni_deger_secret, null, 'is AWX e verildikten sonra sifreli deger silinmedi');
     r = await h.istek('GET', `/node-change/${b.talepId}`, K.nodecu);
     const denetim = h.d.audits.map((a) => a.opts);
-    const talepDenetimi = JSON.parse(h.d.audits.find((a) => a.action === 'crypto_hub_node_change_talep').opts.detail);
+    const talepDenetimi = JSON.parse(
+      h.d.audits.find((a) => a.action === 'crypto_hub_node_change_talep').opts.detail,
+    );
     assert.equal(talepDenetimi.yeniOzet, 'auth=****; url=https://dot-c.node.invalid/****');
-    assert.deepEqual(talepDenetimi.yeniSha, { auth: H.hex(govde.yeni.auth), url: H.hex(govde.yeni.url) });
+    assert.deepEqual(talepDenetimi.yeniSha, {
+      auth: H.hex(govde.yeni.auth),
+      url: H.hex(govde.yeni.url),
+    });
     assert.deepEqual(talepDenetimi.bosRoller, []);
     assert.ok(!('yeniNodeId' in talepDenetimi));
     const yerler = {
@@ -644,18 +749,27 @@ test('N11 deger DB/pending/denetim/Smart/log/gecmise duz gitmez; yalniz sifreli 
     for (const [ad, metin] of Object.entries(yerler)) {
       assert.ok(!metin.includes(SIR), `${ad} sahte sir dizesini iceriyor`);
       assert.ok(!metin.includes(yeniB64), `${ad} yeni_b64 metnini iceriyor`);
-      assert.ok(!metin.includes(govde.yeni.url) && !metin.includes(govde.yeni.auth), `${ad} ham degeri iceriyor`);
+      assert.ok(
+        !metin.includes(govde.yeni.url) && !metin.includes(govde.yeni.auth),
+        `${ad} ham degeri iceriyor`,
+      );
     }
     assert.equal(h.d.rows[0].durum, 'BASARILI');
     // Istek govdesi denetime dusmez: crypto-hub router'inda auditMutations YOK.
-    const idx = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+    const idx = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'index.cjs'),
+      'utf8',
+    );
     assert.ok(!/auditMutations/.test(idx), 'crypto-hub router istek govdesini denetime yaziyor');
   }));
 
 test('N19 sifreli degerin omru: kapanista ve CALISIYOR da NULL; genel SUTUNLAR secmez; kanca kapali/temizlenmis talebi reddeder', () =>
   ile(async (h) => {
     h.okumaVer();
-    const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'node.cjs'), 'utf8');
+    const src = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'node.cjs'),
+      'utf8',
+    );
     const sut = /const SUTUNLAR =\s*'([^']+)'/.exec(src);
     assert.ok(sut, 'SUTUNLAR bulunamadi (bekci kor)');
     assert.ok(!/yeni_deger_secret/.test(sut[1]), 'genel liste sifreli degeri seciyor');
@@ -670,14 +784,20 @@ test('N19 sifreli degerin omru: kapanista ve CALISIYOR da NULL; genel SUTUNLAR s
     assert.equal(ra.durum, 'REDDEDILDI');
     assert.equal(ra.yeni_deger_secret, null, 'kapanista sifreli deger kaldi');
     assert.ok(
-      h.d.logs.some((l) => /^UPDATE crypto_hub_node_changes SET durum = \$1, sonuc_kod = \$2, sonuc_json = \$3, kapandi_at = SYSUTCDATETIME\(\).*yeni_deger_secret = NULL/.test(l)),
+      h.d.logs.some((l) =>
+        /^UPDATE crypto_hub_node_changes SET durum = \$1, sonuc_kod = \$2, sonuc_json = \$3, kapandi_at = SYSUTCDATETIME\(\).*yeni_deger_secret = NULL/.test(
+          l,
+        ),
+      ),
       'talepKapat SQL i yeni_deger_secret = NULL icermiyor',
     );
     await assert.rejects(() => h.kanca(a.ticketId), /talep kapanmis$/);
     // Admin kapatmasi da (talepKapat yolu) siler.
     const c = await talepAc(h);
     const rc = h.d.rows.find((x) => x.id === c.talepId);
-    const k = await h.istek('POST', `/node-change/${c.talepId}/kapat`, K.admin, { gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor' });
+    const k = await h.istek('POST', `/node-change/${c.talepId}/kapat`, K.admin, {
+      gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor',
+    });
     assert.equal(k.status, 200, JSON.stringify(k.body));
     assert.equal(rc.yeni_deger_secret, null, 'admin kapatmasinda sifreli deger kaldi');
     // Is AWX'e verildi (CALISIYOR): ayni turda NULL; kanca artik deger bulamaz.
@@ -707,7 +827,9 @@ test('N12 bilesen secimi uctan: secilenler plana/hedefe, bilet metni bilesenleri
     assert.equal(ev.crypto_hub_targets, `deployment/${H.D.adp},deployment/${H.D.api}`);
     const plan = JSON.parse(Buffer.from(ev.crypto_hub_node_plan_b64, 'base64').toString('utf8'));
     assert.deepEqual(plan.map((p) => p.d).sort(), [H.D.adp, H.D.api].sort());
-    const expect = JSON.parse(Buffer.from(ev.crypto_hub_node_expect_b64, 'base64').toString('utf8'));
+    const expect = JSON.parse(
+      Buffer.from(ev.crypto_hub_node_expect_b64, 'base64').toString('utf8'),
+    );
     assert.equal(Object.keys(expect).length, 3, 'expect grubun tamamini tasimali');
     const m = h.d.smartCreated[0].metadata;
     assert.match(m.ACIKLAMA, /Değişecek bileşenler: adapter, api\n/);
@@ -738,7 +860,10 @@ test('N7d PS7 409 node_bekleyen_talep ve ACILIYOR engeli birebir metin', () =>
     const row = h.d.rows.find((x) => x.id === b.talepId);
     Object.assign(row, { external_ticket_id: null, durum: 'ACILIYOR' });
     r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
-    assert.equal(r.body.message, `Bu grup için açık bir talep var (Portal #${b.talepId}). Sonuçlanmadan yeni talep açılamaz.`);
+    assert.equal(
+      r.body.message,
+      `Bu grup için açık bir talep var (Portal #${b.talepId}). Sonuçlanmadan yeni talep açılamaz.`,
+    );
     r = await h.istek('GET', `/nodes?tenant=${T}`, K.nodecu);
     assert.equal(
       r.body.gruplar.find((g) => g.id === G_EVM).engel,
@@ -753,12 +878,26 @@ test('N13 PS8 baska kiracinin NODESUM satiri talebi kapatamaz; gecmis okunamazsa
     const row = h.d.rows.find((x) => x.id === b.talepId);
     const st = {
       status: 'successful',
-      artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\tmetaco_gar_test\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`] } },
+      artifacts: {
+        crypto_hub_ops_result: {
+          lines: [`NODESUM\tmetaco_gar_test\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`],
+        },
+      },
     };
     const s = h.NODE.isSonucu(row, st);
     assert.equal(s.durum, 'OLCULEMEDI', 'baska kiracinin basari satiri kabul edildi');
     assert.equal(s.kod, 'NODESUM_UYUSMUYOR');
-    assert.equal(h.NODE.isSonucu(row, { ...st, artifacts: { crypto_hub_ops_result: { lines: [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`] } } }).durum, 'BASARILI');
+    assert.equal(
+      h.NODE.isSonucu(row, {
+        ...st,
+        artifacts: {
+          crypto_hub_ops_result: {
+            lines: [`NODESUM\t${T}\tok\t${ps(h, b.talepId)}\t${b.talepId}\t-`],
+          },
+        },
+      }).durum,
+      'BASARILI',
+    );
     // Gecmis (acik talepler) okunamazsa: fail-closed, Degistir hicbir grupta acik degil.
     h.d.dbBozuk = true;
     const r = await h.istek('GET', `/nodes?tenant=${T}`, K.nodecu);
@@ -766,7 +905,10 @@ test('N13 PS8 baska kiracinin NODESUM satiri talebi kapatamaz; gecmis okunamazsa
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.gecmisOkunamadi, true);
     assert.ok(r.body.gruplar.length > 0);
-    assert.ok(r.body.gruplar.every((g) => g.degistirilebilir === false), 'gecmis okunamazken grup degistirilebilir');
+    assert.ok(
+      r.body.gruplar.every((g) => g.degistirilebilir === false),
+      'gecmis okunamazken grup degistirilebilir',
+    );
   }));
 
 test('N14 PS2 bilete bagli takili satir yas sinirinda TAKILDI kapanir; PENDING bilet yerelde iptal; sinir icinde acik', () =>
@@ -775,9 +917,30 @@ test('N14 PS2 bilete bagli takili satir yas sinirinda TAKILDI kapanir; PENDING b
     const once = (dk) => new Date(Date.now() - dk * 60000);
     let tid = 900;
     const satir = (bilet, o = {}) => {
-      const t = { id: tid++, external_ticket_id: `SM-${tid}`, status: 'PENDING', pending_launch_json: '{}', created_at: new Date(), ...bilet };
+      const t = {
+        id: tid++,
+        external_ticket_id: `SM-${tid}`,
+        status: 'PENDING',
+        pending_launch_json: '{}',
+        created_at: new Date(),
+        ...bilet,
+      };
       h.d.smartTickets.push(t);
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: once(N.TAKILDI_DK + 5), ...o };
+      const r = {
+        id: h.d.nextId++,
+        tenant_key: T,
+        grup: G_EVM,
+        kilit: `k${h.d.nextId}`,
+        durum: 'BEKLIYOR',
+        smart_ticket_id: t.id,
+        external_ticket_id: t.external_ticket_id,
+        awx_server_id: null,
+        awx_job_id: null,
+        kapandi_at: null,
+        username: 'u',
+        created_at: once(N.TAKILDI_DK + 5),
+        ...o,
+      };
       h.d.rows.push(r);
       return { r, t };
     };
@@ -785,9 +948,15 @@ test('N14 PS2 bilete bagli takili satir yas sinirinda TAKILDI kapanir; PENDING b
     const jobsuz = satir({ status: 'LAUNCHED', awx_job_id: null });
     const scheduled = satir({ status: 'SCHEDULED' });
     const pending = satir({ status: 'PENDING' });
-    const awx = satir({ status: 'LAUNCHED', awx_job_id: 4242, awx_server_id: 1 }, { durum: 'CALISIYOR', awx_server_id: 1, awx_job_id: 4242 });
+    const awx = satir(
+      { status: 'LAUNCHED', awx_job_id: 4242, awx_server_id: 1 },
+      { durum: 'CALISIYOR', awx_server_id: 1, awx_job_id: 4242 },
+    );
     const taze = satir({ status: 'LAUNCHING' }, { created_at: once(N.TAKILDI_DK - 30) });
-    const tazeAwx = satir({ status: 'LAUNCHED', awx_job_id: 4343, awx_server_id: 1 }, { durum: 'CALISIYOR', awx_server_id: 1, awx_job_id: 4343, created_at: once(30) });
+    const tazeAwx = satir(
+      { status: 'LAUNCHED', awx_job_id: 4343, awx_server_id: 1 },
+      { durum: 'CALISIYOR', awx_server_id: 1, awx_job_id: 4343, created_at: once(30) },
+    );
     h.d.awxBozuk = true;
     await h.NODE.nodeSonuclariniTara();
     h.d.awxBozuk = false;
@@ -797,7 +966,11 @@ test('N14 PS2 bilete bagli takili satir yas sinirinda TAKILDI kapanir; PENDING b
       assert.ok(x.r.kapandi_at, ad);
       assert.match(JSON.parse(x.r.sonuc_json).not, /durum bilinmiyor/);
     }
-    assert.equal(pending.t.status, 'CANCELLED', 'PENDING bilet yerelde iptal edilmedi (onay gelirse is baslardi)');
+    assert.equal(
+      pending.t.status,
+      'CANCELLED',
+      'PENDING bilet yerelde iptal edilmedi (onay gelirse is baslardi)',
+    );
     assert.equal(launching.t.status, 'LAUNCHING', 'PENDING olmayan bilete dokunuldu');
     assert.equal(taze.r.kapandi_at, null, 'sinir icindeki satir kapandi');
     assert.equal(tazeAwx.r.kapandi_at, null, 'AWX gecici hatasinda sinir icindeki satir kapandi');
@@ -814,7 +987,9 @@ test('N15 PS2 Admin gerekceyle takili talebi kapatir (denetim + PENDING bilet ip
     r = await h.istek('POST', yol, K.admin, { gerekce: 'kisa' });
     assert.equal(r.status, 400);
     assert.equal(r.body.blocked, 'node_gerekce');
-    r = await h.istek('POST', yol, K.admin, { gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor' });
+    r = await h.istek('POST', yol, K.admin, {
+      gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor',
+    });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.talep.durum, 'IPTAL');
     assert.equal(r.body.talep.sonucKod, 'ADMIN_KAPATTI');
@@ -823,7 +998,9 @@ test('N15 PS2 Admin gerekceyle takili talebi kapatir (denetim + PENDING bilet ip
     assert.ok(h.d.audits.some((x) => x.action === 'crypto_hub_node_change_admin_kapat'));
     const sonuc = h.d.audits.filter((x) => x.action === 'crypto_hub_node_change_result');
     assert.equal(JSON.parse(sonuc[sonuc.length - 1].opts.detail).yol, 'admin');
-    r = await h.istek('POST', yol, K.admin, { gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor' });
+    r = await h.istek('POST', yol, K.admin, {
+      gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor',
+    });
     assert.equal(r.status, 409, 'kapali talep yeniden kapatildi');
     // Kilit acildi: ayni grup icin yeni talep acilabilir.
     r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
@@ -834,24 +1011,69 @@ test('N16 iptal yarisi: PENDING bilet iptal edilemezse satir ve kilit acik kalir
   ile(async (h) => {
     const N = require('../../../shared/cryptoHubNodes.cjs');
     const once = (dk) => new Date(Date.now() - dk * 60000);
-    const t = { id: 990, external_ticket_id: 'SM-990', status: 'PENDING', pending_launch_json: '{}', created_at: new Date() };
+    const t = {
+      id: 990,
+      external_ticket_id: 'SM-990',
+      status: 'PENDING',
+      pending_launch_json: '{}',
+      created_at: new Date(),
+    };
     h.d.smartTickets.push(t);
-    const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: 'k990', durum: 'BEKLIYOR', smart_ticket_id: t.id, external_ticket_id: t.external_ticket_id, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: once(N.TAKILDI_DK + 5) };
+    const r = {
+      id: h.d.nextId++,
+      tenant_key: T,
+      grup: G_EVM,
+      kilit: 'k990',
+      durum: 'BEKLIYOR',
+      smart_ticket_id: t.id,
+      external_ticket_id: t.external_ticket_id,
+      awx_server_id: null,
+      awx_job_id: null,
+      kapandi_at: null,
+      username: 'u',
+      created_at: once(N.TAKILDI_DK + 5),
+    };
     h.d.rows.push(r);
     h.d.iptalYarisi = true;
     await h.NODE.nodeSonuclariniTara();
-    assert.equal(r.kapandi_at, null, 'iptal edilemeyen PENDING biletli satir TAKILDI ile kapandi (is sonradan kosabilir)');
-    let res = await h.istek('POST', `/node-change/${r.id}/kapat`, K.admin, { gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor' });
+    assert.equal(
+      r.kapandi_at,
+      null,
+      'iptal edilemeyen PENDING biletli satir TAKILDI ile kapandi (is sonradan kosabilir)',
+    );
+    let res = await h.istek('POST', `/node-change/${r.id}/kapat`, K.admin, {
+      gerekce: 'Bilet Smart tarafinda takildi, kilit aciliyor',
+    });
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.equal(r.kapandi_at, null, 'Admin iptal edilemeyen bileti kapatti');
     h.d.iptalYarisi = false;
     await h.NODE.nodeSonuclariniTara();
     assert.equal(r.sonuc_kod, 'TAKILDI', 'iptal basarinca sonraki turda kapanmadi');
-    const t2 = { id: 991, external_ticket_id: 'SM-991', status: 'LAUNCHED', pending_launch_json: '{}', created_at: new Date() };
+    const t2 = {
+      id: 991,
+      external_ticket_id: 'SM-991',
+      status: 'LAUNCHED',
+      pending_launch_json: '{}',
+      created_at: new Date(),
+    };
     h.d.smartTickets.push(t2);
-    const r2 = { ...r, id: h.d.nextId++, kilit: 'k991', durum: 'CALISIYOR', smart_ticket_id: t2.id, external_ticket_id: 'SM-991', awx_server_id: 1, awx_job_id: 5151, kapandi_at: null, sonuc_kod: null, created_at: once(30) };
+    const r2 = {
+      ...r,
+      id: h.d.nextId++,
+      kilit: 'k991',
+      durum: 'CALISIYOR',
+      smart_ticket_id: t2.id,
+      external_ticket_id: 'SM-991',
+      awx_server_id: 1,
+      awx_job_id: 5151,
+      kapandi_at: null,
+      sonuc_kod: null,
+      created_at: once(30),
+    };
     h.d.rows.push(r2);
-    res = await h.istek('POST', `/node-change/${r2.id}/kapat`, K.admin, { gerekce: 'Is uzun surdu, kilit aciliyor lutfen' });
+    res = await h.istek('POST', `/node-change/${r2.id}/kapat`, K.admin, {
+      gerekce: 'Is uzun surdu, kilit aciliyor lutfen',
+    });
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.match(res.body.message, /AWX işi #5151/);
     assert.equal(r2.kapandi_at, null, 'AWX isi suren talep kapatildi (kilit birakilirdi)');
@@ -865,20 +1087,34 @@ test('N16b onaylanmis veya okunamayan Smart biletinde Admin kilidi acamaz', () =
     const ticket = h.d.smartTickets.find((x) => x.id === b.ticketId);
     const yol = `/node-change/${b.talepId}/kapat`;
 
-    const aciliyor = { ...row, id: h.d.nextId++, kilit: 'aciliyor-kilit', durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, kapandi_at: null };
+    const aciliyor = {
+      ...row,
+      id: h.d.nextId++,
+      kilit: 'aciliyor-kilit',
+      durum: 'ACILIYOR',
+      smart_ticket_id: null,
+      external_ticket_id: null,
+      kapandi_at: null,
+    };
     h.d.rows.push(aciliyor);
-    let res = await h.istek('POST', `/node-change/${aciliyor.id}/kapat`, K.admin, { gerekce: 'Smart bileti henuz baglanmadi, kilit acilamaz' });
+    let res = await h.istek('POST', `/node-change/${aciliyor.id}/kapat`, K.admin, {
+      gerekce: 'Smart bileti henuz baglanmadi, kilit acilamaz',
+    });
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.equal(aciliyor.kapandi_at, null, 'ACILIYOR ticketsiz satir kapatildi');
 
     ticket.status = 'APPROVED';
-    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart onaylandi, kilit guvenle acilamaz' });
+    res = await h.istek('POST', yol, K.admin, {
+      gerekce: 'Smart onaylandi, kilit guvenle acilamaz',
+    });
     assert.equal(res.status, 409, JSON.stringify(res.body));
     assert.equal(row.kapandi_at, null, 'onaylanmis fakat AWX numarasi yazilmamis talep kapatildi');
 
     ticket.status = 'PENDING';
     h.d.storeOkunamaz = true;
-    res = await h.istek('POST', yol, K.admin, { gerekce: 'Smart okunamiyor, kilit guvenle acilamaz' });
+    res = await h.istek('POST', yol, K.admin, {
+      gerekce: 'Smart okunamiyor, kilit guvenle acilamaz',
+    });
     assert.equal(res.status, 503, JSON.stringify(res.body));
     assert.equal(row.kapandi_at, null, 'Smart sahipligi okunamayan talep kapatildi');
   }));
@@ -896,13 +1132,24 @@ test('N6c PS6 Ankara talebi Istanbul bagini SUNUCUDA kurar (istemci esTalepId go
       assert.equal(ist.ok, true, JSON.stringify(ist));
       h.okumaVer({}, Date.now(), 'metaco_das_prod_ank');
       // Sihirbaz kapanip elle yeniden acildi: govdede esTalepId YOK.
-      const r = await h.istek('POST', '/node-change', K.nodecu, { ...g, tenant: 'metaco_das_prod_ank' });
+      const r = await h.istek('POST', '/node-change', K.nodecu, {
+        ...g,
+        tenant: 'metaco_das_prod_ank',
+      });
       assert.equal(r.status, 200, JSON.stringify(r.body));
       const ank = h.d.rows.find((x) => x.id === r.body.talepId);
       assert.equal(ank.es_talep_id, ist.talepId, 'Ankara talebi Istanbul talebine baglanmadi');
-      assert.match(h.d.smartCreated[1].metadata.ACIKLAMA, new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`));
+      assert.match(
+        h.d.smartCreated[1].metadata.ACIKLAMA,
+        new RegExp(`İstanbul talebi: Smart #${ist.externalTicketId}`),
+      );
       // Istanbul kiracisinda ve baska grupta bag kurulmaz.
-      const b2 = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, onayMetni: G_BTC, ocoNumber: '22502813' }));
+      const b2 = await h.istek(
+        'POST',
+        '/node-change',
+        K.nodecu,
+        GOVDE({ tenant: 'metaco_das_prod', grup: G_BTC, onayMetni: G_BTC, ocoNumber: '22502813' }),
+      );
       assert.equal(h.d.rows.find((x) => x.id === b2.body.talepId).es_talep_id, null);
     } finally {
       N.nodeAcikMi = once;

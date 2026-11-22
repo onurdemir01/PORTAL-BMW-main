@@ -72,8 +72,11 @@ function jsonListe(v) {
 }
 const degiskenMetni = (r) =>
   (r.degiskenler || []).map((d) => `${d.harf}=${(d.hostlar || []).join(',')}`).join(' | ');
-const evet = (k) => (r) =>
-  { if (r[k] === true || r[k] === 1) return 'evet'; if (r[k] === false || r[k] === 0) return 'hayır'; return ''; };
+const evet = (k) => (r) => {
+  if (r[k] === true || r[k] === 1) return 'evet';
+  if (r[k] === false || r[k] === 0) return 'hayır';
+  return '';
+};
 const tarih = (k) => (r) =>
   r[k] ? new Date(r[k]).toISOString().slice(0, 19).replace('T', ' ') : '';
 
@@ -193,7 +196,10 @@ const KOLONLAR = Object.freeze({
     ['kutuphane', al('kutuphane')],
     ['yapi', al('yapi')],
     ['ortam_sayisi', al('ortam_sayisi')],
-    ['ortamlar', (r) => (r.ortamlar || []).map((o) => `${o.ortam}=${o.harfler.join('+')}`).join(' ')],
+    [
+      'ortamlar',
+      (r) => (r.ortamlar || []).map((o) => `${o.ortam}=${o.harfler.join('+')}`).join(' '),
+    ],
     ['farkli_ortamlar', (r) => (r.farkli_ortamlar || []).join(' ')],
     ['degiskenler', degiskenMetni],
     ['tarih_farki_gun', al('tarih_farki_gun')],
@@ -257,7 +263,7 @@ function agacMetni({ host, kosu, uygulama, taranmaUtc }) {
     for (const s of liste) {
       const ad = String(s[0]).slice(String(s[0]).lastIndexOf('/') + 1);
       out.push(
-        `${sag(s[7], 10)} ${sol(s[2], 10)} ${sag(s[3], 5)} ${sag(s[4], 5)} ${sag(s[5], 12)} ${tarihMetni(s[6])} ${ad}${s[8] ? (" -> " + s[8]) : ''}`,
+        `${sag(s[7], 10)} ${sol(s[2], 10)} ${sag(s[3], 5)} ${sag(s[4], 5)} ${sag(s[5], 12)} ${tarihMetni(s[6])} ${ad}${s[8] ? ' -> ' + s[8] : ''}`,
       );
     }
   }
@@ -341,7 +347,7 @@ function hostZipGirisleri({
     { ad: 'sunucu.csv', veri: csv(KOLONLAR.sunucular, sunucuSatiri ? [sunucuSatiri] : []) },
   ];
   const gorulen = new Set();
-  for (const u of (yuk && yuk.uygulamalar) || []) {
+  for (const u of yuk?.uygulamalar || []) {
     const taban = `uygulamalar/${guvenliParca(String(u.kok || '').replace(/^\/+/, ''))}/${guvenliParca(u.ad)}`;
     let dizin = taban;
     for (let i = 2; gorulen.has(dizin); i++) dizin = `${taban}_${i}`;

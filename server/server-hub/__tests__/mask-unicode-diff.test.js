@@ -82,7 +82,10 @@ test('T2-M2 jvm_arg_diff sinir durumlari (loader maske_jvm_diff ve tarayici jd()
   assert.equal(d('k running=a configured=b configured=c'), 'k running=a configured=b configured=c');
   assert.equal(d('k running=a\nb configured=c'), 'k running=a\nb configured=c');
   assert.equal(d('k running=password=p1 configured=p2'), 'k running=*** configured=*** (farkli)');
-  assert.equal(d('-Dk.app.ses.secret running=a configured=b'), '-Dk.app.ses.secret running=*** configured=*** (farkli)');
+  assert.equal(
+    d('-Dk.app.ses.secret running=a configured=b'),
+    '-Dk.app.ses.secret running=*** configured=*** (farkli)',
+  );
   // ' configured=' yoksa oge bicimsizdir: ilk belirtec ('k') acik -> serbest metin maskesi
   assert.equal(d('k running=password=p1'), 'k running=password=***');
   // -X ogesi serbest maskeden gecer (normal -X degeri degismez)

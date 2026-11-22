@@ -1,6 +1,6 @@
-import React, { useContext } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { AuthContext } from "@/contexts/AuthContext";
+import React, { useContext } from 'react';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { AuthContext } from '@/contexts/AuthContext';
 
 export default function AdminRoute() {
   const { user, isAuthenticated } = useContext(AuthContext);
@@ -12,7 +12,7 @@ export default function AdminRoute() {
   }
 
   // Admin değilse 403
-  if (user?.role !== "Admin") {
+  if (user?.role !== 'Admin') {
     return <Navigate to="/403" replace state={{ from: location }} />;
   }
 

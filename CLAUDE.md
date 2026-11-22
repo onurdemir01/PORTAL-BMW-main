@@ -8,6 +8,7 @@ Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
 
 - PR açmadan / push etmeden önce `npm run kapi` koştur; sonucu sayılarıyla raporla. Sonar'a dokunan işte `npm run kapi:sonar` da koştur.
 - Merge yalnız CI'da `verify` ve `sonar` yeşilken ve onaylayıcı onayıyla yapılır.
+- `main`'e PR'sız commit gitmez: her değişiklik PR'dan geçer (K16 PR'sız commit'i ve 8–120 dışı konu satırını CI'da kırmızı yapar).
 - Kapıları gevşetme:
   - eşik düşürmek;
   - bastırma ya da dışlama eklemek;

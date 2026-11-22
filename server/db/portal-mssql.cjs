@@ -11,14 +11,14 @@ const RETRY_COOLDOWN_MS = 10_000;
 
 function getConfig() {
   return {
-    server:   process.env.PORTAL_DB_SERVER   || process.env.MSSQL_SERVER,
-    port:     Number.parseInt(process.env.PORTAL_DB_PORT || process.env.MSSQL_PORT || '1433', 10),
+    server: process.env.PORTAL_DB_SERVER || process.env.MSSQL_SERVER,
+    port: Number.parseInt(process.env.PORTAL_DB_PORT || process.env.MSSQL_PORT || '1433', 10),
     database: process.env.PORTAL_DB_DATABASE || process.env.MSSQL_DATABASE,
-    user:     process.env.PORTAL_DB_USER     || process.env.MSSQL_USER,
+    user: process.env.PORTAL_DB_USER || process.env.MSSQL_USER,
     password: process.env.PORTAL_DB_PASSWORD || process.env.MSSQL_PASSWORD,
-    options:  { trustServerCertificate: true, encrypt: false },
+    options: { trustServerCertificate: true, encrypt: false },
     connectionTimeout: 10_000,
-    requestTimeout:    30_000,
+    requestTimeout: 30_000,
     // ~1000 kullanici icin havuz buyutuldu (env ile ayarlanabilir; DB sunucusunun baglanti
     // limitiyle hizali olmali). min>0 → soguk-baslangic gecikmesini azaltir (isinmis baglantilar).
     pool: {
@@ -46,7 +46,9 @@ function closeQuietly(pool) {
       const r = pool.close();
       if (r && typeof r.catch === 'function') r.catch(() => {});
     }
-  } catch { /* yoksay */ }
+  } catch {
+    /* yoksay */
+  }
 }
 
 async function connectOnce(cfg) {
@@ -81,7 +83,9 @@ async function getPool() {
     console.warn('[PortalDB] Baglanti env vars eksik — portal DB devre disi.');
     return null;
   }
-  _connecting = connectOnce(cfg).finally(() => { _connecting = null; });
+  _connecting = connectOnce(cfg).finally(() => {
+    _connecting = null;
+  });
   return _connecting;
 }
 
@@ -94,8 +98,10 @@ function poolStats() {
       connected: true,
       used: typeof p.numUsed === 'function' ? p.numUsed() : undefined,
       free: typeof p.numFree === 'function' ? p.numFree() : undefined,
-      pendingAcquires: typeof p.numPendingAcquires === 'function' ? p.numPendingAcquires() : undefined,
-      max: p.max, min: p.min,
+      pendingAcquires:
+        typeof p.numPendingAcquires === 'function' ? p.numPendingAcquires() : undefined,
+      max: p.max,
+      min: p.min,
     };
   } catch {
     return { connected: false };

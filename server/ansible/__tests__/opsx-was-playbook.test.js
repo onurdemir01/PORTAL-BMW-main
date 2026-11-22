@@ -14,10 +14,13 @@
 //   * set_stats HER yolda (fail'den once, kosulsuz); uzak play rescue + ignore_unreachable.
 //   * Envanter parolasi (tbmwans_pwd) yalniz no_log gorevin stdin'inden; environment ile
 //     verilmez (Ansible ortam degerlerini become/dzdo komut satirina yazar).
+//   * Yazici sunucu ve SQL sunucusu AWX template Variables'tan (portal_yazici_host,
+//     portal_envanter_sql_sunucusu); playbook'ta / betikte kurum adi yok (K17). OW13 betigin
+//     --sunucu kapisini GERCEKTEN kosturur (DB'ye baglanmadan).
 //
-// DAVRANIS burada OLCULMEZ (metin bekcisi): betik davranisi opsx-was-script.test.js'te,
-// playbook karar zincirinin Jinja2 ile kosulmasi Ansible deposunda
-// bmw_nginx/tests/check_opsx_was.py (W5) icinde. Gercek Ansible/AWX: README "Kanarya".
+// DAVRANIS burada OLCULMEZ (metin bekcisi): betik davranisi opsx-was-script.test.js'te, playbook'larin
+// GERCEK ansible-playbook ile kosulmasi opsx-was-gercek-kosum.test.js'te (Ansible deposundaki W5 Jinja2'yi
+// Ansible'siz kosturur ve ters bolu ciftlemesini goremez; README "Bekciler"). Gercek AWX: README "Kanarya".
 //
 // OPSX_WAS_DIR: mutasyon kopyasi icin dizin (verilmezse depodaki ayna).
 // OPSX_WAS_ANSIBLE_DEPO: Ansible deposu koku verilirse iki kopyanin BAYT BAYT ayni oldugu
@@ -28,9 +31,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { normalize } = require('../../util/guard-text.cjs');
 
-const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'bmw_portal', 'opsx_was');
+const DIR =
+  process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
 const KESIF = path.join(DIR, 'opsx_was_discover.yml');
 const ISLEM = path.join(DIR, 'opsx_was_operation.yml');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');
@@ -104,7 +109,10 @@ for (const [ad, yol] of [
     const src = oku(yol);
     assert.deepEqual(yorumSatirlari(src), [], "'#' satiri var (aciklama README.md'ye)");
     assert.ok(!src.includes('\t'), 'SEKME karakteri var (YAML sekmeyi kabul etmez)');
-    assert.ok(!/ansible\.builtin\.script\b/.test(src), 'script modulu kullanilmis (copy + bash olmali)');
+    assert.ok(
+      !/ansible\.builtin\.script\b/.test(src),
+      'script modulu kullanilmis (copy + bash olmali)',
+    );
     assert.ok(!/^\s+script:/m.test(src), 'kisa adli script modulu kullanilmis');
   });
 
@@ -127,7 +135,10 @@ for (const [ad, yol] of [
     assert.ok(n.includes('become_method: dzdo'), 'uzak play become_method: dzdo degil');
     assert.ok(n.includes('become_user: was'), 'uzak play become_user: was degil');
     assert.ok(n.includes('ansible_pipelining: true'), 'uzak play ansible_pipelining: true degil');
-    assert.ok(/^\s*ignore_unreachable:\s*true/m.test(p[1].text), 'uzak play ignore_unreachable yok');
+    assert.ok(
+      /^\s*ignore_unreachable:\s*true/m.test(p[1].text),
+      'uzak play ignore_unreachable yok',
+    );
     assert.ok(/^\s+rescue:/m.test(p[0].text), 'girdi play rescue yok');
     assert.ok(/^\s+rescue:/m.test(p[1].text), 'uzak play rescue yok');
     assert.ok(!/become_user/.test(p[0].text + p[2].text), 'localhost play become ediyor');
@@ -151,7 +162,10 @@ for (const [ad, yol] of [
     assert.ok(fail > ss, "fail set_stats'ten once ya da yok (sonuc sozlesmesi yayinlanmaz)");
     const ssGorev = gorevler(son).find((t) => t.includes('ansible.builtin.set_stats:'));
     assert.ok(!/^\s+when:/m.test(ssGorev), 'set_stats kosullu');
-    assert.ok(!/ansible\.builtin\.(set_stats|fail):/.test(p[0].text + p[1].text), 'set_stats/fail son play disinda');
+    assert.ok(
+      !/ansible\.builtin\.(set_stats|fail):/.test(p[0].text + p[1].text),
+      'set_stats/fail son play disinda',
+    );
   });
 }
 
@@ -161,7 +175,10 @@ test('OW5 islem: TEK host, onay ve islem kumesi assert ediliyor', () => {
     ["',' not in target_host", 'tek host (virgul yok)'],
     ['target_host is string', 'target_host string (dizi = toplu islem)'],
     ["(consent | default(false) | string | lower) == 'true'", 'consent'],
-    ["(confirm_text | default('') | string) == (was_server | string)", 'confirm_text == was_server'],
+    [
+      "(confirm_text | default('') | string) == (was_server | string)",
+      'confirm_text == was_server',
+    ],
     ["in ['restart', 'stop', 'start']", 'operation kumesi'],
     ["is match('^[A-Za-z0-9_.-]+$')", 'ad bicimi'],
   ]) {
@@ -185,31 +202,58 @@ test('OW6 kesif: en cok 10 host, olculemeyen host listeden DUSMEZ', () => {
     'toplayici sonucsuz host icin olculemedi yedegi uretmiyor (host listeden duser)',
   );
   assert.ok(
-    n.includes("loop: '{{ [] if (opsx_was_input_err is defined) else (opsx_was_hosts | default([])) }}'"),
+    n.includes(
+      "loop: '{{ [] if (opsx_was_input_err is defined) else (opsx_was_hosts | default([])) }}'",
+    ),
     'toplayici ISTENEN host listesi uzerinde donmuyor',
   );
   // Kosul FAIL gorevinin when'inde aranir: ayni ifade ozet (debug) gorevinde de geciyor.
-  const failGorevi = gorevler(playler(oku(KESIF))[2].text).find((t) => t.includes('ansible.builtin.fail:'));
+  const failGorevi = gorevler(playler(oku(KESIF))[2].text).find((t) =>
+    t.includes('ansible.builtin.fail:'),
+  );
   assert.ok(failGorevi, 'kesif toplayicisinda fail gorevi yok');
   const fw = normalize(failGorevi);
   assert.ok(fw.includes('(opsx_was_input_err is defined)'), 'girdi reddinde job dusmuyor');
   assert.ok(
-    fw.includes("or ((opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | list | length) > 0)"),
+    fw.includes(
+      "or ((opsx_was_disc_final.hosts | selectattr('overall', 'ne', 'ok') | list | length) > 0)",
+    ),
     "olculemeyen host'ta job'i dusuren kosul fail gorevinde yok",
   );
 });
 
-test('OW7 envanter: parola yalniz no_log gorevin stdin\'inden; SQL yalniz tek satir UPDATE', () => {
+test("OW7 envanter: parola yalniz no_log gorevin stdin'inden; SQL yalniz tek satir UPDATE", () => {
   const src = oku(ISLEM);
   const db = gorevler(src).filter((t) => t.includes('--pwd-stdin'));
   assert.equal(db.length, 1, 'parolayi stdin ile alan TEK envanter gorevi beklenir');
   const t = normalize(db[0]);
   assert.ok(t.includes('no_log: true'), 'envanter gorevi no_log degil');
-  assert.ok(t.includes('delegate_to: GBLABT02'), "envanter gorevi GBLABT02'ye delegate degil");
+  assert.ok(
+    t.includes("delegate_to: '{{ portal_yazici_host | default('yazici-sunucu-tanimsiz', true) }}'"),
+    'envanter gorevi yazici sunucuya (AWX portal_yazici_host) delegate degil',
+  );
+  assert.ok(
+    t.includes("- '--sunucu={{ portal_envanter_sql_sunucusu | default(\'\', true) }}'") ||
+      t.includes('- "--sunucu={{ portal_envanter_sql_sunucusu | default(\'\', true) }}"'),
+    'SQL sunucusu betige --sunucu ile (AWX portal_envanter_sql_sunucusu) gitmiyor',
+  );
+  assert.ok(t.includes('(opsx_was_inv_hazir | bool)'), 'envanter gorevi on kosula bagli degil');
+  // On kosul: eksiklerin LISTESI (bos / null da eksik sayilir: default('', true)); hazir = liste bos.
+  const hazir = normalize(gorevler(src).find((g) => g.includes('opsx_was_inv_eksik: >-')) || '');
+  for (const v of ['tbmwans_pwd', 'portal_yazici_host', 'portal_envanter_sql_sunucusu'])
+    assert.ok(hazir.includes(`(${v} | default('', true) | string`), `on kosulda ${v} yok`);
+  assert.ok(
+    src.includes(`opsx_was_inv_hazir: "{{ (opsx_was_inv_eksik | length) == 0 }}"`),
+    'hazir eksik listesinden turemiyor',
+  );
   assert.ok(t.includes("stdin: '{{ tbmwans_pwd }}'"), 'parola stdin ile gitmiyor');
-  assert.ok(!/environment:/.test(db[0]), 'envanter gorevinde environment (parola dzdo komut satirina sizar)');
+  assert.ok(
+    !/environment:/.test(db[0]),
+    'envanter gorevinde environment (parola dzdo komut satirina sizar)',
+  );
   for (const g of gorevler(src)) {
-    if (/environment:/.test(g)) assert.ok(!g.includes('tbmwans_pwd'), 'tbmwans_pwd environment ile veriliyor');
+    if (/environment:/.test(g))
+      assert.ok(!g.includes('tbmwans_pwd'), 'tbmwans_pwd environment ile veriliyor');
   }
   const py = oku(ENVANTER);
   assert.ok(
@@ -221,13 +265,17 @@ test('OW7 envanter: parola yalniz no_log gorevin stdin\'inden; SQL yalniz tek sa
   for (const y of ['DELETE', 'INSERT', 'MERGE', 'TRUNCATE']) {
     assert.ok(!new RegExp(`["'][^"'\\n]*\\b${y}\\b`).test(py), `envanter betiginde ${y}`);
   }
-  assert.ok(normalize(py).includes('DURUMLAR = (\'running\', \'stopped\')'), 'yalniz olculmus durumlar yazilmali');
+  assert.ok(
+    normalize(py).includes("DURUMLAR = ('running', 'stopped')"),
+    'yalniz olculmus durumlar yazilmali',
+  );
 });
 
 test('OW8 opsx_was/** icinde yasak belirtec yok (README dahil)', () => {
   const bulgu = [];
   for (const f of tumDosyalar(DIR)) {
-    for (const y of yasakBul(fs.readFileSync(f, 'utf8'))) bulgu.push(`${path.relative(DIR, f)}: ${y}`);
+    for (const y of yasakBul(fs.readFileSync(f, 'utf8')))
+      bulgu.push(`${path.relative(DIR, f)}: ${y}`);
   }
   assert.deepEqual(bulgu, [], 'yasak belirtec');
 });
@@ -258,6 +306,8 @@ test('OW10 README sozlesmeyi anlatiyor', () => {
     'OPSX_WAS_OPERATION_TEMPLATE_ID',
     'allow_simultaneous',
     'tbmwans_pwd',
+    'portal_yazici_host',
+    'portal_envanter_sql_sunucusu',
     'Kanarya',
     'ADMU0509I',
     'kill -9',
@@ -271,12 +321,16 @@ test('OW11 bekci KOR DEGIL: sentetik ihlaller yakalanir', () => {
   assert.deepEqual(yorumSatirlari('---\n- name: x\n  # yorum\n'), [3]);
   assert.deepEqual(yasakBul('wsadmin.sh -user a -password b'), ['-password', '-user']);
   assert.deepEqual(yasakBul('become_user: www'), ['www']);
-  const p = playler('- name: a\n  hosts: localhost\n- name: b\n  hosts: hedef\n  become_user: was\n');
+  const p = playler(
+    '- name: a\n  hosts: localhost\n- name: b\n  hosts: hedef\n  become_user: was\n',
+  );
   assert.deepEqual(
     p.map((x) => x.hosts),
     ['localhost', 'hedef'],
   );
-  const t = gorevler('    - name: a\n      x: 1\n    - name: b\n      ansible.builtin.set_stats:\n      when: x\n');
+  const t = gorevler(
+    '    - name: a\n      x: 1\n    - name: b\n      ansible.builtin.set_stats:\n      when: x\n',
+  );
   assert.equal(t.length, 2);
   assert.ok(/^\s+when:/m.test(t[1]));
 });
@@ -301,5 +355,35 @@ test(
         `${f} iki depoda farkli`,
       );
     }
+  },
+);
+
+// Betigin --sunucu kapisi GERCEKTEN: tanimsiz / gecersiz SQL sunucusu DB'ye baglanmadan FAIL; gecerli
+// bicim kapidan gecer (sonraki kapi: bos parola). pyodbc gerekmez (kapilar baglantidan once).
+const PY = ['python3', 'python'].find(
+  (p) => spawnSync(p, ['--version'], { stdio: 'ignore' }).status === 0,
+);
+test(
+  'OW13 envanter betigi: SQL sunucusu --sunucu ile gelir; yoksa / gecersizse baglanmadan FAIL',
+  {
+    skip: !PY && 'python yok',
+  },
+  () => {
+    const kos = (...ek) =>
+      spawnSync(PY, ['-I', ENVANTER, '--host=ORHOST01', '--app=app1', '--status=running', ...ek], {
+        encoding: 'utf8',
+        input: '',
+        timeout: 30000,
+      });
+    for (const ek of [[], ['--sunucu='], ['--sunucu=db.ornek.invalid'], ['--sunucu=a;b,1453']]) {
+      const r = kos(...ek);
+      assert.equal(r.status, 2, `${ek.join(' ') || '(yok)'}: kod ${r.status} ${r.stdout}`);
+      assert.match(r.stdout, /^WASAPP_UPDATE\tFAIL\tSQL sunucusu tanimli degil ya da gecersiz/m);
+    }
+    const r = kos('--sunucu=db.ornek.invalid,1453', '--pwd-stdin');
+    assert.equal(r.status, 2);
+    assert.match(r.stdout, /^WASAPP_UPDATE\tFAIL\tparola bos/m, 'gecerli sunucu kapidan gecmeli');
+    // Baglanti dizgisinde sunucu YER TUTUCU (kurum adlari K17'nin isi; burada sabit ad olmamasi).
+    assert.match(oku(ENVANTER), /^ {4}"SERVER=%s;"$/m, 'SERVER sabit bir ad tasiyor');
   },
 );

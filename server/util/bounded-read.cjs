@@ -35,9 +35,7 @@
  */
 function tooLargeError(label, maxBytes) {
   return Object.assign(
-    new Error(
-      `${label}: yanıt çok büyük (> ${Math.round(maxBytes / 1024)} KB) — okuma kesildi.`,
-    ),
+    new Error(`${label}: yanıt çok büyük (> ${Math.round(maxBytes / 1024)} KB) — okuma kesildi.`),
     { status: 502, tooLarge: true, permanent: true },
   );
 }
@@ -185,4 +183,10 @@ async function readBodyPreview(body, { maxBytes = 4096 } = {}) {
     .slice(0, maxBytes);
 }
 
-module.exports = { readResponseLimited, readBodyLimited, readBodyPreview, parseJsonLimited, tooLargeError };
+module.exports = {
+  readResponseLimited,
+  readBodyLimited,
+  readBodyPreview,
+  parseJsonLimited,
+  tooLargeError,
+};

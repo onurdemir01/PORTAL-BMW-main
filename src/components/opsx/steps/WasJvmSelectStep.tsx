@@ -11,21 +11,25 @@
 //   Çalışıyor → Durdur / Restart Et     Durmuş → Başlat     Askıda → Durdur / Restart Et (uyarıyla)
 //
 // Keşif sonucu 15 dakika geçerlidir; süre dolunca devam edilemez, keşif yenilenir.
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ExclamationTriangleIcon, ArrowPathIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ExclamationTriangleIcon,
+  ArrowPathIcon,
+  InformationCircleIcon,
+} from '@heroicons/react/24/outline';
 import {
   opsxWasApi,
   type WasHost,
   type WasTarget,
   type WasOperation,
   type WasDiscoverStatus,
-} from "@/api/opsxApi";
-import { fmtTime } from "@/utils/datetime";
-import { WasEnvBadge, WasStateBadge } from "./WasBadges";
-import { WAS_OP_LABELS, wasClusterLabel, wasTargetKey } from "./wasLabels";
+} from '@/api/opsxApi';
+import { fmtTime } from '@/utils/datetime';
+import { WasEnvBadge, WasStateBadge } from './WasBadges';
+import { WAS_OP_LABELS, wasClusterLabel, wasTargetKey } from './wasLabels';
 
-const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
-const OPS: WasOperation[] = ["restart", "stop", "start"];
+const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+const OPS: WasOperation[] = ['restart', 'stop', 'start'];
 
 export interface WasDiscoveryRef {
   jobId: number;
@@ -49,22 +53,34 @@ interface Props {
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 function blockedReason(t: WasTarget): string {
-  if (t.hostOverall !== "ok") return `Sunucu ölçülemedi — gerçek durum bilinmiyor${t.reason ? ` (${t.reason})` : ""}.`;
-  if (t.state === "OLCULEMEDI") return `Durum ölçülemedi — gerçek durum bilinmiyor${t.reason ? ` (${t.reason})` : ""}.`;
-  if (t.state === "COKLU_SUREC") return "Birden fazla süreç eşleşti — hangisine dokunulacağı belirsiz.";
-  if (t.kimlik !== "var") return `Profil kimliği (soap.client.props) ${t.kimlik === "yok" ? "bulunamadı" : "ölçülemedi"} — işlem yapılmaz.`;
-  return t.reason || "Bu JVM üzerinde işlem yapılamaz.";
+  if (t.hostOverall !== 'ok')
+    return `Sunucu ölçülemedi — gerçek durum bilinmiyor${t.reason ? ` (${t.reason})` : ''}.`;
+  if (t.state === 'OLCULEMEDI')
+    return `Durum ölçülemedi — gerçek durum bilinmiyor${t.reason ? ` (${t.reason})` : ''}.`;
+  if (t.state === 'COKLU_SUREC')
+    return 'Birden fazla süreç eşleşti — hangisine dokunulacağı belirsiz.';
+  if (t.kimlik !== 'var')
+    return `Profil kimliği (soap.client.props) ${t.kimlik === 'yok' ? 'bulunamadı' : 'ölçülemedi'} — işlem yapılmaz.`;
+  return t.reason || 'Bu JVM üzerinde işlem yapılamaz.';
 }
 
-const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hosts, hostInfo, busy, resume, onSubmit, onRefresh }) => {
+const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({
+  app,
+  hosts,
+  hostInfo,
+  busy,
+  resume,
+  onSubmit,
+  onRefresh,
+}) => {
   // Keşif yalnız ilk açılışta başlar; "Keşfi yenile" bileşeni yeniden kurar (key).
   const initial = useRef({ app, hosts, resume });
-  const [phase, setPhase] = useState<"running" | "done" | "error">("running");
+  const [phase, setPhase] = useState<'running' | 'done' | 'error'>('running');
   const [error, setError] = useState<string | null>(null);
   const [disc, setDisc] = useState<{ jobId: number; awxServerId: number } | null>(resume ?? null);
   const [result, setResult] = useState<WasDiscoverStatus | null>(null);
   const [expired, setExpired] = useState(false);
-  const [selectedKey, setSelectedKey] = useState("");
+  const [selectedKey, setSelectedKey] = useState('');
   const [operation, setOperation] = useState<WasOperation | null>(null);
 
   useEffect(() => {
@@ -75,21 +91,21 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
 
     const fail = (msg: string) => {
       setError(msg);
-      setPhase("error");
+      setPhase('error');
     };
 
     const poll = async (awxServerId: number, jobId: number) => {
       try {
         const r = await opsxWasApi.discoverStatus(awxServerId, jobId);
         if (cancelled) return;
-        if (!r.ok) return fail(r.message || "Keşif durumu alınamadı.");
+        if (!r.ok) return fail(r.message || 'Keşif durumu alınamadı.');
         if (!TERMINAL.has(r.status)) {
           pollTimer = window.setTimeout(() => poll(awxServerId, jobId), 3000);
           return;
         }
-        if (!r.targets) return fail(r.message || "Keşif sonucu alınamadı.");
+        if (!r.targets) return fail(r.message || 'Keşif sonucu alınamadı.');
         setResult(r);
-        setPhase("done");
+        setPhase('done');
         const kalan = r.validUntil ? Date.parse(r.validUntil) - Date.now() : 0;
         if (!Number.isFinite(kalan) || kalan <= 0) setExpired(true);
         else expiryTimer = window.setTimeout(() => setExpired(true), Math.min(kalan, 2147483000));
@@ -111,7 +127,8 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
       .discover(a, h)
       .then((r) => {
         if (cancelled) return;
-        if (!r.ok || r.jobId == null || r.awxServerId == null) return fail(r.message || "Keşif işi başlatılamadı.");
+        if (!r.ok || r.jobId == null || r.awxServerId == null)
+          return fail(r.message || 'Keşif işi başlatılamadı.');
         setDisc({ jobId: r.jobId, awxServerId: r.awxServerId });
         void poll(r.awxServerId, r.jobId);
       })
@@ -130,27 +147,29 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
   const targets = useMemo(() => result?.targets || [], [result]);
   const selected = targets.find((t) => wasTargetKey(t) === selectedKey) || null;
 
-  if (phase === "running") {
+  if (phase === 'running') {
     return (
       <div className="py-8 text-center space-y-2">
         <ArrowPathIcon className="w-5 h-5 mx-auto animate-spin text-[var(--text-muted)]" />
         <p className="text-sm text-[var(--text-muted)]">
-          <span className="font-mono text-[var(--text-primary)]">{app}</span> için WAS JVM'leri taranıyor…
+          <span className="font-mono text-[var(--text-primary)]">{app}</span> için WAS JVM'leri
+          taranıyor…
         </p>
         <p className="text-xs text-[var(--text-muted)]">
-          Salt okunur bir Ansible işi (was kullanıcısıyla ps + serverStatus) çalışıyor; hiçbir şey değiştirilmez.
-          {disc ? ` AWX #${disc.jobId}` : ""}
+          Salt okunur bir Ansible işi (was kullanıcısıyla ps + serverStatus) çalışıyor; hiçbir şey
+          değiştirilmez.
+          {disc ? ` AWX #${disc.jobId}` : ''}
         </p>
       </div>
     );
   }
 
-  if (phase === "error" || !result || !disc) {
+  if (phase === 'error' || !result || !disc) {
     return (
       <div className="space-y-3">
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>{error || "Keşif sonucu alınamadı."}</span>
+          <span>{error || 'Keşif sonucu alınamadı.'}</span>
         </div>
         <button onClick={onRefresh} className="btn-secondary w-full text-sm">
           <ArrowPathIcon className="w-4 h-4" />
@@ -160,8 +179,8 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
     );
   }
 
-  const olculemeyen = (result.hosts || []).filter((h) => h.overall !== "ok");
-  const uygulamasiz = (result.hosts || []).filter((h) => h.overall === "ok" && !h.hasApp);
+  const olculemeyen = (result.hosts || []).filter((h) => h.overall !== 'ok');
+  const uygulamasiz = (result.hosts || []).filter((h) => h.overall === 'ok' && !h.hasApp);
   const warnings = selected && operation ? selected.warnings[operation] || [] : [];
   const canContinue = !!selected && !!operation && !expired && !result.appLock && !busy;
 
@@ -170,7 +189,11 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
     onSubmit({
       target: selected,
       operation,
-      discovery: { ...disc, finishedAt: result.finishedAt || null, validUntil: result.validUntil || null },
+      discovery: {
+        ...disc,
+        finishedAt: result.finishedAt || null,
+        validUntil: result.validUntil || null,
+      },
     });
   }
 
@@ -178,10 +201,13 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--text-secondary)]">Hangi JVM üzerinde işlem yapılsın? (tek seçim)</p>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Hangi JVM üzerinde işlem yapılsın? (tek seçim)
+          </p>
           <p className="mt-1 text-xs text-[var(--text-muted)]">
             Uygulama: <span className="font-mono text-[var(--text-primary)]">{app}</span>
-            {" · "}keşif {fmtTime(result.finishedAt)}'de tamamlandı, {fmtTime(result.validUntil)}'e kadar geçerli
+            {' · '}keşif {fmtTime(result.finishedAt)}'de tamamlandı, {fmtTime(result.validUntil)}'e
+            kadar geçerli
           </p>
         </div>
         <button
@@ -198,10 +224,10 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
           <span>
             Bu uygulamada süren bir WAS işlemi var
-            {result.appLock.holder ? ` (${result.appLock.holder}` : " ("}
-            {result.appLock.target ? ` · ${result.appLock.target}` : ""}
-            {result.appLock.jobId ? ` · AWX #${result.appLock.jobId}` : ""}). Aynı uygulamanın iki sunucusu aynı anda
-            indirilmez — işlem bitince keşfi yenileyin.
+            {result.appLock.holder ? ` (${result.appLock.holder}` : ' ('}
+            {result.appLock.target ? ` · ${result.appLock.target}` : ''}
+            {result.appLock.jobId ? ` · AWX #${result.appLock.jobId}` : ''}). Aynı uygulamanın iki
+            sunucusu aynı anda indirilmez — işlem bitince keşfi yenileyin.
           </span>
         </div>
       )}
@@ -219,7 +245,7 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
           {olculemeyen.map((h) => (
             <div key={h.host}>
               <span className="font-mono">{h.host}</span>
-              {h.reason ? ` — ${h.reason}` : ""}
+              {h.reason ? ` — ${h.reason}` : ''}
             </div>
           ))}
         </div>
@@ -227,8 +253,8 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
 
       {uygulamasiz.length > 0 && (
         <p className="text-xs text-[var(--text-muted)]">
-          Şu sunucularda <span className="font-mono">{app}</span> adlı bir JVM bulunamadı:{" "}
-          {uygulamasiz.map((h) => h.host).join(", ")}
+          Şu sunucularda <span className="font-mono">{app}</span> adlı bir JVM bulunamadı:{' '}
+          {uygulamasiz.map((h) => h.host).join(', ')}
         </p>
       )}
 
@@ -240,14 +266,18 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
           </span>
         </div>
       ) : (
-        <div className="space-y-1.5 max-h-[70vh] overflow-y-auto" role="radiogroup" aria-label="WAS JVM seçimi">
+        <div
+          className="space-y-1.5 max-h-[70vh] overflow-y-auto"
+          role="radiogroup"
+          aria-label="WAS JVM seçimi"
+        >
           {targets.map((t) => {
             const k = wasTargetKey(t);
-            const env = envOf.get(t.host) || "";
+            const env = envOf.get(t.host) || '';
             return (
               <div key={k} className="border border-[var(--border)] rounded-xl">
                 <label
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl ${t.selectable ? "cursor-pointer hover:bg-[var(--bg-elevated)]" : "cursor-not-allowed opacity-70"}`}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl ${t.selectable ? 'cursor-pointer hover:bg-[var(--bg-elevated)]' : 'cursor-not-allowed opacity-70'}`}
                 >
                   <input
                     type="radio"
@@ -266,15 +296,21 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
                     </span>
                     <span className="block text-[10px] text-[var(--text-muted)] break-all whitespace-normal">
                       {t.profile} · {t.node}
-                      {t.cluster ? ` · ${wasClusterLabel(t.cluster)}` : ""}
-                      {t.peers.total > 0 ? ` · diğer örnekler: ${t.peers.running}/${t.peers.total} çalışıyor` : ""}
-                      {t.peers.unknown > 0 ? `, ${t.peers.unknown} ölçülemedi` : ""}
+                      {t.cluster ? ` · ${wasClusterLabel(t.cluster)}` : ''}
+                      {t.peers.total > 0
+                        ? ` · diğer örnekler: ${t.peers.running}/${t.peers.total} çalışıyor`
+                        : ''}
+                      {t.peers.unknown > 0 ? `, ${t.peers.unknown} ölçülemedi` : ''}
                     </span>
                   </span>
                   <WasEnvBadge env={env} />
                   <WasStateBadge state={t.state} />
                 </label>
-                {!t.selectable && <p className="px-3 pb-2 text-[11px] text-[var(--text-muted)]">{blockedReason(t)}</p>}
+                {!t.selectable && (
+                  <p className="px-3 pb-2 text-[11px] text-[var(--text-muted)]">
+                    {blockedReason(t)}
+                  </p>
+                )}
               </div>
             );
           })}
@@ -283,7 +319,9 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
 
       {selected && (
         <div className="space-y-2">
-          <p className="text-xs text-[var(--text-muted)]">İşlem (JVM'in ölçülen durumuna göre açılır):</p>
+          <p className="text-xs text-[var(--text-muted)]">
+            İşlem (JVM'in ölçülen durumuna göre açılır):
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {OPS.map((op) => {
               const allowed = selected.allowedOps.includes(op);
@@ -295,8 +333,8 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
                   title={allowed ? undefined : "Bu JVM'in ölçülen durumunda bu işlem izinli değil."}
                   className={`px-3 py-2 text-sm rounded-xl border transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                     operation === op
-                      ? "border-[var(--accent)] text-[var(--text-primary)] bg-[var(--bg-elevated)] font-semibold"
-                      : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]"
+                      ? 'border-[var(--accent)] text-[var(--text-primary)] bg-[var(--bg-elevated)] font-semibold'
+                      : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]'
                   }`}
                 >
                   {WAS_OP_LABELS[op]}
@@ -307,7 +345,10 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
           {warnings.length > 0 && (
             <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
               <InformationCircleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <span>Bu işlem için onay ekranında ayrıca kabul edilmesi gereken {warnings.length} uyarı var.</span>
+              <span>
+                Bu işlem için onay ekranında ayrıca kabul edilmesi gereken {warnings.length} uyarı
+                var.
+              </span>
             </div>
           )}
         </div>

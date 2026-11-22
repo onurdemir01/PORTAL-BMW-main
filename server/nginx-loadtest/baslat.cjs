@@ -25,10 +25,26 @@ const DENETIM_SINIRI = 2000;
 // Kosuyu / isi tanitan alanlar: kisaltmanin HICBIR adiminda atilmaz ya da kisaltilmaz (sinira sigmayan
 // son care disinda; o da yalniz bunlari tutar).
 const DENETIM_ANAHTARLARI = Object.freeze([
-  'kosuId', 'adim', 'islem', 'hedefTuru', 'motor', 'hedefHost', 'hedefIp', 'yukHost', 'vhost', 'senaryoId', 'senaryoSha256',
-  'onKontrolKosuId', 'jobId', 'awxServerId', 'templateId', 'code', 'id',
+  'kosuId',
+  'adim',
+  'islem',
+  'hedefTuru',
+  'motor',
+  'hedefHost',
+  'hedefIp',
+  'yukHost',
+  'vhost',
+  'senaryoId',
+  'senaryoSha256',
+  'onKontrolKosuId',
+  'jobId',
+  'awxServerId',
+  'templateId',
+  'code',
+  'id',
   // Tur 4: arac hazirlama isi (araclar.cjs).
-  'aracId', 'derlemeHost',
+  'aracId',
+  'derlemeHost',
 ]);
 const DENETIM_ISARETLERI = new Set(['kirpildi', 'kirpilan', 'atilan']);
 
@@ -41,7 +57,13 @@ function kisalt(metin, n) {
   const k = Array.from(String(metin));
   return k.length > n ? `${k.slice(0, n).join('')}…` : String(metin);
 }
-const kisaltDerin = (v, n) => { if (typeof v === 'string') return kisalt(v, n); if (Array.isArray(v)) return v.map((x) => kisaltDerin(x, n)); if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([a, b]) => [a, kisaltDerin(b, n)])); return v; };
+const kisaltDerin = (v, n) => {
+  if (typeof v === 'string') return kisalt(v, n);
+  if (Array.isArray(v)) return v.map((x) => kisaltDerin(x, n));
+  if (v && typeof v === 'object')
+    return Object.fromEntries(Object.entries(v).map(([a, b]) => [a, kisaltDerin(b, n)]));
+  return v;
+};
 
 /**
  * Denetim ayrintisi: nesne -> en cok `sinir` karakterlik GECERLI JSON. Sigiyorsa JSON.stringify ile
@@ -51,16 +73,22 @@ const kisaltDerin = (v, n) => { if (typeof v === 'string') return kisalt(v, n); 
  * dahil) kisaltilir; (4) anahtar disi alanlar buyukten kucuge atilir, sayilari `atilan: n`; (5) son
  * care yalniz anahtar alanlar. Anahtar alanlar (DENETIM_ANAHTARLARI) 1-4'te degismez.
  */
-function denetimAyrintisi(nesne, { sinir = DENETIM_SINIRI, anahtarlar = DENETIM_ANAHTARLARI } = {}) {
+function denetimAyrintisi(
+  nesne,
+  { sinir = DENETIM_SINIRI, anahtarlar = DENETIM_ANAHTARLARI } = {},
+) {
   const kaynak = nesne && typeof nesne === 'object' && !Array.isArray(nesne) ? nesne : {};
   let o = { ...kaynak };
   const metin = () => JSON.stringify(o);
   if (metin().length <= sinir) return metin();
   const anahtar = new Set(anahtarlar);
   const serbestAlan = (k) => !anahtar.has(k) && !DENETIM_ISARETLERI.has(k);
-  const diziler = Object.keys(o).filter((k) => serbestAlan(k) && Array.isArray(o[k]) && o[k].some((x) => typeof x === 'string'));
+  const diziler = Object.keys(o).filter(
+    (k) => serbestAlan(k) && Array.isArray(o[k]) && o[k].some((x) => typeof x === 'string'),
+  );
   for (const n of [160, 80, 40]) {
-    for (const k of diziler) o[k] = kaynak[k].map((x) => (typeof x === 'string' ? kisalt(x, n) : x));
+    for (const k of diziler)
+      o[k] = kaynak[k].map((x) => (typeof x === 'string' ? kisalt(x, n) : x));
     o.kirpildi = true;
     if (metin().length <= sinir) return metin();
   }
@@ -77,12 +105,21 @@ function denetimAyrintisi(nesne, { sinir = DENETIM_SINIRI, anahtarlar = DENETIM_
   }
   // Atilan alanlarin SAYISI (adlari cok alanli nesnede attigi kadar yer tutardi).
   const uzunluk = (v) => (JSON.stringify(v) || '').length;
-  for (const k of Object.keys(o).filter(serbestAlan).sort((a, b) => uzunluk(o[b]) - uzunluk(o[a]))) {
+  for (const k of Object.keys(o)
+    .filter(serbestAlan)
+    .sort((a, b) => uzunluk(o[b]) - uzunluk(o[a]))) {
     delete o[k];
     o.atilan = (o.atilan || 0) + 1;
     if (metin().length <= sinir) return metin();
   }
-  o = { ...Object.fromEntries(Object.entries(o).filter(([k]) => anahtar.has(k)).map(([k, v]) => [k, kisaltDerin(v, 60)])), kirpildi: true };
+  o = {
+    ...Object.fromEntries(
+      Object.entries(o)
+        .filter(([k]) => anahtar.has(k))
+        .map(([k, v]) => [k, kisaltDerin(v, 60)]),
+    ),
+    kirpildi: true,
+  };
   return metin().length <= sinir ? metin() : JSON.stringify({ kirpildi: true });
 }
 
@@ -109,12 +146,21 @@ async function sablonuCoz(env = process.env) {
   try {
     row = await reg.getByKey(KAYIT_ANAHTARI);
   } catch (e) {
-    throw hata(424, 'db_okunamadi', `Playbook Kayıtları okunamadı: ${maskele(e && e.message)}`);
+    throw hata(424, 'db_okunamadi', `Playbook Kayıtları okunamadı: ${maskele(e?.message)}`);
   }
-  const templateId = row && row.enabled !== false ? Number(reg.getEffectiveTemplateId(row)) || null : null;
+  const templateId =
+    row && row.enabled !== false ? Number(reg.getEffectiveTemplateId(row)) || null : null;
   if (!templateId) {
-    const neden = (() => { if (!row) return `"${KAYIT_ANAHTARI}" anahtarlı satır YOK`; if (row.enabled === false) return `"${KAYIT_ANAHTARI}" satırı KAPALI (etkinleştirin)`; return `"${KAYIT_ANAHTARI}" satırında Template ID boş (ya da NGINX_LOADTEST_RUN_TEMPLATE_ID)`; })();
-    throw hata(409, 'sablon_yok', `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`);
+    const neden = (() => {
+      if (!row) return `"${KAYIT_ANAHTARI}" anahtarlı satır YOK`;
+      if (row.enabled === false) return `"${KAYIT_ANAHTARI}" satırı KAPALI (etkinleştirin)`;
+      return `"${KAYIT_ANAHTARI}" satırında Template ID boş (ya da NGINX_LOADTEST_RUN_TEMPLATE_ID)`;
+    })();
+    throw hata(
+      409,
+      'sablon_yok',
+      `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`,
+    );
   }
   return { templateId, serverId: sunucuSec(row.awxServerId, env.NGINX_LOADTEST_AWX_SERVER_ID) };
 }
@@ -124,8 +170,10 @@ async function playbookDogrula(serverId, templateId) {
   await pf.assertRegistryPlaybook(serverId, templateId, KAYIT_ANAHTARI);
   // BEKLENEN_PLAYBOOK'ta anahtar yoksa assertRegistryPlaybook hicbir sey denetlemez (fail-open);
   // yuk testi icin dosya adi burada da sabit.
-  if (!(pf.BEKLENEN_PLAYBOOK && pf.BEKLENEN_PLAYBOOK[KAYIT_ANAHTARI])) {
-    await pf.assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK_ADI, { label: KAYIT_ANAHTARI });
+  if (!pf.BEKLENEN_PLAYBOOK?.[KAYIT_ANAHTARI]) {
+    await pf.assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK_ADI, {
+      label: KAYIT_ANAHTARI,
+    });
   }
 }
 
@@ -138,24 +186,35 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
   const pf = require('../ansible/template-preflight.cjs');
   try {
     await playbookDogrula(serverId, templateId);
-    await pf.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: KAYIT_ANAHTARI });
+    await pf.assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, {
+      label: KAYIT_ANAHTARI,
+    });
   } catch (e) {
-    if (e && e.status === 409) throw Object.assign(e, { belirsiz: false });
-    throw hata(424, 'awx_okunamadi', `AWX şablonu doğrulanamadı: ${maskele(e && e.message)}`, { belirsiz: false });
+    if (e?.status === 409) throw Object.assign(e, { belirsiz: false });
+    throw hata(424, 'awx_okunamadi', `AWX şablonu doğrulanamadı: ${maskele(e?.message)}`, {
+      belirsiz: false,
+    });
   }
   const runner = require('../ansible/runner.cjs');
-  const user = (req && req.session && req.session.user) || {};
+  const user = req?.session?.user || {};
   let result;
   try {
     // limit BILEREK '': AWX limit'i prompt kapaliysa sessizce yok sayar; hedefler add_host ile.
     result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     const kesin = Number.isInteger(st) && st >= 400 && st < 500;
-    throw hata(424, 'awx_okunamadi', `AWX işi başlatılamadı: ${maskele(e && e.message)}`, { belirsiz: !kesin });
+    throw hata(424, 'awx_okunamadi', `AWX işi başlatılamadı: ${maskele(e?.message)}`, {
+      belirsiz: !kesin,
+    });
   }
-  if (!result || result.jobId == null) {
-    throw hata(424, 'awx_okunamadi', 'AWX iş numarası döndürmedi; iş başlamış olabilir, kilit süre dolunca düşer.', { belirsiz: true });
+  if (result?.jobId == null) {
+    throw hata(
+      424,
+      'awx_okunamadi',
+      'AWX iş numarası döndürmedi; iş başlamış olabilir, kilit süre dolunca düşer.',
+      { belirsiz: true },
+    );
   }
   const yutulan = (result.ignoredFields || []).filter((ad) => String(ad).startsWith('extra_vars'));
   if (yutulan.length) {
@@ -163,29 +222,49 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
     try {
       await runner.cancelJobOnServer(serverId, result.jobId);
     } catch (e) {
-      iptal = `İPTAL EDİLEMEDİ (${maskele(e && e.message)}) - AWX'ten elle durdurun`;
-      console.warn(`[NginxYukTesti] yutulan degiskenli is #${result.jobId} iptal edilemedi:`, maskele(e && e.message));
+      iptal = `İPTAL EDİLEMEDİ (${maskele(e?.message)}) - AWX'ten elle durdurun`;
+      console.warn(
+        `[NginxYukTesti] yutulan degiskenli is #${result.jobId} iptal edilemedi:`,
+        maskele(e?.message),
+      );
     }
-    const e = pf.promptKapaliHatasi({ templateId, templateName: '', label: KAYIT_ANAHTARI, degiskenSayisi: yutulan.length });
+    const e = pf.promptKapaliHatasi({
+      templateId,
+      templateName: '',
+      label: KAYIT_ANAHTARI,
+      degiskenSayisi: yutulan.length,
+    });
     e.message += ` (AWX iş #${result.jobId} ${iptal}.)`;
     throw Object.assign(e, { belirsiz: false, jobId: result.jobId, awxServerId: serverId });
   }
   try {
     await require('../db/index.cjs').query(
       `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [user.username || 'unknown', serverId, templateId, String(sablonAdi || '').slice(0, 500), result.jobId, result.status || 'pending',
-        JSON.stringify(require('./dogrula.cjs').gecmisIcinMaskele(extraVars))],
+      [
+        user.username || 'unknown',
+        serverId,
+        templateId,
+        String(sablonAdi || '').slice(0, 500),
+        result.jobId,
+        result.status || 'pending',
+        JSON.stringify(require('./dogrula.cjs').gecmisIcinMaskele(extraVars)),
+      ],
     );
   } catch (e) {
     // Is ZATEN basladi; kayit hatasi geri cevirmez ama yutulmaz.
-    console.warn('[NginxYukTesti] job gecmisi yazilamadi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti] job gecmisi yazilamadi:', maskele(e?.message));
   }
   try {
     const d = denetim || {};
     require('../audit/index.cjs').auditPortal(req, d.eylem || 'nginx_loadtest_baslat', {
       targetHost: d.targetHost || null,
       targetIp: d.targetIp || null,
-      detail: denetimAyrintisi({ ...(d.ayrinti || {}), jobId: result.jobId, awxServerId: serverId, templateId }),
+      detail: denetimAyrintisi({
+        ...(d.ayrinti || {}),
+        jobId: result.jobId,
+        awxServerId: serverId,
+        templateId,
+      }),
     });
   } catch {
     /* best-effort */
@@ -194,5 +273,13 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
 }
 
 module.exports = {
-  KAYIT_ANAHTARI, BEKLENEN_PLAYBOOK_ADI, DENETIM_SINIRI, DENETIM_ANAHTARLARI, sunucuSec, sablonuCoz, playbookDogrula, isBaslat, denetimAyrintisi,
+  KAYIT_ANAHTARI,
+  BEKLENEN_PLAYBOOK_ADI,
+  DENETIM_SINIRI,
+  DENETIM_ANAHTARLARI,
+  sunucuSec,
+  sablonuCoz,
+  playbookDogrula,
+  isBaslat,
+  denetimAyrintisi,
 };

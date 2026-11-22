@@ -1,13 +1,16 @@
 // src/components/telnet/steps/AppSearchStep.tsx — uygulama seçimi. OpsX'in
 // AppSearchStep'iyle BİREBİR aynı davranış: aranabilir liste, DB erişilemezse
 // snapshot fallback uyarısı.
-import React, { useEffect, useState } from "react";
-import { MagnifyingGlassIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import { telnetApi } from "@/api/telnetApi";
+import React, { useEffect, useState } from 'react';
+import { MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { telnetApi } from '@/api/telnetApi';
 import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
-const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean }> = ({ onSelect, busy }) => {
-  const [search, setSearch] = useState("");
+const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean }> = ({
+  onSelect,
+  busy,
+}) => {
+  const [search, setSearch] = useState('');
   const [apps, setApps] = useState<string[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -17,8 +20,12 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
     const timer = setTimeout(() => {
       setLoading(true);
       setError(null);
-      telnetApi.searchApps(search)
-        .then((r) => { setApps(r.apps ?? []); setFallbackMode(!!r.fallbackMode); })
+      telnetApi
+        .searchApps(search)
+        .then((r) => {
+          setApps(r.apps ?? []);
+          setFallbackMode(!!r.fallbackMode);
+        })
         .catch((err) => setError(err instanceof Error ? err.message : String(err)))
         .finally(() => setLoading(false));
     }, 250);
@@ -30,7 +37,10 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
       {fallbackMode && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>Envanter veritabanına şu an erişilemiyor — son bilinen uygulama listesi (snapshot) gösteriliyor.</span>
+          <span>
+            Envanter veritabanına şu an erişilemiyor — son bilinen uygulama listesi (snapshot)
+            gösteriliyor.
+          </span>
         </div>
       )}
       <div className="relative">

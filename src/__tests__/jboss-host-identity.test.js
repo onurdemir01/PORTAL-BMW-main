@@ -28,10 +28,11 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 // ANLATAN yorumlar var (`key={h.host}` gibi) — onlari yasakli desen sanmak,
 // duzeltmeyi belgeleyen yorumu silmeye zorlardi. Yalnizca tam satir yorumlari
 // atilir; satir ici `//` (ornegin bir URL) elenmez.
-const codeOf = (p) => read(p)
-  .split('\n')
-  .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-  .join('\n');
+const codeOf = (p) =>
+  read(p)
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join('\n');
 
 // Gercek kaynagi derleyip CALISTIRIR — kopyasini degil.
 function load(rel) {
@@ -55,15 +56,15 @@ const HOST_STEPS = [
 
 // ── J1: satir kimligi host DEGIL, (host, major) ciftidir ────────────────────
 test('J1: ayni host iki majorde iki FARKLI anahtar uretir', () => {
-  const j7 = J.hostKey('GBCJAP01', '7');
-  const j8 = J.hostKey('GBCJAP01', '8');
+  const j7 = J.hostKey('ORCJAP01', '7');
+  const j8 = J.hostKey('ORCJAP01', '8');
   assert.notEqual(j7, j8, 'cift kurulumlu host tek anahtara cokuyor — secim yine paylasilir');
 
   // Cozumleme kayipsiz olmali: secim sunucuya cift olarak gidiyor.
-  assert.deepEqual(J.parseHostKey(j8), { host: 'GBCJAP01', jbossMajor: '8' });
+  assert.deepEqual(J.parseHostKey(j8), { host: 'ORCJAP01', jbossMajor: '8' });
 
   // Buyuk/kucuk harf ayni sunucuyu iki kez SECTIRMEMELI.
-  assert.equal(J.hostKey('gbcjap01', '8'), j8);
+  assert.equal(J.hostKey('orcjap01', '8'), j8);
 });
 
 test('J1b: majoru bilinmeyen host da kararli bir anahtar alir', () => {
@@ -86,32 +87,29 @@ test('J2: dort sunucu ekraninda da satir/secim kimligi host adi DEGIL', () => {
     const src = codeOf(rel);
     assert.ok(
       !/key=\{h\.host\}/.test(src),
-      `${rel}: satir key'i hala host adi — ayni host iki kez gelince React ayni key'i iki kez alir`
+      `${rel}: satir key'i hala host adi — ayni host iki kez gelince React ayni key'i iki kez alir`,
     );
     assert.ok(
       !/selected\.has\(h\.host\)/.test(src),
-      `${rel}: secim hala host adiyla kontrol ediliyor — iki satir tek onay kutusunu paylasir`
+      `${rel}: secim hala host adiyla kontrol ediliyor — iki satir tek onay kutusunu paylasir`,
     );
-    assert.ok(
-      /hostKey\(/.test(src),
-      `${rel}: ortak hostKey() kullanilmiyor`
-    );
+    assert.ok(/hostKey\(/.test(src), `${rel}: ortak hostKey() kullanilmiyor`);
     // KULLANIMI ara, adi DEGIL: yalnizca `import JbossTag ...` satiri de "JbossTag"
     // gecirir ve rozet render'dan silinse bile bekci yesil kalirdi (mutasyonla
     // dogrulandi — ilk yazimda tam olarak bu yasandi).
     assert.ok(
       /<JbossTag[\s/>]/.test(src),
-      `${rel}: satirda JBoss rozeti RENDER EDILMIYOR — iki satir gorsel olarak ayirt edilemez`
+      `${rel}: satirda JBoss rozeti RENDER EDILMIYOR — iki satir gorsel olarak ayirt edilemez`,
     );
   }
 });
 
 // ── J3: ortak yardimci ortak yerde ──────────────────────────────────────────
-test('J3: jbossMajorOf bir modulun sihirbaz adimindan DEGIL, utils/jboss.ts\'ten gelir', () => {
+test("J3: jbossMajorOf bir modulun sihirbaz adimindan DEGIL, utils/jboss.ts'ten gelir", () => {
   assert.equal(typeof J.jbossMajorOf, 'function');
   assert.ok(
     !/export function jbossMajorOf/.test(codeOf('components/opsx/steps/JbossVersionStep.tsx')),
-    'jbossMajorOf hala OpsX adimindan export ediliyor — Telnet oraya bagimli kalir'
+    'jbossMajorOf hala OpsX adimindan export ediliyor — Telnet oraya bagimli kalir',
   );
   const all = [
     ...HOST_STEPS,
@@ -122,7 +120,7 @@ test('J3: jbossMajorOf bir modulun sihirbaz adimindan DEGIL, utils/jboss.ts\'ten
   for (const rel of all) {
     assert.ok(
       !/from "@\/components\/opsx\/steps\/JbossVersionStep"/.test(codeOf(rel)),
-      `${rel}: hala OpsX'in adimindan import ediyor`
+      `${rel}: hala OpsX'in adimindan import ediyor`,
     );
   }
 });
@@ -139,7 +137,7 @@ test('J4: ayni majörün iki yamasi AYNI gruba duser', () => {
   assert.equal(J.majorOfHost({ jbossVersion: 'NF' }), '');
 });
 
-test('J4b: uc surum adiminin hicbiri TAM surum string\'ine gore gruplamaz', () => {
+test("J4b: uc surum adiminin hicbiri TAM surum string'ine gore gruplamaz", () => {
   for (const rel of [
     'components/opsx/steps/JbossVersionStep.tsx',
     'components/telnet/steps/JbossVersionStep.tsx',
@@ -149,32 +147,25 @@ test('J4b: uc surum adiminin hicbiri TAM surum string\'ine gore gruplamaz', () =
     // Eski hatali desen: ham surumu dogrudan sayac anahtari yapmak.
     assert.ok(
       !/counts\.set\(v,/.test(src),
-      `${rel}: hala tam surum string'ine gore grupluyor — "8.0.7" secilince "8.1.2" host'lari kaybolur`
+      `${rel}: hala tam surum string'ine gore grupluyor — "8.0.7" secilince "8.1.2" host'lari kaybolur`,
     );
-    assert.ok(
-      /majorOfHost\(/.test(src),
-      `${rel}: ortak majorOfHost() kullanilmiyor`
-    );
+    assert.ok(/majorOfHost\(/.test(src), `${rel}: ortak majorOfHost() kullanilmiyor`);
   }
 });
 
 // ── J5: secilen anahtarlardan sunucuya gidecek cift uretimi ─────────────────
 test('J5: cift kurulumlu host tek ad + iki major olarak gonderilir', () => {
-  const keys = [
-    J.hostKey('GBCJAP01', '7'),
-    J.hostKey('GBCJAP01', '8'),
-    J.hostKey('GBCJAP02', '8'),
-  ];
+  const keys = [J.hostKey('ORCJAP01', '7'), J.hostKey('ORCJAP01', '8'), J.hostKey('ORCJAP02', '8')];
   const pairs = J.toHostPairs(keys);
   const hosts = [...new Set(pairs.map((p) => p.host))];
   const majors = [...new Set(pairs.map((p) => p.jbossMajor))].sort();
 
-  assert.deepEqual(hosts, ['GBCJAP01', 'GBCJAP02'], 'ayni sunucu iki kez gonderilmemeli');
+  assert.deepEqual(hosts, ['ORCJAP01', 'ORCJAP02'], 'ayni sunucu iki kez gonderilmemeli');
   assert.deepEqual(majors, ['7', '8'], 'iki kurulum da isaretlendi — ikisi de gitmeli');
 
   // Yalniz JBoss 8 satirlari isaretlendiginde 7 GITMEMELI: kullanicinin
   // "birini sectiremiyor" sikayetinin tam karsiligi.
-  const only8 = J.toHostPairs([J.hostKey('GBCJAP01', '8'), J.hostKey('GBCJAP02', '8')]);
+  const only8 = J.toHostPairs([J.hostKey('ORCJAP01', '8'), J.hostKey('ORCJAP02', '8')]);
   assert.deepEqual([...new Set(only8.map((p) => p.jbossMajor))], ['8']);
 });
 
@@ -184,10 +175,18 @@ test('J6: rozet majoru METIN olarak yazar (renk tek basina ayirt etmez)', () => 
   assert.equal(J.jbossLabel('8'), 'JBoss 8');
   assert.equal(J.jbossLabel(''), 'Bilinmiyor');
   const tag = codeOf('components/common/JbossTag.tsx');
-  assert.ok(/jbossLabel\(major\)/.test(tag), 'rozet metni yazmiyor — ayirt etme yalniz renge kaliyor');
+  assert.ok(
+    /jbossLabel\(major\)/.test(tag),
+    'rozet metni yazmiyor — ayirt etme yalniz renge kaliyor',
+  );
   // Durum renkleri (yesil/kirmizi/sari) surum bilgisine tasinmamali: ayni ekranda
   // "calisiyor/durmus" rozetleri var, iki farkli sey ayni dile girmemeli.
-  for (const forbidden of ['pf-label--green', 'pf-label--red', 'pf-label--gold', 'pf-label--orange']) {
+  for (const forbidden of [
+    'pf-label--green',
+    'pf-label--red',
+    'pf-label--gold',
+    'pf-label--orange',
+  ]) {
     assert.ok(!tag.includes(forbidden), `JbossTag durum rengi kullaniyor: ${forbidden}`);
   }
 });

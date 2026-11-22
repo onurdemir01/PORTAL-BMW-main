@@ -190,7 +190,7 @@ async function podStatus(id, { namespace = '', labelSelector = '' } = {}) {
     jobStatus = await runner.getJobStatus(launch.jobId);
     if (['successful', 'failed', 'error', 'canceled'].includes(jobStatus.status)) break;
   }
-  if (!jobStatus || jobStatus.status !== 'successful') {
+  if (jobStatus?.status !== 'successful') {
     throw Object.assign(
       new Error(`AWX job ${jobStatus?.status || 'zaman aşımı'} (job ${launch.jobId}).`),
       { status: 502 },

@@ -407,7 +407,7 @@ export function NginxAudit() {
 
       {(t?.hostsEnvUnknown || 0) > 0 && (
         <Note tone="warning" title={`${nf(t?.hostsEnvUnknown || 0)} sunucunun ortamı bilinmiyor`}>
-          Ortam önce sunucu adı kalıbından (GBNGX…/GBNGW…/GBRVP…), tutmazsa{' '}
+          Ortam önce sunucu adı kalıbından (…NGX…/…NGW…/…RVP…), tutmazsa{' '}
           <Code>dbo.Inventory.env</Code> kaydından alınır. İkisi de bilmiyorsa sessizce bir ortama
           atanmaz, <b>BILINMIYOR</b> görünür — sunucu <Code>middleware_inventory</Code>{' '}
           job&apos;ında yoksa oraya girmesi gerekir.

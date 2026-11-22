@@ -101,7 +101,10 @@ test('sekme tipi (union) cubuktaki TUM id-leri iceriyor', () => {
   // "neden" sorusunu dogrudan yanitlasin.
   // 2026-09-14: sekme id'leri DenetimTab tipi + DENETIM_TABS listesinde (ikisi de
   // ?tab= dogrulamasi icin); useState<DenetimTab>(initialTab) o listeden beslenir.
-  assert.ok(/useState<DenetimTab>\(initialTab\)/.test(SRC), 'sekme durumu useState<DenetimTab>(initialTab) olmali');
+  assert.ok(
+    /useState<DenetimTab>\(initialTab\)/.test(SRC),
+    'sekme durumu useState<DenetimTab>(initialTab) olmali',
+  );
   // Windows checkout'ta (autocrlf) satir sonu \r\n olabilir; kural bicime bagli degil.
   const t = SRC.match(/type DenetimTab =\r?\n([\s\S]*?);\r?\n/);
   const l = SRC.match(/const DENETIM_TABS: DenetimTab\[\] = \[([\s\S]*?)\];/);

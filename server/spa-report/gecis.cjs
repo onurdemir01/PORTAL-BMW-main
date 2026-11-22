@@ -7,15 +7,19 @@
 // OCO numarasini elle girecegim. Tabloyu dolduran kisinin ismi GORUNMESIN."
 //
 // 2026-10-16: Set 6 tamamlandi; bazi uygulama sahipleri uygulamalarini Set 7'ye aldirdi. Kalan
-// tek calisma Set 7. Liste glomo-gecis-set7-talep.json'da; TEK SEFERLIK goc (spa_gecis_goc)
+// tek calisma Set 7. Liste kurum ayarinda (set7Talep); TEK SEFERLIK goc (spa_gecis_goc)
 // listedeki uygulamalari Set 7'ye tasir, girisler (kullanimda / katilimci / kontrol) korunur.
 // Ayrica "Kontrol" kolonu: herkes "Kontrol Ettim" der, yalniz an tutulur (kim ve aciklama YOK).
 //
-// KAYNAKLAR
-//   glomo-gecis-seed.json  Excel'den (Glomo-Nginx-Tasima-Takvimi.xlsx, 210 uygulama, Calisma 1-7).
-//                          Excel'in Turkce karakterleri bozuktu; yalniz namespace/uygulama/set/
-//                          location alindi (ekip ve yuk canli rapordan gelir).
-//   glomo-gecis-set7-talep.json  2026-10-16 Set 7'ye alinacak uygulamalar (bkz. gocUygula).
+// KAYNAKLAR (2026-11-21: gercek uygulama adlari repoda TUTULMAZ, K17; kurum ayari
+// `spaRapor.glomoGecis`, server/util/kurum-ayari.cjs; kurgusal bicimi deploy/kurum-ayari.ornek.json)
+//   seed       Excel'den (Glomo-Nginx-Tasima-Takvimi.xlsx, 210 uygulama, Calisma 1-7).
+//              Excel'in Turkce karakterleri bozuktu; yalniz namespace/uygulama/set/
+//              location alindi (ekip ve yuk canli rapordan gelir). Tabloya BIR KEZ yazilir
+//              (kaynak 'excel'); uretimde satirlar zaten tabloda.
+//   set7Talep  2026-10-16 Set 7'ye alinacak uygulamalar (bkz. gocUygula).
+//   Acilista bir kez okunur. Ayar yoksa seed BOS (tablodaki satirlar aynen okunur) ve goc devre
+//   disi; sebep Admin yanitinda (seed.hata / goc.hata), rapor ayakta kalir.
 //   loadReport()           canli ARK SPA raporu (Nginx_Config_Audit). Glomo servisinde olup
 //                          Excel'de OLMAYAN uygulama "eksik" sayilir ve Set 7'ye eklenir.
 //
@@ -35,29 +39,43 @@ const db = require('../db/index.cjs');
 
 const SETLER = [1, 2, 3, 4, 5, 6, 7];
 const EKSIK_SET = 7;
-const SEED = require('./glomo-gecis-seed.json');
+const GLOMO_AYARI = require('../util/kurum-ayari.cjs').bolum('spaRapor.glomoGecis');
+const SEED_HATA = Array.isArray(GLOMO_AYARI.deger?.seed)
+  ? null
+  : `kurum ayarinda spaRapor.glomoGecis.seed yok (${GLOMO_AYARI.hata || 'liste degil'}); Excel seed'i yazilmadi`;
+const SEED = SEED_HATA ? [] : GLOMO_AYARI.deger.seed;
+if (SEED_HATA) console.error(`[glomo-gecis] ${SEED_HATA}`);
 const SEED_BY_KEY = new Map(SEED.map((s) => [`${s.namespace}/${s.application}`, s]));
 const GLOMO = 'GLOMO';
 
 const T = (s) => String(s == null ? '' : s).trim();
-const appKey = (ns, app) => crypto.createHash('sha256').update(`${T(ns)}\u0000${T(app)}`).digest('hex');
+const appKey = (ns, app) =>
+  crypto
+    .createHash('sha256')
+    .update(`${T(ns)}\u0000${T(app)}`)
+    .digest('hex');
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const TARIH_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ZAMAN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 // SET 7 TALEBI (2026-10-16). Icerik kullanicinin gonderdigi listedir; DEGISTIRILMEZ.
-// Dosya okunamazsa (commit'e girmedi vb.) modul YINE yuklenir: bu require modul duzeyinde ve
-// spa-report/index.cjs'te ana raporun da onunde - patlarsa /api/spa-report altindaki BUTUN uclar
-// kalkar. Goc ve talepEslesmeyen devre disi kalir, hata loglanir ve Admin ekranda gorur.
+// Ayar yoksa modul YINE yuklenir: bu okuma modul duzeyinde ve spa-report/index.cjs'te ana raporun
+// da onunde - patlarsa /api/spa-report altindaki BUTUN uclar kalkar. Goc ve talepEslesmeyen devre
+// disi kalir, hata loglanir ve Admin ekranda gorur.
 let TALEP = { ad: 'set7-talep-2026-10-16', hedefSet: 7, uygulamalar: [] };
 let TALEP_HATA = null;
-try {
-  TALEP = require('./glomo-gecis-set7-talep.json');
-} catch (err) {
-  TALEP_HATA = `glomo-gecis-set7-talep.json okunamadi: ${err.message}`;
-  console.error(`[glomo-gecis] ${TALEP_HATA}`);
+{
+  const t = GLOMO_AYARI.deger?.set7Talep;
+  if (t && typeof t === 'object' && Array.isArray(t.uygulamalar)) TALEP = t;
+  else {
+    TALEP_HATA = `kurum ayarinda spaRapor.glomoGecis.set7Talep yok (${GLOMO_AYARI.hata || 'gecersiz'})`;
+    console.error(`[glomo-gecis] ${TALEP_HATA}`);
+  }
 }
-const TALEP_LISTE = (TALEP.uygulamalar || []).map((u) => ({ namespace: T(u.namespace), application: T(u.application) }));
+const TALEP_LISTE = (TALEP.uygulamalar || []).map((u) => ({
+  namespace: T(u.namespace),
+  application: T(u.application),
+}));
 
 let _seedlendi = false;
 let _gocTamam = false;
@@ -91,7 +109,10 @@ async function seedle() {
       _gocHata = null;
     } catch (err) {
       _gocHata = err.message;
-      console.error(`[glomo-gecis] Set ${TALEP.hedefSet} gocu (${TALEP.ad}) uygulanamadi:`, err.message);
+      console.error(
+        `[glomo-gecis] Set ${TALEP.hedefSet} gocu (${TALEP.ad}) uygulanamadi:`,
+        err.message,
+      );
     }
   }
 }
@@ -133,12 +154,14 @@ async function gocUygula() {
      COMMIT;`,
     [TALEP.ad, hedef, ...anahtarlar],
   );
-  const tasinan = (r && r.rows) || [];
+  const tasinan = r?.rows || [];
   if (!tasinan.length) return;
   console.log(`[glomo-gecis] ${TALEP.ad}: ${tasinan.length} uygulama Set ${hedef}'ye tasindi`);
   for (const x of tasinan) {
     const gecti = x.gecti === true || Number(x.gecti) === 1 ? 1 : 0;
-    console.log(`[glomo-gecis] ${TALEP.ad}: ${T(x.namespace)}/${T(x.application)} Set ${x.set_no} -> ${hedef} (onceki gecti=${gecti}, gecis_tarihi=${T(x.gecis_tarihi) || '-'})`);
+    console.log(
+      `[glomo-gecis] ${TALEP.ad}: ${T(x.namespace)}/${T(x.application)} Set ${x.set_no} -> ${hedef} (onceki gecti=${gecti}, gecis_tarihi=${T(x.gecis_tarihi) || '-'})`,
+    );
   }
 }
 
@@ -155,12 +178,21 @@ function glomoCanli(rapor) {
   for (const r of rapor?.rows || []) {
     if (T(r.service).toUpperCase() !== GLOMO) continue;
     const k = `${T(r.namespace)}/${T(r.application)}`;
-    if (!m.has(k)) m.set(k, { namespace: T(r.namespace), application: T(r.application), ekip: new Set(), ekipKaynak: new Map(), locations: [], trafik: [] });
+    if (!m.has(k))
+      m.set(k, {
+        namespace: T(r.namespace),
+        application: T(r.application),
+        ekip: new Set(),
+        ekipKaynak: new Map(),
+        locations: [],
+        trafik: [],
+      });
     const x = m.get(k);
     (r.team || []).forEach((e, i) => {
       x.ekip.add(e);
       const k = (r.teamKaynak || [])[i];
-      if (k && (!x.ekipKaynak.has(e) || x.ekipKaynak.get(e) === 'NAMESPACE')) x.ekipKaynak.set(e, k);
+      if (k && (!x.ekipKaynak.has(e) || x.ekipKaynak.get(e) === 'NAMESPACE'))
+        x.ekipKaynak.set(e, k);
     });
     if (r.location && !x.locations.includes(r.location)) x.locations.push(r.location);
     x.trafik.push(r.traffic || null);
@@ -174,8 +206,10 @@ function yukOzeti(trafik) {
   const list = (trafik || []).filter(Boolean);
   if (!list.length) return null;
   const aktif = list.filter((t) => t.state === 'active');
-  if (aktif.length) return { state: 'active', req7: aktif.reduce((a, t) => a + (Number(t.req7) || 0), 0) };
-  if (list.length === (trafik || []).length && list.every((t) => t.state === 'idle')) return { state: 'idle', req7: 0 };
+  if (aktif.length)
+    return { state: 'active', req7: aktif.reduce((a, t) => a + (Number(t.req7) || 0), 0) };
+  if (list.length === (trafik || []).length && list.every((t) => t.state === 'idle'))
+    return { state: 'idle', req7: 0 };
   return { state: 'unknown', req7: 0 };
 }
 
@@ -195,7 +229,11 @@ async function sahipleriYukle() {
 async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
   await seedle();
   let rapor = null;
-  try { rapor = await loadReport(false); } catch { rapor = null; }
+  try {
+    rapor = await loadReport(false);
+  } catch {
+    rapor = null;
+  }
   const canli = glomoCanli(rapor);
   const sahipler = await sahipYukle().catch(() => ({ ready: false, byNs: new Map() }));
   const { ownersForApp } = require('../audit/ns-owners.cjs');
@@ -217,11 +255,15 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
 
   const [setler, uyg] = await Promise.all([
     db.query(`SELECT no, calisma_at, oco_no FROM spa_gecis_set ORDER BY no`),
-    db.query(`SELECT namespace, application, set_no, kaynak, kullanimda, katilimci, gecti, gecis_tarihi, kontrol_at FROM spa_gecis_app`),
+    db.query(
+      `SELECT namespace, application, set_no, kaynak, kullanimda, katilimci, gecti, gecis_tarihi, kontrol_at FROM spa_gecis_app`,
+    ),
   ]);
   // Set 7 talebinde olup ANLIK planda olmayanlar (yazim hatasi / envanterde yok): Admin'e uyari.
   const plandaki = new Set((uyg.rows || []).map((r) => `${T(r.namespace)}/${T(r.application)}`));
-  const talepEslesmeyen = TALEP_LISTE.filter((u) => !plandaki.has(`${u.namespace}/${u.application}`));
+  const talepEslesmeyen = TALEP_LISTE.filter(
+    (u) => !plandaki.has(`${u.namespace}/${u.application}`),
+  );
   const apps = (uyg.rows || []).map((r) => {
     const k = `${T(r.namespace)}/${T(r.application)}`;
     const c = canli.get(k);
@@ -249,10 +291,19 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
           return db && db !== 'NAMESPACE' ? db : canliK || db;
         });
         // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
-        const veriYok = !ekip.length && !!(o.veriYokNs && o.veriYokNs.length);
-        return { ekip, ekipKaynak, ekipEposta: o.emails, ...(veriYok ? { ekipVeriYok: true } : {}) };
+        const veriYok = !ekip.length && !!o.veriYokNs?.length;
+        return {
+          ekip,
+          ekipKaynak,
+          ekipEposta: o.emails,
+          ...(veriYok ? { ekipVeriYok: true } : {}),
+        };
       })(),
-      locations: (() => { if (c && c.locations.length) return c.locations; if (s) return s.locations; return []; })(),
+      locations: (() => {
+        if (c?.locations.length) return c.locations;
+        if (s) return s.locations;
+        return [];
+      })(),
       yuk: c ? yukOzeti(c.trafik) : null,
       // Rapor okunduysa ve uygulama orada yoksa: canli Glomo envanterinde gorulmuyor.
       taramadaYok: raporVar && !c,
@@ -263,12 +314,18 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
     raporVar,
     raporTarihi: rapor?.scanDate || null,
     epostaVar: sahipler.ready !== false,
-    sets: (setler.rows || []).map((r) => ({ no: Number(r.no), calismaAt: r.calisma_at ? T(r.calisma_at) : null, ocoNo: r.oco_no ? T(r.oco_no) : '' })),
+    sets: (setler.rows || []).map((r) => ({
+      no: Number(r.no),
+      calismaAt: r.calisma_at ? T(r.calisma_at) : null,
+      ocoNo: r.oco_no ? T(r.oco_no) : '',
+    })),
     apps,
     talepEslesmeyen,
     // Tek seferlik Set 7 gocunun durumu: uygulanamadiysa Set 6'dan tasinacak uygulamalar
     // "Tamamlanan" bolumunde kalir - Admin ekranda uyari gorur (sunucu logu tek iz degil).
     goc: { ad: TALEP.ad, uygulandi: _gocTamam, hata: _gocTamam ? null : _gocHata },
+    // Excel seed'i kurum ayarindan okunamadiysa (yeni kurulumda plan bos baslar): Admin gorur.
+    seed: { hata: SEED_HATA },
   };
 }
 
@@ -277,11 +334,12 @@ function mountGecis(router, { loadReport, sahipYukle }) {
     try {
       const p = await planYukle(loadReport, sahipYukle);
       const admin = isAdmin(req);
-      // talepEslesmeyen ve goc hatasi yalniz Admin'e (ekran da yalniz Admin'e gosterir).
+      // talepEslesmeyen, goc ve seed hatasi yalniz Admin'e (ekran da yalniz Admin'e gosterir).
       res.json({
         ...p,
         talepEslesmeyen: admin ? p.talepEslesmeyen : [],
         goc: admin ? p.goc : { ad: p.goc.ad, uygulandi: p.goc.uygulandi },
+        seed: admin ? p.seed : { hata: null },
         admin,
       });
     } catch (err) {
@@ -293,9 +351,12 @@ function mountGecis(router, { loadReport, sahipYukle }) {
   router.put('/gecis/app', async (req, res) => {
     const ns = T(req.body?.namespace);
     const app = T(req.body?.application);
-    const ku = req.body?.kullanimda == null || req.body.kullanimda === '' ? null : T(req.body.kullanimda);
-    if (!ns || !app) return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
-    if (ku !== null && ku !== 'yes' && ku !== 'no') return res.status(400).json({ ok: false, message: 'Geçersiz değer.' });
+    const ku =
+      req.body?.kullanimda == null || req.body.kullanimda === '' ? null : T(req.body.kullanimda);
+    if (!ns || !app)
+      return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
+    if (ku !== null && ku !== 'yes' && ku !== 'no')
+      return res.status(400).json({ ok: false, message: 'Geçersiz değer.' });
     const katilimci = ku === 'yes' ? T(req.body?.katilimci).slice(0, 400) : '';
     try {
       const r = await db.query(
@@ -316,8 +377,10 @@ function mountGecis(router, { loadReport, sahipYukle }) {
     const ns = T(req.body?.namespace);
     const app = T(req.body?.application);
     const k = req.body?.kontrol;
-    if (!ns || !app) return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
-    if (k !== true && k !== false) return res.status(400).json({ ok: false, message: 'kontrol true ya da false olmalı.' });
+    if (!ns || !app)
+      return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
+    if (k !== true && k !== false)
+      return res.status(400).json({ ok: false, message: 'kontrol true ya da false olmalı.' });
     try {
       const r = await db.query(
         k
@@ -326,36 +389,52 @@ function mountGecis(router, { loadReport, sahipYukle }) {
         [appKey(ns, app)],
       );
       if (!r.rowCount) return res.status(404).json({ ok: false, message: 'Uygulama planda yok.' });
-      res.json({ ok: true, kontrolAt: k ? iso(r.rows?.[0]?.kontrol_at) || new Date().toISOString() : null });
+      res.json({
+        ok: true,
+        kontrolAt: k ? iso(r.rows?.[0]?.kontrol_at) || new Date().toISOString() : null,
+      });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
   });
 
   const yalnizAdmin = (req, res, next) =>
-    isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Bu alanı yalnız Admin değiştirebilir.' });
+    isAdmin(req)
+      ? next()
+      : res.status(403).json({ ok: false, message: 'Bu alanı yalnız Admin değiştirebilir.' });
 
   // ADMIN: uygulamanin seti, gecti, gecis tarihi.
   router.put('/gecis/app-admin', yalnizAdmin, async (req, res) => {
     const ns = T(req.body?.namespace);
     const app = T(req.body?.application);
-    if (!ns || !app) return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
+    if (!ns || !app)
+      return res.status(400).json({ ok: false, message: 'namespace ve application zorunlu.' });
     const b = req.body || {};
     const set = [];
     const p = [appKey(ns, app)];
     if (b.setNo !== undefined) {
-      if (!SETLER.includes(Number(b.setNo))) return res.status(400).json({ ok: false, message: 'Geçersiz set.' });
-      p.push(Number(b.setNo)); set.push(`set_no = $${p.length}`);
+      if (!SETLER.includes(Number(b.setNo)))
+        return res.status(400).json({ ok: false, message: 'Geçersiz set.' });
+      p.push(Number(b.setNo));
+      set.push(`set_no = $${p.length}`);
     }
-    if (b.gecti !== undefined) { p.push(b.gecti ? 1 : 0); set.push(`gecti = $${p.length}`); }
+    if (b.gecti !== undefined) {
+      p.push(b.gecti ? 1 : 0);
+      set.push(`gecti = $${p.length}`);
+    }
     if (b.gecisTarihi !== undefined) {
       const t = b.gecisTarihi ? T(b.gecisTarihi) : null;
-      if (t && !TARIH_RE.test(t)) return res.status(400).json({ ok: false, message: 'Geçiş tarihi YYYY-AA-GG olmalı.' });
-      p.push(t); set.push(`gecis_tarihi = $${p.length}`);
+      if (t && !TARIH_RE.test(t))
+        return res.status(400).json({ ok: false, message: 'Geçiş tarihi YYYY-AA-GG olmalı.' });
+      p.push(t);
+      set.push(`gecis_tarihi = $${p.length}`);
     }
     if (!set.length) return res.status(400).json({ ok: false, message: 'Değişiklik yok.' });
     try {
-      const r = await db.query(`UPDATE spa_gecis_app SET ${set.join(', ')}, updated_at = GETUTCDATE() WHERE app_key = $1`, p);
+      const r = await db.query(
+        `UPDATE spa_gecis_app SET ${set.join(', ')}, updated_at = GETUTCDATE() WHERE app_key = $1`,
+        p,
+      );
       if (!r.rowCount) return res.status(404).json({ ok: false, message: 'Uygulama planda yok.' });
       res.json({ ok: true });
     } catch (err) {
@@ -368,10 +447,16 @@ function mountGecis(router, { loadReport, sahipYukle }) {
     const no = Number(req.body?.no);
     if (!SETLER.includes(no)) return res.status(400).json({ ok: false, message: 'Geçersiz set.' });
     const at = req.body?.calismaAt ? T(req.body.calismaAt).slice(0, 16) : null;
-    if (at && !ZAMAN_RE.test(at)) return res.status(400).json({ ok: false, message: 'Çalışma zamanı YYYY-AA-GGTSS:DD olmalı.' });
+    if (at && !ZAMAN_RE.test(at))
+      return res
+        .status(400)
+        .json({ ok: false, message: 'Çalışma zamanı YYYY-AA-GGTSS:DD olmalı.' });
     const oco = T(req.body?.ocoNo).slice(0, 64);
     try {
-      await db.query(`UPDATE spa_gecis_set SET calisma_at = $2, oco_no = $3, updated_at = GETUTCDATE() WHERE no = $1`, [no, at, oco || null]);
+      await db.query(
+        `UPDATE spa_gecis_set SET calisma_at = $2, oco_no = $3, updated_at = GETUTCDATE() WHERE no = $1`,
+        [no, at, oco || null],
+      );
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -383,7 +468,8 @@ function mountGecis(router, { loadReport, sahipYukle }) {
     const no = Number(req.params.no);
     if (!SETLER.includes(no)) return res.status(400).json({ ok: false, message: 'Geçersiz set.' });
     const t = req.body?.tarih ? T(req.body.tarih) : null;
-    if (t && !TARIH_RE.test(t)) return res.status(400).json({ ok: false, message: 'Tarih YYYY-AA-GG olmalı.' });
+    if (t && !TARIH_RE.test(t))
+      return res.status(400).json({ ok: false, message: 'Tarih YYYY-AA-GG olmalı.' });
     try {
       const r = await db.query(
         `UPDATE spa_gecis_app SET gecti = 1, gecis_tarihi = COALESCE(gecis_tarihi, $2), updated_at = GETUTCDATE()
@@ -397,4 +483,16 @@ function mountGecis(router, { loadReport, sahipYukle }) {
   });
 }
 
-module.exports = { mountGecis, planYukle, glomoCanli, yukOzeti, appKey, TALEP, _sifirla: () => { _seedlendi = false; _gocTamam = false; _gocHata = TALEP_HATA; } };
+module.exports = {
+  mountGecis,
+  planYukle,
+  glomoCanli,
+  yukOzeti,
+  appKey,
+  TALEP,
+  _sifirla: () => {
+    _seedlendi = false;
+    _gocTamam = false;
+    _gocHata = TALEP_HATA;
+  },
+};

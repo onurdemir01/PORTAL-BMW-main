@@ -28,26 +28,48 @@ async function sahteQuery(sql, params = []) {
   if (DB.dusur && DB.dusur(sql)) throw new Error('sahte db hatasi');
   const s = sql.replace(/\s+/g, ' ').trim();
   if (s.startsWith('INSERT INTO bmw_hub_isler')) {
-    const [id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen, son, ak, aa, ga] = params;
+    const [id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen, son, ak, aa, ga] =
+      params;
     DB.isler.set(id, {
-      id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen,
+      id,
+      baslik,
+      aciklama,
+      durum,
+      oncelik,
+      kategori,
+      sahip,
+      beklenen,
       son_tarih: son ? new Date(`${son}T00:00:00Z`) : null,
-      acan_kullanici: ak, acan_ad: aa, guncelleyen_ad: ga,
-      olusturma: simdi(), guncelleme: simdi(), kapanis: s.includes('GETUTCDATE())') ? simdi() : null,
+      acan_kullanici: ak,
+      acan_ad: aa,
+      guncelleyen_ad: ga,
+      olusturma: simdi(),
+      guncelleme: simdi(),
+      kapanis: s.includes('GETUTCDATE())') ? simdi() : null,
     });
     return { rows: [], rowCount: 1 };
   }
   if (s.startsWith('INSERT INTO bmw_hub_notlar')) {
     const [is_id, tur, metin, yk, ya] = params;
-    DB.notlar.push({ id: DB.notlar.length + 1, is_id, tur, metin, yazan_kullanici: yk, yazan_ad: ya, olusturma: simdi() });
+    DB.notlar.push({
+      id: DB.notlar.length + 1,
+      is_id,
+      tur,
+      metin,
+      yazan_kullanici: yk,
+      yazan_ad: ya,
+      olusturma: simdi(),
+    });
     return { rows: [], rowCount: 1 };
   }
   if (s.startsWith('SELECT * FROM bmw_hub_isler WHERE id')) {
     const r = DB.isler.get(params[0]);
     return { rows: r ? [{ ...r }] : [] };
   }
-  if (s.includes('FROM bmw_hub_isler ORDER BY')) return { rows: [...DB.isler.values()].map((r) => ({ ...r })) };
-  if (s.startsWith('SELECT * FROM bmw_hub_notlar')) return { rows: DB.notlar.filter((n) => n.is_id === params[0]) };
+  if (s.includes('FROM bmw_hub_isler ORDER BY'))
+    return { rows: [...DB.isler.values()].map((r) => ({ ...r })) };
+  if (s.startsWith('SELECT * FROM bmw_hub_notlar'))
+    return { rows: DB.notlar.filter((n) => n.is_id === params[0]) };
   if (s.startsWith('UPDATE bmw_hub_isler SET')) {
     const id = params[params.length - 1];
     const r = DB.isler.get(id);
@@ -87,12 +109,14 @@ sahte(require.resolve('../../auth/index.cjs'), {
     next();
   },
 });
-sahte(require.resolve('../../auth/visibility.cjs'), { requireVisiblePrefix: () => (_q, _s, n) => n() });
+sahte(require.resolve('../../auth/visibility.cjs'), {
+  requireVisiblePrefix: () => (_q, _s, n) => n(),
+});
 sahte(require.resolve('../../audit/index.cjs'), { auditMutations: () => (_q, _s, n) => n() });
 
 const { createRouter } = require('../index.cjs');
 
-let kimlik = { username: 'Onur', displayName: 'Onur Demir', role: 'Admin' };
+let kimlik = { username: 'Onur', displayName: 'Deneme Kisi', role: 'Admin' };
 function uygulama() {
   const app = express();
   app.use((req, _res, next) => {
@@ -123,7 +147,7 @@ function sifirla() {
   DB.notlar = [];
   DB.sorgular = [];
   DB.dusur = null;
-  kimlik = { username: 'Onur', displayName: 'Onur Demir', role: 'Admin' };
+  kimlik = { username: 'Onur', displayName: 'Deneme Kisi', role: 'Admin' };
 }
 
 test('BN1 tarih: iki bicim kabul, gecersiz gun reddedilir (sessizce tarihsiz kaydedilmez)', () => {
@@ -134,7 +158,10 @@ test('BN1 tarih: iki bicim kabul, gecersiz gun reddedilir (sessizce tarihsiz kay
   assert.equal(K.tarihCoz('31.02.2026'), null);
   assert.equal(K.tarihCoz('yarin'), null);
   const { hatalar } = K.isDogrula({ baslik: 'x', sonTarih: '31.02.2026' });
-  assert.ok(hatalar.some((h) => h.includes('Son tarih')), 'gecersiz tarih hata vermedi');
+  assert.ok(
+    hatalar.some((h) => h.includes('Son tarih')),
+    'gecersiz tarih hata vermedi',
+  );
 });
 
 test('BN2 toplu ayristirici: alanlar, bos ara alan, yorum ve madde isareti, hatali satir', () => {
@@ -151,21 +178,42 @@ test('BN2 toplu ayristirici: alanlar, bos ara alan, yorum ve madde isareti, hata
   assert.equal(r.length, 4);
   assert.deepEqual(
     { ...r[0].deger },
-    { baslik: 'Birinci', aciklama: 'uzun | açıklama', durum: 'devam', oncelik: 'yuksek', sahip: 'Ali Veli', beklenen: 'DBA onayı', kategori: 'Otomasyon', sonTarih: '2026-11-20' },
+    {
+      baslik: 'Birinci',
+      aciklama: 'uzun | açıklama',
+      durum: 'devam',
+      oncelik: 'yuksek',
+      sahip: 'Ali Veli',
+      beklenen: 'DBA onayı',
+      kategori: 'Otomasyon',
+      sonTarih: '2026-11-20',
+    },
   );
   assert.equal(r[0].satir, 3);
   assert.equal(r[1].deger.baslik, 'İkinci');
   assert.equal(r[1].deger.sahip, '');
   assert.equal(r[1].deger.sonTarih, '2026-12-01');
   assert.equal(r[1].hatalar.length, 0);
-  assert.ok(r[2].hatalar.some((h) => h.includes('öncelik')), 'taninmayan oncelik gecti');
-  assert.ok(r[3].hatalar.some((h) => h.includes('Başlık')), 'basliksiz satir gecti');
+  assert.ok(
+    r[2].hatalar.some((h) => h.includes('öncelik')),
+    'taninmayan oncelik gecti',
+  );
+  assert.ok(
+    r[3].hatalar.some((h) => h.includes('Başlık')),
+    'basliksiz satir gecti',
+  );
 });
 
 test('BN3 Admin disi kullanici hicbir uca ulasamaz (okuma dahil); oturumsuz 401', async () => {
   sifirla();
   kimlik = { username: 'ayse', displayName: 'Ayşe', role: 'User' };
-  for (const [m, y, b] of [['GET', '/isler'], ['POST', '/isler', { baslik: 'x' }], ['POST', '/toplu', { metin: 'x' }], ['PATCH', '/isler/a', { durum: 'tamam' }], ['DELETE', '/isler/a']]) {
+  for (const [m, y, b] of [
+    ['GET', '/isler'],
+    ['POST', '/isler', { baslik: 'x' }],
+    ['POST', '/toplu', { metin: 'x' }],
+    ['PATCH', '/isler/a', { durum: 'tamam' }],
+    ['DELETE', '/isler/a'],
+  ]) {
     const r = await istek(m, y, b);
     // nginx-red cevirici 403'u 409'a cevirir; asil kod upstreamStatus'ta
     assert.equal(r.status, 409, `${m} ${y} admin disina acik: ${r.status}`);
@@ -178,22 +226,31 @@ test('BN3 Admin disi kullanici hicbir uca ulasamaz (okuma dahil); oturumsuz 401'
 
 test('BN4 acan kisi oturumdan gelir; istemcinin gonderdigi acan alanlari yok sayilir', async () => {
   sifirla();
-  const r = await istek('POST', '/isler', { baslik: 'Prod onayi', acanAd: 'Sahte Kisi', acanKullanici: 'sahte', sahip: 'Mehmet', sonTarih: '20.11.2026' });
+  const r = await istek('POST', '/isler', {
+    baslik: 'Prod onayi',
+    acanAd: 'Sahte Kisi',
+    acanKullanici: 'sahte',
+    sahip: 'Mehmet',
+    sonTarih: '20.11.2026',
+  });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.equal(r.body.is.acanAd, 'Onur Demir');
+  assert.equal(r.body.is.acanAd, 'Deneme Kisi');
   assert.equal(r.body.is.acanKullanici, 'onur', 'kullanici adi kucuk harfe cevrilmedi');
   assert.equal(r.body.is.sonTarih, '2026-11-20');
   assert.equal(r.body.is.durum, 'acik');
   assert.equal(DB.notlar.length, 1);
   assert.equal(DB.notlar[0].tur, 'olusturma');
-  assert.equal(DB.notlar[0].yazan_ad, 'Onur Demir');
+  assert.equal(DB.notlar[0].yazan_ad, 'Deneme Kisi');
 });
 
 test('BN5 dogrulama: bos baslik, taninmayan durum, uzun baslik kaydedilmez', async () => {
   sifirla();
   assert.equal((await istek('POST', '/isler', { baslik: '  ' })).status, 400);
   assert.equal((await istek('POST', '/isler', { baslik: 'x', durum: 'bitti-mi' })).status, 400);
-  assert.equal((await istek('POST', '/isler', { baslik: 'x'.repeat(K.SINIR.baslik + 1) })).status, 400);
+  assert.equal(
+    (await istek('POST', '/isler', { baslik: 'x'.repeat(K.SINIR.baslik + 1) })).status,
+    400,
+  );
   assert.equal(DB.isler.size, 0);
 });
 
@@ -242,15 +299,25 @@ test('BN9 cakisma: eski damga ile kayit 409 + bmw_cakisma; liste ozeti gecikmeyi
   sifirla();
   const { body } = await istek('POST', '/isler', { baslik: 'Is', sonTarih: '2020-01-01' });
   const id = body.is.id;
-  const r = await istek('PATCH', `/isler/${id}`, { baslik: 'Yeni', beklenenGuncelleme: '2000-01-01T00:00:00.000Z' });
+  const r = await istek('PATCH', `/isler/${id}`, {
+    baslik: 'Yeni',
+    beklenenGuncelleme: '2000-01-01T00:00:00.000Z',
+  });
   assert.equal(r.status, 409);
   assert.equal(r.body.code, 'bmw_cakisma');
   assert.equal(DB.isler.get(id).baslik, 'Is', 'cakismada kayit ezildi');
-  const ok = await istek('PATCH', `/isler/${id}`, { baslik: 'Yeni', beklenenGuncelleme: body.is.guncelleme });
+  const ok = await istek('PATCH', `/isler/${id}`, {
+    baslik: 'Yeni',
+    beklenenGuncelleme: body.is.guncelleme,
+  });
   assert.equal(ok.status, 200);
   const l = await istek('GET', '/isler');
   assert.equal(l.body.ozet.acik, 1);
   assert.equal(l.body.ozet.gecikmis, 1);
   assert.equal(l.body.ozet.sahipsiz, 1);
-  assert.equal(K.gecikmisMi({ durum: 'tamam', sonTarih: '2020-01-01' }, '2026-11-08'), false, 'tamamlanan is gecikmis sayildi');
+  assert.equal(
+    K.gecikmisMi({ durum: 'tamam', sonTarih: '2020-01-01' }, '2026-11-08'),
+    false,
+    'tamamlanan is gecikmis sayildi',
+  );
 });

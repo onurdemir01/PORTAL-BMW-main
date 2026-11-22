@@ -80,7 +80,11 @@ function regexpMetinlerindeGeriAlma(kaynak) {
     ara = bas + 1;
     const satir = kaynak.slice(satirBasi(bas), bas);
     if (/^\s*\/\/|(^|\s)\/\/\s/.test(satir)) continue;
-    for (let i = bas + 'new RegExp('.length, derinlik = 1; i < kaynak.length && derinlik > 0; i += 1) {
+    for (
+      let i = bas + 'new RegExp('.length, derinlik = 1;
+      i < kaynak.length && derinlik > 0;
+      i += 1
+    ) {
       const c = kaynak[i];
       if (c === '(') derinlik += 1;
       else if (c === ')') derinlik -= 1;
@@ -149,7 +153,9 @@ test('CK5: RegExp metin argumanlarinda geri alma karakteri yok (ve tarayici kor 
   // String.raw: ters bolu ham kalir, `\b` kelime siniridir. Ayni cagridaki ISLENEN sabit yine yakalanir.
   assert.deepEqual(regexpMetinlerindeGeriAlma(`new RegExp(String.raw\`${bs}bTABLE\` + a)`), []);
   assert.deepEqual(
-    regexpMetinlerindeGeriAlma(`new RegExp(String.raw\`${bs}bX\` + '${bs}b' + String.raw\`${bs}d\`)`),
+    regexpMetinlerindeGeriAlma(
+      `new RegExp(String.raw\`${bs}bX\` + '${bs}b' + String.raw\`${bs}d\`)`,
+    ),
     [1],
   );
 });

@@ -65,7 +65,8 @@ function deger(ifade, p) {
   if ((m = /^'([^']*)'$/.exec(e))) return m[1];
   if (e === 'NULL') return null;
   if (e === 'SYSUTCDATETIME()') return simdi();
-  if ((m = /^DATEADD\(second, (\d+), SYSUTCDATETIME\(\)\)$/.exec(e))) return new Date(simdi().getTime() + Number(m[1]) * 1000);
+  if ((m = /^DATEADD\(second, (\d+), SYSUTCDATETIME\(\)\)$/.exec(e)))
+    return new Date(simdi().getTime() + Number(m[1]) * 1000);
   if (/^-?\d+$/.test(e)) return Number(e);
   throw new Error(`sahte DB: deger yorumlanamadi: ${e}`);
 }
@@ -90,20 +91,25 @@ function bol(s, ayirici) {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
-const esit = (a, b) => (a instanceof Date || b instanceof Date ? +a === +b : String(a) === String(b));
+const esit = (a, b) =>
+  a instanceof Date || b instanceof Date ? +a === +b : String(a) === String(b);
 
 function kosul(c, row, p) {
   const k = c.trim().replace(/^\w+\./, '');
   let m;
-  if ((m = /^(NOT )?EXISTS \(SELECT 1 FROM (\w+)(?: \w+)?(?: WITH \([^)]*\))? WHERE (.*)\)$/.exec(k))) {
+  if (
+    (m = /^(NOT )?EXISTS \(SELECT 1 FROM (\w+)(?: \w+)?(?: WITH \([^)]*\))? WHERE (.*)\)$/.exec(k))
+  ) {
     const var_ = tablo(m[2]).some((r) => kosullar(m[3], r, p));
     return m[1] ? !var_ : var_;
   }
-  if ((m = /^\((.*)\)$/.exec(k)) && / OR /.test(m[1])) return bol(m[1], ' OR ').some((x) => kosul(x, row, p));
+  if ((m = /^\((.*)\)$/.exec(k)) && / OR /.test(m[1]))
+    return bol(m[1], ' OR ').some((x) => kosul(x, row, p));
   const t = k.replace(/^(\w+)\.(\w+)/, '$2');
   if ((m = /^(\w+) IS NULL$/.exec(t))) return row[m[1]] == null;
   if ((m = /^(\w+) IS NOT NULL$/.exec(t))) return row[m[1]] != null;
-  if ((m = /^(\w+) IN \((.*)\)$/.exec(t))) return bol(m[2], ',').some((x) => esit(row[m[1]], deger(x, p)));
+  if ((m = /^(\w+) IN \((.*)\)$/.exec(t)))
+    return bol(m[2], ',').some((x) => esit(row[m[1]], deger(x, p)));
   if ((m = /^(\w+) < SYSUTCDATETIME\(\)$/.exec(t))) return row[m[1]] != null && row[m[1]] < simdi();
   if ((m = /^(\w+) <> (.*)$/.exec(t))) return !esit(row[m[1]], deger(m[2], p));
   if ((m = /^(\w+) = (.*)$/.exec(t))) return esit(row[m[1]], deger(m[2], p));
@@ -131,15 +137,35 @@ async function query(sql, p = []) {
   let m;
   if (/^SELECT TOP 1 \* FROM server_hub_toplu_isler WHERE tur = \$1 AND durum IN/.test(q)) {
     const w = /WHERE (.*) ORDER BY id DESC$/.exec(q)[1];
-    return { rows: DB.isler.filter((r) => kosullar(w, r, p)).sort((a, b) => b.id - a.id).slice(0, 1), rowCount: 0 };
+    return {
+      rows: DB.isler
+        .filter((r) => kosullar(w, r, p))
+        .sort((a, b) => b.id - a.id)
+        .slice(0, 1),
+      rowCount: 0,
+    };
   }
   if (/^SELECT TOP 10 \* FROM server_hub_toplu_isler/.test(q))
-    return { rows: DB.isler.filter((r) => r.tur === p[0]).sort((a, b) => b.id - a.id).slice(0, 10) };
+    return {
+      rows: DB.isler
+        .filter((r) => r.tur === p[0])
+        .sort((a, b) => b.id - a.id)
+        .slice(0, 10),
+    };
   if (/^SELECT \* FROM server_hub_toplu_isler WHERE id = \$1 AND tur = \$2$/.test(q))
     return { rows: DB.isler.filter((r) => r.id === p[0] && r.tur === p[1]).map((r) => ({ ...r })) };
   if (/^SELECT \* FROM server_hub_toplu_ogeler WHERE is_id = \$1 ORDER BY sira$/.test(q))
-    return { rows: DB.ogeler.filter((r) => r.is_id === p[0]).sort((a, b) => a.sira - b.sira).map((r) => ({ ...r })) };
-  if (/^SELECT \*, CASE WHEN kira_bitis IS NULL OR kira_bitis < SYSUTCDATETIME\(\) THEN 1 ELSE 0 END AS kira_dustu/.test(q)) {
+    return {
+      rows: DB.ogeler
+        .filter((r) => r.is_id === p[0])
+        .sort((a, b) => a.sira - b.sira)
+        .map((r) => ({ ...r })),
+    };
+  if (
+    /^SELECT \*, CASE WHEN kira_bitis IS NULL OR kira_bitis < SYSUTCDATETIME\(\) THEN 1 ELSE 0 END AS kira_dustu/.test(
+      q,
+    )
+  ) {
     const w = /WHERE (.*) ORDER BY id$/.exec(q)[1];
     return {
       rows: DB.isler
@@ -148,17 +174,33 @@ async function query(sql, p = []) {
         .map((r) => ({ ...r, kira_dustu: r.kira_bitis == null || r.kira_bitis < simdi() ? 1 : 0 })),
     };
   }
-  if (/^SELECT TOP 1 o\.is_id, o\.durum FROM server_hub_toplu_ogeler o JOIN server_hub_toplu_isler i/.test(q)) {
+  if (
+    /^SELECT TOP 1 o\.is_id, o\.durum FROM server_hub_toplu_ogeler o JOIN server_hub_toplu_isler i/.test(
+      q,
+    )
+  ) {
     const liste = bol(/o\.durum IN \((.*)\) ORDER BY/.exec(q)[1], ',').map((x) => deger(x, p));
     const r = DB.ogeler
       .filter((o) => {
         const i = DB.isler.find((x) => x.id === o.is_id);
-        return i && i.tur === p[0] && o.host === p[1] && o.gen === p[2] && o.jvm.toLowerCase() === String(p[3]).toLowerCase() && liste.includes(o.durum) && (!/o\.is_id <> \$5/.test(q) || o.is_id !== p[4]);
+        return (
+          i &&
+          i.tur === p[0] &&
+          o.host === p[1] &&
+          o.gen === p[2] &&
+          o.jvm.toLowerCase() === String(p[3]).toLowerCase() &&
+          liste.includes(o.durum) &&
+          (!/o\.is_id <> \$5/.test(q) || o.is_id !== p[4])
+        );
       })
       .sort((a, b) => b.is_id - a.is_id)[0];
     return { rows: r ? [{ is_id: r.is_id, durum: r.durum }] : [] };
   }
-  if (/^SELECT o\.id, o\.is_id, o\.host, o\.gen, o\.jvm, o\.ek, o\.awx_server_id, o\.awx_job_id, o\.baslama_at FROM server_hub_toplu_ogeler o JOIN/.test(q)) {
+  if (
+    /^SELECT o\.id, o\.is_id, o\.host, o\.gen, o\.jvm, o\.ek, o\.awx_server_id, o\.awx_job_id, o\.baslama_at FROM server_hub_toplu_ogeler o JOIN/.test(
+      q,
+    )
+  ) {
     // yetimRestartlar: durum YARIM_KALDI|FAIL, neden LIKE %iz%, bitis_at > simdi - N saat
     const saat = Number(/DATEADD\(hour, -(\d+), SYSUTCDATETIME\(\)\)/.exec(q)[1]);
     assert.match(q, /o\.durum IN \('YARIM_KALDI', 'FAIL'\) AND o\.neden LIKE \$2/);
@@ -168,7 +210,14 @@ async function query(sql, p = []) {
       rows: DB.ogeler
         .filter((o) => {
           const i = DB.isler.find((x) => x.id === o.is_id);
-          return i && i.tur === p[0] && ['YARIM_KALDI', 'FAIL'].includes(o.durum) && String(o.neden || '').includes(iz) && o.bitis_at && +o.bitis_at > sinir;
+          return (
+            i &&
+            i.tur === p[0] &&
+            ['YARIM_KALDI', 'FAIL'].includes(o.durum) &&
+            String(o.neden || '').includes(iz) &&
+            o.bitis_at &&
+            +o.bitis_at > sinir
+          );
         })
         .map((o) => ({ ...o })),
     };
@@ -176,27 +225,67 @@ async function query(sql, p = []) {
   if (/^INSERT INTO server_hub_toplu_isler/.test(q)) {
     const aktif = ['PLANLANIYOR', 'PLAN_HAZIR', 'CALISIYOR', 'IPTAL_ISTENDI'];
     if (!DB.uxYok && DB.isler.some((r) => r.tur === p[0] && aktif.includes(r.durum)))
-      throw new Error("Cannot insert duplicate key row in object 'dbo.server_hub_toplu_isler' with unique index 'UX_shti_aktif'");
+      throw new Error(
+        "Cannot insert duplicate key row in object 'dbo.server_hub_toplu_isler' with unique index 'UX_shti_aktif'",
+      );
     DB.sira += 1;
     const r = {
-      id: DB.sira, tur: p[0], durum: 'PLANLANIYOR', olusturan: p[1], ust_sinir: p[2], aday: p[3], kira_id: p[4],
-      kira_bitis: deger('DATEADD(second, 120, SYSUTCDATETIME())', p), created_at: simdi(), plan_gecti: 0, dusen: 0,
-      ok_sayisi: 0, skip_sayisi: 0, fail_sayisi: 0, onaylayan: null, iptal_eden: null, hata: null, plan_bitis_at: null,
-      onay_at: null, bitis_at: null,
+      id: DB.sira,
+      tur: p[0],
+      durum: 'PLANLANIYOR',
+      olusturan: p[1],
+      ust_sinir: p[2],
+      aday: p[3],
+      kira_id: p[4],
+      kira_bitis: deger('DATEADD(second, 120, SYSUTCDATETIME())', p),
+      created_at: simdi(),
+      plan_gecti: 0,
+      dusen: 0,
+      ok_sayisi: 0,
+      skip_sayisi: 0,
+      fail_sayisi: 0,
+      onaylayan: null,
+      iptal_eden: null,
+      hata: null,
+      plan_bitis_at: null,
+      onay_at: null,
+      bitis_at: null,
     };
     DB.isler.push(r);
     return { rows: [{ id: r.id }], rowCount: 1 };
   }
-  if (/^INSERT INTO server_hub_toplu_ogeler \(is_id, sira, host, env, gen, jvm, eylem, calisiyor, tarama_scan_date, ek, durum\)/.test(q)) {
+  if (
+    /^INSERT INTO server_hub_toplu_ogeler \(is_id, sira, host, env, gen, jvm, eylem, calisiyor, tarama_scan_date, ek, durum\)/.test(
+      q,
+    )
+  ) {
     const durumlar_ = [...q.matchAll(/'(ADAY|SECIM)'\)/g)].map((x) => x[1]);
     const n = durumlar_.length;
     for (let i = 0; i < n; i += 1) {
       const x = p.slice(i * 10, i * 10 + 10);
       DB.sira += 1;
       DB.ogeler.push({
-        id: DB.sira, is_id: x[0], sira: x[1], host: x[2], env: x[3], gen: x[4], jvm: x[5], eylem: x[6], calisiyor: x[7],
-        tarama_scan_date: x[8], ek: x[9], durum: durumlar_[i], neden: null, plan_awx_server_id: null, plan_job_id: null,
-        awx_server_id: null, awx_job_id: null, sonuc_satiri: null, dogrulandi: 0, baslama_at: null, bitis_at: null,
+        id: DB.sira,
+        is_id: x[0],
+        sira: x[1],
+        host: x[2],
+        env: x[3],
+        gen: x[4],
+        jvm: x[5],
+        eylem: x[6],
+        calisiyor: x[7],
+        tarama_scan_date: x[8],
+        ek: x[9],
+        durum: durumlar_[i],
+        neden: null,
+        plan_awx_server_id: null,
+        plan_job_id: null,
+        awx_server_id: null,
+        awx_job_id: null,
+        sonuc_satiri: null,
+        dogrulandi: 0,
+        baslama_at: null,
+        bitis_at: null,
       });
     }
     return { rows: [], rowCount: n };
@@ -226,7 +315,8 @@ stub('../../db/index.cjs', { query });
 // Sahte AWX
 const AWX = new Map();
 stub('../../ansible/runner.cjs', {
-  getJobStatusOnServer: async (_s, jobId) => AWX.get(Number(jobId)) || { status: 'running', artifacts: {} },
+  getJobStatusOnServer: async (_s, jobId) =>
+    AWX.get(Number(jobId)) || { status: 'running', artifacts: {} },
 });
 
 // Sahte OpsX: topluRestartBaslat cagrilarini kaydeder; envanter INV'den.
@@ -236,16 +326,27 @@ let limitHata;
 const INV = new Map();
 const OPSX = {
   extractStatsKey: (a, k) => (a && a[k] && typeof a[k] === 'object' ? a[k] : null),
-  metadatahubHostMu: (h) => ['GBABAT01', 'GBABAT02', 'GBABAP01', 'GBABAP02'].some((x) => String(h || '').toUpperCase().startsWith(x)),
+  metadatahubHostMu: (h) =>
+    ['ORABAT01', 'ORABAT02', 'ORABAP01', 'ORABAP02'].some((x) =>
+      String(h || '')
+        .toUpperCase()
+        .startsWith(x),
+    ),
   hostsForApp: async (app) => INV.get(app) || [],
   legacyLimitKontrol: async () => {
-    if (limitHata) throw Object.assign(new Error(limitHata), { status: 409, code: 'limit_kabul_edilmiyor' });
+    if (limitHata)
+      throw Object.assign(new Error(limitHata), { status: 409, code: 'limit_kabul_edilmiyor' });
     return { templateId: 1, serverId: 1, keyName: 'opsx_legacy_operation' };
   },
   topluRestartBaslat: async (x) => {
     if (restartHata) {
       const h = typeof restartHata === 'function' ? restartHata(x) : restartHata;
-      if (h) throw Object.assign(new Error(h.message), { status: h.status || 409, code: h.code, ...(h.belirsiz ? { launchBelirsiz: true } : {}) });
+      if (h)
+        throw Object.assign(new Error(h.message), {
+          status: h.status || 409,
+          code: h.code,
+          ...(h.belirsiz ? { launchBelirsiz: true } : {}),
+        });
     }
     const jobId = 900 + restartlar.length;
     restartlar.push({ ...x, user: x.req.session.user.username, jobId });
@@ -258,21 +359,50 @@ const T = require('../toplu-restart.cjs');
 const AS = require('../autostart-dogrulama.cjs');
 
 // ── FILO ──────────────────────────────────────────────────────────────────────────────────────────
-const J = (name, ek) => ({ name, gen: 8, group: `${name}_Group`, running: true, runningKnown: true, argFark: 1, processStartEpoch: 1000, source: 'cli', cfgSrc: 'CLI', invStatus: 'running', ...ek });
-const H = (ad, jvms, ek = {}) => ({ host: ad, env: 'TEST', envGroup: 'Non-Production', fresh: true, schemaUnknown: false, scanDate: '2026-11-14', loadedAt: 100, loadExcluded: false, jvms, findings: [], ...ek });
+const J = (name, ek) => ({
+  name,
+  gen: 8,
+  group: `${name}_Group`,
+  running: true,
+  runningKnown: true,
+  argFark: 1,
+  processStartEpoch: 1000,
+  source: 'cli',
+  cfgSrc: 'CLI',
+  invStatus: 'running',
+  ...ek,
+});
+const H = (ad, jvms, ek = {}) => ({
+  host: ad,
+  env: 'TEST',
+  envGroup: 'Non-Production',
+  fresh: true,
+  schemaUnknown: false,
+  scanDate: '2026-11-14',
+  loadedAt: 100,
+  loadExcluded: false,
+  jvms,
+  findings: [],
+  ...ek,
+});
 const DIFF = new Map();
 let A;
 function filo() {
   A = {
     hosts: [
-      H('APP01', [J('crm'), J('esit', { argFark: 0 }), J('olcme', { argFark: 2 }), J('durmus', { running: false })]),
+      H('APP01', [
+        J('crm'),
+        J('esit', { argFark: 0 }),
+        J('olcme', { argFark: 2 }),
+        J('durmus', { running: false }),
+      ]),
       H('APP02', [J('crm'), J('pay')]),
       H('APP03', [J('doc', { gen: 7, group: 'doc_Group' })]),
       H('APP04', [J('envyok', { invStatus: undefined })]),
       H('PRD01', [J('prod1')], { env: 'PROD', envGroup: 'Production' }),
       H('APPX05', [J('envprod')], { env: 'PROD', envGroup: 'Production' }),
       H('NEO01', [J('bilinmez')], { env: 'BILINMIYOR' }),
-      H('GBABAT01', [J('meta')]),
+      H('ORABAT01', [J('meta')]),
       H('BAYAT01', [J('bayat')], { fresh: false }),
       H('SEMA01', [J('sema')], { schemaUnknown: true }),
       H('GIZ01', [J('tanimsiz', { cfgSrc: 'UNAVAILABLE' }), J('olcul', { runningKnown: false })]),
@@ -280,9 +410,17 @@ function filo() {
   };
   delete A.hosts[3].jvms[0].invStatus;
   DIFF.clear();
-  for (const h of A.hosts) for (const j of h.jvms) DIFF.set(`${h.host}|${j.gen}|${j.name}`, '-Xmx running=2g configured=4g; -Ddb.password running=a configured=b');
+  for (const h of A.hosts)
+    for (const j of h.jvms)
+      DIFF.set(
+        `${h.host}|${j.gen}|${j.name}`,
+        '-Xmx running=2g configured=4g; -Ddb.password running=a configured=b',
+      );
   INV.clear();
-  INV.set('crm', [{ host: 'APP01', kurulum: '8' }, { host: 'APP02', kurulum: '8' }]);
+  INV.set('crm', [
+    { host: 'APP01', kurulum: '8' },
+    { host: 'APP02', kurulum: '8' },
+  ]);
   INV.set('pay', [{ host: 'APP02', kurulum: '8' }]);
   INV.set('doc', [{ host: 'APP03', kurulum: '7' }]);
 }
@@ -312,7 +450,14 @@ function kurDeps() {
     launch: async (req, key, ad, ev, detail) => {
       if (launchHata) throw Object.assign(new Error(launchHata), { status: 500 });
       const jobId = 500 + launchlar.length;
-      launchlar.push({ user: req.session.user.username, key, ad, ev: JSON.parse(JSON.stringify(ev)), detail, jobId });
+      launchlar.push({
+        user: req.session.user.username,
+        key,
+        ad,
+        ev: JSON.parse(JSON.stringify(ev)),
+        detail,
+        jobId,
+      });
       return { jobId, status: 'pending', awxServerId: 1 };
     },
     getAssessment: async () => A,
@@ -360,11 +505,16 @@ const secimHepsi = () => [
 ];
 const durumlar = () => Object.fromEntries(DB.ogeler.map((o) => [`${o.host}/${o.jvm}`, o.durum]));
 /** Son toplu isin ogesi (onceki islerin ayni JVM ogeleri karismasin). */
-const oge = (host, jvm) => DB.ogeler.filter((o) => o.host === host && o.jvm === jvm).sort((a, b) => b.is_id - a.is_id)[0];
+const oge = (host, jvm) =>
+  DB.ogeler.filter((o) => o.host === host && o.jvm === jvm).sort((a, b) => b.is_id - a.is_id)[0];
 const ek = (host, jvm) => JSON.parse(oge(host, jvm).ek || '{}');
 /** Suren restart'lari STARTED + kapanan farkla bitirir; is bitene kadar ilerletir. */
 async function hepsiniBitir(sinir = 20) {
-  for (let i = 0; i < sinir && ['CALISIYOR', 'IPTAL_ISTENDI'].includes(DB.isler[DB.isler.length - 1].durum); i += 1) {
+  for (
+    let i = 0;
+    i < sinir && ['CALISIYOR', 'IPTAL_ISTENDI'].includes(DB.isler[DB.isler.length - 1].durum);
+    i += 1
+  ) {
     const r = restartlar[restartlar.length - 1];
     if (r && !AWX.has(r.jobId)) await restartBitir('STARTED');
     else await T.tick();
@@ -372,13 +522,25 @@ async function hepsiniBitir(sinir = 20) {
 }
 const taramaSonucu = (hosts, ek2 = {}) => ({
   status: 'successful',
-  artifacts: { server_hub_scan_result: { hosts, rows: 10, loader: { rc: 0, excluded: [], ...ek2 } } },
+  artifacts: {
+    server_hub_scan_result: { hosts, rows: 10, loader: { rc: 0, excluded: [], ...ek2 } },
+  },
 });
 const restartSonucu = (host, jvm, gen, start, status = 'successful') => ({
   status,
   artifacts: {
     opsx_serverconfig_ops_result: {
-      [host]: [{ name: jvm, jbossMajor: String(gen), host_controller: 'hx01', operation: 'restart', stop_state: 'STOPPED', kill_result: '', start_state: start }],
+      [host]: [
+        {
+          name: jvm,
+          jbossMajor: String(gen),
+          host_controller: 'hx01',
+          operation: 'restart',
+          stop_state: 'STOPPED',
+          kill_result: '',
+          start_state: start,
+        },
+      ],
     },
   },
 });
@@ -420,7 +582,10 @@ test('TR1 adaylar: yalniz taze + calisan + fark + envanterde + prod degil; diger
   const agir = new Map();
   for (const h of A.hosts) agir.set(h.host, await loadJvmAgir(h.host));
   const { adaylar, dislananlar } = T.adaylariTuret(A, agir);
-  assert.deepEqual(adaylar.map((x) => `${x.host}/${x.jvm}`), ['APP01/crm', 'APP02/crm', 'APP02/pay', 'APP03/doc']);
+  assert.deepEqual(
+    adaylar.map((x) => `${x.host}/${x.jvm}`),
+    ['APP01/crm', 'APP02/crm', 'APP02/pay', 'APP03/doc'],
+  );
   const n = Object.fromEntries(dislananlar.map((x) => [x.jvm, x.neden]));
   assert.match(n.prod1, /prod — OpsX'ten tek tek/);
   assert.match(n.envprod, /prod — OpsX'ten tek tek/, 'envanter ortami PROD (ad prod gorunmese de)');
@@ -430,14 +595,24 @@ test('TR1 adaylar: yalniz taze + calisan + fark + envanterde + prod degil; diger
   assert.match(n.bayat, /bayat/);
   assert.match(n.sema, /şeması/);
   assert.match(n.tanimsiz, /tanım kaynağında yok/);
-  for (const j of ['esit', 'olcme', 'durmus', 'olcul']) assert.ok(!(j in n) && !adaylar.some((x) => x.jvm === j), `${j} aday/dislanan olmamali`);
+  for (const j of ['esit', 'olcme', 'durmus', 'olcul'])
+    assert.ok(!(j in n) && !adaylar.some((x) => x.jvm === j), `${j} aday/dislanan olmamali`);
   const c = adaylar[0];
   assert.equal(c.grp, 'crm_Group');
   assert.deepEqual(c.anahtarlar, ['-Xmx', '-Ddb.password']);
   assert.ok(!/running=a /.test(c.fark) && /\*\*\*/.test(c.fark), `sir maskelenmedi: ${c.fark}`);
   // suren auto-start isi olan JVM dislanir
-  katman.isKaydet(1, 77, { host: 'APP02', gen: 8, jvm: 'pay', action: 'jboss_autostart_on', h: A.hosts[1] });
-  assert.match(T.adaylariTuret(A, agir).dislananlar.find((x) => x.jvm === 'pay').neden, /auto-start işi #77/);
+  katman.isKaydet(1, 77, {
+    host: 'APP02',
+    gen: 8,
+    jvm: 'pay',
+    action: 'jboss_autostart_on',
+    h: A.hosts[1],
+  });
+  assert.match(
+    T.adaylariTuret(A, agir).dislananlar.find((x) => x.jvm === 'pay').neden,
+    /auto-start işi #77/,
+  );
   // SUNUCU ADI prod (env TEST olsa da)
   A.hosts[0].host = 'APPPROD01';
   assert.match(T.restartKapisi(A, A.hosts[0], A.hosts[0].jvms[0]), /prod/);
@@ -445,38 +620,79 @@ test('TR1 adaylar: yalniz taze + calisan + fark + envanterde + prod degil; diger
 
 test('TR2 olustur: limit, cift, gen, aktif istekte; aday disi / kilit yurutucude DUSTU; ogeler, sira, ek, denetim', async () => {
   limitDeger = 3;
-  await assert.rejects(T.olustur(istek(), secimHepsi()), (e) => e.status === 400 && /en fazla 3 JVM/.test(e.message));
+  await assert.rejects(
+    T.olustur(istek(), secimHepsi()),
+    (e) => e.status === 400 && /en fazla 3 JVM/.test(e.message),
+  );
   limitDeger = 50;
-  await assert.rejects(T.olustur(istek(), [{ host: 'APP01', gen: 8, jvm: 'crm' }, { host: 'app01', gen: 8, jvm: 'CRM' }]), (e) => e.status === 400 && /iki kez/.test(e.message));
-  await assert.rejects(T.olustur(istek(), [{ host: 'APP01', gen: 9, jvm: 'crm' }]), (e) => e.status === 400);
+  await assert.rejects(
+    T.olustur(istek(), [
+      { host: 'APP01', gen: 8, jvm: 'crm' },
+      { host: 'app01', gen: 8, jvm: 'CRM' },
+    ]),
+    (e) => e.status === 400 && /iki kez/.test(e.message),
+  );
+  await assert.rejects(
+    T.olustur(istek(), [{ host: 'APP01', gen: 9, jvm: 'crm' }]),
+    (e) => e.status === 400,
+  );
   assert.equal(DB.isler.length, 0, 'reddedilen istek kayit acmamali');
   // Prod (aday disi) + kilitli JVM: is acilir, ama ikisi de taze degerlendirmede DUSTU (kapilar yurutucude).
   kilitler.set('APP02|8|pay', 'pay toplu auto-start isi #4 icinde');
   const r = await T.olustur(istek(), [...secimHepsi(), { host: 'PRD01', gen: 8, jvm: 'prod1' }]);
   assert.deepEqual([r.adet, r.hostSayisi, r.dogrulaniyor], [5, 4, true]);
-  assert.ok(DB.ogeler.every((o) => o.durum === T.SECIM && o.env == null && o.ek === '{}'), 'istek yalniz secimi yazar');
-  await assert.rejects(T.olustur(istek(), secimHepsi()), (e) => e.status === 409 && e.code === 'aktif_is');
+  assert.ok(
+    DB.ogeler.every((o) => o.durum === T.SECIM && o.env == null && o.ek === '{}'),
+    'istek yalniz secimi yazar',
+  );
+  await assert.rejects(
+    T.olustur(istek(), secimHepsi()),
+    (e) => e.status === 409 && e.code === 'aktif_is',
+  );
   // UX_shti_aktif olmasa da (okuma katmani) ikinci aktif is acilmaz
   DB.uxYok = true;
-  await assert.rejects(T.olustur(istek(), secimHepsi()), (e) => e.status === 409 && /hâlâ aktif/.test(e.message));
+  await assert.rejects(
+    T.olustur(istek(), secimHepsi()),
+    (e) => e.status === 409 && /hâlâ aktif/.test(e.message),
+  );
   DB.uxYok = false;
   const is = DB.isler[0];
-  assert.deepEqual([is.tur, is.durum, is.olusturan, is.ust_sinir], ['RESTART', 'PLANLANIYOR', 'ayse', 50]);
+  assert.deepEqual(
+    [is.tur, is.durum, is.olusturan, is.ust_sinir],
+    ['RESTART', 'PLANLANIYOR', 'ayse', 50],
+  );
   assert.equal(is.kira_id, T.SUREC_ID);
   const sira = [...DB.ogeler].sort((a, b) => a.sira - b.sira).map((o) => o.jvm);
-  for (let i = 1; i < sira.length; i += 1) assert.notEqual(sira[i], sira[i - 1], `kopyalar ardisik: ${sira}`);
-  assert.deepEqual(denetimler.map((d) => d.op), ['toplu_restart_olustur']);
+  for (let i = 1; i < sira.length; i += 1)
+    assert.notEqual(sira[i], sira[i - 1], `kopyalar ardisik: ${sira}`);
+  assert.deepEqual(
+    denetimler.map((d) => d.op),
+    ['toplu_restart_olustur'],
+  );
   await T.tick();
-  assert.match(oge('PRD01', 'prod1').neden, /^seçim doğrulamasında düştü: artık aday değil \(prod — OpsX'ten tek tek/);
+  assert.match(
+    oge('PRD01', 'prod1').neden,
+    /^seçim doğrulamasında düştü: artık aday değil \(prod — OpsX'ten tek tek/,
+  );
   assert.equal(oge('PRD01', 'prod1').durum, 'DUSTU');
   assert.match(oge('APP02', 'pay').neden, /^seçim doğrulamasında düştü: pay toplu auto-start/);
   assert.equal(oge('APP02', 'pay').durum, 'DUSTU');
-  assert.deepEqual(['APP01/crm', 'APP02/crm', 'APP03/doc'].map((k) => durumlar()[k]), ['PLANLANIYOR', 'PLANLANIYOR', 'PLANLANIYOR']);
+  assert.deepEqual(
+    ['APP01/crm', 'APP02/crm', 'APP03/doc'].map((k) => durumlar()[k]),
+    ['PLANLANIYOR', 'PLANLANIYOR', 'PLANLANIYOR'],
+  );
   assert.ok(DB.ogeler.every((o) => o.eylem === 'restart'));
   assert.equal(oge('APP01', 'crm').env, 'TEST');
-  assert.deepEqual([ek('APP01', 'crm').loadedAt, ek('APP01', 'crm').processStart, ek('APP01', 'crm').grp], [100, 1000, 'crm_Group']);
-  assert.ok(!/running=a /.test(oge('APP01', 'crm').ek), 'ham sir DB\'ye yazilmamali');
-  assert.deepEqual(launchlar[0].ev.target_hosts.split(',').sort(), ['APP01', 'APP02', 'APP03'], 'dusenin sunucusu (PRD01) taranmaz');
+  assert.deepEqual(
+    [ek('APP01', 'crm').loadedAt, ek('APP01', 'crm').processStart, ek('APP01', 'crm').grp],
+    [100, 1000, 'crm_Group'],
+  );
+  assert.ok(!/running=a /.test(oge('APP01', 'crm').ek), "ham sir DB'ye yazilmamali");
+  assert.deepEqual(
+    launchlar[0].ev.target_hosts.split(',').sort(),
+    ['APP01', 'APP02', 'APP03'],
+    'dusenin sunucusu (PRD01) taranmaz',
+  );
 });
 
 test('TR2b hizli istek: olustur taze degerlendirme / agir fark / kilit / AWX okumaz; 33 JVM tek INSERT', async () => {
@@ -502,14 +718,24 @@ test('TR2b hizli istek: olustur taze degerlendirme / agir fark / kilit / AWX oku
     },
     audit: () => {},
   });
-  const secim = Array.from({ length: 33 }, (_, i) => ({ host: `APP${String(i).padStart(2, '0')}`, gen: 8, jvm: `j${i % 7}` }));
+  const secim = Array.from({ length: 33 }, (_, i) => ({
+    host: `APP${String(i).padStart(2, '0')}`,
+    gen: 8,
+    jvm: `j${i % 7}`,
+  }));
   DB.sorgular.length = 0;
   const r = await T.olustur(istek(), secim);
   assert.equal(r.adet, 33);
   assert.deepEqual([okuma, agirOkuma, kilitOkuma], [0, 0, 0], 'istekte taze okuma / kilit YOK');
-  assert.ok(DB.sorgular.length <= 4, `istek ${DB.sorgular.length} sorgu yapti: ${DB.sorgular.map((q) => q.slice(0, 40)).join(' | ')}`);
+  assert.ok(
+    DB.sorgular.length <= 4,
+    `istek ${DB.sorgular.length} sorgu yapti: ${DB.sorgular.map((q) => q.slice(0, 40)).join(' | ')}`,
+  );
   assert.equal(DB.sorgular.filter((q) => /^INSERT INTO server_hub_toplu_ogeler/.test(q)).length, 1);
-  assert.ok(!DB.sorgular.some((q) => /yetim|LIKE/.test(q)), 'yetim restart (AWX) okumasi istekte olmamali');
+  assert.ok(
+    !DB.sorgular.some((q) => /yetim|LIKE/.test(q)),
+    'yetim restart (AWX) okumasi istekte olmamali',
+  );
 });
 
 test('TR2c taze degerlendirme okunamazsa: is acik kalir, hata yazilir, yeniden denenir; 10 dk sonra DUSTU + PLAN_HATA', async () => {
@@ -523,7 +749,12 @@ test('TR2c taze degerlendirme okunamazsa: is acik kalir, hata yazilir, yeniden d
     },
     getAssessment: async () => {
       okuma += 1;
-      if (dus === 'BOZUK') return { get hosts() { throw new TypeError('bozuk degerlendirme'); } };
+      if (dus === 'BOZUK')
+        return {
+          get hosts() {
+            throw new TypeError('bozuk degerlendirme');
+          },
+        };
       if (dus) throw new Error(dus);
       return A;
     },
@@ -540,8 +771,14 @@ test('TR2c taze degerlendirme okunamazsa: is acik kalir, hata yazilir, yeniden d
     await T.olustur(istek(), secimHepsi());
     await T.tick();
     assert.equal(DB.isler[0].durum, 'PLANLANIYOR');
-    assert.match(DB.isler[0].hata, /Taze değerlendirme okunamadı \(Timeout: Request failed.*yeniden deneniyor/);
-    assert.ok(DB.ogeler.every((o) => o.durum === T.SECIM), 'okuma hatasinda oge ilerlemez');
+    assert.match(
+      DB.isler[0].hata,
+      /Taze değerlendirme okunamadı \(Timeout: Request failed.*yeniden deneniyor/,
+    );
+    assert.ok(
+      DB.ogeler.every((o) => o.durum === T.SECIM),
+      'okuma hatasinda oge ilerlemez',
+    );
     assert.equal(launchlar.length, 0);
     // bekleme: hemen sonraki tick tum filoyu yeniden okumaz (TBMWANS zorlanirken her 10 sn'de okuma yok)
     assert.equal(okuma, 1);
@@ -562,7 +799,13 @@ test('TR2c taze degerlendirme okunamazsa: is acik kalir, hata yazilir, yeniden d
     await T.olustur(istek(), secimHepsi());
     DB.isler[0].created_at = new Date(Date.now() - T.SECIM_ZAMAN_ASIMI_MS - 1000);
     await T.tick();
-    assert.ok(DB.ogeler.every((o) => o.durum === 'DUSTU' && /^seçim doğrulanamadı: .*MSSQL bağlantısı yok.*dokunulmadı/.test(o.neden)));
+    assert.ok(
+      DB.ogeler.every(
+        (o) =>
+          o.durum === 'DUSTU' &&
+          /^seçim doğrulanamadı: .*MSSQL bağlantısı yok.*dokunulmadı/.test(o.neden),
+      ),
+    );
     assert.equal(DB.isler[0].durum, 'PLAN_HATA');
     assert.match(DB.isler[0].hata, /Taze değerlendirme okunamadı — seçim doğrulanamadı/);
     assert.equal(launchlar.length, 1, 'onizleme acilmadi');
@@ -574,12 +817,21 @@ test('TR2c taze degerlendirme okunamazsa: is acik kalir, hata yazilir, yeniden d
     await T.olustur(istek(), secimHepsi());
     await T.tick();
     assert.equal(DB.isler[0].durum, 'PLANLANIYOR');
-    assert.match(DB.isler[0].hata, /^Seçim doğrulaması hata verdi \(bozuk degerlendirme\) — yeniden deneniyor/);
+    assert.match(
+      DB.isler[0].hata,
+      /^Seçim doğrulaması hata verdi \(bozuk degerlendirme\) — yeniden deneniyor/,
+    );
     assert.ok(DB.ogeler.every((o) => o.durum === T.SECIM));
     T._secimBeklemeSifirlaForTest();
     DB.isler[0].created_at = new Date(Date.now() - T.SECIM_ZAMAN_ASIMI_MS - 1000);
     await T.tick();
-    assert.ok(DB.ogeler.every((o) => o.durum === 'DUSTU' && /^seçim doğrulanamadı: .*Seçim doğrulaması hata verdi \(bozuk/.test(o.neden)));
+    assert.ok(
+      DB.ogeler.every(
+        (o) =>
+          o.durum === 'DUSTU' &&
+          /^seçim doğrulanamadı: .*Seçim doğrulaması hata verdi \(bozuk/.test(o.neden),
+      ),
+    );
     assert.equal(DB.isler[0].durum, 'PLAN_HATA');
     assert.equal(launchlar.length, 1);
   } finally {
@@ -617,7 +869,12 @@ test('TR3 onizleme: tek tarama isi; yukleme kaniti; durmus / fark yok / fark deg
   AWX.set(l.jobId, taramaSonucu(['APP01', 'APP02', 'APP03']));
   await T.tick();
   const d = durumlar();
-  assert.deepEqual(d, { 'APP01/crm': 'DUSTU', 'APP02/crm': 'DUSTU', 'APP02/pay': 'DUSTU', 'APP03/doc': 'DUSTU' });
+  assert.deepEqual(d, {
+    'APP01/crm': 'DUSTU',
+    'APP02/crm': 'DUSTU',
+    'APP02/pay': 'DUSTU',
+    'APP03/doc': 'DUSTU',
+  });
   assert.match(oge('APP01', 'crm').neden, /çalışmıyor/);
   assert.match(oge('APP02', 'pay').neden, /fark kalmadı/);
   assert.match(oge('APP02', 'crm').neden, /fark değişti/);
@@ -633,12 +890,23 @@ test('TR3b onizleme: yukleyici dislamasi, sonucsuz is, envanter kurulum kolu; ge
   const l = launchlar[0];
   for (const h of A.hosts) h.loadedAt += 10;
   jvmBul('APP01', 'crm').processStartEpoch = 1500;
-  AWX.set(l.jobId, taramaSonucu(['APP01', 'APP02', 'APP03'], { excluded: [{ host: 'APP02', issue: 'ROW_COUNT_MISMATCH' }] }));
+  AWX.set(
+    l.jobId,
+    taramaSonucu(['APP01', 'APP02', 'APP03'], {
+      excluded: [{ host: 'APP02', issue: 'ROW_COUNT_MISMATCH' }],
+    }),
+  );
   await T.tick();
   assert.equal(oge('APP01', 'crm').durum, 'PLAN_GECTI');
   assert.match(oge('APP02', 'crm').neden, /yükleyici dışladı \(ROW_COUNT_MISMATCH\)/);
-  assert.match(oge('APP03', 'doc').neden, /envanterde APP03 JBoss 7 kurulumunda "doc" uygulaması yok/);
-  assert.deepEqual([ek('APP01', 'crm').application, ek('APP01', 'crm').processStart, ek('APP01', 'crm').loadedAt], ['crm', 1500, 110]);
+  assert.match(
+    oge('APP03', 'doc').neden,
+    /envanterde APP03 JBoss 7 kurulumunda "doc" uygulaması yok/,
+  );
+  assert.deepEqual(
+    [ek('APP01', 'crm').application, ek('APP01', 'crm').processStart, ek('APP01', 'crm').loadedAt],
+    ['crm', 1500, 110],
+  );
   assert.equal(DB.isler[0].durum, 'PLAN_HAZIR');
   // sonucsuz is (set_stats yok)
   DB.isler.length = 0;
@@ -671,7 +939,9 @@ test('TR4 onay: 15 dk siniri, sablon limit kapisi, onay -> CALISIYOR', async () 
   const is = DB.isler.find((x) => x.id === id2);
   assert.deepEqual([is.durum, is.onaylayan], ['CALISIYOR', 'mehmet']);
   assert.match(oge('APP03', 'doc').neden, /onay anında: tarama bayat/);
-  assert.ok(denetimler.some((d) => d.op === 'toplu_restart_onay' && d.adet === 3 && d.user === 'mehmet'));
+  assert.ok(
+    denetimler.some((d) => d.op === 'toplu_restart_onay' && d.adet === 3 && d.user === 'mehmet'),
+  );
 });
 
 test('TR5 tek tek: tek restart, STARTED -> dogrulama taramasi, KAPANDI / KAPANMADI, sonra siradaki', async () => {
@@ -688,7 +958,10 @@ test('TR5 tek tek: tek restart, STARTED -> dogrulama taramasi, KAPANDI / KAPANMA
   AWX.set(r1.jobId, restartSonucu(r1.host, r1.jvm, r1.gen, 'STARTED'));
   await T.tick();
   const t1 = launchlar[launchlar.length - 1];
-  assert.deepEqual([t1.key, t1.ev.target_hosts, t1.detail.op], ['server_hub_scan', r1.host, 'toplu_restart_dogrulama']);
+  assert.deepEqual(
+    [t1.key, t1.ev.target_hosts, t1.detail.op],
+    ['server_hub_scan', r1.host, 'toplu_restart_dogrulama'],
+  );
   assert.equal(oge(r1.host, r1.jvm).durum, 'TARANIYOR');
   await T.tick();
   assert.equal(restartlar.length, 1, 'dogrulama taramasi bitmeden siradaki yok');
@@ -704,11 +977,18 @@ test('TR5 tek tek: tek restart, STARTED -> dogrulama taramasi, KAPANDI / KAPANMA
   await restartBitir('STARTED', { fark: 1 });
   const r2 = restartlar[1];
   assert.equal(oge(r2.host, r2.jvm).durum, 'KAPANMADI');
-  assert.match(oge(r2.host, r2.jvm).neden, /tarama yanlış uyarı veriyor olabilir \(server-group jvm ayarı domain\.xml'de olabilir/);
+  assert.match(
+    oge(r2.host, r2.jvm).neden,
+    /tarama yanlış uyarı veriyor olabilir \(server-group jvm ayarı domain\.xml'de olabilir/,
+  );
   await hepsiniBitir();
   assert.equal(restartlar.length, 4);
   assert.equal(DB.isler[0].durum, 'BITTI', 'KAPANMADI hata degil');
-  assert.ok(denetimler.some((d) => d.op === 'toplu_restart_bitti' && d.durum === 'BITTI' && d.kapanmadi === 1));
+  assert.ok(
+    denetimler.some(
+      (d) => d.op === 'toplu_restart_bitti' && d.durum === 'BITTI' && d.kapanmadi === 1,
+    ),
+  );
   // ayni anda iki restart hic olmadi: her restart bir oncekinin taramasindan sonra
   const sira = restartlar.map((x) => `${x.host}/${x.jvm}`);
   assert.equal(new Set(sira).size, 4);
@@ -729,17 +1009,25 @@ test('TR6 basarisizlik: NOT_STARTED -> FAIL, kopyalar ATLANDI, digerleri devam, 
   // digerleri devam
   for (let i = 0; i < 6 && restartlar.length < 3; i += 1) {
     await T.tick();
-    if (restartlar.length > 1 && !AWX.has(restartlar[restartlar.length - 1].jobId)) await restartBitir('STARTED');
+    if (restartlar.length > 1 && !AWX.has(restartlar[restartlar.length - 1].jobId))
+      await restartBitir('STARTED');
   }
   await T.tick();
-  assert.ok(!restartlar.some((x) => x.host === kopya.host && x.jvm === 'crm'), 'atlanan kopya restart edilmemeli');
+  assert.ok(
+    !restartlar.some((x) => x.host === kopya.host && x.jvm === 'crm'),
+    'atlanan kopya restart edilmemeli',
+  );
   assert.equal(DB.isler[0].durum, 'BITTI_HATALI');
   const b = denetimler.find((d) => d.op === 'toplu_restart_bitti');
   assert.deepEqual([b.durum, b.fail], ['BITTI_HATALI', 1]);
 });
 
 test('TR7 kanit: surec degismedi FAIL; set_stats yok + basarili + yeni surec KAPANDI; set_stats yok + dustu FAIL; yuklenmedi FAIL', async () => {
-  await onayli([{ host: 'APP01', gen: 8, jvm: 'crm' }, { host: 'APP02', gen: 8, jvm: 'pay' }, { host: 'APP03', gen: 7, jvm: 'doc' }]);
+  await onayli([
+    { host: 'APP01', gen: 8, jvm: 'crm' },
+    { host: 'APP02', gen: 8, jvm: 'pay' },
+    { host: 'APP03', gen: 7, jvm: 'doc' },
+  ]);
   await T.tick();
   await restartBitir('STARTED', { ps: 1000 });
   let r = restartlar[0];
@@ -793,7 +1081,10 @@ test('TR7 kanit: surec degismedi FAIL; set_stats yok + basarili + yeni surec KAP
 
 test('TR8 OpsX reddi: uretim ATLANDI; sablon limiti FAIL + kalanlar ATLANDI; kilit ATLANDI', async () => {
   await onayli();
-  restartHata = (x) => (x.host === 'APP01' ? { code: 'uretim', message: "prod (ortam=Production) — OpsX'ten tek tek (Smart onayı)." } : null);
+  restartHata = (x) =>
+    x.host === 'APP01'
+      ? { code: 'uretim', message: "prod (ortam=Production) — OpsX'ten tek tek (Smart onayı)." }
+      : null;
   kilitler.set('APP02|8|crm', 'crm toplu auto-start isi #3 icinde');
   await hepsiniBitir();
   assert.equal(oge('APP01', 'crm').durum, 'ATLANDI');
@@ -861,7 +1152,11 @@ test('TR10 yeniden baslatma: kirasi dusmus is YARIM_KALDI, suren oge is numarasi
   const s = oge(r1.host, r1.jvm);
   assert.deepEqual([s.durum, s.awx_job_id], ['YARIM_KALDI', r1.jobId]);
   assert.match(s.neden, /restart işi sürüyordu/);
-  assert.ok(DB.ogeler.filter((o) => o.id !== s.id).every((o) => o.durum === 'YARIM_KALDI' && /çalıştırılmadı/.test(o.neden)));
+  assert.ok(
+    DB.ogeler
+      .filter((o) => o.id !== s.id)
+      .every((o) => o.durum === 'YARIM_KALDI' && /çalıştırılmadı/.test(o.neden)),
+  );
   assert.ok(denetimler.some((d) => d.op === 'toplu_restart_yarim_kaldi'));
   // kirasi CANLI baska surecin isine dokunulmaz
   DB.isler.length = 0;
@@ -880,20 +1175,34 @@ test('TR11 kilit ve yardimcilar: topluKilidi, farkOzeti, yuklemeKaniti, siraKari
   assert.match(await T.topluKilidi('app01', 8, 'CRM'), /toplu restart işi #\d+ içinde \(SECIM\)/);
   assert.equal(await T.topluKilidi('APP01', 7, 'crm'), null);
   DB.dus = 'baglanti yok';
-  assert.equal(await T.topluKilidi('APP01', 8, 'crm'), null, 'DB okunamazsa kilit acik (auto-start betigi canli okur)');
+  assert.equal(
+    await T.topluKilidi('APP01', 8, 'crm'),
+    null,
+    'DB okunamazsa kilit acik (auto-start betigi canli okur)',
+  );
   DB.dus = null;
-  const f = T.farkOzeti('partial; -Xmx running=1g configured=2g; -Dapp.secret running=x configured=y ...+3');
+  const f = T.farkOzeti(
+    'partial; -Xmx running=1g configured=2g; -Dapp.secret running=x configured=y ...+3',
+  );
   assert.deepEqual(f.anahtarlar, ['-Xmx', '-Dapp.secret']);
   assert.ok(/^partial; /.test(f.metin) && !/running=x/.test(f.metin));
   assert.deepEqual(T.farkOzeti('reason=CLI_FAIL').anahtarlar, []);
   assert.equal(T.farkOzeti(null).metin, '');
   const h = { host: 'APP01', loadedAt: 20, loadExcluded: false };
-  assert.equal(T.yuklemeKaniti({ hosts: ['app01.dom'], loader: { excluded: [] } }, h, 'APP01', 10), null);
+  assert.equal(
+    T.yuklemeKaniti({ hosts: ['app01.dom'], loader: { excluded: [] } }, h, 'APP01', 10),
+    null,
+  );
   assert.match(T.yuklemeKaniti({ hosts: ['APP01'] }, h, 'APP01', 20), /ilerlemedi/);
   assert.match(T.yuklemeKaniti({ hosts: [] }, h, 'APP01', 10), /satır üretmedi/);
   assert.match(T.yuklemeKaniti(null, h, 'APP01', 10), /set_stats/);
-  assert.match(T.yuklemeKaniti({ hosts: ['APP01'] }, { ...h, loadExcluded: true }, 'APP01', 10), /dışlandı/);
-  const s = T.siraKarisik(['a', 'a', 'a', 'b', 'b', 'c'].map((jvm, i) => ({ jvm, host: `H${i}` }))).map((x) => x.jvm);
+  assert.match(
+    T.yuklemeKaniti({ hosts: ['APP01'] }, { ...h, loadExcluded: true }, 'APP01', 10),
+    /dışlandı/,
+  );
+  const s = T.siraKarisik(
+    ['a', 'a', 'a', 'b', 'b', 'c'].map((jvm, i) => ({ jvm, host: `H${i}` })),
+  ).map((x) => x.jvm);
   for (let i = 1; i < s.length; i += 1) assert.notEqual(s[i], s[i - 1], s.join(','));
 });
 
@@ -919,7 +1228,12 @@ test('TR12 HTTP: uclar router uzerinden', async () => {
   try {
     const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
     const J2 = (r) => r.json().then((body) => ({ status: r.status, body }));
-    const post = (p, b) => fetch(kok + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(J2);
+    const post = (p, b) =>
+      fetch(kok + p, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(b),
+      }).then(J2);
     const ad = await fetch(`${kok}/toplu-restart/adaylar?fresh=1`).then(J2);
     assert.equal(ad.status, 200);
     assert.equal(ad.body.adaylar.length, 4);
@@ -930,14 +1244,25 @@ test('TR12 HTTP: uclar router uzerinden', async () => {
     const c = await post('/toplu-restart', { secim: secimHepsi() });
     assert.equal(c.status, 200);
     assert.equal((await post('/toplu-restart', { secim: secimHepsi() })).status, 409);
-    assert.equal((await fetch(`${kok}/toplu-restart/${c.body.id}`).then(J2)).body.ogeler[0].durum, 'SECIM');
+    assert.equal(
+      (await fetch(`${kok}/toplu-restart/${c.body.id}`).then(J2)).body.ogeler[0].durum,
+      'SECIM',
+    );
     await T.tick();
     const d = await fetch(`${kok}/toplu-restart/${c.body.id}`).then(J2);
     assert.equal(d.body.is.durum, 'PLANLANIYOR');
     assert.equal(d.body.ogeler.length, 4);
     assert.equal(d.body.ogeler[0].grp.endsWith('_Group'), true);
-    assert.equal((await post(`/toplu-restart/${c.body.id}/onayla`, {})).status, 400, 'confirmed olmadan onay yok');
-    assert.equal((await post(`/toplu-restart/${c.body.id}/onayla`, { confirmed: true })).status, 409, 'onizleme bitmeden onay yok');
+    assert.equal(
+      (await post(`/toplu-restart/${c.body.id}/onayla`, {})).status,
+      400,
+      'confirmed olmadan onay yok',
+    );
+    assert.equal(
+      (await post(`/toplu-restart/${c.body.id}/onayla`, { confirmed: true })).status,
+      409,
+      'onizleme bitmeden onay yok',
+    );
     assert.equal((await post(`/toplu-restart/${c.body.id}/iptal`, {})).body.durum, 'IPTAL_ISTENDI');
     assert.equal((await fetch(`${kok}/toplu-restart/abc`).then(J2)).status, 400);
     // 5xx (DB hatasi): nginx 500 govdesini index.html ile degistirir -> POST 424 + upstreamStatus + nginxRed, loglanir;
@@ -949,14 +1274,22 @@ test('TR12 HTTP: uclar router uzerinden', async () => {
     try {
       const h5 = await post('/toplu-restart', { secim: secimHepsi() });
       assert.equal(h5.status, 424);
-      assert.deepEqual([h5.body.ok, h5.body.upstreamStatus, h5.body.nginxRed, h5.body.code], [false, 500, true, 'toplu_sunucu_hatasi']);
+      assert.deepEqual(
+        [h5.body.ok, h5.body.upstreamStatus, h5.body.nginxRed, h5.body.code],
+        [false, 500, true, 'toplu_sunucu_hatasi'],
+      );
       assert.match(h5.body.message, /Timeout: Request failed/);
       assert.equal((await fetch(`${kok}/toplu-restart`).then(J2)).status, 500);
     } finally {
       DB.dus = null;
       console.error = err;
     }
-    assert.ok(hatalar.some((x) => /\[TopluRestart\] POST \/api\/server-hub\/toplu-restart 500: Timeout/.test(x)), hatalar.join(' | '));
+    assert.ok(
+      hatalar.some((x) =>
+        /\[TopluRestart\] POST \/api\/server-hub\/toplu-restart 500: Timeout/.test(x),
+      ),
+      hatalar.join(' | '),
+    );
   } finally {
     srv.close();
   }
@@ -966,13 +1299,28 @@ test('TR13 baglanti: index.cjs restart kilidini auto-start kapilarina ekler ve m
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  const kilit = src.slice(src.indexOf('async function surenIsKilidi('), src.indexOf('/** /findings satirlari'));
-  assert.match(kilit, /if \(!restartHaric\) \{\s*const rk = await require\('\.\/toplu-restart\.cjs'\)\.topluKilidi\(host, gen, jvm\);\s*if \(rk\) return rk;/);
-  assert.match(src, /require\('\.\/toplu-restart\.cjs'\)\.mount\(router, \{[\s\S]{0,400}surenIsKilidi: \(host, gen, jvm\) => surenIsKilidi\(host, gen, jvm, \{ restartHaric: true \}\)/);
+  const kilit = src.slice(
+    src.indexOf('async function surenIsKilidi('),
+    src.indexOf('/** /findings satirlari'),
+  );
+  assert.match(
+    kilit,
+    /if \(!restartHaric\) \{\s*const rk = await require\('\.\/toplu-restart\.cjs'\)\.topluKilidi\(host, gen, jvm\);\s*if \(rk\) return rk;/,
+  );
+  assert.match(
+    src,
+    /require\('\.\/toplu-restart\.cjs'\)\.mount\(router, \{[\s\S]{0,400}surenIsKilidi: \(host, gen, jvm\) => surenIsKilidi\(host, gen, jvm, \{ restartHaric: true \}\)/,
+  );
   // Toplu Auto-Start yurutucusu (topluHaric) restart kilidini YINE gorur
-  assert.match(src, /surenIsKilidi: \(host, gen, jvm\) => surenIsKilidi\(host, gen, jvm, \{ topluHaric: true \}\)/);
+  assert.match(
+    src,
+    /surenIsKilidi: \(host, gen, jvm\) => surenIsKilidi\(host, gen, jvm, \{ topluHaric: true \}\)/,
+  );
   const srv = fs.readFileSync(path.join(__dirname, '..', '..', 'index.cjs'), 'utf8');
-  assert.match(srv, /name: 'topluRestart',\s*init: \(\) => require\('\.\/server-hub\/toplu-restart\.cjs'\)\.startPoller\(\)/);
+  assert.match(
+    srv,
+    /name: 'topluRestart',\s*init: \(\) => require\('\.\/server-hub\/toplu-restart\.cjs'\)\.startPoller\(\)/,
+  );
 });
 
 const UC = [
@@ -1031,11 +1379,18 @@ test('TR15 takili BASLATILIYOR: YARIM_KALDI + toplu is durur, kopya baslamaz', a
   assert.deepEqual([oge('APP02', 'crm').durum, DB.isler[0].durum], ['ATLANDI', 'BITTI_HATALI']);
   assert.match(await T.topluKilidi('APP01', 8, 'crm'), /sonucu bilinmiyor/, '45 dk icinde kilitli');
   oge('APP01', 'crm').baslama_at = new Date(Date.now() - 46 * 60 * 1000);
-  assert.equal(await T.topluKilidi('APP01', 8, 'crm'), null, 'is numarasiz belirsizlik 45 dk sonra kalkar');
+  assert.equal(
+    await T.topluKilidi('APP01', 8, 'crm'),
+    null,
+    'is numarasiz belirsizlik 45 dk sonra kalkar',
+  );
 });
 
 test('TR16 Portal yeniden basladi: AWX isi bitene kadar kilit; yeni iste kopya ATLANDI, digeri BEKLER', async () => {
-  await onayli([{ host: 'APP01', gen: 8, jvm: 'crm' }, { host: 'APP03', gen: 7, jvm: 'doc' }]);
+  await onayli([
+    { host: 'APP01', gen: 8, jvm: 'crm' },
+    { host: 'APP03', gen: 7, jvm: 'doc' },
+  ]);
   await T.tick();
   const r1 = restartlar[0];
   assert.equal(`${r1.host}/${r1.jvm}`, 'APP01/crm');
@@ -1043,9 +1398,16 @@ test('TR16 Portal yeniden basladi: AWX isi bitene kadar kilit; yeni iste kopya A
   DB.isler[0].kira_bitis = new Date(Date.now() - 1000);
   await T.tick();
   assert.equal(oge('APP01', 'crm').durum, 'YARIM_KALDI');
-  assert.match(await T.topluKilidi('APP01', 8, 'crm'), new RegExp(`restart işi #${r1.jobId}`), 'AWX isi surerken kilit kalkmaz');
+  assert.match(
+    await T.topluKilidi('APP01', 8, 'crm'),
+    new RegExp(`restart işi #${r1.jobId}`),
+    'AWX isi surerken kilit kalkmaz',
+  );
   // yeni toplu is: APP02/crm (kopya) + APP02/pay
-  await onayli([{ host: 'APP02', gen: 8, jvm: 'crm' }, { host: 'APP02', gen: 8, jvm: 'pay' }]);
+  await onayli([
+    { host: 'APP02', gen: 8, jvm: 'crm' },
+    { host: 'APP02', gen: 8, jvm: 'pay' },
+  ]);
   const n = restartlar.length;
   await T.tick();
   await T.tick();
@@ -1071,7 +1433,11 @@ test('TR17 restart 45 dk: FAIL + toplu is durur, siradaki baslamaz', async () =>
   await T.tick();
   assert.equal(oge('APP01', 'crm').durum, 'FAIL');
   assert.ok(oge('APP01', 'crm').neden.includes(T.BELIRSIZ_IZ));
-  assert.equal(oge('APP02', 'pay').durum, 'ATLANDI', 'kopya olmayan da baslamaz (onceki is suruyor olabilir)');
+  assert.equal(
+    oge('APP02', 'pay').durum,
+    'ATLANDI',
+    'kopya olmayan da baslamaz (onceki is suruyor olabilir)',
+  );
   await T.tick();
   assert.equal(restartlar.length, 1);
   assert.equal(DB.isler[0].durum, 'BITTI_HATALI');
@@ -1086,11 +1452,26 @@ test('TR18 STARTED ama durdurma kaniti yok: FAIL durdurulamadi, kopyalar ATLANDI
   jvmBul('APP01', 'crm').processStartEpoch = null;
   AWX.set(r1.jobId, {
     status: 'successful',
-    artifacts: { opsx_serverconfig_ops_result: { APP01: [{ name: 'crm', jbossMajor: '8', stop_state: 'NOT_STOPPED', kill_result: 'KILL_COKLU', start_state: 'STARTED' }] } },
+    artifacts: {
+      opsx_serverconfig_ops_result: {
+        APP01: [
+          {
+            name: 'crm',
+            jbossMajor: '8',
+            stop_state: 'NOT_STOPPED',
+            kill_result: 'KILL_COKLU',
+            start_state: 'STARTED',
+          },
+        ],
+      },
+    },
   });
   await T.tick();
   assert.equal(oge('APP01', 'crm').durum, 'FAIL');
-  assert.match(oge('APP01', 'crm').neden, /JVM durdurulamadı \(stop_state=NOT_STOPPED, kill=KILL_COKLU/);
+  assert.match(
+    oge('APP01', 'crm').neden,
+    /JVM durdurulamadı \(stop_state=NOT_STOPPED, kill=KILL_COKLU/,
+  );
   assert.equal(oge('APP02', 'crm').durum, 'ATLANDI');
   assert.equal(launchlar.length, nL, 'durmamis JVM icin dogrulama taramasi acilmaz');
   await T.tick();
@@ -1098,7 +1479,19 @@ test('TR18 STARTED ama durdurma kaniti yok: FAIL durdurulamadi, kopyalar ATLANDI
   assert.equal(r2.jvm, 'pay');
   AWX.set(r2.jobId, {
     status: 'successful',
-    artifacts: { opsx_serverconfig_ops_result: { APP02: [{ name: 'pay', jbossMajor: '8', stop_state: 'NOT_STOPPED', kill_result: 'KILL_OK', start_state: 'STARTED' }] } },
+    artifacts: {
+      opsx_serverconfig_ops_result: {
+        APP02: [
+          {
+            name: 'pay',
+            jbossMajor: '8',
+            stop_state: 'NOT_STOPPED',
+            kill_result: 'KILL_OK',
+            start_state: 'STARTED',
+          },
+        ],
+      },
+    },
   });
   await T.tick();
   assert.equal(oge('APP02', 'pay').durum, 'TARANIYOR', 'kill -9 basarili: durdurma kaniti var');
@@ -1115,7 +1508,10 @@ test('TR19 PLAN_HAZIR: 15 dk icinde dokunulmaz; sonra PLAN_ESKIDI, ogeler IPTAL,
   DB.isler[0].plan_bitis_at = new Date(Date.now() - 16 * 60 * 1000);
   await T.tick();
   assert.equal(DB.isler[0].durum, 'PLAN_ESKIDI');
-  assert.ok(DB.ogeler.every((o) => o.durum === 'IPTAL'), JSON.stringify(durumlar()));
+  assert.ok(
+    DB.ogeler.every((o) => o.durum === 'IPTAL'),
+    JSON.stringify(durumlar()),
+  );
   assert.equal(await T.topluKilidi('APP01', 8, 'crm'), null);
   assert.ok(denetimler.some((d) => d.op === 'toplu_restart_plan_eskidi' && d.id === id));
   await assert.rejects(T.onayla(istek(), id), (e) => e.status === 409);
@@ -1124,14 +1520,17 @@ test('TR19 PLAN_HAZIR: 15 dk icinde dokunulmaz; sonra PLAN_ESKIDI, ogeler IPTAL,
 
 test('TR20 ad kurali: envanter TEST + ad prod -> OpsX ten tek tek', () => {
   const j = J('crm');
-  assert.match(T.restartKapisi(A, H('GBJBOP18', [j]), j), /sunucu adı kuralına göre prod \(envanter TEST/);
+  assert.match(
+    T.restartKapisi(A, H('ORJBOP18', [j]), j),
+    /sunucu adı kuralına göre prod \(envanter TEST/,
+  );
   assert.match(T.restartKapisi(A, H('gojbwp03.dom', [j]), j), /kuralına göre prod/);
-  assert.equal(T.restartKapisi(A, H('GBJBOT18', [j]), j), null);
+  assert.equal(T.restartKapisi(A, H('ORJBOT18', [j]), j), null);
   assert.equal(T.adKuraliProd('APP01'), false);
 });
 
 test('TR-CIFT savunma: ayni sunucuda ayni (gen, JVM) iki kayit -> aday degil, bir kez nedeniyle disarida', async () => {
-  // uretim 2026-11-14: GBSTPQ01/8/GBSTPMAINWEB taramada iki satir
+  // uretim 2026-11-14: ORSTPQ01/8/ORSTPMAINWEB taramada iki satir
   A.hosts.push(H('CIFT01', [J('cift'), J('cift'), J('tek')]));
   INV.set('cift', [{ host: 'CIFT01', kurulum: '8' }]);
   INV.set('tek', [{ host: 'CIFT01', kurulum: '8' }]);
@@ -1143,7 +1542,10 @@ test('TR-CIFT savunma: ayni sunucuda ayni (gen, JVM) iki kayit -> aday degil, bi
   const cift = dislananlar.filter((x) => x.host === 'CIFT01' && x.jvm === 'cift');
   assert.equal(cift.length, 1);
   assert.match(cift[0].neden, /iki kez/);
-  assert.ok(adaylar.some((x) => x.host === 'CIFT01' && x.jvm === 'tek'), 'tekil JVM etkilenmemeli');
+  assert.ok(
+    adaylar.some((x) => x.host === 'CIFT01' && x.jvm === 'tek'),
+    'tekil JVM etkilenmemeli',
+  );
 });
 
 test('TR-GEN savunma: JBoss surumu 7/8 disi (gen 0) -> aday degil, nedeniyle disarida', async () => {

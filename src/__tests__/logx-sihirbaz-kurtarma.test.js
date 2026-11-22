@@ -40,7 +40,10 @@ test('K2 "Sunucu secimine don": Geri dugmesi, dosya ekrani ve hata ekrani ayni y
     /if \(currentStep === "legacy_file_select"\) \{ await backToHosts\(\); return; \}/,
   );
   assert.match(PAGE, /onBackToHosts=\{\(\) => void backToHosts\(\)\}/);
-  assert.match(PAGE, /onBackToHosts=\{ request\?\.platform === "legacy" &&[\s\S]{0,160}?\? \(\) => void backToHosts\(\) : undefined \}/);
+  assert.match(
+    PAGE,
+    /onBackToHosts=\{ request\?\.platform === "legacy" &&[\s\S]{0,160}?\? \(\) => void backToHosts\(\) : undefined \}/,
+  );
   // Degerler istek kaydindan geri yuklenir.
   assert.match(PAGE, /if \(app\) setLegacyApp\(app\); setLegacyManual\(elle\);/);
   assert.match(PAGE, /initialManual=\{legacyManual\}/);

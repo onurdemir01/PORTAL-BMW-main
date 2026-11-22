@@ -7,20 +7,20 @@
 //   OLCULEMEDI  sarı   — GERÇEK DURUM BİLİNMİYOR. Bu "durdu" ya da "başarılı" DEĞİLDİR;
 //                        envantere yazılmaz, yeni bir keşifle doğrulanmalıdır.
 // Sonuç hiç gelmezse (artifact yok) sunucu OLCULEMEDI döner — sessizce "OK" gösterilmez.
-import React from "react";
+import React from 'react';
 import {
   CheckCircleIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
   MinusCircleIcon,
   ArrowPathIcon,
-} from "@heroicons/react/24/outline";
-import AnsibleLogTerminal from "@/components/common/AnsibleLogTerminal";
-import type { WasOperation, WasRunStatus, WasTarget } from "@/api/opsxApi";
-import { WasEnvBadge, WasStateBadge } from "./WasBadges";
-import { WAS_OP_NOUNS, wasResultInfo, wasStepInfo } from "./wasLabels";
+} from '@heroicons/react/24/outline';
+import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import type { WasOperation, WasRunStatus, WasTarget } from '@/api/opsxApi';
+import { WasEnvBadge, WasStateBadge } from './WasBadges';
+import { WAS_OP_NOUNS, wasResultInfo, wasStepInfo } from './wasLabels';
 
-const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
+const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
 const WasResultPanel: React.FC<{
   target: WasTarget;
@@ -35,7 +35,19 @@ const WasResultPanel: React.FC<{
   onNew: () => void;
   // Başlatma yanıtının uyarısı (ör. iş başladı ama Portal kaydı yazılamadı).
   launchWarning?: string;
-}> = ({ target, operation, env, jobId, awxStatus, output, run, pollErr, title, onNew, launchWarning }) => {
+}> = ({
+  target,
+  operation,
+  env,
+  jobId,
+  awxStatus,
+  output,
+  run,
+  pollErr,
+  title,
+  onNew,
+  launchWarning,
+}) => {
   const terminal = TERMINAL.has(awxStatus) && !!run?.result;
   const res = run?.result;
   const sev = run?.severity;
@@ -45,7 +57,7 @@ const WasResultPanel: React.FC<{
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-[var(--text-primary)] break-all whitespace-normal">
-            {WAS_OP_NOUNS[operation]}: <span className="font-mono">{target.server}</span> @{" "}
+            {WAS_OP_NOUNS[operation]}: <span className="font-mono">{target.server}</span> @{' '}
             <span className="font-mono">{target.host}</span>
           </p>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">AWX Job #{jobId}</p>
@@ -64,7 +76,8 @@ const WasResultPanel: React.FC<{
         <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
           <ArrowPathIcon className="w-4 h-4 animate-spin" />
           <span>
-            İşlem sürüyor… (durdurma en çok ~6 dk, başlatma en çok ~10 dk sürebilir; sayfadan ayrılsanız da iş takip edilir)
+            İşlem sürüyor… (durdurma en çok ~6 dk, başlatma en çok ~10 dk sürebilir; sayfadan
+            ayrılsanız da iş takip edilir)
           </span>
         </div>
       )}
@@ -72,41 +85,44 @@ const WasResultPanel: React.FC<{
       {terminal && res && (
         <div
           className={`rounded-xl border p-4 space-y-2 ${
-            sev === "ok"
-              ? "bg-green-50 border-green-100 text-green-700"
-              : sev === "fail"
-                ? "bg-red-50 border-red-100 text-red-700"
-                : sev === "skip"
-                  ? "bg-gray-50 border-gray-200 text-gray-500"
-                  : "bg-yellow-50 border-yellow-200 text-yellow-800"
+            sev === 'ok'
+              ? 'bg-green-50 border-green-100 text-green-700'
+              : sev === 'fail'
+                ? 'bg-red-50 border-red-100 text-red-700'
+                : sev === 'skip'
+                  ? 'bg-gray-50 border-gray-200 text-gray-500'
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-800'
           }`}
         >
           <div className="flex items-center gap-2 text-sm font-semibold">
-            {sev === "ok" ? (
+            {sev === 'ok' ? (
               <CheckCircleIcon className="w-5 h-5" />
-            ) : sev === "fail" ? (
+            ) : sev === 'fail' ? (
               <XCircleIcon className="w-5 h-5" />
-            ) : sev === "skip" ? (
+            ) : sev === 'skip' ? (
               <MinusCircleIcon className="w-5 h-5" />
             ) : (
               <ExclamationTriangleIcon className="w-5 h-5" />
             )}
             <span>
-              {sev === "unknown"
-                ? "Ölçülemedi — gerçek durum bilinmiyor"
-                : sev === "skip"
-                  ? "Atlandı — komut çalıştırılmadı"
+              {sev === 'unknown'
+                ? 'Ölçülemedi — gerçek durum bilinmiyor'
+                : sev === 'skip'
+                  ? 'Atlandı — komut çalıştırılmadı'
                   : wasResultInfo(res.result).label}
             </span>
           </div>
-          {sev === "unknown" && (
+          {sev === 'unknown' && (
             <p className="text-xs">
-              JVM çalışıyor da olabilir, durmuş da. Bu sonuç "durdu" ya da "başarılı" anlamına gelmez ve envantere
-              yazılmadı. Durumu yeni bir keşifle doğrulayın.
+              JVM çalışıyor da olabilir, durmuş da. Bu sonuç "durdu" ya da "başarılı" anlamına
+              gelmez ve envantere yazılmadı. Durumu yeni bir keşifle doğrulayın.
             </p>
           )}
-          {sev === "skip" && (
-            <p className="text-xs">İşlem anında ölçülen durum bu işlemle uyuşmadı (ör. zaten durmuş); hiçbir şey değiştirilmedi.</p>
+          {sev === 'skip' && (
+            <p className="text-xs">
+              İşlem anında ölçülen durum bu işlemle uyuşmadı (ör. zaten durmuş); hiçbir şey
+              değiştirilmedi.
+            </p>
           )}
           <div className="flex items-center gap-2 text-xs">
             <span>Önce:</span>
@@ -124,7 +140,9 @@ const WasResultPanel: React.FC<{
             const info = wasStepInfo(s);
             return (
               <div key={`${s.step}-${i}`} className="flex items-start gap-2 px-3 py-2 text-xs">
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${info.cls}`}>
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${info.cls}`}
+                >
                   {info.label}
                 </span>
                 <span className="font-mono text-[var(--text-primary)] flex-shrink-0">{s.step}</span>
@@ -142,7 +160,7 @@ const WasResultPanel: React.FC<{
       )}
 
       <div className="text-left">
-        <AnsibleLogTerminal output={output} status={awxStatus || "pending"} title={title} />
+        <AnsibleLogTerminal output={output} status={awxStatus || 'pending'} title={title} />
         {pollErr && <p className="mt-1.5 text-xs text-amber-600">{pollErr}</p>}
       </div>
 

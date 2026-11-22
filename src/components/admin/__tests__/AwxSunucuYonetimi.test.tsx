@@ -21,8 +21,24 @@ const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 vi.mock('@/hooks/useToast', () => ({ toast }));
 import AwxSunucuYonetimi from '../tabs/AwxSunucuYonetimi';
 
-const M1 = { no: 1, name: 'maestro', url: 'https://maestro.fwgaranti.com.tr', enabled: true, lastStatus: 'ok', lastCheckedAt: null, bellekte: true };
-const M2 = { no: 2, name: 'maestro2', url: 'https://maestro2.fwgaranti.com.tr', enabled: true, lastStatus: 'ok', lastCheckedAt: null, bellekte: true };
+const M1 = {
+  no: 1,
+  name: 'maestro',
+  url: 'https://maestro.fwsirket.invalid',
+  enabled: true,
+  lastStatus: 'ok',
+  lastCheckedAt: null,
+  bellekte: true,
+};
+const M2 = {
+  no: 2,
+  name: 'maestro2',
+  url: 'https://maestro2.fwsirket.invalid',
+  enabled: true,
+  lastStatus: 'ok',
+  lastCheckedAt: null,
+  bellekte: true,
+};
 const TEMIZ = { serverNo: 1, engeller: [], uyarilar: [], okunamayan: [], kapatilabilir: true };
 
 describe('AWX sunucu yönetimi', () => {
@@ -34,7 +50,10 @@ describe('AWX sunucu yönetimi', () => {
   });
 
   it('AU1 liste ve ayrışma notu', async () => {
-    api.awxSunucuYonetim.mockResolvedValue({ ok: true, servers: [{ ...M1, enabled: false, bellekte: true }, M2] });
+    api.awxSunucuYonetim.mockResolvedValue({
+      ok: true,
+      servers: [{ ...M1, enabled: false, bellekte: true }, M2],
+    });
     render(<AwxSunucuYonetimi />);
     const s1 = await screen.findByTestId('awx-sunucu-1');
     expect(within(s1).getByText('Devre dışı')).toBeInTheDocument();
@@ -45,10 +64,20 @@ describe('AWX sunucu yönetimi', () => {
   it('AU2 engel varsa onay kilitli', async () => {
     api.awxSunucuBagimlilik.mockResolvedValue({
       ok: true,
-      ozet: { ...TEMIZ, kapatilabilir: false, engeller: [{ anahtar: 'oco', baslik: 'OCO zamanlanmış başlatma', adet: 2, ipucu: 'iptal edin' }] },
+      ozet: {
+        ...TEMIZ,
+        kapatilabilir: false,
+        engeller: [
+          { anahtar: 'oco', baslik: 'OCO zamanlanmış başlatma', adet: 2, ipucu: 'iptal edin' },
+        ],
+      },
     });
     render(<AwxSunucuYonetimi />);
-    fireEvent.click(within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', { name: /Devre dışı bırak/ }));
+    fireEvent.click(
+      within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', {
+        name: /Devre dışı bırak/,
+      }),
+    );
     const panel = await screen.findByTestId('awx-bagimlilik');
     expect(await within(panel).findByText(/OCO zamanlanmış başlatma/)).toBeInTheDocument();
     expect(within(panel).getByText(/bitmeden devre dışı bırakılamaz/)).toBeInTheDocument();
@@ -59,12 +88,31 @@ describe('AWX sunucu yönetimi', () => {
   it('AU3 temiz özet: onay -> kapatılır, yenilenir', async () => {
     api.awxSunucuBagimlilik.mockResolvedValue({
       ok: true,
-      ozet: { ...TEMIZ, uyarilar: [{ anahtar: 'ss', baslik: 'Bu sunucuya bağlı Self Servis servisi', adet: 1, ornekler: ['RVP'], ipucu: 'x' }] },
+      ozet: {
+        ...TEMIZ,
+        uyarilar: [
+          {
+            anahtar: 'ss',
+            baslik: 'Bu sunucuya bağlı Self Servis servisi',
+            adet: 1,
+            ornekler: ['RVP'],
+            ipucu: 'x',
+          },
+        ],
+      },
     });
-    api.awxSunucuDurum.mockResolvedValue({ ok: true, yuklendi: true, message: 'AWX #1 (maestro) devre dışı bırakıldı.' });
+    api.awxSunucuDurum.mockResolvedValue({
+      ok: true,
+      yuklendi: true,
+      message: 'AWX #1 (maestro) devre dışı bırakıldı.',
+    });
     const degisti = vi.fn();
     render(<AwxSunucuYonetimi onDegisti={degisti} />);
-    fireEvent.click(within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', { name: /Devre dışı bırak/ }));
+    fireEvent.click(
+      within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', {
+        name: /Devre dışı bırak/,
+      }),
+    );
     const onay = await screen.findByTestId('awx-kapat-onay');
     await waitFor(() => expect(onay).toBeEnabled());
     expect(screen.getByText(/RVP/)).toBeInTheDocument();
@@ -80,11 +128,21 @@ describe('AWX sunucu yönetimi', () => {
     api.awxSunucuDurum.mockResolvedValue({
       ok: false,
       message: 'Önce bitmesi gereken işler var.',
-      ozet: { ...TEMIZ, kapatilabilir: false, engeller: [{ anahtar: 'smart', baslik: 'Onay bekleyen Smart bileti', adet: 1, ipucu: 'bekleyin' }] },
+      ozet: {
+        ...TEMIZ,
+        kapatilabilir: false,
+        engeller: [
+          { anahtar: 'smart', baslik: 'Onay bekleyen Smart bileti', adet: 1, ipucu: 'bekleyin' },
+        ],
+      },
     });
     const degisti = vi.fn();
     render(<AwxSunucuYonetimi onDegisti={degisti} />);
-    fireEvent.click(within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', { name: /Devre dışı bırak/ }));
+    fireEvent.click(
+      within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', {
+        name: /Devre dışı bırak/,
+      }),
+    );
     const onay = await screen.findByTestId('awx-kapat-onay');
     await waitFor(() => expect(onay).toBeEnabled());
     fireEvent.click(onay);
@@ -95,16 +153,29 @@ describe('AWX sunucu yönetimi', () => {
   });
 
   it('AU5 etkinleştirme onay ister', async () => {
-    api.awxSunucuYonetim.mockResolvedValue({ ok: true, servers: [{ ...M1, enabled: false, bellekte: false }, M2] });
+    api.awxSunucuYonetim.mockResolvedValue({
+      ok: true,
+      servers: [{ ...M1, enabled: false, bellekte: false }, M2],
+    });
     render(<AwxSunucuYonetimi />);
-    fireEvent.click(within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', { name: /Etkinleştir/ }));
+    fireEvent.click(
+      within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', {
+        name: /Etkinleştir/,
+      }),
+    );
     // Portal ici onay penceresi (2026-11-08): Iptal -> istek yok.
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }),
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.awxSunucuDurum).not.toHaveBeenCalled();
     api.awxSunucuDurum.mockResolvedValue({ ok: true, yuklendi: true, message: 'ok' });
-    fireEvent.click(within(screen.getByTestId('awx-sunucu-1')).getByRole('button', { name: /Etkinleştir/ }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Etkinleştir' }));
+    fireEvent.click(
+      within(screen.getByTestId('awx-sunucu-1')).getByRole('button', { name: /Etkinleştir/ }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Etkinleştir' }),
+    );
     await waitFor(() => expect(api.awxSunucuDurum).toHaveBeenCalledWith(1, true));
   });
 

@@ -43,7 +43,11 @@ export function belirsizSonrasiIs<T extends IsOzet>(
 }
 
 /** Kullanıcı mesajı (Türkçe). ad: "Toplu restart" / "Toplu auto-start". */
-export function belirsizMesaji(ad: string, hataMesaji: string, sonuc: { is: IsOzet | null; okunamadi: boolean }): string {
+export function belirsizMesaji(
+  ad: string,
+  hataMesaji: string,
+  sonuc: { is: IsOzet | null; okunamadi: boolean },
+): string {
   if (sonuc.okunamadi)
     return `${hataMesaji} ${ad} işinin açılıp açılmadığı okunamadı — yeniden göndermeden önce sayfayı yenileyip bu sekmedeki işi kontrol edin.`;
   if (sonuc.is)

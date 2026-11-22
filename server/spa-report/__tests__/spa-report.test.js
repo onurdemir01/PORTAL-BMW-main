@@ -22,7 +22,7 @@ const satir = (o) => ({
   application: 'x-app-v1',
   namespace: 'ns1-prod',
   location_path: '/x/',
-  host: 'GBNGXP40',
+  host: 'ORNGXP40',
   vhost: 'GLOMO-PROD.conf',
   ...o,
 });
@@ -31,10 +31,10 @@ test('AR1: ayni tanim mirror sunucularda TEKRAR ETMEZ, sunucular toplanir', () =
   // Prod'da ayni vhost 4-8 nginx'te durur. Tekillestirmezsek ekip ayni uygulamayi
   // sekiz kez gorur ve listeyi okuyamaz.
   const r = buildSpaReport({
-    rows: [satir({ host: 'GBNGXP40' }), satir({ host: 'GBNGXP41' }), satir({ host: 'GBNGXP48' })],
+    rows: [satir({ host: 'ORNGXP40' }), satir({ host: 'ORNGXP41' }), satir({ host: 'ORNGXP48' })],
   });
   assert.equal(r.rows.length, 1);
-  assert.deepEqual(r.rows[0].hosts, ['GBNGXP40', 'GBNGXP41', 'GBNGXP48']);
+  assert.deepEqual(r.rows[0].hosts, ['ORNGXP40', 'ORNGXP41', 'ORNGXP48']);
 });
 
 test('AR2: yalniz PROD; baska ortamlar rapora GIRMEZ', () => {
@@ -141,14 +141,30 @@ test('AR8: sayfa UC YERDE de kayitli (menu sessizce dusmesin)', () => {
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkSpaRaporu'/, 'DB seed');
   assert.match(oku('src/config/elements.ts'), /id: 'ArkSpaRaporu'/, 'elements.ts PAGES');
   // Intranet SPA (2026-10-19) ucuncu sayfa; kaydi ayrica intranet.test.js IS12'de.
-  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'\]/, 'NAV_GROUPS');
+  assert.match(
+    oku('src/config/elements.ts'),
+    /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'\]/,
+    'NAV_GROUPS',
+  );
   assert.match(oku('src/App.tsx'), /path='\/ark-spa\/spa-raporu'/, 'App.tsx route');
   // Glomo Gecis Plani ayri sayfa (2026-10-13): seed + elements + route + sunucu kapisi.
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkGlomoGecis'/, 'Glomo DB seed');
-  assert.match(oku('src/config/elements.ts'), /id: 'ArkGlomoGecis'.*route: '\/ark-spa\/glomo-gecis-plani'/, 'Glomo elements.ts');
+  assert.match(
+    oku('src/config/elements.ts'),
+    /id: 'ArkGlomoGecis'.*route: '\/ark-spa\/glomo-gecis-plani'/,
+    'Glomo elements.ts',
+  );
   assert.match(oku('src/App.tsx'), /path='\/ark-spa\/glomo-gecis-plani'/, 'Glomo route');
-  assert.match(oku('src/App.tsx'), /path='\/ark-spa-raporu' element=\{<Navigate to='\/ark-spa\/spa-raporu'/, 'eski adres yonlendirilmiyor');
-  assert.match(oku('server/spa-report/index.cjs'), /requireVisible\('ArkGlomoGecis'\)/, 'Glomo sunucu kapisi');
+  assert.match(
+    oku('src/App.tsx'),
+    /path='\/ark-spa-raporu' element=\{<Navigate to='\/ark-spa\/spa-raporu'/,
+    'eski adres yonlendirilmiyor',
+  );
+  assert.match(
+    oku('server/spa-report/index.cjs'),
+    /requireVisible\('ArkGlomoGecis'\)/,
+    'Glomo sunucu kapisi',
+  );
   assert.match(oku('server/index.cjs'), /spa-report/, 'sunucu modulu baglanmamis');
 });
 
@@ -229,9 +245,30 @@ const SPA_API = fs.readFileSync(
 const SPA_IDX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 
 const satirlar3 = [
-  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/a/', host: 'H1' },
-  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/b/', host: 'H1' },
-  { service: 'GLOMO', env: 'PROD', application: 'app-v1', namespace: 'ns-prod', location_path: '/c/', host: 'H1' },
+  {
+    service: 'GLOMO',
+    env: 'PROD',
+    application: 'app-v1',
+    namespace: 'ns-prod',
+    location_path: '/a/',
+    host: 'H1',
+  },
+  {
+    service: 'GLOMO',
+    env: 'PROD',
+    application: 'app-v1',
+    namespace: 'ns-prod',
+    location_path: '/b/',
+    host: 'H1',
+  },
+  {
+    service: 'GLOMO',
+    env: 'PROD',
+    application: 'app-v1',
+    namespace: 'ns-prod',
+    location_path: '/c/',
+    host: 'H1',
+  },
 ];
 
 test('LB1 location beyani YALNIZ o satiri etkiler; otekiler uygulamadan devralir', () => {
@@ -276,7 +313,7 @@ test('LB3 ekran istegi LOCATION gonderiyor', () => {
   assert.match(
     SPA_UI.slice(i, i + 300),
     /location: r\.location,/,
-    "istek location TASIMIYOR - sunucu uygulama satirina yazar ve hata geri gelir",
+    'istek location TASIMIYOR - sunucu uygulama satirina yazar ve hata geri gelir',
   );
   assert.match(SPA_API, /location: string;/, 'API tipi location almiyor');
 });
@@ -286,11 +323,7 @@ test('LB4 ekran YALNIZ o satiri guncelliyor (uygulama geneli DEGIL)', () => {
     !/x\.namespace === r\.namespace && x\.application === r\.application/.test(SPA_UI),
     'yanit gelince ayni uygulamanin TUM satirlari guncelleniyor - hatanin ikinci yarisi',
   );
-  assert.match(
-    SPA_UI,
-    /satirAnahtari\(x\) === k/,
-    'satir anahtari location icermiyor olabilir',
-  );
+  assert.match(SPA_UI, /satirAnahtari\(x\) === k/, 'satir anahtari location icermiyor olabilir');
   assert.match(
     SPA_UI,
     /const satirAnahtari = \(r: ArkSatir\) =>[^\n]*r\.location/,
@@ -314,7 +347,11 @@ test('SF1 ekip suzgeci var ve "bilinmiyor" AYRI secenek', () => {
   // Ekip listesi TUM satirlardan turetilmeli; suzulmus listeden turetmek tek yon olurdu.
   const i = SPA_UI.indexOf('const ekipler = useMemo');
   assert.ok(i > 0, 'ekip listesi yok');
-  assert.match(SPA_UI.slice(i, i + 260), /data\?\.rows \|\| \[\]/, 'ekip listesi suzulmus satirlardan');
+  assert.match(
+    SPA_UI.slice(i, i + 260),
+    /data\?\.rows \|\| \[\]/,
+    'ekip listesi suzulmus satirlardan',
+  );
 });
 
 test('SF2 yuk suzgeci UC durumu AYRI tutuyor ("olcum yok" != "yuk almiyor")', () => {

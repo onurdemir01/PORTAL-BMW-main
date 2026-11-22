@@ -5,6 +5,7 @@
 // (yer tutucu yeni_b64), N5 Smart metadata (yalniz maskeli), N17 deger dogrulama / maskeleme
 // (Python ile ayni kural), N18 launch oncesi kanca (sifreli kolon -> extra_vars).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +13,7 @@ const assert = require('node:assert/strict');
 const N = require('../../../shared/cryptoHubNodes.cjs');
 const NODE = require('../node.cjs');
 const H = require('./_node_harness.cjs');
-const { tenantOf } = require('../../../shared/cryptoHubTenants.cjs');
+const { tenantOf } = require('../kiracilar.cjs');
 
 const okuma = (o) => ({ parsed: NODE.parseNodeLines(H.satirlar(o)), at: Date.now() });
 const coz = (b) => JSON.parse(Buffer.from(b, 'base64').toString('utf8'));
@@ -552,7 +553,7 @@ test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; yeni deger maske
     ozet.aciklama,
     /\nYeni node \(maskeli\): auth=\*\*\*\*; url=https:\/\/dot-c\.node\.invalid\/\*\*\*\*\n/,
   );
-  assert.doesNotMatch(ozet.aciklama, /boş değerle yazılacak/);
+  assert.doesNotMatch(ozet.aciklama, esnek(/boş değerle yazılacak/));
   const m = NODE.cryptoNodeMetadata(OPSX_SABLON, { username: 'nodecu', email: 'n@x' }, ozet, {
     job_type: 'run',
     openshift_operations: 'openshift_application_rollout',

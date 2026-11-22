@@ -41,7 +41,13 @@ export interface SaatDurumu {
 }
 
 export type SaatMesaji =
-  | { tur: 'saat'; idleExpiresAt: number; absoluteExpiresAt: number; warnSeconds?: number; remember?: boolean }
+  | {
+      tur: 'saat';
+      idleExpiresAt: number;
+      absoluteExpiresAt: number;
+      warnSeconds?: number;
+      remember?: boolean;
+    }
   | { tur: 'cikis' }
   | { tur: 'giris'; username: string };
 
@@ -78,7 +84,10 @@ export function tarayiciKanali(): SaatKanali {
     gonder: (m) => {
       try {
         // Ayni deger iki kez yazilirsa `storage` olayi tetiklenmez: damga eklenir.
-        localStorage.setItem(DEPO_ANAHTARI, JSON.stringify({ ...m, _t: Date.now() + Math.random() }));
+        localStorage.setItem(
+          DEPO_ANAHTARI,
+          JSON.stringify({ ...m, _t: Date.now() + Math.random() }),
+        );
       } catch {
         /* gizli pencere / engellenmis depo */
       }
@@ -153,7 +162,11 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
 
   // Bitisler degistiyse uygular ve true doner. Bosta bitisinin ILERLEMESI, sunucunun
   // etkinligi zaten kaydettigi demektir: kisitli extend sayaci da sifirlanir.
-  function uygula(idle: number, abs: number, ek?: { warnSeconds?: number; remember?: boolean }): boolean {
+  function uygula(
+    idle: number,
+    abs: number,
+    ek?: { warnSeconds?: number; remember?: boolean },
+  ): boolean {
     if (!Number.isFinite(idle) || idle <= 0 || !Number.isFinite(abs) || abs <= 0) return false;
     let degisti = idle !== sunucuBosta || abs !== sunucuMutlak;
     if (degisti) surum += 1;

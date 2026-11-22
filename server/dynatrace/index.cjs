@@ -9,8 +9,14 @@
 'use strict';
 
 const {
-  isConfigured, checkReachable, callTool, listTools,
-  getStatus, checkConnect, getEnvironments, getDefaultAlias,
+  isConfigured,
+  checkReachable,
+  callTool,
+  listTools,
+  getStatus,
+  checkConnect,
+  getEnvironments,
+  getDefaultAlias,
 } = require('./client.cjs');
 const cache = require('./cache.cjs');
 
@@ -18,10 +24,12 @@ const cache = require('./cache.cjs');
 let _getTeamOwnership = async (_names) => new Map();
 try {
   ({ getTeamOwnership: _getTeamOwnership } = require('../inventory/index.cjs'));
-} catch { /* inventory modulu yoksa takim sahipligi sessizce devre disi */ }
+} catch {
+  /* inventory modulu yoksa takim sahipligi sessizce devre disi */
+}
 
 const PROBLEMS_TTL = 5 * 60 * 1000; // 5 dakika
-const EVENTS_TTL   = 2 * 60 * 1000;
+const EVENTS_TTL = 2 * 60 * 1000;
 
 let _healthCache = null;
 let _healthCacheAt = 0;
@@ -52,39 +60,39 @@ function parseBlocks(text, startKey) {
 
 function parseProblems(text) {
   return parseBlocks(text, 'problemId').map((b) => ({
-    problemId:     b.problemId,
-    displayId:     b.displayId || '',
-    title:         b.title || '',
-    status:        b.status || '',
+    problemId: b.problemId,
+    displayId: b.displayId || '',
+    title: b.title || '',
+    status: b.status || '',
     severityLevel: b.severityLevel || '',
-    impactLevel:   b.impactLevel || '',
-    startTime:     b.startTime || null,
-    endTime:       b.endTime || null,
+    impactLevel: b.impactLevel || '',
+    startTime: b.startTime || null,
+    endTime: b.endTime || null,
   }));
 }
 
 function parseEvents(text) {
   return parseBlocks(text, 'eventId').map((b) => ({
-    eventId:   b.eventId,
+    eventId: b.eventId,
     eventType: b.eventType || '',
-    status:    b.status || '',
-    title:     b.title || '',
+    status: b.status || '',
+    title: b.title || '',
     startTime: b.startTime || null,
-    endTime:   b.endTime || null,
+    endTime: b.endTime || null,
   }));
 }
 
 function parseEntities(text) {
   return parseBlocks(text, 'entityId').map((b) => ({
-    entityId:    b.entityId,
+    entityId: b.entityId,
     displayName: b.displayName || b.name || '',
-    type:        b.type || '',
-    tags:        b.tags || '',
+    type: b.type || '',
+    tags: b.tags || '',
   }));
 }
 
 function asText(result) {
-  return typeof result === 'string' ? result : (result?.text || JSON.stringify(result));
+  return typeof result === 'string' ? result : result?.text || JSON.stringify(result);
 }
 
 // ── entitySelector klozu ekleme (tag/managementZone) ─────────────────────────
@@ -94,7 +102,10 @@ function asText(result) {
 function appendSelectorClauses(baseSelector, { tag, managementZone } = {}) {
   const clauses = [baseSelector].filter(Boolean);
   if (tag) {
-    for (const t of String(tag).split(',').map((s) => s.trim()).filter(Boolean)) {
+    for (const t of String(tag)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)) {
       clauses.push(`tag("${t.replace(/"/g, '')}")`);
     }
   }
@@ -109,14 +120,18 @@ function initDynatrace(app) {
   try {
     const { requireAuth: ra } = require('../auth/index.cjs');
     if (typeof ra === 'function') requireAuth = ra;
-  } catch { /* auth modulu yoksa passthrough */ }
+  } catch {
+    /* auth modulu yoksa passthrough */
+  }
 
   // Performance sayfasi gizliyse bu API GERCEKTEN 403 doner (kozmetik degil). /health
   // muaf — dashboard KPI/probe icin tum authenticated kullanicilara acik.
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     app.use('/api/dynatrace', requireVisiblePrefix('Performance', { exempt: ['/health'] }));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── Health ────────────────────────────────────────────────────────────────
   app.get('/api/dynatrace/health', requireAuth, async (req, res) => {
@@ -128,17 +143,32 @@ function initDynatrace(app) {
     const status = getStatus();
     let defaultAlias = null;
     if (mcpConnected) {
-      try { defaultAlias = await getDefaultAlias(); } catch { /* kesif basarisiz */ }
+      try {
+        defaultAlias = await getDefaultAlias();
+      } catch {
+        /* kesif basarisiz */
+      }
     }
     _healthCache = {
-      ok:          true,
-      configured:  isConfigured(),
+      ok: true,
+      configured: isConfigured(),
       reachable,
       mcpConnected,
-      environment: (() => { if (status.connectedUrl) return 'connected'; if (status.configuredUrl) return 'configured'; return null; })(),
+      environment: (() => {
+        if (status.connectedUrl) return 'connected';
+        if (status.configuredUrl) return 'configured';
+        return null;
+      })(),
       defaultAlias,
-      lastError:   status.lastError ? { message: 'Dynatrace MCP bağlantısı kurulamadı.', at: status.lastError.at } : null,
-      message: (() => { if (mcpConnected) return undefined; if (!reachable) return 'Dynatrace MCP sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; return 'Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı.'; })(),
+      lastError: status.lastError
+        ? { message: 'Dynatrace MCP bağlantısı kurulamadı.', at: status.lastError.at }
+        : null,
+      message: (() => {
+        if (mcpConnected) return undefined;
+        if (!reachable)
+          return 'Dynatrace MCP sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).';
+        return 'Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı.';
+      })(),
     };
     _healthCacheAt = Date.now();
     res.json(_healthCache);
@@ -175,28 +205,45 @@ function initDynatrace(app) {
   // hem fresh-fetch yolunda AYNI sekilde filtrelenir.
   function filterProblems(problems, req) {
     const hostFilter = (req.query.host || req.query.q || '').trim().toLowerCase();
-    return hostFilter ? problems.filter((p) => p.title.toLowerCase().includes(hostFilter)) : problems;
+    return hostFilter
+      ? problems.filter((p) => p.title.toLowerCase().includes(hostFilter))
+      : problems;
   }
 
   app.get('/api/dynatrace/problems', requireAuth, async (req, res) => {
     const envAlias = req.query.env || null;
-    const refresh  = req.query.refresh === '1';
+    const refresh = req.query.refresh === '1';
     const cacheKey = `problems-${envAlias || 'default'}-${req.query.status || 'OPEN'}`;
     if (!refresh) {
       const cached = cache.get(cacheKey, PROBLEMS_TTL);
-      if (cached) return res.json({ ok: true, source: 'cache', ...cached, problems: filterProblems(cached.problems, req) });
+      if (cached)
+        return res.json({
+          ok: true,
+          source: 'cache',
+          ...cached,
+          problems: filterProblems(cached.problems, req),
+        });
     }
     try {
-      const result = await callTool('dynatrace_managed_list_problems', {
-        status: req.query.status || 'OPEN',
-        from:   req.query.from || 'now-24h',
-        to:     req.query.to || 'now',
-        ...(req.query.limit ? { limit: Number(req.query.limit) } : {}),
-      }, envAlias);
+      const result = await callTool(
+        'dynatrace_managed_list_problems',
+        {
+          status: req.query.status || 'OPEN',
+          from: req.query.from || 'now-24h',
+          to: req.query.to || 'now',
+          ...(req.query.limit ? { limit: Number(req.query.limit) } : {}),
+        },
+        envAlias,
+      );
       const text = asText(result);
       const payload = { problems: parseProblems(text), text };
       cache.set(cacheKey, payload);
-      res.json({ ok: true, source: 'mcp', ...payload, problems: filterProblems(payload.problems, req) });
+      res.json({
+        ok: true,
+        source: 'mcp',
+        ...payload,
+        problems: filterProblems(payload.problems, req),
+      });
     } catch (err) {
       console.error('[DT-MCP] list_problems hatasi:', err.message);
       res.status(502).json({ ok: false, message: 'Dynatrace problem listesi alınamadı.' });
@@ -206,9 +253,13 @@ function initDynatrace(app) {
   // ── Problem detayi ────────────────────────────────────────────────────────
   app.get('/api/dynatrace/problems/:id', requireAuth, async (req, res) => {
     try {
-      const result = await callTool('dynatrace_managed_get_problem_details', {
-        problemId: req.params.id,
-      }, req.query.env || null);
+      const result = await callTool(
+        'dynatrace_managed_get_problem_details',
+        {
+          problemId: req.params.id,
+        },
+        req.query.env || null,
+      );
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
       console.error('[DT-MCP] problem_details hatasi:', err.message);
@@ -226,7 +277,9 @@ function initDynatrace(app) {
     const { host, tag, managementZone } = req.query;
     let entitySelector = req.query.entitySelector || '';
     if (!entitySelector && (host?.trim() || tag || managementZone?.trim())) {
-      const base = host?.trim() ? `type("HOST"),entityName.contains("${host.trim().replace(/"/g, '')}")` : '';
+      const base = host?.trim()
+        ? `type("HOST"),entityName.contains("${host.trim().replace(/"/g, '')}")`
+        : '';
       entitySelector = appendSelectorClauses(base, { tag, managementZone });
     }
     const cacheKey = `events-${envAlias || 'default'}-${req.query.eventType || 'all'}-${req.query.from || 'now-1h'}-${entitySelector || 'none'}`;
@@ -236,12 +289,12 @@ function initDynatrace(app) {
     }
     try {
       const args = {
-        from:  req.query.from || 'now-1h',
-        to:    req.query.to || 'now',
+        from: req.query.from || 'now-1h',
+        to: req.query.to || 'now',
         limit: req.query.limit ? Number(req.query.limit) : 50,
       };
       if (req.query.eventType) args.eventType = req.query.eventType;
-      if (entitySelector)      args.entitySelector = entitySelector;
+      if (entitySelector) args.entitySelector = entitySelector;
       const result = await callTool('dynatrace_managed_list_events', args, envAlias);
       const text = asText(result);
       const payload = { events: parseEvents(text), text };
@@ -263,12 +316,16 @@ function initDynatrace(app) {
     const { name, host, type, selector, tag, managementZone, env } = req.query;
     const searchName = (name || host || '').trim();
     if (!searchName && !selector?.trim()) {
-      return res.status(400).json({ ok: false, message: 'name/host (+ opsiyonel type) veya selector query param zorunlu.' });
+      return res.status(400).json({
+        ok: false,
+        message: 'name/host (+ opsiyonel type) veya selector query param zorunlu.',
+      });
     }
     try {
       const effectiveType = (type || (host ? 'HOST' : 'SERVICE')).trim().toUpperCase();
-      const baseSelector = selector?.trim()
-        || `type("${effectiveType}"),entityName.contains("${searchName.replace(/"/g, '')}")`;
+      const baseSelector =
+        selector?.trim() ||
+        `type("${effectiveType}"),entityName.contains("${searchName.replace(/"/g, '')}")`;
       const entitySelector = appendSelectorClauses(baseSelector, { tag, managementZone });
       const args = {
         entitySelector,
@@ -281,7 +338,9 @@ function initDynatrace(app) {
       // Ekip sahipligi zenginlestirme — best-effort, eslesme yoksa owningTeam: null
       // (bkz. server/inventory/index.cjs getTeamOwnership; ekip_infos semasi yoksa
       // veya DB erisilemezse bos Map doner, istek basarisiz OLMAZ).
-      const teamMap = await _getTeamOwnership(entities.map((e) => e.displayName)).catch(() => new Map());
+      const teamMap = await _getTeamOwnership(entities.map((e) => e.displayName)).catch(
+        () => new Map(),
+      );
       const enriched = entities.map((e) => ({
         ...e,
         owningTeam: teamMap.get(e.displayName.toLowerCase()) || null,
@@ -296,9 +355,13 @@ function initDynatrace(app) {
 
   app.get('/api/dynatrace/entities/:id', requireAuth, async (req, res) => {
     try {
-      const result = await callTool('dynatrace_managed_get_entity_details', {
-        entityId: req.params.id,
-      }, req.query.env || null);
+      const result = await callTool(
+        'dynatrace_managed_get_entity_details',
+        {
+          entityId: req.params.id,
+        },
+        req.query.env || null,
+      );
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
       console.error('[DT-MCP] entity_details hatasi:', err.message);
@@ -310,9 +373,13 @@ function initDynatrace(app) {
   app.get('/api/dynatrace/metrics', requireAuth, async (req, res) => {
     try {
       const args = { limit: req.query.limit ? Number(req.query.limit) : 30 };
-      if (req.query.search)   args.searchText = String(req.query.search);
+      if (req.query.search) args.searchText = String(req.query.search);
       if (req.query.selector) args.entitySelector = String(req.query.selector);
-      const result = await callTool('dynatrace_managed_list_available_metrics', args, req.query.env || null);
+      const result = await callTool(
+        'dynatrace_managed_list_available_metrics',
+        args,
+        req.query.env || null,
+      );
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
       console.error('[DT-MCP] list_metrics hatasi:', err.message);
@@ -322,12 +389,13 @@ function initDynatrace(app) {
 
   app.post('/api/dynatrace/metrics/query', requireAuth, async (req, res) => {
     const { metricSelector, from, to, entitySelector, env } = req.body || {};
-    if (!metricSelector?.trim()) return res.status(400).json({ ok: false, message: 'metricSelector zorunlu.' });
+    if (!metricSelector?.trim())
+      return res.status(400).json({ ok: false, message: 'metricSelector zorunlu.' });
     try {
       const args = {
         metricSelector: metricSelector.trim(),
         from: from || 'now-1h',
-        to:   to || 'now',
+        to: to || 'now',
       };
       if (entitySelector?.trim()) args.entitySelector = entitySelector.trim();
       const result = await callTool('dynatrace_managed_query_metrics_data', args, env || null);
@@ -343,8 +411,8 @@ function initDynatrace(app) {
     const { query, from, to, limit, env } = req.body || {};
     try {
       const args = {
-        from:  from || 'now-1h',
-        to:    to || 'now',
+        from: from || 'now-1h',
+        to: to || 'now',
         limit: limit ? Number(limit) : 50,
       };
       if (query?.trim()) args.query = query.trim();

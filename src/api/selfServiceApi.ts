@@ -1,15 +1,19 @@
 // src/api/selfServiceApi.ts
-import { okJson } from "./http";
+import { okJson } from './http';
 
-const BASE = "/api/selfservice";
+const BASE = '/api/selfservice';
 
 // Eskiden basarisiz yanitta govdenin HAM METNI firlatiliyordu; Otomasyon sayfasi hata
 // olarak `{"ok":false,"message":"..."}` gosteriyordu. okJson sunucunun mesajini cikarir.
 const json = <T>(r: Response): Promise<T> => okJson<T>(r);
 
 export interface SelfServiceGroup {
-  id: string; groupKey: "ansible"; label: string;
-  icon: string; sortOrder: number; isActive: boolean;
+  id: string;
+  groupKey: 'ansible';
+  label: string;
+  icon: string;
+  sortOrder: number;
+  isActive: boolean;
 }
 
 export interface IpCheckMatch {
@@ -29,7 +33,7 @@ export interface IpCheckResult {
 export interface LbIpKayit {
   host: string;
   ip: string;
-  neden: "sunucu" | "u_eslenigi" | "web_eslenigi" | "dijital_kanal_web";
+  neden: 'sunucu' | 'u_eslenigi' | 'web_eslenigi' | 'dijital_kanal_web';
 }
 
 export interface LbIpSonuc {
@@ -105,21 +109,25 @@ export const selfServiceApi = {
   // "Ansible" sekmesinin DB'deki etiket/sira bilgisini dondurur (Smart/Diğerleri katalogu
   // kaldirildigi icin store artik yok — bkz. server/selfservice/store.cjs readGroups).
   async get(): Promise<{ ok: true; groups: SelfServiceGroup[] }> {
-    const r = await fetch(`${BASE}`, { method: "GET" });
+    const r = await fetch(`${BASE}`, { method: 'GET' });
     return json(r);
   },
 
   // "Check" sekmesi — yapistirilan IP listesini dbo.IPInventory'de arar (bkz.
   // server/selfservice/index.cjs POST /ip-check).
   async ipCheck(ips: string[]): Promise<{
-    ok: true; results: IpCheckResult[]; totalChecked: number; totalFound: number;
+    ok: true;
+    results: IpCheckResult[];
+    totalChecked: number;
+    totalFound: number;
     /** Sunucunun DEGERLENDIRMEDIGI girdi sayisi. Eskiden fazlasi sessizce dusuyordu
      *  ve kullanici bunu hicbir yerde goremiyordu (bkz. server/selfservice/index.cjs). */
-    truncated?: number; maxItems?: number;
+    truncated?: number;
+    maxItems?: number;
   }> {
     const r = await fetch(`${BASE}/ip-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ips }),
     });
     return json(r);
@@ -128,8 +136,8 @@ export const selfServiceApi = {
   // "Check" sekmesi — sunucu listesinden LB IP'leri (bkz. server/selfservice/lb-ip-kurallari.cjs).
   async serverIpCheck(servers: string[]): Promise<ServerIpCheckResult> {
     const r = await fetch(`${BASE}/server-ip-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ servers }),
     });
     return json(r);
@@ -139,21 +147,31 @@ export const selfServiceApi = {
   // arar, benzersiz (namespace, application, owner_group_name, owner_email) satirlarini
   // doner (bkz. server/selfservice/index.cjs POST /openshift-check).
   async openshiftCheck(items: string[]): Promise<{
-    ok: true; rows: OpenshiftCheckRow[]; notFound: string[];
-    totalChecked: number; totalMatchedRows: number; truncated?: number; maxItems?: number;
+    ok: true;
+    rows: OpenshiftCheckRow[];
+    notFound: string[];
+    totalChecked: number;
+    totalMatchedRows: number;
+    truncated?: number;
+    maxItems?: number;
   }> {
     const r = await fetch(`${BASE}/openshift-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
     });
     return json(r);
   },
 
-  async nginxTanimlari(p: { env: string; service: string; namespace?: string; application?: string }): Promise<NginxTanimlar> {
+  async nginxTanimlari(p: {
+    env: string;
+    service: string;
+    namespace?: string;
+    application?: string;
+  }): Promise<NginxTanimlar> {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(p)) if (v) q.set(k, v);
     const r = await fetch(`${BASE}/nginx-tanimlar?${q.toString()}`);
-    return r.json().catch(() => ({ ok: false, message: "Yanıt okunamadı.", satirlar: [] }));
+    return r.json().catch(() => ({ ok: false, message: 'Yanıt okunamadı.', satirlar: [] }));
   },
 };

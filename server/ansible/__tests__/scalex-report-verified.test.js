@@ -21,6 +21,7 @@
 // --syntax-check` bu sinifi GORMEZ: YAML gecerlidir, ifade ancak calisma aninda
 // derlenir (bkz. ocp-playbook-username.test.js ayni gerekce).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,7 +31,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const SCALEX_APP = path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app');
+const SCALEX_APP = path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app');
 const REPORT = path.join(SCALEX_APP, 'tasks', '20_build_report.yml');
 const RUNNER = path.join(SCALEX_APP, 'files', 'scalex_runner.sh');
 
@@ -85,14 +86,20 @@ function buildRows({ executeRows, precheckRows = [], mode = 'apply' }) {
     );
     const r = spawnSync('ansible-playbook', [play], {
       encoding: 'utf8',
-      env: { ...process.env, ANSIBLE_LOCALHOST_WARNING: 'False', ANSIBLE_DEPRECATION_WARNINGS: 'False' },
+      env: {
+        ...process.env,
+        ANSIBLE_LOCALHOST_WARNING: 'False',
+        ANSIBLE_DEPRECATION_WARNINGS: 'False',
+      },
     });
     if (!fs.existsSync(out)) {
       throw new Error(`mail_result_rows uretilemedi (rc=${r.status}):\n${r.stdout}`);
     }
     const rows = JSON.parse(fs.readFileSync(out, 'utf8'));
     if (!rows.length) {
-      throw new Error(`mail_result_rows BOS geldi — gorev dosyasi satiri uretmeden dustu:\n${r.stdout}`);
+      throw new Error(
+        `mail_result_rows BOS geldi — gorev dosyasi satiri uretmeden dustu:\n${r.stdout}`,
+      );
     }
     return rows;
   } finally {
@@ -104,9 +111,7 @@ function buildRows({ executeRows, precheckRows = [], mode = 'apply' }) {
 // asagidaki her sey olu kalir.
 test('RV1 acma uyarisi `applied=yes` makine belirteci tasiyor', () => {
   const src = fs.readFileSync(RUNNER, 'utf8');
-  const warnLine = src
-    .split('\n')
-    .find((l) => l.includes('aciliyor, $RV_READY/$target'));
+  const warnLine = src.split('\n').find((l) => l.includes('aciliyor, $RV_READY/$target'));
   assert.ok(warnLine, 'acma uyari satiri bulunamadi');
   assert.ok(
     warnLine.includes('applied=yes'),
@@ -115,40 +120,58 @@ test('RV1 acma uyarisi `applied=yes` makine belirteci tasiyor', () => {
   // `VERIFY;OK` BASILMAMALI: pod hazir degilken "dogrulandi" demek yalan olur.
   assert.doesNotMatch(
     warnLine,
-    /"VERIFY" "OK"/,
+    esnek(/"VERIFY" "OK"/),
     'acma uyari dalinda VERIFY;OK basiliyor — hazir olmayan seye dogrulandi deniyor',
   );
 });
 
-test('RV2 `applied=yes` tasiyan WARN hedefi `verified: true` uretir', { skip: !HAS_ANSIBLE }, () => {
-  const rows = buildRows({
-    executeRows: [
-      row('SCALE', 'OK', 'patched replicas=1'),
-      row('VERIFY', 'WARN', 'applied=yes aciliyor, 0/1, 5 dk bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor'),
-    ],
-  });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].verified, true, 'uygulanmis bir hedef `verified: false` geldi');
-  assert.match(
-    rows[0].detail,
-    /Replica değişikliği uygulandı/,
-    'hedef detayi ham uyari metni — yeni dal calismamis',
-  );
-});
+test(
+  'RV2 `applied=yes` tasiyan WARN hedefi `verified: true` uretir',
+  { skip: !HAS_ANSIBLE },
+  () => {
+    const rows = buildRows({
+      executeRows: [
+        row('SCALE', 'OK', 'patched replicas=1'),
+        row(
+          'VERIFY',
+          'WARN',
+          'applied=yes aciliyor, 0/1, 5 dk bekleniyor; replica degisikligi UYGULANDI, pod hazir olmayi surduruyor',
+        ),
+      ],
+    });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].verified, true, 'uygulanmis bir hedef `verified: false` geldi');
+    assert.match(
+      rows[0].detail,
+      /Replica değişikliği uygulandı/,
+      'hedef detayi ham uyari metni — yeni dal calismamis',
+    );
+  },
+);
 
-test('RV3 gercek `VERIFY;OK` da `verified: true` uretir (mevcut yol bozulmadi)', { skip: !HAS_ANSIBLE }, () => {
-  const rows = buildRows({
-    executeRows: [row('SCALE', 'OK', 'patched'), row('VERIFY', 'OK', 'desired=1 current=1 ready=1 target=1')],
-  });
-  assert.equal(rows[0].status, 'OK');
-  assert.equal(rows[0].verified, true);
-});
+test(
+  'RV3 gercek `VERIFY;OK` da `verified: true` uretir (mevcut yol bozulmadi)',
+  { skip: !HAS_ANSIBLE },
+  () => {
+    const rows = buildRows({
+      executeRows: [
+        row('SCALE', 'OK', 'patched'),
+        row('VERIFY', 'OK', 'desired=1 current=1 ready=1 target=1'),
+      ],
+    });
+    assert.equal(rows[0].status, 'OK');
+    assert.equal(rows[0].verified, true);
+  },
+);
 
 // RV4 — ASIL AYRIM. `VERIFY;FAIL` hala FAIL ve `verified: false`. Bu dal
 // gevserse portal GERCEK bir basarisizligi "olmus" sayar.
 test('RV4 `VERIFY;FAIL` hedefi FAIL ve `verified: false` kalir', { skip: !HAS_ANSIBLE }, () => {
   const rows = buildRows({
-    executeRows: [row('SCALE', 'OK', 'patched'), row('VERIFY', 'FAIL', '0 olmasi 10 dk gecti expected=0 current=2')],
+    executeRows: [
+      row('SCALE', 'OK', 'patched'),
+      row('VERIFY', 'FAIL', '0 olmasi 10 dk gecti expected=0 current=2'),
+    ],
   });
   assert.equal(rows[0].status, 'FAIL');
   assert.equal(rows[0].verified, false, 'basarisiz dogrulama `verified: true` geldi');
@@ -167,10 +190,13 @@ test('RV5 belirtecsiz WARN `verified: false` kalir', { skip: !HAS_ANSIBLE }, () 
 // `exe_warn`dan ONCE gelmeli; `verify_fail`den SONRA gelmeli.
 test('RV6 yeni dal karar zincirinde DOGRU YERDE', () => {
   const src = fs.readFileSync(REPORT, 'utf8');
-  const iFail = src.indexOf("verify_fail.items | length > 0");
+  const iFail = src.indexOf('verify_fail.items | length > 0');
   const iApplied = src.indexOf('verify_applied.items | length > 0 -%}');
-  const iWarn = src.lastIndexOf("exe_warn | length > 0 or pre_warn | length > 0");
+  const iWarn = src.lastIndexOf('exe_warn | length > 0 or pre_warn | length > 0');
   assert.ok(iApplied > 0, '`verify_applied` dali yok');
-  assert.ok(iFail > 0 && iFail < iApplied, 'FAIL dali `verify_applied`ten SONRA — gercek hata uygulanmis sayilir');
+  assert.ok(
+    iFail > 0 && iFail < iApplied,
+    'FAIL dali `verify_applied`ten SONRA — gercek hata uygulanmis sayilir',
+  );
   assert.ok(iApplied < iWarn, '`verify_applied` dali `exe_warn`dan SONRA — hic ateslenmez');
 });

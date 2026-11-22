@@ -148,7 +148,12 @@ export interface SsTasimaDetay {
   satir?: SsTasimaSatiri;
   templateKarsilastirma?: TemplateKarsilastirmaSatiri[];
   surveyFarki?: SurveyFarkSatiri[];
-  surveyOzet?: { kaynakSoru: number; hedefSoru: number; parolaSoru: number; kritikVar: boolean } | null;
+  surveyOzet?: {
+    kaynakSoru: number;
+    hedefSoru: number;
+    parolaSoru: number;
+    kritikVar: boolean;
+  } | null;
   hedefSurveyHash?: string | null;
   uyum?: { hatalar: string[]; uyarilar: string[] } | null;
   uyumTahmin?: { hatalar: string[]; uyarilar: string[] } | null;
@@ -186,7 +191,11 @@ export interface IslemYaniti {
 }
 
 const post = (url: string, body: unknown): Promise<IslemYaniti> =>
-  fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) }).then(safeJson);
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  }).then(safeJson);
 
 const yol = (itemId: string) => `${BASE}/${encodeURIComponent(itemId)}`;
 
@@ -204,16 +213,35 @@ export const ssTasimaApi = {
 
   deneme: (
     itemId: string,
-    body: { to: number; toT: number; extraVars: Record<string, unknown>; sadeceDogrula: boolean; confirm?: boolean; hedefAyarUzerineYaz?: boolean },
+    body: {
+      to: number;
+      toT: number;
+      extraVars: Record<string, unknown>;
+      sadeceDogrula: boolean;
+      confirm?: boolean;
+      hedefAyarUzerineYaz?: boolean;
+    },
   ) => post(`${yol(itemId)}/deneme`, body),
 
-  tasi: (itemId: string, body: { to: number; toT: number; planHash: string; denemesizGerekce?: string }) =>
-    post(`${yol(itemId)}/tasi`, body),
+  tasi: (
+    itemId: string,
+    body: { to: number; toT: number; planHash: string; denemesizGerekce?: string },
+  ) => post(`${yol(itemId)}/tasi`, body),
 
-  geriAlOnizleme: (itemId: string): Promise<GeriAlOnizleme> => fetch(`${yol(itemId)}/geri-al-onizleme`).then(okJson),
+  geriAlOnizleme: (itemId: string): Promise<GeriAlOnizleme> =>
+    fetch(`${yol(itemId)}/geri-al-onizleme`).then(okJson),
 
-  geriAl: (itemId: string, migrationId: number, degisiklikleriOnayla: boolean, kaydiKapat = false) =>
-    post(`${yol(itemId)}/geri-al`, { migrationId, degisiklikleriOnayla, ...(kaydiKapat ? { kaydiKapat: true } : {}) }),
+  geriAl: (
+    itemId: string,
+    migrationId: number,
+    degisiklikleriOnayla: boolean,
+    kaydiKapat = false,
+  ) =>
+    post(`${yol(itemId)}/geri-al`, {
+      migrationId,
+      degisiklikleriOnayla,
+      ...(kaydiKapat ? { kaydiKapat: true } : {}),
+    }),
 
   hazirlikIptal: (itemId: string) => post(`${yol(itemId)}/hazirlik-iptal`, {}),
 };

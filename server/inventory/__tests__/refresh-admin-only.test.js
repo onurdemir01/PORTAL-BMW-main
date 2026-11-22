@@ -4,6 +4,7 @@
 // dugme normal kullaniciya gorunmez VE sunucu ucu 403 doner (dugmeyi gizlemek yetmez,
 // API dogrudan cagrilabilir). Kaynak dosyalari okur; DB/AWX gerekmez.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -17,13 +18,22 @@ test('POST /api/inventory/refresh/run admin disinda 403', () => {
   const i = src.indexOf("router.post('/refresh/run'");
   assert.ok(i > 0, 'uc yok');
   const body = src.slice(i, i + 600);
-  assert.ok(/if \(!isAdmin\(req\)\) return res\.status\(403\)/.test(body), 'admin kapisi ucun ILK satirinda olmali');
+  assert.ok(
+    esnek(/if \(!isAdmin\(req\)\) return res\.status\(403\)/).test(body),
+    'admin kapisi ucun ILK satirinda olmali',
+  );
   // kapi, govde ayristirmadan (choices) ONCE gelmeli
-  assert.ok(body.indexOf('!isAdmin(req)') < body.indexOf('const { choices }'), 'kapi govdeden once');
+  assert.ok(
+    body.indexOf('!isAdmin(req)') < body.indexOf('const { choices }'),
+    'kapi govdeden once',
+  );
 });
 
 test('"Envanteri Yenile" dugmesi yalniz isAdmin ile render edilir', () => {
   const src = read('src/components/EnvanterPage.tsx');
-  assert.ok(src.includes("{activeTable === 'Inventory' && isAdmin && ("), 'dugme isAdmin kosulu tasimali');
+  assert.ok(
+    src.includes("{activeTable === 'Inventory' && isAdmin && ("),
+    'dugme isAdmin kosulu tasimali',
+  );
   assert.ok(src.includes("const isAdmin = user?.role === 'Admin';"), 'isAdmin oturumdaki rolden');
 });

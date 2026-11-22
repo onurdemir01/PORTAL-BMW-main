@@ -21,19 +21,45 @@ vi.mock('@/api/arkSpaApi', () => ({
   arkSpaApi: { gecis: mockGecis, gecisApp: mockApp, gecisKontrol: mockKontrol, gecisSet: mockSet },
 }));
 
-const KOLONLAR = ['Uygulama', 'Ekip / e-posta', 'Location', 'Yük', 'Kullanımda mı?', 'Çalışmaya katılacak kişi', 'Kontrol'];
+const KOLONLAR = [
+  'Uygulama',
+  'Ekip / e-posta',
+  'Location',
+  'Yük',
+  'Kullanımda mı?',
+  'Çalışmaya katılacak kişi',
+  'Kontrol',
+];
 const KONTROL_AN = '2026-10-16T08:30:00.000Z';
 const ETTIM = 'yedi-app (ns-prod) kontrol ettim';
 const GERI_AL = 'yedi-app (ns-prod) kontrol işaretini geri al';
 const KISI = 'yedi-app (ns-prod) çalışmaya katılacak kişi';
 
 const app = (application: string, o: Partial<GecisUygulama> = {}): GecisUygulama => ({
-  namespace: 'ns-prod', application, setNo: 6, kaynak: 'excel', kullanimda: null, katilimci: '', gecti: false,
-  gecisTarihi: null, kontrolAt: null, ekip: ['GT-Ekip'], locations: [`/${application}/`], yuk: null, taramadaYok: false, ...o,
+  namespace: 'ns-prod',
+  application,
+  setNo: 6,
+  kaynak: 'excel',
+  kullanimda: null,
+  katilimci: '',
+  gecti: false,
+  gecisTarihi: null,
+  kontrolAt: null,
+  ekip: ['GT-Ekip'],
+  locations: [`/${application}/`],
+  yuk: null,
+  taramadaYok: false,
+  ...o,
 });
 const plan = (admin: boolean): GecisPlani => ({
-  ok: true, raporVar: true, admin,
-  sets: [1, 2, 3, 4, 5, 6, 7].map((no) => ({ no, calismaAt: no === 7 ? '2026-10-22T23:00' : null, ocoNo: no === 7 ? 'OCO-777' : '' })),
+  ok: true,
+  raporVar: true,
+  admin,
+  sets: [1, 2, 3, 4, 5, 6, 7].map((no) => ({
+    no,
+    calismaAt: no === 7 ? '2026-10-22T23:00' : null,
+    ocoNo: no === 7 ? 'OCO-777' : '',
+  })),
   apps: [
     app('alti-app'),
     app('yedi-app', { setNo: 7, kaynak: 'portal' }),
@@ -42,22 +68,33 @@ const plan = (admin: boolean): GecisPlani => ({
   talepEslesmeyen: [{ namespace: 'fund-management-ch-prod', application: 'smart-saving-app-v0' }],
   goc: { ad: 'set7-talep-2026-10-16', uygulandi: true, hata: null },
 });
-const tamamlananAc = () => fireEvent.click(screen.getByRole('button', { name: /Tamamlanan çalışmalar \(Set 1–6\)/ }));
+const tamamlananAc = () =>
+  fireEvent.click(screen.getByRole('button', { name: /Tamamlanan çalışmalar \(Set 1–6\)/ }));
 
 describe('GlomoGecisPlani', () => {
-  beforeEach(() => { mockGecis.mockReset(); mockApp.mockReset(); mockKontrol.mockReset(); mockSet.mockReset(); });
-  afterEach(() => { vi.restoreAllMocks(); });
+  beforeEach(() => {
+    mockGecis.mockReset();
+    mockApp.mockReset();
+    mockKontrol.mockReset();
+    mockSet.mockReset();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('ustte yalniz Set 7 (calisma zamani + OCO); Set 6 katlanir "Tamamlanan calismalar (Set 1–6)" bolumunde; gecen en altta', async () => {
     mockGecis.mockResolvedValue(plan(false));
     render(<GlomoGecisPlani />);
     expect(await screen.findByText('22.10.2026 23:00')).toBeInTheDocument();
     expect(screen.getByText('OCO-777')).toBeInTheDocument();
-    const setBasliklari = () => screen.getAllByRole('heading', { name: /^Set \d$/ }).map((h) => h.textContent);
+    const setBasliklari = () =>
+      screen.getAllByRole('heading', { name: /^Set \d$/ }).map((h) => h.textContent);
     expect(setBasliklari()).toEqual(['Set 7']);
     expect(screen.queryByText('alti-app')).not.toBeInTheDocument();
     expect(screen.getByText('Excel’de yoktu → eklendi')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Tamamlanan çalışmalar \(Set 1–6\) — 1 uygulama/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Tamamlanan çalışmalar \(Set 1–6\) — 1 uygulama/ }),
+    ).toBeInTheDocument();
     tamamlananAc();
     expect(setBasliklari()).toEqual(['Set 7', 'Set 6']);
     expect(screen.getByText('alti-app')).toBeInTheDocument();
@@ -84,7 +121,9 @@ describe('GlomoGecisPlani', () => {
     tamamlananAc();
     const setler = screen.getAllByRole('heading', { level: 2, name: /^Set \d$/ });
     expect(setler.map((h) => h.textContent)).toEqual(['Set 7', 'Set 6']);
-    expect(screen.getByRole('heading', { level: 2, name: /Geçen uygulamalar/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Geçen uygulamalar/ }),
+    ).toBeInTheDocument();
     expect(screen.queryAllByRole('heading', { level: 3 })).toHaveLength(0);
     // index.css'teki katmansiz h1..h6 kurali (500, display yazi tipi) font-bold'u ezer: satir ici stil sart.
     for (const h of setler) {
@@ -101,8 +140,13 @@ describe('GlomoGecisPlani', () => {
     const tablolar = screen.getAllByRole('table');
     expect(tablolar).toHaveLength(3); // Set 7, Set 6 (tamamlanan), Gecen uygulamalar
     for (const t of tablolar) {
-      expect(within(t).getAllByRole('columnheader').map((h) => (h.textContent || '').trim())).toEqual(KOLONLAR);
-      for (const satir of within(t).getAllByRole('row').slice(1)) expect(within(satir).getAllByRole('cell')).toHaveLength(KOLONLAR.length);
+      expect(
+        within(t)
+          .getAllByRole('columnheader')
+          .map((h) => (h.textContent || '').trim()),
+      ).toEqual(KOLONLAR);
+      for (const satir of within(t).getAllByRole('row').slice(1))
+        expect(within(satir).getAllByRole('cell')).toHaveLength(KOLONLAR.length);
     }
   });
 
@@ -114,7 +158,13 @@ describe('GlomoGecisPlani', () => {
       const minW = /min-w-\[(\d+(?:\.\d+)?)rem\]/.exec(t.className);
       expect(minW, 'tablonun min-w siniri yok').not.toBeNull();
       expect(Number(minW![1])).toBeLessThanOrEqual(64);
-      const sonlar = [within(t).getAllByRole('columnheader').at(-1)!, ...within(t).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell').at(-1)!)];
+      const sonlar = [
+        within(t).getAllByRole('columnheader').at(-1)!,
+        ...within(t)
+          .getAllByRole('row')
+          .slice(1)
+          .map((r) => within(r).getAllByRole('cell').at(-1)!),
+      ];
       for (const h of sonlar) {
         expect(h.className).toMatch(/\bsticky\b/);
         expect(h.className).toMatch(/\bright-0\b/);
@@ -130,12 +180,20 @@ describe('GlomoGecisPlani', () => {
 
   it('Kontrol Ettim -> API cagrisi + "Kontrol edildi" ve an; geri al -> isaret kalkar; odak karsi dugmeye gecer', async () => {
     mockGecis.mockResolvedValue(plan(false));
-    mockKontrol.mockResolvedValueOnce({ ok: true, kontrolAt: KONTROL_AN }).mockResolvedValueOnce({ ok: true, kontrolAt: null });
+    mockKontrol
+      .mockResolvedValueOnce({ ok: true, kontrolAt: KONTROL_AN })
+      .mockResolvedValueOnce({ ok: true, kontrolAt: null });
     render(<GlomoGecisPlani />);
     const ettim = await screen.findByRole('button', { name: ETTIM });
     ettim.focus();
     fireEvent.click(ettim);
-    await waitFor(() => expect(mockKontrol).toHaveBeenCalledWith({ namespace: 'ns-prod', application: 'yedi-app', kontrol: true }));
+    await waitFor(() =>
+      expect(mockKontrol).toHaveBeenCalledWith({
+        namespace: 'ns-prod',
+        application: 'yedi-app',
+        kontrol: true,
+      }),
+    );
     expect(await screen.findByText('Kontrol edildi')).toBeInTheDocument();
     expect(screen.getByText(fmtDateTime(KONTROL_AN))).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: ETTIM })).not.toBeInTheDocument();
@@ -145,7 +203,13 @@ describe('GlomoGecisPlani', () => {
     // Dokunmatik hedef: en az 24px yukseklik.
     expect(geri.className).toMatch(/\bmin-h-6\b/);
     fireEvent.click(geri);
-    await waitFor(() => expect(mockKontrol).toHaveBeenLastCalledWith({ namespace: 'ns-prod', application: 'yedi-app', kontrol: false }));
+    await waitFor(() =>
+      expect(mockKontrol).toHaveBeenLastCalledWith({
+        namespace: 'ns-prod',
+        application: 'yedi-app',
+        kontrol: false,
+      }),
+    );
     const yeniden = await screen.findByRole('button', { name: ETTIM });
     expect(screen.queryByText('Kontrol edildi')).not.toBeInTheDocument();
     await waitFor(() => expect(document.activeElement).toBe(yeniden));
@@ -187,7 +251,11 @@ describe('GlomoGecisPlani', () => {
     fireEvent.click(d);
     await waitFor(() => expect(mockKontrol).toHaveBeenCalled());
     expect(screen.getAllByText('Kontrol edildi')).toHaveLength(1);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'yedi-iki (ns-prod) kontrol ettim' })));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'yedi-iki (ns-prod) kontrol ettim' }),
+      ),
+    );
   });
 
   it('ag hatasi (fetch reddi) sessiz kalmaz: Kontrol ve kullanimda icin toast.error', async () => {
@@ -197,12 +265,21 @@ describe('GlomoGecisPlani', () => {
     mockApp.mockRejectedValue(new TypeError('Failed to fetch'));
     render(<GlomoGecisPlani />);
     fireEvent.click(await screen.findByRole('button', { name: ETTIM }));
-    await waitFor(() => expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)));
+    await waitFor(() =>
+      expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)),
+    );
     expect(screen.queryByText('Kontrol edildi')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: ETTIM })).not.toBeDisabled();
     hata.mockClear();
-    fireEvent.click(within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole('button', { name: 'Evet' }));
-    await waitFor(() => expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole(
+        'button',
+        { name: 'Evet' },
+      ),
+    );
+    await waitFor(() =>
+      expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)),
+    );
   });
 
   it('ag hatasi: Admin set basligi "Kaydet" de sessiz kalmaz (toast.error, basari mesaji yok)', async () => {
@@ -214,8 +291,16 @@ describe('GlomoGecisPlani', () => {
     const oco = await screen.findByDisplayValue('OCO-777');
     fireEvent.change(oco, { target: { value: 'OCO-778' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'Kaydet' })[0]);
-    await waitFor(() => expect(mockSet).toHaveBeenCalledWith({ no: 7, calismaAt: '2026-10-22T23:00', ocoNo: 'OCO-778' }));
-    await waitFor(() => expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)));
+    await waitFor(() =>
+      expect(mockSet).toHaveBeenCalledWith({
+        no: 7,
+        calismaAt: '2026-10-22T23:00',
+        ocoNo: 'OCO-778',
+      }),
+    );
+    await waitFor(() =>
+      expect(hata).toHaveBeenCalledWith(expect.stringMatching(/bağlantı hatası/)),
+    );
     expect(basari).not.toHaveBeenCalled();
   });
 
@@ -227,7 +312,12 @@ describe('GlomoGecisPlani', () => {
     render(<GlomoGecisPlani />);
     fireEvent.click(await screen.findByRole('button', { name: ETTIM }));
     expect(await screen.findByText('Kontrol edildi')).toBeInTheDocument();
-    expect(within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole('button', { name: 'Evet' })).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole(
+        'button',
+        { name: 'Evet' },
+      ),
+    ).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText(KISI)).toHaveValue('Ayşe Yılmaz');
   });
 
@@ -238,7 +328,12 @@ describe('GlomoGecisPlani', () => {
     mockApp.mockResolvedValue({ ok: true });
     render(<GlomoGecisPlani />);
     expect(await screen.findByText('Kontrol edildi')).toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole('button', { name: 'Evet' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'yedi-app (ns-prod) kullanımda mı?' })).getByRole(
+        'button',
+        { name: 'Evet' },
+      ),
+    );
     await waitFor(() => expect(mockApp).toHaveBeenCalled());
     await screen.findByLabelText(KISI);
     expect(screen.getByText('Kontrol edildi')).toBeInTheDocument();
@@ -250,19 +345,32 @@ describe('GlomoGecisPlani', () => {
     render(<GlomoGecisPlani />);
     await screen.findByText('yedi-app');
     fireEvent.click(screen.getAllByRole('button', { name: 'Evet' })[0]);
-    await waitFor(() => expect(mockApp).toHaveBeenCalledWith(expect.objectContaining({ application: 'yedi-app', kullanimda: 'yes' })));
+    await waitFor(() =>
+      expect(mockApp).toHaveBeenCalledWith(
+        expect.objectContaining({ application: 'yedi-app', kullanimda: 'yes' }),
+      ),
+    );
     const kutu = await screen.findByLabelText(KISI);
     fireEvent.change(kutu, { target: { value: 'Ayşe Yılmaz' } });
     fireEvent.blur(kutu);
-    await waitFor(() => expect(mockApp).toHaveBeenLastCalledWith(expect.objectContaining({ katilimci: 'Ayşe Yılmaz' })));
+    await waitFor(() =>
+      expect(mockApp).toHaveBeenLastCalledWith(
+        expect.objectContaining({ katilimci: 'Ayşe Yılmaz' }),
+      ),
+    );
   });
 
-  it('ayni uygulama adi iki namespace\'te: dugme / grup / kutu adlari namespace ile ayrisir', async () => {
+  it("ayni uygulama adi iki namespace'te: dugme / grup / kutu adlari namespace ile ayrisir", async () => {
     const p = plan(false);
-    p.apps = [app('web', { setNo: 7, namespace: 'a-prod', kullanimda: 'yes' }), app('web', { setNo: 7, namespace: 'b-prod', kullanimda: 'yes' })];
+    p.apps = [
+      app('web', { setNo: 7, namespace: 'a-prod', kullanimda: 'yes' }),
+      app('web', { setNo: 7, namespace: 'b-prod', kullanimda: 'yes' }),
+    ];
     mockGecis.mockResolvedValue(p);
     render(<GlomoGecisPlani />);
-    expect(await screen.findByRole('button', { name: 'web (a-prod) kontrol ettim' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'web (a-prod) kontrol ettim' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'web (b-prod) kontrol ettim' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'web (a-prod) kullanımda mı?' })).toBeInTheDocument();
     expect(screen.getByLabelText('web (b-prod) çalışmaya katılacak kişi')).toBeInTheDocument();
@@ -276,7 +384,9 @@ describe('GlomoGecisPlani', () => {
     const link = await screen.findByRole('link', { name: /gt-ekip@banka.com/ });
     expect(link.getAttribute('href')).toBe('mailto:gt-ekip@banka.com');
     expect(screen.getByRole('button', { name: /Ekip e-postaları \(1\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Görünen ekiplerin e-postaları \(1\)/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Görünen ekiplerin e-postaları \(1\)/ }),
+    ).toBeInTheDocument();
     expect(screen.getByText('/yedi-app/').tagName).toBe('CODE');
   });
 
@@ -286,9 +396,13 @@ describe('GlomoGecisPlani', () => {
     p.apps![1].ekipEposta = ['yedi@banka.com'];
     mockGecis.mockResolvedValue(p);
     render(<GlomoGecisPlani />);
-    expect(await screen.findByRole('button', { name: /Görünen ekiplerin e-postaları \(1\)/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /Görünen ekiplerin e-postaları \(1\)/ }),
+    ).toBeInTheDocument();
     tamamlananAc();
-    expect(screen.getByRole('button', { name: /Görünen ekiplerin e-postaları \(2\)/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Görünen ekiplerin e-postaları \(2\)/ }),
+    ).toBeInTheDocument();
   });
 
   it('gecti=1 olan Set 7 uygulamasi YALNIZ "Gecen uygulamalar"da (Set 7 tablosunda ikinci kez degil)', async () => {
@@ -329,16 +443,22 @@ describe('GlomoGecisPlani', () => {
     expect(screen.queryByTitle('Geçti işaretini geri al')).not.toBeInTheDocument();
     // Etiketten bagimsiz: hicbir tabloda secim / onay kutusu / tarih girdisi yok.
     for (const t of screen.getAllByRole('table')) {
-      expect(t.querySelectorAll('select, input[type="checkbox"], input[type="date"], input[type="datetime-local"]')).toHaveLength(0);
+      expect(
+        t.querySelectorAll(
+          'select, input[type="checkbox"], input[type="date"], input[type="datetime-local"]',
+        ),
+      ).toHaveLength(0);
       expect(within(t).queryAllByRole('combobox')).toHaveLength(0);
       expect(within(t).queryAllByRole('checkbox')).toHaveLength(0);
     }
   });
 
-  it('Set 7 listesinde planda bulunamayanlar yalniz Admin\'e uyari olarak gorunur', async () => {
+  it("Set 7 listesinde planda bulunamayanlar yalniz Admin'e uyari olarak gorunur", async () => {
     mockGecis.mockResolvedValue(plan(true));
     const { unmount } = render(<GlomoGecisPlani />);
-    expect(await screen.findByText(/Set 7 listesindeki/)).toHaveTextContent('Set 7 listesindeki 1 uygulama planda bulunamadı: fund-management-ch-prod/smart-saving-app-v0');
+    expect(await screen.findByText(/Set 7 listesindeki/)).toHaveTextContent(
+      'Set 7 listesindeki 1 uygulama planda bulunamadı: fund-management-ch-prod/smart-saving-app-v0',
+    );
     unmount();
     mockGecis.mockResolvedValue(plan(false));
     render(<GlomoGecisPlani />);
@@ -368,10 +488,30 @@ describe('GlomoGecisPlani', () => {
     expect(screen.queryByText(/Set 7 taşıması uygulanamadı/)).not.toBeInTheDocument();
   });
 
+  it('Excel plani kurum ayarindan okunamadiysa yalniz Admin uyari gorur (sebep metniyle)', async () => {
+    const p = plan(true);
+    p.seed = { hata: 'kurum ayarinda spaRapor.glomoGecis.seed yok' };
+    mockGecis.mockResolvedValue(p);
+    const { unmount } = render(<GlomoGecisPlani />);
+    const uyari = await screen.findByText(/Excel planı okunamadı/);
+    expect(uyari.closest('[role="alert"]')).toHaveTextContent('spaRapor.glomoGecis.seed yok');
+    unmount();
+    const u = plan(false);
+    u.seed = { hata: null };
+    mockGecis.mockResolvedValue(u);
+    render(<GlomoGecisPlani />);
+    await screen.findByText('yedi-app');
+    expect(screen.queryByText(/Excel planı okunamadı/)).not.toBeInTheDocument();
+  });
+
   it('ekip kaynağı: namespace yedeği "(namespace sahibi)" ile işaretli, uygulama sahibi işaretsiz', async () => {
     const p = plan(false);
     p.apps = [
-      app('yedi-app', { setNo: 7, ekip: ['APP-G', 'NS-G'], ekipKaynak: ['SI51_AGILE', 'NAMESPACE'] }),
+      app('yedi-app', {
+        setNo: 7,
+        ekip: ['APP-G', 'NS-G'],
+        ekipKaynak: ['SI51_AGILE', 'NAMESPACE'],
+      }),
       app('eski-app', { setNo: 7 }),
       app('veri-app', { setNo: 7, ekip: [], ekipKaynak: [], ekipVeriYok: true }),
       app('bos-app', { setNo: 7, ekip: [], ekipKaynak: [] }),

@@ -20,11 +20,14 @@ vi.mock('@/api/denetimApi', async (orijinal) => {
   return { ...gercek, denetimApi: { ...(gercek.denetimApi as object), ocpCoverage: mockOcp } };
 });
 
-const PROD = ['gbocpprod1', 'gbocpprod2', 'gbocpprod4', 'gbocpankprod2', 'gbocpdrcprod1'];
+const PROD = ['orocpprod1', 'orocpprod2', 'orocpprod4', 'orocpankprod2', 'orocpdrcprod1'];
 const satir = (application: string, prod: string[], digerleri = true): OcpCoverageRow => {
   const envs: OcpCoverageRow['envs'] = {};
-  if (digerleri) for (const e of ['dev', 'test', 'qa']) envs[e] = [{ cluster: 'gbocptest1', namespace: `${application}-${e}` }];
-  if (prod.length) envs.prod = prod.map((cluster) => ({ cluster, namespace: `${application}-prod` }));
+  if (digerleri)
+    for (const e of ['dev', 'test', 'qa'])
+      envs[e] = [{ cluster: 'orocptest1', namespace: `${application}-${e}` }];
+  if (prod.length)
+    envs.prod = prod.map((cluster) => ({ cluster, namespace: `${application}-prod` }));
   const present = Object.keys(envs);
   const missing = ['dev', 'test', 'qa', 'edu', 'prod'].filter((e) => !present.includes(e));
   return { application, envs, present, missing, missingCount: missing.length };
@@ -34,7 +37,7 @@ const satir = (application: string, prod: string[], digerleri = true): OcpCovera
 const ROWS = [
   satir('tam-app', PROD),
   satir('drc-yok', PROD.slice(0, 4)),
-  satir('tek-app', ['gbocpprod1']),
+  satir('tek-app', ['orocpprod1']),
   satir('yalniz-dev', [], true),
 ];
 const VERI: OcpCoverageResult = {
@@ -48,13 +51,13 @@ const VERI: OcpCoverageResult = {
   skippedNoEnv: 0,
   patterns: [],
   envClusters: {
-    dev: [{ cluster: 'gbocptest1', apps: 4 }],
+    dev: [{ cluster: 'orocptest1', apps: 4 }],
     prod: [
-      { cluster: 'gbocpprod1', apps: 3 },
-      { cluster: 'gbocpprod2', apps: 2 },
-      { cluster: 'gbocpprod4', apps: 2 },
-      { cluster: 'gbocpankprod2', apps: 2 },
-      { cluster: 'gbocpdrcprod1', apps: 1 },
+      { cluster: 'orocpprod1', apps: 3 },
+      { cluster: 'orocpprod2', apps: 2 },
+      { cluster: 'orocpprod4', apps: 2 },
+      { cluster: 'orocpankprod2', apps: 2 },
+      { cluster: 'orocpdrcprod1', apps: 1 },
     ],
   },
   envClusterKaynagi: { prod: 'resmi', dev: 'veri' },
@@ -78,28 +81,34 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
     await screen.findByText('Ortama göre uygulama sayısı');
     const eksik = screen.getByLabelText('Sadece eksiği olanlar') as HTMLInputElement;
     expect(eksik.checked).toBe(true);
-    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'kismi' } });
+    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), {
+      target: { value: 'kismi' },
+    });
     expect(eksik.checked).toBe(false);
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
     fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'tam' } });
     expect(tabloUygulamalari()).toEqual(['tam-app']);
     fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'yok' } });
     expect(tabloUygulamalari()).toEqual(['yalniz-dev']);
-    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), { target: { value: 'yok:gbocpdrcprod1' } });
+    fireEvent.change(screen.getByLabelText('prod sütununa göre süz'), {
+      target: { value: 'yok:orocpdrcprod1' },
+    });
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
   });
 
-  it('cluster çipi farkı (−N) gösterir; tıklayınca o cluster\'da olmayanlar süzülür', async () => {
+  it("cluster çipi farkı (−N) gösterir; tıklayınca o cluster'da olmayanlar süzülür", async () => {
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
     await screen.findByText('Ortama göre uygulama sayısı');
     // prod'da 3 uygulama var; drcprod1'de 1 -> −2; prod1'de 3 -> fark yok, tiklanamaz.
-    const drc = screen.getByRole('button', { name: /gbocpdrcprod1/ });
+    const drc = screen.getByRole('button', { name: /orocpdrcprod1/ });
     expect(drc.textContent).toContain('−2');
-    const p1 = screen.getByRole('button', { name: /gbocpprod1/ }) as HTMLButtonElement;
+    const p1 = screen.getByRole('button', { name: /orocpprod1/ }) as HTMLButtonElement;
     expect(p1.disabled).toBe(true);
     fireEvent.click(drc);
     expect(drc.getAttribute('aria-pressed')).toBe('true');
-    expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe('yok:gbocpdrcprod1');
+    expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe(
+      'yok:orocpdrcprod1',
+    );
     expect(tabloUygulamalari().sort()).toEqual(['drc-yok', 'tek-app']);
     fireEvent.click(screen.getByText('Sütun süzgeçlerini temizle'));
     expect((screen.getByLabelText('prod sütununa göre süz') as HTMLSelectElement).value).toBe('');
@@ -107,7 +116,9 @@ describe('Denetim > OpenShift — sütun süzgeci ve cluster farkı', () => {
 
   it('yüzdenin paydası yazıyor: uygulamaların yüzde kaçı bu ortamda da var', async () => {
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
-    const panel = (await screen.findByText('Ortama göre uygulama sayısı')).closest('div.rounded-xl') as HTMLElement;
+    const panel = (await screen.findByText('Ortama göre uygulama sayısı')).closest(
+      'div.rounded-xl',
+    ) as HTMLElement;
     expect(panel.textContent).toContain('herhangi bir ortamda görülen');
     // prod: 3 / 4 = %75, ipucunda pay/payda
     const yuzde = within(panel).getByText('%75');
@@ -122,6 +133,8 @@ describe('Denetim > OpenShift — yarım yanıt', () => {
     mockOcp.mockReset();
     mockOcp.mockResolvedValue({ ok: true, rows: [] });
     render(<DenetimPage />, { initialEntries: ['/denetim?tab=ocp'] });
-    expect(await screen.findByText('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.')).toBeTruthy();
+    expect(
+      await screen.findByText('Veri okunamadı: sunucu yanıtında beklenen alanlar yok.'),
+    ).toBeTruthy();
   });
 });

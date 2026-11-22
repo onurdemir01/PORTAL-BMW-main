@@ -36,8 +36,12 @@ vi.mock('@/api/nginxMigrationApi', () => ({
   nginxMigrationTrackingApi: { list: api.trackingList, save: vi.fn(), saveBulk: vi.fn() },
   nginxMigrationScanApi: { rescan: vi.fn() },
 }));
-vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { servers: vi.fn().mockResolvedValue({ servers: [] }) } }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: 'odemir', role: 'User' } }) }));
+vi.mock('@/api/ansibleApi', () => ({
+  ansibleApi: { servers: vi.fn().mockResolvedValue({ servers: [] }) },
+}));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'odemir', role: 'User' } }),
+}));
 vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob: vi.fn() }) }));
 
 const KEPT = 'Yalnız ESKİ sunuculardan kaldırır; yeni filo korunur.';
@@ -48,8 +52,8 @@ const BLOCKED = 'Yeni filo korunamıyor — silme BAŞLATILMAZ';
 function veri(grup: 'other' | 'glomo' = 'other'): NginxMigrationResult {
   const G =
     grup === 'glomo'
-      ? { id: 'glomo', label: 'GLOMO', svc: 'GLOMO', eski: 'GBRVPP07', yeni: 'GBNGXP40' }
-      : { id: 'other', label: 'WEBFORMS', svc: 'WEBFORMS', eski: 'GBRVPP01', yeni: 'GBNGXP44' };
+      ? { id: 'glomo', label: 'GLOMO', svc: 'GLOMO', eski: 'ORRVPP07', yeni: 'ORNGXP40' }
+      : { id: 'other', label: 'WEBFORMS', svc: 'WEBFORMS', eski: 'ORRVPP01', yeni: 'ORNGXP44' };
   return {
     ok: true,
     proxyReady: true,
@@ -65,7 +69,9 @@ function veri(grup: 'other' | 'glomo' = 'other'): NginxMigrationResult {
         newHosts: [G.yeni],
         newHostsScanned: [G.yeni],
         oldHostsSeen: [G.eski],
-        serviceLocations: [{ service: G.svc, locations: 1, defined: 1, partial: 0, none: 0, notScanned: 0 }],
+        serviceLocations: [
+          { service: G.svc, locations: 1, defined: 1, partial: 0, none: 0, notScanned: 0 },
+        ],
         apps: [
           {
             namespace: 'digital-banking-ch-prod',
@@ -80,7 +86,16 @@ function veri(grup: 'other' | 'glomo' = 'other'): NginxMigrationResult {
             oldHosts: [G.eski],
             locations: ['/base/'],
             locationCount: 1,
-            paths: [{ service: G.svc, location: '/base/', hosts: [G.eski], newHosts: [G.yeni], newStatus: 'defined', traffic: null }],
+            paths: [
+              {
+                service: G.svc,
+                location: '/base/',
+                hosts: [G.eski],
+                newHosts: [G.yeni],
+                newStatus: 'defined',
+                traffic: null,
+              },
+            ],
             perHost: { [G.yeni]: { hys: true, app: true, conf: true } },
             readyHosts: 1,
             scannedHosts: 1,
@@ -115,7 +130,10 @@ async function pencereyiAc() {
 beforeEach(() => {
   vi.clearAllMocks();
   api.nginxMigration.mockResolvedValue(veri());
-  api.config.mockResolvedValue({ ok: true, config: { awxServerId: 1, templateId: 10, deleteTemplateId: 20 } });
+  api.config.mockResolvedValue({
+    ok: true,
+    config: { awxServerId: 1, templateId: 10, deleteTemplateId: 20 },
+  });
   api.trackingList.mockResolvedValue({ ok: true, rows: [], pathJobs: [] });
 });
 
@@ -126,7 +144,9 @@ describe('GLOMO eski filosu kapalı (2026-10-20)', () => {
     const btn = await screen.findByRole('button', { name: /Eski filo kapalı/ });
     await waitFor(() => expect(api.config).toHaveBeenCalled());
     expect(btn).toBeDisabled();
-    expect(btn.getAttribute('title') || '').toMatch(/GLOMO için eski filoya .* hiçbir işte gidilmez/);
+    expect(btn.getAttribute('title') || '').toMatch(
+      /GLOMO için eski filoya .* hiçbir işte gidilmez/,
+    );
     fireEvent.click(btn);
     expect(api.deleteGuard).not.toHaveBeenCalled();
     expect(api.remove).not.toHaveBeenCalled();
@@ -144,7 +164,8 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
     expect(screen.queryByText(/Yeni sunuculara dokunulmaz/)).toBeNull();
     expect(api.deleteGuard).toHaveBeenCalledTimes(1);
     // Satir dugmesinin ipucu: vaat + kosulu (dogrulanamazsa is baslamaz) birlikte.
-    const ipucu = screen.getByRole('button', { name: /Eski tanımı kaldır/ }).getAttribute('title') || '';
+    const ipucu =
+      screen.getByRole('button', { name: /Eski tanımı kaldır/ }).getAttribute('title') || '';
     expect(ipucu).toContain(KEPT);
     expect(ipucu).toContain('doğrulayamazsa işi başlatmaz');
   });
@@ -152,7 +173,12 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
   it('ön kontrol geçmezse vaat YOK; neden + ÖLÇÜLEMEDİ yazılır; onay kapalı; yeniden kontrol edilebilir', async () => {
     api.deleteGuard.mockResolvedValue({
       ok: true,
-      guard: { ok: false, code: 'template_unreadable', measured: false, message: 'NEDEN-template-okunamadi' },
+      guard: {
+        ok: false,
+        code: 'template_unreadable',
+        measured: false,
+        message: 'NEDEN-template-okunamadi',
+      },
     });
     const onay = await pencereyiAc();
     expect(await screen.findByText(BLOCKED)).toBeInTheDocument();
@@ -179,7 +205,12 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
 
   it('sunucu 409 ile reddederse NEDEN ekrana gelir (yeni filo korunamıyor + ölçülemedi)', async () => {
     api.deleteGuard.mockResolvedValue({ ok: true, guard: { ok: true, via: 'prompt' } });
-    api.remove.mockResolvedValue({ ok: false, code: 'survey_unreadable', measured: false, message: 'SUNUCU-NEDENI-42' });
+    api.remove.mockResolvedValue({
+      ok: false,
+      code: 'survey_unreadable',
+      measured: false,
+      message: 'SUNUCU-NEDENI-42',
+    });
     const onay = await pencereyiAc();
     await screen.findByText(KEPT);
     fireEvent.click(onay);
@@ -209,7 +240,10 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
   });
 
   it('survey sorusu DİĞER işleri bozuyorsa (ör. varsayılan false) uyarı görünür; silme yine açık', async () => {
-    api.deleteGuard.mockResolvedValue({ ok: true, guard: { ok: true, via: 'survey', warning: 'UYARI-VARSAYILAN-88' } });
+    api.deleteGuard.mockResolvedValue({
+      ok: true,
+      guard: { ok: true, via: 'survey', warning: 'UYARI-VARSAYILAN-88' },
+    });
     const onay = await pencereyiAc();
     expect(await screen.findByText(KEPT)).toBeInTheDocument();
     expect(screen.getByText('UYARI-VARSAYILAN-88')).toBeInTheDocument();
@@ -229,7 +263,7 @@ describe('Eski tanımı kaldır — yeni filo vaadi KOŞULLU', () => {
     api.remove.mockResolvedValue({
       ok: true,
       job: { id: null },
-      oldHosts: ['GBRVPP07'],
+      oldHosts: ['ORRVPP07'],
       scheduled: true,
       newFleetGuard: { via: 'prompt', postCheck: 'olculemedi' },
     });

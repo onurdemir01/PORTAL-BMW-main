@@ -21,20 +21,61 @@ import { createRequire } from 'node:module';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import {
-  adimNormalle, cokluNormalle, hedeflerNormalle, kosuNormalle, kosuSatiriNormalle, onKontrolNormalle, type NlKosuAyrinti, type NlParametreler, type NlSinirlar, type NlVarsayilanlar,
+  adimNormalle,
+  cokluNormalle,
+  hedeflerNormalle,
+  kosuNormalle,
+  kosuSatiriNormalle,
+  onKontrolNormalle,
+  type NlKosuAyrinti,
+  type NlParametreler,
+  type NlSinirlar,
+  type NlVarsayilanlar,
 } from '@/api/nginxLoadtestApi';
 import {
-  HOST_LISTEDE_YOK_UYARISI, NGINX_BELIRSIZ_ENGELI, NGINX_YOK_AYAR_ENGELI, NGINX_YOK_CPU_IPUCU, NGINX_YOK_UYARISI, SRV_AYAR_ENVANTER_NOTU, SRV_AYAR_NGINX_YOK_NOTU,
-  WRK_UYARISI, apacheBilgisi, hedefNginxsiz, nginxIpucu, onKontrolDegerlendir,
+  HOST_LISTEDE_YOK_UYARISI,
+  NGINX_BELIRSIZ_ENGELI,
+  NGINX_YOK_AYAR_ENGELI,
+  NGINX_YOK_CPU_IPUCU,
+  NGINX_YOK_UYARISI,
+  SRV_AYAR_ENVANTER_NOTU,
+  SRV_AYAR_NGINX_YOK_NOTU,
+  WRK_UYARISI,
+  apacheBilgisi,
+  hedefNginxsiz,
+  nginxIpucu,
+  onKontrolDegerlendir,
 } from '../yukTesti/yukTestiOrtak';
 
 const api = vi.hoisted(() => ({
-  hedefler: vi.fn(), senaryolar: vi.fn(), senaryo: vi.fn(), senaryoKaydet: vi.fn(), senaryoSil: vi.fn(), onKontrol: vi.fn(),
-  baslat: vi.fn(), kosular: vi.fn(), kosu: vi.fn(), durum: vi.fn(), durdur: vi.fn(), yenidenOku: vi.fn(), karsilastir: vi.fn(), ipSinifi: vi.fn(),
-  araclar: vi.fn(), araclariHazirla: vi.fn(), aracGeriCek: vi.fn(),
+  hedefler: vi.fn(),
+  senaryolar: vi.fn(),
+  senaryo: vi.fn(),
+  senaryoKaydet: vi.fn(),
+  senaryoSil: vi.fn(),
+  onKontrol: vi.fn(),
+  baslat: vi.fn(),
+  kosular: vi.fn(),
+  kosu: vi.fn(),
+  durum: vi.fn(),
+  durdur: vi.fn(),
+  yenidenOku: vi.fn(),
+  karsilastir: vi.fn(),
+  ipSinifi: vi.fn(),
+  araclar: vi.fn(),
+  araclariHazirla: vi.fn(),
+  aracGeriCek: vi.fn(),
 }));
-vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({ ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()), nginxLoadtestApi: api }));
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
+vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({
+  ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()),
+  nginxLoadtestApi: api,
+}));
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+}));
 vi.mock('@/hooks/useToast', () => ({ toast }));
 
 import { YukTestiTab } from '../YukTestiTab';
@@ -43,40 +84,158 @@ import OnKontrolPaneli from '../yukTesti/OnKontrolPaneli';
 import BaslatOnayi, { NGINX_YOK_SATIRI } from '../yukTesti/BaslatOnayi';
 import { TurMotorCipleri } from '../yukTesti/YukUi';
 
-const sunucuDogrula = createRequire(import.meta.url)('../../../../server/nginx-loadtest/dogrula.cjs') as {
-  NGINX_YOK_UYARISI: string; NGINX_YOK_AYAR_ENGELI: string; NGINX_BELIRSIZ_ENGELI: string;
+const sunucuDogrula = createRequire(import.meta.url)(
+  '../../../../server/nginx-loadtest/dogrula.cjs',
+) as {
+  NGINX_YOK_UYARISI: string;
+  NGINX_YOK_AYAR_ENGELI: string;
+  NGINX_BELIRSIZ_ENGELI: string;
   onKontrolDegerlendir: (ok: unknown, s?: unknown) => { engeller: string[]; uyarilar: string[] };
 };
 
 const SINIR: NlSinirlar = {
-  maxHiz: 5000, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 1000, maxButceSn: 2700,
-  baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50, maxTavanRps: 5000,
+  maxHiz: 5000,
+  maxTekrar: 3,
+  sureMin: 40,
+  sureMax: 300,
+  isinmaMax: 60,
+  maxVu: 1000,
+  maxButceSn: 2700,
+  baglantiMin: 1,
+  maxBaglanti: 199,
+  maxBaglantiSayisi: 5,
+  isParcacigiMin: 1,
+  maxIsParcacigi: 16,
+  serbestTavanRps: 200,
+  serbestMaxBaglanti: 50,
+  maxTavanRps: 5000,
 };
 const VARSAYILAN: NlVarsayilanlar = {
-  motor: 'k6', hizlar: [100, 250, 400], maxvu: 150, baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60,
-  kip: 'yeni', ae: 'br', serbest: { hizlar: [50, 100, 200], maxvu: 50 }, protokol: 'h1',
+  motor: 'k6',
+  hizlar: [100, 250, 400],
+  maxvu: 150,
+  baglantilar: [2, 4, 8],
+  is_parcacigi: 2,
+  tekrar: 2,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  kip: 'yeni',
+  ae: 'br',
+  serbest: { hizlar: [50, 100, 200], maxvu: 50 },
+  protokol: 'h1',
 };
-const VHOST = 'glomo-test.garantibbva.com.tr';
-// Gercek durum: GBJWLT01 (Inventory Test, nginx yok - son on kontrol), GBJALT02 (envanterde nginx yok, olculmedi), GBNGXT33 (nginx).
+const VHOST = 'glomo-test.ornekbanka.invalid';
+// Gercek durum: ORJWLT01 (Inventory Test, nginx yok - son on kontrol), ORJALT02 (envanterde nginx yok, olculmedi), ORNGXT33 (nginx).
 const HEDEFLER = {
   ok: true,
   hedefler: [
-    { host: 'GBJALT02', env: 'TEST', ipler: ['10.151.166.150'], vhostlar: [], vhostVerisi: false, uygun: true, neden: null, nginxEnvanter: false, urunler: ['RHA'], nginxSon: null, nginxSonAt: null },
-    { host: 'GBJWLT01', env: 'TEST', ipler: ['10.151.166.144', '10.151.166.145', '10.151.166.146', '10.151.166.147'], vhostlar: [], vhostVerisi: false, uygun: true, neden: null, nginxEnvanter: false, urunler: [], nginxSon: false, nginxSonAt: '2026-11-13T09:00:00Z' },
-    { host: 'GBNGXT33', env: 'QA/TEST', ipler: ['192.168.133.27'], vhostlar: [VHOST], vhostVerisi: true, uygun: true, neden: null, nginxEnvanter: true, urunler: ['NGINX'], nginxSon: true, nginxSonAt: '2026-11-12T09:00:00Z' },
-    { host: 'GBNGXP40', env: 'PROD', ipler: [], vhostlar: [], vhostVerisi: false, uygun: false, neden: 'üretim', kod: 'hedef_uretim', nginxEnvanter: true, urunler: ['NGINX'], nginxSon: null, nginxSonAt: null },
+    {
+      host: 'ORJALT02',
+      env: 'TEST',
+      ipler: ['10.250.166.150'],
+      vhostlar: [],
+      vhostVerisi: false,
+      uygun: true,
+      neden: null,
+      nginxEnvanter: false,
+      urunler: ['RHA'],
+      nginxSon: null,
+      nginxSonAt: null,
+    },
+    {
+      host: 'ORJWLT01',
+      env: 'TEST',
+      ipler: ['10.250.166.144', '10.250.166.145', '10.250.166.146', '10.250.166.147'],
+      vhostlar: [],
+      vhostVerisi: false,
+      uygun: true,
+      neden: null,
+      nginxEnvanter: false,
+      urunler: [],
+      nginxSon: false,
+      nginxSonAt: '2026-11-13T09:00:00Z',
+    },
+    {
+      host: 'ORNGXT33',
+      env: 'QA/TEST',
+      ipler: ['192.168.251.27'],
+      vhostlar: [VHOST],
+      vhostVerisi: true,
+      uygun: true,
+      neden: null,
+      nginxEnvanter: true,
+      urunler: ['NGINX'],
+      nginxSon: true,
+      nginxSonAt: '2026-11-12T09:00:00Z',
+    },
+    {
+      host: 'ORNGXP40',
+      env: 'PROD',
+      ipler: [],
+      vhostlar: [],
+      vhostVerisi: false,
+      uygun: false,
+      neden: 'üretim',
+      kod: 'hedef_uretim',
+      nginxEnvanter: true,
+      urunler: ['NGINX'],
+      nginxSon: null,
+      nginxSonAt: null,
+    },
   ],
   hedefSayisi: 3,
-  yukHostlari: [{ host: 'GBNGXT14', env: 'TEST', uygun: true, neden: null }],
-  sinirlar: SINIR, varsayilan: VARSAYILAN, serbest: { acik: true, aglar: [] }, motorlar: ['k6', 'wrk'], protokoller: ['h1', 'h2'],
-  araclar: { hazir: true, aracId: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', kod: null, mesaj: null },
+  yukHostlari: [{ host: 'ORNGXT14', env: 'TEST', uygun: true, neden: null }],
+  sinirlar: SINIR,
+  varsayilan: VARSAYILAN,
+  serbest: { acik: true, aglar: [] },
+  motorlar: ['k6', 'wrk'],
+  protokoller: ['h1', 'h2'],
+  araclar: {
+    hazir: true,
+    aracId: 5,
+    k6Surum: 'v0.49.0',
+    wrkSurum: '4.2.0',
+    kod: null,
+    mesaj: null,
+  },
 };
-const SENARYO = { id: 3, ad: 'GLOMO', aciklama: null, vhost: VHOST, senaryoTur: 'K', yolSayisi: 264, sha256: 'b'.repeat(64), kaynak: 'har', createdBy: 'onur', createdAt: '2026-10-26T10:00:00Z' };
+const SENARYO = {
+  id: 3,
+  ad: 'GLOMO',
+  aciklama: null,
+  vhost: VHOST,
+  senaryoTur: 'K',
+  yolSayisi: 264,
+  sha256: 'b'.repeat(64),
+  kaynak: 'har',
+  createdBy: 'onur',
+  createdAt: '2026-10-26T10:00:00Z',
+};
 const sinifOf = (ip: string, host: string, o: Record<string, unknown> = {}) => {
   const h = HEDEFLER.hedefler.find((x) => x.host === host)!;
   return {
-    ok: true, tur: 'sunucu', ip, host, env: h.env, ipler: h.ipler, vhostlar: h.vhostlar, vhostVerisi: h.vhostVerisi, hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null,
-    uygun: true, neden: null, kod: null, kaynaklar: ['dbo.Inventory'], nginxEnvanter: h.nginxEnvanter, urunler: h.urunler, nginxSon: h.nginxSon, ...o,
+    ok: true,
+    tur: 'sunucu',
+    ip,
+    host,
+    env: h.env,
+    ipler: h.ipler,
+    vhostlar: h.vhostlar,
+    vhostVerisi: h.vhostVerisi,
+    hizSiniri: null,
+    vuSiniri: null,
+    limitReq: null,
+    limitConn: null,
+    uygun: true,
+    neden: null,
+    kod: null,
+    kaynaklar: ['dbo.Inventory'],
+    nginxEnvanter: h.nginxEnvanter,
+    urunler: h.urunler,
+    nginxSon: h.nginxSon,
+    ...o,
   };
 };
 
@@ -87,9 +246,23 @@ beforeEach(() => {
   api.kosular.mockResolvedValue({ ok: true, kosular: [], dahaVar: false });
   api.senaryolar.mockResolvedValue({ ok: true, senaryolar: [SENARYO] });
   api.hedefler.mockResolvedValue(HEDEFLER);
-  api.durum.mockResolvedValue({ ok: true, status: 'running', finished: false, output: '', result: null, kosuDurum: 'RUNNING' });
-  api.onKontrol.mockResolvedValue({ ok: false, code: 'kilit_dolu', message: 'Başka bir yük testi sürüyor.', _httpStatus: 409 });
-  api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null }) => sinifOf(ip, o?.hedefHost || 'GBNGXT33'));
+  api.durum.mockResolvedValue({
+    ok: true,
+    status: 'running',
+    finished: false,
+    output: '',
+    result: null,
+    kosuDurum: 'RUNNING',
+  });
+  api.onKontrol.mockResolvedValue({
+    ok: false,
+    code: 'kilit_dolu',
+    message: 'Başka bir yük testi sürüyor.',
+    _httpStatus: 409,
+  });
+  api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null }) =>
+    sinifOf(ip, o?.hedefHost || 'ORNGXT33'),
+  );
 });
 
 async function formAc() {
@@ -100,14 +273,18 @@ async function formAc() {
 const secici = () => screen.getByLabelText('Hedef sunucu (isteğe bağlı)') as HTMLSelectElement;
 const secenekler = () => [...secici().querySelectorAll('option')].map((o) => o.textContent ?? '');
 const kutu = () => screen.getByLabelText(/Sunucuyu koşu öncesi ayarla/) as HTMLInputElement;
-const okDugmesi = () => screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
+const okDugmesi = () =>
+  screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
 
 describe('APACHE BILGISI (TH8, 2026-11-17)', () => {
   it('TH8 hedef_apache normallestirme ve bilgi metni; serbestte ve olculemeyende satir yok; engel/uyari uretmez', () => {
     expect(onKontrolNormalle({ k6_var: true, hedef_apache: true })?.hedefApache).toBe(true);
     expect(onKontrolNormalle({ k6_var: true, hedef_apache: 'False' })?.hedefApache).toBe(false);
-    for (const v of [undefined, null, '-', 1]) expect(onKontrolNormalle({ k6_var: true, hedef_apache: v })?.hedefApache).toBeNull();
-    expect(apacheBilgisi(true, false)).toMatch(/Apache \/ IHS çalışıyor, nginx çalışmıyor: test nginx’siz/);
+    for (const v of [undefined, null, '-', 1])
+      expect(onKontrolNormalle({ k6_var: true, hedef_apache: v })?.hedefApache).toBeNull();
+    expect(apacheBilgisi(true, false)).toMatch(
+      /Apache \/ IHS çalışıyor, nginx çalışmıyor: test nginx’siz/,
+    );
     expect(apacheBilgisi(true, true)).toMatch(/nginx’in yanında Apache \/ IHS de çalışıyor/);
     expect(apacheBilgisi(true, null)).toBe('Hedefte Apache / IHS çalışıyor.');
     expect(apacheBilgisi(true, undefined)).toBe('Hedefte Apache / IHS çalışıyor.');
@@ -116,12 +293,30 @@ describe('APACHE BILGISI (TH8, 2026-11-17)', () => {
     expect(apacheBilgisi(null, false)).toBeNull();
     expect(apacheBilgisi(undefined, false)).toBeNull();
     // Bilgi yalniz bilgiler'e girer: engel ve uyari sayisi Apache alanindan bagimsiz.
-    const ok = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false }), hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
-    const okA = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false, hedef_apache: true }), hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
+    const ok = onKontrolDegerlendir({
+      durum: 'DONE',
+      onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false }),
+      hedefTuru: 'sunucu',
+      motor: 'k6',
+      parametreler: PARAM,
+    } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
+    const okA = onKontrolDegerlendir({
+      durum: 'DONE',
+      onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false, hedef_apache: true }),
+      hedefTuru: 'sunucu',
+      motor: 'k6',
+      parametreler: PARAM,
+    } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
     expect(okA.engeller).toEqual(ok.engeller);
     expect(okA.uyarilar).toEqual(ok.uyarilar);
     expect(okA.bilgiler).toEqual([...ok.bilgiler, apacheBilgisi(true, false)]);
-    const serbest = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_apache: true }), hedefTuru: 'serbest', motor: 'k6', parametreler: PARAM } as never) as unknown as { bilgiler: string[] };
+    const serbest = onKontrolDegerlendir({
+      durum: 'DONE',
+      onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_apache: true }),
+      hedefTuru: 'serbest',
+      motor: 'k6',
+      parametreler: PARAM,
+    } as never) as unknown as { bilgiler: string[] };
     expect(serbest.bilgiler.some((b) => /Apache/.test(b))).toBe(false);
   });
 });
@@ -130,29 +325,107 @@ describe('TEK HEDEF — normallestirme (TH1)', () => {
   it('TH1 on kontrol hedef_nginx üç durum + yok; /hedefler ve /ip-sinifi ipuçları; koşu satırı; çoklu meta', () => {
     expect('hedefNginx' in (onKontrolNormalle({ k6_var: true }) ?? {})).toBe(false);
     expect(onKontrolNormalle({ k6_var: true, hedef_nginx: false })?.hedefNginx).toBe(false);
-    expect(onKontrolNormalle({ k6_var: true, hedef_nginx: true, hedef_nproc: '8' })).toMatchObject({ hedefNginx: true, hedefNproc: 8 });
+    expect(onKontrolNormalle({ k6_var: true, hedef_nginx: true, hedef_nproc: '8' })).toMatchObject({
+      hedefNginx: true,
+      hedefNproc: 8,
+    });
     expect(onKontrolNormalle({ k6_var: true, hedef_nginx: 'False' })?.hedefNginx).toBe(false);
-    for (const v of [null, '-', 1, 0, 'evet']) expect(onKontrolNormalle({ k6_var: true, hedef_nginx: v })?.hedefNginx).toBeNull();
-    const h = hedeflerNormalle({ ...HEDEFLER, hedefler: [...HEDEFLER.hedefler, { host: 'GBESKI01', env: 'TEST', ipler: ['1.2.3.4'], vhostlar: [], uygun: true, neden: null }, { env: 'TEST' }] });
+    for (const v of [null, '-', 1, 0, 'evet'])
+      expect(onKontrolNormalle({ k6_var: true, hedef_nginx: v })?.hedefNginx).toBeNull();
+    const h = hedeflerNormalle({
+      ...HEDEFLER,
+      hedefler: [
+        ...HEDEFLER.hedefler,
+        {
+          host: 'ORESKI01',
+          env: 'TEST',
+          ipler: ['1.2.3.4'],
+          vhostlar: [],
+          uygun: true,
+          neden: null,
+        },
+        { env: 'TEST' },
+      ],
+    });
     expect(h.hedefSayisi).toBe(3);
-    expect(h.hedefler.map((x) => x.host)).toEqual(['GBJALT02', 'GBJWLT01', 'GBNGXT33', 'GBNGXP40', 'GBESKI01']);
-    expect(h.hedefler[1]).toMatchObject({ nginxSon: false, nginxEnvanter: false, nginxSonAt: '2026-11-13T09:00:00Z', urunler: [] });
-    expect(h.hedefler[4]).toMatchObject({ nginxSon: null, nginxEnvanter: null, nginxSonAt: null, urunler: [] });
+    expect(h.hedefler.map((x) => x.host)).toEqual([
+      'ORJALT02',
+      'ORJWLT01',
+      'ORNGXT33',
+      'ORNGXP40',
+      'ORESKI01',
+    ]);
+    expect(h.hedefler[1]).toMatchObject({
+      nginxSon: false,
+      nginxEnvanter: false,
+      nginxSonAt: '2026-11-13T09:00:00Z',
+      urunler: [],
+    });
+    expect(h.hedefler[4]).toMatchObject({
+      nginxSon: null,
+      nginxEnvanter: null,
+      nginxSonAt: null,
+      urunler: [],
+    });
     expect(kosuSatiriNormalle({ id: 1, hedef_nginx: false }).hedefNginx).toBe(false);
     expect(kosuSatiriNormalle({ id: 1 }).hedefNginx).toBeNull();
     expect(kosuNormalle({ id: 2, hedefNginx: true }).hedefNginx).toBe(true);
-    const c = cokluNormalle({ ref: { id: 1, hizlar: [] }, adaylar: [{ id: 2, nginx: false, hizlar: [] }, { id: 3, nginx: true, hizlar: [] }], karsilastirilamaz: [] });
-    expect([c.ref.nginx, c.adaylar[0].nginx, 'nginx' in c.adaylar[1]]).toEqual([undefined, false, false]);
-    expect([nginxIpucu(HEDEFLER.hedefler[0]), nginxIpucu(HEDEFLER.hedefler[1]), nginxIpucu(HEDEFLER.hedefler[2]), nginxIpucu({ nginxEnvanter: true }), nginxIpucu(null)])
-      .toEqual(['nginx yok (envanter)', 'nginx yok', 'nginx', 'nginx (envanter)', 'nginx ?']);
+    const c = cokluNormalle({
+      ref: { id: 1, hizlar: [] },
+      adaylar: [
+        { id: 2, nginx: false, hizlar: [] },
+        { id: 3, nginx: true, hizlar: [] },
+      ],
+      karsilastirilamaz: [],
+    });
+    expect([c.ref.nginx, c.adaylar[0].nginx, 'nginx' in c.adaylar[1]]).toEqual([
+      undefined,
+      false,
+      false,
+    ]);
+    expect([
+      nginxIpucu(HEDEFLER.hedefler[0]),
+      nginxIpucu(HEDEFLER.hedefler[1]),
+      nginxIpucu(HEDEFLER.hedefler[2]),
+      nginxIpucu({ nginxEnvanter: true }),
+      nginxIpucu(null),
+    ]).toEqual(['nginx yok (envanter)', 'nginx yok', 'nginx', 'nginx (envanter)', 'nginx ?']);
   });
 });
 
-const PARAM: NlParametreler = { motor: 'k6', hizlar: [100], maxvu: 150, tekrar: 1, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', protokol: 'h1' };
-const OK_HAM = { ip_yerel: true, server_name_var: false, master_sayisi: 0, web_log_df: 80, log_dizini_okunur: false, log_format_ua: false, k6_var: true, yollar_toplam: 5, yollar_200: 5 };
-const deger = (ham: Record<string, unknown>, o: Partial<NlKosuAyrinti> = {}) => onKontrolDegerlendir({
-  durum: 'DONE', onKontrol: onKontrolNormalle(ham), hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM, ...o,
-});
+const PARAM: NlParametreler = {
+  motor: 'k6',
+  hizlar: [100],
+  maxvu: 150,
+  tekrar: 1,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  kip: 'yeni',
+  ae: 'br',
+  protokol: 'h1',
+};
+const OK_HAM = {
+  ip_yerel: true,
+  server_name_var: false,
+  master_sayisi: 0,
+  web_log_df: 80,
+  log_dizini_okunur: false,
+  log_format_ua: false,
+  k6_var: true,
+  yollar_toplam: 5,
+  yollar_200: 5,
+};
+const deger = (ham: Record<string, unknown>, o: Partial<NlKosuAyrinti> = {}) =>
+  onKontrolDegerlendir({
+    durum: 'DONE',
+    onKontrol: onKontrolNormalle(ham),
+    hedefTuru: 'sunucu',
+    motor: 'k6',
+    parametreler: PARAM,
+    ...o,
+  });
 
 describe('TEK HEDEF — ön kontrol değerlendirmesi (TH2)', () => {
   it('TH2 nginx’siz / belirsiz / alan yok; metinler sunucuyla aynı', () => {
@@ -164,30 +437,68 @@ describe('TEK HEDEF — ön kontrol değerlendirmesi (TH2)', () => {
     const yok = deger({ ...OK_HAM, hedef_nginx: false });
     expect(yok.engeller).toEqual([]);
     expect(yok.uyarilar).toEqual([NGINX_YOK_UYARISI]);
-    const wrk = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, k6_var: null, wrk_var: true, hedef_nginx: false }), hedefTuru: 'sunucu', motor: 'wrk', parametreler: { ...PARAM, motor: 'wrk' } });
+    const wrk = onKontrolDegerlendir({
+      durum: 'DONE',
+      onKontrol: onKontrolNormalle({ ...OK_HAM, k6_var: null, wrk_var: true, hedef_nginx: false }),
+      hedefTuru: 'sunucu',
+      motor: 'wrk',
+      parametreler: { ...PARAM, motor: 'wrk' },
+    });
     expect(wrk.uyarilar.slice(-2)).toEqual([NGINX_YOK_UYARISI, WRK_UYARISI]);
     // Sunucu ayari nginx'siz hedefte ENGEL (sunucu NGINX_YOK_AYAR_ENGELI).
-    expect(deger({ ...OK_HAM, hedef_nginx: false }, { parametreler: { ...PARAM, sunucuAyar: { seviye: 6, static: false, dizin: '/usr/nginx/applications/x' } } }).engeller).toEqual([NGINX_YOK_AYAR_ENGELI]);
+    expect(
+      deger(
+        { ...OK_HAM, hedef_nginx: false },
+        {
+          parametreler: {
+            ...PARAM,
+            sunucuAyar: { seviye: 6, static: false, dizin: '/usr/nginx/applications/x' },
+          },
+        },
+      ).engeller,
+    ).toEqual([NGINX_YOK_AYAR_ENGELI]);
     // Sunucu da ayni kurali verir (kucuk harfli metin).
-    const s = sunucuDogrula.onKontrolDegerlendir({ ...OK_HAM, hedef_nginx: false }, { hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM });
+    const s = sunucuDogrula.onKontrolDegerlendir(
+      { ...OK_HAM, hedef_nginx: false },
+      { hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM },
+    );
     expect(s).toEqual({ engeller: [], uyarilar: [sunucuDogrula.NGINX_YOK_UYARISI] });
 
-    const belirsiz = deger({ ...OK_HAM, master_sayisi: 1, web_log_df: 10, log_dizini_okunur: true, log_format_ua: true, server_name_var: true, hedef_nginx: null });
+    const belirsiz = deger({
+      ...OK_HAM,
+      master_sayisi: 1,
+      web_log_df: 10,
+      log_dizini_okunur: true,
+      log_format_ua: true,
+      server_name_var: true,
+      hedef_nginx: null,
+    });
     expect(belirsiz.engeller).toEqual([NGINX_BELIRSIZ_ENGELI]);
     // Alan yok (eski playbook): nginx kurallari BIREBIR eskisi.
     const eski = deger(OK_HAM);
     expect(eski.uyarilar[0]).toBe(HOST_LISTEDE_YOK_UYARISI);
-    expect(eski.engeller).toEqual(expect.arrayContaining([expect.stringMatching(/nginx master/), expect.stringMatching(/Log dizini \/web_log okunamıyor/)]));
+    expect(eski.engeller).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/nginx master/),
+        expect.stringMatching(/Log dizini \/web_log okunamıyor/),
+      ]),
+    );
     expect(eski.uyarilar).not.toContain(NGINX_YOK_UYARISI);
     // nginx true: eski kurallarla ayni engeller (alan yokken ile birebir).
     expect(deger({ ...OK_HAM, hedef_nginx: true })).toEqual(eski);
     // Serbestte alan yok sayilir.
     expect(hedefNginxsiz({ hedefTuru: 'serbest', hedefNginx: false })).toBe(false);
-    expect(hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: null, onKontrol: { hedefNginx: false } })).toBe(true);
+    expect(
+      hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: null, onKontrol: { hedefNginx: false } }),
+    ).toBe(true);
     expect(hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: null })).toBe(false);
     // Kosunun kendi tespiti oncelikli: on kontrol "yok", kosu basinda nginx bulundu -> nginx'li (ve tersi).
-    expect(hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: true, onKontrol: { hedefNginx: false } })).toBe(false);
-    expect(hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: false, onKontrol: { hedefNginx: true } })).toBe(true);
+    expect(
+      hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: true, onKontrol: { hedefNginx: false } }),
+    ).toBe(false);
+    expect(
+      hedefNginxsiz({ hedefTuru: 'sunucu', hedefNginx: false, onKontrol: { hedefNginx: true } }),
+    ).toBe(true);
   });
 });
 
@@ -196,52 +507,101 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     await formAc();
     expect(secenekler()).toEqual([
       '— IP’yi elle yazacağım —',
-      'GBJALT02 · TEST · 10.151.166.150 · nginx yok (envanter)',
-      'GBJWLT01 · TEST · 10.151.166.144, 10.151.166.145, 10.151.166.146 +1 · nginx yok',
-      'GBNGXT33 · QA/TEST · 192.168.133.27 · nginx',
-      'GBNGXP40 · PROD · nginx (envanter) — üretim',
+      'ORJALT02 · TEST · 10.250.166.150 · nginx yok (envanter)',
+      'ORJWLT01 · TEST · 10.250.166.144, 10.250.166.145, 10.250.166.146 +1 · nginx yok',
+      'ORNGXT33 · QA/TEST · 192.168.251.27 · nginx',
+      'ORNGXP40 · PROD · nginx (envanter) — üretim',
     ]);
     expect(screen.getByText('4 / 4 sunucu')).toBeInTheDocument();
     const ara = screen.getByRole('searchbox', { name: 'Hedef sunucu ara' });
-    fireEvent.change(ara, { target: { value: '10.151.166.144' } });
-    expect(secenekler()).toEqual(['— IP’yi elle yazacağım —', 'GBJWLT01 · TEST · 10.151.166.144, 10.151.166.145, 10.151.166.146 +1 · nginx yok']);
+    fireEvent.change(ara, { target: { value: '10.250.166.144' } });
+    expect(secenekler()).toEqual([
+      '— IP’yi elle yazacağım —',
+      'ORJWLT01 · TEST · 10.250.166.144, 10.250.166.145, 10.250.166.146 +1 · nginx yok',
+    ]);
     expect(screen.getByText('1 / 4 sunucu')).toBeInTheDocument();
-    fireEvent.change(secici(), { target: { value: 'GBJWLT01' } });
+    fireEvent.change(secici(), { target: { value: 'ORJWLT01' } });
     fireEvent.change(ara, { target: { value: 'qa' } });
     // Secili host aramaya uymasa da listede kalir (secim gorunmez olmaz).
-    expect(secenekler().map((x) => x.split(' · ')[0])).toEqual(['— IP’yi elle yazacağım —', 'GBJWLT01', 'GBNGXT33']);
-    fireEvent.change(ara, { target: { value: 'gbja' } });
-    expect(secenekler().map((x) => x.split(' · ')[0])).toEqual(['— IP’yi elle yazacağım —', 'GBJALT02', 'GBJWLT01']);
-    expect(secici().value).toBe('GBJWLT01');
+    expect(secenekler().map((x) => x.split(' · ')[0])).toEqual([
+      '— IP’yi elle yazacağım —',
+      'ORJWLT01',
+      'ORNGXT33',
+    ]);
+    fireEvent.change(ara, { target: { value: 'orja' } });
+    expect(secenekler().map((x) => x.split(' · ')[0])).toEqual([
+      '— IP’yi elle yazacağım —',
+      'ORJALT02',
+      'ORJWLT01',
+    ]);
+    expect(secici().value).toBe('ORJWLT01');
   });
 
   it('TH4 son ön kontrol nginx bulamadıysa sunucu ayarı kapalı + not, gövdede yok; envanter notu; nginx hedefte not yok', async () => {
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 1 });
-    api.kosu.mockResolvedValue({ ok: true, kosu: kosuNormalle({ id: 16, islem: 'on_kontrol', durum: 'RUNNING', hedefTuru: 'sunucu', hedefHost: 'GBJWLT01' }), adimlar: [] });
+    api.kosu.mockResolvedValue({
+      ok: true,
+      kosu: kosuNormalle({
+        id: 16,
+        islem: 'on_kontrol',
+        durum: 'RUNNING',
+        hedefTuru: 'sunucu',
+        hedefHost: 'ORJWLT01',
+      }),
+      adimlar: [],
+    });
     await formAc();
-    fireEvent.change(secici(), { target: { value: 'GBNGXT33' } });
+    fireEvent.change(secici(), { target: { value: 'ORNGXT33' } });
     await waitFor(() => expect(kutu()).toBeEnabled());
     fireEvent.click(kutu());
     expect(kutu()).toBeChecked();
     expect(screen.queryByText(SRV_AYAR_NGINX_YOK_NOTU)).toBeNull();
     expect(screen.queryByText(SRV_AYAR_ENVANTER_NOTU)).toBeNull();
-    expect(await screen.findByText(/^Sunucu hedefi: GBNGXT33 \(QA\/TEST\) — CPU kaydedici ve nginx logu ölçülür/, {}, { timeout: 3000 })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /^Sunucu hedefi: ORNGXT33 \(QA\/TEST\) — CPU kaydedici ve nginx logu ölçülür/,
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
 
-    fireEvent.change(secici(), { target: { value: 'GBJALT02' } });
+    fireEvent.change(secici(), { target: { value: 'ORJALT02' } });
     expect(kutu()).toBeEnabled();
     expect(screen.getByText(SRV_AYAR_ENVANTER_NOTU)).toBeInTheDocument();
-    expect(await screen.findByText(/^Sunucu hedefi: GBJALT02 \(TEST\) — envanterde nginx görünmüyor: ön kontrol tespit eder/, {}, { timeout: 3000 })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /^Sunucu hedefi: ORJALT02 \(TEST\) — envanterde nginx görünmüyor: ön kontrol tespit eder/,
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
 
-    fireEvent.change(secici(), { target: { value: 'GBJWLT01' } });
+    fireEvent.change(secici(), { target: { value: 'ORJWLT01' } });
     // Dort aday IP: IP elle secilir (aday dugmesi ya da yazarak).
-    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.151.166.144' } });
+    fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.250.166.144' } });
     expect(kutu()).toBeDisabled();
     expect(kutu()).not.toBeChecked();
     expect(screen.getByText(SRV_AYAR_NGINX_YOK_NOTU)).toBeInTheDocument();
     expect(screen.queryByLabelText('Uygulama dizini')).toBeNull();
-    expect(await screen.findByText(/^Sunucu hedefi: GBJWLT01 \(TEST\) — son ön kontrol nginx bulamadı: genel CPU ve istemci metrikleri ölçülür/, {}, { timeout: 3000 })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /^Sunucu hedefi: ORJWLT01 \(TEST\) — son ön kontrol nginx bulamadı: genel CPU ve istemci metrikleri ölçülür/,
+        {},
+        { timeout: 3000 },
+      ),
+    ).toBeTruthy();
     // Tum yuk parametreleri acik: motor, hiz, sure, gelismis alanlar.
-    for (const l of ['Hızlar (istek/sn)', 'Ölçüm süresi (sn)', 'Tekrar', 'Isınma (sn)', 'Adımlar arası bekleme (sn)', 'En çok VU', 'Protokol', 'Bağlantı', 'Sıkıştırma (Accept-Encoding)']) {
+    for (const l of [
+      'Hızlar (istek/sn)',
+      'Ölçüm süresi (sn)',
+      'Tekrar',
+      'Isınma (sn)',
+      'Adımlar arası bekleme (sn)',
+      'En çok VU',
+      'Protokol',
+      'Bağlantı',
+      'Sıkıştırma (Accept-Encoding)',
+    ]) {
       expect(screen.getByLabelText(l)).toBeEnabled();
     }
     // wrk ile baglanti alani da acik (HTTP/1.1).
@@ -252,21 +612,37 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     const g = api.onKontrol.mock.calls[0][0];
-    expect([g.hedefHost, g.hedefIp, 'sunucuAyar' in g.parametreler]).toEqual(['GBJWLT01', '10.151.166.144', false]);
+    expect([g.hedefHost, g.hedefIp, 'sunucuAyar' in g.parametreler]).toEqual([
+      'ORJWLT01',
+      '10.250.166.144',
+      false,
+    ]);
   });
 
   it('TH5 bu formun ön kontrolü nginx bulamadı: Nginx satırı, uyarı, sunucu ayarı kutusu kapanır', async () => {
     const okHam = { ...OK_HAM, hedef_nginx: false, hedef_nproc: 4, hedef_apache: true };
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 1 });
     api.kosu.mockResolvedValue({
-      ok: true, adimlar: [],
+      ok: true,
+      adimlar: [],
       kosu: kosuNormalle({
-        id: 16, islem: 'on_kontrol', durum: 'DONE', hedefTuru: 'sunucu', hedefHost: 'GBJALT02', hedefIp: '10.151.166.150', vhost: VHOST, yukHost: 'GBNGXT14', motor: 'k6',
-        parametreler: PARAM, on_kontrol_ozet: okHam, finishedAt: new Date().toISOString(), onKontrolYasSn: 5,
+        id: 16,
+        islem: 'on_kontrol',
+        durum: 'DONE',
+        hedefTuru: 'sunucu',
+        hedefHost: 'ORJALT02',
+        hedefIp: '10.250.166.150',
+        vhost: VHOST,
+        yukHost: 'ORNGXT14',
+        motor: 'k6',
+        parametreler: PARAM,
+        on_kontrol_ozet: okHam,
+        finishedAt: new Date().toISOString(),
+        onKontrolYasSn: 5,
       }),
     });
     await formAc();
-    fireEvent.change(secici(), { target: { value: 'GBJALT02' } });
+    fireEvent.change(secici(), { target: { value: 'ORJALT02' } });
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), { timeout: 3000 });
     expect(kutu()).toBeEnabled();
     fireEvent.click(okDugmesi());
@@ -284,31 +660,75 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
   });
 });
 
-const okKosu = (onKontrol: Record<string, unknown> | null): NlKosuAyrinti => kosuNormalle({
-  id: 16, islem: 'on_kontrol', durum: 'DONE', hedefTuru: 'sunucu', hedefHost: 'GBJWLT01', hedefIp: '10.151.166.144', vhost: VHOST, yukHost: 'GBNGXT14', motor: 'k6',
-  parametreler: PARAM, on_kontrol_ozet: onKontrol, senaryoAd: 'GLOMO',
-});
+const okKosu = (onKontrol: Record<string, unknown> | null): NlKosuAyrinti =>
+  kosuNormalle({
+    id: 16,
+    islem: 'on_kontrol',
+    durum: 'DONE',
+    hedefTuru: 'sunucu',
+    hedefHost: 'ORJWLT01',
+    hedefIp: '10.250.166.144',
+    vhost: VHOST,
+    yukHost: 'ORNGXT14',
+    motor: 'k6',
+    parametreler: PARAM,
+    on_kontrol_ozet: onKontrol,
+    senaryoAd: 'GLOMO',
+  });
 
 describe('TEK HEDEF — panel, onay, ayrıntı (TH6-TH8)', () => {
   it('TH6 OnKontrolPaneli: false / null / true / alan yok', () => {
-    const satirlar = () => within(screen.getByRole('list', { name: 'Ön kontrol maddeleri' })).getAllByRole('listitem').map((l) => l.firstElementChild?.nextElementSibling?.textContent);
+    const satirlar = () =>
+      within(screen.getByRole('list', { name: 'Ön kontrol maddeleri' }))
+        .getAllByRole('listitem')
+        .map((l) => l.firstElementChild?.nextElementSibling?.textContent);
     const r1 = render(<OnKontrolPaneli kosu={okKosu({ ...OK_HAM, hedef_nginx: false })} />);
-    expect(satirlar()).toEqual(['IP hedefte yerel', 'Nginx', 'Yük sunucusunda k6', 'Senaryo yolları 200']);
+    expect(satirlar()).toEqual([
+      'IP hedefte yerel',
+      'Nginx',
+      'Yük sunucusunda k6',
+      'Senaryo yolları 200',
+    ]);
     r1.unmount();
     const r2 = render(<OnKontrolPaneli kosu={okKosu({ ...OK_HAM, hedef_nginx: null })} />);
-    expect(satirlar().slice(0, 3)).toEqual(['IP hedefte yerel', 'Nginx', 'server_name nginx -T’de']);
+    expect(satirlar().slice(0, 3)).toEqual([
+      'IP hedefte yerel',
+      'Nginx',
+      'server_name nginx -T’de',
+    ]);
     expect(screen.getByTitle('belirlenemedi · kaldı')).toBeInTheDocument();
     expect(screen.getByText(NGINX_BELIRSIZ_ENGELI)).toBeInTheDocument();
     r2.unmount();
     const r3 = render(<OnKontrolPaneli kosu={okKosu({ ...OK_HAM, hedef_nginx: true })} />);
-    expect(satirlar().slice(0, 3)).toEqual(['IP hedefte yerel', 'Nginx', 'server_name nginx -T’de']);
+    expect(satirlar().slice(0, 3)).toEqual([
+      'IP hedefte yerel',
+      'Nginx',
+      'server_name nginx -T’de',
+    ]);
     r3.unmount();
     render(<OnKontrolPaneli kosu={okKosu(OK_HAM)} />);
-    expect(satirlar()).toEqual(['IP hedefte yerel', 'server_name nginx -T’de', 'Tek nginx master', '/web_log doluluğu < %65', 'Log dizini okunur', 'log_format “user-agent=” yazıyor', 'Yük sunucusunda k6', 'Senaryo yolları 200']);
+    expect(satirlar()).toEqual([
+      'IP hedefte yerel',
+      'server_name nginx -T’de',
+      'Tek nginx master',
+      '/web_log doluluğu < %65',
+      'Log dizini okunur',
+      'log_format “user-agent=” yazıyor',
+      'Yük sunucusunda k6',
+      'Senaryo yolları 200',
+    ]);
   });
 
   it('TH7 BaslatOnayi Nginx satırı yalnız nginx’siz ön kontrolde', () => {
-    const p = { senaryo: null, uyarilar: [], sunucuUyarilari: null, busy: false, hata: null, onOnay: vi.fn(), onKapat: vi.fn() };
+    const p = {
+      senaryo: null,
+      uyarilar: [],
+      sunucuUyarilari: null,
+      busy: false,
+      hata: null,
+      onOnay: vi.fn(),
+      onKapat: vi.fn(),
+    };
     const r = render(<BaslatOnayi onKontrol={okKosu({ ...OK_HAM, hedef_nginx: false })} {...p} />);
     expect(screen.getByText(NGINX_YOK_SATIRI)).toBeInTheDocument();
     expect(screen.getByText(NGINX_YOK_SATIRI).previousElementSibling?.textContent).toBe('Nginx');
@@ -318,18 +738,50 @@ describe('TEK HEDEF — panel, onay, ayrıntı (TH6-TH8)', () => {
   });
 
   it('TH8 KosuAyrinti nginx’siz koşu: çip, bilgi kutusu, CPU-ms / kapasite “—”, host CPU dolu; eski satırda yok', async () => {
-    const adim = adimNormalle({ tur: 'R18_K_yeni_br_100_r1', senaryo: 'K', kip: 'yeni', ae: 'br', hiz: 100, gecerlilik: 'GECERLI', p95: 12.5, hata_orani: 0, gercek_rps: 100, host_cpu_ort: 45.2, cpu_ms_istek: null, kapasite_rps: null });
-    const kosu = (o: Record<string, unknown>) => kosuNormalle({
-      id: 18, islem: 'kosu', durum: 'DONE', gecerlilik: 'GECERLI', hedefTuru: 'sunucu', hedefHost: 'GBJWLT01', hedefIp: '10.151.166.144', vhost: VHOST, yukHost: 'GBNGXT14',
-      motor: 'k6', parametreler: PARAM, createdAt: '2026-11-13T10:00:00Z', startedAt: '2026-11-13T10:00:00Z', finishedAt: '2026-11-13T10:10:00Z', ...o,
+    const adim = adimNormalle({
+      tur: 'R18_K_yeni_br_100_r1',
+      senaryo: 'K',
+      kip: 'yeni',
+      ae: 'br',
+      hiz: 100,
+      gecerlilik: 'GECERLI',
+      p95: 12.5,
+      hata_orani: 0,
+      gercek_rps: 100,
+      host_cpu_ort: 45.2,
+      cpu_ms_istek: null,
+      kapasite_rps: null,
     });
+    const kosu = (o: Record<string, unknown>) =>
+      kosuNormalle({
+        id: 18,
+        islem: 'kosu',
+        durum: 'DONE',
+        gecerlilik: 'GECERLI',
+        hedefTuru: 'sunucu',
+        hedefHost: 'ORJWLT01',
+        hedefIp: '10.250.166.144',
+        vhost: VHOST,
+        yukHost: 'ORNGXT14',
+        motor: 'k6',
+        parametreler: PARAM,
+        createdAt: '2026-11-13T10:00:00Z',
+        startedAt: '2026-11-13T10:00:00Z',
+        finishedAt: '2026-11-13T10:10:00Z',
+        ...o,
+      });
     api.kosu.mockResolvedValue({ ok: true, kosu: kosu({ hedefNginx: false }), adimlar: [adim] });
     const r = render(<KosuAyrinti kosuId={18} isAdmin={false} onGeri={vi.fn()} />);
     expect(await screen.findByText(NGINX_YOK_UYARISI)).toBeInTheDocument();
     expect(screen.getByTitle(NGINX_YOK_UYARISI).textContent).toBe('nginx yok');
     fireEvent.click(screen.getByRole('button', { name: /^Ayrıntı/ }));
     const tablo = screen.getByRole('table', { name: 'Adım sonuçları' });
-    expect(within(tablo).getAllByTitle(NGINX_YOK_CPU_IPUCU).filter((x) => x.tagName === 'TD').map((x) => x.textContent)).toEqual(['—', '—']);
+    expect(
+      within(tablo)
+        .getAllByTitle(NGINX_YOK_CPU_IPUCU)
+        .filter((x) => x.tagName === 'TD')
+        .map((x) => x.textContent),
+    ).toEqual(['—', '—']);
     expect(within(tablo).getByText('%45')).toBeInTheDocument();
     expect(screen.getAllByText(NGINX_YOK_CPU_IPUCU).length).toBeGreaterThanOrEqual(2);
     r.unmount();
@@ -342,11 +794,37 @@ describe('TEK HEDEF — panel, onay, ayrıntı (TH6-TH8)', () => {
   });
 
   it('TH8c KosuAyrinti: ön kontrol nginx bulamadı ama koşu başında bulundu → koşunun tespiti geçerli, ölçülmüş CPU-ms / kapasite görünür', async () => {
-    const adim = adimNormalle({ tur: 'R19_K_yeni_br_100_r1', senaryo: 'K', kip: 'yeni', ae: 'br', hiz: 100, gecerlilik: 'GECERLI', p95: 12.5, hata_orani: 0, gercek_rps: 100, host_cpu_ort: 45.2, cpu_ms_istek: 3.92, kapasite_rps: 1234 });
+    const adim = adimNormalle({
+      tur: 'R19_K_yeni_br_100_r1',
+      senaryo: 'K',
+      kip: 'yeni',
+      ae: 'br',
+      hiz: 100,
+      gecerlilik: 'GECERLI',
+      p95: 12.5,
+      hata_orani: 0,
+      gercek_rps: 100,
+      host_cpu_ort: 45.2,
+      cpu_ms_istek: 3.92,
+      kapasite_rps: 1234,
+    });
     const kosu = kosuNormalle({
-      id: 19, islem: 'kosu', durum: 'DONE', gecerlilik: 'KISMI', hedefTuru: 'sunucu', hedefHost: 'GBJWLT01', hedefIp: '10.151.166.144', vhost: VHOST, yukHost: 'GBNGXT14',
-      motor: 'k6', parametreler: PARAM, createdAt: '2026-11-13T10:00:00Z', startedAt: '2026-11-13T10:00:00Z', finishedAt: '2026-11-13T10:10:00Z',
-      hedefNginx: true, on_kontrol_ozet: { ...OK_HAM, hedef_nginx: false },
+      id: 19,
+      islem: 'kosu',
+      durum: 'DONE',
+      gecerlilik: 'KISMI',
+      hedefTuru: 'sunucu',
+      hedefHost: 'ORJWLT01',
+      hedefIp: '10.250.166.144',
+      vhost: VHOST,
+      yukHost: 'ORNGXT14',
+      motor: 'k6',
+      parametreler: PARAM,
+      createdAt: '2026-11-13T10:00:00Z',
+      startedAt: '2026-11-13T10:00:00Z',
+      finishedAt: '2026-11-13T10:10:00Z',
+      hedefNginx: true,
+      on_kontrol_ozet: { ...OK_HAM, hedef_nginx: false },
     });
     expect([kosu.hedefNginx, kosu.onKontrol?.hedefNginx]).toEqual([true, false]);
     api.kosu.mockResolvedValue({ ok: true, kosu, adimlar: [adim] });

@@ -32,7 +32,10 @@ function makeFakeDb() {
     if (s.startsWith('SELECT row_key, row_json FROM inventory_history')) {
       const [t, at] = params;
       const rows = state.history
-        .filter((h) => h.table_name === t && h.valid_from <= at && (h.valid_to === null || h.valid_to > at))
+        .filter(
+          (h) =>
+            h.table_name === t && h.valid_from <= at && (h.valid_to === null || h.valid_to > at),
+        )
         .map((h) => ({ row_key: h.row_key, row_json: h.row_json }));
       return { rows, rowCount: rows.length };
     }
@@ -51,17 +54,27 @@ function makeFakeDb() {
       for (let i = 0; i < params.length; i += 5) {
         state.history.push({
           id: state.nextId++,
-          table_name: params[i], row_key: params[i + 1], row_hash: params[i + 2],
-          row_json: params[i + 3], valid_from: params[i + 4], valid_to: null,
+          table_name: params[i],
+          row_key: params[i + 1],
+          row_hash: params[i + 2],
+          row_json: params[i + 3],
+          valid_from: params[i + 4],
+          valid_to: null,
         });
       }
       return { rows: [], rowCount: params.length / 5 };
     }
     if (s.startsWith('INSERT INTO inventory_history_runs')) {
       state.runs.push({
-        table_name: params[0], started_at: params[1], finished_at: params[2],
-        source_rows: params[3], added: params[4], changed: params[5],
-        removed: params[6], status: params[7], message: params[8],
+        table_name: params[0],
+        started_at: params[1],
+        finished_at: params[2],
+        source_rows: params[3],
+        added: params[4],
+        changed: params[5],
+        removed: params[6],
+        status: params[7],
+        message: params[8],
       });
       return { rows: [], rowCount: 1 };
     }
@@ -108,8 +121,7 @@ test('last_seen_at DEGISSE BILE icerik hash-i AYNI kalir (en kritik ayar)', () =
   const b = { host: 'H1', os: 'RHEL8', last_seen_at: new Date('2026-09-07') };
   const ha = history._sha256(JSON.stringify(history._contentOf(a, DEF.volatile)));
   const hb = history._sha256(JSON.stringify(history._contentOf(b, DEF.volatile)));
-  assert.strictEqual(ha, hb,
-    'last_seen_at hash-e girseydi HER satir HER gece "degisti" sayilirdi');
+  assert.strictEqual(ha, hb, 'last_seen_at hash-e girseydi HER satir HER gece "degisti" sayilirdi');
 });
 
 test('gercek veri degisirse hash DEGISIR', () => {
@@ -191,10 +203,19 @@ test('GECMISE BAKIS: her tarih kendi dogru halini verir', async () => {
 });
 
 test('FARK: eklenen / silinen / degisen alan alan cikar', async () => {
-  const d = await history.diff('Inventory',
-    new Date('2026-09-01T12:00:00Z'), new Date('2026-09-03T12:00:00Z'));
-  assert.deepStrictEqual(d.added.map((r) => r.key), ['H3']);
-  assert.deepStrictEqual(d.removed.map((r) => r.key), ['H2']);
+  const d = await history.diff(
+    'Inventory',
+    new Date('2026-09-01T12:00:00Z'),
+    new Date('2026-09-03T12:00:00Z'),
+  );
+  assert.deepStrictEqual(
+    d.added.map((r) => r.key),
+    ['H3'],
+  );
+  assert.deepStrictEqual(
+    d.removed.map((r) => r.key),
+    ['H2'],
+  );
   assert.strictEqual(d.changed.length, 1);
   assert.deepStrictEqual(d.changed[0].fields.os, { before: 'RHEL8', after: 'RHEL9' });
 });
@@ -210,8 +231,11 @@ test('ANI DUSUS: bozuk tarama gecmise KITLESEL SILME yazmaz', async () => {
   const r = await history.snapshotTable(DEF, T1);
   assert.strictEqual(r.status, 'aborted');
   assert.deepStrictEqual([r.added, r.changed, r.removed], [0, 0, 0]);
-  assert.strictEqual(fake.__state.history.filter((h) => h.valid_to === null).length, 100,
-    'hicbir satir kapatilmamali — geri alinamaz veri kaybi olurdu');
+  assert.strictEqual(
+    fake.__state.history.filter((h) => h.valid_to === null).length,
+    100,
+    'hicbir satir kapatilmamali — geri alinamaz veri kaybi olurdu',
+  );
   assert.match(fake.__state.runs.at(-1).message, /ani dustu/i);
 });
 

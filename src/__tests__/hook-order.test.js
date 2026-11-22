@@ -41,8 +41,11 @@ function containsReturn(node) {
   let found = false;
   (function walk(n) {
     if (found) return;
-    if (ts.isReturnStatement(n)) { found = true; return; }
-    if (ts.isFunctionLike(n)) return;   // ic fonksiyonun return'u bizi ilgilendirmez
+    if (ts.isReturnStatement(n)) {
+      found = true;
+      return;
+    }
+    if (ts.isFunctionLike(n)) return; // ic fonksiyonun return'u bizi ilgilendirmez
     ts.forEachChild(n, walk);
   })(node);
   return found;
@@ -56,8 +59,15 @@ function findHookCall(statement) {
     if (hit) return;
     if (ts.isCallExpression(n)) {
       const e = n.expression;
-      const name = (() => { if (ts.isIdentifier(e)) return e.text; if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) return e.name.text; return ''; })();
-      if (HOOK_NAME.test(name)) { hit = { name, node: n }; return; }
+      const name = (() => {
+        if (ts.isIdentifier(e)) return e.text;
+        if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) return e.name.text;
+        return '';
+      })();
+      if (HOOK_NAME.test(name)) {
+        hit = { name, node: n };
+        return;
+      }
     }
     if (ts.isFunctionLike(n) && n !== statement) return;
     ts.forEachChild(n, walk);
@@ -66,7 +76,13 @@ function findHookCall(statement) {
 }
 
 function violationsIn(file) {
-  const sf = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const sf = ts.createSourceFile(
+    file,
+    fs.readFileSync(file, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
   const found = [];
   const lineOf = (node) => sf.getLineAndCharacterOfPosition(node.getStart()).line + 1;
 
@@ -77,21 +93,27 @@ function violationsIn(file) {
       if (earlyReturnLine === null) {
         // Govdenin son ifadesi olan `return` erken cikis DEGILDIR; ondan sonra zaten
         // hicbir sey calismaz. Onu da isaretlemek zararsiz: sonrasinda hook olamaz.
-        if (ts.isReturnStatement(st) || (ts.isIfStatement(st) && containsReturn(st.thenStatement))) {
+        if (
+          ts.isReturnStatement(st) ||
+          (ts.isIfStatement(st) && containsReturn(st.thenStatement))
+        ) {
           earlyReturnLine = lineOf(st);
         }
         continue;
       }
       const hook = findHookCall(st);
       if (hook) {
-        found.push(`${path.relative(SRC, file)}:${lineOf(hook.node)} — ${hook.name}() ` +
-          `(satir ${earlyReturnLine}'deki erken return'den SONRA)`);
+        found.push(
+          `${path.relative(SRC, file)}:${lineOf(hook.node)} — ${hook.name}() ` +
+            `(satir ${earlyReturnLine}'deki erken return'den SONRA)`,
+        );
       }
     }
   }
 
   (function walk(n) {
-    if (ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n)) scanBody(n.body);
+    if (ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n))
+      scanBody(n.body);
     ts.forEachChild(n, walk);
   })(sf);
   return found;
@@ -103,23 +125,27 @@ test('hicbir bilesende erken return SONRASI hook cagrisi yok (beyaz ekran koruma
     all,
     [],
     'Kosullu calisan hook React\'i "Rendered more hooks than during the previous render." ' +
-    'ile dusurur ve sayfa BEYAZ kalir. Erken return TUM hook\'larin ALTINA tasinmali:\n' +
-    all.join('\n')
+      "ile dusurur ve sayfa BEYAZ kalir. Erken return TUM hook'larin ALTINA tasinmali:\n" +
+      all.join('\n'),
   );
 });
 
 test('dedektorun kendisi calisiyor: enjekte edilmis ihlali yakalar', () => {
   // Testin sessizce "her sey temiz" demesini onler: bozuk bir ornekle kaniti uretir.
   const tmp = path.join(require('node:os').tmpdir(), `hook-order-probe-${process.pid}.tsx`);
-  fs.writeFileSync(tmp, [
-    'const C = () => {',
-    '  const [a, setA] = useState(0);',
-    '  if (!a) return null;',
-    '  const r = useRef(null);',            // ← ihlal
-    '  useEffect(() => { return () => {}; }, []);',  // ← ihlal (cleanup return'u sayilmaz)
-    '  return a;',
-    '};',
-  ].join('\n'), 'utf8');
+  fs.writeFileSync(
+    tmp,
+    [
+      'const C = () => {',
+      '  const [a, setA] = useState(0);',
+      '  if (!a) return null;',
+      '  const r = useRef(null);', // ← ihlal
+      '  useEffect(() => { return () => {}; }, []);', // ← ihlal (cleanup return'u sayilmaz)
+      '  return a;',
+      '};',
+    ].join('\n'),
+    'utf8',
+  );
   try {
     const hits = violationsIn(tmp);
     assert.equal(hits.length, 2, `dedektor iki ihlali de yakalamali, buldugu: ${hits.length}`);

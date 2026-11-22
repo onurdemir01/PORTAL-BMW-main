@@ -8,11 +8,11 @@
 //
 // Ortam rozeti her ortamda gösterilir; Production için ek kapı YOK (K4-a) ama
 // onay ekranı Production'ı ayrıca belirgin yazar.
-import React, { useState } from "react";
-import { ExclamationTriangleIcon, ShieldExclamationIcon } from "@heroicons/react/24/outline";
-import type { WasTarget, WasOperation } from "@/api/opsxApi";
-import { WasEnvBadge, WasStateBadge } from "./WasBadges";
-import { WAS_OP_LABELS, WAS_OP_NOUNS, wasClusterLabel } from "./wasLabels";
+import React, { useState } from 'react';
+import { ExclamationTriangleIcon, ShieldExclamationIcon } from '@heroicons/react/24/outline';
+import type { WasTarget, WasOperation } from '@/api/opsxApi';
+import { WasEnvBadge, WasStateBadge } from './WasBadges';
+import { WAS_OP_LABELS, WAS_OP_NOUNS, wasClusterLabel } from './wasLabels';
 
 const WasConfirmStep: React.FC<{
   app: string;
@@ -22,7 +22,7 @@ const WasConfirmStep: React.FC<{
   busy?: boolean;
   onConfirm: (v: { confirmed: boolean; confirmText: string; ackWarnings: boolean }) => void;
 }> = ({ app, target, operation, env, busy, onConfirm }) => {
-  const [typed, setTyped] = useState("");
+  const [typed, setTyped] = useState('');
   const [consent, setConsent] = useState(false);
   const [ack, setAck] = useState(false);
   const warnings = target.warnings[operation] || [];
@@ -31,7 +31,7 @@ const WasConfirmStep: React.FC<{
 
   return (
     <div className="space-y-4">
-      {env === "Production" && (
+      {env === 'Production' && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
           <ShieldExclamationIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
@@ -68,7 +68,8 @@ const WasConfirmStep: React.FC<{
           <div className="flex items-center justify-between gap-2">
             <span className="text-[var(--text-muted)]">Küme</span>
             <span className="font-mono text-xs text-[var(--text-secondary)]">
-              {wasClusterLabel(target.cluster)} · diğer örnekler {target.peers.running}/{target.peers.total} çalışıyor
+              {wasClusterLabel(target.cluster)} · diğer örnekler {target.peers.running}/
+              {target.peers.total} çalışıyor
             </span>
           </div>
         )}
@@ -77,8 +78,9 @@ const WasConfirmStep: React.FC<{
           <WasStateBadge state={target.state} />
         </div>
         <p className="pt-1 text-[11px] text-[var(--text-muted)]">
-          Uygulama {app} · yalnız bu tek JVM etkilenir; küme komutları (stopCluster/startCluster) kullanılmaz.
-          İşlem anında durum yeniden ölçülür; işlemle uyuşmuyorsa komut çalıştırılmaz (Atlandı).
+          Uygulama {app} · yalnız bu tek JVM etkilenir; küme komutları (stopCluster/startCluster)
+          kullanılmaz. İşlem anında durum yeniden ölçülür; işlemle uyuşmuyorsa komut çalıştırılmaz
+          (Atlandı).
         </p>
       </div>
 
@@ -91,7 +93,13 @@ const WasConfirmStep: React.FC<{
             </div>
           ))}
           <label className="flex items-center gap-2 pt-1 cursor-pointer">
-            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} disabled={busy} className="rounded" />
+            <input
+              type="checkbox"
+              checked={ack}
+              onChange={(e) => setAck(e.target.checked)}
+              disabled={busy}
+              className="rounded"
+            />
             <span className="font-medium">Uyarıları okudum, riski kabul ediyorum.</span>
           </label>
         </div>
@@ -105,12 +113,17 @@ const WasConfirmStep: React.FC<{
           disabled={busy}
           className="rounded"
         />
-        <span className="text-[var(--text-primary)]">Yaptığım işlemin sonuçlarını kabul ediyorum.</span>
+        <span className="text-[var(--text-primary)]">
+          Yaptığım işlemin sonuçlarını kabul ediyorum.
+        </span>
       </label>
 
       <div className="space-y-1.5">
         <label htmlFor="was-confirm-name" className="text-xs text-[var(--text-secondary)]">
-          Onaylamak için JVM adını yazın: <span className="font-mono font-semibold text-[var(--text-primary)]">{target.server}</span>
+          Onaylamak için JVM adını yazın:{' '}
+          <span className="font-mono font-semibold text-[var(--text-primary)]">
+            {target.server}
+          </span>
         </label>
         <input
           id="was-confirm-name"
@@ -123,7 +136,9 @@ const WasConfirmStep: React.FC<{
           disabled={busy}
           placeholder={target.server}
           className={`w-full px-3 py-2.5 text-sm font-mono border rounded-xl outline-none transition ${
-            typed && !nameOk ? "border-red-100 focus:border-red-100" : "border-[var(--border)] focus:border-[var(--accent)]"
+            typed && !nameOk
+              ? 'border-red-100 focus:border-red-100'
+              : 'border-[var(--border)] focus:border-[var(--accent)]'
           }`}
         />
         <p className="text-[11px] text-[var(--text-muted)]">
@@ -133,11 +148,19 @@ const WasConfirmStep: React.FC<{
 
       <div className="flex items-center justify-end">
         <button
-          onClick={() => onConfirm({ confirmed: consent, confirmText: typed, ackWarnings: warnings.length > 0 && ack })}
+          onClick={() =>
+            onConfirm({
+              confirmed: consent,
+              confirmText: typed,
+              ackWarnings: warnings.length > 0 && ack,
+            })
+          }
           disabled={!canSubmit}
           className="btn-primary"
         >
-          {busy ? "Başlatılıyor…" : `${WAS_OP_LABELS[operation]}: ${target.server} @ ${target.host}`}
+          {busy
+            ? 'Başlatılıyor…'
+            : `${WAS_OP_LABELS[operation]}: ${target.server} @ ${target.host}`}
         </button>
       </div>
     </div>

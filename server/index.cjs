@@ -37,6 +37,21 @@ require('dotenv').config({ path: path0.resolve(__dirname, '../.env') });
 // uyarir ve `console.*` dokunulmamis kalir. Log kaybi, hizmet kaybindan iyidir.
 require('./log.cjs').install({ root: path0.resolve(__dirname, '..'), envName: APP_ENV });
 
+// KURUM AYARI (2026-11-20): kurumun sunucu / cluster listeleri ve varsayilan istekci kod disinda
+// (server/util/kurum-ayari.cjs, KURUM_AYAR_DOSYASI; PORTAL_DEFAULT_REQUESTER_EMAIL). Eksikse uygulama
+// acilir ama nginx / OCP / Crypto Hub listeleri bos kalir: bunu acilista acikca soyle (ekranda da bant).
+{
+  const { hata } = require('./util/kurum-ayari.cjs').kurumAyari();
+  if (hata)
+    console.error(
+      `[kurum-ayari] ${hata}: nginx, OCP ve Crypto Hub listeleri BOS (deploy/kurum-ayari.ornek.json bicimi).`,
+    );
+  if (!String(process.env.PORTAL_DEFAULT_REQUESTER_EMAIL || '').trim())
+    console.warn(
+      '[kurum-ayari] PORTAL_DEFAULT_REQUESTER_EMAIL tanimli degil: tetikleyicisi bilinmeyen isin bildirim adresi bos gider.',
+    );
+}
+
 // YAMASIZ NODE ICIN TELAFI KORUMALARI (2026-10-23) — log kurulumundan HEMEN sonra, diger
 // moduller yuklenmeden ONCE: `undici.fetch`i sonradan okuyan modul sarilmis halini alir.
 // Yalniz calisan surum guvenlik tabaninin altindaysa kurulur (bkz. node-guvenlik.cjs).
@@ -144,7 +159,7 @@ async function main() {
   // uzerinden yapilandirilir. Tanimsizsa uretimde TEK ATLAMA (1), gelistirmede 'loopback':
   // nginx Node'a makinenin loopback OLMAYAN adresinden baglanir; 'loopback' varsayilani
   // uretimde oturum cerezinin hic verilmemesi demekti (server/util/guvenlik-yardimci.cjs).
-  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
+  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY).deger);
   if (process.env.NODE_ENV === 'production' && !String(process.env.TRUST_PROXY || '').trim()) {
     console.warn(
       "[Guvenlik] TRUST_PROXY tanimli degil: tek atlama (1) varsayiliyor. nginx'i atlayan " +
@@ -452,7 +467,7 @@ async function main() {
 
           const boot = {};
           const logo = branding.logoState();
-          if (logo && logo.hasLogo) {
+          if (logo?.hasLogo) {
             // Surumlu adres: icerik degismedikce tarayici HIC istek atmaz, dolayisiyla
             // boyanacak eski/yeni ikili de olusmaz (favicon ile ayni gerekce).
             boot.logoUrl = `/api/branding/logo?v=${encodeURIComponent(logo.version)}`;
@@ -460,12 +475,15 @@ async function main() {
             boot.logoUrl = null; // acikca "gomulu varsayilani ciz" — istek bekleme
           }
 
+          // Kurum ayari eksik / bozuksa ekran bant gosterir (sebep metni sir icermez).
+          boot.kurumAyarHatasi = require('./util/kurum-ayari.cjs').kurumAyari().hata || null;
+
           const username = req.session?.user?.username;
           if (username) {
             const p = await readThemePrefCached(username);
             const t = p ? p.theme : null;
             if (t === 'light' || t === 'dark') boot.theme = t;
-            if (p && p.renk === 'cvd') boot.renk = 'cvd';
+            if (p?.renk === 'cvd') boot.renk = 'cvd';
           }
 
           html = html.replace(

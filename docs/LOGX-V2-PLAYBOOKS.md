@@ -1,7 +1,7 @@
 # LogX v2 — Ansible Playbook Kurulum Rehberi (Basit)
 
 LogX v2 (güvenli log indirme) 4 tane Ansible playbook kullanır. Bu playbook'lar
-portal reposunda **yalnızca referans** olarak durur (`server/ansible/bmw_portal/logx/{legacy,ocp}/logx_*.yml`);
+portal reposunda **yalnızca referans** olarak durur (`server/ansible/playbooks/bmw_portal/logx/{legacy,ocp}/logx_*.yml`);
 gerçek çalışacak kopyalar **ayrı Ansible projesine** deploy edilir ve **AWX'te job
 template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumunu izle"
 şeklinde kullanır.
@@ -38,7 +38,7 @@ altındaki `log`, `logs` ve numaralı log dizinleri (`log1`, `log2`, `logs1`, `l
 `log4j`, `logs_old` gibi benzer adlar bilerek taranmaz. Desen playbook'taki
 `legacy_log_dir_regex` değişkenindedir ve sonuç artifact'ında (`log_dir_regex`) yayınlanır;
 alan gelmiyorsa AWX'teki kopya eskidir ve portal bunu dosya seçim ekranında söyler.
-Ayrıntı: `server/ansible/bmw_portal/logx/legacy/README.md`.
+Ayrıntı: `server/ansible/playbooks/bmw_portal/logx/legacy/README.md`.
 
 **Legacy aktarımın geçici alanı (2026-10-13):** loglar `was` ile okunur, teslim dizinine bağlanan
 kullanıcı yazar; arada bir ara dizin gerekir. Bu dizin eskiden tek ve sabitti
@@ -84,7 +84,8 @@ AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID=
 # Portalın okuyabildiği (NFS) staging dizinleri — playbook zip'i buraya bırakır:
 LOGX_V2_STAGING_LEGACY_DIR=/sw/BMW_PORTAL/logs/legacy
 LOGX_V2_STAGING_OCP_DIR=/sw/BMW_PORTAL/logs/ocp
-# NFS erişilemezse portal sunucusunda kullanılacak yerel yedek dizin:
+# ZORUNLU: NFS erişilemezse arşivin bırakıldığı yedek dizin (uzak hostta yaratılır, mutlak yol).
+# Kodda varsayılan yok (2026-11-20); verilmezse LogX transferi açık hatayla başlamaz.
 LOGX_STAGING_FALLBACK_DIR=/tmp/logx-v2-fallback
 ```
 
@@ -104,7 +105,7 @@ LOGX_STAGING_FALLBACK_DIR=/tmp/logx-v2-fallback
 | İndirme başarısız / dosya yok                                           | Staging dizinine yazılamıyor                                                                                                                                 | NFS mount + izinleri kontrol et, `LOGX_STAGING_FALLBACK_DIR` yazılabilir olsun                                                                                                                                                                                                                                                                                                                                                                                                  |
 | OCP: `skipping: no hosts matched`                                       | `terminal_host` (bastion) AWX inventory'sinde yok                                                                                                            | Playbook artık `add_host` ile bastion'ı dinamik ekliyor; yine de bastion **SSH ile erişilebilir** olmalı ve AWX credential'ı doğru olmalı                                                                                                                                                                                                                                                                                                                                       |
 | `Error converting nvarchar to bigint`                                   | Eski playbook `size_bytes`'ı yanlış anahtardan (`dest_state`) üretmiş                                                                                        | Playbook `size_bytes: {{ archive_result.size \| default(0) \| int }}` kullanmalı (backend zaten güvenli tamsayıya zorluyor)                                                                                                                                                                                                                                                                                                                                                     |
-| OCP: `Forbidden: User "system:anonymous" cannot list ... projects/pods` | Bastion (terminal_host) hedef cluster'a **`oc login` DEĞİL** — oturumsuz/anonim çağrı; vault cluster kimliği (ör. `uxmid`) oturum açmamış veya RBAC yetkisiz | Bastion'da hedef cluster için geçerli `oc login`/context olmalı (gerçek login adımı ayrı projede). Referans playbook artık `ignore_errors` + `block/rescue` ile bu hatayı **per-cluster `error`** olarak yakalayıp portal'a `overall_status: failed` + net mesaj döndürür (sessiz "artifacts bulunamadı" yerine)                                                                                                                                                                |
+| OCP: `Forbidden: User "system:anonymous" cannot list ... projects/pods` | Bastion (terminal_host) hedef cluster'a **`oc login` DEĞİL** — oturumsuz/anonim çağrı; vault cluster kimliği (ör. `svcac`) oturum açmamış veya RBAC yetkisiz | Bastion'da hedef cluster için geçerli `oc login`/context olmalı (gerçek login adımı ayrı projede). Referans playbook artık `ignore_errors` + `block/rescue` ile bu hatayı **per-cluster `error`** olarak yakalayıp portal'a `overall_status: failed` + net mesaj döndürür (sessiz "artifacts bulunamadı" yerine)                                                                                                                                                                |
 | `Log arşivi portal sunucusunda bulunamadı` (indirme 404)                | Playbook arşivi kaynak host'un **yerel diskine** yazıyor ya da staging dizini portal ile **aynı NFS yolundan** paylaşılmıyor                                 | **staging_dir = portal ile PAYLAŞILAN NFS mount** olmalı; kaynak host arşivi NFS'e cp yapmalı, portal aynı NFS'ten okur. Portalın env'i (`LOGX_V2_STAGING_LEGACY_DIR`/`_OCP_DIR`) portalın NFS mount yolunu göstermeli. Portal artık dosyayı `filename` ile bu köklerde de arar (mount yolu farkına dayanıklı — bkz. `downloads.cjs resolveStagedFile`); yine de dosya paylaşılan NFS'te DEĞİLSE bulunamaz. Kaynak host NFS'e erişemiyorsa arşiv portal host'una fetch edilmeli |
 
 ### Ekrana ulaşan hata kodları (2026-10-23)
@@ -155,7 +156,7 @@ gizler). Bu yüzden arşiv, **portal sunucusunun okuyabildiği bir konumda** olm
 - Playbook'lar kullanıcı girdisini **shell'e enjekte ETMEZ** — dosya keşfi
   `ansible.builtin.find`, log çekme `oc`/`fetch` modülleriyle yapılır.
 - OCP cluster URL/parolası **portalda tutulmaz**; playbook bunları kendi vault'undan
-  (`uxmid_*`) çözer. Portal sadece `env/tenant/cluster/namespace/app` gibi tanımlayıcı
+  (`svcac_*`) çözer. Portal sadece `env/tenant/cluster/namespace/app` gibi tanımlayıcı
   değerleri gönderir.
 - İndirme linkleri tek kullanıcıya bağlı, kripto-rastgele ve TTL'li (15 dk).
 
@@ -199,5 +200,5 @@ Bunların her biri üretimde ya da doğrulamada bir kez yaşandı; hepsi **YAML 
 **Her değişiklikten sonra:**
 
 ```bash
-ansible-playbook --syntax-check server/ansible/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml
+ansible-playbook --syntax-check server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml
 ```

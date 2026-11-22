@@ -150,33 +150,36 @@ const StoppedPanel: React.FC<Props> = ({
   // asagidaki erken `return` tum govdeyi "yukleniyor…" ile degistiriyor. Sonuc, toplu
   // gerekce yazarken input'un REMOUNT olmasi ve kullanicinin IMLECI KAYBETMESI olurdu.
   // Bu yuzden `loading` yalnizca ILK yuklemede kullanilir; sonraki tazelemeler sessiz.
-  const load = useCallback(async (opts: { silent?: boolean } = {}) => {
-    if (!opts.silent) setLoading(true);
-    setError(null);
-    // Hata metni NEYIN okunamadigini soyler: ScaleX acilisinda uc istek gider; ucu de
-    // dustugunde ekranda ayirt edilemeyen uc "Sunucu hatasi" kutusu duruyordu.
-    try {
-      const r = await scalexApi.stopped(env, tenant);
-      if (!aliveRef.current) return;
-      if (r.ok) {
-        setItems(r.items || []);
-        setHiddenCount(r.hiddenCount || 0);
-        setHiddenByOwnership(r.hiddenByOwnership || 0);
-        setTruncated(r.truncated === true);
-        onSayimRef.current?.((r.items || []).length);
-      } else {
-        setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
-        onSayimRef.current?.(null);
+  const load = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!opts.silent) setLoading(true);
+      setError(null);
+      // Hata metni NEYIN okunamadigini soyler: ScaleX acilisinda uc istek gider; ucu de
+      // dustugunde ekranda ayirt edilemeyen uc "Sunucu hatasi" kutusu duruyordu.
+      try {
+        const r = await scalexApi.stopped(env, tenant);
+        if (!aliveRef.current) return;
+        if (r.ok) {
+          setItems(r.items || []);
+          setHiddenCount(r.hiddenCount || 0);
+          setHiddenByOwnership(r.hiddenByOwnership || 0);
+          setTruncated(r.truncated === true);
+          onSayimRef.current?.((r.items || []).length);
+        } else {
+          setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
+          onSayimRef.current?.(null);
+        }
+      } catch (e) {
+        if (aliveRef.current) {
+          setError(`Durdurulmuş uygulama listesi okunamadı: ${(e as Error).message}`);
+          onSayimRef.current?.(null);
+        }
+      } finally {
+        if (aliveRef.current && !opts.silent) setLoading(false);
       }
-    } catch (e) {
-      if (aliveRef.current) {
-        setError(`Durdurulmuş uygulama listesi okunamadı: ${(e as Error).message}`);
-        onSayimRef.current?.(null);
-      }
-    } finally {
-      if (aliveRef.current && !opts.silent) setLoading(false);
-    }
-  }, [env, tenant]);
+    },
+    [env, tenant],
+  );
 
   // Bilesen sokuldukten sonra `setState` yapmayalim: hem React uyarisi hem de
   // sokulmus bir panelin istegi bosa gider.
@@ -353,9 +356,7 @@ const StoppedPanel: React.FC<Props> = ({
         // namespace tariyor; "3 kapsam tarandi" demek, kullanicinin 9
         // namespace'i 3 sanmasina yol acardi.
         const nsSayisi = [...groups.values()].reduce((a, g) => a + g.namespaces.length, 0);
-        setAuditNote(
-          `${nsSayisi} namespace ${scanned} işte tarandı, sapma durumu güncellendi.`,
-        );
+        setAuditNote(`${nsSayisi} namespace ${scanned} işte tarandı, sapma durumu güncellendi.`);
       }
     } catch (e) {
       setError(`Sapma taraması tamamlanamadı: ${(e as Error).message}`);
@@ -538,7 +539,11 @@ const StoppedPanel: React.FC<Props> = ({
         <span className="flex-1">{error}</span>
         {/* Hata bu paneli TUMUYLE degistirir (liste gizlenir). Cikis yolu yoktu: gecici bir
             hatadan ya da dusen bir toplu islemden sonra tek care sayfayi yenilemekti. */}
-        <button type="button" onClick={() => void load()} className="btn-secondary flex-shrink-0 !py-1 !px-2.5 text-xs">
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="btn-secondary flex-shrink-0 !py-1 !px-2.5 text-xs"
+        >
           Tekrar dene
         </button>
       </div>

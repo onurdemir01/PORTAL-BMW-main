@@ -298,8 +298,8 @@ const TABLES = [
       )`,
   },
   {
-    // credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu (uxmid_gar, uxmid_das,
-    // uxmid_gtek ...). Admin buradan ekler/duzenler/siler; OCP Cluster Hiyerarsisi
+    // credentials.yaml icindeki vault DEGISKEN ADLARININ katalogu (svcac_gar, svcac_das,
+    // svcac_gtek ...). Admin buradan ekler/duzenler/siler; OCP Cluster Hiyerarsisi
     // ekranindaki "Vault Anahtari" alani onerilerini BURADAN alir — daha once oneriler
     // mevcut cluster satirlarindan turetiliyordu, yani hic kullanilmamis bir anahtar
     // hicbir zaman onerilmiyordu.
@@ -2296,7 +2296,7 @@ const TABLES = [
   },
   {
     // Glomo Gecis Plani tek seferlik gocleri (2026-10-16): ad = uygulanan gocun adi (ornegin
-    // 'set7-talep-2026-10-16', glomo-gecis-set7-talep.json). Satir varsa goc bir daha calismaz;
+    // 'set7-talep-2026-10-16', kurum ayari spaRapor.glomoGecis.set7Talep). Satir varsa goc bir daha calismaz;
     // Admin'in sonradan yaptigi set degisikligi geri cekilmez.
     name: 'spa_gecis_goc',
     sql: `
@@ -2556,7 +2556,7 @@ const TABLES = [
   },
   {
     // Yuk Testi YUK MAKINESI IZIN LISTESI (2026-11-13, server/nginx-loadtest/yuk-makineleri.cjs): Admin Yuk Testi >
-    // Araclar'dan ekler / cikarir. Tablo bossa NGINX_LOADTEST_YUK_HOSTLARI (yoksa GBNGXT34) gecerlidir; ilk degisiklik
+    // Araclar'dan ekler / cikarir. Tablo bossa NGINX_LOADTEST_YUK_HOSTLARI (yoksa ORNGXT34) gecerlidir; ilk degisiklik
     // o listeyi tabloya tasir. Liste kapiyi gevsetemez (dogrula.yukHostKapisi her kosuda yeniden olcer).
     name: 'nginx_loadtest_yuk_hostlari',
     sql: `
@@ -3951,7 +3951,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'legacy_discovery',
     description:
       'Bir uygulamanın /vhosting ve /vhosting8 altındaki log dosyalarını (salt-okunur, find) keşfeder.',
-    playbook_path: 'server/ansible/bmw_portal/logx/legacy/logx_legacy_discovery.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/logx/legacy/logx_legacy_discovery.yml',
     env_var_name: 'AWX_LOGX_LEGACY_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -3961,7 +3961,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'legacy_transfer',
     description:
       "Seçilen log dosyalarını zip'leyip portalın okuyabildiği staging dizinine bırakır.",
-    playbook_path: 'server/ansible/bmw_portal/logx/legacy/logx_legacy_transfer.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/logx/legacy/logx_legacy_transfer.yml',
     env_var_name: 'AWX_LOGX_LEGACY_TRANSFER_TEMPLATE_ID',
   },
   {
@@ -3971,7 +3971,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_namespace_discovery',
     description:
       'Seçilen cluster(lar)da kullanıcının erişebildiği namespace/proje listesini (oc get projects, salt-okunur) getirir.',
-    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_namespace_discovery.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_namespace_discovery.yml',
     env_var_name: 'AWX_LOGX_OCP_NAMESPACE_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -3981,7 +3981,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_app_discovery',
     description:
       'Seçilen namespace(ler)de çalışan uygulama ve objeleri (deployment, statefulset, pod, service, route…) salt-okunur listeler; sonuç portalda önbelleğe alınır.',
-    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml',
     env_var_name: 'AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID',
   },
   {
@@ -3991,7 +3991,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'ocp_discover_fetch',
     description:
       "Seçilen cluster(lar)da uygulama adına eşleşen tüm pod'ların loglarını çeker, zip'ler, staging dizinine bırakır.",
-    playbook_path: 'server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml',
     env_var_name: 'AWX_LOGX_OCP_DISCOVER_FETCH_TEMPLATE_ID',
   },
   // ── OpsX islem tipleri — LogX ile AYNI desen: satirlar seed'den gelir, admin
@@ -4020,7 +4020,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'opsx_was_discover',
     description:
       'bmw_portal/opsx_was/opsx_was_discover.yml — target_hosts (virgulle, en cok 10) uzerinde was kullanicisiyla profil/cell/node/server ve durum (ps + serverStatus) okur, hicbir seyi degistirmez; sonuc set_stats opsx_was_discover_result. Erisilemeyen host listeden dusmez (olculemedi). Prompt on launch > Variables ACIK olmali.',
-    playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_discover.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/opsx_was_discover.yml',
     env_var_name: 'OPSX_WAS_DISCOVER_TEMPLATE_ID',
   },
   {
@@ -4029,8 +4029,8 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'opsx',
     handler: 'opsx_was_operation',
     description:
-      'bmw_portal/opsx_was/opsx_was_operation.yml — TEK host + TEK JVM (target_host, was_profile/cell/node/server, operation, consent, confirm_text); was kullanicisiyla stopServer/startServer/serverStatus; sonuc set_stats opsx_was_op_result, FAIL/OLCULEMEDI ise job FAILED. dbo.WASAppsInventory yalniz olculmus running/stopped ile tek satir UPDATE (GBLABT02, tbmwans_pwd credential). Template timeout en cok 30 dk, allow_simultaneous KAPALI (Portal kilidi 60 dk).',
-    playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_operation.yml',
+      'bmw_portal/opsx_was/opsx_was_operation.yml — TEK host + TEK JVM (target_host, was_profile/cell/node/server, operation, consent, confirm_text); was kullanicisiyla stopServer/startServer/serverStatus; sonuc set_stats opsx_was_op_result, FAIL/OLCULEMEDI ise job FAILED. dbo.WASAppsInventory yalniz olculmus running/stopped ile tek satir UPDATE (ORLABT02, tbmwans_pwd credential). Template timeout en cok 30 dk, allow_simultaneous KAPALI (Portal kilidi 60 dk).',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/opsx_was_operation.yml',
     env_var_name: 'OPSX_WAS_OPERATION_TEMPLATE_ID',
   },
   {
@@ -4051,7 +4051,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     handler: 'opsx_legacy_dump',
     description:
       'JBoss7/8 sunucularda jmap/jstack ile heap/thread dump alir, paylasilan staging dizinine birakir.',
-    playbook_path: 'server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_dump.yml',
+    playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_legacy_dump/opsx_legacy_dump.yml',
     env_var_name: 'OPSX_LEGACY_DUMP_TEMPLATE_ID',
   },
   {
@@ -4084,7 +4084,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'nginx',
     handler: 'nginx_console_fetch',
     description:
-      'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, GBLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
+      'bmw_portal/nginx_console/nginx_console_fetch.yml — target_hosts listesindeki sunucularda conf.d/conf agaci, dosya icerikleri ve sertifika bilgileri (www ile) dokulur, ORLABT02 uzerinden /sw/BMW_PORTAL/nginx_console/raw/ altina yazilir. Tum filo 30-40 dk: gece zamanlayin, ekrandan yalniz secili sunucular yenilenir.',
     playbook_path: null,
     env_var_name: 'NGINX_CONSOLE_FETCH_TEMPLATE_ID',
   },
@@ -4289,8 +4289,9 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'opsx',
     handler: 'opsx_legacy_jvm_discover',
     description:
-      "Secili sunucularda uygulama adina calisan JVM'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml",
-    playbook_path: 'server/ansible/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml',
+      "Secili sunucularda uygulama adina calisan JVM'leri (PID + komut satiri) listeler (salt-okunur, ps) - dump sihirbazi kullaniciya JVM sectirmek icin ANLIK tetikler. server/ansible/playbooks/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml",
+    playbook_path:
+      'server/ansible/playbooks/bmw_portal/opsx_legacy_dump/opsx_legacy_jvm_discover.yml',
     env_var_name: 'OPSX_LEGACY_JVM_DISCOVER_TEMPLATE_ID',
   },
   {
@@ -4329,7 +4330,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // playbook_path null (OpsX/Telnet gibi).
   // ── ScaleX — OCP replica durdurma / geri alma / olcekleme ──────────────
   // Playbook'lar AWX projesinde calisir; bu deponun icindeki kaynak kopya
-  // `server/ansible/bmw_portal/scalex/` altindadir (LogX ile ayni duzen: depoda referans,
+  // `server/ansible/playbooks/bmw_portal/scalex/` altindadir (LogX ile ayni duzen: depoda referans,
   // AWX'te calisan kopya). `playbook_path` yine de null — dogrulama LogX'teki gibi
   // dosya adi eslemesiyle DEGIL, portal/playbook sozlesme testleriyle yapiliyor
   // (server/ansible/__tests__/scalex-awx-package.test.js).
@@ -5104,10 +5105,10 @@ async function setupTables() {
   }
 
   // KULLANICI ADI NORMALIZASYONU (2026-09-26): rol override'lari eskiden kullanicinin
-  // YAZDIGI bicimde kaydediliyordu ("OsmanKoz"), okuma ise kucuk harfle yapiliyordu. Harf
+  // YAZDIGI bicimde kaydediliyordu ("OrnekKisi"), okuma ise kucuk harfle yapiliyordu. Harf
   // duyarli bir collation'da satir bulunamiyor ve kullanici rolunu sessizce kaybediyor.
   // Kod artik iki tarafta da kucuk harf kullaniyor; mevcut satirlar da bir kez duzeltilir.
-  // Cakisma olursa (hem 'OsmanKoz' hem 'osmankoz' varsa) BUYUK harfli olan SILINMEZ,
+  // Cakisma olursa (hem 'OrnekKisi' hem 'ornekkisi' varsa) BUYUK harfli olan SILINMEZ,
   // dokunulmadan birakilir ve loglanir - veri kaybetmektense gorunur kalsin.
   try {
     const dup = await pool.request().query(`
@@ -5555,7 +5556,7 @@ async function setupTables() {
     // ── OCP katalogunun AWX inventory dosyasindan bagimsizlastirilmasi ──────────
     // Playbook'lar cluster URL/parolasini AWX'teki openshift_inventory_vars.yaml'dan
     // okuyordu; artik URL portaldan gelir. PAROLA ASLA DB'YE GIRMEZ — yalnizca hangi
-    // vault anahtarinin (credentials.yaml icindeki uxmid_gar / uxmid_das / uxmid_gtek ...)
+    // vault anahtarinin (credentials.yaml icindeki svcac_gar / svcac_das / svcac_gtek ...)
     // kullanilacaginin ADI tutulur; playbook parolayi lookup('vars', <ad>) ile cozer.
     {
       table: 'ocp_cluster_index',

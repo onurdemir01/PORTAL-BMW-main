@@ -9,6 +9,8 @@
 //            kontrolu kosar, silmeyi YALNIZ taze ve basarili on kontrolun listesiyle baslatir.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -439,7 +441,9 @@ test('SG11 GERI AL: onay yalniz hazir on kontrolle; izin listesi CLAIM ile tuket
   // On kontrol yolu suren geri almanin kaydini EZMEZ ve rollback_job_id'ye dokunmaz.
   assert.match(
     ep,
-    /SET rollback_onkontrol_json = \$3, updated_at = GETUTCDATE\(\) WHERE id = \$2 AND status = \$1`,\s+\[t\.status, tid, onKontrolBasladi\(r\.jobId,/,
+    esnek(
+      /SET rollback_onkontrol_json = \$3, updated_at = GETUTCDATE\(\) WHERE id = \$2 AND status = \$1`,\s+\[t\.status, tid, onKontrolBasladi\(r\.jobId,/,
+    ),
     'on kontrol kaydi durum kosulsuz yaziliyor',
   );
   assert.match(
@@ -542,7 +546,9 @@ test('SG14 hedef satiri silme listesini zamanlayiciyla AYNI tazelikle, geri alma
   const rt = dilim('function rowTarget(t) {', '\n}\n');
   assert.match(
     rt,
-    /silmeOnKontrol: onKontrolGorunum\(t\.delete_onkontrol_json, 'delete', \{ maxYasDk: _sched\.silmePlanTazeDk\(\) \}\)/,
+    esnek(
+      /silmeOnKontrol: onKontrolGorunum\(t\.delete_onkontrol_json, 'delete', \{ maxYasDk: _sched\.silmePlanTazeDk\(\) \}\)/,
+    ),
   );
   assert.match(rt, /geriAlOnKontrol: onKontrolGorunum\(t\.rollback_onkontrol_json, 'rollback'\)/);
   const g = so.onKontrolGorunum(plan({ kullanildi: true }), 'delete');

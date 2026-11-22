@@ -9,7 +9,11 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { isFieldActive, allConditions, hasNoConditions } = require('../../../shared/surveyConditions.cjs');
+const {
+  isFieldActive,
+  allConditions,
+  hasNoConditions,
+} = require('../../../shared/surveyConditions.cjs');
 
 // Kullanicinin istedigi sekil: (ortam=X VEYA Y VEYA Z) VE (operasyon=P)
 const IKI_DUZEY = {
@@ -46,7 +50,13 @@ test('Gruplar arasi VEYA: gruplardan biri yeterli', () => {
   const dep = {
     mode: 'any',
     groups: [
-      { mode: 'all', conditions: [{ field: 'a', equals: '1' }, { field: 'b', equals: '2' }] },
+      {
+        mode: 'all',
+        conditions: [
+          { field: 'a', equals: '1' },
+          { field: 'b', equals: '2' },
+        ],
+      },
       { mode: 'all', conditions: [{ field: 'c', equals: '3' }] },
     ],
   };
@@ -94,7 +104,10 @@ test('Tek gruba tasima ANLAM DEGISTIRMEZ (normalizer bunu yapiyor)', () => {
 });
 
 test('notEmpty operatoru: herhangi bir deger yeterli, bosluk sayilmaz', () => {
-  const dep = { mode: 'all', groups: [{ mode: 'all', conditions: [{ field: 'x', operator: 'notEmpty' }] }] };
+  const dep = {
+    mode: 'all',
+    groups: [{ mode: 'all', conditions: [{ field: 'x', operator: 'notEmpty' }] }],
+  };
   assert.equal(isFieldActive(dep, { x: 'herhangi' }), true);
   assert.equal(isFieldActive(dep, { x: '   ' }), false, 'yalniz bosluk = bos');
   assert.equal(isFieldActive(dep, {}), false);

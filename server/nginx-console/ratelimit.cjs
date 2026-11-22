@@ -22,15 +22,47 @@ const LIMIT_FILE = '/usr/nginx/conf/rate_limits.conf';
 // Estate standardi — bmw_nginx/configuration_delivery/files/rate_limits.conf.
 // Ucu de http seviyesinde tanimlanir VE uygulanir; her server/location miras alir.
 const ZONE_CATALOG = Object.freeze([
-  { key: 'request_limit', kind: 'req', variable: '$binary_remote_addr', size: '20m', rate: '500r/s', burst: 200, nodelay: true,
-    label: 'IP başına istek', desc: 'Aynı IP saniyede 500 istek (burst 200, nodelay)' },
-  { key: 'server_limit', kind: 'req', variable: '$server_name', size: '50m', rate: '5000r/s', burst: 200, nodelay: true,
-    label: 'Sunucu adı başına istek', desc: 'Bir vhost saniyede 5000 istek (burst 200, nodelay)' },
-  { key: 'limit_connection_perip', kind: 'conn', variable: '$binary_remote_addr', size: '20m', conn: 200,
-    label: 'IP başına eşzamanlı bağlantı', desc: 'Aynı IP en fazla 200 eşzamanlı bağlantı' },
+  {
+    key: 'request_limit',
+    kind: 'req',
+    variable: '$binary_remote_addr',
+    size: '20m',
+    rate: '500r/s',
+    burst: 200,
+    nodelay: true,
+    label: 'IP başına istek',
+    desc: 'Aynı IP saniyede 500 istek (burst 200, nodelay)',
+  },
+  {
+    key: 'server_limit',
+    kind: 'req',
+    variable: '$server_name',
+    size: '50m',
+    rate: '5000r/s',
+    burst: 200,
+    nodelay: true,
+    label: 'Sunucu adı başına istek',
+    desc: 'Bir vhost saniyede 5000 istek (burst 200, nodelay)',
+  },
+  {
+    key: 'limit_connection_perip',
+    kind: 'conn',
+    variable: '$binary_remote_addr',
+    size: '20m',
+    conn: 200,
+    label: 'IP başına eşzamanlı bağlantı',
+    desc: 'Aynı IP en fazla 200 eşzamanlı bağlantı',
+  },
 ]);
 
-const DIRECTIVES = ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn', 'limit_req_status', 'limit_conn_status'];
+const DIRECTIVES = [
+  'limit_req_zone',
+  'limit_conn_zone',
+  'limit_req',
+  'limit_conn',
+  'limit_req_status',
+  'limit_conn_status',
+];
 
 // BILEREK KAPALI (2026-11-09, rate_limit_enabled). Kurulum / configuration_delivery / upgrade
 // nginx.conf'taki `include /usr/nginx/conf/rate_limits.conf;` satirini yoruma alabilir. nginx -T
@@ -82,7 +114,9 @@ async function hamSatirlar({ query, sql, effectiveDate }) {
         ORDER BY host, directive`,
       [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
     ),
-    query(`SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${HOSTS_TABLE} ORDER BY d DESC`),
+    query(
+      `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${HOSTS_TABLE} ORDER BY d DESC`,
+    ),
   ]);
   const v = { setRows: setRes.recordset || [], dates: (datesRes.recordset || []).map((x) => x.d) };
   if (anahtar) {
@@ -93,7 +127,7 @@ async function hamSatirlar({ query, sql, effectiveDate }) {
 }
 
 const rx = {
-  zone: /zone=([A-Za-z0-9_.\-]+)(?::([0-9]+[kmg]?))?/i,
+  zone: /zone=([\w.-]+)(?::([0-9]+[kmg]?))?/i,
   rate: /rate=([0-9]+r\/[sm])/i,
   burst: /burst=([0-9]+)/i,
   firstWord: /^\s*(\S+)/,
@@ -105,7 +139,7 @@ function parseReqZone(value) {
   const z = rx.zone.exec(v);
   return {
     name: z ? z[1] : null,
-    size: z && z[2] ? z[2] : null,
+    size: z?.[2] ? z[2] : null,
     rate: (rx.rate.exec(v) || [])[1] || null,
     variable: (rx.firstWord.exec(v) || [])[1] || null,
   };
@@ -113,7 +147,9 @@ function parseReqZone(value) {
 
 /** `limit_conn limit_connection_perip 200` → {name, conn} */
 function parseConnApply(value) {
-  const p = String(value || '').trim().split(/\s+/);
+  const p = String(value || '')
+    .trim()
+    .split(/\s+/);
   return { name: p[0] || null, conn: p[1] != null && /^\d+$/.test(p[1]) ? Number(p[1]) : null };
 }
 
@@ -153,8 +189,7 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   // "include yorumlu" tek basina yetmez (zone'lar baska dosyadan gelebilir, o zaman olculur).
   const zones = h.zones || {};
   const applied = h.applied || {};
-  if (h.include === 'disabled'
-      && ZONE_CATALOG.every((z) => !zones[z.key] && !applied[z.key])) {
+  if (h.include === 'disabled' && ZONE_CATALOG.every((z) => !zones[z.key] && !applied[z.key])) {
     return { durum: 'kapali', eksikler: [], farklar: [] };
   }
   if (!olculdu) return { durum: 'bilinmiyor', eksikler: [], farklar: [] };
@@ -162,20 +197,33 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   const farklar = [];
   for (const z of ZONE_CATALOG) {
     const tanim = zones[z.key];
-    if (!tanim) { eksikler.push(`${z.key} tanımlı değil`); continue; }
+    if (!tanim) {
+      eksikler.push(`${z.key} tanımlı değil`);
+      continue;
+    }
     const uyg = applied[z.key];
-    if (!uyg) { eksikler.push(`${z.key} tanımlı ama UYGULANMIYOR`); continue; }
+    if (!uyg) {
+      eksikler.push(`${z.key} tanımlı ama UYGULANMIYOR`);
+      continue;
+    }
     if (z.kind === 'req') {
-      if (z.rate && tanim.rate && tanim.rate !== z.rate) farklar.push(`${z.key} rate=${tanim.rate} (standart ${z.rate})`);
-      if (z.burst != null && uyg.burst != null && uyg.burst !== z.burst) farklar.push(`${z.key} burst=${uyg.burst} (standart ${z.burst})`);
+      if (z.rate && tanim.rate && tanim.rate !== z.rate)
+        farklar.push(`${z.key} rate=${tanim.rate} (standart ${z.rate})`);
+      if (z.burst != null && uyg.burst != null && uyg.burst !== z.burst)
+        farklar.push(`${z.key} burst=${uyg.burst} (standart ${z.burst})`);
       if (z.nodelay && uyg.nodelay === false) farklar.push(`${z.key} nodelay YOK`);
     } else if (z.conn != null && uyg.conn != null && uyg.conn !== z.conn) {
       farklar.push(`${z.key} ${uyg.conn} bağlantı (standart ${z.conn})`);
     }
   }
   // Satir HIC yoksa sebep yazilir: toggle satiri eklemez, elle duzeltilmesi gerekir.
-  if (eksikler.length && h.include === 'missing') eksikler.unshift('nginx.conf\'ta rate_limits.conf include satırı yok');
-  const durum = (() => { if (eksikler.length) return 'eksik'; if (farklar.length) return 'farkli'; return 'standart'; })();
+  if (eksikler.length && h.include === 'missing')
+    eksikler.unshift("nginx.conf'ta rate_limits.conf include satırı yok");
+  const durum = (() => {
+    if (eksikler.length) return 'eksik';
+    if (farklar.length) return 'farkli';
+    return 'standart';
+  })();
   return { durum, eksikler, farklar };
 }
 
@@ -192,7 +240,14 @@ async function loadRateLimits({ scanDate, suz } = {}) {
   );
   const effectiveDate = dRes.recordset?.[0]?.d || null;
   if (!effectiveDate) {
-    return { ok: true, scanDate: null, availableDates: [], hosts: [], summary: emptySummary(), catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG } };
+    return {
+      ok: true,
+      scanDate: null,
+      availableDates: [],
+      hosts: [],
+      summary: emptySummary(),
+      catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG },
+    };
   }
 
   const ham = await hamSatirlar({ query, sql, effectiveDate });
@@ -200,7 +255,16 @@ async function loadRateLimits({ scanDate, suz } = {}) {
   const byHost = new Map();
   const al = (host) => {
     if (!byHost.has(host)) {
-      byHost.set(host, { host, zones: {}, applied: {}, files: new Set(), status: null, mismatch: 0, raw: [], include: null });
+      byHost.set(host, {
+        host,
+        zones: {},
+        applied: {},
+        files: new Set(),
+        status: null,
+        mismatch: 0,
+        raw: [],
+        include: null,
+      });
     }
     return byHost.get(host);
   };
@@ -210,8 +274,10 @@ async function loadRateLimits({ scanDate, suz } = {}) {
     // Include sinyali bir nginx -T direktifi DEGIL: zone ayristirmasina, dosya listesine ve
     // "nginx -T ciktisindaki limit direktifleri" detayina girmez. Sapma sayisi audit ile ayni.
     if (r.directive === INCLUDE_SIGNAL) {
-      const ham = String(r.value || '').trim().toLowerCase();
-      const iv = Object.prototype.hasOwnProperty.call(INCLUDE_ALIASES, ham) ? INCLUDE_ALIASES[ham] : ham;
+      const ham = String(r.value || '')
+        .trim()
+        .toLowerCase();
+      const iv = Object.hasOwn(INCLUDE_ALIASES, ham) ? INCLUDE_ALIASES[ham] : ham;
       h.include = INCLUDE_VALUES.has(iv) ? iv : null;
       if (r.matches === false || r.matches === 0) h.mismatch += 1;
       continue;
@@ -266,8 +332,10 @@ async function loadRateLimits({ scanDate, suz } = {}) {
   // Include sinyali de OLCUM sayilir: sinyali yazan analiz surumu limit direktiflerini de
   // tarar. Tum filoda include kapaliyken zone satiri hic olmaz; sinyal sayilmasaydi ekran
   // "nginx_audit surumu henuz kosmamis" derdi (yanlis).
-  const olculdu = [...byHost.values()].some((h) => Object.keys(h.zones).length > 0
-    || Object.keys(h.applied).length > 0 || h.include != null);
+  const olculdu = [...byHost.values()].some(
+    (h) =>
+      Object.keys(h.zones).length > 0 || Object.keys(h.applied).length > 0 || h.include != null,
+  );
 
   // SUNUCU DURUMLARI: nginx kurulu degilse o sunucunun HIC ayar satiri olmaz ve eski
   // surumde listeden TAMAMEN dusuyordu - "sorun yok" gibi gorunuyordu. Artik host
@@ -283,36 +351,45 @@ async function loadRateLimits({ scanDate, suz } = {}) {
 
   // suz: eski (kapatilmis) sunuculari ozetten ONCE duser (eski-sunucu.cjs; Nginx Hub).
   const tumHosts = [...byHost.values()];
-  const hosts = (typeof suz === 'function' ? suz(tumHosts) : tumHosts).map((h) => {
-    const d = durumlar.get(String(h.host || '').toUpperCase()) || null;
-    const st = hostStatus(h, olculdu, d ? d.durum : null);
-    return {
-      host: h.host,
-      env: envOfHost(h.host),
-      // Ayri gercekler, ayri alanlar: "kurulu mu", "calisiyor mu", "konfigurasyon gecerli mi".
-      kurulu: d ? d.durum !== 'kurulumyok' : null,
-      calisiyor: (() => { if (d) { if (d.runState === 'running') return true; if (d.runState === 'stopped') return false; return null; } return null; })(),
-      hostDurum: d ? d.durum : 'bilinmiyor',
-      hostDurumLabel: d ? d.label : 'ölçülmedi',
-      hostDurumHint: d ? d.hint : 'Bu sunucu için tarama kaydı yok.',
-      hostDurumMsg: d ? (d.statusMsg || d.runMsg || null) : null,
-      // Estate zone'larinin OZETI: ekranda sutun olarak gosterilir.
-      requestRate: h.zones.request_limit?.rate || null,
-      serverRate: h.zones.server_limit?.rate || null,
-      connLimit: h.applied.limit_connection_perip?.conn ?? null,
-      applied: Object.keys(h.applied),
-      zoneCount: Object.keys(h.zones).length,
-      // rate_limits.conf gercekten yuklenmis mi (nginx -T dokumu bu dosyayi gosteriyor mu)
-      fileLoaded: [...h.files].some((f) => String(f || '').includes('rate_limits.conf')),
-      // nginx.conf'taki include satiri (ham): enabled | disabled | missing; null = olculmedi (eski analiz).
-      rateLimitInclude: h.include,
-      mismatch: h.mismatch,
-      durum: st.durum,
-      eksikler: st.eksikler,
-      farklar: st.farklar,
-      detay: h.raw,
-    };
-  }).sort((a, b) => a.host.localeCompare(b.host));
+  const hosts = (typeof suz === 'function' ? suz(tumHosts) : tumHosts)
+    .map((h) => {
+      const d = durumlar.get(String(h.host || '').toUpperCase()) || null;
+      const st = hostStatus(h, olculdu, d ? d.durum : null);
+      return {
+        host: h.host,
+        env: envOfHost(h.host),
+        // Ayri gercekler, ayri alanlar: "kurulu mu", "calisiyor mu", "konfigurasyon gecerli mi".
+        kurulu: d ? d.durum !== 'kurulumyok' : null,
+        calisiyor: (() => {
+          if (d) {
+            if (d.runState === 'running') return true;
+            if (d.runState === 'stopped') return false;
+            return null;
+          }
+          return null;
+        })(),
+        hostDurum: d ? d.durum : 'bilinmiyor',
+        hostDurumLabel: d ? d.label : 'ölçülmedi',
+        hostDurumHint: d ? d.hint : 'Bu sunucu için tarama kaydı yok.',
+        hostDurumMsg: d ? d.statusMsg || d.runMsg || null : null,
+        // Estate zone'larinin OZETI: ekranda sutun olarak gosterilir.
+        requestRate: h.zones.request_limit?.rate || null,
+        serverRate: h.zones.server_limit?.rate || null,
+        connLimit: h.applied.limit_connection_perip?.conn ?? null,
+        applied: Object.keys(h.applied),
+        zoneCount: Object.keys(h.zones).length,
+        // rate_limits.conf gercekten yuklenmis mi (nginx -T dokumu bu dosyayi gosteriyor mu)
+        fileLoaded: [...h.files].some((f) => String(f || '').includes('rate_limits.conf')),
+        // nginx.conf'taki include satiri (ham): enabled | disabled | missing; null = olculmedi (eski analiz).
+        rateLimitInclude: h.include,
+        mismatch: h.mismatch,
+        durum: st.durum,
+        eksikler: st.eksikler,
+        farklar: st.farklar,
+        detay: h.raw,
+      };
+    })
+    .sort((a, b) => a.host.localeCompare(b.host));
 
   const ozet = summarize(hosts);
   return {
@@ -326,32 +403,35 @@ async function loadRateLimits({ scanDate, suz } = {}) {
     catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG },
     // Ekran bunu gorursa "eksik" DEMEZ, "henuz olculmedi" der.
     directivesMissing: !olculdu && hosts.length > 0,
-    message: !olculdu && hosts.length > 0
-      ? 'Bu taramada limit direktifleri yok: nginx_audit\'in WATCH listesine limit_req_zone / '
-        + 'limit_conn_zone / limit_req / limit_conn eklendi, ama o sürüm henüz koşmamış. '
-        + 'Sunucularda limit OLMADIĞI anlamına GELMEZ.'
-      : undefined,
+    message:
+      !olculdu && hosts.length > 0
+        ? "Bu taramada limit direktifleri yok: nginx_audit'in WATCH listesine limit_req_zone / " +
+          'limit_conn_zone / limit_req / limit_conn eklendi, ama o sürüm henüz koşmamış. ' +
+          'Sunucularda limit OLMADIĞI anlamına GELMEZ.'
+        : undefined,
   };
 }
 
 // ORTAM, SUNUCU ADINDAN OKUNUR (2026-09-26, kullanici kurali):
 // "sunucunun sayilardan onceki ilk harf P ise Production, Q-T-D ise Non-Production".
 //
-// Onceki surum bir on-ek kalibiydi (`^GBNGX?P|^GBRVP`) ve UYDURMAYDI: GBNGXAP32 kalibi
-// tutmuyordu (GBNGX + optional X + P), GBNGXQ01 hic taninmiyordu. Ikisi de "DIGER"
+// Onceki surum bir on-ek kalibiydi (`^ORNGX?P|^ORRVP`) ve UYDURMAYDI: ORNGXAP32 kalibi
+// tutmuyordu (ORNGX + optional X + P), ORNGXQ01 hic taninmiyordu. Ikisi de "DIGER"
 // olarak dusuyordu - yani ekran, adindan ortami OKUNABILEN sunucular icin "bilmiyorum"
 // diyordu. Kural artik tek ve net: SAYILARDAN HEMEN ONCEKI HARF.
 //
-//   GBNGXP40 -> P   Production      GBRVPAP01 -> P   Production
-//   GBNGXAP34 -> P  Production      GBNGXT33  -> T   Non-Production
-//   GBNGXQ01 -> Q   Non-Production  GBNGXD01  -> D   Non-Production
+//   ORNGXP40 -> P   Production      ORRVPAP01 -> P   Production
+//   ORNGXAP34 -> P  Production      ORNGXT33  -> T   Non-Production
+//   ORNGXQ01 -> Q   Non-Production  ORNGXD01  -> D   Non-Production
 //
 // DIGER yalnizca adi bu kalibi hic tutmayan sunucu icin kalir (harf+sayi degil). Bu bir
 // tahmin degil, "olcemedim" demektir.
 const ENV_HARF = { P: 'Production', Q: 'Non-Production', T: 'Non-Production', D: 'Non-Production' };
 
 function envOfHost(host) {
-  const h = String(host || '').trim().toUpperCase();
+  const h = String(host || '')
+    .trim()
+    .toUpperCase();
   // Sondaki sayi grubu ve ondan hemen onceki harf.
   const m = /^([A-Z]+)(\d+)[A-Z]*$/.exec(h);
   if (!m) return 'DIGER';
@@ -359,16 +439,31 @@ function envOfHost(host) {
 }
 
 function emptySummary() {
-  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, kapali: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+  return {
+    hosts: 0,
+    standart: 0,
+    farkli: 0,
+    eksik: 0,
+    kapali: 0,
+    bilinmiyor: 0,
+    kurulumyok: 0,
+    calismiyor: 0,
+    configbozuk: 0,
+    dosyaYuklenmemis: 0,
+    byEnv: {},
+    rates: [],
+  };
 }
 
 /** Bilerek kapali sunucu varsa bilgi metni (uyari degil); yoksa undefined. */
 function kapaliMesaji(s) {
-  if (!s || !s.kapali) return undefined;
+  if (!s?.kapali) return undefined;
   const hepsi = s.kapali === s.hosts;
-  return `${hepsi ? 'Tüm sunucularda' : s.kapali + ' sunucuda'} rate limit bilerek kapatılmış: `
-    + 'nginx.conf\'ta rate_limits.conf include satırı yorumlu (#include). Bu sunucular eksik sayılmaz. '
-    + 'Yeniden açmak için configuration_delivery\'de rate_limit_enabled = true.';
+  return (
+    `${hepsi ? 'Tüm sunucularda' : s.kapali + ' sunucuda'} rate limit bilerek kapatılmış: ` +
+    "nginx.conf'ta rate_limits.conf include satırı yorumlu (#include). Bu sunucular eksik sayılmaz. " +
+    "Yeniden açmak için configuration_delivery'de rate_limit_enabled = true."
+  );
 }
 
 function summarize(hosts) {
@@ -380,7 +475,17 @@ function summarize(hosts) {
     // Bilerek kapali sunucuda rate_limits.conf'un yuklenmemesi beklenen sonuctur; "dosya
     // yuklu degil" (kaybolmus) sayacina girmez, kendi sayacinda (kapali) sayilir.
     if (!h.fileLoaded && h.durum !== 'kapali') s.dosyaYuklenmemis += 1;
-    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, kapali: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0 });
+    const e = (s.byEnv[h.env] = s.byEnv[h.env] || {
+      hosts: 0,
+      standart: 0,
+      farkli: 0,
+      eksik: 0,
+      kapali: 0,
+      bilinmiyor: 0,
+      kurulumyok: 0,
+      calismiyor: 0,
+      configbozuk: 0,
+    });
     // "Calismiyor" bir DURUM degil bir BAYRAK: limit degerleri yine olculmustur, ama
     // su an uygulanmiyor. Ayri sayilir ki ozet "her sey standart" demesin.
     if (h.calisiyor === false && h.durum !== 'kurulumyok') s.calismiyor += 1;
@@ -390,7 +495,9 @@ function summarize(hosts) {
     rate.set(k, (rate.get(k) || 0) + 1);
   }
   // Filoda kac FARKLI limit kombinasyonu var: tek satirda "filo tek tip mi" cevabi.
-  s.rates = [...rate.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ combo: k, hosts: n }));
+  s.rates = [...rate.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => ({ combo: k, hosts: n }));
   return s;
 }
 
@@ -401,18 +508,52 @@ function csvField(v) {
 
 /** Rapor: sunucu basina tek satir (TR Excel: noktali virgul + UTF-8 BOM). */
 function toCsv(hosts, scanDate) {
-  const head = ['Tarama', 'Sunucu', 'Ortam', 'IP istek limiti/kullanıcı başına', 'Sunucu limiti', 'Concurrent bağlantı limiti/kullanıcı başına',
-    'Uygulanan zone sayısı', 'rate_limits.conf yüklü', 'Durum', 'Eksikler', 'Farklar'];
+  const head = [
+    'Tarama',
+    'Sunucu',
+    'Ortam',
+    'IP istek limiti/kullanıcı başına',
+    'Sunucu limiti',
+    'Concurrent bağlantı limiti/kullanıcı başına',
+    'Uygulanan zone sayısı',
+    'rate_limits.conf yüklü',
+    'Durum',
+    'Eksikler',
+    'Farklar',
+  ];
   const lines = [head.join(';')];
   for (const h of hosts) {
-    lines.push([
-      scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
-      h.applied.length, (() => { if (h.fileLoaded) return 'evet'; if (h.durum === 'kapali') return 'hayır (bilerek kapalı)'; return 'HAYIR'; })(),
-      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', kapali: 'Kapalı (bilerek)', bilinmiyor: 'ölçülmedi',
-      kurulumyok: 'NGINX KURULU DEĞİL', calismiyor: 'nginx ÇALIŞMIYOR', configbozuk: 'KONFİGÜRASYON GEÇERSİZ' }[h.durum]
-      + (h.calisiyor === false && h.durum !== 'kurulumyok' ? ' (nginx çalışmıyor)' : ''),
-      h.eksikler.join(' | '), h.farklar.join(' | '),
-    ].map(csvField).join(';'));
+    lines.push(
+      [
+        scanDate,
+        h.host,
+        h.env,
+        h.requestRate,
+        h.serverRate,
+        h.connLimit,
+        h.applied.length,
+        (() => {
+          if (h.fileLoaded) return 'evet';
+          if (h.durum === 'kapali') return 'hayır (bilerek kapalı)';
+          return 'HAYIR';
+        })(),
+        {
+          standart: 'standart',
+          farkli: 'FARKLI',
+          eksik: 'EKSİK',
+          kapali: 'Kapalı (bilerek)',
+          bilinmiyor: 'ölçülmedi',
+          kurulumyok: 'NGINX KURULU DEĞİL',
+          calismiyor: 'nginx ÇALIŞMIYOR',
+          configbozuk: 'KONFİGÜRASYON GEÇERSİZ',
+        }[h.durum] +
+          (h.calisiyor === false && h.durum !== 'kurulumyok' ? ' (nginx çalışmıyor)' : ''),
+        h.eksikler.join(' | '),
+        h.farklar.join(' | '),
+      ]
+        .map(csvField)
+        .join(';'),
+    );
   }
   // BOM Excel icin GEREKLI, ama KACISLA yazilir: kaynakta literal olarak durdugunda
   // gorunmez bir karakterdir ve kopyala-yapistirda sessizce kaybolur ya da cogalir.
@@ -420,7 +561,21 @@ function toCsv(hosts, scanDate) {
 }
 
 module.exports = {
-  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus, ENV_HARF, kapaliMesaji,
-  parseReqZone, parseReqApply, parseConnApply,
-  ZONE_CATALOG, LIMIT_FILE, DIRECTIVES, TABLE, INCLUDE_SIGNAL, SORGU_DIREKTIFLERI,
+  loadRateLimits,
+  summarize,
+  toCsv,
+  csvField,
+  envOfHost,
+  hostStatus,
+  ENV_HARF,
+  kapaliMesaji,
+  parseReqZone,
+  parseReqApply,
+  parseConnApply,
+  ZONE_CATALOG,
+  LIMIT_FILE,
+  DIRECTIVES,
+  TABLE,
+  INCLUDE_SIGNAL,
+  SORGU_DIREKTIFLERI,
 };

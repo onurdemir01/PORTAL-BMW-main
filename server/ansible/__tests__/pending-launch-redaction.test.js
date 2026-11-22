@@ -27,13 +27,14 @@ const META = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'metadata
 test('A3: pendingLaunch.extraVars HAM donmuyor', () => {
   assert.ok(
     !/extraVars:\s*ticket\.pendingLaunch\?\.extraVars\s*\|\|\s*\{\}/.test(RUNNER),
-    'ham extraVars hala donuluyor — sablonun password alanlari API yanitinda'
+    'ham extraVars hala donuluyor — sablonun password alanlari API yanitinda',
   );
 });
 
 test('A3: her iki bilet ucunda da redaksiyon var', () => {
   // Iki farkli uc, iki farkli degisken adi kullaniyor (`ticket` ve liste dongusunde `t`).
-  const hits = RUNNER.match(/redactExtraVarsForHistory\(\s*\n\s*\w+\.pendingLaunch\?\.extraVars/g) || [];
+  const hits =
+    RUNNER.match(/redactExtraVarsForHistory\(\s*\n\s*\w+\.pendingLaunch\?\.extraVars/g) || [];
   assert.equal(hits.length, 2, `iki ucta da redaksiyon bekleniyordu, bulunan: ${hits.length}`);
 });
 
@@ -48,14 +49,17 @@ test('A4: metadata log’u degerleri degil doluluk/uzunlugu basar', () => {
   assert.match(META, /`<dolu:\$\{String\(v\)\.length\}>`/);
   assert.ok(
     !/console\.log\([^)]*JSON\.stringify\(metadata\)/.test(RUNNER + META),
-    'ham metadata hala stdout’a basiliyor'
+    'ham metadata hala stdout’a basiliyor',
   );
 });
 
 test('A4: Smart govde log’u deger tasimaz', () => {
-  assert.match(SMART, /value: String\(m\.value \?\? ''\)\.length > 0 \? `<dolu:\$\{String\(m\.value\)\.length\}>` : '<bos>'/);
+  assert.match(
+    SMART,
+    /value: String\(m\.value \?\? ''\)\.length > 0 \? `<dolu:\$\{String\(m\.value\)\.length\}>` : '<bos>'/,
+  );
   assert.ok(
     !/JSON\.stringify\(body\.metadataData\)/.test(SMART),
-    'ham Smart govdesi hala loglaniyor'
+    'ham Smart govdesi hala loglaniyor',
   );
 });

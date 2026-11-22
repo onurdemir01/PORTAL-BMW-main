@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik yalniz LRU\'da', async () => {
+test("MEM1 120 host x ~2 MB dokum: ozet katmani heap'i sinirli tutar, icerik yalniz LRU'da", async () => {
   // Olcum GC'siz anlamsiz (toplanmamis cop artisi sisirir): --expose-gc yoksa kendini o
   // bayrakla alt surecte kosturur ve sonucunu bekler.
   if (!global.gc) {
@@ -21,7 +21,9 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
     // node --test'in alt surec ortam degiskenleri (NODE_TEST_CONTEXT...) torun surecte
     // kosuyu sessizce atlatiyor (66 ms'de status 0, olcum yok) — temizlenir; dosya
     // dogrudan (--test'siz) kosturulur, node:test tek dosyada da calisir.
-    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('NODE_TEST')));
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !k.startsWith('NODE_TEST')),
+    );
     const r = spawnSync(process.execPath, ['--expose-gc', __filename], { encoding: 'utf8', env });
     const out = (r.stdout || '') + (r.stderr || '');
     const m = /\[MEM1\] heap artisi ([\d.]+) MB/.exec(out);
@@ -40,10 +42,19 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
     const p = `/usr/nginx/conf.d/application-confs/app-${i}.conf`;
     files.push(`@@FILE ${p} ${String(i).padStart(64, '0')} ${body.length}\n${body}@@END`);
   }
-  const tree = files.map((_, i) => `${body.length}\t2026-09-20 00:00:00\t${String(i).padStart(64, '0')}\twww\t/usr/nginx/conf.d/application-confs/app-${i}.conf`).join('\n');
+  const tree = files
+    .map(
+      (_, i) =>
+        `${body.length}\t2026-09-20 00:00:00\t${String(i).padStart(64, '0')}\twww\t/usr/nginx/conf.d/application-confs/app-${i}.conf`,
+    )
+    .join('\n');
   const dumpText = `@@HOST HOSTX\n@@TIME 2026-09-20T00:00:00Z\n@@PREFIX /usr/nginx\n@@NGINX_T ok\nok\n@@END\n@@TREE\n${tree}\n@@END\n${files.join('\n')}\n`;
   const HOSTS = 120;
-  for (let h = 0; h < HOSTS; h++) fs.writeFileSync(path.join(dir, 'raw', `GBNGX${String(h).padStart(3, '0')}.txt`), dumpText.replace('HOSTX', `GBNGX${String(h).padStart(3, '0')}`));
+  for (let h = 0; h < HOSTS; h++)
+    fs.writeFileSync(
+      path.join(dir, 'raw', `ORNGX${String(h).padStart(3, '0')}.txt`),
+      dumpText.replace('HOSTX', `ORNGX${String(h).padStart(3, '0')}`),
+    );
   assert.ok(dumpText.length > 1_500_000, `dokum yeterince buyuk olmali: ${dumpText.length}`);
 
   // gecmis ingest DB ister; testte devre disi (ingestDump null doner)
@@ -53,7 +64,10 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
 
   if (global.gc) global.gc();
   const before = process.memoryUsage().heapUsed;
-  const hosts = fs.readdirSync(path.join(dir, 'raw')).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  const hosts = fs
+    .readdirSync(path.join(dir, 'raw'))
+    .filter((f) => f.endsWith('.txt'))
+    .map((f) => f.slice(0, -4));
   for (const h of hosts) {
     const sm = idx._loadSummaryForTest(h);
     assert.equal(sm.fileCount, 400);
@@ -61,10 +75,10 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
     assert.ok(!('files' in sm), 'ozet icerik tasimamali');
   }
   // yan dosyalar yazildi mi
-  assert.ok(fs.existsSync(path.join(dir, 'raw', 'GBNGX000.summary.json')));
+  assert.ok(fs.existsSync(path.join(dir, 'raw', 'ORNGX000.summary.json')));
   // tam icerik: LRU en fazla 4
   for (let h = 0; h < 10; h++) {
-    const full = idx._loadFullForTest(`GBNGX${String(h).padStart(3, '0')}`);
+    const full = idx._loadFullForTest(`ORNGX${String(h).padStart(3, '0')}`);
     assert.equal(full.files.size, 400);
   }
   if (global.gc) global.gc();
@@ -72,7 +86,10 @@ test('MEM1 120 host x ~2 MB dokum: ozet katmani heap\'i sinirli tutar, icerik ya
   const growthMb = (after - before) / 1048576;
   // 120 host x 2 MB = 240 MB ham; eski davranis en az bu kadar tutardi. Ozet+LRU(4) ile < 80 MB.
   console.log(`[MEM1] heap artisi ${growthMb.toFixed(1)} MB`);
-  assert.ok(growthMb < 80, `heap artisi ${growthMb.toFixed(1)} MB — tam dokumlar bellekte tutuluyor olabilir`);
+  assert.ok(
+    growthMb < 80,
+    `heap artisi ${growthMb.toFixed(1)} MB — tam dokumlar bellekte tutuluyor olabilir`,
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -125,7 +142,7 @@ test('MEM2 TAVANI ASAN dokum ayristirilmaz — `loadFull` "cok buyuk" der', asyn
   }
 });
 
-test('MEM3 dev dokum host\'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner', async () => {
+test("MEM3 dev dokum host'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner", async () => {
   const onceki = process.env.NGINX_CONSOLE_DIR;
   const dir = await devDokumKur(26 * 1024 * 1024);
   try {
@@ -160,7 +177,6 @@ test('MEM3 dev dokum host\'u LISTEDEN DUSURMEZ — `loadSummary` bayrakla doner'
     delete require.cache[require.resolve('../index.cjs')];
   }
 });
-
 
 // ── MEM4 — DEV DOKUMUN YEDEK OZETI, NORMAL OZETLE AYNI SEKILDE OLMALI ─────────
 //
@@ -209,7 +225,6 @@ test('MEM4 dev dokum ozeti normal ozetle AYNI alanlari tasir — /hosts ve /cert
   }
 });
 
-
 // ── MEM5 — AKISLI OZET: 30 MB'lik dokum Hub'da GORUNUR kalir ──────────────────
 //
 // Uretimde 8 reverse-proxy dokumu 31-33 MB (tavan 24 MB) ve bu sunucular Hub'da
@@ -250,10 +265,12 @@ test('MEM5 akisli ayristirici: bellekteki ayristiriciyla AYNI sonucu verir; dev 
     const buyuk = path.join(dir, 'BIGSTREAM.txt');
     const akis = fs.createWriteStream(buyuk);
     akis.write('@@HOST BIGSTREAM\n@@PREFIX /usr/nginx\n@@TREE\n');
-    for (let i = 0; i < 2000; i++) akis.write(`100\t2026-09-22 00:00:00\tsha${i}\twww\t/usr/nginx/conf.d/app-${i}.conf\n`);
+    for (let i = 0; i < 2000; i++)
+      akis.write(`100\t2026-09-22 00:00:00\tsha${i}\twww\t/usr/nginx/conf.d/app-${i}.conf\n`);
     akis.write('@@END\n');
     const dolgu = '# ' + 'x'.repeat(4094) + '\n';
-    for (let i = 0; i < 6500; i++) akis.write(`@@FILE /usr/nginx/conf.d/app-${i % 2000}.conf sha${i} 4096\n${dolgu}@@END\n`);
+    for (let i = 0; i < 6500; i++)
+      akis.write(`@@FILE /usr/nginx/conf.d/app-${i % 2000}.conf sha${i} 4096\n${dolgu}@@END\n`);
     akis.write('@@CERT /usr/nginx/ssl/b.crt\nexists=1\nsubject=CN=b.example.com\n@@END\n');
     await new Promise((r) => akis.end(r));
     assert.ok(fs.statSync(buyuk).size > 25 * 1024 * 1024, 'test dokumu yeterince buyuk degil');

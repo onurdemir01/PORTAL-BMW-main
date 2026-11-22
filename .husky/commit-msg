@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 # Commit mesaji kapisi (docs/KALITE-KAPILARI.md). Ekip Turkce serbest bicim yaziyor; kural bicimi
-# degil ICERIGI denetler: anlamli bir konu satiri ve mesajda sir olmamasi (repo public).
+# degil ICERIGI denetler: anlamli bir konu satiri, mesajda sir ve kurum ic adi olmamasi (repo public;
+# K17). Konu satiri kurali tek kaynakta (scripts/gecmis-denetim.cjs); CI ayni kurali main'e giden
+# commit'lere uygular (K16).
 set -eu
 
 msg_file="${1:-}"
@@ -9,17 +11,6 @@ if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
   exit 1
 fi
 
-subject=$(grep -v '^#' "$msg_file" | head -n 1 | tr -d '\r')
-uzunluk=$(printf '%s' "$subject" | wc -m | tr -d ' ')
-
-case "$subject" in
-  Merge\ *|Revert\ *|fixup!\ *|squash!\ *) ;;
-  *)
-    if [ "$uzunluk" -lt 8 ] || [ "$uzunluk" -gt 120 ]; then
-      echo "[commit-msg] HATA: konu satiri 8-120 karakter olmali (simdi $uzunluk): '$subject'" >&2
-      exit 1
-    fi
-    ;;
-esac
-
+node scripts/gecmis-denetim.cjs --konu "$msg_file"
 node scripts/sir-tarama.cjs --mesaj "$msg_file"
+node scripts/ic-ad-bekcisi.cjs --mesaj "$msg_file"

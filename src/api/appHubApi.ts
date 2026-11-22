@@ -140,7 +140,15 @@ export interface JbossDetay {
     webSunucuSayisi: number;
     toplamCpu: number | null;
     toplamBellekGb: number | null;
-    yuk: { vhost: number; var: number; yok: number; olculemedi: number; req7Toplam: number; altSinir: boolean; okunamadi: string | null } | null;
+    yuk: {
+      vhost: number;
+      var: number;
+      yok: number;
+      olculemedi: number;
+      req7Toplam: number;
+      altSinir: boolean;
+      okunamadi: string | null;
+    } | null;
   };
   sunucular: JbossSunucu[];
   webSunuculari: WebSunucusu[];
@@ -178,7 +186,14 @@ export interface WasSunucu {
 export interface WasDetay {
   tip: 'was';
   ad: string;
-  ozet: { sunucuSayisi: number; ortamlar: string[]; surumler: string[]; webSunucuSayisi: number; toplamCpu: number | null; toplamBellekGb: number | null };
+  ozet: {
+    sunucuSayisi: number;
+    ortamlar: string[];
+    surumler: string[];
+    webSunucuSayisi: number;
+    toplamCpu: number | null;
+    toplamBellekGb: number | null;
+  };
   sunucular: WasSunucu[];
   webSunuculari: WebSunucusu[];
   kaynaklar: Record<string, KaynakDurumu>;
@@ -220,9 +235,22 @@ export interface OcpCanliOkuma {
   alinma: string | null;
   isNo: number | null;
   nesneler?: OcpCanliNesne[];
-  podlar?: { ad: string; faz: string | null; node: string | null; hazir: string | null; restart: number | null; baslama: string | null }[];
+  podlar?: {
+    ad: string;
+    faz: string | null;
+    node: string | null;
+    hazir: string | null;
+    restart: number | null;
+    baslama: string | null;
+  }[];
   nodelar?: { ad: string; pod: number }[];
-  hpa?: { ad: string; hedef: string | null; min: number | null; max: number | null; guncel: number | null }[];
+  hpa?: {
+    ad: string;
+    hedef: string | null;
+    min: number | null;
+    max: number | null;
+    guncel: number | null;
+  }[];
   notlar?: string[];
   hatalar?: string[];
   /** 'saatlik': Portal'in saatlik filo taramasi; 'canli': elle "Canlı oku". Hangisi daha yeniyse o gelir. */
@@ -234,7 +262,13 @@ export interface OcpCanliOkuma {
   /** Bu yer icin daha yeni ama basarisiz bir okuma var (gosterilen veri daha eski, gecerli okumadan). */
   sonOkumaHatasi?: string | null;
   /** Pod sayisi tum pod'lardan (liste en cok 200 gosterir); okunamadi ise sayi yok (0 degil). */
-  podOzet?: { toplam: number | null; hazir: number | null; listelenen: number; okunamadi: boolean; bitmis?: number };
+  podOzet?: {
+    toplam: number | null;
+    hazir: number | null;
+    listelenen: number;
+    okunamadi: boolean;
+    bitmis?: number;
+  };
 }
 
 export interface OcpFiloDurumu {
@@ -257,7 +291,11 @@ export interface OcpYer {
   tenant: string | null;
   konsol: string | null;
   katalogda: boolean;
-  onbellek: { kayitlar: { kind: string; name: string; replicas: number | null; image: string | null }[]; alinma: string | null; bayat: boolean } | null;
+  onbellek: {
+    kayitlar: { kind: string; name: string; replicas: number | null; image: string | null }[];
+    alinma: string | null;
+    bayat: boolean;
+  } | null;
   routelar: OcpRoute[];
   routeEslesme: string | null;
   atfedilmeyenRoute: number;
@@ -305,13 +343,32 @@ export interface JvmParamDurum {
 }
 
 export const appHubApi = {
-  async ara(q: string): Promise<{ sonuclar: AppAramaSonucu[]; okunamayan: { tip: AppTip; hata: string }[]; mesaj?: string; kesildi?: boolean }> {
+  async ara(q: string): Promise<{
+    sonuclar: AppAramaSonucu[];
+    okunamayan: { tip: AppTip; hata: string }[];
+    mesaj?: string;
+    kesildi?: boolean;
+  }> {
     return okJson(await fetch(`${BASE}/ara?q=${encodeURIComponent(q)}`));
   },
-  async detay(tip: AppTip, ad: string, fresh = false): Promise<{ uygulama: AppDetay; okundu: string }> {
-    return okJson(await fetch(`${BASE}/uygulama/${tip}/${encodeURIComponent(ad)}${fresh ? '?fresh=1' : ''}`));
+  async detay(
+    tip: AppTip,
+    ad: string,
+    fresh = false,
+  ): Promise<{ uygulama: AppDetay; okundu: string }> {
+    return okJson(
+      await fetch(`${BASE}/uygulama/${tip}/${encodeURIComponent(ad)}${fresh ? '?fresh=1' : ''}`),
+    );
   },
-  async ocpCanliBaslat(ad: string, hedefler?: { cluster: string; namespace: string }[]): Promise<{ serverId: number; jobId: number; hedefler: { cluster: string; namespace: string }[]; atlanan: string[] }> {
+  async ocpCanliBaslat(
+    ad: string,
+    hedefler?: { cluster: string; namespace: string }[],
+  ): Promise<{
+    serverId: number;
+    jobId: number;
+    hedefler: { cluster: string; namespace: string }[];
+    atlanan: string[];
+  }> {
     return okJson(
       await fetch(`${BASE}/ocp/${encodeURIComponent(ad)}/canli`, {
         method: 'POST',
@@ -321,7 +378,15 @@ export const appHubApi = {
     );
   },
   /** JBoss JVM parametresi (2026-11-11): apply=false plan (hiçbir şey değişmez), apply=true uygula (prod: Smart onayı). */
-  async jvmParam(g: { host: string; gen: number; jvm: string; parametre: string; uygulama: string; apply?: boolean; onayMetni?: string }): Promise<JvmParamYaniti> {
+  async jvmParam(g: {
+    host: string;
+    gen: number;
+    jvm: string;
+    parametre: string;
+    uygulama: string;
+    apply?: boolean;
+    onayMetni?: string;
+  }): Promise<JvmParamYaniti> {
     return okJson(
       await fetch(`${BASE}/jboss/jvm-param`, {
         method: 'POST',
@@ -333,7 +398,19 @@ export const appHubApi = {
   async jvmParamDurum(serverId: number, jobId: number): Promise<JvmParamDurum> {
     return okJson(await fetch(`${BASE}/jboss/jvm-param/${serverId}/${jobId}`));
   },
-  async ocpCanliDurum(serverId: number, jobId: number, ad: string): Promise<{ status: string; finished: boolean; error?: string; genel?: string; okumalar?: OcpCanliOkuma[] }> {
-    return okJson(await fetch(`${BASE}/ocp/canli/${serverId}/${jobId}?ad=${encodeURIComponent(ad)}`));
+  async ocpCanliDurum(
+    serverId: number,
+    jobId: number,
+    ad: string,
+  ): Promise<{
+    status: string;
+    finished: boolean;
+    error?: string;
+    genel?: string;
+    okumalar?: OcpCanliOkuma[];
+  }> {
+    return okJson(
+      await fetch(`${BASE}/ocp/canli/${serverId}/${jobId}?ad=${encodeURIComponent(ad)}`),
+    );
   },
 };

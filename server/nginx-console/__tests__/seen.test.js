@@ -21,8 +21,8 @@ const seenMap = nc._seenMapForTest;
 const seenPath = path.join(dir, 'raw', '_seen.json');
 
 test('SEEN1 _seen.json yokken son gorulme = dokum mtime; dokum da yoksa null', () => {
-  assert.equal(seenAtOf('GBNGXP40', null), null);
-  assert.equal(seenAtOf('GBNGXP40', '2026-09-20T01:00:00.000Z'), '2026-09-20T01:00:00.000Z');
+  assert.equal(seenAtOf('ORNGXP40', null), null);
+  assert.equal(seenAtOf('ORNGXP40', '2026-09-20T01:00:00.000Z'), '2026-09-20T01:00:00.000Z');
 });
 
 test('SEEN2 host bazli kayit: seen > dokum ise seen; baska host etkilenmez; kucuk harf host', () => {
@@ -30,24 +30,24 @@ test('SEEN2 host bazli kayit: seen > dokum ise seen; baska host etkilenmez; kucu
     seenPath,
     JSON.stringify({
       at: '2026-09-22T02:00:00Z',
-      hosts: { GBNGXP40: '2026-09-22T02:00:00Z', gbngxp41: '2026-09-21T02:00:00Z' },
+      hosts: { ORNGXP40: '2026-09-22T02:00:00Z', orngxp41: '2026-09-21T02:00:00Z' },
     }),
   );
-  assert.equal(seenAtOf('GBNGXP40', '2026-09-20T01:00:00.000Z'), '2026-09-22T02:00:00.000Z');
-  assert.equal(seenAtOf('gbngxp41', null), '2026-09-21T02:00:00.000Z');
+  assert.equal(seenAtOf('ORNGXP40', '2026-09-20T01:00:00.000Z'), '2026-09-22T02:00:00.000Z');
+  assert.equal(seenAtOf('orngxp41', null), '2026-09-21T02:00:00.000Z');
   // dokum daha yeni ise dokum kazanir
-  assert.equal(seenAtOf('GBNGXP41', '2026-09-22T05:00:00.000Z'), '2026-09-22T05:00:00.000Z');
-  assert.equal(seenAtOf('GBNGXP99', null), null);
+  assert.equal(seenAtOf('ORNGXP41', '2026-09-22T05:00:00.000Z'), '2026-09-22T05:00:00.000Z');
+  assert.equal(seenAtOf('ORNGXP99', null), null);
   assert.equal(seenMap().at, '2026-09-22T02:00:00.000Z');
 });
 
 test('SEEN3 dosya degisince yeniden okunur (mtime); eski liste bicimi (hosts: []) da kabul', async () => {
   await new Promise((r) => setTimeout(r, 20));
-  fs.writeFileSync(seenPath, JSON.stringify({ at: '2026-09-23T02:00:00Z', hosts: ['GBNGXP50'] }));
+  fs.writeFileSync(seenPath, JSON.stringify({ at: '2026-09-23T02:00:00Z', hosts: ['ORNGXP50'] }));
   const now = new Date();
   fs.utimesSync(seenPath, now, now);
-  assert.equal(seenAtOf('GBNGXP50', null), '2026-09-23T02:00:00.000Z');
-  assert.equal(seenAtOf('GBNGXP40', null), null, 'yeni dosyada olmayan host dusmeli');
+  assert.equal(seenAtOf('ORNGXP50', null), '2026-09-23T02:00:00.000Z');
+  assert.equal(seenAtOf('ORNGXP40', null), null, 'yeni dosyada olmayan host dusmeli');
 });
 
 test('SEEN4 bozuk JSON: hata firlatmaz, yalniz dokum mtime kullanilir', async () => {
@@ -55,7 +55,7 @@ test('SEEN4 bozuk JSON: hata firlatmaz, yalniz dokum mtime kullanilir', async ()
   fs.writeFileSync(seenPath, '{bozuk');
   const now = new Date();
   fs.utimesSync(seenPath, now, now);
-  assert.equal(seenAtOf('GBNGXP50', '2026-09-01T00:00:00.000Z'), '2026-09-01T00:00:00.000Z');
+  assert.equal(seenAtOf('ORNGXP50', '2026-09-01T00:00:00.000Z'), '2026-09-01T00:00:00.000Z');
 });
 
 test("SEEN5 playbook _seen.json yazar (birlestirerek) ve dump betigi nginx -t'yi dzdo + -e ile kosar", () => {
@@ -65,6 +65,7 @@ test("SEEN5 playbook _seen.json yazar (birlestirerek) ve dump betigi nginx -t'yi
       '..',
       '..',
       'ansible',
+      'playbooks',
       'bmw_portal',
       'nginx_console',
       'nginx_console_fetch.yml',
@@ -87,6 +88,7 @@ test("SEEN5 playbook _seen.json yazar (birlestirerek) ve dump betigi nginx -t'yi
       '..',
       '..',
       'ansible',
+      'playbooks',
       'bmw_portal',
       'nginx_console',
       'files',

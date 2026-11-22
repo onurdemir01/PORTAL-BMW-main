@@ -30,8 +30,9 @@ const OUT = path.join(CERTS_DIR, 'combined-ca-chain.pem');
 const includeRoots = !process.argv.includes('--no-roots');
 
 function splitPems(text) {
-  return [...String(text).matchAll(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)]
-    .map((m) => m[0]);
+  return [
+    ...String(text).matchAll(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g),
+  ].map((m) => m[0]);
 }
 
 function fingerprint(pem) {
@@ -56,12 +57,17 @@ function findCorporateChains() {
 
 const seen = new Set();
 const out = [];
-let rootCount = 0, corpCount = 0, dupCount = 0;
+let rootCount = 0,
+  corpCount = 0,
+  dupCount = 0;
 
 if (includeRoots) {
   for (const pem of tls.rootCertificates) {
     const fp = fingerprint(pem);
-    if (seen.has(fp)) { dupCount++; continue; }
+    if (seen.has(fp)) {
+      dupCount++;
+      continue;
+    }
     seen.add(fp);
     out.push(pem.trim());
     rootCount++;
@@ -75,7 +81,10 @@ for (const file of chainFiles) {
   let added = 0;
   for (const pem of pems) {
     const fp = fingerprint(pem);
-    if (seen.has(fp)) { dupCount++; continue; }
+    if (seen.has(fp)) {
+      dupCount++;
+      continue;
+    }
     seen.add(fp);
     out.push(`# kaynak: ${rel}\n${pem.trim()}`);
     added++;

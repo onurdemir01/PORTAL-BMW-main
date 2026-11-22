@@ -10,7 +10,9 @@ const TITLE_MAX = 500;
 const CONTENT_MAX = 1024 * 1024; // mesaj basina 1MB ust sinir
 
 function uname(u) {
-  return String(u || '').trim().toLowerCase();
+  return String(u || '')
+    .trim()
+    .toLowerCase();
 }
 
 async function listConversations(username) {
@@ -18,7 +20,7 @@ async function listConversations(username) {
     `SELECT id, title, archived, created_at, updated_at
      FROM ai_conversations WHERE username = $1 AND archived = 0
      ORDER BY updated_at DESC`,
-    [uname(username)]
+    [uname(username)],
   );
   return rows;
 }
@@ -29,7 +31,7 @@ async function createConversation(username, title) {
   // atlar ve bakim/tasinabilirlik riski yaratirdi (bkz. server/db/index.cjs handleReturning).
   const { rows } = await db.query(
     `INSERT INTO ai_conversations (username, title) VALUES ($1, $2) RETURNING id`,
-    [uname(username), String(title || 'Yeni analiz').slice(0, TITLE_MAX)]
+    [uname(username), String(title || 'Yeni analiz').slice(0, TITLE_MAX)],
   );
   return rows[0]?.id ?? null;
 }
@@ -39,13 +41,13 @@ async function getConversation(username, id) {
   const conv = await db.query(
     `SELECT id, title, archived, created_at, updated_at
      FROM ai_conversations WHERE id = $1 AND username = $2`,
-    [Number(id), uname(username)]
+    [Number(id), uname(username)],
   );
   if (!conv.rows.length) return null;
   const msgs = await db.query(
     `SELECT id, role, content, tool_name, created_at
      FROM ai_messages WHERE conversation_id = $1 ORDER BY id`,
-    [Number(id)]
+    [Number(id)],
   );
   return { conversation: conv.rows[0], messages: msgs.rows };
 }
@@ -53,7 +55,7 @@ async function getConversation(username, id) {
 async function deleteConversation(username, id) {
   const { rowCount } = await db.query(
     `DELETE FROM ai_conversations WHERE id = $1 AND username = $2`,
-    [Number(id), uname(username)]
+    [Number(id), uname(username)],
   );
   return rowCount > 0;
 }
@@ -67,21 +69,42 @@ async function appendMessage(conversationId, role, content, toolName) {
   await db.query(
     `INSERT INTO ai_messages (conversation_id, role, content, tool_name) VALUES ($1, $2, $3, $4);
      UPDATE ai_conversations SET updated_at = GETUTCDATE() WHERE id = $1;`,
-    [Number(conversationId), String(role), String(content || '').slice(0, CONTENT_MAX), toolName || null]
+    [
+      Number(conversationId),
+      String(role),
+      String(content || '').slice(0, CONTENT_MAX),
+      toolName || null,
+    ],
   );
 }
 
-async function logUsage({ username, feature, provider, model, inputTokens, outputTokens, latencyMs, toolCalls, ok, error }) {
+async function logUsage({
+  username,
+  feature,
+  provider,
+  model,
+  inputTokens,
+  outputTokens,
+  latencyMs,
+  toolCalls,
+  ok,
+  error,
+}) {
   await db.query(
     `INSERT INTO ai_usage_log (username, feature, provider, model, input_tokens, output_tokens, latency_ms, tool_calls, ok, error)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      uname(username), String(feature || 'chat'), provider || null, model || null,
+      uname(username),
+      String(feature || 'chat'),
+      provider || null,
+      model || null,
       Number.isFinite(inputTokens) ? inputTokens : null,
       Number.isFinite(outputTokens) ? outputTokens : null,
       Number.isFinite(latencyMs) ? Math.round(latencyMs) : null,
-      Number(toolCalls) || 0, ok ? 1 : 0, error ? String(error).slice(0, 500) : null,
-    ]
+      Number(toolCalls) || 0,
+      ok ? 1 : 0,
+      error ? String(error).slice(0, 500) : null,
+    ],
   );
 }
 
@@ -99,12 +122,17 @@ async function usageSummary(days = 30) {
      WHERE created_at >= DATEADD(day, -$1, GETUTCDATE())
      GROUP BY CAST(created_at AS DATE), feature
      ORDER BY day DESC`,
-    [d]
+    [d],
   );
   return rows;
 }
 
 module.exports = {
-  listConversations, createConversation, getConversation, deleteConversation,
-  appendMessage, logUsage, usageSummary,
+  listConversations,
+  createConversation,
+  getConversation,
+  deleteConversation,
+  appendMessage,
+  logUsage,
+  usageSummary,
 };

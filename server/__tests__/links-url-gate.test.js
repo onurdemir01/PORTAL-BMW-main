@@ -13,6 +13,7 @@
 //
 // SEED'DEKI `/logx` SATIRI KIRILMAMALI: portal ici goreli yollar mesru.
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -83,7 +84,7 @@ test('LU5 validate() URL kapisini GERCEKTEN cagiriyor', () => {
   // Eski "yalnizca bos mu" kontrolu geri gelmemeli.
   assert.doesNotMatch(
     fn.replace(/\s+/g, ' '),
-    /if \(!body\.url \|\| !String\(body\.url\)\.trim\(\)\) errors\.push/,
+    esnek(/if \(!body\.url \|\| !String\(body\.url\)\.trim\(\)\) errors\.push/),
     'eski bos-kontrolu geri gelmis',
   );
 });

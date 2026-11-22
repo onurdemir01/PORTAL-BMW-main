@@ -7,6 +7,7 @@
 //   3. /api/denetim yol -> sekme kapisi ve panel uclari (GET/PUT/DELETE denetim-access)
 //   4. istemci: DenetimPage sekmeleri canSee('tab:denetim:<id>') ile suzer; Admin sekmesi kayitli
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -240,7 +241,17 @@ test('sunucu: /api/denetim yol -> sekme kapisi; panel uclari', () => {
   const den = read('server/audit/denetim.cjs');
   assert.ok(den.includes("requireVisiblePrefix('Denetim')"), 'sayfa kapisi');
   assert.ok(den.includes("requireVisible('tab:denetim:' + hit[1])"), 'sekme kapisi yok');
-  for (const t of ['ocp', 'ocproute', 'init', 'deploy', 'routetraffic', 'envanter', 'appenvs', 'webapp', 'katalog']) {
+  for (const t of [
+    'ocp',
+    'ocproute',
+    'init',
+    'deploy',
+    'routetraffic',
+    'envanter',
+    'appenvs',
+    'webapp',
+    'katalog',
+  ]) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `yol eslemesinde ${t} yok`);
   }
   // nginx denetim uclari Nginx Hub SAYFA kapisindan gecer (2026-09-22) ve 2026-09-23'ten beri
@@ -296,8 +307,8 @@ test('istemci: DenetimPage sekmeleri canSee ile suzer, hic yoksa mesaj; Admin se
   );
   const admin = read('src/components/admin/AdminPage.tsx');
   assert.ok(
-    admin.includes("{ id: 'denetimaccess', label: 'Denetim Erişimi'") &&
-      admin.includes("{activeTab === 'denetimaccess' && <DenetimAccessTab />}"),
+    iceriyor(admin, "{ id: 'denetimaccess', label: 'Denetim Erişimi'") &&
+      iceriyor(admin, "{activeTab === 'denetimaccess' && <DenetimAccessTab />}"),
     'admin sekmesi bagli degil',
   );
   // Panel 2026-09-23'te ortaklastirildi (TabAccessPanel): Nginx Hub Erisimi ayni bileseni

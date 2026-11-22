@@ -5,14 +5,22 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseMetaLine, parseShaLine, parseHostFiles, parseFilexResult } = require('../filex-parse.cjs');
+const {
+  parseMetaLine,
+  parseShaLine,
+  parseHostFiles,
+  parseFilexResult,
+} = require('../filex-parse.cjs');
 
 test('parseMetaLine(): mod|sahip|grup|boyut|mtime|yol tam ayristirilir', () => {
   const m = parseMetaLine('644|was|was|12345|1752483600.123456|/vhosting8/APP-T.ear/lib/app.jar');
   assert.deepEqual(m, {
     path: '/vhosting8/APP-T.ear/lib/app.jar',
-    mode: '0644', owner: 'was', group: 'was',
-    size: 12345, mtime: 1752483600.123456,
+    mode: '0644',
+    owner: 'was',
+    group: 'was',
+    size: 12345,
+    mtime: 1752483600.123456,
   });
 });
 
@@ -53,10 +61,7 @@ test('parseHostFiles(): meta + sha path bazinda birlestirilir', () => {
     '644|was|was|100|1700000000|/app.ear/a.jar',
     '644|was|was|200|1700000001|/app.ear/b.jar',
   ].join('\n');
-  const sha = [
-    `${hashA}  /app.ear/a.jar`,
-    `${hashB}  /app.ear/b.jar`,
-  ].join('\n');
+  const sha = [`${hashA}  /app.ear/a.jar`, `${hashB}  /app.ear/b.jar`].join('\n');
   const files = parseHostFiles(meta, sha);
   assert.equal(files.length, 2);
   assert.equal(files[0].path, '/app.ear/a.jar');
@@ -77,7 +82,10 @@ test('parseHostFiles(): sonuc yol adina gore alfabetik siralanir', () => {
     '644|was|was|1|1700000000|/app.ear/a.txt',
   ].join('\n');
   const files = parseHostFiles(meta, '');
-  assert.deepEqual(files.map((f) => f.path), ['/app.ear/a.txt', '/app.ear/z.txt']);
+  assert.deepEqual(
+    files.map((f) => f.path),
+    ['/app.ear/a.txt', '/app.ear/z.txt'],
+  );
 });
 
 test('parseHostFiles(): bos meta_raw bos liste doner (EAR bulunamadi durumu)', () => {
@@ -88,8 +96,21 @@ test('parseFilexResult(): status=ok olmayan host icin files[] uretilmez (ham ver
   const out = parseFilexResult({
     overall_status: 'partial',
     hosts: [
-      { host: 'A', status: 'ok', ear_dirs: ['/app.ear'], meta_raw: '644|was|was|1|1700000000|/app.ear/x', sha_raw: '' },
-      { host: 'B', status: 'error', error: 'unreachable', ear_dirs: [], meta_raw: 'bu-asla-okunmamali', sha_raw: '' },
+      {
+        host: 'A',
+        status: 'ok',
+        ear_dirs: ['/app.ear'],
+        meta_raw: '644|was|was|1|1700000000|/app.ear/x',
+        sha_raw: '',
+      },
+      {
+        host: 'B',
+        status: 'error',
+        error: 'unreachable',
+        ear_dirs: [],
+        meta_raw: 'bu-asla-okunmamali',
+        sha_raw: '',
+      },
     ],
   });
   assert.equal(out.hosts[0].files.length, 1);

@@ -51,17 +51,17 @@ async function withStubs(hosts, fn) {
 }
 
 test('seçilen sunucular yalnız onlar taranır (30 sunucu yerine 1)', async () => {
-  await withStubs(['GBCJAP01', 'GBCJAP02', 'GBCJAP03'], async (launched) => {
-    await legacy.discover(REQUEST, 'APP1', ['gbcjap02']);
+  await withStubs(['ORCJAP01', 'ORCJAP02', 'ORCJAP03'], async (launched) => {
+    await legacy.discover(REQUEST, 'APP1', ['orcjap02']);
     assert.equal(launched.length, 1);
-    assert.equal(launched[0].vars.target_hosts, 'GBCJAP02', 'yalnız seçilen host taranmalı');
+    assert.equal(launched[0].vars.target_hosts, 'ORCJAP02', 'yalnız seçilen host taranmalı');
   });
 });
 
 test('envanterde OLMAYAN sunucu REDDEDILIR (istemciye guvenilmez)', async () => {
-  await withStubs(['GBCJAP01'], async (launched) => {
+  await withStubs(['ORCJAP01'], async (launched) => {
     await assert.rejects(
-      () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'BASKA-UYGULAMANIN-SUNUCUSU']),
+      () => legacy.discover(REQUEST, 'APP1', ['ORCJAP01', 'BASKA-UYGULAMANIN-SUNUCUSU']),
       (e) => e.status === 400 && /ait değil/.test(e.message),
     );
     assert.equal(launched.length, 0, 'doğrulama başarısızsa job HIC baslamamali');
@@ -69,9 +69,9 @@ test('envanterde OLMAYAN sunucu REDDEDILIR (istemciye guvenilmez)', async () => 
 });
 
 test('seçim yoksa ESKI DAVRANIS korunur — tüm envanter hostları', async () => {
-  await withStubs(['GBCJAP01', 'GBCJAP02'], async (launched) => {
+  await withStubs(['ORCJAP01', 'ORCJAP02'], async (launched) => {
     await legacy.discover(REQUEST, 'APP1', undefined);
-    assert.equal(launched[0].vars.target_hosts, 'GBCJAP01,GBCJAP02');
+    assert.equal(launched[0].vars.target_hosts, 'ORCJAP01,ORCJAP02');
   });
 });
 
@@ -83,14 +83,14 @@ test('listHostsForApp(): sunucu seçim ekranı için env/sürüm/durum da döner
         return this;
       },
       query: async () => ({
-        recordset: [{ host: 'GBCJAP01', env: 'PROD', jboss_version: 'EAP7', status: 'running' }],
+        recordset: [{ host: 'ORCJAP01', env: 'PROD', jboss_version: 'EAP7', status: 'running' }],
       }),
     }),
   });
   try {
     const rows = await legacy.listHostsForApp('APP1');
     assert.deepEqual(rows, [
-      { host: 'GBCJAP01', env: 'PROD', jbossVersion: 'EAP7', status: 'running' },
+      { host: 'ORCJAP01', env: 'PROD', jbossVersion: 'EAP7', status: 'running' },
     ]);
   } finally {
     inventoryDb.getPool = oldPool;
@@ -107,9 +107,9 @@ test('listHostsForApp(): sunucu seçim ekranı için env/sürüm/durum da döner
 
 test('EG1 KAPI GEVSEMEDI: bayrak YOKSA envanter disi host hala REDDEDILIR', async () => {
   // Varsayilan davranis AYNEN eskisi gibi. Yeni yol ancak cagiran ACIKCA isterse acilir.
-  await withStubs(['GBCJAP01'], async (launched) => {
+  await withStubs(['ORCJAP01'], async (launched) => {
     await assert.rejects(
-      () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'ELLE-YAZILAN']),
+      () => legacy.discover(REQUEST, 'APP1', ['ORCJAP01', 'ELLE-YAZILAN']),
       (e) => e.status === 400 && /ait değil/.test(e.message),
     );
     assert.equal(launched.length, 0, 'dogrulama basarisizsa job HIC baslamamali');
@@ -117,20 +117,20 @@ test('EG1 KAPI GEVSEMEDI: bayrak YOKSA envanter disi host hala REDDEDILIR', asyn
 });
 
 test('EG2 bayrak VARSA envanter disi host kabul edilir ve AYRICA raporlanir', async () => {
-  await withStubs(['GBCJAP01'], async (launched) => {
-    const r = await legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'yeni-sunucu-01'], {
+  await withStubs(['ORCJAP01'], async (launched) => {
+    const r = await legacy.discover(REQUEST, 'APP1', ['ORCJAP01', 'yeni-sunucu-01'], {
       allowManual: true,
     });
     assert.equal(launched.length, 1, 'job baslamali');
-    assert.equal(launched[0].vars.target_hosts, 'GBCJAP01,YENI-SUNUCU-01');
+    assert.equal(launched[0].vars.target_hosts, 'ORCJAP01,YENI-SUNUCU-01');
     // IZLENEBILIRLIK: hangi adlarin envanter disi oldugu cagirana DONER.
     assert.deepEqual(r.manualHosts, ['YENI-SUNUCU-01']);
   });
 });
 
 test('EG3 envanterdeki host `manualHosts`a GIRMEZ (gurultu uretmesin)', async () => {
-  await withStubs(['GBCJAP01', 'GBCJAP02'], async () => {
-    const r = await legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'GBCJAP02'], {
+  await withStubs(['ORCJAP01', 'ORCJAP02'], async () => {
+    const r = await legacy.discover(REQUEST, 'APP1', ['ORCJAP01', 'ORCJAP02'], {
       allowManual: true,
     });
     assert.deepEqual(r.manualHosts, [], 'envanterdeki hostlar elle girilmis sayiliyor');
@@ -149,9 +149,9 @@ test('EG4 BICIM KAPISI: kabuk metakarakterli ad bayrakla bile REDDEDILIR', async
     'host&arka',
   ];
   for (const bad of kotu) {
-    await withStubs(['GBCJAP01'], async (launched) => {
+    await withStubs(['ORCJAP01'], async (launched) => {
       await assert.rejects(
-        () => legacy.discover(REQUEST, 'APP1', ['GBCJAP01', bad], { allowManual: true }),
+        () => legacy.discover(REQUEST, 'APP1', ['ORCJAP01', bad], { allowManual: true }),
         (e) => e.status === 400 && e.code === 'manual_host_format',
         `bicim kapisi gecirdi: ${bad}`,
       );
@@ -161,8 +161,8 @@ test('EG4 BICIM KAPISI: kabuk metakarakterli ad bayrakla bile REDDEDILIR', async
 });
 
 test('EG5 gecerli bicimler kabul edilir (harf/rakam/nokta/tire/alt cizgi)', async () => {
-  for (const ok of ['GBCJAP99', 'app-server-01', 'host.example.com', 'a_b-c.d1']) {
-    await withStubs(['GBCJAP01'], async (launched) => {
+  for (const ok of ['ORCJAP99', 'app-server-01', 'host.example.com', 'a_b-c.d1']) {
+    await withStubs(['ORCJAP01'], async (launched) => {
       await legacy.discover(REQUEST, 'APP1', [ok], { allowManual: true });
       assert.equal(launched.length, 1, `gecerli ad reddedildi: ${ok}`);
     });
@@ -170,7 +170,7 @@ test('EG5 gecerli bicimler kabul edilir (harf/rakam/nokta/tire/alt cizgi)', asyn
 });
 
 test('EG6 elle girilen ad BUYUK HARFE cevrilir (envanterle ayni bicim)', async () => {
-  await withStubs(['GBCJAP01'], async (launched) => {
+  await withStubs(['ORCJAP01'], async (launched) => {
     const r = await legacy.discover(REQUEST, 'APP1', ['yeni-sunucu'], { allowManual: true });
     assert.equal(launched[0].vars.target_hosts, 'YENI-SUNUCU');
     assert.deepEqual(r.manualHosts, ['YENI-SUNUCU']);
@@ -191,8 +191,8 @@ async function captureRequestWrites(hosts, fn) {
 }
 
 test('EG7 elle girilen sunucular ISTEK KAYDINA yazilir (sonradan gorulebilsin)', async () => {
-  const writes = await captureRequestWrites(['GBCJAP01'], () =>
-    legacy.discover(REQUEST, 'APP1', ['GBCJAP01', 'ELLE01'], { allowManual: true }),
+  const writes = await captureRequestWrites(['ORCJAP01'], () =>
+    legacy.discover(REQUEST, 'APP1', ['ORCJAP01', 'ELLE01'], { allowManual: true }),
   );
   const withInput = writes.find((w) => w && w.input);
   assert.ok(withInput, 'istek kaydi guncellenmedi');
@@ -200,8 +200,8 @@ test('EG7 elle girilen sunucular ISTEK KAYDINA yazilir (sonradan gorulebilsin)',
 });
 
 test('EG8 elle giris YOKSA `manualHosts` kayda HIC yazilmaz', async () => {
-  const writes = await captureRequestWrites(['GBCJAP01'], () =>
-    legacy.discover(REQUEST, 'APP1', ['GBCJAP01'], { allowManual: true }),
+  const writes = await captureRequestWrites(['ORCJAP01'], () =>
+    legacy.discover(REQUEST, 'APP1', ['ORCJAP01'], { allowManual: true }),
   );
   const withInput = writes.find((w) => w && w.input);
   assert.ok(withInput);

@@ -78,7 +78,10 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
   }, [app]);
 
   const envs = useMemo(
-    () => [...new Set((hosts || []).map((h) => h.env).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set((hosts || []).map((h) => h.env).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
     [hosts],
   );
   // ÇİPLER MAJÖR BAZINDA. Eskiden ham sürüm string'leri çip oluyordu ("7.3.10",
@@ -147,7 +150,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
   // "yazdim ama bir sey olmadi" hissi verirdi).
   //
   // COKLU EKLEME (2026-10-02): kutu bir LISTE kabul eder — virgul, bosluk ya da
-  // noktali virgulle ayrilmis ("GBCJAP07, GBCJAP08"). Eskiden tek ad kabul ediyordu;
+  // noktali virgulle ayrilmis ("ORCJAP07, ORCJAP08"). Eskiden tek ad kabul ediyordu;
   // yapistirilan liste "Gecersiz karakter" ile reddediliyor ve kullanici sunuculari
   // TEK TEK girmek zorunda kaliyordu.
   const manualTyped = manualInput.trim().toUpperCase();
@@ -208,7 +211,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
               addManual();
             }
           }}
-          placeholder="ör. GBCJAP07, GBCJAP08"
+          placeholder="ör. ORCJAP07, ORCJAP08"
           aria-label="Sunucu adını elle girin"
           disabled={busy}
           className="pf-input flex-1 text-sm font-mono"
@@ -329,7 +332,7 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
               ref={acilincaOdakla}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Sunucu ara… (ör. GBCJAP01)"
+              placeholder="Sunucu ara… (ör. ORCJAP01)"
               className="w-full pl-9 pr-3 py-2.5 text-sm border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition font-mono"
             />
           </div>

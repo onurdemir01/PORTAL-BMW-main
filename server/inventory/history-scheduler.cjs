@@ -63,7 +63,7 @@ async function tick({ force = false, now = new Date() } = {}) {
     const ozet = res
       .map((r) => `${r.table}=${r.status}(+${r.added ?? 0}/~${r.changed ?? 0}/-${r.removed ?? 0})`)
       .join(' ');
-    console.log("[EnvanterGecmis] anlik goruntu:", ozet);
+    console.log('[EnvanterGecmis] anlik goruntu:', ozet);
     return res;
   } catch (e) {
     console.warn('[EnvanterGecmis] tur hatasi:', e.message);
@@ -79,14 +79,29 @@ function start() {
     console.log('[EnvanterGecmis] INVENTORY_HISTORY_ENABLED=false — zamanlayici kapali.');
     return;
   }
-  setTimeout(() => { tick().catch(() => {}); }, FIRST_RUN_DELAY_MS).unref?.();
-  _timer = setInterval(() => { tick().catch(() => {}); }, CHECK_MS);
+  setTimeout(() => {
+    tick().catch(() => {});
+  }, FIRST_RUN_DELAY_MS).unref?.();
+  _timer = setInterval(() => {
+    tick().catch(() => {});
+  }, CHECK_MS);
   _timer.unref?.();
-  console.log('[EnvanterGecmis] zamanlayici basladi (yarim saatte bir "bugun calisti mi" denetimi).');
+  console.log(
+    '[EnvanterGecmis] zamanlayici basladi (yarim saatte bir "bugun calisti mi" denetimi).',
+  );
 }
 
 function stop() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
 }
 
-module.exports = { start, stop, tick, _alreadyRanToday: alreadyRanToday, _todayUtcStart: todayUtcStart };
+module.exports = {
+  start,
+  stop,
+  tick,
+  _alreadyRanToday: alreadyRanToday,
+  _todayUtcStart: todayUtcStart,
+};

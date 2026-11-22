@@ -19,63 +19,92 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { kapsamKur, routeKaydi } = require('../ocp-kapsam.cjs');
-const { ENV_CLUSTERS } = require('../ocp-platforms.cjs');
+const { ortamKumeleri } = require('../ocp-platforms.cjs');
 
-const R = (cluster_name, namespace_name, route_name) => ({ cluster_name, namespace_name, route_name });
+const R = (cluster_name, namespace_name, route_name) => ({
+  cluster_name,
+  namespace_name,
+  route_name,
+});
 
-test('OK1 route satiri namespace tabani + route adi; ayni ad baska namespace\'te ayri satir', () => {
+test("OK1 route satiri namespace tabani + route adi; ayni ad baska namespace'te ayri satir", () => {
   const k = kapsamKur(
     [
-      R('gbocptest1', 'retiree-banking-dev', 'cfa-retiree-app-v0'),
-      R('gbocpprod1', 'retiree-banking-prod', 'cfa-retiree-app-v0'),
-      R('gbocpprod2', 'retiree-banking-prod', 'cfa-retiree-app-v0'),
-      R('gbocptest1', 'odeme-dev', 'api'),
-      R('gbocptest1', 'kart-dev', 'api'),
+      R('orocptest1', 'retiree-banking-dev', 'cfa-retiree-app-v0'),
+      R('orocpprod1', 'retiree-banking-prod', 'cfa-retiree-app-v0'),
+      R('orocpprod2', 'retiree-banking-prod', 'cfa-retiree-app-v0'),
+      R('orocptest1', 'odeme-dev', 'api'),
+      R('orocptest1', 'kart-dev', 'api'),
     ].map(routeKaydi),
-    ENV_CLUSTERS.ark,
+    ortamKumeleri().ark,
   );
   assert.equal(k.totalApplications, 3);
   const cfa = k.rows.find((r) => r.application === 'cfa-retiree-app-v0');
   assert.equal(cfa.key, 'retiree-banking/cfa-retiree-app-v0');
   assert.equal(cfa.alt, 'retiree-banking');
   assert.deepEqual(cfa.present, ['dev', 'prod']);
-  assert.deepEqual(cfa.envs.prod.map((h) => h.cluster), ['gbocpprod1', 'gbocpprod2']);
+  assert.deepEqual(
+    cfa.envs.prod.map((h) => h.cluster),
+    ['orocpprod1', 'orocpprod2'],
+  );
   const api = k.rows.filter((r) => r.application === 'api').map((r) => r.alt);
   assert.deepEqual(api, ['kart', 'odeme']);
 });
 
 test('OK2 eki olmayan namespace sayilmaz, skippedNoEnv soylenir', () => {
-  const k = kapsamKur([R('gbocptest1', 'openshift-monitoring', 'grafana'), R('gbocptest1', 'a-test', 'x')].map(routeKaydi), ENV_CLUSTERS.ark);
+  const k = kapsamKur(
+    [R('orocptest1', 'openshift-monitoring', 'grafana'), R('orocptest1', 'a-test', 'x')].map(
+      routeKaydi,
+    ),
+    ortamKumeleri().ark,
+  );
   assert.equal(k.skippedNoEnv, 1);
-  assert.deepEqual(k.rows.map((r) => r.application), ['x']);
+  assert.deepEqual(
+    k.rows.map((r) => r.application),
+    ['x'],
+  );
 });
 
 test('OK3 hic kaydi gelmeyen resmi cluster veriYok; kaydi olan ama o ortamda bos cluster degil', () => {
   const k = kapsamKur(
     [
-      R('gbocpprod1', 'a-prod', 'x'),
-      R('gbocpprod2', 'a-prod', 'x'),
-      R('gbocpprod4', 'openshift-monitoring', 'grafana'),
+      R('orocpprod1', 'a-prod', 'x'),
+      R('orocpprod2', 'a-prod', 'x'),
+      R('orocpprod4', 'openshift-monitoring', 'grafana'),
     ].map(routeKaydi),
-    ENV_CLUSTERS.ark,
+    ortamKumeleri().ark,
   );
   const prod = Object.fromEntries(k.envClusters.prod.map((c) => [c.cluster, c]));
-  assert.equal(prod.gbocpprod1.apps, 1);
-  assert.equal(prod.gbocpprod4.apps, 0);
-  assert.ok(!prod.gbocpprod4.veriYok, 'kaydi olan cluster olculmus sayilir');
-  assert.equal(prod.gbocpankprod2.veriYok, true);
-  assert.equal(prod.gbocpdrcprod1.veriYok, true);
+  assert.equal(prod.orocpprod1.apps, 1);
+  assert.equal(prod.orocpprod4.apps, 0);
+  assert.ok(!prod.orocpprod4.veriYok, 'kaydi olan cluster olculmus sayilir');
+  assert.equal(prod.orocpankprod2.veriYok, true);
+  assert.equal(prod.orocpdrcprod1.veriYok, true);
   assert.equal(k.envClusterKaynagi.prod, 'resmi');
 });
 
 test('OK4 uygulama ekraninin satir sekli degismedi (key/alt yok)', () => {
   const k = kapsamKur(
-    [{ cluster: 'gbocpprod1', namespace: 'a-prod', application: 'app1' }],
-    ENV_CLUSTERS.ark,
+    [{ cluster: 'orocpprod1', namespace: 'a-prod', application: 'app1' }],
+    ortamKumeleri().ark,
   );
-  assert.deepEqual(Object.keys(k.rows[0]).sort(), ['application', 'envs', 'missing', 'missingCount', 'present']);
-  assert.deepEqual(k.rows[0].envs, { prod: [{ cluster: 'gbocpprod1', namespace: 'a-prod' }] });
-  assert.deepEqual(Object.keys(k).sort(), ['completeCount', 'envClusterKaynagi', 'envClusters', 'patterns', 'rows', 'skippedNoEnv', 'totalApplications']);
+  assert.deepEqual(Object.keys(k.rows[0]).sort(), [
+    'application',
+    'envs',
+    'missing',
+    'missingCount',
+    'present',
+  ]);
+  assert.deepEqual(k.rows[0].envs, { prod: [{ cluster: 'orocpprod1', namespace: 'a-prod' }] });
+  assert.deepEqual(Object.keys(k).sort(), [
+    'completeCount',
+    'envClusterKaynagi',
+    'envClusters',
+    'patterns',
+    'rows',
+    'skippedNoEnv',
+    'totalApplications',
+  ]);
 });
 
 test('OK5 sunucu ucu route envanterinden okur ve OpenShift Route sekme kapisina bagli', () => {
@@ -83,7 +112,10 @@ test('OK5 sunucu ucu route envanterinden okur ve OpenShift Route sekme kapisina 
   assert.match(den, /router\.get\('\/ocp-route-coverage'/);
   assert.match(den, /FROM dbo\.BMW_Openshift_Route_Inventory\s+WHERE cluster_name IN/);
   assert.match(den, /\[\/\^\\\/ocp-route-coverage\(\\\/\|\$\)\/, 'ocproute'\]/);
-  const page = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'DenetimPage.tsx'),
+    'utf8',
+  );
   assert.ok(page.includes(`{activeTab === 'ocproute' && <OcpRouteProd />}`));
   assert.match(den, /kayit: routeKaydi,\s+envs: \['prod'\],/, 'route ucu yalniz production olmali');
   // veri yok cluster'i n'ye katilmaz (yoksa her satir o cluster yuzunden "kismi" gorunur)
@@ -93,20 +125,23 @@ test('OK5 sunucu ucu route envanterinden okur ve OpenShift Route sekme kapisina 
 test("OK6 yalniz prod: dev kaydi satir uretmez ama cluster'i olculmus sayar", () => {
   const k = kapsamKur(
     [
-      R('gbocpprod1', 'a-prod', 'x'),
-      R('gbocpprod2', 'a-dev', 'x'),
-      R('gbocpprod2', 'b-dev', 'y'),
+      R('orocpprod1', 'a-prod', 'x'),
+      R('orocpprod2', 'a-dev', 'x'),
+      R('orocpprod2', 'b-dev', 'y'),
     ].map(routeKaydi),
-    ENV_CLUSTERS.ark,
+    ortamKumeleri().ark,
     { envs: ['prod'] },
   );
-  assert.deepEqual(k.rows.map((r) => r.key), ['a/x']);
+  assert.deepEqual(
+    k.rows.map((r) => r.key),
+    ['a/x'],
+  );
   assert.deepEqual(k.rows[0].present, ['prod']);
   assert.deepEqual(k.rows[0].missing, []);
   assert.deepEqual(Object.keys(k.envClusters), ['prod']);
   const prod = Object.fromEntries(k.envClusters.prod.map((c) => [c.cluster, c]));
-  assert.equal(prod.gbocpprod2.apps, 0);
-  assert.ok(!prod.gbocpprod2.veriYok, 'dev kaydi olan cluster olculmus');
-  assert.equal(prod.gbocpprod4.veriYok, true);
+  assert.equal(prod.orocpprod2.apps, 0);
+  assert.ok(!prod.orocpprod2.veriYok, 'dev kaydi olan cluster olculmus');
+  assert.equal(prod.orocpprod4.veriYok, true);
   assert.equal(k.completeCount, 1);
 });

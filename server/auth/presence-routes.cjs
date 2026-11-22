@@ -19,7 +19,7 @@ function trackLogin(user) {
   if (!user?.username) return;
   _onlineUsers.set(user.username, {
     displayName: user.displayName || user.username,
-    role: user.role || "User",
+    role: user.role || 'User',
     lastSeen: Date.now(),
   });
   if (user.photoUrl) avatarCache.cacheAvatar(user.username, user.photoUrl);
@@ -51,36 +51,43 @@ function initPresenceRoutes(app) {
   const router = express.Router();
 
   // ── Online kullanicilar (dashboard baloncuklari) ────────────────────────────
-  router.get("/online", (req, res) => {
+  router.get('/online', (req, res) => {
     const me = req.session?.user;
-    if (!me) return oturumYok(res).status(401).json({ ok: false, error: "Oturum bulunamadı." });
+    if (!me) return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     const now = Date.now();
     const users = [];
     for (const [username, info] of _onlineUsers) {
-      if (now - info.lastSeen > ONLINE_WINDOW_MS) { _onlineUsers.delete(username); continue; }
+      if (now - info.lastSeen > ONLINE_WINDOW_MS) {
+        _onlineUsers.delete(username);
+        continue;
+      }
       if (username === me.username) continue; // kendisi haric
-      if (info.role === "Admin") continue;    // admin'ler haric
-      users.push({ username, displayName: info.displayName, hasAvatar: !!avatarCache.getAvatar(username) });
+      if (info.role === 'Admin') continue; // admin'ler haric
+      users.push({
+        username,
+        displayName: info.displayName,
+        hasAvatar: !!avatarCache.getAvatar(username),
+      });
     }
-    users.sort((a, b) => a.displayName.localeCompare(b.displayName, "tr"));
+    users.sort((a, b) => a.displayName.localeCompare(b.displayName, 'tr'));
     res.json({ ok: true, users });
   });
 
   // ── Kullanici avatari (ayri avatar-cache.cjs'ten binary serve) ──────────────
-  router.get("/avatar/:username", (req, res) => {
+  router.get('/avatar/:username', (req, res) => {
     if (!req.session?.user) return oturumYok(res).status(401).end();
     const dataUrl = avatarCache.getAvatar(req.params.username);
     if (!dataUrl) return res.status(404).end();
     const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return res.status(404).end();
     const [, mime, data] = match;
-    res.setHeader("Content-Type", mime);
-    res.setHeader("Cache-Control", "private, max-age=300");
-    res.end(Buffer.from(data, "base64"));
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.end(Buffer.from(data, 'base64'));
   });
 
-  app.use("/api/users", router);
-  console.log("[Auth] presence routes mounted at /api/users");
+  app.use('/api/users', router);
+  console.log('[Auth] presence routes mounted at /api/users');
 }
 
 module.exports = { initPresenceRoutes, trackLogin, removePresence };

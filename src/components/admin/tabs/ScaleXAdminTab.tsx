@@ -262,9 +262,12 @@ const DiscoveryTiming: React.FC = () => {
   }, []);
 
   // `useAsyncEffect` gerekcesi icin bkz. RbacFindings icindeki not.
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await load();
+    },
+    [load],
+  );
 
   // SICAK ve SOGUK AYRI ORTALANIR. Ikisini tek ortalamada eritmek, onbellek
   // isabet oraninin degismesini "hizlanma" diye okutur — olcumun kendisi yalan
@@ -277,9 +280,7 @@ const DiscoveryTiming: React.FC = () => {
       toplam: gecerli.length,
       sicak: ortala(gecerli.filter((r) => r.cached === true).map((r) => r.elapsedMs as number)),
       soguk: ortala(gecerli.filter((r) => r.cached === false).map((r) => r.elapsedMs as number)),
-      setup: ortala(
-        rows.filter((r) => r.setupMs !== null).map((r) => r.setupMs as number),
-      ),
+      setup: ortala(rows.filter((r) => r.setupMs !== null).map((r) => r.setupMs as number)),
     };
   }, [rows]);
 
@@ -288,7 +289,9 @@ const DiscoveryTiming: React.FC = () => {
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Keşif süresi (son {TIMING_LIMIT})</h3>
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+          Keşif süresi (son {TIMING_LIMIT})
+        </h3>
         <button
           type="button"
           onClick={() => void load()}
@@ -311,8 +314,8 @@ const DiscoveryTiming: React.FC = () => {
         <LoadingLogo compact />
       ) : rows.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)]">
-          Henüz ölçüm yok. Bir keşif çalıştırın — süre satırını <strong>paketin güncel sürümü</strong>{' '}
-          basar; AWX'teki paket eskiyse bu liste boş kalır.
+          Henüz ölçüm yok. Bir keşif çalıştırın — süre satırını{' '}
+          <strong>paketin güncel sürümü</strong> basar; AWX'teki paket eskiyse bu liste boş kalır.
         </p>
       ) : (
         <>
@@ -399,7 +402,10 @@ const DiscoveryTiming: React.FC = () => {
                     <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">
                       {fmtDateTime(r.createdAt)}
                     </td>
-                    <td className="py-1 pr-2 font-mono truncate max-w-[10rem]" title={r.clusterName}>
+                    <td
+                      className="py-1 pr-2 font-mono truncate max-w-[10rem]"
+                      title={r.clusterName}
+                    >
                       {r.clusterName}
                     </td>
                     <td
@@ -690,13 +696,21 @@ function OcoDiagnosePanel() {
             className="w-32 px-3 py-2 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
           />
         </label>
-        <button type="button" className="btn-primary" disabled={busy || !num.trim()} onClick={sorgula}>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy || !num.trim()}
+          onClick={sorgula}
+        >
           {busy ? 'Sorgulanıyor…' : 'Sorgula'}
         </button>
       </div>
 
       {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           {err}
         </div>
       )}
@@ -704,7 +718,10 @@ function OcoDiagnosePanel() {
       {/* "AYAR YOK" ile "SERVİS ÇÖKMÜŞ" AYRI EKRANLAR. Eskiden `OCO_API_URL`in
           kod içinde bir varsayılanı vardı ve ikisi aynı mesajı veriyordu. */}
       {res?.notConfigured && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900"
+        >
           OCO servisi <strong>yapılandırılmamış</strong>. Admin &gt; Sistem &gt;{' '}
           <code>OCO_API_URL</code> girin. Bu, servisin çökmüş olmasından <strong>farklı</strong> bir
           durumdur.
@@ -712,7 +729,10 @@ function OcoDiagnosePanel() {
       )}
 
       {res?.lookupFailed && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900"
+        >
           <strong>Kayıt okunamadı:</strong> {res.message}
         </div>
       )}
@@ -725,7 +745,8 @@ function OcoDiagnosePanel() {
               Kapı simülasyonu ({res.scope?.env} · {res.scope?.action} · apply)
             </p>
             <p className="text-[var(--text-secondary)]">
-              <span className="font-mono">{res.simulation?.outcome}</span> — {res.simulation?.message}
+              <span className="font-mono">{res.simulation?.outcome}</span> —{' '}
+              {res.simulation?.message}
             </p>
             {res.window && (
               <p className="text-[var(--text-muted)]">
@@ -758,8 +779,8 @@ function OcoDiagnosePanel() {
 
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[var(--text-muted)]">
-              {res.fields?.length} alan geldi · <strong>{res.ignoredCount}</strong> tanesi
-              portal tarafından <strong>yok sayılıyor</strong>
+              {res.fields?.length} alan geldi · <strong>{res.ignoredCount}</strong> tanesi portal
+              tarafından <strong>yok sayılıyor</strong>
               {res.fieldsTruncated && ' · liste kırpıldı'}
             </p>
             <label className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] cursor-pointer">
@@ -773,7 +794,9 @@ function OcoDiagnosePanel() {
               <div key={f.path} className="flex items-start gap-2 px-2.5 py-1.5 text-xs">
                 <span
                   className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                    f.read ? 'bg-green-100 text-green-800' : 'bg-[var(--bg-inset)] text-[var(--text-muted)]'
+                    f.read
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-[var(--bg-inset)] text-[var(--text-muted)]'
                   }`}
                 >
                   {f.read ? 'OKUNUYOR' : 'yok sayılıyor'}
@@ -894,8 +917,15 @@ export function IsGecmisiPanel() {
       if (islem && r.action !== islem) return false;
       if (!needle) return true;
       const alan = [
-        r.username, r.env, r.tenant, r.cluster_name, r.namespace,
-        r.oco_number, r.smart_ticket_id, r.awx_job_id, r.app_names_json,
+        r.username,
+        r.env,
+        r.tenant,
+        r.cluster_name,
+        r.namespace,
+        r.oco_number,
+        r.smart_ticket_id,
+        r.awx_job_id,
+        r.app_names_json,
       ]
         .map((x) => String(x ?? '').toLowerCase())
         .join(' ');
@@ -906,14 +936,44 @@ export function IsGecmisiPanel() {
   const csv = () =>
     downloadCsv(
       'scalex_is_gecmisi',
-      ['Tarih', 'Kullanıcı', 'Ortam', 'Tenant', 'Cluster', 'Namespace', 'İşlem', 'Mod',
-       'Uygulamalar', 'Durum', 'Sonuç', 'AWX işi', 'SMART', 'OCO', 'Onay', 'Onaylayan', 'Gerekçe'],
+      [
+        'Tarih',
+        'Kullanıcı',
+        'Ortam',
+        'Tenant',
+        'Cluster',
+        'Namespace',
+        'İşlem',
+        'Mod',
+        'Uygulamalar',
+        'Durum',
+        'Sonuç',
+        'AWX işi',
+        'SMART',
+        'OCO',
+        'Onay',
+        'Onaylayan',
+        'Gerekçe',
+      ],
       // SUZULMUS satirlar disa aktarilir — ekranda gordugunu indirir.
       suzulmus.map((r) => [
-        r.created_at, r.username, r.env, r.tenant, r.cluster_name, r.namespace,
-        r.action, r.execution_mode, uygulamalariCoz(r.app_names_json).join(' '),
-        r.status, r.overall_status, r.awx_job_id, r.smart_ticket_id, r.oco_number,
-        r.approval_state, r.approved_by, r.reason,
+        r.created_at,
+        r.username,
+        r.env,
+        r.tenant,
+        r.cluster_name,
+        r.namespace,
+        r.action,
+        r.execution_mode,
+        uygulamalariCoz(r.app_names_json).join(' '),
+        r.status,
+        r.overall_status,
+        r.awx_job_id,
+        r.smart_ticket_id,
+        r.oco_number,
+        r.approval_state,
+        r.approved_by,
+        r.reason,
       ]),
     );
 
@@ -923,44 +983,73 @@ export function IsGecmisiPanel() {
         <div>
           <p className="text-sm font-semibold text-[var(--text-primary)]">İş geçmişi</p>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-            Son 200 ScaleX işlemi. Admin tümünü, diğer kullanıcılar yalnızca kendi
-            işlerini görür. <strong>UNKNOWN</strong> = uzlaştırıcı işin durumunu okuyamadı
+            Son 200 ScaleX işlemi. Admin tümünü, diğer kullanıcılar yalnızca kendi işlerini görür.{' '}
+            <strong>UNKNOWN</strong> = uzlaştırıcı işin durumunu okuyamadı
             {unknownSaat !== null ? ` (${unknownSaat} saat beklendi` : ' (beklendi'} ya da AWX
             yanıtı okunamayacak kadar büyük) — “başarısız” demek <em>değil</em>.
           </p>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <button type="button" onClick={csv} disabled={!suzulmus.length}
-            className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50">
+          <button
+            type="button"
+            onClick={csv}
+            disabled={!suzulmus.length}
+            className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
+          >
             CSV
           </button>
-          <button type="button" onClick={load}
-            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
+          <button
+            type="button"
+            onClick={load}
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent)] hover:underline"
+          >
             <ArrowPathIcon aria-hidden="true" className="w-3.5 h-3.5" /> Yenile
           </button>
         </div>
       </div>
 
       {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           {err}
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)}
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="kullanıcı, cluster, namespace, OCO, iş no…"
           aria-label="ScaleX işlem geçmişinde ara"
-          className="w-64 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]" />
-        <select aria-label="İşleme göre süz" value={islem} onChange={(e) => setIslem(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
+          className="w-64 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+        />
+        <select
+          aria-label="İşleme göre süz"
+          value={islem}
+          onChange={(e) => setIslem(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+        >
           <option value="">tüm işlemler</option>
-          {islemler.map((a) => <option key={a} value={a}>{a}</option>)}
+          {islemler.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
         </select>
-        <select aria-label="Duruma göre süz" value={durum} onChange={(e) => setDurum(e.target.value)}
-          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]">
+        <select
+          aria-label="Duruma göre süz"
+          value={durum}
+          onChange={(e) => setDurum(e.target.value)}
+          className="px-2 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)]"
+        >
           <option value="">tüm durumlar</option>
-          {durumlar.map((d) => <option key={d} value={d}>{d}</option>)}
+          {durumlar.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
         </select>
         <span className="text-xs text-[var(--text-muted)]">
           {suzulmus.length} / {rows.length}
@@ -1007,9 +1096,7 @@ export function IsGecmisiPanel() {
                       <td className="py-1.5 pr-3">{r.username || '—'}</td>
                       <td className="py-1.5 pr-3">
                         <span className="font-mono">{r.cluster_name || '—'}</span>
-                        <span className="text-[var(--text-muted)]">
-                          {' '}/ {r.namespace || '—'}
-                        </span>
+                        <span className="text-[var(--text-muted)]"> / {r.namespace || '—'}</span>
                         <div className="text-[var(--text-muted)]">
                           {r.tenant} / {r.env}
                         </div>
@@ -1021,9 +1108,12 @@ export function IsGecmisiPanel() {
                         )}
                       </td>
                       <td className="py-1.5 pr-3">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          DURUM_TONU[r.status || ''] || 'bg-[var(--bg-inset)] text-[var(--text-muted)]'
-                        }`}>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            DURUM_TONU[r.status || ''] ||
+                            'bg-[var(--bg-inset)] text-[var(--text-muted)]'
+                          }`}
+                        >
                           {r.status || '—'}
                         </span>
                         {r.overall_status && r.overall_status !== r.status && (
@@ -1038,8 +1128,11 @@ export function IsGecmisiPanel() {
                         {!r.smart_ticket_id && !r.oco_number && !r.approval_state && '—'}
                       </td>
                       <td className="py-1.5 text-right">
-                        <button type="button" onClick={() => setAcik(acik === r.id ? null : r.id)}
-                          className="text-[var(--accent)] hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => setAcik(acik === r.id ? null : r.id)}
+                          className="text-[var(--accent)] hover:underline"
+                        >
                           {acik === r.id ? 'gizle' : 'ayrıntı'}
                         </button>
                       </td>
@@ -1060,7 +1153,9 @@ export function IsGecmisiPanel() {
                             )}
                             <p>
                               <span className="text-[var(--text-muted)]">AWX: </span>
-                              {r.awx_job_id ? `sunucu ${r.awx_server_id} / iş #${r.awx_job_id}` : '—'}
+                              {r.awx_job_id
+                                ? `sunucu ${r.awx_server_id} / iş #${r.awx_job_id}`
+                                : '—'}
                             </p>
                             {r.approved_by && (
                               <p>
@@ -1076,9 +1171,9 @@ export function IsGecmisiPanel() {
                               </p>
                             )}
                             <p className="text-[var(--text-muted)]">
-                              Tam çıktı ve hedef bazlı sonuç bu listede taşınmaz (tek işin
-                              sonucu yüz binlerce karakter olabiliyor); AWX iş numarasından
-                              Otomasyon ekranında okunabilir.
+                              Tam çıktı ve hedef bazlı sonuç bu listede taşınmaz (tek işin sonucu
+                              yüz binlerce karakter olabiliyor); AWX iş numarasından Otomasyon
+                              ekranında okunabilir.
                             </p>
                           </div>
                         </td>
@@ -1139,7 +1234,11 @@ function ClusterCapsPanel() {
 
   /** Listedeki EN YENI tarama damgasi — not bunu gosterir. */
   const enYeniTarama = useMemo(
-    () => rows.map((r) => r.fetchedAt).sort((a, b) => a.localeCompare(b)).slice(-1)[0] || '',
+    () =>
+      rows
+        .map((r) => r.fetchedAt)
+        .sort((a, b) => a.localeCompare(b))
+        .slice(-1)[0] || '',
     [rows],
   );
 
@@ -1191,8 +1290,8 @@ function ClusterCapsPanel() {
           <p className="text-sm font-semibold text-[var(--text-primary)]">Cluster yetenekleri</p>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
             Ölçeklenebilir CRD listesi ve yetki taraması. Keşfin en pahalı iki kalemi burada{' '}
-            <strong>bir kez</strong> hesaplanır; sonraki keşifler bunu okuyup cluster başına
-            ~50 API çağrısını atlar.
+            <strong>bir kez</strong> hesaplanır; sonraki keşifler bunu okuyup cluster başına ~50 API
+            çağrısını atlar.
             {ttl != null && ` Kayıt ${ttl} gün geçerli sayılır.`}
           </p>
         </div>
@@ -1251,7 +1350,9 @@ function ClusterCapsPanel() {
           disabled={tarayan || !env || !tenant || !clusterlar.length}
           className="btn-primary text-xs py-1.5 disabled:opacity-50"
         >
-          {tarayan ? 'Başlatılıyor…' : `Tara${clusterlar.length ? ` (${clusterlar.length} cluster)` : ''}`}
+          {tarayan
+            ? 'Başlatılıyor…'
+            : `Tara${clusterlar.length ? ` (${clusterlar.length} cluster)` : ''}`}
         </button>
         <button
           type="button"
@@ -1267,10 +1368,7 @@ function ClusterCapsPanel() {
           tekrarlayan kullanici sorusu. Damga EN YENI satirdan alinir; hic
           satir yoksa `null` gecilir ve not "tarama kaydi yok" der (VERI YOK
           ile TARAMA DAMGASI YOK ayri seylerdir). */}
-      <SourceNote
-        source={SCALEX_CAPS}
-        scanDate={rows.length ? fmtDateTime(enYeniTarama) : null}
-      />
+      <SourceNote source={SCALEX_CAPS} scanDate={rows.length ? fmtDateTime(enYeniTarama) : null} />
 
       {taramaNotu && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-800">
@@ -1279,7 +1377,10 @@ function ClusterCapsPanel() {
       )}
 
       {err && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
+        >
           {err}
         </div>
       )}
@@ -1290,8 +1391,8 @@ function ClusterCapsPanel() {
 
       {!loading && !rows.length && !err && (
         <p className="text-xs text-[var(--text-muted)]">
-          Bu kapsamda taranmış cluster yok. Yukarıdan ortam + tenant seçip{' '}
-          <strong>Tara</strong> deyin — liste ancak bu taramayla dolar. O ana kadar keşif{' '}
+          Bu kapsamda taranmış cluster yok. Yukarıdan ortam + tenant seçip <strong>Tara</strong>{' '}
+          deyin — liste ancak bu taramayla dolar. O ana kadar keşif{' '}
           <strong>eski (yavaş) yolu</strong> kullanır, sonuç yine doğrudur.
         </p>
       )}

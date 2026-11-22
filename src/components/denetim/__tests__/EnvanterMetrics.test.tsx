@@ -142,7 +142,14 @@ describe('EnvanterMetrics', () => {
   it('EM4 isi haritasi hucresi kademeli tonu ve iki temada okunur metni kullanir (isiHaritasi.ts)', async () => {
     mockPivot.mockResolvedValue({
       ...pivot(),
-      y: { key: 'env', label: 'Ortam', values: [{ value: 'prod', count: 5 }, { value: 'test', count: 1 }] },
+      y: {
+        key: 'env',
+        label: 'Ortam',
+        values: [
+          { value: 'prod', count: 5 },
+          { value: 'test', count: 1 },
+        ],
+      },
       cells: { ['a' + SEP + 'prod']: 5, ['a' + SEP + 'test']: 1 },
       total: 6,
     });
@@ -150,7 +157,9 @@ describe('EnvanterMetrics', () => {
       render(<EnvanterMetrics />);
     });
     const hucre = (n: string) =>
-      screen.getAllByText(n).find((el) => el.tagName === 'SPAN' && el.getAttribute('style')) as HTMLElement;
+      screen
+        .getAllByText(n)
+        .find((el) => el.tagName === 'SPAN' && el.getAttribute('style')) as HTMLElement;
     // en buyuk hucre: en ust seviye, koyu metin; 1/5 -> karekok 0.45 -> 3. seviye, --text-primary
     expect(hucre('5').style.color).toBe('var(--isi-metin-koyu)');
     expect(hucre('5').style.backgroundColor).toContain('72%');

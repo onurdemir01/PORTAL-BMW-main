@@ -66,7 +66,7 @@ const kayit = (durum: EtDurum, ek: Partial<EtKayit> = {}): EtKayit => ({
   id: 11,
   host: 'hosta01',
   kok: '/vhosting',
-  ad: 'GBSTPCOMPLIANCE.ear',
+  ad: 'ORSTPCOMPLIANCE.ear',
   jboss: 7,
   prod: false,
   durum,
@@ -83,7 +83,7 @@ const kayit = (durum: EtDurum, ek: Partial<EtKayit> = {}): EtKayit => ({
       ? {
           fp: 'abcdef0123456789'.repeat(4),
           ls: [
-            'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/GBSTPCOMPLIANCE.ear',
+            'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/ORSTPCOMPLIANCE.ear',
             'total 8',
             '-rw-r----- 1 was was 812 Nov 10 09:00 META-INF',
           ],
@@ -112,7 +112,7 @@ const aday = (ek: Partial<EtAday> = {}): EtAday => ({
   ortam: 'Test',
   prod: false,
   kok: '/vhosting',
-  ad: 'GBSTPCOMPLIANCE.ear',
+  ad: 'ORSTPCOMPLIANCE.ear',
   jboss: 7,
   envanterTarihi: '2026-11-15T03:00:00Z',
   engel: null,
@@ -182,7 +182,7 @@ describe('EarTemizlikTab', () => {
     render(<EarTemizlikTab />);
     const satirlar = await screen.findAllByTestId('et-aday');
     expect(satirlar).toHaveLength(2);
-    expect(within(satirlar[0]).getByText('/vhosting/GBSTPCOMPLIANCE.ear')).toBeInTheDocument();
+    expect(within(satirlar[0]).getByText('/vhosting/ORSTPCOMPLIANCE.ear')).toBeInTheDocument();
     expect(within(satirlar[0]).getByTestId('et-prod')).toHaveTextContent('PROD');
     expect(within(satirlar[0]).getByRole('button', { name: /Ön kontrol/ })).toBeEnabled();
     expect(within(satirlar[1]).queryByTestId('et-prod')).toBeNull();
@@ -222,7 +222,7 @@ describe('EarTemizlikTab', () => {
     const ls = await screen.findByTestId('et-ls');
     expect(ls.tagName).toBe('PRE');
     expect(ls).toHaveTextContent(
-      'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/GBSTPCOMPLIANCE.ear',
+      'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/ORSTPCOMPLIANCE.ear',
     );
     expect(ls).toHaveTextContent('META-INF');
     const bilgi = screen.getByTestId('et-bilgi');
@@ -237,11 +237,11 @@ describe('EarTemizlikTab', () => {
     fireEvent.click(screen.getByRole('checkbox', INCELEDIM));
     expect(sil).toBeDisabled();
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'gbstpcompliance.ear' },
+      target: { value: 'orstpcompliance.ear' },
     });
     expect(sil).toBeDisabled();
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     expect(sil).toBeEnabled();
     fireEvent.click(screen.getByRole('checkbox', INCELEDIM));
@@ -259,7 +259,7 @@ describe('EarTemizlikTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Yedekle ve sil' }));
     await waitFor(() => expect(cagrilar.some((c) => c.method === 'POST')).toBe(true));
@@ -267,7 +267,7 @@ describe('EarTemizlikTab', () => {
     expect(post.url).toBe('/api/server-hub/ear-temizlik/11/sil');
     expect(post.body).toEqual({
       confirmed: true,
-      onayMetni: 'GBSTPCOMPLIANCE.ear',
+      onayMetni: 'ORSTPCOMPLIANCE.ear',
       planJobId: 4242,
     });
     await waitFor(() => expect(screen.queryByTestId('et-teyit')).toBeNull());
@@ -298,7 +298,7 @@ describe('EarTemizlikTab', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Yedekle ve sil' }));
     const teyit = await screen.findByTestId('et-teyit');
@@ -326,7 +326,7 @@ describe('EarTemizlikTab', () => {
             kayit: kayit('SILINDI', {
               id: 13,
               host: 'hostc03',
-              yedek: '/var/tmp/server_hub_backup/ear-GBSTPCOMPLIANCE.ear-20261116.tgz',
+              yedek: '/var/tmp/server_hub_backup/ear-ORSTPCOMPLIANCE.ear-20261116.tgz',
               envanter: {
                 kosuId: null,
                 not: 'Başka Uygulama Envanteri koşusu sürüyor; uyarı bir sonraki taramada kalkar',
@@ -343,14 +343,14 @@ describe('EarTemizlikTab', () => {
     expect(await screen.findByTestId('et-kalan')).toHaveTextContent('Plan süresi doldu');
     fireEvent.click(screen.getByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     expect(screen.getByRole('button', { name: 'Yedekle ve sil' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'İptal' }));
     await waitFor(() => expect(screen.queryByTestId('et-teyit')).toBeNull());
     expect(within(satirlar[1]).getByText(/parmak izi değişti/)).toBeInTheDocument();
     expect(
-      within(satirlar[2]).getByText(/ear-GBSTPCOMPLIANCE\.ear-20261116\.tgz/),
+      within(satirlar[2]).getByText(/ear-ORSTPCOMPLIANCE\.ear-20261116\.tgz/),
     ).toBeInTheDocument();
     expect(
       within(satirlar[2]).getByText(/Başka Uygulama Envanteri koşusu sürüyor/),
@@ -463,7 +463,7 @@ describe('EarTemizlikTab yoklama', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     const sil = screen.getByRole('button', { name: 'Yedekle ve sil' });
     expect(sil).toBeEnabled();
@@ -530,7 +530,7 @@ describe('EarTemizlikTab teyit kapıları', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     const sil = screen.getByRole('button', { name: 'Yedekle ve sil' });
     expect(sil).toBeEnabled();
@@ -551,7 +551,7 @@ describe('EarTemizlikTab teyit kapıları', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     expect(screen.getByTestId('et-kalan')).toHaveTextContent('bilinmiyor');
     const sil2 = screen.getByRole('button', { name: 'Yedekle ve sil' });
@@ -580,7 +580,7 @@ describe('EarTemizlikTab toplu', () => {
     render(<EarTemizlikTab />);
     await screen.findAllByTestId('et-aday');
     const kutu = (h: string) =>
-      screen.getByRole('checkbox', { name: `Seç ${h} /vhosting/GBSTPCOMPLIANCE.ear` });
+      screen.getByRole('checkbox', { name: `Seç ${h} /vhosting/ORSTPCOMPLIANCE.ear` });
     expect(kutu('hostp01')).toBeEnabled();
     expect(kutu('hostd04')).toBeEnabled();
     expect(kutu('hostb02')).toBeDisabled();
@@ -621,7 +621,7 @@ describe('EarTemizlikTab toplu', () => {
         return yanit({
           ok: true,
           sonuclar: [
-            { host: 'hostp01', kok: '/vhosting', ad: 'GBSTPCOMPLIANCE.ear', ok: true, id: 21 },
+            { host: 'hostp01', kok: '/vhosting', ad: 'ORSTPCOMPLIANCE.ear', ok: true, id: 21 },
             {
               host: 'hostd04',
               kok: '/vhosting8',
@@ -654,7 +654,7 @@ describe('EarTemizlikTab toplu', () => {
     expect(post.url).toBe('/api/server-hub/ear-temizlik/toplu/on-kontrol');
     expect(post.body).toEqual({
       adaylar: [
-        { host: 'hostp01', kok: '/vhosting', ad: 'GBSTPCOMPLIANCE.ear' },
+        { host: 'hostp01', kok: '/vhosting', ad: 'ORSTPCOMPLIANCE.ear' },
         { host: 'hostd04', kok: '/vhosting8', ad: 'Y.ear' },
       ],
     });
@@ -726,7 +726,7 @@ describe('EarTemizlikTab toplu', () => {
     expect(ls[0]).toHaveTextContent(/dosya-7(?!\d)/);
     expect(ls[0]).toHaveTextContent('dosya-12');
     expect(ls[1]).toHaveTextContent(
-      'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/GBSTPCOMPLIANCE.ear',
+      'drwxr-x--- 3 was was 4096 Nov 10 09:00 /vhosting/ORSTPCOMPLIANCE.ear',
     );
     expect(ls[2]).toHaveTextContent('META-INF');
     fireEvent.click(within(ogeler[0]).getByRole('button', { name: 'Tamamını göster (12 satır)' }));
@@ -794,7 +794,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sil (2)' }));
     const red = await within(pencere).findByTestId('et-toplu-red');
     expect(red).toHaveTextContent(
-      'hostq02 /vhosting/GBSTPCOMPLIANCE.ear: Bulgu artık taze taramada yok',
+      'hostq02 /vhosting/ORSTPCOMPLIANCE.ear: Bulgu artık taze taramada yok',
     );
     expect(within(pencere).getByRole('alert')).toHaveTextContent('hiçbir kayıt değişmedi');
     expect(screen.getByTestId('et-toplu-teyit')).toBeInTheDocument();
@@ -875,7 +875,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Yedekle ve sil' }));
     await waitFor(() => expect(screen.queryByTestId('et-teyit')).toBeNull());
@@ -930,7 +930,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     const sil = screen.getByRole('button', { name: 'Yedekle ve sil' });
     expect(sil).toBeDisabled();
@@ -991,7 +991,7 @@ describe('EarTemizlikTab toplu', () => {
       .find((x) => /işaretlenemedi/.test(x.textContent || ''));
     expect(uyari).toBeDefined();
     expect(uyari).toHaveTextContent('1 kayıt işaretlenemedi');
-    expect(uyari).toHaveTextContent('hostq02 /vhosting/GBSTPCOMPLIANCE.ear');
+    expect(uyari).toHaveTextContent('hostq02 /vhosting/ORSTPCOMPLIANCE.ear');
     expect(uyari).not.toHaveTextContent('hostp01');
   });
 
@@ -1033,7 +1033,7 @@ describe('EarTemizlikTab toplu', () => {
     expect(dugme).toBeDisabled();
     expect(dugme).toHaveAttribute('title', expect.stringMatching(/En çok 50/));
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Seç hostn100 /vhosting/GBSTPCOMPLIANCE.ear' }),
+      screen.getByRole('checkbox', { name: 'Seç hostn100 /vhosting/ORSTPCOMPLIANCE.ear' }),
     );
     expect(dugme).toHaveTextContent('(50)');
     expect(dugme).toBeEnabled();
@@ -1051,7 +1051,7 @@ describe('EarTemizlikTab toplu', () => {
     render(<EarTemizlikTab />);
     await screen.findAllByTestId('et-aday');
     const kutu = (h: string) =>
-      screen.getByRole('checkbox', { name: `Seç ${h} /vhosting/GBSTPCOMPLIANCE.ear` });
+      screen.getByRole('checkbox', { name: `Seç ${h} /vhosting/ORSTPCOMPLIANCE.ear` });
     const dugme = () => screen.getByRole('button', { name: /Seçilenlere ön kontrol/ });
     fireEvent.click(screen.getByRole('checkbox', { name: /hepsini seç/ }));
     expect(dugme()).toHaveTextContent('(2)');
@@ -1091,7 +1091,7 @@ describe('EarTemizlikTab toplu', () => {
     render(<EarTemizlikTab />);
     await screen.findAllByTestId('et-aday');
     expect(screen.queryByTestId('et-toplu-grup')).toBeNull();
-    const k = screen.getByRole('checkbox', { name: 'Seç hostu01 /vhosting/GBSTPCOMPLIANCE.ear' });
+    const k = screen.getByRole('checkbox', { name: 'Seç hostu01 /vhosting/ORSTPCOMPLIANCE.ear' });
     expect(k).toBeDisabled();
     expect(k).toHaveAttribute('title', expect.stringMatching(/belirsiz/));
     expect(screen.getByRole('button', { name: /Ön kontrol hostu01/ })).toBeEnabled();
@@ -1146,7 +1146,7 @@ describe('EarTemizlikTab toplu yoklama', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
     fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
     fireEvent.change(screen.getByLabelText('EAR adı'), {
-      target: { value: 'GBSTPCOMPLIANCE.ear' },
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
     });
     const sil = screen.getByRole('button', { name: 'Yedekle ve sil' });
     expect(sil).toBeEnabled();

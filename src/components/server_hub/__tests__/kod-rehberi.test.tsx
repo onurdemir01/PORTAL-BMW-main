@@ -55,16 +55,42 @@ const KURALLAR: ShKurallar = {
       ad: 'JVM durumu',
       neTaranir: 'x',
       ciktilar: [
-        { kod: 'REBOOT_RISK', kosul: 'JVM çalışıyor ama auto-start kapalı', varsayilan: 'danger', gecerli: 'danger' },
-        { kod: 'STOPPED_AUTOSTART_ON', kosul: 'JVM kapalı ama auto-start açık', varsayilan: 'danger', gecerli: 'warning' },
-        { kod: 'KOPYA_TUTARSIZ', kosul: 'eşlenik kopyalar tutarsız', varsayilan: 'warning', gecerli: 'warning' },
+        {
+          kod: 'REBOOT_RISK',
+          kosul: 'JVM çalışıyor ama auto-start kapalı',
+          varsayilan: 'danger',
+          gecerli: 'danger',
+        },
+        {
+          kod: 'STOPPED_AUTOSTART_ON',
+          kosul: 'JVM kapalı ama auto-start açık',
+          varsayilan: 'danger',
+          gecerli: 'warning',
+        },
+        {
+          kod: 'KOPYA_TUTARSIZ',
+          kosul: 'eşlenik kopyalar tutarsız',
+          varsayilan: 'warning',
+          gecerli: 'warning',
+        },
         { kod: null, kosul: 'sorun yok', varsayilan: 'ok', gecerli: 'ok' },
       ],
     },
   ],
   limitler: [],
   etiketKurallari: [
-    { kural: 'R1', tur: 'JVM', ad: 'Kapalı + auto-start açık + trafik yok', kosul: 'k', varsayilan: 'KESIN', gecerli: 'KESIN', degistiren: null, zaman: null, aciklama: '', dogrulama: null },
+    {
+      kural: 'R1',
+      tur: 'JVM',
+      ad: 'Kapalı + auto-start açık + trafik yok',
+      kosul: 'k',
+      varsayilan: 'KESIN',
+      gecerli: 'KESIN',
+      degistiren: null,
+      zaman: null,
+      aciklama: '',
+      dogrulama: null,
+    },
   ],
   gecmis: [],
 };
@@ -80,7 +106,10 @@ beforeEach(() => {
     ok: true,
     tableMissing: false,
     latestScan: '2026-11-11',
-    findings: [bulgu('GBAPP01', 'REBOOT_RISK', 'app1 auto-start kapalı'), bulgu('GBAPP02', 'STOPPED_AUTOSTART_ON', 'app2 kapalı')],
+    findings: [
+      bulgu('ORAPP01', 'REBOOT_RISK', 'app1 auto-start kapalı'),
+      bulgu('ORAPP02', 'STOPPED_AUTOSTART_ON', 'app2 kapalı'),
+    ],
   });
   m.kurallar.mockResolvedValue(KURALLAR);
 });
@@ -101,7 +130,9 @@ describe('Bulgular kodları', () => {
   it('KR2 kodlar kapalıyken çipler okunur ad; tıklama süzer', async () => {
     render(<FindingsTab />);
     await screen.findByText('app1 auto-start kapalı');
-    const cipler = screen.getAllByRole('button', { pressed: false }).filter((b) => /\d$/.test(b.textContent || ''));
+    const cipler = screen
+      .getAllByRole('button', { pressed: false })
+      .filter((b) => /\d$/.test(b.textContent || ''));
     expect(cipler.length).toBe(2);
     expect(cipler.every((b) => !/[A-Z]{3,}_[A-Z]/.test(b.textContent || ''))).toBe(true);
     fireEvent.click(cipler.find((b) => b.getAttribute('title') === 'REBOOT_RISK')!);
@@ -134,12 +165,20 @@ describe('Bulgular kodları', () => {
     fireEvent.click(screen.getByRole('button', { name: /Kod rehberi/ }));
     const panel = await screen.findByRole('dialog', { name: 'Kod rehberi' });
     expect(await within(panel).findByText(/R1–R1 kodları nedir/)).toBeInTheDocument();
-    expect(within(panel).getByText(/Retirement Analizi › Retirement etiketleri/)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/Retirement Analizi › Retirement etiketleri/),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Kod rehberi' })).toBeNull();
   });
   it('KR5 non-prod tavanı işareti prod ortamındaki ETKİN seviyeyi yazar (Admin uyarı -> kritik ise kritik)', async () => {
-    const np = { ...bulgu('GBAPT01', 'SYNTAX_UNVERIFIED', 'np1'), env: 'TEST', envGroup: 'Non-Production', severity: 'warning' as const, ortamTavani: true };
+    const np = {
+      ...bulgu('ORAPT01', 'SYNTAX_UNVERIFIED', 'np1'),
+      env: 'TEST',
+      envGroup: 'Non-Production',
+      severity: 'warning' as const,
+      ortamTavani: true,
+    };
     m.findings.mockResolvedValue({
       ok: true,
       tableMissing: false,
@@ -147,14 +186,22 @@ describe('Bulgular kodları', () => {
       findings: [
         { ...np, defaultSeverity: 'warning' as const, prodSeverity: 'danger' as const },
         // eski rapor satiri (prodSeverity yok): varsayilana duser
-        { ...np, host: 'GBAPT02', text: 'np2', defaultSeverity: 'danger' as const },
-        { ...np, host: 'GBAPT03', text: 'np3', severity: 'info' as const, defaultSeverity: 'warning' as const, prodSeverity: 'warning' as const },
+        { ...np, host: 'ORAPT02', text: 'np2', defaultSeverity: 'danger' as const },
+        {
+          ...np,
+          host: 'ORAPT03',
+          text: 'np3',
+          severity: 'info' as const,
+          defaultSeverity: 'warning' as const,
+          prodSeverity: 'warning' as const,
+        },
       ],
     });
     shOnbellek._sifirlaForTest();
     render(<FindingsTab />);
     await screen.findByText('np1');
-    const isaret = (t: string) => within(screen.getByText(t).closest('tr')!).getByText(/non-prod · prod'da/).textContent;
+    const isaret = (t: string) =>
+      within(screen.getByText(t).closest('tr')!).getByText(/non-prod · prod'da/).textContent;
     expect(isaret('np1')).toBe("non-prod · prod'da kritik");
     expect(isaret('np2')).toBe("non-prod · prod'da kritik");
     expect(isaret('np3')).toBe("non-prod · prod'da uyarı");

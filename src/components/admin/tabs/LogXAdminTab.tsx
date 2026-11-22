@@ -19,12 +19,34 @@ import {
 import InventoryGapsTab from './InventoryGapsTab';
 
 const BOLUMLER = [
-  { id: 'logx-erisim', baslik: 'Erişim', aciklama: 'Kim, hangi uygulama / namespace / ortamın loglarını alabilir; kaynak sahipleri; "neden reddedildi?" ve red günlüğü.' },
-  { id: 'logx-awx', baslik: 'AWX hazırlık durumu', aciklama: 'LogX işlerinin bağlı olduğu AWX şablonları başlatılmaya hazır mı.' },
+  {
+    id: 'logx-erisim',
+    baslik: 'Erişim',
+    aciklama:
+      'Kim, hangi uygulama / namespace / ortamın loglarını alabilir; kaynak sahipleri; "neden reddedildi?" ve red günlüğü.',
+  },
+  {
+    id: 'logx-awx',
+    baslik: 'AWX hazırlık durumu',
+    aciklama: 'LogX işlerinin bağlı olduğu AWX şablonları başlatılmaya hazır mı.',
+  },
   { id: 'logx-istekler', baslik: 'İstek İzleme', aciklama: 'Son LogX istekleri ve durumları.' },
-  { id: 'logx-maske', baslik: 'Maskeleme Kuralları', aciklama: 'AI analizinde uygulanan PII maskeleri.' },
-  { id: 'logx-sonek', baslik: 'Legacy Ortam Son-Eki', aciklama: 'EAR klasör son-eki ("-T") → ortam etiketi ("TEST"); Legacy ortam kısıtları buradan türer.' },
-  { id: 'logx-bosluk', baslik: 'Envanter Boşlukları', aciklama: 'Kullanıcıların elle girdiği ama envanterde olmayan uygulama/sunucular.' },
+  {
+    id: 'logx-maske',
+    baslik: 'Maskeleme Kuralları',
+    aciklama: 'AI analizinde uygulanan PII maskeleri.',
+  },
+  {
+    id: 'logx-sonek',
+    baslik: 'Legacy Ortam Son-Eki',
+    aciklama:
+      'EAR klasör son-eki ("-T") → ortam etiketi ("TEST"); Legacy ortam kısıtları buradan türer.',
+  },
+  {
+    id: 'logx-bosluk',
+    baslik: 'Envanter Boşlukları',
+    aciklama: 'Kullanıcıların elle girdiği ama envanterde olmayan uygulama/sunucular.',
+  },
 ] as const;
 
 const ICERIK: Record<(typeof BOLUMLER)[number]['id'], React.ReactNode> = {

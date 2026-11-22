@@ -45,7 +45,9 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
     const tus = (e: KeyboardEvent) => {
       if (e.key === 'Escape') kapatFn.current();
       if (e.key !== 'Tab' || !panelRef.current) return;
-      const odak = panelRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input, summary, [tabindex]:not([tabindex="-1"])');
+      const odak = panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input, summary, [tabindex]:not([tabindex="-1"])',
+      );
       if (!odak.length) return;
       const ilk = odak[0];
       const son = odak[odak.length - 1];
@@ -74,8 +76,7 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
         if (r.ok) {
           setVeri(r);
           setHata('');
-        }
-        else setHata(r.message || 'Kurallar okunamadı.');
+        } else setHata(r.message || 'Kurallar okunamadı.');
       })
       .catch((e: unknown) => canli && setHata(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -86,7 +87,19 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
   const gruplar = useMemo(() => {
     if (!veri) return [];
     const n = ara.trim().toLocaleLowerCase('tr');
-    const m = new Map<string, { alanAd: string; kodlar: { kod: string; kosul: string; gecerli: ShSeverity; varsayilan: ShSeverity; madde: string }[] }>();
+    const m = new Map<
+      string,
+      {
+        alanAd: string;
+        kodlar: {
+          kod: string;
+          kosul: string;
+          gecerli: ShSeverity;
+          varsayilan: ShSeverity;
+          madde: string;
+        }[];
+      }
+    >();
     for (const md of veri.maddeler) {
       for (const c of md.ciktilar) {
         if (!c.kod) continue;
@@ -94,13 +107,21 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
         const metin = `${c.kod} ${ad(c.kod)} ${c.kosul} ${md.ad}`.toLocaleLowerCase('tr');
         if (n && !metin.includes(n)) continue;
         const g = m.get(md.alan) || { alanAd: md.alanAd || md.alan, kodlar: [] };
-        g.kodlar.push({ kod: c.kod, kosul: c.kosul, gecerli: c.gecerli, varsayilan: c.varsayilan, madde: md.ad });
+        g.kodlar.push({
+          kod: c.kod,
+          kosul: c.kosul,
+          gecerli: c.gecerli,
+          varsayilan: c.varsayilan,
+          madde: md.ad,
+        });
         m.set(md.alan, g);
       }
     }
     const sonuc = [...m.values()].map((g) => {
       const kodlar = [...g.kodlar];
-      kodlar.sort((a, b) => SIRA[a.gecerli] - SIRA[b.gecerli] || ad(a.kod).localeCompare(ad(b.kod), 'tr'));
+      kodlar.sort(
+        (a, b) => SIRA[a.gecerli] - SIRA[b.gecerli] || ad(a.kod).localeCompare(ad(b.kod), 'tr'),
+      );
       return { ...g, kodlar };
     });
     sonuc.sort((a, b) => a.alanAd.localeCompare(b.alanAd, 'tr'));
@@ -111,22 +132,37 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
   if (!acik) return null;
   return (
     // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC (yukaridaki dinleyici).
-    <div className="fixed inset-0 z-50 flex justify-end" role="presentation" onClick={(e) => e.target === e.currentTarget && onKapat()} style={{ background: 'color-mix(in srgb, var(--bg-base, #000) 35%, transparent)' }}>
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      role="presentation"
+      onClick={(e) => e.target === e.currentTarget && onKapat()}
+      style={{ background: 'color-mix(in srgb, var(--bg-base, #000) 35%, transparent)' }}
+    >
       <aside
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="kod-rehberi-baslik"
         className="h-full w-full max-w-[440px] flex flex-col shadow-2xl border-l"
-        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)', color: 'var(--text-primary)' }}
+        style={{
+          background: 'var(--bg-surface)',
+          borderColor: 'var(--border-subtle)',
+          color: 'var(--text-primary)',
+        }}
       >
-        <header className="px-4 pt-4 pb-3 border-b space-y-3" style={{ borderColor: 'var(--border-subtle)' }}>
+        <header
+          className="px-4 pt-4 pb-3 border-b space-y-3"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <div className="flex items-start gap-2">
             <BookOpenIcon className="w-5 h-5 mt-0.5 shrink-0" style={{ color: 'var(--accent)' }} />
             <div className="flex-1 min-w-0">
-              <h2 id="kod-rehberi-baslik" className="text-sm font-semibold">Kod rehberi</h2>
+              <h2 id="kod-rehberi-baslik" className="text-sm font-semibold">
+                Kod rehberi
+              </h2>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                Her bulgu kodunun anlamı ve şu anki seviyesi. Bir koda tıklayınca liste o koda süzülür.
+                Her bulgu kodunun anlamı ve şu anki seviyesi. Bir koda tıklayınca liste o koda
+                süzülür.
               </p>
             </div>
             <button
@@ -141,17 +177,28 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
             </button>
           </div>
           <div className="relative">
-            <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <MagnifyingGlassIcon
+              className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            />
             <input
               value={ara}
               onChange={(e) => setAra(e.target.value)}
               placeholder="kod ya da anlam ara"
               aria-label="Kod rehberinde ara"
               className="w-full h-8 pl-8 pr-2 text-xs border rounded-lg"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              style={{
+                borderColor: 'var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+              }}
             />
           </div>
-          <div className="flex items-center gap-1 text-[11px]" role="radiogroup" aria-label="Hangi kodlar">
+          <div
+            className="flex items-center gap-1 text-[11px]"
+            role="radiogroup"
+            aria-label="Hangi kodlar"
+          >
             {(
               [
                 [true, 'Bu listedekiler'],
@@ -183,7 +230,11 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-          {!veri && !hata && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Kurallar yükleniyor…</p>}
+          {!veri && !hata && (
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Kurallar yükleniyor…
+            </p>
+          )}
           {hata && (
             <p className="text-xs" role="alert" style={{ color: 'var(--status-danger)' }}>
               Kurallar okunamadı: {hata}
@@ -196,7 +247,10 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
           )}
           {gruplar.map((g) => (
             <section key={g.alanAd} aria-label={g.alanAd}>
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <h3
+                className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {g.alanAd}
               </h3>
               <ul className="space-y-1">
@@ -222,23 +276,36 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="text-[12px] font-medium leading-snug">{ad(k.kod)}</div>
-                            <div className="text-[11px] leading-snug mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                            <div
+                              className="text-[11px] leading-snug mt-0.5"
+                              style={{ color: 'var(--text-secondary)' }}
+                            >
                               {k.kosul}
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               <SeviyeRozeti s={k.gecerli} kucuk />
                               {k.gecerli !== k.varsayilan && (
-                                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                                <span
+                                  className="text-[10px]"
+                                  style={{ color: 'var(--text-muted)' }}
+                                >
                                   varsayılan {SEVIYE[k.varsayilan].etiket}
                                 </span>
                               )}
-                              <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                              <span
+                                className="font-mono text-[10px]"
+                                style={{ color: 'var(--text-muted)' }}
+                              >
                                 {k.kod}
                               </span>
                             </div>
                           </div>
                           {n > 0 && (
-                            <span className="text-[11px] font-semibold tabular-nums shrink-0" style={{ color: 'var(--text-secondary)' }} title="bu listedeki bulgu sayısı">
+                            <span
+                              className="text-[11px] font-semibold tabular-nums shrink-0"
+                              style={{ color: 'var(--text-secondary)' }}
+                              title="bu listedeki bulgu sayısı"
+                            >
                               {fmtNumber(n)}
                             </span>
                           )}
@@ -252,14 +319,20 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
           ))}
 
           {veri?.etiketKurallari && veri.etiketKurallari.length > 0 && (
-            <details className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+            <details
+              className="rounded-lg border px-3 py-2"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
               <summary className="cursor-pointer text-[12px] font-medium">
                 R1–R{veri.etiketKurallari.length} kodları nedir?
               </summary>
-              <p className="text-[11px] mt-1.5 leading-snug" style={{ color: 'var(--text-secondary)' }}>
-                Bunlar bulgu değil, <b>retirement etiket kuralları</b>: “bu uygulama emekli edilebilir mi” sorusunu
-                işaretler. Bulgular listesinde çıkmazlar; Retirement Analizi › Retirement etiketleri listesinde ve
-                sunucu panelinde görünürler.
+              <p
+                className="text-[11px] mt-1.5 leading-snug"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Bunlar bulgu değil, <b>retirement etiket kuralları</b>: “bu uygulama emekli
+                edilebilir mi” sorusunu işaretler. Bulgular listesinde çıkmazlar; Retirement Analizi
+                › Retirement etiketleri listesinde ve sunucu panelinde görünürler.
               </p>
               <ul className="mt-2 space-y-1">
                 {veri.etiketKurallari.map((r) => (
@@ -269,7 +342,11 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
                     </span>
                     <span className="flex-1">{r.ad}</span>
                     <span className="shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {r.gecerli === 'KESIN' ? 'kesin' : r.gecerli === 'SUPHELI' ? 'şüpheli' : 'kapalı'}
+                      {r.gecerli === 'KESIN'
+                        ? 'kesin'
+                        : r.gecerli === 'SUPHELI'
+                          ? 'şüpheli'
+                          : 'kapalı'}
                     </span>
                   </li>
                 ))}
@@ -277,7 +354,10 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
             </details>
           )}
         </div>
-        <footer className="px-4 py-2 border-t text-[10px]" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
+        <footer
+          className="px-4 py-2 border-t text-[10px]"
+          style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}
+        >
           Seviyeler Kurallar &amp; Limitler sekmesinden değiştirilir.
         </footer>
       </aside>

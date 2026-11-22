@@ -21,7 +21,13 @@ const CLIENT = fs.readFileSync(
   'utf8',
 );
 
-const ROUTES = ['/history/tables', '/history/runs', '/history/at', '/history/diff', '/history/series'];
+const ROUTES = [
+  '/history/tables',
+  '/history/runs',
+  '/history/at',
+  '/history/diff',
+  '/history/series',
+];
 
 test('istemcinin cagirdigi HER gecmis ucu sunucuda TANIMLI', () => {
   for (const r of ROUTES) {
@@ -78,8 +84,13 @@ test('last_seen_at anlik goruntu alinan HER tabloda hash DISINDA (en kritik ayar
 });
 
 test('kullanicinin onayladigi bes tablo kapsamda', () => {
-  for (const name of ['Inventory', 'MWAppsInventory', 'BMW_Certificates_Inventory',
-                      'Openshift_Inventory', 'NginxRateLimitInventory']) {
+  for (const name of [
+    'Inventory',
+    'MWAppsInventory',
+    'BMW_Certificates_Inventory',
+    'Openshift_Inventory',
+    'NginxRateLimitInventory',
+  ]) {
     assert.ok(getTable(name), `kapsamda degil: ${name}`);
   }
 });
@@ -97,10 +108,17 @@ test('anahtar kolonlari yukleyicilerin DELETE ifadeleriyle ayni', () => {
   // tanimi kaynakla ayrisir ve fark ekrani anlamsiz sonuc uretir.
   assert.deepStrictEqual(getTable('Inventory').key, ['host']);
   assert.deepStrictEqual(getTable('MWAppsInventory').key, ['host', 'app', 'app_path']);
-  assert.deepStrictEqual(getTable('BMW_Certificates_Inventory').key,
-    ['env', 'host', 'conf_file', 'cert_file']);
-  assert.deepStrictEqual(getTable('Openshift_Inventory').key,
-    ['cluster', 'namespace', 'application']);
+  assert.deepStrictEqual(getTable('BMW_Certificates_Inventory').key, [
+    'env',
+    'host',
+    'conf_file',
+    'cert_file',
+  ]);
+  assert.deepStrictEqual(getTable('Openshift_Inventory').key, [
+    'cluster',
+    'namespace',
+    'application',
+  ]);
 });
 
 // ── Hash disi kolonlar ────────────────────────────────────────────────────────

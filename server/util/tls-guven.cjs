@@ -181,7 +181,7 @@ function guvenBaglami(anahtar) {
   }
   const anahtarMetni = dosyalar.map((d) => d.anahtar).join('||');
   const onceki = _baglamlar.get(anahtar);
-  if (onceki && onceki.anahtar === anahtarMetni) return onceki.baglam;
+  if (onceki?.anahtar === anahtarMetni) return onceki.baglam;
   const baglam = baglamKur(anahtar, dosyalar);
   _baglamlar.set(anahtar, { anahtar: anahtarMetni, baglam });
   return baglam;
@@ -194,7 +194,7 @@ function guvenBaglami(anahtar) {
  */
 function tlsSecenekleri(anahtar, hedef, { sunucuAdi } = {}) {
   entegrasyon(anahtar);
-  if (!hedef || hedef.protocol !== 'https:') return {};
+  if (hedef?.protocol !== 'https:') return {};
   const ad = sunucuAdi && !net.isIP(sunucuAdi) ? { servername: sunucuAdi } : {};
   const dogrula = !dogrulamaKapaliMi(anahtar);
   if (!dogrula) {

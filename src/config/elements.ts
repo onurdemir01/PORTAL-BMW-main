@@ -90,9 +90,28 @@ export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
   // BMW Hub (2026-11-08): acik isler / otomasyon talepleri, kendi girisi
   // 2026-11-08: Envanter, Denetim, Nobet ve OCO Takvimi de BMW Hub grubunda (kullanici)
-  { id: 'bmwhub', label: 'BMW Hub', itemIds: ['BmwHub', 'RebootKontrolu', 'Retirement', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'] },
+  {
+    id: 'bmwhub',
+    label: 'BMW Hub',
+    itemIds: [
+      'BmwHub',
+      'RebootKontrolu',
+      'Retirement',
+      'Envanter',
+      'Denetim',
+      'Nöbet',
+      'OcoTakvimi',
+      'IpSorgu',
+      'OcpSorgu',
+      'YukTesti',
+    ],
+  },
   // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
-  { id: 'arkspa', label: 'Nginx ARK SPA', itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'] },
+  {
+    id: 'arkspa',
+    label: 'Nginx ARK SPA',
+    itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'],
+  },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
   // Grup etiketi "Otomasyon" -> "Self Servis"; grup ANAHTARI ("otomasyon") degismedi

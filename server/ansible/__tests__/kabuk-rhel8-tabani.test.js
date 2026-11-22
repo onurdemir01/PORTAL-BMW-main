@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const AGAC = path.join(__dirname, '..', 'bmw_portal');
+const AGAC = path.join(__dirname, '..', 'playbooks', 'bmw_portal');
 
 // bash 5.0 / 5.1 / 5.2 ile gelenler. 4.4'te OLANLAR (mapfile, ${x@Q}, ${x@E}, ${x@P}, ${x@A},
 // ${x@a}, declare -A, ${x,,}) burada YOK.
@@ -27,8 +27,14 @@ const BASH5 = [
   { ad: 'BASH_ARGV0 (5.0)', re: /\bBASH_ARGV0\b/, degisken: 'BASH_ARGV0' },
   { ad: 'SRANDOM (5.1)', re: /\$\{?SRANDOM\b/, degisken: 'SRANDOM' },
   { ad: 'wait -p (5.1)', re: /\bwait\s+(-[a-z]*\s+)*-p\b/ },
-  { ad: '${x@U} / ${x@u} / ${x@L} / ${x@K} / ${x@k} (5.1+)', re: /\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?@[UuLKk]\}/ },
-  { ad: 'shopt localvar_inherit / localvar_unset / assoc_expand_once (5.0+)', re: /\bshopt\s+-[su]\s+(localvar_inherit|localvar_unset|assoc_expand_once)\b/ },
+  {
+    ad: '${x@U} / ${x@u} / ${x@L} / ${x@K} / ${x@k} (5.1+)',
+    re: /\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?@[UuLKk]\}/,
+  },
+  {
+    ad: 'shopt localvar_inherit / localvar_unset / assoc_expand_once (5.0+)',
+    re: /\bshopt\s+-[su]\s+(localvar_inherit|localvar_unset|assoc_expand_once)\b/,
+  },
   { ad: 'shopt patsub_replacement (5.2)', re: /\bshopt\s+-[su]\s+patsub_replacement\b/ },
 ];
 
@@ -42,7 +48,11 @@ function dosyalar(dir, out = []) {
 }
 
 // Yorum satirlari (# ...) taranmaz: aciklamada yapinin ADI gecebilir.
-const kodSatirlari = (metin) => metin.split('\n').map((s, i) => [i + 1, s]).filter(([, s]) => !/^\s*#/.test(s));
+const kodSatirlari = (metin) =>
+  metin
+    .split('\n')
+    .map((s, i) => [i + 1, s])
+    .filter(([, s]) => !/^\s*#/.test(s));
 
 function ihlaller(metin) {
   const bul = [];
@@ -58,11 +68,18 @@ function ihlaller(metin) {
 
 test('KR1 AWX agacindaki kabuk kodu bash 5e ozgu yapi kullanmiyor (RHEL 8 = bash 4.4)', () => {
   const liste = dosyalar(AGAC);
-  assert.ok(liste.filter((f) => f.endsWith('.sh')).length >= 5, `kabuk betikleri bulunamadi (${AGAC}) - bekci yanlis yere bakiyor`);
-  assert.ok(liste.some((f) => f.endsWith(path.join('opsx_was', 'files', 'opsx_was.sh'))), 'opsx_was.sh taranmiyor');
+  assert.ok(
+    liste.filter((f) => f.endsWith('.sh')).length >= 5,
+    `kabuk betikleri bulunamadi (${AGAC}) - bekci yanlis yere bakiyor`,
+  );
+  assert.ok(
+    liste.some((f) => f.endsWith(path.join('opsx_was', 'files', 'opsx_was.sh'))),
+    'opsx_was.sh taranmiyor',
+  );
   const bad = [];
   for (const f of liste) {
-    for (const i of ihlaller(fs.readFileSync(f, 'utf8'))) bad.push(`${path.relative(AGAC, f)}:${i}`);
+    for (const i of ihlaller(fs.readFileSync(f, 'utf8')))
+      bad.push(`${path.relative(AGAC, f)}:${i}`);
   }
   assert.deepEqual(bad, [], `RHEL 8 bash 4.4'te olmayan yapi:\n${bad.join('\n')}`);
 });

@@ -1,6 +1,6 @@
 // server/audit/__tests__/init-scripts-special.test.js — IS1..IS3 (2026-09-24).
 //
-// Kullanici: "Denetim > Init Scripts'de GBEVM* ve GBPRV* sunucularini genel envanterden
+// Kullanici: "Denetim > Init Scripts'de OREVM* ve ORPRV* sunucularini genel envanterden
 // exclude et ve bunlari ayri olarak listele. Ayni durumu Server Hub'da da uygula."
 //
 // Kilitlenen iddialar:
@@ -19,7 +19,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..', '..', '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
-test('IS1 sunucu: cogunluk genel envanterden, GBEVM/GBPRV ayni cogunluga gore ayri raporlanir', () => {
+test('IS1 sunucu: cogunluk genel envanterden, OREVM/ORPRV ayni cogunluga gore ayri raporlanir', () => {
   const src = read('server/audit/denetim.cjs');
   assert.match(src, /const isSpecialHost = \(h\) => SPECIAL_HOST_RE\.test/);
   assert.match(src, /const genelRaw = raw\.filter\(\(r\) => !isSpecialHost\(r\.host\)\)/);
@@ -36,19 +36,23 @@ test('IS1 sunucu: cogunluk genel envanterden, GBEVM/GBPRV ayni cogunluga gore ay
 test('IS2 olcut Denetim ve Server Hub icinde AYNI', () => {
   const denetim = read('server/audit/denetim.cjs');
   const hub = read('server/server-hub/assess.cjs');
-  const re = /const SPECIAL_HOST_RE = (\/\^\([^\n]*?\/i);/;
+  const re = /const SPECIAL_HOST_RE = (\/\^[^\n]*?\/i);/;
   const a = denetim.match(re);
   const b = hub.match(re);
   assert.ok(a, 'denetim.cjs SPECIAL_HOST_RE tanimlamiyor');
   assert.ok(b, 'server-hub/assess.cjs SPECIAL_HOST_RE tanimlamiyor');
   assert.equal(a[1], b[1], 'iki ekran farkli olcut kullaniyor - sayilar tutmaz');
-  assert.equal(a[1], '/^(GBEVM|GBPRV)/i');
+  // Iki harfli kurum oneki + sinif; onek koda yazilmaz (K17).
+  assert.equal(a[1], '/^[A-Z]{2}(?:EVM|PRV)/i');
 });
 
 test('IS3 istemci: secim yalniz ozel sunucu varsa gorunur, sayaclar secilen kumeden', () => {
   const page = read('src/components/DenetimPage.tsx');
   assert.match(page, /const \[cls, setCls\] = useState<'genel' \| 'ozel'>\('genel'\)/);
-  assert.match(page, /cls === 'ozel' && data\?\.special \? \(\{ \.\.\.data, \.\.\.data\.special \}/);
+  assert.match(
+    page,
+    /cls === 'ozel' && data\?\.special \? \(\{ \.\.\.data, \.\.\.data\.special \}/,
+  );
   assert.ok(page.includes('{data?.special && ('), 'secim dugmeleri ozel sunucu yoksa cizilmemeli');
   // ozet sayaclari secilen kumeden (shown), ham yanittan degil
   for (const alan of ['hosts', 'identicalHosts', 'totalVariants']) {

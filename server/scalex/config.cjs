@@ -107,11 +107,19 @@ function readOne(key) {
     // HAM DEGER KIRPILIR. `system-config` PUT'u yalnizca satir sonu kontrol ediyor,
     // UZUNLUK kapisi yok: 1 MB'lik tek satirlik bir override, `GET /api/scalex/config`
     // yanitini HER ISTEKTE 1 MB sisirirdi. Denetim kaydi da ayni refleksle kirpiyor.
-    return { value: spec.fallback, source: 'default', problem: `${key}: "${raw.slice(0, 40)}" bir tam sayı değil — fabrika değeri (${spec.fallback}) kullanılıyor.` };
+    return {
+      value: spec.fallback,
+      source: 'default',
+      problem: `${key}: "${raw.slice(0, 40)}" bir tam sayı değil — fabrika değeri (${spec.fallback}) kullanılıyor.`,
+    };
   }
   const n = Number(raw);
   if (n < spec.hardMin || n > spec.hardMax) {
-    return { value: spec.fallback, source: 'default', problem: `${key}: ${n} izin verilen aralığın (${spec.hardMin}–${spec.hardMax}) dışında — fabrika değeri (${spec.fallback}) kullanılıyor.` };
+    return {
+      value: spec.fallback,
+      source: 'default',
+      problem: `${key}: ${n} izin verilen aralığın (${spec.hardMin}–${spec.hardMax}) dışında — fabrika değeri (${spec.fallback}) kullanılıyor.`,
+    };
   }
   return { value: n, source: 'admin', problem: null };
 }
@@ -144,7 +152,11 @@ function readTunables() {
         'Üçü birden fabrika değerlerine (30 / 300 / 3600) döndürüldü; ' +
         'min ≤ varsayılan ≤ max olacak şekilde düzeltin.',
     );
-    for (const k of ['SCALEX_VERIFY_TIMEOUT_MIN', 'SCALEX_VERIFY_TIMEOUT_DEFAULT', 'SCALEX_VERIFY_TIMEOUT_MAX']) {
+    for (const k of [
+      'SCALEX_VERIFY_TIMEOUT_MIN',
+      'SCALEX_VERIFY_TIMEOUT_DEFAULT',
+      'SCALEX_VERIFY_TIMEOUT_MAX',
+    ]) {
       values[k] = TUNABLES[k].fallback;
       sources[k] = 'default';
     }

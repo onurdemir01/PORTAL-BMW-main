@@ -19,7 +19,12 @@ const Module = require('node:module');
 // DB'yi require onbelleginde degistiririz: poller `require('../db/index.cjs')` cagiriyor.
 const DB_YOL = path.join(__dirname, '..', '..', 'db', 'index.cjs');
 const sahteDb = { query: async (_sql, _p) => ({ rows: [], rowCount: 0 }) };
-require.cache[Module._resolveFilename(DB_YOL, module)] = { id: DB_YOL, filename: DB_YOL, loaded: true, exports: sahteDb };
+require.cache[Module._resolveFilename(DB_YOL, module)] = {
+  id: DB_YOL,
+  filename: DB_YOL,
+  loaded: true,
+  exports: sahteDb,
+};
 
 const poller = require('../poller.cjs');
 
@@ -29,7 +34,8 @@ function dbKur(okumalar) {
   sahteDb.query = async (sql, params) => {
     const t = String(sql).replace(/\s+/g, ' ');
     if (/^SELECT/i.test(t.trim())) {
-      for (const [desen, rows] of okumalar) if (t.includes(desen)) return { rows, rowCount: rows.length };
+      for (const [desen, rows] of okumalar)
+        if (t.includes(desen)) return { rows, rowCount: rows.length };
       return { rows: [], rowCount: 0 };
     }
     yazilan.push({ sql: t, params });
@@ -44,40 +50,77 @@ const N = new Date('2026-10-06T12:00:00Z');
 // bunu kullanir; N (15:00 TR) 'gun geldi ama saat gelmedi' durumudur.
 const GECE = new Date('2026-10-06T20:30:00Z');
 const hedef = (o = {}) => ({
-  id: 7, record_id: 3, host: 'GBJBOP01', app_name: 'CRM', jboss_gen: 7, app_path: '/hysdeploy/CRM.ear',
-  env: 'PROD', smart_no: '123', oco_no: 'OCO-1', scheduled_at: '2026-10-06T10:00:00Z',
+  id: 7,
+  record_id: 3,
+  host: 'ORJBOP01',
+  app_name: 'CRM',
+  jboss_gen: 7,
+  app_path: '/hysdeploy/CRM.ear',
+  env: 'PROD',
+  smart_no: '123',
+  oco_no: 'OCO-1',
+  scheduled_at: '2026-10-06T10:00:00Z',
   window_end: '2026-10-06T14:00:00Z',
   // ON KONTROLUN ONAYLANAN IZIN LISTESI (2026-10-22): zamanlanmis STOP yalniz bununla kosar.
-  last_job_id: 50, stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'] }), ...o,
+  last_job_id: 50,
+  stop_izin_json: JSON.stringify({
+    jobId: 50,
+    izinler: ['onay:CRM|JBoss7|ORJBOP01', 'mv:/vhosting/CRM.ear'],
+  }),
+  ...o,
 });
 
 // SILME IKI ASAMALI (2026-10-22): gercek silme yalniz TAZE, basarili ve kullanilmamis bir silme on
 // kontrolunun izin listesiyle baslar. Silmenin TETIKLENDIGINI soyleyen testler bunu tasir (yeni kural
 // ayri bekcide: silme-geri-al-onkontrol.test.js).
-const silmePlani = (at, o = {}) => JSON.stringify({ jobId: 70, at, durum: 'ok', izinler: ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'], ...o });
+const silmePlani = (at, o = {}) =>
+  JSON.stringify({
+    jobId: 70,
+    at,
+    durum: 'ok',
+    izinler: ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'],
+    ...o,
+  });
 
 test('RP1 pencere ACIKSA STOP tetiklenir ve CLAIM once yapilir', async () => {
-  const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [hedef()]]]);
+  const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [hedef()]]]);
   const cagri = [];
-  poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 999 }; });
+  poller.startPoller(async (kind, t) => {
+    cagri.push({ kind, t });
+    return { jobId: 999 };
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 1);
   assert.equal(cagri.length, 1);
   assert.equal(cagri[0].kind, 'stop');
-  assert.equal(cagri[0].t.host, 'GBJBOP01');
-  assert.deepEqual(cagri[0].t.izinler, ['onay:CRM|JBoss7|GBJBOP01', 'mv:/vhosting/CRM.ear'], 'zamanlanmis STOP onaylanan izin listesini betige tasimiyor');
+  assert.equal(cagri[0].t.host, 'ORJBOP01');
+  assert.deepEqual(
+    cagri[0].t.izinler,
+    ['onay:CRM|JBoss7|ORJBOP01', 'mv:/vhosting/CRM.ear'],
+    'zamanlanmis STOP onaylanan izin listesini betige tasimiyor',
+  );
   // CLAIM LAUNCH'TAN ONCE: iki tick ust uste binerse ayni hedef iki kez baslatilmasin
-  const claim = yazilan.findIndex((w) => /status = 'stopping'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
+  const claim = yazilan.findIndex(
+    (w) => /status = 'stopping'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql),
+  );
   assert.ok(claim >= 0, 'claim UPDATE yok');
   const jobYaz = yazilan.findIndex((w) => /last_job_id/.test(w.sql));
   assert.ok(claim < jobYaz, 'claim launch sonrasina kalmis - cift tetikleme riski');
 });
 
 test('RP2 pencere ACILMADIYSA hicbir sey yapilmaz', async () => {
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", [hedef({ scheduled_at: '2026-10-06T22:00:00Z', window_end: '2026-10-07T00:00:00Z' })]]]);
+  dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [hedef({ scheduled_at: '2026-10-06T22:00:00Z', window_end: '2026-10-07T00:00:00Z' })],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (k, t) => { cagri.push({ k, t }); return { jobId: 1 }; });
+  poller.startPoller(async (k, t) => {
+    cagri.push({ k, t });
+    return { jobId: 1 };
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 0);
@@ -85,20 +128,33 @@ test('RP2 pencere ACILMADIYSA hicbir sey yapilmaz', async () => {
 });
 
 test('RP3 pencere KAPANDIYSA kosmaz ve SESSIZ kalmaz', async () => {
-  const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [hedef({ scheduled_at: '2026-10-05T10:00:00Z', window_end: '2026-10-05T12:00:00Z' })]]]);
+  const yazilan = dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [hedef({ scheduled_at: '2026-10-05T10:00:00Z', window_end: '2026-10-05T12:00:00Z' })],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  poller.startPoller(async (k) => {
+    cagri.push(k);
+    return { jobId: 1 };
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(cagri.length, 0, 'penceresi kacirilmis is kosturulmus');
   assert.equal(r.gecen, 1);
   // 'stop_scheduled'da asili kalmaz: 'failed' yazilir ve sebebi kaydedilir
-  assert.ok(yazilan.some((w) => /status = 'failed'/.test(w.sql)), 'kacirilan pencere isaretlenmemis');
+  assert.ok(
+    yazilan.some((w) => /status = 'failed'/.test(w.sql)),
+    'kacirilan pencere isaretlenmemis',
+  );
 });
 
 test('RP4 LAUNCH DUSERSE claim GERI ALINIR (pencere icinde tekrar denenebilsin)', async () => {
-  const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [hedef()]]]);
-  poller.startPoller(async () => { throw new Error('AWX 500'); });
+  const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [hedef()]]]);
+  poller.startPoller(async () => {
+    throw new Error('AWX 500');
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 0);
@@ -111,29 +167,56 @@ test('RP16 izin listesi YOK / bozuk / baska on kontrol isinin ise zamanlanmis ST
   const durumlar = [
     { stop_izin_json: null },
     { stop_izin_json: '{bozuk' },
-    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|GBJBOP01'] }) },
+    { stop_izin_json: JSON.stringify({ jobId: 49, izinler: ['onay:CRM|JBoss7|ORJBOP01'] }) },
     { stop_izin_json: JSON.stringify({ jobId: 50, izinler: ['mv:/x'] }) },
   ];
   for (const o of durumlar) {
     const yazilan = dbKur([['FROM retirement_targets t JOIN retirement_records r', [hedef(o)]]]);
     const cagri = [];
-    poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 999 }; });
+    poller.startPoller(async (kind, t) => {
+      cagri.push({ kind, t });
+      return { jobId: 999 };
+    });
     const r = await poller._stopTick(N);
     poller.stopPoller();
     assert.equal(cagri.length, 0, `izin listesi gecersizken STOP baslatildi: ${JSON.stringify(o)}`);
     assert.equal(r.kosan, 0);
-    const f = yazilan.find((w) => /SET status = 'failed'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql));
-    assert.ok(f && /izin listesi yok/.test(String((f.params || [])[0] || '')), "hedef stop_scheduled'da sessizce kaldi ya da sebep yazilmadi");
+    const f = yazilan.find(
+      (w) => /SET status = 'failed'/.test(w.sql) && /status = 'stop_scheduled'/.test(w.sql),
+    );
+    assert.ok(
+      f && /izin listesi yok/.test(String((f.params || [])[0] || '')),
+      "hedef stop_scheduled'da sessizce kaldi ya da sebep yazilmadi",
+    );
   }
 });
 
 test('RP5 DELETE: tarihi gelmeyen hedef tetiklenmez', async () => {
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", [{
-    id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
-    smart_no: '1', planned_delete_at: '2026-12-01', stop_at: '2026-10-01', delete_after_days: 45,
-  }]]]);
+  dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [
+        {
+          id: 9,
+          record_id: 4,
+          host: 'H',
+          app_name: 'A',
+          jboss_gen: 8,
+          app_path: '',
+          env: 'TEST',
+          smart_no: '1',
+          planned_delete_at: '2026-12-01',
+          stop_at: '2026-10-01',
+          delete_after_days: 45,
+        },
+      ],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  poller.startPoller(async (k) => {
+    cagri.push(k);
+    return { jobId: 1 };
+  });
   const r = await poller._deleteTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 0);
@@ -141,57 +224,111 @@ test('RP5 DELETE: tarihi gelmeyen hedef tetiklenmez', async () => {
 });
 
 test('RP6 DELETE: tarih gelince tetiklenir, plan_only YOK (insan izlemiyor)', async () => {
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", [{
-    id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
-    smart_no: '1', planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45,
-    delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z'),
-  }]]]);
+  dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [
+        {
+          id: 9,
+          record_id: 4,
+          host: 'H',
+          app_name: 'A',
+          jboss_gen: 8,
+          app_path: '',
+          env: 'TEST',
+          smart_no: '1',
+          planned_delete_at: '2026-10-05',
+          stop_at: '2026-09-01',
+          delete_after_days: 45,
+          delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z'),
+        },
+      ],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 777 }; });
+  poller.startPoller(async (kind, t) => {
+    cagri.push({ kind, t });
+    return { jobId: 777 };
+  });
   const r = await poller._deleteTick(GECE);
   poller.stopPoller();
   assert.equal(r.kosan, 1);
   assert.equal(cagri[0].kind, 'delete');
   assert.equal(cagri[0].t.planOnly, false, 'gercek silme plan_only=false gitmiyor');
-  assert.deepEqual(cagri[0].t.izinler, ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'], 'silme on kontrolun izin listesini tasimiyor');
+  assert.deepEqual(
+    cagri[0].t.izinler,
+    ['onay:sil:A|JBoss8|H', 'rm:/vhosting8/A.ear.1.old'],
+    'silme on kontrolun izin listesini tasimiyor',
+  );
 });
 
 test('RP7 SONLANDIRMA: basarili DELETE "deleted" yazar, basarisiz "failed"', async () => {
   const kur = (ok) => {
     const yazilan = dbKur([
-      ['WHERE status = \'deleting\' AND delete_job_id IS NOT NULL', [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }]],
+      [
+        "WHERE status = 'deleting' AND delete_job_id IS NOT NULL",
+        [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }],
+      ],
       ['SELECT COUNT(*) AS n FROM retirement_targets', [{ n: 0 }]],
     ]);
-    poller.startPoller(async () => ({ jobId: 1 }), async () => ({ terminal: true, ok, message: ok ? 'silindi' : 'patladi' }));
+    poller.startPoller(
+      async () => ({ jobId: 1 }),
+      async () => ({ terminal: true, ok, message: ok ? 'silindi' : 'patladi' }),
+    );
     return yazilan;
   };
   let y = kur(true);
   let r = await poller._finalizeTick();
   poller.stopPoller();
   assert.equal(r.kapanan, 1);
-  assert.ok(y.some((w) => /status = 'deleted'/.test(w.sql)), 'basarili silme isaretlenmemis');
+  assert.ok(
+    y.some((w) => /status = 'deleted'/.test(w.sql)),
+    'basarili silme isaretlenmemis',
+  );
   // TUM hedefler silindiyse KAYIT da kapanir
-  assert.ok(y.some((w) => /UPDATE retirement_records SET status = 'deleted'/.test(w.sql)), 'kayit kapanmamis');
+  assert.ok(
+    y.some((w) => /UPDATE retirement_records SET status = 'deleted'/.test(w.sql)),
+    'kayit kapanmamis',
+  );
 
   y = kur(false);
   r = await poller._finalizeTick();
   poller.stopPoller();
-  assert.ok(y.some((w) => /status = 'failed'/.test(w.sql)), 'basarisiz silme isaretlenmemis');
+  assert.ok(
+    y.some((w) => /status = 'failed'/.test(w.sql)),
+    'basarisiz silme isaretlenmemis',
+  );
 });
 
 test('RP8 OKUNAMADI != BASARISIZ: AWX duserse hedef "deleting"de KALIR', async () => {
   // 'failed' yazmak, aslinda BASARILI olmus bir silmeyi basarisiz gostermek olurdu.
   const yazilan = dbKur([
-    ['WHERE status = \'deleting\' AND delete_job_id IS NOT NULL', [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }]],
+    [
+      "WHERE status = 'deleting' AND delete_job_id IS NOT NULL",
+      [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }],
+    ],
   ]);
-  poller.startPoller(async () => ({ jobId: 1 }), async () => { throw new Error('AWX erisilemedi'); });
+  poller.startPoller(
+    async () => ({ jobId: 1 }),
+    async () => {
+      throw new Error('AWX erisilemedi');
+    },
+  );
   const r = await poller._finalizeTick();
   poller.stopPoller();
   assert.equal(r.kapanan, 0);
   assert.equal(yazilan.length, 0, 'okunamayan is icin durum yazilmis');
   // Is HENUZ BITMEDIYSE de dokunulmaz
-  const y2 = dbKur([['WHERE status = \'deleting\' AND delete_job_id IS NOT NULL', [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }]]]);
-  poller.startPoller(async () => ({ jobId: 1 }), async () => ({ terminal: false }));
+  const y2 = dbKur([
+    [
+      "WHERE status = 'deleting' AND delete_job_id IS NOT NULL",
+      [{ id: 9, record_id: 4, host: 'H', app_name: 'A', delete_job_id: 5 }],
+    ],
+  ]);
+  poller.startPoller(
+    async () => ({ jobId: 1 }),
+    async () => ({ terminal: false }),
+  );
   await poller._finalizeTick();
   poller.stopPoller();
   assert.equal(y2.length, 0, 'bitmemis is sonuclandirilmis');
@@ -209,7 +346,10 @@ test('RP9 CLAIM TUTMAZSA launch EDILMEZ (cift tetikleme korumasi)', async () => 
     return { rows: [], rowCount: 1 };
   };
   const cagri = [];
-  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  poller.startPoller(async (k) => {
+    cagri.push(k);
+    return { jobId: 1 };
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(cagri.length, 0, 'claim tutmadigi halde is baslatilmis - cift tetikleme');
@@ -223,13 +363,31 @@ test('RP10 DELETE sorgusu DURUM ve deleted_at suzgecini TASIR', () => {
   // DURDURULMAMIS bir uygulama silinmeye kalkar.
   const fs = require('node:fs');
   const src = fs.readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
-  const sorgu = src.slice(src.indexOf('async function deleteTick'), src.indexOf('let kosan = 0;', src.indexOf('async function deleteTick')));
-  assert.match(sorgu, /t\.status = 'stopped'/, "DELETE sorgusu 'stopped' suzgecini kaybetmis - durdurulmamis uygulama silinir");
+  const sorgu = src.slice(
+    src.indexOf('async function deleteTick'),
+    src.indexOf('let kosan = 0;', src.indexOf('async function deleteTick')),
+  );
+  assert.match(
+    sorgu,
+    /t\.status = 'stopped'/,
+    "DELETE sorgusu 'stopped' suzgecini kaybetmis - durdurulmamis uygulama silinir",
+  );
   assert.match(sorgu, /t\.deleted_at IS NULL/, 'zaten silinmis hedef tekrar silinmeye kalkar');
-  assert.match(sorgu, /r\.status NOT IN \('cancelled', 'deleted'\)/, 'iptal edilmis kaydin hedefi silinir');
+  assert.match(
+    sorgu,
+    /r\.status NOT IN \('cancelled', 'deleted'\)/,
+    'iptal edilmis kaydin hedefi silinir',
+  );
   // STOP sorgusu da kendi suzgecini tasimali
-  const sstop = src.slice(src.indexOf('async function stopTick'), src.indexOf('let kosan = 0;', src.indexOf('async function stopTick')));
-  assert.match(sstop, /t\.status = 'stop_scheduled'/, 'STOP sorgusu zamanlanmis hedef suzgecini kaybetmis');
+  const sstop = src.slice(
+    src.indexOf('async function stopTick'),
+    src.indexOf('let kosan = 0;', src.indexOf('async function stopTick')),
+  );
+  assert.match(
+    sstop,
+    /t\.status = 'stop_scheduled'/,
+    'STOP sorgusu zamanlanmis hedef suzgecini kaybetmis',
+  );
   assert.match(sstop, /r\.status <> 'cancelled'/, 'iptal edilmis kaydin STOP"u kosar');
 });
 
@@ -243,7 +401,10 @@ test('RP11 STOP"u da POLLER sonuclandirir (gece kimse yoklamiyor)', async () => 
     const t = String(sql).replace(/\s+/g, ' ');
     if (/^SELECT/i.test(t.trim())) {
       if (/status = 'stopping' AND last_job_id IS NOT NULL/.test(t))
-        return { rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'PROD', job_id: 11 }], rowCount: 1 };
+        return {
+          rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'PROD', job_id: 11 }],
+          rowCount: 1,
+        };
       if (/COUNT\(\*\) AS n/.test(t)) return { rows: [{ n: 0 }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     }
@@ -251,12 +412,21 @@ test('RP11 STOP"u da POLLER sonuclandirir (gece kimse yoklamiyor)', async () => 
     return { rows: [], rowCount: 1 };
   };
   const gorulen = [];
-  poller.startPoller(async () => ({ jobId: 1 }), async (kind) => { gorulen.push(kind); return { terminal: true, ok: true, message: 'durduruldu' }; });
+  poller.startPoller(
+    async () => ({ jobId: 1 }),
+    async (kind) => {
+      gorulen.push(kind);
+      return { terminal: true, ok: true, message: 'durduruldu' };
+    },
+  );
   const r = await poller._finalizeTick();
   poller.stopPoller();
   assert.ok(gorulen.includes('stop'), 'STOP sonlandirmasi hic cagrilmamis');
   assert.equal(r.kapanan, 1);
-  assert.ok(yazilan.some((w) => /status = 'stopped'/.test(w.sql)), "hedef 'stopped' yazilmamis");
+  assert.ok(
+    yazilan.some((w) => /status = 'stopped'/.test(w.sql)),
+    "hedef 'stopped' yazilmamis",
+  );
   // stop_at ILK stop'ta yazilir: silme tarihi buradan sayilir
   assert.ok(
     yazilan.some((w) => /stop_at = COALESCE\(stop_at, GETUTCDATE\(\)\)/.test(w.sql)),
@@ -265,25 +435,54 @@ test('RP11 STOP"u da POLLER sonuclandirir (gece kimse yoklamiyor)', async () => 
 });
 
 test('RP6b DELETE gun geldi ama 23:00 (TR) olmadan TETIKLENMEZ; admin "beklemeyi atla" saati atlar', async () => {
-  const satir = (extra) => [{
-    id: 9, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
-    smart_no: '1', planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45, ...extra,
-  }];
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({})]]);
+  const satir = (extra) => [
+    {
+      id: 9,
+      record_id: 4,
+      host: 'H',
+      app_name: 'A',
+      jboss_gen: 8,
+      app_path: '',
+      env: 'TEST',
+      smart_no: '1',
+      planned_delete_at: '2026-10-05',
+      stop_at: '2026-09-01',
+      delete_after_days: 45,
+      ...extra,
+    },
+  ];
+  dbKur([['FROM retirement_targets t JOIN retirement_records r', satir({})]]);
   let cagri = [];
-  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  poller.startPoller(async (k) => {
+    cagri.push(k);
+    return { jobId: 1 };
+  });
   let r = await poller._deleteTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 0, 'gun ortasinda (15:00 TR) silme tetiklendi - 23:00 kurali yok');
   assert.equal(cagri.length, 0);
 
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", satir({ delete_now_at: '2026-10-06T11:00:00Z', delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z') })]]);
+  dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      satir({
+        delete_now_at: '2026-10-06T11:00:00Z',
+        delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z'),
+      }),
+    ],
+  ]);
   cagri = [];
-  poller.startPoller(async (k) => { cagri.push(k); return { jobId: 1 }; });
+  poller.startPoller(async (k) => {
+    cagri.push(k);
+    return { jobId: 1 };
+  });
   r = await poller._deleteTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 1, 'beklemeyi atla saati atlamadi');
-  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
+  const kaynak = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'poller.cjs'),
+    'utf8',
+  );
   assert.match(kaynak, /r\.delete_after_days, r\.delete_now_at/, 'sorgu delete_now_at okumuyor');
 });
 
@@ -291,13 +490,30 @@ test('RP6b DELETE gun geldi ama 23:00 (TR) olmadan TETIKLENMEZ; admin "beklemeyi
 // Kullanici: "web adimi calisti gozukuyor ama mod_jk.conf'a bakiyorum halen ilgili satirlar
 // aktif" + "web adimi duzgun calismadigi icin o adimin success gozukmemesi ... tekrar
 // tetikleyebilmek istiyorum". webTick isi baslatip 'running' yaziyor, SONUCU KIMSE OKUMUYORDU.
-const webSatir = (liste) => [{ id: 7, record_id: 3, app_name: 'CRM', web_result_json: JSON.stringify(liste) }];
-const vh = (o) => ({ host: 'GBJBOP12', serverName: 'crm.fw', product: 'IHS', confFile: '/c', status: 'running', jobId: 55, ...o });
+const webSatir = (liste) => [
+  { id: 7, record_id: 3, app_name: 'CRM', web_result_json: JSON.stringify(liste) },
+];
+const vh = (o) => ({
+  host: 'ORJBOP12',
+  serverName: 'crm.fw',
+  product: 'IHS',
+  confFile: '/c',
+  status: 'running',
+  jobId: 55,
+  ...o,
+});
 
 async function webSonucIle(liste, finalizeYaniti) {
-  const yazilan = dbKur([["web_result_json LIKE '%\"running\"%'", webSatir(liste)]]);
+  const yazilan = dbKur([['web_result_json LIKE \'%"running"%\'', webSatir(liste)]]);
   const cagri = [];
-  poller.startPoller(async () => ({ jobId: 1 }), async (kind, t) => { cagri.push({ kind, t }); return finalizeYaniti(t); }, null);
+  poller.startPoller(
+    async () => ({ jobId: 1 }),
+    async (kind, t) => {
+      cagri.push({ kind, t });
+      return finalizeYaniti(t);
+    },
+    null,
+  );
   const r = await poller._webSonucTick();
   poller.stopPoller();
   const upd = yazilan.find((w) => /SET web_result_json/.test(w.sql));
@@ -305,19 +521,32 @@ async function webSonucIle(liste, finalizeYaniti) {
 }
 
 test('RW1 web isi BASARISIZ biterse girdi failed olur ("bitti" DEGIL), olay error yazilir', async () => {
-  const { r, cagri, liste, yazilan } = await webSonucIle([vh()], () => ({ terminal: true, ok: false, skip: false, message: 'apachectl -t gecmedi, geri alindi' }));
+  const { r, cagri, liste, yazilan } = await webSonucIle([vh()], () => ({
+    terminal: true,
+    ok: false,
+    skip: false,
+    message: 'apachectl -t gecmedi, geri alindi',
+  }));
   assert.equal(cagri[0].kind, 'web', 'sonuclandirici web turuyle cagrilmadi');
   assert.equal(cagri[0].t.job_id, 55, 'is numarasi gecirilmedi');
   assert.equal(r.kapanan, 1);
   assert.equal(liste[0].status, 'failed');
   assert.match(liste[0].message, /is #55: apachectl/);
-  assert.ok(yazilan.some((w) => /INSERT INTO retirement_events/.test(w.sql) && w.params[2] === 'error'), 'basarisizlik olaya error olarak yazilmadi');
+  assert.ok(
+    yazilan.some((w) => /INSERT INTO retirement_events/.test(w.sql) && w.params[2] === 'error'),
+    'basarisizlik olaya error olarak yazilmadi',
+  );
 });
 
 test('RW2 OK -> ok; SKIP -> skip ("kaldirildi" DEGIL)', async () => {
   let s = await webSonucIle([vh()], () => ({ terminal: true, ok: true, message: 'tamam' }));
   assert.equal(s.liste[0].status, 'ok');
-  s = await webSonucIle([vh()], () => ({ terminal: true, ok: false, skip: true, message: 'vhost bulunamadi' }));
+  s = await webSonucIle([vh()], () => ({
+    terminal: true,
+    ok: false,
+    skip: true,
+    message: 'vhost bulunamadi',
+  }));
   assert.equal(s.liste[0].status, 'skip');
 });
 
@@ -325,7 +554,9 @@ test('RW3 is BITMEDIYSE ya da AWX OKUNAMADIYSA running KALIR (okunamadi != basar
   let s = await webSonucIle([vh()], () => ({ terminal: false }));
   assert.equal(s.r.kapanan, 0);
   assert.equal(s.liste, null, 'bitmemis is icin yazim yapildi');
-  s = await webSonucIle([vh()], () => { throw new Error('awx yok'); });
+  s = await webSonucIle([vh()], () => {
+    throw new Error('awx yok');
+  });
   assert.equal(s.liste, null, 'okunamayan is basarisiz yazildi');
 });
 
@@ -336,18 +567,53 @@ test('RW4 tur sirasi: webSonucTick tick() icinde cagrilir', () => {
 });
 
 // ── AYNI VHOST IKI KEZ + HEMEN BASLAT (uretim 2026-10-08: job 3387660 + 3387662; "2-3 dakika bekliyorum") ──
-const webHedef = (liste) => ({ id: 9, record_id: 3, host: 'GBJBOP01', app_name: 'VO', web_result_json: JSON.stringify(liste) });
-const vhx = (o = {}) => ({ host: 'GBJBOAP11', serverName: 'vo.fw', product: 'IHS', confFile: 'mod-jk.conf', status: 'pending', jobId: null, message: null, ...o });
+const webHedef = (liste) => ({
+  id: 9,
+  record_id: 3,
+  host: 'ORJBOP01',
+  app_name: 'VO',
+  web_result_json: JSON.stringify(liste),
+});
+const vhx = (o = {}) => ({
+  host: 'ORJBOAP11',
+  serverName: 'vo.fw',
+  product: 'IHS',
+  confFile: 'mod-jk.conf',
+  status: 'pending',
+  jobId: null,
+  message: null,
+  ...o,
+});
 
 test('RW5 ayni host/conf/ServerName listede iki kez ise TEK is baslar, liste tekillesir', async () => {
-  const yazilan = dbKur([['web_result_json LIKE', [webHedef([vhx(), vhx({ host: 'gbjboap11', serverName: 'VO.FW' }), vhx({ host: 'GBJBOAP12' })])]]]);
+  const yazilan = dbKur([
+    [
+      'web_result_json LIKE',
+      [
+        webHedef([
+          vhx(),
+          vhx({ host: 'orjboap11', serverName: 'VO.FW' }),
+          vhx({ host: 'ORJBOAP12' }),
+        ]),
+      ],
+    ],
+  ]);
   const isler = [];
-  poller.startPoller(async () => ({}), null, async (w) => { isler.push(w.webHost); return { jobId: 100 + isler.length, awxServerId: 4 }; });
+  poller.startPoller(
+    async () => ({}),
+    null,
+    async (w) => {
+      isler.push(w.webHost);
+      return { jobId: 100 + isler.length, awxServerId: 4 };
+    },
+  );
   const r = await poller._webTick();
   poller.stopPoller();
-  assert.deepEqual(isler, ['GBJBOAP11', 'GBJBOAP12'], 'ayni vhost icin iki is baslatildi');
+  assert.deepEqual(isler, ['ORJBOAP11', 'ORJBOAP12'], 'ayni vhost icin iki is baslatildi');
   assert.equal(r.kosan, 2);
-  const upd = yazilan.find((y) => y.sql.startsWith('UPDATE retirement_targets SET web_result_json'));
+  const upd = yazilan.find((y) =>
+    y.sql.startsWith('UPDATE retirement_targets SET web_result_json'),
+  );
   const yeni = JSON.parse(upd.params[0]);
   assert.equal(yeni.length, 2, 'tekrar eden girdi listeden cikmadi');
   assert.equal(yeni[0].awxServerId, 4, 'awxServerId girdide yok - ekran isi izleyemez');
@@ -357,12 +623,29 @@ test('RW6 webSimdi zamanlayiciyi beklemeden baslatir; zamanlayici calisirken IKI
   dbKur([['web_result_json LIKE', [webHedef([vhx()])]]]);
   let n = 0;
   let birak;
-  const bekle = new Promise((r) => { birak = r; });
-  poller.startPoller(async () => ({}), null, async () => { n += 1; await bekle; return { jobId: 1 }; });
+  const bekle = new Promise((r) => {
+    birak = r;
+  });
+  poller.startPoller(
+    async () => ({}),
+    null,
+    async () => {
+      n += 1;
+      await bekle;
+      return { jobId: 1 };
+    },
+  );
   const ilk = poller.webSimdi();
   // Zaman asimli: kilit yoksa ikinci cagri ilk isi bekleyip ASKIDA kalir; test acikca dusmeli.
-  const ikinci = await Promise.race([poller.webSimdi(), new Promise((r) => setTimeout(() => r({ askida: true }), 2000))]);
-  assert.equal(ikinci.kilitli, true, 'kilit yok: ayni anda iki webTick ayni vhost icin iki is baslatabilir');
+  const ikinci = await Promise.race([
+    poller.webSimdi(),
+    new Promise((r) => setTimeout(() => r({ askida: true }), 2000)),
+  ]);
+  assert.equal(
+    ikinci.kilitli,
+    true,
+    'kilit yok: ayni anda iki webTick ayni vhost icin iki is baslatabilir',
+  );
   birak();
   const r1 = await ilk;
   poller.stopPoller();
@@ -372,19 +655,43 @@ test('RW6 webSimdi zamanlayiciyi beklemeden baslatir; zamanlayici calisirken IKI
 
 test('RP12 TOPLU zamanlanmis STOP: ayni kayit + ayni an TEK is (tek SCC maili); baska kayit ayri is', async () => {
   // Kullanici (2026-10-08): "hepsi icin ayri ayri job'i tetiklemek istemiyorum ... SCC'ye tek e-posta gitsin"
-  const yazilan = dbKur([["FROM retirement_targets t JOIN retirement_records r", [
-    hedef({ id: 7, host: 'GBJBOP01' }), hedef({ id: 8, host: 'GBJBOP02' }), hedef({ id: 9, record_id: 4, host: 'GBJBOP03' }),
-  ]]]);
+  const yazilan = dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [
+        hedef({ id: 7, host: 'ORJBOP01' }),
+        hedef({ id: 8, host: 'ORJBOP02' }),
+        hedef({ id: 9, record_id: 4, host: 'ORJBOP03' }),
+      ],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (kind, t) => { cagri.push({ kind, t }); return { jobId: 500 + cagri.length }; });
+  poller.startPoller(async (kind, t) => {
+    cagri.push({ kind, t });
+    return { jobId: 500 + cagri.length };
+  });
   const r = await poller._stopTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 3);
   assert.equal(cagri.length, 2, 'ayni kaydin hedefleri ayri islerde baslatildi');
-  assert.deepEqual(cagri[0].t.hedefler.map((h) => [h.targetId, h.host]), [[7, 'GBJBOP01'], [8, 'GBJBOP02']]);
+  assert.deepEqual(
+    cagri[0].t.hedefler.map((h) => [h.targetId, h.host]),
+    [
+      [7, 'ORJBOP01'],
+      [8, 'ORJBOP02'],
+    ],
+  );
   assert.equal(cagri[1].t.hedefler, undefined, 'tek hedefli is coklu bicimde gitti');
   const isNo = yazilan.filter((w) => /SET last_job_id/.test(w.sql)).map((w) => w.params);
-  assert.deepEqual(isNo, [[501, 7], [501, 8], [502, 9]], 'toplu isin numarasi her hedefe yazilmadi');
+  assert.deepEqual(
+    isNo,
+    [
+      [501, 7],
+      [501, 8],
+      [502, 9],
+    ],
+    'toplu isin numarasi her hedefe yazilmadi',
+  );
 });
 
 test('RW7 vhost adimi STOP TETIKLENINCE baslar ("stopping" hedef de alinir); canli tazeleme ayni kilidi kullanir', async () => {
@@ -392,35 +699,86 @@ test('RW7 vhost adimi STOP TETIKLENINCE baslar ("stopping" hedef de alinir); can
   const yazilan = dbKur([['web_result_json LIKE', [webHedef([vhx()])]]]);
   const sorgular = [];
   const eski = sahteDb.query;
-  sahteDb.query = async (sql, p) => { sorgular.push(String(sql)); return eski(sql, p); };
-  poller.startPoller(async () => ({}), null, async () => ({ jobId: 77, awxServerId: 2 }));
+  sahteDb.query = async (sql, p) => {
+    sorgular.push(String(sql));
+    return eski(sql, p);
+  };
+  poller.startPoller(
+    async () => ({}),
+    null,
+    async () => ({ jobId: 77, awxServerId: 2 }),
+  );
   const r = await poller._webTick();
   poller.stopPoller();
   sahteDb.query = eski;
   assert.equal(r.kosan, 1);
-  assert.ok(sorgular.some((q) => /status IN \('stopping', 'stopped'\)/.test(q)), "vhost adimi yalniz 'stopped' hedefte basliyor - STOP bitene kadar bekler");
-  const yeni = JSON.parse(yazilan.find((y) => y.sql.startsWith('UPDATE retirement_targets SET web_result_json')).params[0]);
+  assert.ok(
+    sorgular.some((q) => /status IN \('stopping', 'stopped'\)/.test(q)),
+    "vhost adimi yalniz 'stopped' hedefte basliyor - STOP bitene kadar bekler",
+  );
+  const yeni = JSON.parse(
+    yazilan.find((y) => y.sql.startsWith('UPDATE retirement_targets SET web_result_json'))
+      .params[0],
+  );
   assert.ok(yeni[0].basladi, 'baslama zamani yazilmadi - ekran gecen sureyi gosteremez');
-  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
-  const kc = kaynak.slice(kaynak.indexOf('async function kayitCanli('), kaynak.indexOf('function stopPoller('));
-  assert.match(kc, /if \(_ticking\) return \{ kilitli: true \};/, 'canli tazeleme zamanlayiciyla ayni anda calisabiliyor');
+  const kaynak = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'poller.cjs'),
+    'utf8',
+  );
+  const kc = kaynak.slice(
+    kaynak.indexOf('async function kayitCanli('),
+    kaynak.indexOf('function stopPoller('),
+  );
+  assert.match(
+    kc,
+    /if \(_ticking\) return \{ kilitli: true \};/,
+    'canli tazeleme zamanlayiciyla ayni anda calisabiliyor',
+  );
 });
 
 test('RP13 HEDEF BASINA beklemeyi atla: yalniz isaretli hedef tarih/23:00 beklemeden silinir, digeri bekler', async () => {
   // Kullanici (2026-10-12): "toplu sekilde atlamak yerine tek tek hangi sunucuda yapacaksam onu atlamak istiyorum"
-  const satir = (o) => ({ id: 1, record_id: 4, host: 'H', app_name: 'A', jboss_gen: 8, app_path: '', env: 'TEST',
-    smart_no: '1', planned_delete_at: '2026-12-31', stop_at: '2026-10-01', delete_after_days: 45, ...o });
-  dbKur([["FROM retirement_targets t JOIN retirement_records r", [
-    satir({ id: 21, host: 'GBJBOT01', hedef_delete_now_at: '2026-10-06T11:00:00Z', delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z') }),
-    satir({ id: 22, host: 'GBJBOT02' }),
-  ]]]);
+  const satir = (o) => ({
+    id: 1,
+    record_id: 4,
+    host: 'H',
+    app_name: 'A',
+    jboss_gen: 8,
+    app_path: '',
+    env: 'TEST',
+    smart_no: '1',
+    planned_delete_at: '2026-12-31',
+    stop_at: '2026-10-01',
+    delete_after_days: 45,
+    ...o,
+  });
+  dbKur([
+    [
+      'FROM retirement_targets t JOIN retirement_records r',
+      [
+        satir({
+          id: 21,
+          host: 'ORJBOT01',
+          hedef_delete_now_at: '2026-10-06T11:00:00Z',
+          delete_onkontrol_json: silmePlani('2026-10-06T11:30:00Z'),
+        }),
+        satir({ id: 22, host: 'ORJBOT02' }),
+      ],
+    ],
+  ]);
   const cagri = [];
-  poller.startPoller(async (k, t) => { cagri.push(t.host); return { jobId: 1 }; });
+  poller.startPoller(async (k, t) => {
+    cagri.push(t.host);
+    return { jobId: 1 };
+  });
   const r = await poller._deleteTick(N);
   poller.stopPoller();
   assert.equal(r.kosan, 1);
-  assert.deepEqual(cagri, ['GBJBOT01'], 'isaretlenmemis hedef de silindi (toplu atlama)');
-  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'poller.cjs'), 'utf8');
+  assert.deepEqual(cagri, ['ORJBOT01'], 'isaretlenmemis hedef de silindi (toplu atlama)');
+  const kaynak = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'poller.cjs'),
+    'utf8',
+  );
   assert.match(kaynak, /t\.delete_now_at AS hedef_delete_now_at/);
 });
 
@@ -445,16 +803,31 @@ test('RQ2 suren isin AWX durumu saklanir (yalniz o kayit), is bitince silinir', 
     const t = String(sql).replace(/\s+/g, ' ');
     if (/^SELECT/i.test(t.trim())) {
       sorgular.push({ t, params });
-      if (t.includes("status = 'deleting'")) return { rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'QA', job_id: 555 }], rowCount: 1 };
+      if (t.includes("status = 'deleting'"))
+        return {
+          rows: [{ id: 7, record_id: 3, host: 'H', app_name: 'A', env: 'QA', job_id: 555 }],
+          rowCount: 1,
+        };
       return { rows: [], rowCount: 0 };
     }
     return { rows: [], rowCount: 1 };
   };
   let cevap = { terminal: false, awxStatus: 'pending' };
-  poller.startPoller(async () => ({ jobId: 1 }), async () => cevap);
+  poller.startPoller(
+    async () => ({ jobId: 1 }),
+    async () => cevap,
+  );
   await poller.kayitCanli(3);
   assert.equal(poller.awxDurumu(555)?.status, 'pending');
-  assert.ok(sorgular.some((q) => q.t.includes("status = 'deleting'") && q.t.includes('record_id = $1') && q.params?.[0] === 3), 'kayit filtresi yok');
+  assert.ok(
+    sorgular.some(
+      (q) =>
+        q.t.includes("status = 'deleting'") &&
+        q.t.includes('record_id = $1') &&
+        q.params?.[0] === 3,
+    ),
+    'kayit filtresi yok',
+  );
   cevap = { terminal: false, awxStatus: 'running' };
   await poller.kayitCanli(3);
   assert.equal(poller.awxDurumu(555)?.status, 'running');
@@ -464,7 +837,15 @@ test('RQ2 suren isin AWX durumu saklanir (yalniz o kayit), is bitince silinir', 
   assert.equal(poller.awxDurumu(555), null);
 });
 
-async function launchSonrasiDbHatasiTekrarBaslatmaz({ kind, baslangicDurumu, claimDurumu, jobAlani, tick, now, satir }) {
+async function launchSonrasiDbHatasiTekrarBaslatmaz({
+  kind,
+  baslangicDurumu,
+  claimDurumu,
+  jobAlani,
+  tick,
+  now,
+  satir,
+}) {
   let durum = baslangicDurumu;
   let launchSayisi = 0;
   sahteDb.query = async (sql) => {
@@ -474,36 +855,67 @@ async function launchSonrasiDbHatasiTekrarBaslatmaz({ kind, baslangicDurumu, cla
       const rows = t.includes(beklenen) && durum === baslangicDurumu ? [satir] : [];
       return { rows, rowCount: rows.length };
     }
-    if (t.includes(`SET status = '${claimDurumu}'`) && t.includes(`status = '${baslangicDurumu}'`)) {
+    if (
+      t.includes(`SET status = '${claimDurumu}'`) &&
+      t.includes(`status = '${baslangicDurumu}'`)
+    ) {
       durum = claimDurumu;
       return { rows: [], rowCount: 1 };
     }
     if (t.includes(`SET ${jobAlani} =`)) throw new Error('job kimligi DB yazimi dustu');
-    if (t.includes(`SET status = '${baslangicDurumu}'`) && t.includes(`status = '${claimDurumu}'`)) {
+    if (
+      t.includes(`SET status = '${baslangicDurumu}'`) &&
+      t.includes(`status = '${claimDurumu}'`)
+    ) {
       durum = baslangicDurumu;
       return { rows: [], rowCount: 1 };
     }
     return { rows: [], rowCount: 1 };
   };
-  poller.startPoller(async () => { launchSayisi += 1; return { jobId: 444 }; });
+  poller.startPoller(async () => {
+    launchSayisi += 1;
+    return { jobId: 444 };
+  });
   await tick(now);
   await tick(now);
   poller.stopPoller();
-  assert.equal(launchSayisi, 1, `basarili ${kind.toUpperCase()} launch'i DB hatasindan sonra ikinci kez baslatildi`);
-  assert.equal(durum, claimDurumu, `basarili launch sonrasi claim '${baslangicDurumu}' durumuna geri alindi`);
+  assert.equal(
+    launchSayisi,
+    1,
+    `basarili ${kind.toUpperCase()} launch'i DB hatasindan sonra ikinci kez baslatildi`,
+  );
+  assert.equal(
+    durum,
+    claimDurumu,
+    `basarili launch sonrasi claim '${baslangicDurumu}' durumuna geri alindi`,
+  );
 }
 
 test('RP14 STOP launch basariliysa job ID yazimi dusse de claim korunur', async () => {
   await launchSonrasiDbHatasiTekrarBaslatmaz({
-    kind: 'stop', baslangicDurumu: 'stop_scheduled', claimDurumu: 'stopping', jobAlani: 'last_job_id',
-    tick: poller._stopTick, now: N, satir: hedef(),
+    kind: 'stop',
+    baslangicDurumu: 'stop_scheduled',
+    claimDurumu: 'stopping',
+    jobAlani: 'last_job_id',
+    tick: poller._stopTick,
+    now: N,
+    satir: hedef(),
   });
 });
 
 test('RP15 DELETE launch basariliysa job ID yazimi dusse de claim korunur', async () => {
   await launchSonrasiDbHatasiTekrarBaslatmaz({
-    kind: 'delete', baslangicDurumu: 'stopped', claimDurumu: 'deleting', jobAlani: 'delete_job_id',
-    tick: poller._deleteTick, now: GECE,
-    satir: hedef({ planned_delete_at: '2026-10-05', stop_at: '2026-09-01', delete_after_days: 45, delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z') }),
+    kind: 'delete',
+    baslangicDurumu: 'stopped',
+    claimDurumu: 'deleting',
+    jobAlani: 'delete_job_id',
+    tick: poller._deleteTick,
+    now: GECE,
+    satir: hedef({
+      planned_delete_at: '2026-10-05',
+      stop_at: '2026-09-01',
+      delete_after_days: 45,
+      delete_onkontrol_json: silmePlani('2026-10-06T19:45:00Z'),
+    }),
   });
 });

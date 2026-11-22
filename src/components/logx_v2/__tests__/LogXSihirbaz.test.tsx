@@ -43,26 +43,26 @@ describe('HostSelectStep: elle giriş ilerliyor', () => {
     const kutu = await screen.findByLabelText('Sunucu adını elle girin');
     expect((taraDugmesi() as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('logx-tara-sebep').textContent).toMatch(/en az bir sunucu adı/);
-    fireEvent.change(kutu, { target: { value: 'gbcjap07, gbcjap08' } });
+    fireEvent.change(kutu, { target: { value: 'orcjap07, orcjap08' } });
     fireEvent.click(screen.getByRole('button', { name: '2 sunucu ekle' }));
     expect(document.activeElement).toBe(kutu);
     expect((taraDugmesi() as HTMLButtonElement).disabled).toBe(false);
     expect(taraDugmesi().textContent).toMatch(/\(2\)/);
     fireEvent.click(taraDugmesi());
-    expect(onSubmit).toHaveBeenCalledWith(['GBCJAP07', 'GBCJAP08'], {
-      manual: ['GBCJAP07', 'GBCJAP08'],
+    expect(onSubmit).toHaveBeenCalledWith(['ORCJAP07', 'ORCJAP08'], {
+      manual: ['ORCJAP07', 'ORCJAP08'],
     });
   });
 
   it('H2 envanter VAR ama yalnızca elle sunucu → tara açık; Enter ile ekleme', async () => {
-    m.legacyHosts.mockResolvedValue({ ok: true, hosts: [host('GBCJAP01')] });
+    m.legacyHosts.mockResolvedValue({ ok: true, hosts: [host('ORCJAP01')] });
     const onSubmit = vi.fn();
     render(<HostSelectStep app="APP" onSubmit={onSubmit} />);
     const kutu = await screen.findByLabelText('Sunucu adını elle girin');
-    fireEvent.change(kutu, { target: { value: 'GBCJAP09' } });
+    fireEvent.change(kutu, { target: { value: 'ORCJAP09' } });
     fireEvent.keyDown(kutu, { key: 'Enter' });
     fireEvent.click(taraDugmesi());
-    expect(onSubmit).toHaveBeenCalledWith(['GBCJAP09'], { manual: ['GBCJAP09'] });
+    expect(onSubmit).toHaveBeenCalledWith(['ORCJAP09'], { manual: ['ORCJAP09'] });
   });
 
   it('H3 sunucu listesi OKUNAMAZSA da elle ekleyip devam edilebilir', async () => {
@@ -145,7 +145,9 @@ describe('FileSelectionStep', () => {
   it('F2 eski playbook kopyasi: numarali dizinlerin TARANMADIGI soylenir', () => {
     render(
       <FileSelectionStep
-        result={{ overall_status: 'success', hosts: [{ host: 'OK1', status: 'ok', files: [] }] } as never}
+        result={
+          { overall_status: 'success', hosts: [{ host: 'OK1', status: 'ok', files: [] }] } as never
+        }
         onSubmit={() => {}}
       />,
     );
@@ -172,7 +174,9 @@ describe('FileSelectionStep', () => {
     );
     expect(screen.queryByTestId('logx-eski-kesif')).not.toBeInTheDocument();
     expect(screen.getByText('Taranan sunucularda dosya bulunamadı.')).toBeInTheDocument();
-    expect(screen.getByTestId('logx-tarama-kapsami').textContent).toMatch(/log, logs ve numaralı \(log1, logs2…\) dizinlere bakıldı/);
+    expect(screen.getByTestId('logx-tarama-kapsami').textContent).toMatch(
+      /log, logs ve numaralı \(log1, logs2…\) dizinlere bakıldı/,
+    );
   });
 });
 

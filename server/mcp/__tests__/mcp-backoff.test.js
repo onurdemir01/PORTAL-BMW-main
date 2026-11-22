@@ -24,7 +24,9 @@ const { createMcpClient } = require('../client.cjs');
 const ULASILMAZ = 'http://192.0.2.1:9/mcp';
 
 async function sessiz(fn) {
-  const l = console.log, e = console.error, w = console.warn;
+  const l = console.log,
+    e = console.error,
+    w = console.warn;
   const satirlar = [];
   console.log = (...a) => satirlar.push(a.join(' '));
   console.error = (...a) => satirlar.push(a.join(' '));
@@ -32,14 +34,19 @@ async function sessiz(fn) {
   try {
     return await fn(satirlar);
   } finally {
-    console.log = l; console.error = e; console.warn = w;
+    console.log = l;
+    console.error = e;
+    console.warn = w;
   }
 }
 
 test('MB1 ardisik hatalardan sonra AG TURU HARCANMIYOR (geri cekilme)', async () => {
   await sessiz(async () => {
     const c = createMcpClient({ name: 'test', url: ULASILMAZ });
-    await assert.rejects(() => c.callTool('x'), (e) => !e.mcpBackoff);
+    await assert.rejects(
+      () => c.callTool('x'),
+      (e) => !e.mcpBackoff,
+    );
     const d1 = c.getStatus();
     assert.ok(d1.consecutiveFailures >= 1, 'ardisik hata sayaci artmiyor');
     assert.ok(d1.retryAfter, 'geri cekilme penceresi kurulmuyor');
@@ -63,11 +70,14 @@ test('MB2 hata YINE firlatiliyor — sorun GIZLENMIYOR', async () => {
   await sessiz(async () => {
     const c = createMcpClient({ name: 'test', url: ULASILMAZ });
     await assert.rejects(() => c.callTool('x'));
-    await assert.rejects(() => c.callTool('x'), (e) => {
-      assert.match(e.message, /geri çekilmede/i, 'sebep soylenmiyor');
-      assert.match(e.message, /Son hata:/, 'asil hata kayboluyor');
-      return true;
-    });
+    await assert.rejects(
+      () => c.callTool('x'),
+      (e) => {
+        assert.match(e.message, /geri çekilmede/i, 'sebep soylenmiyor');
+        assert.match(e.message, /Son hata:/, 'asil hata kayboluyor');
+        return true;
+      },
+    );
     assert.ok(c.getStatus().lastError, 'son hata durumda tutulmuyor');
   });
 });
@@ -110,14 +120,20 @@ test('MB4 `getStatus` NE ZAMANDIR basarisiz oldugunu soyluyor', async () => {
 
 test('MB5 geri cekilme TAVANI var (duzeltme sonsuza dek gorunmez kalmasin)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'client.cjs'), 'utf8');
-  const kod = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const kod = src
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   // VARSAYILANI olc, test dikisini degil. Ifade artik
   // `Number.isFinite(_backoffMaxMs) ? _backoffMaxMs : 5 * 60_000` bicimindedir;
   // kilitlenmesi gereken sey URETIMDE gecerli olan varsayilan.
   const m = /const BACKOFF_MAX_MS = [^;]*?:\s*([0-9_ *]+);/.exec(kod);
   assert.ok(m, 'tavan varsayilani tanimli degil');
   const tavan = Function(`return (${m[1].replace(/_/g, '')})`)();
-  assert.ok(tavan > 0 && tavan <= 10 * 60_000, `tavan cok buyuk (${tavan} ms) — duzeltme gec fark edilir`);
+  assert.ok(
+    tavan > 0 && tavan <= 10 * 60_000,
+    `tavan cok buyuk (${tavan} ms) — duzeltme gec fark edilir`,
+  );
   assert.match(
     kod,
     /Math\.min\(BACKOFF_BASE_MS \* 2 \*\* \(_ardArda - 1\), BACKOFF_MAX_MS\)/,
@@ -127,7 +143,10 @@ test('MB5 geri cekilme TAVANI var (duzeltme sonsuza dek gorunmez kalmasin)', () 
 
 test('MB6 BASARIDA geri cekilme SIFIRLANIYOR', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'client.cjs'), 'utf8');
-  const kod = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const kod = src
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
   // DILIM BASARI DALINDAN BASLAMALI, BILDIRIMLERDEN DEGIL.
   //
   // Ilk yazdigimda `indexOf('_lastError = null;')` kullanmistim — o ifade

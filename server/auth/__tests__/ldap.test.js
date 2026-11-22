@@ -15,7 +15,8 @@ function withEnv(vars, fn) {
   Object.assign(process.env, vars);
   const restore = () => {
     for (const k of Object.keys(vars)) {
-      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
     }
   };
   let result;
@@ -25,7 +26,7 @@ function withEnv(vars, fn) {
     restore();
     throw err;
   }
-  if (result && typeof result.then === "function") return result.finally(restore);
+  if (result && typeof result.then === 'function') return result.finally(restore);
   restore();
   return result;
 }
@@ -37,25 +38,45 @@ const ldap = require('../ldap.cjs');
 
 // ── Finding 12: hardcoded admin/admin, user/user artik ASLA calismamali ──────────────────
 test('authenticateLocal(): sifre env bossa (set edilmemis) hesap hicbir sifreyle eslesmez', () => {
-  withEnv({ LOCAL_ADMIN_USER: 'admin', LOCAL_ADMIN_PASS: '', LOCAL_USER: 'user', LOCAL_USER_PASS: '' }, () => {
-    assert.throws(() => ldap.authenticateLocal('admin', 'admin'), /Kullanıcı adı veya şifre hatalı/);
-    assert.throws(() => ldap.authenticateLocal('admin', ''), /Kullanıcı adı veya şifre hatalı/);
-    assert.throws(() => ldap.authenticateLocal('user', 'user'), /Kullanıcı adı veya şifre hatalı/);
-  });
+  withEnv(
+    { LOCAL_ADMIN_USER: 'admin', LOCAL_ADMIN_PASS: '', LOCAL_USER: 'user', LOCAL_USER_PASS: '' },
+    () => {
+      assert.throws(
+        () => ldap.authenticateLocal('admin', 'admin'),
+        /Kullanıcı adı veya şifre hatalı/,
+      );
+      assert.throws(() => ldap.authenticateLocal('admin', ''), /Kullanıcı adı veya şifre hatalı/);
+      assert.throws(
+        () => ldap.authenticateLocal('user', 'user'),
+        /Kullanıcı adı veya şifre hatalı/,
+      );
+    },
+  );
 });
 
 test('authenticateLocal(): sifre env DOLUYSA ve eslesiyorsa giris calisir (dogru rolle)', () => {
-  withEnv({ LOCAL_ADMIN_USER: 'admin', LOCAL_ADMIN_PASS: 'gercek-guclu-sifre', LOCAL_USER: 'user', LOCAL_USER_PASS: 'baska-sifre' }, () => {
-    const admin = ldap.authenticateLocal('admin', 'gercek-guclu-sifre');
-    assert.equal(admin.role, 'Admin');
-    const user = ldap.authenticateLocal('user', 'baska-sifre');
-    assert.equal(user.role, 'User');
-  });
+  withEnv(
+    {
+      LOCAL_ADMIN_USER: 'admin',
+      LOCAL_ADMIN_PASS: 'gercek-guclu-sifre',
+      LOCAL_USER: 'user',
+      LOCAL_USER_PASS: 'baska-sifre',
+    },
+    () => {
+      const admin = ldap.authenticateLocal('admin', 'gercek-guclu-sifre');
+      assert.equal(admin.role, 'Admin');
+      const user = ldap.authenticateLocal('user', 'baska-sifre');
+      assert.equal(user.role, 'User');
+    },
+  );
 });
 
 test('authenticateLocal(): dolu sifreyle bile YANLIS sifre reddedilir', () => {
   withEnv({ LOCAL_ADMIN_USER: 'admin', LOCAL_ADMIN_PASS: 'dogru-sifre' }, () => {
-    assert.throws(() => ldap.authenticateLocal('admin', 'yanlis-sifre'), /Kullanıcı adı veya şifre hatalı/);
+    assert.throws(
+      () => ldap.authenticateLocal('admin', 'yanlis-sifre'),
+      /Kullanıcı adı veya şifre hatalı/,
+    );
   });
 });
 
@@ -64,11 +85,17 @@ test('authenticateLocal(): dolu sifreyle bile YANLIS sifre reddedilir', () => {
 // gercek LDAP baglantisi gerektirir; bu yuzden regex mantigini burada izole dogruluyoruz
 // (ldap.cjs'teki gercek satirla BIREBIR ayni ifade).
 function determineRoleLike(memberOf, adminGroup, userGroup) {
-  const groups = (() => { if (Array.isArray(memberOf)) return memberOf; if (memberOf) return [memberOf]; return []; })().map((g) => String(g).toLowerCase());
+  const groups = (() => {
+    if (Array.isArray(memberOf)) return memberOf;
+    if (memberOf) return [memberOf];
+    return [];
+  })().map((g) => String(g).toLowerCase());
   adminGroup = adminGroup.toLowerCase();
   userGroup = userGroup.toLowerCase();
-  if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup))) return 'Admin';
-  if (userGroup && groups.some((g) => g === userGroup || g.endsWith(',' + userGroup))) return 'User';
+  if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup)))
+    return 'Admin';
+  if (userGroup && groups.some((g) => g === userGroup || g.endsWith(',' + userGroup)))
+    return 'User';
   if (!adminGroup && !userGroup) return 'User';
   return null;
 }
@@ -80,12 +107,19 @@ test('determineRole mantigi: kisa/genel bir grup DNi baska bir grubun ALT DIZISI
   // Asil senaryo: kullanicinin uye oldugu grup, admin grubunun bir ALT-DIZISI (substring) ise
   // eski kod adminGroup.includes(g) ile yanlislikla Admin veriyordu.
   const userIsMemberOf = ['cn=admin,ou=groups']; // adminGroup'un icinde substring olarak geciyor ama FARKLI bir DN
-  assert.equal(determineRoleLike(userIsMemberOf, adminGroup, ''), null, 'kismi/substring DN eslesmesi Admin vermemeli');
+  assert.equal(
+    determineRoleLike(userIsMemberOf, adminGroup, ''),
+    null,
+    'kismi/substring DN eslesmesi Admin vermemeli',
+  );
 });
 
 test('determineRole mantigi: TAM eslesen grup DNi Admin verir', () => {
   const adminGroup = 'cn=bmw_portal_admins,ou=groups,dc=corp';
-  assert.equal(determineRoleLike(['cn=bmw_portal_admins,ou=groups,dc=corp'], adminGroup, ''), 'Admin');
+  assert.equal(
+    determineRoleLike(['cn=bmw_portal_admins,ou=groups,dc=corp'], adminGroup, ''),
+    'Admin',
+  );
 });
 
 test('determineRole mantigi: DN-sonu (suffix) eslesmesi Admin verir (nested OU)', () => {
@@ -108,16 +142,23 @@ test('determineRole mantigi: hicbir grup eslesmezse null (erisim yok)', () => {
 // yol acikti — asagidaki iki test bu YOLUN artik KAPALI, ag-hatasi YOLUNUN ise hala ACIK
 // oldugunu ayni kurulumla (yalniz mock'lanan hata turu degiserek) kanitlar.
 test('authenticate(): LDAP "ldap_user_not_found" durumunda yerel hesaba DUSMEZ (dogru yerel sifre bile reddedilir)', async (t) => {
-  t.mock.method(ldap, 'authenticateLdap', async () => { throw new Error('ldap_user_not_found'); });
+  t.mock.method(ldap, 'authenticateLdap', async () => {
+    throw new Error('ldap_user_not_found');
+  });
   await withEnv(
-    { LDAP_URL: 'ldaps://fake', LDAP_BASE_DN: 'dc=corp', LDAP_BIND_DN: 'cn=svc',
-      LOCAL_ADMIN_USER: '', LOCAL_ADMIN_PASS: 'gercek-sifre' },
+    {
+      LDAP_URL: 'ldaps://fake',
+      LDAP_BASE_DN: 'dc=corp',
+      LDAP_BIND_DN: 'cn=svc',
+      LOCAL_ADMIN_USER: '',
+      LOCAL_ADMIN_PASS: 'gercek-sifre',
+    },
     async () => {
       await assert.rejects(
         () => ldap.authenticate('admin', 'gercek-sifre'),
-        /Kullanıcı adı veya şifre hatalı/
+        /Kullanıcı adı veya şifre hatalı/,
       );
-    }
+    },
   );
 });
 
@@ -128,11 +169,16 @@ test('authenticate(): LDAP AG HATASI (ECONNREFUSED) durumunda yerel hesaba DUSER
     throw err;
   });
   await withEnv(
-    { LDAP_URL: 'ldaps://fake', LDAP_BASE_DN: 'dc=corp', LDAP_BIND_DN: 'cn=svc',
-      LOCAL_ADMIN_USER: '', LOCAL_ADMIN_PASS: 'gercek-sifre' },
+    {
+      LDAP_URL: 'ldaps://fake',
+      LDAP_BASE_DN: 'dc=corp',
+      LDAP_BIND_DN: 'cn=svc',
+      LOCAL_ADMIN_USER: '',
+      LOCAL_ADMIN_PASS: 'gercek-sifre',
+    },
     async () => {
       const result = await ldap.authenticate('admin', 'gercek-sifre');
       assert.equal(result.role, 'Admin');
-    }
+    },
   );
 });

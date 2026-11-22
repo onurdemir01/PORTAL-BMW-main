@@ -9,7 +9,7 @@
 // listeyi karşılaştırır; Ansible deposu bu makinede yoksa test o karşılaştırmayı ATLAR ama
 // kataloğun kendi tutarlılığını yine de doğrular.
 //
-// ANKARA AYRI ORTAM (kullanıcı kararı): daocpankprod1 envanterde tanımlı değil, runbook'larda
+// ANKARA AYRI ORTAM (kullanıcı kararı): odocpankprod1 envanterde tanımlı değil, runbook'larda
 // geçiyor; Hub'da "Production (Ankara)" olarak ayrı ortam görünür.
 //
 // WYDEN — AKTİF/PASİF CLUSTER ÇİFTLERİ (2026-09-25'te gelen 12 runbook'tan): her ortamın iki
@@ -83,17 +83,53 @@ const WYDEN_CHART_OCI = 'repo.wyden.io/nexus/repository/wyden/wyden';
  * bekcisi alan ile onegin ayrismasini engelliyor.
  *
  * KUMEDE OLCULDU (2026-09-29) - varsayim degil. Iki test kumesi de `harmonize-test`
- * namespace'ini ve ayni bastion'i (damtct01) kullandigi icin `helm list` ciktisi tek
+ * namespace'ini ve ayni bastion'i (odmtct01) kullandigi icin `helm list` ciktisi tek
  * basina hangi kiraciya ait oldugunu SOYLEMEZ; `oc whoami -c` ile ayirt edildi:
- *   daocptest1        (DAS test) -> hmz      rev 88, harmonize-1.34.18
- *   gbocp3rdcwtest1   (GAR test) -> hmzbank  rev 11, harmonize-1.34.20
+ *   odocptest1        (DAS test) -> hmz      rev 88, harmonize-1.34.18
+ *   orocp3rdcwtest1   (GAR test) -> hmzbank  rev 11, harmonize-1.34.20
  * Her iki namespace'te de TEK release var; yanlis release adiyla acilmis bir kalinti yok.
  */
 const metacoRelease = (domain) => (String(domain) === 'gar' ? 'hmzbank' : 'hmz');
 
 /** @type {CryptoTenant[]} */
+// ALTYAPI ALANLARI KOD DISINDA (2026-11-20, kalite kapisi K17): her kiracinin `bastion`, `cluster` ve `apiUrl`
+// degeri kurum ayarindadir (`cryptoHub.kiracilar.<key>`). Bu dosya ekranla paylasildigi icin bagimsizdir
+// (require yok; dev sunucusu shim'i bunu bekler): okuyucuyu SUNUCU baglar (server/crypto-hub/kiracilar.cjs,
+// altyapiCozucuBagla). Kiraci nesnesinde bu alanlar erisimcidir: her okumada cozucuden gelir; bagli degilse ''.
+// `resValuesPath` (CPU / bellek values dosyasi) ve `valuesDosyasi` (runbook'taki values dosya adi) da kurum
+// ayarindadir: dosya adi kurum adini tasir (K17).
+const ALTYAPI_ALANLARI = Object.freeze([
+  'bastion',
+  'cluster',
+  'apiUrl',
+  'resValuesPath',
+  'valuesDosyasi',
+]);
+/** @type {((key: string) => ({ bastion?: string, cluster?: string, apiUrl?: string, resValuesPath?: string, valuesDosyasi?: string } | null)) | null} */
+let altyapiCozucu = null;
+/** Sunucu tarafi kurum ayari okuyucusunu baglar: (key) => {bastion, cluster, apiUrl} | null. */
+function altyapiCozucuBagla(fn) {
+  if (typeof fn === 'function') altyapiCozucu = fn;
+}
+function altyapi(key) {
+  const k = altyapiCozucu ? altyapiCozucu(key) : null;
+  return k && typeof k === 'object' ? k : {};
+}
+function kiraci(tanim) {
+  const t = { ...tanim };
+  for (const alan of ALTYAPI_ALANLARI)
+    Object.defineProperty(t, alan, {
+      enumerable: true,
+      get: () => {
+        const v = altyapi(tanim.key)[alan];
+        return typeof v === 'string' ? v.trim() : '';
+      },
+    });
+  return Object.freeze(t);
+}
+
 const CRYPTO_TENANTS = Object.freeze([
-  {
+  kiraci({
     key: 'metaco_das_test',
     app: 'metaco',
     appLabel: 'Metaco',
@@ -102,9 +138,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'test',
     envLabel: 'Non-Production',
     production: false,
-    bastion: 'damtct01',
-    cluster: 'daocptest1',
-    apiUrl: 'https://api.daocptest1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-test',
     helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
@@ -112,12 +145,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'metaco_das_prod',
     app: 'metaco',
     appLabel: 'Metaco',
@@ -126,9 +159,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod',
     envLabel: 'Production',
     production: true,
-    bastion: 'daaocp01',
-    cluster: 'daocpprod1',
-    apiUrl: 'https://api.daocpprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod',
     helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
@@ -136,12 +166,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'metaco_das_prod_ank',
     app: 'metaco',
     appLabel: 'Metaco',
@@ -150,9 +180,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod_ank',
     envLabel: 'Production (Ankara)',
     production: true,
-    bastion: 'daaocp01',
-    cluster: 'daocpankprod1',
-    apiUrl: 'https://api.daocpankprod1.fw.dijitalvarlik.com.tr:6443',
     namespace: 'harmonize-prod',
     helmRelease: metacoRelease('das'),
     chartRef: METACO_CHART,
@@ -160,12 +187,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'metaco_gar_test',
     app: 'metaco',
     appLabel: 'Metaco',
@@ -174,9 +201,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'test',
     envLabel: 'Non-Production',
     production: false,
-    bastion: 'damtct01',
-    cluster: 'gbocp3rdcwtest1',
-    apiUrl: 'https://api.gbocp3rdcwtest1.fw.garanti.com.tr:6443',
     namespace: 'harmonize-test',
     helmRelease: metacoRelease('gar'),
     chartRef: METACO_CHART,
@@ -184,12 +208,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'metaco_gar_prod',
     app: 'metaco',
     appLabel: 'Metaco',
@@ -198,9 +222,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod',
     envLabel: 'Production',
     production: true,
-    bastion: 'daaocp01',
-    cluster: 'gbocp3rdcwprod1',
-    apiUrl: 'https://api.gbocp3rdcwprod1.fw.garanti.com.tr:6443',
     // GAR TARAFINDA RELEASE ONEKI hmzbank: runbook'ta `helm upgrade --install … hmzbank
     // ./harmonize/` ve tum deployment'lar `hmzbank-harmonize-*`. DAS tarafi `hmz`.
     // (Onek ALANA gore belirlenir, ortama gore DEGIL - bkz. metacoRelease.)
@@ -211,17 +232,17 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: '',
     chartName: '',
     chartListing: false,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
-  },
+  }),
 
   // ── WYDEN ───────────────────────────────────────────────────────────────────────────
   // Ana release `wydenapp` (chart wyden/wyden). Aynı namespace'te `keycloak` ve
   // `wyden-vault-<ortam>` release'leri de var; tarama hepsini listeler, ekran koşan sürümü
   // ANA release'ten okur.
-  {
+  kiraci({
     key: 'wyden_dev',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -230,9 +251,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'dev',
     envLabel: 'Development (Pendik Hall2)',
     production: false,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwytest1',
-    apiUrl: 'https://api.giocp3rdwytest1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-dev',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -240,12 +258,11 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '',
     resValuesVerified: false,
     resValuesEvidence: "BULUNAMADI: dev cluster alt dizini (cldev1/cldev2) eslemesi runbook'ta yok",
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_test',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -254,9 +271,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'test',
     envLabel: 'Test (Pendik Hall3)',
     production: false,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwytest2',
-    apiUrl: 'https://api.giocp3rdwytest2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-test',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -264,12 +278,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '/vhosting/setup-wyden/4-wyden/test2/1.14.0/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 1:20,27,83 (2026-09-23) giocp3rdwytest2 / wyden-test kurulumu bu dosyayla; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 1:20,27,83 (2026-09-23) oiocp3rdwytest2 / wyden-test kurulumu bu dosyayla; canli release ile eslesmesi olculmedi',
     resPeerTenants: [],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_qa_h2',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -278,9 +292,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'qa',
     envLabel: 'QA (Pendik Hall2)',
     production: false,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwytest1',
-    apiUrl: 'https://api.giocp3rdwytest1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-qa',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -288,12 +299,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 3:20,27,141 (2026-08-05) giocp3rdwytest1 / wyden-qa 1.5.19 clqa1; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 3:20,27,141 (2026-08-05) oiocp3rdwytest1 / wyden-qa 1.5.19 clqa1; canli release ile eslesmesi olculmedi',
     resPeerTenants: ['wyden_qa_h3'],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_qa_h3',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -302,9 +313,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'qa_h3',
     envLabel: 'QA (Pendik Hall3)',
     production: false,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwytest2',
-    apiUrl: 'https://api.giocp3rdwytest2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-qa',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -312,12 +320,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa2/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'MAKUL: runbook 5:150,162,242 (2026-04-30) giocp3rdwytest2 / wyden-qa 1.5.17/clqa2 kullandi; 1.5.19/clqa2 dizini clqa1 ile ayni surumde (runbook 3:141)',
+    resValuesEvidence:
+      'MAKUL: runbook 5:150,162,242 (2026-04-30) oiocp3rdwytest2 / wyden-qa 1.5.17/clqa2 kullandi; 1.5.19/clqa2 dizini clqa1 ile ayni surumde (runbook 3:141)',
     resPeerTenants: ['wyden_qa_h2'],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_prod_h3',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -326,9 +334,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod',
     envLabel: 'Production (Pendik Hall3)',
     production: true,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwyprod2',
-    apiUrl: 'https://api.giocp3rdwyprod2.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -336,12 +341,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod2/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 2:20,27,147 (2026-08-05) giocp3rdwyprod2 / wyden-prod 1.5.19 clprod2; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 2:20,27,147 (2026-08-05) oiocp3rdwyprod2 / wyden-prod 1.5.19 clprod2; canli release ile eslesmesi olculmedi',
     resPeerTenants: ['wyden_prod_h2', 'wyden_prod_ank'],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_prod_h2',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -350,9 +355,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod_h2',
     envLabel: 'Production (Pendik Hall2)',
     production: true,
-    bastion: 'gbaocp01',
-    cluster: 'giocp3rdwyprod1',
-    apiUrl: 'https://api.giocp3rdwyprod1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -360,12 +362,12 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod1/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'MAKUL: runbook 6:20,121 (2026-04-13) giocp3rdwyprod1 prod/1.5.16/clprod1 kullandi; 1.5.19/clprod1 dizini clprod2 ile ayni surumde (runbook 2:147)',
+    resValuesEvidence:
+      'MAKUL: runbook 6:20,121 (2026-04-13) oiocp3rdwyprod1 prod/1.5.16/clprod1 kullandi; 1.5.19/clprod1 dizini clprod2 ile ayni surumde (runbook 2:147)',
     resPeerTenants: ['wyden_prod_h3', 'wyden_prod_ank'],
-  },
-  {
+  }),
+  kiraci({
     key: 'wyden_prod_ank',
     app: 'wyden',
     appLabel: 'Wyden',
@@ -374,9 +376,6 @@ const CRYPTO_TENANTS = Object.freeze([
     env: 'prod_ank',
     envLabel: 'Production (Ankara)',
     production: true,
-    bastion: 'gbaocp01',
-    cluster: 'giocpank3rdwyprod1',
-    apiUrl: 'https://api.giocpank3rdwyprod1.fw.gteknoloji.com.tr:6443',
     namespace: 'gih-das-trading-wyden-prod',
     helmRelease: 'wydenapp',
     chartRef: WYDEN_CHART_OCI,
@@ -384,11 +383,10 @@ const CRYPTO_TENANTS = Object.freeze([
     chartRepo: 'wyden',
     chartName: 'wyden/wyden',
     chartListing: true,
-    resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: clANKprod1 <-> giocpank3rdwyprod1 icin runbook kaniti yok',
+    resValuesEvidence: 'BULUNAMADI: clANKprod1 <-> oiocpank3rdwyprod1 icin runbook kaniti yok',
     resPeerTenants: ['wyden_prod_h3', 'wyden_prod_h2'],
-  },
+  }),
 ]);
 
 // PRODUCTION ŞİMDİLİK KAPALI (kullanıcı, 2026-09-26: "şimdilik Crypto Hub için Production'ı
@@ -439,4 +437,11 @@ function selectionTree() {
   return apps;
 }
 
-module.exports = { CRYPTO_TENANTS, tenantOf, selectionTree, isOpen, PRODUCTION_ENABLED };
+module.exports = {
+  CRYPTO_TENANTS,
+  tenantOf,
+  selectionTree,
+  isOpen,
+  PRODUCTION_ENABLED,
+  altyapiCozucuBagla,
+};

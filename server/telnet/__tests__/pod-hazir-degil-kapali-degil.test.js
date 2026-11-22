@@ -2,7 +2,7 @@
 //
 // "PORT KAPALI" ile "TEST YAPILAMADI" AYNI SEY DEGIL.
 //
-// URETIMDE NE OLDU (job 3291766, gbocptest4): test pod'u ayaga kalkmadi, `oc exec`
+// URETIMDE NE OLDU (job 3291766, orocptest4): test pod'u ayaga kalkmadi, `oc exec`
 //     error: unable to upgrade connection: container not found ("telnet-test-3291766")
 // dondu ve ekran bunu KAPALI diye gosterdi. Kullanici "port kapali" sanip guvenlik/ag
 // ekibine gidiyordu; oysa sorun testin KENDISINDEYDI.

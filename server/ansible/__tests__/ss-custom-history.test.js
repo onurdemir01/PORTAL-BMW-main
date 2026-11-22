@@ -9,40 +9,80 @@
 // Bekci: gecmis tablosu + arsivleme, taze onbellek, okuma basarisizsa kaydetme kilidi.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const read = (p) => fs.readFileSync(path.join(__dirname, '..', '..', p), 'utf8');
-const codeOnly = (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const codeOnly = (s) =>
+  s
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
 
 test('SH1 her kayittan once onceki surum gecmise yazilir (tablo + arsiv + restore ucu)', () => {
   const schema = read('db/mssql-setup.cjs');
-  assert.ok(schema.includes('CREATE TABLE ansible_ss_customizations_history'), 'gecmis tablosu yok');
+  assert.ok(
+    schema.includes('CREATE TABLE ansible_ss_customizations_history'),
+    'gecmis tablosu yok',
+  );
   const src = codeOnly(read('ansible/runner.cjs'));
-  assert.match(src, /async function writeCustom\(serverId, templateId, data, opts = \{\}\) \{\s*await archiveCustom\(/, 'writeCustom arsivlemeden yaziyor');
+  assert.match(
+    src,
+    /async function writeCustom\(serverId, templateId, data, opts = \{\}\) \{\s*await archiveCustom\(/,
+    'writeCustom arsivlemeden yaziyor',
+  );
   assert.match(src, /INSERT INTO ansible_ss_customizations_history/, 'arsiv insert yok');
-  assert.match(src, /'\/api\/ansible\/ss\/custom\/:serverId\/:templateId\/history'/, 'gecmis listesi ucu yok');
-  assert.match(src, /'\/api\/ansible\/ss\/custom\/:serverId\/:templateId\/restore\/:historyId'/, 'geri yukleme ucu yok');
+  assert.match(
+    src,
+    /'\/api\/ansible\/ss\/custom\/:serverId\/:templateId\/history'/,
+    'gecmis listesi ucu yok',
+  );
+  assert.match(
+    src,
+    /'\/api\/ansible\/ss\/custom\/:serverId\/:templateId\/restore\/:historyId'/,
+    'geri yukleme ucu yok',
+  );
   assert.match(src, /auditPortal\(req, 'ss_custom_save'/, 'kayit denetim izine dusmuyor');
 });
 
-test('SH2 admin ekrani DB\'deki GUNCEL hali okur (onbellek tazelenir), okuma hatasi 400 (nginx HTML degil)', () => {
+test("SH2 admin ekrani DB'deki GUNCEL hali okur (onbellek tazelenir), okuma hatasi 400 (nginx HTML degil)", () => {
   const src = codeOnly(read('ansible/runner.cjs'));
   assert.match(src, /async function freshCustom\(/, 'taze okuma yok');
-  assert.match(src, /customization: await freshCustom\(server\.id, req\.params\.templateId\)/, 'GET custom taze okumuyor (eski onbellek -> ezme)');
+  assert.match(
+    src,
+    /customization: await freshCustom\(server\.id, req\.params\.templateId\)/,
+    'GET custom taze okumuyor (eski onbellek -> ezme)',
+  );
   assert.match(src, /_ssCustomLoadedAt = Date\.now\(\)/, 'onbellek yas damgasi yok');
-  assert.doesNotMatch(src, /custom\/:serverId\/:templateId', requireAuth, requireAdmin, async \(req, res\) => \{\s*const server = getServerById\(req\.params\.serverId\);\s*if \(!server\) return res\.status\(404\)/, 'GET custom 404 donuyor - nginx HTML sayfasina cevirir, ekran bos acilir');
+  assert.doesNotMatch(
+    src,
+    // Yalniz GET (ekranin okudugu uc); POST kendi dogrulamasini yapar.
+    esnek(
+      /app\.get\('\/api\/ansible\/ss\/custom\/:serverId\/:templateId', requireAuth, requireAdmin, async \(req, res\) => \{\s*const server = getServerById\(req\.params\.serverId\);\s*if \(!server\) return res\.status\(404\)/,
+    ),
+    'GET custom 404 donuyor - nginx HTML sayfasina cevirir, ekran bos acilir',
+  );
 });
 
 test('SH3 ekran: ayarlar okunamadiysa Kaydet KILITLI; gecmis paneli + geri yukleme', () => {
   const modal = codeOnly(read('../src/components/self_service/FieldOverridesModal.tsx'));
   assert.match(modal, /setLoadFailed\(true\)/, 'okuma hatasi isaretlenmiyor');
-  assert.match(modal, /disabled=\{saving \|\| loadFailed\}/, 'Kaydet okuma hatasinda kilitlenmiyor (bos halle ezme yolu acik)');
+  assert.match(
+    modal,
+    /disabled=\{saving \|\| loadFailed\}/,
+    'Kaydet okuma hatasinda kilitlenmiyor (bos halle ezme yolu acik)',
+  );
   assert.match(modal, /ansibleApi\.customizationHistory\(/, 'gecmis listesi cekilmiyor');
   assert.match(modal, /ansibleApi\.restoreCustomization\(/, 'geri yukleme yok');
   // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
-  assert.match(modal, /await onayla\(\{ baslik: 'Sürümü geri yükle'/, 'geri yukleme onaysiz');
-  assert.doesNotMatch(modal, /window\.confirm\(/, 'tarayici onayi geri gelmis');
+  assert.match(
+    modal,
+    esnek(/await onayla\(\{ baslik: 'Sürümü geri yükle'/),
+    'geri yukleme onaysiz',
+  );
+  assert.doesNotMatch(modal, esnek(/window\.confirm\(/), 'tarayici onayi geri gelmis');
 });

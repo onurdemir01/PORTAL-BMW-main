@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 
 // ── MARKA ISARETI ────────────────────────────────────────────────────────────
 // Tasarim kaynagi: hknisci/bmw_portal `action_list/logos.md` icindeki iki referans
@@ -35,12 +35,12 @@ import React, { useEffect, useState } from "react";
 // oldugu icin eski yol — `/api/branding/meta` sorgusu — devreye girer.
 declare global {
   interface Window {
-    __BMW_BOOT__?: { logoUrl?: string | null; theme?: string };
+    __BMW_BOOT__?: { logoUrl?: string | null; theme?: string; kurumAyarHatasi?: string | null };
   }
 }
 
 const BOOT_LOGO: string | null | undefined =
-  typeof window !== "undefined" ? window.__BMW_BOOT__?.logoUrl : undefined;
+  typeof window !== 'undefined' ? window.__BMW_BOOT__?.logoUrl : undefined;
 
 // `undefined` = sunucu bilgi gomemedi (dev) -> sor. `null` = "ozel logo YOK" -> sorma.
 const BOOT_KNOWS = BOOT_LOGO !== undefined;
@@ -48,7 +48,7 @@ const BOOT_KNOWS = BOOT_LOGO !== undefined;
 let metaPromise: Promise<boolean> | null = null;
 function hasCustomLogo(): Promise<boolean> {
   if (!metaPromise) {
-    metaPromise = fetch("/api/branding/meta")
+    metaPromise = fetch('/api/branding/meta')
       .then((r) => r.json())
       .then((d) => !!d.hasLogo)
       .catch(() => false);
@@ -58,8 +58,8 @@ function hasCustomLogo(): Promise<boolean> {
 
 /** Heroicons `CloudIcon` (24x24 outline) yolu — bulut konturunun kaynagi. */
 const CLOUD_D =
-  "M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 " +
-  "5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z";
+  'M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 ' +
+  '5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z';
 
 /** Veri mozaigi: [x, y, kenar, opaklik]. Buyukten kucuge, sol-alttan buluta dogru
  *  "cozulme" hissi. Son kare bulutun sol ucuna DEGER — referanstaki gibi mozaik
@@ -93,31 +93,36 @@ interface Props {
 }
 
 export function PortalLogo({
-  className = "h-8 w-8", withWordmark = false, showText = false, textColor = "text-white",
+  className = 'h-8 w-8',
+  withWordmark = false,
+  showText = false,
+  textColor = 'text-white',
 }: Props) {
   const [logoSrc, setLogoSrc] = useState<string | null>(BOOT_KNOWS ? (BOOT_LOGO ?? null) : null);
 
   useEffect(() => {
-    if (BOOT_KNOWS) return;   // sunucu zaten soyledi — istek atma
+    if (BOOT_KNOWS) return; // sunucu zaten soyledi — istek atma
     let alive = true;
     void hasCustomLogo().then((v) => {
-      if (alive) setLogoSrc(v ? "/api/branding/logo" : null);
+      if (alive) setLogoSrc(v ? '/api/branding/logo' : null);
     });
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const useCustom = !!logoSrc;
   // Gradyan id'leri BENZERSIZ olmali: ayni sayfada iki logo varsa (masthead + giris
   // gecisi, ya da admin onizlemesi) ayni id iki kez tanimlanir ve tarayici ILKINI
   // kullanir — ikinci logo yanlis renkte cizilirdi.
-  const uid = React.useId().replace(/:/g, "");
+  const uid = React.useId().replace(/:/g, '');
   const pixels = withWordmark ? PIXELS_FULL : PIXELS_MARK;
   // Olculer referansin oranlarindan turetildi. `mark` varyantinda bulut BILEREK daha
   // buyuk: wordmark olmadigi icin kutuda yer var ve 36px'te dolgunluk okunurlugu
   // dogrudan artiriyor.
   const cloud = withWordmark
-    ? { t: "translate(17.08 -0.72) scale(1.744)", w: 2.06 }
-    : { t: "translate(14.5 2.5) scale(2.0)", w: 2.05 };
+    ? { t: 'translate(17.08 -0.72) scale(1.744)', w: 2.06 }
+    : { t: 'translate(14.5 2.5) scale(2.0)', w: 2.05 };
 
   return (
     <span className="flex items-center gap-2 select-none">
@@ -127,7 +132,7 @@ export function PortalLogo({
         // her logo (ornegin genis bir wordmark) kenarlarindan kesiliyordu.
         <span
           className={`${className} relative inline-block overflow-hidden flex-shrink-0`}
-          style={{ borderRadius: "var(--radius-sm)" }}
+          style={{ borderRadius: 'var(--radius-sm)' }}
         >
           <img
             src={logoSrc!}
@@ -137,7 +142,12 @@ export function PortalLogo({
           />
         </span>
       ) : (
-        <svg viewBox="0 0 64 64" className={`${className} flex-shrink-0`} role="img" aria-label="BMW Portal">
+        <svg
+          viewBox="0 0 64 64"
+          className={`${className} flex-shrink-0`}
+          role="img"
+          aria-label="BMW Portal"
+        >
           <defs>
             <linearGradient id={`tile${uid}`} x1="0" y1="0" x2="1" y2="1">
               <stop offset="0" stopColor="#00204a" />
@@ -162,13 +172,27 @@ export function PortalLogo({
           <rect width="64" height="64" rx="13.5" fill={`url(#glow${uid})`} />
 
           {pixels.map(([x, y, s, o], i) => (
-            <rect key={i} x={x} y={y} width={s} height={s} rx={Math.min(1.6, s / 3.6)}
-                  fill={`url(#aq${uid})`} opacity={o} />
+            <rect
+              key={i}
+              x={x}
+              y={y}
+              width={s}
+              height={s}
+              rx={Math.min(1.6, s / 3.6)}
+              fill={`url(#aq${uid})`}
+              opacity={o}
+            />
           ))}
 
           <g transform={cloud.t}>
-            <path d={CLOUD_D} fill="none" stroke={`url(#aq${uid})`} strokeWidth={cloud.w}
-                  strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d={CLOUD_D}
+              fill="none"
+              stroke={`url(#aq${uid})`}
+              strokeWidth={cloud.w}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </g>
 
           {withWordmark && (
@@ -176,8 +200,16 @@ export function PortalLogo({
             // yuklenir — bkz. src/fonts.css). Yola cevirmek yerine metin birakildi:
             // font zaten preload ediliyor ve metin her boyutta hinting'li cizilir.
             <text
-              x="35" y="54.5" textAnchor="middle" fill="#ffffff"
-              style={{ fontFamily: "var(--font-display)", fontSize: "16.5px", fontWeight: 700, letterSpacing: "-0.6px" }}
+              x="35"
+              y="54.5"
+              textAnchor="middle"
+              fill="#ffffff"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '16.5px',
+                fontWeight: 700,
+                letterSpacing: '-0.6px',
+              }}
             >
               BMW
             </text>
@@ -186,7 +218,10 @@ export function PortalLogo({
       )}
 
       {showText && (
-        <span className={`text-base ${textColor}`} style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
+        <span
+          className={`text-base ${textColor}`}
+          style={{ fontFamily: 'var(--font-display)', fontWeight: 500 }}
+        >
           BMW Portal
         </span>
       )}

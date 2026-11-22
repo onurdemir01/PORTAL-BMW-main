@@ -43,7 +43,16 @@ const UYGULAMA_TAVAN = 20;
 // Uygulama basina jbossDetay discover + Server Hub agir okumasi yapar; 2 uygulama x JVM_AGIR_ESZAMAN.
 const ESZAMAN = 2;
 
-const ENVANTER_ORTAM = { PRODUCTION: 'PROD', PROD: 'PROD', PRD: 'PROD', QA: 'QA', TEST: 'TEST', ALPHA: 'ALPHA', ODM: 'ODM', DEV: 'DEV' };
+const ENVANTER_ORTAM = {
+  PRODUCTION: 'PROD',
+  PROD: 'PROD',
+  PRD: 'PROD',
+  QA: 'QA',
+  TEST: 'TEST',
+  ALPHA: 'ALPHA',
+  ODM: 'ODM',
+  DEV: 'DEV',
+};
 // discover.cjs'in urettigi ortam kumesi (hedefOrtami): bunlarin disindaki etiket 'taninmadi' sayilir.
 const ORTAMLAR = ['PROD', 'QA', 'TEST', 'DEV', 'ALPHA', 'ODM'];
 
@@ -69,9 +78,32 @@ const SUNUCUYA_OZGU_ANAHTARLAR = new Set([
 const PORT_OFSET = '-Djboss.socket.binding.port-offset';
 
 // Degeri ayri belirtec olarak alan bayraklar (-cp <yol>).
-const DEGERLI_BAYRAK = new Set(['-cp', '-classpath', '-jar', '-mp', '--module-path', '-p', '--add-modules', '--add-opens', '--add-exports', '--add-reads', '--patch-module']);
+const DEGERLI_BAYRAK = new Set([
+  '-cp',
+  '-classpath',
+  '-jar',
+  '-mp',
+  '--module-path',
+  '-p',
+  '--add-modules',
+  '--add-opens',
+  '--add-exports',
+  '--add-reads',
+  '--patch-module',
+]);
 // Birden cok kez verilmesi olagan, her degeri ayri gecerli olan bayraklar: sirasiz birlestirilir.
-const COK_DEGERLI = new Set(['--add-modules', '--add-opens', '--add-exports', '--add-reads', '--patch-module', '-javaagent', '-agentlib', '-agentpath', '-Xlog', '-verbose']);
+const COK_DEGERLI = new Set([
+  '--add-modules',
+  '--add-opens',
+  '--add-exports',
+  '--add-reads',
+  '--patch-module',
+  '-javaagent',
+  '-agentlib',
+  '-agentpath',
+  '-Xlog',
+  '-verbose',
+]);
 // Tarayicinin kesme belirteci (server_hub_scan.sh SH_JA_CUT_AWK): son belirtec '...+N'.
 const KESIK_RE = /^\.\.\.\+(\d+)$/;
 
@@ -90,7 +122,13 @@ function anahtarDeger(tok) {
   }
   const xm = /^-X(ms|mx|ss|mn)(.*)$/.exec(s);
   if (xm) return [`-X${xm[1]}`, xm[2]];
-  if (s.startsWith('-X') || s.startsWith('-javaagent') || s.startsWith('-agentlib') || s.startsWith('-agentpath') || s.startsWith('-verbose')) {
+  if (
+    s.startsWith('-X') ||
+    s.startsWith('-javaagent') ||
+    s.startsWith('-agentlib') ||
+    s.startsWith('-agentpath') ||
+    s.startsWith('-verbose')
+  ) {
     const c = s.indexOf(':');
     return c < 0 ? [s, ''] : [s.slice(0, c), s.slice(c + 1)];
   }
@@ -163,7 +201,8 @@ function normallestir(deger, uye) {
   ]
     .filter((p) => p.s && String(p.s).length >= 3)
     .sort((a, b) => String(b.s).length - String(a.s).length);
-  for (const p of parcalar) v = v.replace(new RegExp(p.sol + kacis(String(p.s)) + p.sag, p.bayrak), p.yer);
+  for (const p of parcalar)
+    v = v.replace(new RegExp(p.sol + kacis(String(p.s)) + p.sag, p.bayrak), p.yer);
   return v;
 }
 
@@ -198,34 +237,74 @@ function ofsetSunucuIcinde(olan) {
  * uyeler: [{ etiket, host, jvm, ip?, args: string|null, kaynak, calisiyor, taze, taramaTarihi }]
  */
 function grupKarsilastir(uyeler) {
-  const ayrik = uyeler.map((u) => ({ u, oz: u.args && String(u.args).trim() ? argOzu(u.args) : null }));
-  const haritalar = ayrik.filter((x) => x.oz && x.oz.h.size).map((x) => ({ u: x.u, h: x.oz.h, kesik: x.oz.kesik, tekrarlar: x.oz.tekrarlar }));
+  const ayrik = uyeler.map((u) => ({
+    u,
+    oz: u.args && String(u.args).trim() ? argOzu(u.args) : null,
+  }));
+  const haritalar = ayrik
+    .filter((x) => x.oz?.h.size)
+    .map((x) => ({ u: x.u, h: x.oz.h, kesik: x.oz.kesik, tekrarlar: x.oz.tekrarlar }));
   const olculen = haritalar.map((x) => x.u);
-  const olculemeyen = ayrik.filter((x) => !(x.oz && x.oz.h.size)).map((x) => x.u);
+  const olculemeyen = ayrik.filter((x) => !x.oz?.h.size).map((x) => x.u);
   const uyarilar = [];
   const bayat = uyeler.filter((u) => u.taze === false);
-  if (olculemeyen.length) uyarilar.push(`${olculemeyen.length} JVM'in argümanı okunamadı (${olculemeyen.map((u) => u.etiket).join(', ')}); karşılaştırmaya girmedi.`);
-  if (bayat.length) uyarilar.push(`${bayat.length} JVM'in Server Hub taraması bayat; argümanlar güncel olmayabilir.`);
+  if (olculemeyen.length)
+    uyarilar.push(
+      `${olculemeyen.length} JVM'in argümanı okunamadı (${olculemeyen.map((u) => u.etiket).join(', ')}); karşılaştırmaya girmedi.`,
+    );
+  if (bayat.length)
+    uyarilar.push(
+      `${bayat.length} JVM'in Server Hub taraması bayat; argümanlar güncel olmayabilir.`,
+    );
   const kaynaklar = new Set(olculen.map((u) => u.kaynak));
-  if (kaynaklar.size > 1) uyarilar.push('Bazı JVM\'ler çalışan süreçten, bazıları yapılandırmadan okundu; fark kaynak farkından olabilir.');
+  if (kaynaklar.size > 1)
+    uyarilar.push(
+      "Bazı JVM'ler çalışan süreçten, bazıları yapılandırmadan okundu; fark kaynak farkından olabilir.",
+    );
   const kesikler = haritalar.filter((x) => x.kesik != null);
   if (kesikler.length) {
+    const kesikListesi = kesikler.map((x) => `${x.u.etiket}: +${x.kesik}`).join(', ');
     uyarilar.push(
-      `${kesikler.length} JVM'in argüman metni taramada kesilmiş (${kesikler.map((x) => `${x.u.etiket}: +${x.kesik}`).join(', ')}); kesilen kısımdaki argümanlar karşılaştırılamadı.`,
+      `${kesikler.length} JVM'in argüman metni taramada kesilmiş (${kesikListesi}); kesilen kısımdaki argümanlar karşılaştırılamadı.`,
     );
   }
   for (const x of haritalar) {
-    if (x.tekrarlar.length) uyarilar.push(`${x.u.etiket}: ${x.tekrarlar.join(', ')} birden çok kez veriliyor; son yazılan değer etkin sayıldı.`);
+    if (x.tekrarlar.length)
+      uyarilar.push(
+        `${x.u.etiket}: ${x.tekrarlar.join(', ')} birden çok kez veriliyor; son yazılan değer etkin sayıldı.`,
+      );
   }
 
-  const bos = { degerFarklari: [], eksikFazla: [], karsilastirilamadi: [], sunucuyaOzgu: [], maskeli: [], esitSayisi: 0, farkSayisi: 0 };
-  const sonuc = (durum, neden, ek = {}) => ({ durum, neden: neden || null, uyarilar, jvmSayisi: uyeler.length, olculenJvm: olculen.length, ...bos, ...ek });
+  const bos = {
+    degerFarklari: [],
+    eksikFazla: [],
+    karsilastirilamadi: [],
+    sunucuyaOzgu: [],
+    maskeli: [],
+    esitSayisi: 0,
+    farkSayisi: 0,
+  };
+  const sonuc = (durum, neden, ek = {}) => ({
+    durum,
+    neden: neden || null,
+    uyarilar,
+    jvmSayisi: uyeler.length,
+    olculenJvm: olculen.length,
+    ...bos,
+    ...ek,
+  });
 
   if (!uyeler.length) return sonuc('BULUNAMADI', 'Seçilen ortamda JVM yok.');
-  if (!olculen.length) return sonuc('OLCULEMEDI', 'Hiçbir JVM\'in argümanı okunamadı (tarama yok, argüman toplanmadı ya da okuma hatası).');
-  if (bayat.length === uyeler.length) return sonuc('OLCULEMEDI', 'Tüm JVM taramaları bayat; güncel argüman yok.');
+  if (!olculen.length)
+    return sonuc(
+      'OLCULEMEDI',
+      "Hiçbir JVM'in argümanı okunamadı (tarama yok, argüman toplanmadı ya da okuma hatası).",
+    );
+  if (bayat.length === uyeler.length)
+    return sonuc('OLCULEMEDI', 'Tüm JVM taramaları bayat; güncel argüman yok.');
   if (uyeler.length === 1) return sonuc('TEK_SUNUCU', 'Karşılaştırılacak ikinci JVM yok.');
-  if (olculen.length < 2) return sonuc('OLCULEMEDI', 'Argümanı okunabilen tek JVM var; diğerleri ölçülemedi.');
+  if (olculen.length < 2)
+    return sonuc('OLCULEMEDI', 'Argümanı okunabilen tek JVM var; diğerleri ölçülemedi.');
 
   const anahtarlar = [...new Set(haritalar.flatMap((x) => [...x.h.keys()]))].sort(varsayilanSira);
   const degerFarklari = [];
@@ -252,7 +331,8 @@ function grupKarsilastir(uyeler) {
       });
       continue;
     }
-    if (olmayanKesik.length) karsilastirilamadi.push({ anahtar: k, kesik: olmayanKesik.map((x) => x.u.etiket) });
+    if (olmayanKesik.length)
+      karsilastirilamadi.push({ anahtar: k, kesik: olmayanKesik.map((x) => x.u.etiket) });
     if (olan.length < 2) continue;
     const ham = grupla(olan, (x) => x.h.get(k));
     if (ham.length === 1) {
@@ -262,7 +342,11 @@ function grupKarsilastir(uyeler) {
     const sirali = grupla(olan, (x) => normallestir(x.h.get(k), x.u));
     const ornek = olan.map((x) => ({ uye: x.u.etiket, deger: x.h.get(k) }));
     if (sirali.length === 1 || SUNUCUYA_OZGU_ANAHTARLAR.has(k)) {
-      sunucuyaOzgu.push({ anahtar: k, degerler: ornek, normal: sirali.length === 1 ? sirali[0][0] : null });
+      sunucuyaOzgu.push({
+        anahtar: k,
+        degerler: ornek,
+        normal: sirali.length === 1 ? sirali[0][0] : null,
+      });
       continue;
     }
     if (k === PORT_OFSET && ofsetSunucuIcinde(olan)) {
@@ -272,15 +356,22 @@ function grupKarsilastir(uyeler) {
     let cogunlukVar = cogunlukVarMi(sirali);
     // Ham degerlerin cogunlugu baska JVM'leri gosteriyorsa (or. -Dmaster=GOJBAP01 uc sunucuda, biri kendini
     // gosteriyor) normallestirme sapani yanlis secebilir: cogunluk yazilmaz, tum degerler gosterilir.
-    const etiketler = (xs) => xs.map((x) => x.u.etiket).sort(varsayilanSira).join(',');
-    const belirsiz = cogunlukVar && cogunlukVarMi(ham) && etiketler(ham[0][1]) !== etiketler(sirali[0][1]);
+    const etiketler = (xs) =>
+      xs
+        .map((x) => x.u.etiket)
+        .sort(varsayilanSira)
+        .join(',');
+    const belirsiz =
+      cogunlukVar && cogunlukVarMi(ham) && etiketler(ham[0][1]) !== etiketler(sirali[0][1]);
     if (belirsiz) cogunlukVar = false;
     degerFarklari.push({
       anahtar: k,
       cogunluk: cogunlukVar ? sirali[0][0] : null,
       cogunlukUyeler: cogunlukVar ? sirali[0][1].map((x) => x.u.etiket) : [],
       degerler: sirali.map(([deger, xs]) => ({ deger, uyeler: xs.map((x) => x.u.etiket) })),
-      sapanlar: (cogunlukVar ? sirali.slice(1) : sirali).flatMap(([deger, xs]) => xs.map((x) => ({ uye: x.u.etiket, deger: x.h.get(k), normal: deger }))),
+      sapanlar: (cogunlukVar ? sirali.slice(1) : sirali).flatMap(([deger, xs]) =>
+        xs.map((x) => ({ uye: x.u.etiket, deger: x.h.get(k), normal: deger })),
+      ),
       belirsiz,
     });
   }
@@ -304,7 +395,10 @@ function grupKarsilastir(uyeler) {
 /** JVM'in karsilastirmada kullanilacak argumani ve kaynagi; tercih: calisan surec, yoksa yapilandirilan. */
 function argSec(j, tercih) {
   const calisan = j.jvmArgs && String(j.jvmArgs).trim() ? j.jvmArgs : null;
-  const yapi = j.yapilandirilanJvmArgs && String(j.yapilandirilanJvmArgs).trim() ? j.yapilandirilanJvmArgs : null;
+  const yapi =
+    j.yapilandirilanJvmArgs && String(j.yapilandirilanJvmArgs).trim()
+      ? j.yapilandirilanJvmArgs
+      : null;
   if (tercih === 'YAPILANDIRILAN' && yapi) return { args: yapi, kaynak: 'YAPILANDIRILAN' };
   if (calisan) return { args: calisan, kaynak: 'CALISAN' };
   if (yapi) return { args: yapi, kaynak: 'YAPILANDIRILAN' };
@@ -321,20 +415,33 @@ function uygulamaKarsilastir(istenen, detay, secim) {
   const ortamSec = secim.ortam || 'PROD';
   const nesilSec = secim.nesil == null ? 'hepsi' : secim.nesil;
   if (!detay) {
-    return { ad: istenen, tabanAd: null, durum: 'BULUNAMADI', neden: 'Envanterde JBoss uygulaması olarak bulunamadı.', sunucuSayisi: 0, jvmSayisi: 0, gruplar: [], uyarilar: [] };
+    return {
+      ad: istenen,
+      tabanAd: null,
+      durum: 'BULUNAMADI',
+      neden: 'Envanterde JBoss uygulaması olarak bulunamadı.',
+      sunucuSayisi: 0,
+      jvmSayisi: 0,
+      gruplar: [],
+      uyarilar: [],
+    };
   }
   const uyarilar = [];
   const kaynaklar = detay.kaynaklar || {};
-  const shHata = kaynaklar.serverHub && kaynaklar.serverHub.hata;
-  if (kaynaklar.envanter && kaynaklar.envanter.hata) uyarilar.push(`Envanter okunamadı: ${kaynaklar.envanter.hata}`);
-  if (kaynaklar.kesif && kaynaklar.kesif.hata) uyarilar.push(`Keşif okunamadı (${kaynaklar.kesif.hata}); ortam yalnız envanter kaydından okundu.`);
+  const shHata = kaynaklar.serverHub?.hata;
+  if (kaynaklar.envanter?.hata) uyarilar.push(`Envanter okunamadı: ${kaynaklar.envanter.hata}`);
+  if (kaynaklar.kesif?.hata)
+    uyarilar.push(
+      `Keşif okunamadı (${kaynaklar.kesif.hata}); ortam yalnız envanter kaydından okundu.`,
+    );
 
   const gruplar = new Map();
   const bilinmeyen = [];
   const hostlar = new Set();
   for (const s of detay.sunucular || []) {
     const ortam = ortamNorm(s.ortam, s.uygulama);
-    if (ortam === 'BILINMIYOR') bilinmeyen.push(s.ortam == null || s.ortam === '' ? '(boş)' : String(s.ortam));
+    if (ortam === 'BILINMIYOR')
+      bilinmeyen.push(s.ortam == null || s.ortam === '' ? '(boş)' : String(s.ortam));
     if (ortamSec !== 'TUMU' && ortam !== ortamSec) continue;
     for (const j of s.jvmler || []) {
       const nesil = Number(j.nesil) || Number(s.nesil) || null;
@@ -355,12 +462,16 @@ function uygulamaKarsilastir(istenen, detay, secim) {
   }
 
   const grupSonuclari = [...gruplar.values()]
-    .sort((a, b) => String(a.ortam).localeCompare(String(b.ortam)) || (a.nesil || 0) - (b.nesil || 0))
+    .sort(
+      (a, b) => String(a.ortam).localeCompare(String(b.ortam)) || (a.nesil || 0) - (b.nesil || 0),
+    )
     .map((g) => {
       // Grubun tum JVM'lerinde calisan surec argumani yoksa ama hepsinde yapilandirilan varsa, hepsi
       // yapilandirilandan okunur: calisan + yapilandirilan karisimi (JBoss baslaticinin ekledigi -D'ler) sahte fark uretir.
       const hepsiCalisan = g.jvmler.every(({ j }) => j.jvmArgs && String(j.jvmArgs).trim());
-      const hepsiYapi = g.jvmler.every(({ j }) => j.yapilandirilanJvmArgs && String(j.yapilandirilanJvmArgs).trim());
+      const hepsiYapi = g.jvmler.every(
+        ({ j }) => j.yapilandirilanJvmArgs && String(j.yapilandirilanJvmArgs).trim(),
+      );
       const tercih = !hepsiCalisan && hepsiYapi ? 'YAPILANDIRILAN' : 'CALISAN';
       const uyeler = g.jvmler.map(({ s, j }) => {
         const a = argSec(j, tercih);
@@ -368,7 +479,7 @@ function uygulamaKarsilastir(istenen, detay, secim) {
           etiket: `${U(s.host)}/${j.ad}`,
           host: U(s.host),
           jvm: j.ad,
-          ip: (s.kapasite && s.kapasite.ip) || null,
+          ip: s.kapasite?.ip || null,
           args: a.args,
           kaynak: a.kaynak,
           calisiyor: j.calisiyor == null ? null : j.calisiyor,
@@ -378,12 +489,17 @@ function uygulamaKarsilastir(istenen, detay, secim) {
       });
       const k = grupKarsilastir(uyeler);
       // Server Hub hatasi argumansizligin nedeni olabilir: 'tarama yok' yerine hatayi yaz.
-      if (shHata && k.durum === 'OLCULEMEDI' && !k.olculenJvm) k.neden = `Server Hub okunamadı: ${shHata}`;
+      if (shHata && k.durum === 'OLCULEMEDI' && !k.olculenJvm)
+        k.neden = `Server Hub okunamadı: ${shHata}`;
       return {
         ortam: g.ortam,
         nesil: g.nesil,
         sunucuSayisi: new Set(uyeler.map((u) => u.host)).size,
-        jvmler: uyeler.map(({ args, ip, ...u }) => ({ ...u, olculdu: !!args, kesik: args ? argOzu(args).kesik != null : false })),
+        jvmler: uyeler.map(({ args, ip, ...u }) => ({
+          ...u,
+          olculdu: !!args,
+          kesik: args ? argOzu(args).kesik != null : false,
+        })),
         ...k,
       };
     });
@@ -397,7 +513,10 @@ function uygulamaKarsilastir(istenen, detay, secim) {
     } else {
       durum = 'BULUNAMADI';
       const ortamAd = ortamSec === 'TUMU' ? 'hiçbir ortamda' : `${ortamSec} ortamında`;
-      neden = (detay.sunucular || []).length ? `${ortamAd} ${nesilSec === 'hepsi' ? '' : `JBoss ${nesilSec} `}JVM'i yok.` : 'Sunucu kaydı yok.';
+      const nesilAd = nesilSec === 'hepsi' ? '' : `JBoss ${nesilSec} `;
+      neden = (detay.sunucular || []).length
+        ? `${ortamAd} ${nesilAd}JVM'i yok.`
+        : 'Sunucu kaydı yok.';
     }
   } else {
     durum = DURUM_ONCELIK.find((d) => grupSonuclari.some((g) => g.durum === d)) || 'OLCULEMEDI';
@@ -417,7 +536,14 @@ function uygulamaKarsilastir(istenen, detay, secim) {
 }
 
 function ozetle(sonuclar) {
-  const oz = { toplam: sonuclar.length, ESIT: 0, FARKLI: 0, TEK_SUNUCU: 0, OLCULEMEDI: 0, BULUNAMADI: 0 };
+  const oz = {
+    toplam: sonuclar.length,
+    ESIT: 0,
+    FARKLI: 0,
+    TEK_SUNUCU: 0,
+    OLCULEMEDI: 0,
+    BULUNAMADI: 0,
+  };
   for (const s of sonuclar) oz[s.durum] = (oz[s.durum] || 0) + 1;
   return oz;
 }
@@ -444,13 +570,24 @@ function girdiDogrula(b, AD_RE, tabanAdi = (x) => x) {
     tabanlar.push(taban);
   }
   if (!liste.length) return { ok: false, error: 'En az bir uygulama adı girin.' };
-  if (liste.length > UYGULAMA_TAVAN) return { ok: false, error: `En çok ${UYGULAMA_TAVAN} uygulama karşılaştırılabilir (${liste.length} verildi).` };
+  if (liste.length > UYGULAMA_TAVAN)
+    return {
+      ok: false,
+      error: `En çok ${UYGULAMA_TAVAN} uygulama karşılaştırılabilir (${liste.length} verildi).`,
+    };
   const ortamHam = g.ortam == null || g.ortam === '' ? 'PROD' : U(g.ortam);
   const ortam = ortamHam === 'TUMU' ? 'TUMU' : ENVANTER_ORTAM[ortamHam];
   if (!ortam) return { ok: false, error: `Ortam TUMU ya da ${ORTAMLAR.join(', ')} olmalı.` };
   const nesilHam = g.nesil == null || g.nesil === '' ? 'hepsi' : String(g.nesil).toLowerCase();
-  if (!['7', '8', 'hepsi'].includes(nesilHam)) return { ok: false, error: "Nesil 7, 8 ya da 'hepsi' olmalı." };
-  return { ok: true, uygulamalar: liste, tabanlar, ortam, nesil: nesilHam === 'hepsi' ? 'hepsi' : Number(nesilHam) };
+  if (!['7', '8', 'hepsi'].includes(nesilHam))
+    return { ok: false, error: "Nesil 7, 8 ya da 'hepsi' olmalı." };
+  return {
+    ok: true,
+    uygulamalar: liste,
+    tabanlar,
+    ortam,
+    nesil: nesilHam === 'hepsi' ? 'hepsi' : Number(nesilHam),
+  };
 }
 
 /**
@@ -461,7 +598,7 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
   router.post('/jvm-karsilastir', async (req, res) => {
     const g = girdiDogrula(req.body, AD_RE, tabanAdi);
     if (!g.ok) return res.status(400).json({ ok: false, error: g.error });
-    const fresh = !!(req.body && req.body.fresh === true);
+    const fresh = !!(req.body?.fresh === true);
     const secim = { ortam: g.ortam, nesil: g.nesil };
     const basla = Date.now();
     try {
@@ -471,16 +608,38 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
         try {
           r = uygulamaKarsilastir(ad, await detayOku(taban, fresh), secim);
         } catch (e) {
-          r = { ad, tabanAd: null, durum: 'OLCULEMEDI', neden: `Okunamadı: ${String((e && e.message) || e).slice(0, 200)}`, sunucuSayisi: 0, jvmSayisi: 0, farkSayisi: 0, gruplar: [], uyarilar: [] };
+          r = {
+            ad,
+            tabanAd: null,
+            durum: 'OLCULEMEDI',
+            neden: `Okunamadı: ${String(e?.message || e).slice(0, 200)}`,
+            sunucuSayisi: 0,
+            jvmSayisi: 0,
+            farkSayisi: 0,
+            gruplar: [],
+            uyarilar: [],
+          };
         }
-        if (U(taban) !== U(ad)) r.uyarilar.unshift(`${ad} taban adla (${taban}) okundu; ortam seçimi (${g.ortam}) geçerli.`);
+        if (U(taban) !== U(ad))
+          r.uyarilar.unshift(
+            `${ad} taban adla (${taban}) okundu; ortam seçimi (${g.ortam}) geçerli.`,
+          );
         return r;
       });
-      const u = (req.session && req.session.user && req.session.user.username) || '?';
-      console.log(`[AppHub] ${u} -> jvm-karsilastir uygulama=${sonuclar.length} ortam=${g.ortam} nesil=${g.nesil} sure=${Date.now() - basla}ms`);
-      res.json({ ok: true, ortam: g.ortam, nesil: g.nesil, ozet: ozetle(sonuclar), uygulamalar: sonuclar, okundu: new Date().toISOString() });
+      const u = req.session?.user?.username || '?';
+      console.log(
+        `[AppHub] ${u} -> jvm-karsilastir uygulama=${sonuclar.length} ortam=${g.ortam} nesil=${g.nesil} sure=${Date.now() - basla}ms`,
+      );
+      res.json({
+        ok: true,
+        ortam: g.ortam,
+        nesil: g.nesil,
+        ozet: ozetle(sonuclar),
+        uygulamalar: sonuclar,
+        okundu: new Date().toISOString(),
+      });
     } catch (e) {
-      res.status(500).json({ ok: false, error: `Karşılaştırma yapılamadı: ${(e && e.message) || e}` });
+      res.status(500).json({ ok: false, error: `Karşılaştırma yapılamadı: ${e?.message || e}` });
     }
   });
 }
@@ -488,5 +647,18 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
 module.exports = {
   mount,
   UYGULAMA_TAVAN,
-  _ic: { anahtarDeger, argOzu, argHaritasi, normallestir, grupKarsilastir, uygulamaKarsilastir, girdiDogrula, ozetle, ortamNorm, argSec, SUNUCUYA_OZGU_ANAHTARLAR, ESZAMAN },
+  _ic: {
+    anahtarDeger,
+    argOzu,
+    argHaritasi,
+    normallestir,
+    grupKarsilastir,
+    uygulamaKarsilastir,
+    girdiDogrula,
+    ozetle,
+    ortamNorm,
+    argSec,
+    SUNUCUYA_OZGU_ANAHTARLAR,
+    ESZAMAN,
+  },
 };

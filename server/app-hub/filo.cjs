@@ -72,7 +72,7 @@ function dosyaCoz(buf) {
     );
     acik = zlib.gunzipSync(z, { maxOutputLength: ACIK_SINIR });
   } catch (e) {
-    return { ozet, hata: `tarama dosyasi cozulemedi: ${(e && e.message) || e}` };
+    return { ozet, hata: `tarama dosyasi cozulemedi: ${e?.message || e}` };
   }
   return { ozet, satirlar: acik.toString('utf8').split('\n') };
 }
@@ -198,7 +198,7 @@ const hazirMi = (hazir, faz) => {
 
 /** Pod okunamayan kapsam: tur tamamen okunamadi ya da bu namespace'te okunamadi. */
 function podOkunamadi(kume, ns) {
-  return kume.turHata.has('pods') || !!(kume.nsHata.get(ns) && kume.nsHata.get(ns).has('pods'));
+  return kume.turHata.has('pods') || !!kume.nsHata.get(ns)?.has('pods');
 }
 
 /** Tek grubun saklanacak govdesi (canli okumayla ayni sekil + podOzet). */
@@ -423,7 +423,7 @@ function hamOku(yol) {
   try {
     return fs.readFileSync(yol);
   } catch (e) {
-    return { hata: `tarama dosyasi okunamadi: ${(e && e.message) || e}` };
+    return { hata: `tarama dosyasi okunamadi: ${e?.message || e}` };
   }
 }
 
@@ -434,10 +434,10 @@ function hamOku(yol) {
  */
 async function kosuyuAl(kosuId, raw, zaman = new Date()) {
   const dizin = `${filoDizini()}/run-${kosuId}/raw`;
-  const sonuclar = Array.isArray(raw && raw.results) ? raw.results : [];
+  const sonuclar = Array.isArray(raw?.results) ? raw.results : [];
   const clusterlar = [];
   for (const r of sonuclar) {
-    const cluster = String((r && r.cluster) || '');
+    const cluster = String(r?.cluster || '');
     if (!CLUSTER_RE.test(cluster)) continue;
     clusterlar.push(await clusterAl(dizin, cluster, r, kosuId, zaman));
   }
@@ -488,7 +488,7 @@ async function filoOkumalari(ad) {
     } catch {
       govde = null;
     }
-    const cHata = durum && durum.clusterHata ? durum.clusterHata[L(r.cluster)] : null;
+    const cHata = durum?.clusterHata ? durum.clusterHata[L(r.cluster)] : null;
     return {
       cluster: r.cluster,
       namespace: r.namespace,
@@ -520,15 +520,15 @@ async function sonKosuDurumu() {
     ozet = null;
   }
   const clusterHata = {};
-  for (const c of (ozet && ozet.clusterlar) || [])
+  for (const c of ozet?.clusterlar || [])
     if (!c.ok) clusterHata[L(c.cluster)] = c.hata || 'okunamadı';
   return {
     kosuId: r.id,
     durum: r.durum,
     baslangic: r.baslangic ? new Date(r.baslangic).toISOString() : null,
     bitis: r.bitis ? new Date(r.bitis).toISOString() : null,
-    clusterSayisi: ozet && ozet.clusterlar ? ozet.clusterlar.length : 0,
-    okSayisi: ozet && ozet.clusterlar ? ozet.clusterlar.filter((c) => c.ok).length : 0,
+    clusterSayisi: ozet?.clusterlar ? ozet.clusterlar.length : 0,
+    okSayisi: ozet?.clusterlar ? ozet.clusterlar.filter((c) => c.ok).length : 0,
     hata: r.hata || null,
     clusterHata,
   };

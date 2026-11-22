@@ -40,8 +40,8 @@ vi.mock('@/components/admin/LdapUserPicker', async () => {
         }),
         React.createElement(
           'button',
-          { key: 'b', type: 'button', onClick: () => onChange('osmankoz') },
-          'osmankoz secenegi',
+          { key: 'b', type: 'button', onClick: () => onChange('ornekkisi') },
+          'ornekkisi secenegi',
         ),
       ]),
     default: () => null,
@@ -78,11 +78,11 @@ describe('TabAccessPanel', () => {
 
     // Crypto Hub'da varsayilan e-posta; kullanici "Kullanıcı"ya gecer.
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'user' } });
-    fireEvent.click(screen.getByText('osmankoz secenegi'));
+    fireEvent.click(screen.getByText('ornekkisi secenegi'));
 
     // ASIL IDDIA: secim alana islendi.
     await waitFor(() =>
-      expect((screen.getByTestId('ldap-input') as HTMLInputElement).value).toBe('osmankoz'),
+      expect((screen.getByTestId('ldap-input') as HTMLInputElement).value).toBe('ornekkisi'),
     );
 
     fireEvent.click(screen.getByLabelText('Metaco'));
@@ -91,7 +91,7 @@ describe('TabAccessPanel', () => {
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0]).toMatchObject({
       principalType: 'user',
-      principalId: 'osmankoz',
+      principalId: 'ornekkisi',
       tabs: ['metaco'],
     });
   });

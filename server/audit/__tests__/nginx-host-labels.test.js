@@ -34,19 +34,19 @@ test('NL1 dogrulama', () => {
 });
 
 const satirlar = () => [
-  { hostname: 'GBNGXP09', env: 'production', services: 'too_many', service_count: 7 },
-  { hostname: 'GBNGXP01', env: 'production', services: 'eski-ad,cso', service_count: 2 },
-  { hostname: 'GBNGXP02', env: 'production', services: 'glomo', service_count: 1 },
+  { hostname: 'ORNGXP09', env: 'production', services: 'too_many', service_count: 7 },
+  { hostname: 'ORNGXP01', env: 'production', services: 'eski-ad,cso', service_count: 2 },
+  { hostname: 'ORNGXP02', env: 'production', services: 'glomo', service_count: 1 },
 ];
 
 test('NL2 degistir otomatik listenin yerine gecer; ozet buna uyar', () => {
   const etiketler = new Map([
     [
-      'GBNGXP09',
+      'ORNGXP09',
       { mod: 'degistir', etiketler: ['glomo', 'mobile'], not: null, by: 'onur', at: null },
     ],
     [
-      'GBNGXP01',
+      'ORNGXP01',
       { mod: 'degistir', etiketler: ['glomo'], not: 'eski-ad aslinda glomo', by: 'onur', at: null },
     ],
   ]);
@@ -72,7 +72,7 @@ test('NL2 degistir otomatik listenin yerine gecer; ozet buna uyar', () => {
 test('NL3 ekle otomatik listeyi korur', () => {
   const rows = et.etiketUygula(
     satirlar(),
-    new Map([['GBNGXP02', { mod: 'ekle', etiketler: ['mobile', 'glomo'] }]]),
+    new Map([['ORNGXP02', { mod: 'ekle', etiketler: ['mobile', 'glomo'] }]]),
   );
   assert.equal(rows[2].services, 'glomo,mobile');
   assert.deepEqual(rows[2].etiket.oto, ['glomo']);
@@ -80,7 +80,7 @@ test('NL3 ekle otomatik listeyi korur', () => {
   // too_many sunucusuna ekle: liste toplanmadi bilgisi kaybolmaz
   const r9 = et.etiketUygula(
     satirlar(),
-    new Map([['GBNGXP09', { mod: 'ekle', etiketler: ['glomo'] }]]),
+    new Map([['ORNGXP09', { mod: 'ekle', etiketler: ['glomo'] }]]),
   )[0];
   assert.equal(r9.services, 'too_many,glomo');
   assert.equal(r9.service_count, 7);
@@ -88,7 +88,7 @@ test('NL3 ekle otomatik listeyi korur', () => {
 
 test('NL4 etiketsiz satirlar degismez', () => {
   const s = satirlar();
-  const rows = et.etiketUygula(s, new Map([['GBNGXP02', { mod: 'ekle', etiketler: ['x'] }]]));
+  const rows = et.etiketUygula(s, new Map([['ORNGXP02', { mod: 'ekle', etiketler: ['x'] }]]));
   assert.equal(rows[0], s[0]);
   assert.equal('etiket' in rows[1], false);
   assert.equal(et.etiketUygula(s, new Map()), s);
@@ -136,7 +136,7 @@ test('NL6 etiketHaritasi onbellekli, firlatmaz; yazinca bosalir ve haber verir',
   assert.match(r0.hata, /baglanti yok/);
   const db = sahteDb([
     {
-      host: 'gbngxp01',
+      host: 'orngxp01',
       kip: 'ekle',
       etiketler: 'glomo,mobile',
       note: null,
@@ -146,18 +146,18 @@ test('NL6 etiketHaritasi onbellekli, firlatmaz; yazinca bosalir ve haber verir',
   ]);
   const r1 = await et.etiketHaritasi(db);
   assert.equal(r1.hata, null);
-  assert.deepEqual(r1.m.get('GBNGXP01').etiketler, ['glomo', 'mobile']);
+  assert.deepEqual(r1.m.get('ORNGXP01').etiketler, ['glomo', 'mobile']);
   await et.etiketHaritasi(db);
   assert.equal(db.okuma, 1, 'ikinci okuma onbellekten gelmeli');
   let haber = 0;
   et.degisinceHaberVer(() => {
     haber += 1;
   });
-  await et.etiketYaz(db, 'GBNGXP01', { mod: 'degistir', etiketler: ['glomo'], not: null }, 'onur');
+  await et.etiketYaz(db, 'ORNGXP01', { mod: 'degistir', etiketler: ['glomo'], not: null }, 'onur');
   assert.equal(haber, 1);
   await et.etiketHaritasi(db);
   assert.equal(db.okuma, 2, 'yazinca onbellek bosalmali');
-  await et.etiketSil(db, 'GBNGXP01');
+  await et.etiketSil(db, 'ORNGXP01');
   assert.equal(haber, 2);
   assert.deepEqual(et.etkinListe(['a'], null), ['a']);
   assert.deepEqual(et.etkinListe(['a'], { mod: 'ekle', etiketler: ['b', 'a'] }), ['a', 'b']);
@@ -168,50 +168,50 @@ test('NL6 etiketHaritasi onbellekli, firlatmaz; yazinca bosalir ve haber verir',
     'ekle harf duyarsiz tekil',
   );
   const s0 = et.surum();
-  await et.etiketSil(db, 'GBNGXP01');
+  await et.etiketSil(db, 'ORNGXP01');
   assert.equal(et.surum(), s0 + 1, 'surum artmali');
   et._sifirla();
 });
 
 test('NL7 SPA RP servisi etikete uyar', () => {
   const { _servisOf: servisOf } = require('../../nginx-console/spa-rp.cjs');
-  const RP = { groups: [{ id: 'diger', label: 'Diger', oldHosts: ['GBNGXP05'], newHosts: [] }] };
+  const RP = { groups: [{ id: 'diger', label: 'Diger', oldHosts: ['ORNGXP05'], newHosts: [] }] };
   const m = new Map([
-    ['GBNGXP01', { mod: 'degistir', etiketler: ['glomo'] }],
-    ['GBNGXP02', { mod: 'degistir', etiketler: ['glomo', 'mobile'] }],
-    ['GBNGXP03', { mod: 'ekle', etiketler: ['glomo'] }],
-    ['GBNGXP05', { mod: 'degistir', etiketler: ['webforms'] }],
+    ['ORNGXP01', { mod: 'degistir', etiketler: ['glomo'] }],
+    ['ORNGXP02', { mod: 'degistir', etiketler: ['glomo', 'mobile'] }],
+    ['ORNGXP03', { mod: 'ekle', etiketler: ['glomo'] }],
+    ['ORNGXP05', { mod: 'degistir', etiketler: ['webforms'] }],
   ]);
-  assert.deepEqual(servisOf('ESKI-AD', 'gbngxp01', RP, m), {
+  assert.deepEqual(servisOf('ESKI-AD', 'orngxp01', RP, m), {
     servis: 'GLOMO',
     servisKaynak: 'etiket',
     servisOto: 'ESKI-AD',
   });
   assert.deepEqual(
-    servisOf('GLOMO', 'GBNGXP01', RP, m),
+    servisOf('GLOMO', 'ORNGXP01', RP, m),
     { servis: 'GLOMO' },
     'ayni ad etiket diye isaretlenmemeli',
   );
   assert.deepEqual(
-    servisOf('ESKI-AD', 'GBNGXP02', RP, m),
+    servisOf('ESKI-AD', 'ORNGXP02', RP, m),
     { servis: 'ESKI-AD' },
     'coklu etiket tanim adini ezmemeli',
   );
   assert.deepEqual(
-    servisOf('ESKI-AD', 'GBNGXP03', RP, m),
+    servisOf('ESKI-AD', 'ORNGXP03', RP, m),
     { servis: 'ESKI-AD' },
     'ustune ekle tanim adini ezmemeli',
   );
   assert.deepEqual(
-    servisOf('', 'GBNGXP05', RP, m),
+    servisOf('', 'ORNGXP05', RP, m),
     { servis: 'WEBFORMS', servisKaynak: 'etiket' },
     'etiket gruptan once',
   );
-  assert.deepEqual(servisOf('', 'GBNGXP05', RP, new Map()), {
+  assert.deepEqual(servisOf('', 'ORNGXP05', RP, new Map()), {
     servis: 'Diger',
     servisKaynak: 'grup',
   });
-  assert.deepEqual(servisOf('X', 'GBNGXP01', RP), { servis: 'X' }, 'harita yoksa eski davranis');
+  assert.deepEqual(servisOf('X', 'ORNGXP01', RP), { servis: 'X' }, 'harita yoksa eski davranis');
 });
 
 test('NL8 kablolama: diger ekranlar ayni haritayi okur', () => {
@@ -246,25 +246,25 @@ test('NL8 kablolama: diger ekranlar ayni haritayi okur', () => {
 test('NL9 API Envanteri etikete uyar; Denetim SPA tanim basina etiketi kullanir, trafik anahtari ham kalir', () => {
   const { summarize } = require('../nginx-api-summary.cjs');
   const rec = [
-    { host: 'GBNGXP01', config_file: 'a.conf', locations: 1, no_limit: 0 },
-    { host: 'GBNGXP02', config_file: 'a.conf', locations: 1, no_limit: 0 },
+    { host: 'ORNGXP01', config_file: 'a.conf', locations: 1, no_limit: 0 },
+    { host: 'ORNGXP02', config_file: 'a.conf', locations: 1, no_limit: 0 },
   ];
   const srv = [
-    { host: 'GBNGXP01', conf_file: '/x/eski-ad-PROD.conf' },
-    { host: 'GBNGXP02', conf_file: '/x/glomo-PROD.conf' },
+    { host: 'ORNGXP01', conf_file: '/x/eski-ad-PROD.conf' },
+    { host: 'ORNGXP02', conf_file: '/x/glomo-PROD.conf' },
   ];
-  const m = new Map([['GBNGXP01', { mod: 'degistir', etiketler: ['glomo'] }]]);
+  const m = new Map([['ORNGXP01', { mod: 'degistir', etiketler: ['glomo'] }]]);
   const s = summarize(rec, srv, m);
-  const h1 = s.byHost.find((x) => x.host === 'GBNGXP01');
+  const h1 = s.byHost.find((x) => x.host === 'ORNGXP01');
   assert.deepEqual(h1.services, ['glomo']);
   assert.deepEqual(h1.etiket.oto, ['eski-ad']);
-  assert.equal('etiket' in s.byHost.find((x) => x.host === 'GBNGXP02'), false);
+  assert.equal('etiket' in s.byHost.find((x) => x.host === 'ORNGXP02'), false);
   assert.deepEqual(
-    summarize(rec, srv).byHost.find((x) => x.host === 'GBNGXP01').services,
+    summarize(rec, srv).byHost.find((x) => x.host === 'ORNGXP01').services,
     ['eski-ad'],
     'harita yoksa eski davranis',
   );
-  assert.equal(et.tekEtiket(m, ' gbngxp01 '), 'GLOMO');
+  assert.equal(et.tekEtiket(m, ' orngxp01 '), 'GLOMO');
   assert.equal(et.tekEtiket(new Map([['H', { mod: 'ekle', etiketler: ['x'] }]]), 'H'), null);
   assert.equal(
     et.tekEtiket(new Map([['H', { mod: 'degistir', etiketler: ['x', 'y'] }]]), 'H'),
@@ -307,16 +307,16 @@ test('NL9 API Envanteri etikete uyar; Denetim SPA tanim basina etiketi kullanir,
 
 test('NL10 tanim basina etiket: aynalar anlasmazsa conf.d adi kalir', () => {
   const m = new Map([
-    ['GBRVP01', { mod: 'degistir', etiketler: ['glomo'] }],
-    ['GBRVP02', { mod: 'degistir', etiketler: ['glomo'] }],
-    ['GBRVP03', { mod: 'degistir', etiketler: ['glomo'] }],
+    ['ORRVP01', { mod: 'degistir', etiketler: ['glomo'] }],
+    ['ORRVP02', { mod: 'degistir', etiketler: ['glomo'] }],
+    ['ORRVP03', { mod: 'degistir', etiketler: ['glomo'] }],
   ]);
   const rows = [
-    { host: 'GBRVP01', service: 'X', location_path: '/a/' },
-    { host: 'GBRVP02', service: 'X', location_path: '/a/' },
-    { host: 'GBRVP04', service: 'X', location_path: '/a/' },
-    { host: 'GBRVP01', service: 'Y', location_path: '/b/' },
-    { host: 'GBRVP03', service: 'Y', location_path: '/b/' },
+    { host: 'ORRVP01', service: 'X', location_path: '/a/' },
+    { host: 'ORRVP02', service: 'X', location_path: '/a/' },
+    { host: 'ORRVP04', service: 'X', location_path: '/a/' },
+    { host: 'ORRVP01', service: 'Y', location_path: '/b/' },
+    { host: 'ORRVP03', service: 'Y', location_path: '/b/' },
   ];
   const f = et.tanimEtiketi(rows, m, (r) => r.service + '|' + r.location_path);
   assert.equal(f(rows[0]), null, 'karisik aynada etiket gecmemeli');
@@ -326,11 +326,11 @@ test('NL10 tanim basina etiket: aynalar anlasmazsa conf.d adi kalir', () => {
   assert.equal(et.tanimEtiketi(rows, new Map(), (r) => r.service)(rows[0]), null);
   const { _servisOf: servisOf } = require('../../nginx-console/spa-rp.cjs');
   assert.deepEqual(
-    servisOf('X', 'GBRVP01', { groups: [] }, ''),
+    servisOf('X', 'ORRVP01', { groups: [] }, ''),
     { servis: 'X' },
     'cozulmus bos etiket ham adi korur',
   );
-  assert.deepEqual(servisOf('X', 'GBRVP01', { groups: [] }, 'glomo'), {
+  assert.deepEqual(servisOf('X', 'ORRVP01', { groups: [] }, 'glomo'), {
     servis: 'GLOMO',
     servisKaynak: 'etiket',
     servisOto: 'X',

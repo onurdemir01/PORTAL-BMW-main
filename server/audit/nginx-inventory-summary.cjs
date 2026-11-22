@@ -69,10 +69,14 @@ function summarizeNginxInventory(recordset) {
   // ORTAM (2026-09-15 duzeltmesi): tablodaki env, nginx_metadata betiginin "*-PROD.conf
   // var mi" kuralindan geliyordu ve servis vhost'u olmayan prod sunuculari (intranet
   // SPA, yeni prod SPA, API gateway) non-production sayiyordu. Sunucu adi kalibi
-  // (nginx-hosts.cjs, GBNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
+  // (nginx-hosts.cjs, ORNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
   // degeri envRaw'da tutulur ve celisenler sayilir (envCorrected) - sessiz duzeltme yok.
   const { envOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
-  const toBucket = (e) => { if (e === 'PROD') return 'production'; if (e === UNKNOWN_ENV) return null; return 'non-production'; };
+  const toBucket = (e) => {
+    if (e === 'PROD') return 'production';
+    if (e === UNKNOWN_ENV) return null;
+    return 'non-production';
+  };
   let envCorrected = 0;
   const rows = (recordset || []).map((r) => {
     const hostname = norm(r.hostname);
@@ -80,7 +84,14 @@ function summarizeNginxInventory(recordset) {
     const byName = toBucket(envOfHost(hostname));
     const env = byName || envRaw;
     if (byName && envRaw && byName !== envRaw) envCorrected++;
-    return { ...r, hostname, env, envRaw, envByName: envOfHost(hostname), location: norm(r.location) };
+    return {
+      ...r,
+      hostname,
+      env,
+      envRaw,
+      envByName: envOfHost(hostname),
+      location: norm(r.location),
+    };
   });
 
   // -- ORTAM: env x location kirilimi ---------------------------------------
@@ -115,7 +126,12 @@ function summarizeNginxInventory(recordset) {
   // oldugunu gormek istiyorum"): uyelik KURALI burada (splitServices) kalir; ekran sunucu
   // ayrintisini (nginx surumu, OS, IP) `hosts` satirlarindan bu adlarla bulur.
   const byService = [...svcMap.values()]
-    .map((s) => ({ service: s.service, hosts: s.hosts.size, envs: [...s.envs].sort(varsayilanSira), hostnames: [...s.hosts].sort(varsayilanSira) }))
+    .map((s) => ({
+      service: s.service,
+      hosts: s.hosts.size,
+      envs: [...s.envs].sort(varsayilanSira),
+      hostnames: [...s.hosts].sort(varsayilanSira),
+    }))
     .sort((a, b) => b.hosts - a.hosts || a.service.localeCompare(b.service));
   // LISTESI TOPLANMAYAN SUNUCULAR: nginx_metadata betigi 5'ten fazla service'i olan sunucuda
   // listeyi yazmaz, `services=too_many` yazar. Bu sunucularda herhangi bir service OLABILIR;

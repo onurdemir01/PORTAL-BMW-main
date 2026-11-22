@@ -8,8 +8,20 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { karsilastir, grupAnahtari } = require('../karsilastirma.cjs');
 
-const g = (ad, ortam, nesil, karar) => [`grup:${ad}|${ortam}|${nesil}`, { anahtar: `grup:${ad}|${ortam}|${nesil}`, ad, ortam, nesil, karar }];
-const e = (o) => ({ tur: 'JVM', seviye: 'KESIN', kurallar: ['R1'], nedenler: [], gen: 8, ortam: 'PROD', ...o, anahtar: `JVM|${o.ad}|${o.ortam || 'PROD'}|${o.gen ?? 8}` });
+const g = (ad, ortam, nesil, karar) => [
+  `grup:${ad}|${ortam}|${nesil}`,
+  { anahtar: `grup:${ad}|${ortam}|${nesil}`, ad, ortam, nesil, karar },
+];
+const e = (o) => ({
+  tur: 'JVM',
+  seviye: 'KESIN',
+  kurallar: ['R1'],
+  nedenler: [],
+  gen: 8,
+  ortam: 'PROD',
+  ...o,
+  anahtar: `JVM|${o.ad}|${o.ortam || 'PROD'}|${o.gen ?? 8}`,
+});
 
 test('KR1 siniflar', () => {
   const gruplar = new Map([
@@ -25,7 +37,14 @@ test('KR1 siniflar', () => {
     e({ ad: 'UYUMLU' }),
     e({ ad: 'ENGELLI', seviye: 'SUPHELI', nedenler: ['web katmani olculemedi'] }),
     e({ ad: 'YOKGRUP' }),
-    { tur: 'EAR', ad: 'X.ear', seviye: 'SUPHELI', ortam: 'PROD', gen: 8, anahtar: 'EAR|X.ear|PROD|8' },
+    {
+      tur: 'EAR',
+      ad: 'X.ear',
+      seviye: 'SUPHELI',
+      ortam: 'PROD',
+      gen: 8,
+      anahtar: 'EAR|X.ear|PROD|8',
+    },
   ];
   const r = karsilastir({ etiketler, gruplar });
   const sinif = (konu) => r.satirlar.find((x) => x.konu === konu).sinif;
@@ -38,7 +57,11 @@ test('KR1 siniflar', () => {
   assert.equal(sinif('YALNIZB'), 'B_ADAY_A_YOK');
   assert.equal(r.satirlar[0].sinif, 'KRITIK_A_KESIN_B_KULLANIMDA', 'KRITIK once gelmeli');
   assert.equal(r.sayilar.KRITIK_A_KESIN_B_KULLANIMDA, 1);
-  assert.equal(r.satirlar.filter((x) => x.konu === 'UYUMLU').length, 1, 'etiketli aday grup B_ADAY_A_YOK sayildi');
+  assert.equal(
+    r.satirlar.filter((x) => x.konu === 'UYUMLU').length,
+    1,
+    'etiketli aday grup B_ADAY_A_YOK sayildi',
+  );
 });
 
 test('KR2 grup anahtari', () => {

@@ -26,6 +26,10 @@ const DEV_ALLOWED_LICENSES = new Set([
   'BlueOak-1.0.0',
   'CC-BY-3.0',
   'CC-BY-4.0',
+  // YALNIZ gelistirme (2026-11-20, kullanici karari, kurumsal is #52): eslint-plugin-sonarjs ve alt paketi
+  // @sonarsource/analyzer-commons-configurations. Lint araci; calisma zamani paketine, kurumsal kok
+  // manifestine ve Xray build-info'suna girmez. Calisma zamani listesi (RUNTIME) DEGISMEDI.
+  'LGPL-3.0-only',
   'MPL-2.0',
   'Python-2.0',
   'WTFPL',
@@ -40,9 +44,7 @@ function normalizeLicenseText(raw) {
   }
   if (Array.isArray(raw)) {
     return raw
-      .map((item) =>
-        typeof item === 'object' && item && item.type ? item.type : String(item || ''),
-      )
+      .map((item) => (typeof item === 'object' && item?.type ? item.type : String(item || '')))
       .filter(Boolean)
       .join(' OR ');
   }
@@ -106,7 +108,7 @@ function packageNameFromLockKey(lockKey) {
 }
 
 function buildCycloneDxSbom(lockData, options = {}) {
-  const pkgMap = (lockData && lockData.packages) || {};
+  const pkgMap = lockData?.packages || {};
   const components = [];
   const licenseViolations = [];
   const licenseCounts = {};

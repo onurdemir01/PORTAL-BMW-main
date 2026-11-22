@@ -5,7 +5,7 @@
 # Yaptiklari: dizinler, firewalld, SELinux boolean'lari.
 # Node kurulumu ve uygulama adimlari icin: docs/DEPLOYMENT.md
 #
-# Hedef yerlesim (gblabt02):
+# Hedef yerlesim (orlabt02):
 #   /vhosting8/bmw_portal/deploy/PORTAL-BMW-main.zip   ← surum zip'i buraya
 #   /vhosting8/bmw_portal/app/PORTAL-BMW-main/          ← acilan uygulama agaci
 # Uygulama 'was' kullanicisiyla calisir; kurumsal nginx 443 → 127.0.0.1:3000 proxy'ler.

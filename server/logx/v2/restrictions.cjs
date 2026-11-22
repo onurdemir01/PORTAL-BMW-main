@@ -37,12 +37,21 @@ const db = require('../../db/index.cjs');
 // buyuk/kucuk harf ve bosluk acisindan degisebiliyor.
 function normalizedGroups(user) {
   const raw = Array.isArray(user?.groups) ? user.groups : [];
-  return new Set(raw.map((g) => String(g || '').trim().toLowerCase()).filter(Boolean));
+  return new Set(
+    raw
+      .map((g) =>
+        String(g || '')
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean),
+  );
 }
 
 // Bir grant satiri bu kullaniciyi kapsiyor mu?
 function grantMatches(row, username, groups) {
-  if (row.username && String(row.username).toLowerCase() === String(username).toLowerCase()) return true;
+  if (row.username && String(row.username).toLowerCase() === String(username).toLowerCase())
+    return true;
   const dn = row.group_dn ? String(row.group_dn).trim().toLowerCase() : '';
   return !!dn && groups.has(dn);
 }
@@ -85,9 +94,11 @@ async function queryWithGrants(buildSql, params) {
     return await db.query(buildSql(grantsSource()), params);
   } catch (err) {
     if (!_groupGrantsAvailable || !isMissingTableError(err)) throw err;
-    console.warn('[restrictions] logx_v2_restriction_group_grants bulunamadi — '
-      + 'grup grant\'lari DEVRE DISI, kullanici adi grant\'lari calismaya devam ediyor. '
-      + 'Tabloyu olusturmak icin sunucuyu yeniden baslatin veya deploy/sql betigini calistirin.');
+    console.warn(
+      '[restrictions] logx_v2_restriction_group_grants bulunamadi — ' +
+        "grup grant'lari DEVRE DISI, kullanici adi grant'lari calismaya devam ediyor. " +
+        'Tabloyu olusturmak icin sunucuyu yeniden baslatin veya deploy/sql betigini calistirin.',
+    );
     _groupGrantsAvailable = false;
     return db.query(buildSql(grantsSource()), params);
   }
@@ -104,7 +115,9 @@ async function isAllowed(resourceType, resourceKey, user) {
 // `isAllowed` ile AYNI mantik — ikisi ayri yazilsa ret mesaji ile karar kayabilirdi.
 // Ortam anahtari: bas/son bosluk yok, BUYUK harf (dil-bagimsiz; "prod" -> "PROD").
 function envKey(label) {
-  return String(label || '').trim().toUpperCase();
+  return String(label || '')
+    .trim()
+    .toUpperCase();
 }
 function normKey(resourceType, resourceKey) {
   return resourceType === 'env' ? envKey(resourceKey) : resourceKey;
@@ -117,14 +130,16 @@ async function evaluate(resourceType, resourceKey, user) {
   // Eslesme artik SQL'de degil JS'te yapiliyor: grup listesi degisken uzunlukta ve
   // MSSQL'de degisken uzunlukta IN listesini parametrelemek STRING_SPLIT'e (uyumluluk
   // seviyesi 130+) bagimlilik yaratirdi. Bir kisitlamaya bagli grant sayisi kucuk.
-  const { rows } = await queryWithGrants((grants) =>
-    `SELECT r.id, x.username, x.group_dn
+  const { rows } = await queryWithGrants(
+    (grants) =>
+      `SELECT r.id, x.username, x.group_dn
      FROM logx_v2_restrictions r
      LEFT JOIN (
        ${grants}
      ) x ON x.restriction_id = r.id
      WHERE r.resource_type = $1 AND r.resource_key = $2`,
-  [resourceType, resourceKey]);
+    [resourceType, resourceKey],
+  );
   if (rows.length === 0) return { allowed: true, rows }; // kisitlama satiri yok → varsayilan acik
   const groups = normalizedGroups(user);
   return { allowed: rows.some((r) => grantMatches(r, user.username, groups)), rows };
@@ -164,8 +179,22 @@ function kaynakEtiketi(resourceType, resourceKey) {
 }
 
 function denyDetails(resourceType, resourceKey, rows, owners = []) {
-  const users = [...new Set(rows.map((r) => r.username).filter(Boolean).map(String))];
-  const groups = [...new Set(rows.map((r) => r.group_dn).filter(Boolean).map(kisaGrup))];
+  const users = [
+    ...new Set(
+      rows
+        .map((r) => r.username)
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+  const groups = [
+    ...new Set(
+      rows
+        .map((r) => r.group_dn)
+        .filter(Boolean)
+        .map(kisaGrup),
+    ),
+  ];
   return {
     resourceType,
     resourceKey: String(resourceKey || ''),
@@ -191,7 +220,9 @@ async function sahipler(resourceType, resourceKey) {
     );
     return (rows || [])
       .filter((r) => (r.principal_type === 'user' || r.principal_type === 'group') && r.principal)
-      .map((r) => (r.principal_type === 'group' ? `grup ${kisaGrup(r.principal)}` : String(r.principal)));
+      .map((r) =>
+        r.principal_type === 'group' ? `grup ${kisaGrup(r.principal)}` : String(r.principal),
+      );
   } catch {
     return [];
   }
@@ -212,7 +243,9 @@ function denyMessage(d) {
   const parca = [];
   if (d.allowedGroups.length) parca.push(`grup ${liste(d.allowedGroups)}`);
   if (d.allowedUsers.length) parca.push(`kullanıcı ${liste(d.allowedUsers)}`);
-  const izinli = parca.length ? `İzinli: ${parca.join('; ')}.` : 'Bu kaynakta henüz izinli kimse yok.';
+  const izinli = parca.length
+    ? `İzinli: ${parca.join('; ')}.`
+    : 'Bu kaynakta henüz izinli kimse yok.';
   return `${d.label} LogX'te kısıtlı. ${izinli} Erişim için: ${d.contact}.`;
 }
 
@@ -223,14 +256,16 @@ async function filterAllowed(resourceType, resourceKeys, user) {
   const keys = Array.isArray(resourceKeys) ? resourceKeys : [];
   if (user.role === 'Admin' || keys.length === 0) return keys;
 
-  const { rows } = await queryWithGrants((grants) =>
-    `SELECT r.resource_key, x.username, x.group_dn
+  const { rows } = await queryWithGrants(
+    (grants) =>
+      `SELECT r.resource_key, x.username, x.group_dn
      FROM logx_v2_restrictions r
      LEFT JOIN (
        ${grants}
      ) x ON x.restriction_id = r.id
      WHERE r.resource_type = $1`,
-  [resourceType]);
+    [resourceType],
+  );
   // key → bu kullaniciya acik mi. Satiri OLMAYAN key hic haritada gorunmez → acik.
   const groups = normalizedGroups(user);
   const grantedByKey = new Map();
@@ -257,24 +292,30 @@ async function assertAllowed(resourceType, resourceKey, user) {
 async function listRestrictions() {
   // `queryWithGrants` UZERINDEN: grup tablosu yoksa admin listesi 500 vermesin,
   // kullanici adi grant'lariyla gelsin (isAllowed/filterAllowed ile ayni dusus).
-  const { rows } = await queryWithGrants((grants) =>
-    `SELECT r.id, r.resource_type, r.resource_key, r.description, r.created_by, r.created_at,
+  const { rows } = await queryWithGrants(
+    (grants) =>
+      `SELECT r.id, r.resource_type, r.resource_key, r.description, r.created_by, r.created_at,
             x.username AS grant_username, x.group_dn AS grant_group
      FROM logx_v2_restrictions r
      LEFT JOIN (
        ${grants}
      ) x ON x.restriction_id = r.id
-     ORDER BY r.resource_type, r.resource_key`
+     ORDER BY r.resource_type, r.resource_key`,
   );
   const byId = new Map();
   for (const row of rows) {
     if (!byId.has(row.id)) {
       byId.set(row.id, {
-        id: row.id, resourceType: row.resource_type, resourceKey: row.resource_key,
-        description: row.description, createdBy: row.created_by, createdAt: row.created_at,
+        id: row.id,
+        resourceType: row.resource_type,
+        resourceKey: row.resource_key,
+        description: row.description,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
         // `grants` ESKI SOZLESME: yalnizca kullanici adlari. Mevcut admin ekrani bunu
         // okuyor, bicimi degistirmek onu sessizce bozardi. Gruplar AYRI alanda.
-        grants: [], groupGrants: [],
+        grants: [],
+        groupGrants: [],
       });
     }
     if (row.grant_username) byId.get(row.id).grants.push(row.grant_username);
@@ -312,7 +353,12 @@ async function createRestriction({ resourceType, resourceKey, description }, cre
     `INSERT INTO logx_v2_restrictions (resource_type, resource_key, description, created_by)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3,$4)`,
-    [resourceType, String(normKey(resourceType, String(resourceKey).trim())), description || null, createdBy]
+    [
+      resourceType,
+      String(normKey(resourceType, String(resourceKey).trim())),
+      description || null,
+      createdBy,
+    ],
   );
   return rows[0];
 }
@@ -320,7 +366,7 @@ async function createRestriction({ resourceType, resourceKey, description }, cre
 async function updateRestriction(id, { description }) {
   const { rows } = await db.query(
     `UPDATE logx_v2_restrictions SET description = $1 OUTPUT INSERTED.* WHERE id = $2`,
-    [description || null, id]
+    [description || null, id],
   );
   return rows[0] || null;
 }
@@ -331,7 +377,14 @@ async function getRestrictionById(id) {
     [id],
   );
   const r = rows[0];
-  return r ? { id: r.id, resourceType: r.resource_type, resourceKey: r.resource_key, description: r.description } : null;
+  return r
+    ? {
+        id: r.id,
+        resourceType: r.resource_type,
+        resourceKey: r.resource_key,
+        description: r.description,
+      }
+    : null;
 }
 
 async function deleteRestriction(id) {
@@ -347,7 +400,7 @@ async function addGrant(restrictionId, username, createdBy) {
     `INSERT INTO logx_v2_restriction_grants (restriction_id, username, created_by)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3)`,
-    [restrictionId, String(username).trim(), createdBy]
+    [restrictionId, String(username).trim(), createdBy],
   );
   return rows[0];
 }
@@ -357,12 +410,13 @@ async function addGrant(restrictionId, username, createdBy) {
 async function addGroupGrant(restrictionId, groupDn, createdBy) {
   const dn = String(groupDn || '').trim();
   if (!dn) throw Object.assign(new Error('groupDn zorunlu.'), { status: 400 });
-  if (dn.length > 500) throw Object.assign(new Error('groupDn cok uzun (en fazla 500).'), { status: 400 });
+  if (dn.length > 500)
+    throw Object.assign(new Error('groupDn cok uzun (en fazla 500).'), { status: 400 });
   const { rows } = await db.query(
     `INSERT INTO logx_v2_restriction_group_grants (restriction_id, group_dn, created_by)
      OUTPUT INSERTED.*
      VALUES ($1,$2,$3)`,
-    [restrictionId, dn, createdBy]
+    [restrictionId, dn, createdBy],
   );
   return rows[0];
 }
@@ -370,7 +424,7 @@ async function addGroupGrant(restrictionId, groupDn, createdBy) {
 async function removeGroupGrant(restrictionId, groupDn) {
   const { rowCount } = await db.query(
     `DELETE FROM logx_v2_restriction_group_grants WHERE restriction_id = $1 AND group_dn = $2`,
-    [restrictionId, String(groupDn || '').trim()]
+    [restrictionId, String(groupDn || '').trim()],
   );
   return rowCount > 0;
 }
@@ -378,15 +432,29 @@ async function removeGroupGrant(restrictionId, groupDn) {
 async function removeGrant(restrictionId, username) {
   const { rowCount } = await db.query(
     `DELETE FROM logx_v2_restriction_grants WHERE restriction_id = $1 AND username = $2`,
-    [restrictionId, username]
+    [restrictionId, username],
   );
   return rowCount > 0;
 }
 
 module.exports = {
   RESOURCE_TYPES,
-  isAllowed, assertAllowed, filterAllowed, evaluate, denyDetails, denyMessage,
-  assertEnvAllowed, envKey, redAyrintisi, getRestrictionById,
-  listRestrictions, createRestriction, updateRestriction, deleteRestriction,
-  addGrant, removeGrant, addGroupGrant, removeGroupGrant,
+  isAllowed,
+  assertAllowed,
+  filterAllowed,
+  evaluate,
+  denyDetails,
+  denyMessage,
+  assertEnvAllowed,
+  envKey,
+  redAyrintisi,
+  getRestrictionById,
+  listRestrictions,
+  createRestriction,
+  updateRestriction,
+  deleteRestriction,
+  addGrant,
+  removeGrant,
+  addGroupGrant,
+  removeGroupGrant,
 };

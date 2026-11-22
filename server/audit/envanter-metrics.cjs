@@ -44,7 +44,7 @@ const SOURCES = {
       DIM('jboss_version', 'JBoss sürümü', { product: 'JBoss' }),
       // JBOSS 7 / 8 AYRI (kullanici, 2026-11-12): middleware_inventory artik jboss_version'in ana
       // surume gore ayrilmis kopyasini da yaziyor (jboss_version degismedi). Iki surum tasiyan sunucu
-      // (GBTOAQ01: '7.3.5 8.1.6.1') her iki kirilimda dogru sayilir. Kolon tabloda YOKSA (yeni sema
+      // (ORTOAQ01: '7.3.5 8.1.6.1') her iki kirilimda dogru sayilir. Kolon tabloda YOKSA (yeni sema
       // henuz yuklenmedi) boyut sessizce degil, AYRI bir notla dusurulur: bkz. mevcutBoyutlar.
       DIM('jboss7_version', 'JBoss 7 sürümü', { product: 'JBoss 7', istegeBagli: true }),
       DIM('jboss8_version', 'JBoss 8 sürümü', { product: 'JBoss 8', istegeBagli: true }),
@@ -131,7 +131,7 @@ async function mevcutBoyutlar(srcKey) {
   } catch {
     kolonlar = null;
   }
-  const dims = src.dims.filter((d) => !d.istegeBagli || (kolonlar && kolonlar.has(d.col.toLowerCase())));
+  const dims = src.dims.filter((d) => !d.istegeBagli || kolonlar?.has(d.col.toLowerCase()));
   const eksik = src.dims.filter((d) => d.istegeBagli && !dims.includes(d)).map((d) => d.label);
   return { dims, eksik };
 }
@@ -147,7 +147,9 @@ function registerEnvanterMetrics(router) {
     res.json({
       ok: true,
       sources: Object.entries(SOURCES).map(([key, s]) => ({
-        key, label: s.label, unit: s.unit,
+        key,
+        label: s.label,
+        unit: s.unit,
         dims: s.dims.map((d) => ({ key: d.col, label: d.label, product: d.product || null })),
       })),
     });
@@ -164,10 +166,12 @@ function registerEnvanterMetrics(router) {
       const T = src.table;
       const { dims, eksik: eksikBoyutlar } = await mevcutBoyutlar(srcKey);
 
-      const parts = dims.map((d) => `
+      const parts = dims.map(
+        (d) => `
         SELECT '${d.col}' AS dim, ${NORM(d.col)} AS val, COUNT(*) AS n,
                ${src.hasHost ? 'COUNT(DISTINCT host)' : 'COUNT(*)'} AS hosts
-          FROM ${T} GROUP BY ${NORM(d.col)}`);
+          FROM ${T} GROUP BY ${NORM(d.col)}`,
+      );
 
       const totalsSelect = [
         'COUNT(*) AS rows_total',
@@ -185,7 +189,12 @@ function registerEnvanterMetrics(router) {
       for (const d of dims) distributions[d.col] = [];
       for (const r of distRes.recordset || []) {
         const bucket = distributions[r.dim];
-        if (bucket) bucket.push({ value: String(r.val), count: Number(r.n) || 0, hosts: Number(r.hosts) || 0 });
+        if (bucket)
+          bucket.push({
+            value: String(r.val),
+            count: Number(r.n) || 0,
+            hosts: Number(r.hosts) || 0,
+          });
       }
       for (const k of Object.keys(distributions)) {
         distributions[k].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'tr'));
@@ -220,7 +229,9 @@ function registerEnvanterMetrics(router) {
           hosts: Number(t.host_total) || 0,
           apps: Number(t.app_total) || 0,
           numerics: src.numerics.map((nm) => ({
-            key: nm.key, label: nm.label, value: Number(t['sum_' + nm.key]) || 0,
+            key: nm.key,
+            label: nm.label,
+            value: Number(t['sum_' + nm.key]) || 0,
           })),
         },
         dims: dims.map((d) => ({ key: d.col, label: d.label })),
@@ -246,7 +257,8 @@ function registerEnvanterMetrics(router) {
       const x = pickDim(srcKey, req.query.x, 'domain', dims);
       const y = pickDim(srcKey, req.query.y, dims.find((d) => d.product)?.col || dims[1].col, dims);
       // metric=hosts yalnizca uygulama tablolarinda anlamli; dbo.Inventory'de zaten satir=sunucu.
-      const metric = String(req.query.metric || 'rows') === 'hosts' && src.hasHost ? 'hosts' : 'rows';
+      const metric =
+        String(req.query.metric || 'rows') === 'hosts' && src.hasHost ? 'hosts' : 'rows';
       const agg = metric === 'hosts' ? 'COUNT(DISTINCT host)' : 'COUNT(*)';
       // "(bos)" = urun o sunucuda kurulu degil. Surum kirilimina bakarken bu kova tabloyu
       // sisirir, o yuzden istege bagli olarak disarida birakilabilir.
@@ -263,7 +275,9 @@ function registerEnvanterMetrics(router) {
       const colTotals = new Map();
       let total = 0;
       for (const r of rs.recordset || []) {
-        const xv = String(r.xv), yv = String(r.yv), n = Number(r.n) || 0;
+        const xv = String(r.xv),
+          yv = String(r.yv),
+          n = Number(r.n) || 0;
         // Ayirici olarak U+0001: bosluk kullanilsaydi "a b"+"c" ile "a"+"b c" AYNI
         // anahtari uretir ve hucreler birbirinin uzerine yazardi. Bu karakter envanter
         // verisinde gecmez. Istemci AYNI ayiriciyi kullanir.
@@ -272,9 +286,10 @@ function registerEnvanterMetrics(router) {
         rowTotals.set(yv, (rowTotals.get(yv) || 0) + n);
         total += n;
       }
-      const sortDesc = (m) => [...m.entries()]
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))
-        .map(([value, count]) => ({ value, count }));
+      const sortDesc = (m) =>
+        [...m.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))
+          .map(([value, count]) => ({ value, count }));
 
       res.json({
         ok: true,

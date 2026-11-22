@@ -7,6 +7,7 @@
 //   GY4 sessionOrIpKey ignores spoofed x-portal-user unless trusted header auth verifies it
 //   GY5 /api/nobetci/today/avatar returns Cache-Control: private, max-age=300
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -33,15 +34,19 @@ function listenTemp(app) {
 test('GY1 resolveTrustProxy varsayilan, boolean, hop sayisi ve proxy listesi', () => {
   // Tanimsiz: gelistirmede 'loopback', uretimde tek atlama (GY6 / GY7 nedenini sinar).
   for (const bos of [undefined, '', '   ', ' , ']) {
-    assert.equal(resolveTrustProxy(bos, { isProd: false }), 'loopback');
-    assert.equal(resolveTrustProxy(bos, { isProd: true }), 1);
+    assert.equal(resolveTrustProxy(bos, { isProd: false }).deger, 'loopback');
+    assert.equal(resolveTrustProxy(bos, { isProd: true }).deger, 1);
   }
-  assert.equal(resolveTrustProxy('loopback', { isProd: true }), 'loopback', 'acik deger aynen');
-  assert.equal(resolveTrustProxy('true'), true);
-  assert.equal(resolveTrustProxy('false'), false);
-  assert.equal(resolveTrustProxy('1'), 1);
-  assert.equal(resolveTrustProxy('2'), 2);
-  assert.equal(resolveTrustProxy('loopback, 10.0.0.10'), 'loopback, 10.0.0.10');
+  assert.equal(
+    resolveTrustProxy('loopback', { isProd: true }).deger,
+    'loopback',
+    'acik deger aynen',
+  );
+  assert.equal(resolveTrustProxy('true').deger, true);
+  assert.equal(resolveTrustProxy('false').deger, false);
+  assert.equal(resolveTrustProxy('1').deger, 1);
+  assert.equal(resolveTrustProxy('2').deger, 2);
+  assert.equal(resolveTrustProxy('loopback, 10.0.0.10').deger, 'loopback, 10.0.0.10');
 });
 
 test('GY2 formatGlobalError production ortaminda ic hata ayrintisini gizler', () => {
@@ -81,7 +86,7 @@ test('GY2b globalErrorMiddleware Express yanitinda correlationId doner', async (
 
 test('GY3 server/index.cjs sabit proxy IP icermez ve yardimci modulu kullanir', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.cjs'), 'utf8');
-  assert.doesNotMatch(src, /'trust proxy',\s*'loopback,\s*\d+\./);
+  assert.doesNotMatch(src, esnek(/'trust proxy',\s*'loopback,\s*\d+\./));
   assert.match(src, /resolveTrustProxy\(process\.env\.TRUST_PROXY\)/);
   assert.match(src, /globalErrorMiddleware\(/);
 });
@@ -119,11 +124,11 @@ test('GY4 sessionOrIpKey sahte x-portal-user basligini yoksayar', () => {
 
 test('GY5 /api/nobetci/today/avatar Cache-Control private olarak doner', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'nobetci', 'index.cjs'), 'utf8');
-  const idx = src.indexOf('app.get("/api/nobetci/today/avatar"');
+  const idx = konum(src, 'app.get("/api/nobetci/today/avatar"');
   assert.ok(idx > -1, '/api/nobetci/today/avatar route bulunamadi');
   const snippet = src.slice(idx, idx + 450);
   assert.match(snippet, /private,\s*max-age=300/);
-  assert.doesNotMatch(snippet, /public,\s*max-age=300/);
+  assert.doesNotMatch(snippet, esnek(/public,\s*max-age=300/));
 });
 
 // 2026-11-14 gerilemesi: varsayilan 'loopback' yapilmisti. Uretimde nginx Node'a makinenin
@@ -143,7 +148,12 @@ async function vekildenIstek(trustProxy) {
     next();
   });
   app.use(
-    session({ secret: 'deneme-sirri', resave: false, saveUninitialized: false, cookie: { secure: true } }),
+    session({
+      secret: 'deneme-sirri',
+      resave: false,
+      saveUninitialized: false,
+      cookie: { secure: true },
+    }),
   );
   app.get('/giris', (req, res) => {
     req.session.user = { username: 'deneme' };
@@ -161,7 +171,7 @@ async function vekildenIstek(trustProxy) {
 }
 
 test('GY6 uretim varsayilaniyla vekil arkasinda oturum cerezi VERILIR ve istemci IP`si dogru', async () => {
-  const uretim = await vekildenIstek(resolveTrustProxy(undefined, { isProd: true }));
+  const uretim = await vekildenIstek(resolveTrustProxy(undefined, { isProd: true }).deger);
   assert.equal(uretim.govde.secure, true, 'X-Forwarded-Proto guvenilmedi');
   assert.match(String(uretim.cerez), /connect\.sid=.*Secure/i, 'oturum cerezi verilmedi');
   assert.equal(uretim.govde.ip, '198.51.100.7', 'istemci IP`si vekil adresine cokmus');
@@ -171,24 +181,33 @@ test('GY6 uretim varsayilaniyla vekil arkasinda oturum cerezi VERILIR ve istemci
   assert.equal(yalnizLoopback.cerez, null);
   assert.equal(yalnizLoopback.govde.ip, VEKIL_ADRESI);
   // Adres sabitlenmis yapilandirma (onerilen) da calisir.
-  const sabit = await vekildenIstek(resolveTrustProxy(`loopback, ${VEKIL_ADRESI}`, { isProd: true }));
+  const sabit = await vekildenIstek(
+    resolveTrustProxy(`loopback, ${VEKIL_ADRESI}`, { isProd: true }).deger,
+  );
   assert.equal(sabit.govde.secure, true);
   assert.match(String(sabit.cerez), /connect\.sid=/);
 });
 
 test('GY7 tek atlama yalniz dogrudan baglanan vekile guvenir; zincirin gerisi sahtelenemez', () => {
   const app = express();
-  app.set('trust proxy', resolveTrustProxy(undefined, { isProd: true }));
+  app.set('trust proxy', resolveTrustProxy(undefined, { isProd: true }).deger);
   const guven = app.get('trust proxy fn');
   assert.equal(guven(VEKIL_ADRESI, 0), true, 'dogrudan baglanan vekil');
-  assert.equal(guven('198.51.100.7', 1), false, 'ikinci atlama (istemcinin yazdigi baslik) guvenilmez');
+  assert.equal(
+    guven('198.51.100.7', 1),
+    false,
+    'ikinci atlama (istemcinin yazdigi baslik) guvenilmez',
+  );
   // Gelistirme varsayilani: yalniz loopback.
   const gel = express();
-  gel.set('trust proxy', resolveTrustProxy(undefined, { isProd: false }));
+  gel.set('trust proxy', resolveTrustProxy(undefined, { isProd: false }).deger);
   assert.equal(gel.get('trust proxy fn')('127.0.0.1', 0), true);
   assert.equal(gel.get('trust proxy fn')(VEKIL_ADRESI, 0), false);
   // server/index.cjs yardimciyi ortam degiskeniyle cagirir ve tanimsiz uretimde uyarir.
   const idx = fs.readFileSync(path.join(ROOT, 'server', 'index.cjs'), 'utf8');
-  assert.match(idx, /app\.set\('trust proxy', resolveTrustProxy\(process\.env\.TRUST_PROXY\)\);/);
+  assert.match(
+    idx,
+    /app\.set\('trust proxy', resolveTrustProxy\(process\.env\.TRUST_PROXY\)\.deger\);/,
+  );
   assert.match(idx, /\[Guvenlik\] TRUST_PROXY tanimli degil/);
 });

@@ -1,27 +1,26 @@
-// scripts/bicim-kapisi.cjs — bicim (prettier) cirigi: BICIMLI DOSYA BICIMLI KALIR (kalite kapisi, commit oncesi).
+// scripts/bicim-kapisi.cjs — bicim (prettier) kapisi: HER izlenen JS/TS dosyasi bicimli.
 //   node scripts/bicim-kapisi.cjs            sahnelenen dosyalar (pre-commit)
+//   node scripts/bicim-kapisi.cjs --tum      izlenen BUTUN dosyalar (npm run lint -> K2 ve CI)
 //
-// NEDEN CIRIK, NEDEN `prettier --write` DEGIL: depo tumuyle bicimli degil. Commit aninda dokunulan
-// dosyanin TAMAMINI yeniden bicimlemek ilgisiz satirlari degistirir, ortak calisanin farkini
-// sisirir ve kaynak metnini okuyan bekci testlerini kirar. Kural bu yuzden:
-//   - yeni dosya bicimli olmali;
-//   - HEAD'de bicimli olan dosya bicimli kalmali;
-//   - HEAD'de bicimsiz dosyaya dokunmak serbest (toplu bicimleme ayri, tek commit'te yapilir).
-//   - yeniden adlandirilan dosya YENI degildir: HEAD bicimi ESKI yoldan okunur (2026-11-18: 511 Node
-//     testi .test.cjs -> .test.js; yeni sayilsaydi 330 bicimsiz test toplu bicimlemeye zorlanirdi).
+// KURAL (2026-11-20, kurumsal is #52): depo bir kez tumuyle bicimlendi (commit bb7a4d27,
+// .git-blame-ignore-revs). Artik istisna yok: sahnelenen her JS/TS dosyasi bicimli olmali; HEAD'deki
+// durumu fark etmez. Eski kural ("HEAD'de bicimsiz dosyaya dokunmak serbest") 1044 bicimsiz dosya
+// birakmisti; Sonar'in S2681 / S3972 bulgularinin cogu o dosyalardaki tek satirlik bloklardandi.
+// --tum CI'da ayni kurali butun agaca uygular: kancasiz (ornegin dogrudan main'e) gelen bicimsiz dosya
+// da kirmizi olur. Dislananlar .prettierignore'da (Ansible agaci AWX ile bayt bayt ayni kalir).
 // Dosyayi duzeltmek icin: npx prettier --write <dosya>
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOD = /\.(?:[cm]?js|tsx?)$/;
 
-/** HEAD bicimi + sahnelenen bicim -> ihlal mi? Saf islev. `headBicimli` null = yeni dosya. */
-function ihlalMi(headBicimli, sahneBicimli) {
-  if (sahneBicimli) return false;
-  return headBicimli === null || headBicimli === true;
+/** Sahnelenen (ya da izlenen) dosya bicimsiz mi? Istisna yok (2026-11-20). Saf islev. */
+function ihlalMi(bicimli) {
+  return bicimli !== true;
 }
 
 /**
@@ -66,35 +65,66 @@ async function bicimliMi(prettier, metin, dosya) {
   return prettier.check(metin, { ...ayar, filepath: dosya });
 }
 
-async function main() {
-  let prettier;
+async function prettierYukle() {
   try {
-    prettier = require('prettier');
+    return require('prettier');
   } catch {
     console.error('[bicim] prettier kurulu degil: npm run kur');
-    return 1;
+    return null;
   }
+}
+
+/** Denetlenecek dosya mi? (JS/TS, .prettierignore disi, ayristiricisi var) */
+async function denetlenir(prettier, kok, f) {
+  if (!KOD.test(f)) return false;
+  const info = await prettier.getFileInfo(path.join(kok, f), {
+    ignorePath: path.join(kok, '.prettierignore'),
+  });
+  return !info.ignored && Boolean(info.inferredParser);
+}
+
+function rapor(ihlaller, kapsam) {
+  if (!ihlaller.length) {
+    if (kapsam) console.log(`[bicim] tamam: ${kapsam} dosya bicimli.`);
+    return 0;
+  }
+  console.error('[bicim] KIRMIZI: bicimsiz dosyalar (istisna yok):');
+  for (const f of ihlaller.slice(0, 50)) console.error(`  - ${f}`);
+  if (ihlaller.length > 50) console.error(`  ... ve ${ihlaller.length - 50} dosya daha`);
+  console.error(`  Duzelt: npx prettier --write ${ihlaller.slice(0, 50).join(' ')}`);
+  return 1;
+}
+
+async function main(argv = process.argv.slice(2)) {
+  const prettier = await prettierYukle();
+  if (!prettier) return 1;
   const kok = git(['rev-parse', '--show-toplevel']).trim();
+  const ihlaller = [];
+  if (argv[0] === '--tum') {
+    const izlenen = git(['ls-files', '-z']).split('\0').filter(Boolean);
+    let sayi = 0;
+    for (const f of izlenen) {
+      const tam = path.join(kok, f);
+      if (!fs.existsSync(tam) || !(await denetlenir(prettier, kok, f))) continue;
+      sayi += 1;
+      if (ihlalMi(await bicimliMi(prettier, fs.readFileSync(tam, 'utf8'), tam))) ihlaller.push(f);
+    }
+    return rapor(ihlaller, sayi);
+  }
+  if (argv.length) {
+    console.error('kullanim: node scripts/bicim-kapisi.cjs [--tum]');
+    return 2;
+  }
   const dosyalar = degisenler(
     git(['diff', '--cached', '--name-status', '-z', '-M', '--diff-filter=ACMR']),
-  ).filter((d) => KOD.test(d.yol));
-  const ihlaller = [];
-  for (const { yol: f, eski } of dosyalar) {
-    const tam = path.join(kok, f);
-    const info = await prettier.getFileInfo(tam, { ignorePath: path.join(kok, '.prettierignore') });
-    if (info.ignored || !info.inferredParser) continue;
+  );
+  for (const { yol: f } of dosyalar) {
+    if (!(await denetlenir(prettier, kok, f))) continue;
     const sahne = gitOku(`:${f}`);
     if (sahne === null) continue;
-    const head = gitOku(`HEAD:${eski}`);
-    const headBicimli = head === null ? null : await bicimliMi(prettier, head, tam);
-    if (ihlalMi(headBicimli, await bicimliMi(prettier, sahne, tam)))
-      ihlaller.push({ f, yeni: headBicimli === null });
+    if (ihlalMi(await bicimliMi(prettier, sahne, path.join(kok, f)))) ihlaller.push(f);
   }
-  if (!ihlaller.length) return 0;
-  console.error('[bicim] KIRMIZI: bicimli kalmasi gereken dosyalar bicimsiz:');
-  for (const { f, yeni } of ihlaller) console.error(`  - ${f}${yeni ? ' (yeni dosya)' : ''}`);
-  console.error(`  Duzelt: npx prettier --write ${ihlaller.map((i) => i.f).join(' ')}`);
-  return 1;
+  return rapor(ihlaller, null);
 }
 
 if (require.main === module)
@@ -103,7 +133,7 @@ if (require.main === module)
       process.exitCode = rc;
     },
     (e) => {
-      console.error(`[bicim] HATA: ${e && e.message}`);
+      console.error(`[bicim] HATA: ${e?.message}`);
       process.exitCode = 1;
     },
   );

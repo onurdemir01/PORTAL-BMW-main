@@ -2,8 +2,10 @@
 //   npm run kapi:sonar                  calisan bir SonarQube'a (SONAR_HOST_URL) tarar, kapiyi bekler
 //   node scripts/sonar-kapi.cjs --docker   sunucu yoksa yerelde konteyner baslatir (Docker gerekir)
 //   node scripts/sonar-kapi.cjs --ci       CI: taze konteyner (admin/admin) -> parola + jeton uretir
-//   ... --kurumsal                          ek olarak KURUMSAL TAKLIT (K15): kurumun siniflandirmasiyla
-//                                           (kalite/kurumsal-sonar.json) ayri projeye tarar, ayni kapi
+//   ... --kurumsal                          ek olarak KURUMSAL TAKLIT (K15): kurumun siniflandirmasi ve
+//                                           kural profiliyle (kalite/kurumsal-sonar.json) ayri projeye
+//                                           tarar; kapi K13 ile ayni, inceleme kaydi uygulanmaz ve
+//                                           inceleme bekleyen hotspot mutlak 0
 //
 // KURUMSAL TAKLIT (2026-11-18, kurumsal is #49): kurumun scanOnSonar adimi sources / tests /
 // test.inclusions / exclusions anahtarlarini komut satirindan verip bizim siniflandirmamizi ezer.
@@ -11,6 +13,10 @@
 // guvenlik bulgusu. Taklit kurumun gorecegini her PR'da gosterir; kapsam raporu kurumun yukledigi
 // gibi kaynak dosyalariyla suzulur (scripts/kapsam-yayinla.cjs lcovSuz). SCM acik: kurumdaki gibi
 // .gitignore uygulanir.
+// KURUM PROFILI (2026-11-20, is #52): kurumun "GT way" profili disa aktarilamiyor; K15 her dilde
+// "Portal Kurumsal" profilini kalite/kurumsal-sonar.json `profil`den her kosuda sifirdan kurar (yerlesik
+// varsayilan profilin bug / zafiyet / hotspot kurallari + kurumun bulgu verdigi kurallar, parametreleriyle). Kurum yerel
+// hotspot incelemelerimizi gormez: K15 kayitlari uygulamaz, kapisi hotspot'ta da mutlak.
 //
 // Kimlik: SONAR_TOKEN (yonetici yetkili kullanici jetonu) ya da SONAR_ADMIN_PASSWORD. --ci'de ikisi
 // de gerekmez. Kapi kosullari kalite/esikler.json `sonar.kosullar` (tek kaynak): betik "Portal Kati"
@@ -25,6 +31,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { aracYolu } = require('./arac-yolu.cjs');
+const { KURUMA_GITMEYEN } = require('./teslim.cjs');
 
 const KOK = path.join(__dirname, '..');
 const IMAJ = 'sonarqube:26.11.0.134175-community';
@@ -33,6 +40,7 @@ const KONTEYNER = 'portal-sonar-kapi';
 
 const KURUMSAL_PROJE = 'bmw-portal-kurumsal';
 const KURUMSAL_LCOV = 'coverage/kurumsal-lcov.info';
+const KURUMSAL_PROFIL = 'Portal Kurumsal';
 
 const esikler = () => JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'esikler.json'), 'utf8'));
 const incelemeler = () =>
@@ -52,13 +60,20 @@ function incelemeBul(hotspot, satirMetni, liste) {
   );
 }
 
+/**
+ * Kurumsal depoda BULUNMAYAN dizinler (scripts/teslim.cjs KURUMA_GITMEYEN; aktarimda silinir, CI provasi
+ * kurum agacini boyle kurar). Taklit kurumun tarayacagi agaci tarar: bu dizinler kurumda yoktur, bu
+ * yuzden taramada da yoktur. Kurumun desenleri gevsetilmez; liste teslim listesinin aynisidir (KK12).
+ */
+const KURUM_AGACINDA_YOK = KURUMA_GITMEYEN.map((d) => `${d}**`);
+
 /** kalite/kurumsal-sonar.json -> kurumun komut satiri anahtarlari (-D...). Saf islev. */
 function kurumsalArgumanlar(k, lcov = KURUMSAL_LCOV) {
   return [
     `-Dsonar.sources=${k.sources}`,
     `-Dsonar.tests=${k.tests}`,
     `-Dsonar.test.inclusions=${k.testInclusions.join(',')}`,
-    `-Dsonar.exclusions=${k.exclusions.join(',')}`,
+    `-Dsonar.exclusions=${[...k.exclusions, ...KURUM_AGACINDA_YOK].join(',')}`,
     `-Dsonar.coverage.exclusions=${k.coverageExclusions.join(',')}`,
     `-Dsonar.javascript.lcov.reportPaths=${lcov}`,
   ];
@@ -69,9 +84,85 @@ function kosullar(e) {
   return e.sonar.kosullar.map((k) => ({ metric: k.metrik, op: k.op, error: String(k.esik) }));
 }
 
+/** kalite/kurumsal-sonar.json `profil` -> [{ dil, kural, params }] (params: 'a=1;b=2'). Saf islev. */
+function profilKurallari(k) {
+  return Object.entries(k.profil.kurallar).flatMap(([dil, liste]) =>
+    liste.map((g) => {
+      const { kural, parametreler = {} } = typeof g === 'string' ? { kural: g } : g;
+      const params = Object.entries(parametreler)
+        .map(([ad, deger]) => `${ad}=${deger}`)
+        .join(';');
+      return { dil, kural, params };
+    }),
+  );
+}
+
+/**
+ * K15 profili: her dilde "Portal Kurumsal" sifirdan kurulur ve projeye baglanir. Yerel sunucuda dili
+ * ya da kurali olmayan girdi hata olur (kapi sessizce zayiflamaz).
+ */
+async function kurumProfiliKur(api, k, proje) {
+  const kurallar = profilKurallari(k);
+  const diller = new Set(((await api('/api/languages/list')).languages || []).map((l) => l.key));
+  const eksik = [];
+  let etkin = 0;
+  for (const dil of new Set(kurallar.map((r) => r.dil))) {
+    if (!diller.has(dil)) {
+      eksik.push(`${dil}: dil yerel sunucuda yok`);
+      continue;
+    }
+    const profiller = (await api('/api/qualityprofiles/search', { language: dil })).profiles || [];
+    if (profiller.some((p) => p.name === KURUMSAL_PROFIL))
+      await api(
+        '/api/qualityprofiles/delete',
+        { language: dil, qualityProfile: KURUMSAL_PROFIL },
+        'POST',
+      );
+    const yeni = await api(
+      '/api/qualityprofiles/create',
+      { language: dil, name: KURUMSAL_PROFIL },
+      'POST',
+    );
+    const anahtar = yeni.profile.key;
+    // K13'un kullandigi yerlesik varsayilan profil (26.x'te adi "Sonar way core").
+    const yerlesik = profiller.find((p) => p.isBuiltIn && p.isDefault);
+    if (!yerlesik) eksik.push(`${dil}: yerlesik varsayilan profil yok`);
+    else
+      await api(
+        '/api/qualityprofiles/activate_rules',
+        {
+          targetKey: anahtar,
+          qprofile: yerlesik.key,
+          activation: 'true',
+          types: 'BUG,VULNERABILITY,SECURITY_HOTSPOT',
+        },
+        'POST',
+      );
+    for (const r of kurallar.filter((x) => x.dil === dil)) {
+      try {
+        await api(
+          '/api/qualityprofiles/activate_rule',
+          { key: anahtar, rule: r.kural, ...(r.params ? { params: r.params } : {}) },
+          'POST',
+        );
+        etkin += 1;
+      } catch (err) {
+        eksik.push(`${r.kural}: ${err.message}`);
+      }
+    }
+    await api(
+      '/api/qualityprofiles/add_project',
+      { language: dil, qualityProfile: KURUMSAL_PROFIL, project: proje },
+      'POST',
+    );
+  }
+  if (eksik.length) throw new Error(`kurum profili kurulamadi:\n  ${eksik.join('\n  ')}`);
+  return etkin;
+}
+
 /** project_status yaniti -> { tamam, satirlar[] }. Saf islev. */
 function durumOzeti(ps) {
-  const p = (ps && ps.projectStatus) || {};
+  const p = ps?.projectStatus || {};
   const satirlar = (p.conditions || []).map(
     (c) =>
       `  ${c.status === 'OK' ? 'TAMAM  ' : 'KIRMIZI'} ${c.metricKey} = ${c.actualValue ?? '-'} (esik ${c.comparator} ${c.errorThreshold})`,
@@ -100,10 +191,7 @@ function istemci(host, yetki) {
     try {
       r = await istek();
     } catch (e) {
-      if (
-        !['UND_ERR_SOCKET', 'ECONNRESET', 'UND_ERR_CLOSED'].includes(e && e.cause && e.cause.code)
-      )
-        throw e;
+      if (!['UND_ERR_SOCKET', 'ECONNRESET', 'UND_ERR_CLOSED'].includes(e?.cause?.code)) throw e;
       await bekle(500);
       r = await istek();
     }
@@ -171,7 +259,7 @@ async function kimlik(host, ci) {
     );
   }
   if (!parola) throw new Error('SONAR_TOKEN ya da SONAR_ADMIN_PASSWORD gerekli (CI disinda)');
-  const yetki = `Basic ${Buffer.from(`admin:${parola}`).toString('base64')}`;
+  const yetki = `Basic ${Buffer.from('admin:' + parola).toString('base64')}`;
   const t = await istemci(host, yetki)(
     '/api/user_tokens/generate',
     { name: `kapi-${Date.now()}` },
@@ -218,6 +306,16 @@ function satirOku(dosya, satir) {
   } catch {
     return ''; // dosya yerelde yok: eslesmez, kalan sayilir
   }
+}
+
+/** K15: inceleme kaydi uygulanmaz; bekleyen hotspot'lari listeler, sayisini dondurur. */
+async function hotspotlariYaz(api, proje) {
+  const hs = await api('/api/hotspots/search', { project: proje, status: 'TO_REVIEW', ps: '500' });
+  for (const h of hs.hotspots || [])
+    console.error(
+      `  - hotspot ${h.ruleKey} ${String(h.component).split(':').slice(1).join(':')}:${h.line ?? ''} ${h.message}`,
+    );
+  return hs.paging?.total ?? (hs.hotspots || []).length;
 }
 
 /**
@@ -320,16 +418,19 @@ async function main(argv) {
   );
   await kapiyiEsitle(api, e.sonar.kapiAdi, kosullar(e), KURUMSAL_PROJE);
   const k = JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'kurumsal-sonar.json'), 'utf8'));
+  const etkin = await kurumProfiliKur(api, k, KURUMSAL_PROJE);
+  console.log(`[sonar-kapi] "${KURUMSAL_PROFIL}" profili kuruldu (${etkin} kurum kurali).`);
   const kurumsal = await tara(api, host, jeton, e, {
     proje: KURUMSAL_PROJE,
     lcov: KURUMSAL_LCOV,
     argumanlar: kurumsalArgumanlar(k),
+    inceleme: false,
   });
   return tamam && kurumsal ? 0 : 1;
 }
 
 /** Bir tarama + kapi sonucu. true = yesil. */
-async function tara(api, host, jeton, e, { proje, lcov, argumanlar }) {
+async function tara(api, host, jeton, e, { proje, lcov, argumanlar, inceleme = true }) {
   const tarama = spawnSync(
     aracYolu('npx'),
     [
@@ -345,23 +446,29 @@ async function tara(api, host, jeton, e, { proje, lcov, argumanlar }) {
   );
   if (tarama.status !== 0) throw new Error(`tarayici basarisiz (cikis ${tarama.status})`);
   await analizBekle(api);
-  await incelemeleriUygula(api, proje);
+  // K15: kayit uygulanmaz; inceleme bekleyen hotspot mutlak 0 (SonarQube `security_hotspots`
+  // metrigini kapi kosulu olarak kabul etmez, sayi burada denetlenir).
+  let bekleyenHotspot = 0;
+  if (inceleme) await incelemeleriUygula(api, proje);
+  else bekleyenHotspot = await hotspotlariYaz(api, proje);
   const ps = await api('/api/qualitygates/project_status', { projectKey: proje });
   const { tamam, satirlar } = durumOzeti(ps);
+  if (!inceleme)
+    satirlar.push(
+      `  ${bekleyenHotspot ? 'KIRMIZI' : 'TAMAM  '} inceleme bekleyen hotspot = ${bekleyenHotspot} (mutlak 0)`,
+    );
   console.log(`\n[sonar-kapi] ${e.sonar.kapiAdi} (${proje}, kapsam raporu ${lcov}):`);
   for (const s of satirlar) console.log(s);
-  if (!tamam) {
+  if (!tamam || bekleyenHotspot) {
     // Notu dusuren bulgular: bug / zafiyet ve MQR guvenilirlik / guvenlik etkisi olan kokular
     // (yalniz bug listelemek MQR notu kirmiziyken ekrani bos birakiyordu).
+    // Kod kokusu kapisi mutlak: listede bakim (MAINTAINABILITY) bulgulari da gorunur.
     const d = await api('/api/issues/search', {
       componentKeys: proje,
       issueStatuses: 'OPEN,CONFIRMED',
-      impactSoftwareQualities: 'RELIABILITY,SECURITY',
       ps: '50',
     });
-    console.error(
-      `[sonar-kapi] guvenilirlik / guvenlik bulgusu: ${d.total ?? (d.issues || []).length}`,
-    );
+    console.error(`[sonar-kapi] acik bulgu: ${d.total ?? (d.issues || []).length}`);
     for (const i of d.issues || [])
       console.error(
         `  - ${i.rule} ${String(i.component).split(':').slice(1).join(':')}:${i.line ?? ''} ${i.message}`,
@@ -381,19 +488,22 @@ if (require.main === module)
       process.exitCode = rc;
     },
     (err) => {
-      const neden = err && err.cause ? ` (${err.cause.code || err.cause.message})` : '';
-      console.error(`[sonar-kapi] HATA: ${err && err.message}${neden}`);
+      const neden = err?.cause ? ` (${err.cause.code || err.cause.message})` : '';
+      console.error(`[sonar-kapi] HATA: ${err?.message}${neden}`);
       process.exitCode = 1;
     },
   );
 
 module.exports = {
   kosullar,
+  profilKurallari,
   durumOzeti,
   incelemeBul,
   incelemeler,
   kurumsalArgumanlar,
+  KURUM_AGACINDA_YOK,
   IMAJ,
   KURUMSAL_PROJE,
   KURUMSAL_LCOV,
+  KURUMSAL_PROFIL,
 };

@@ -2,7 +2,7 @@
 // server/ansible/awx-sunucu-bagimlilik.cjs - bir AWX sunucusunu devre disi birakmadan once
 // bagimlilik ozeti (2026-10-26).
 //
-// Kullanici: "portalin eski maestro.fwgaranti.com.tr yani maestro 1'e olan baglantisini
+// Kullanici: "portalin eski maestro.fwsirket.invalid yani maestro 1'e olan baglantisini
 // kapatmak istiyorum ... Burasi cok sik guncellenen ortamlar degil ... 2-3 yilda bir." Seyrek
 // yapilan bir is oldugu icin tuzaklar unutulur; bu ozet onlari ekrana getirir:
 //
@@ -23,14 +23,16 @@ const ENGELLER = [
   {
     anahtar: 'oco',
     baslik: 'OCO zamanlanmış başlatma',
-    ipucu: 'Admin > Smart Talepleri > OCO Zamanlamaları ekranından iptal edin (sunucu henüz etkinken). AWX_SCHEDULED kayıt sunucunun kendi zamanlamasıdır; Portal kesilse de orada koşar, iptal onu da siler.',
+    ipucu:
+      'Admin > Smart Talepleri > OCO Zamanlamaları ekranından iptal edin (sunucu henüz etkinken). AWX_SCHEDULED kayıt sunucunun kendi zamanlamasıdır; Portal kesilse de orada koşar, iptal onu da siler.',
     sql: `SELECT COUNT(*) AS n FROM oco_scheduled_launches
            WHERE awx_server_id = $1 AND status IN ('SCHEDULED','LAUNCHING','PENDING_APPROVAL','AWX_SCHEDULED')`,
   },
   {
     anahtar: 'smart',
     baslik: 'Onay bekleyen Smart bileti',
-    ipucu: 'Onaylanırsa iş bu sunucuda başlatılmak istenir ve hata verir; Admin > Smart Talepleri ekranında sonuçlanmasını bekleyin ya da iptal edin.',
+    ipucu:
+      'Onaylanırsa iş bu sunucuda başlatılmak istenir ve hata verir; Admin > Smart Talepleri ekranında sonuçlanmasını bekleyin ya da iptal edin.',
     sql: `SELECT COUNT(*) AS n FROM smart_tickets WHERE awx_server_id = $1 AND status IN ('PENDING','LAUNCHING')`,
   },
   {
@@ -40,7 +42,8 @@ const ENGELLER = [
     // baglanamamis (yarim) kosu da sayilir.
     anahtar: 'kilit',
     baslik: 'Tutulan OpsX / Crypto Hub kilidi ya da süren Nginx Yük Testi',
-    ipucu: 'Kilit, işin sonucu bu sunucudan okunarak bırakılır; kapatılırsa süre dolana kadar kalır. Yük testi için Nginx Hub > Yük Testi ekranında koşunun bitmesini bekleyin ya da Durdur ile durdurun.',
+    ipucu:
+      'Kilit, işin sonucu bu sunucudan okunarak bırakılır; kapatılırsa süre dolana kadar kalır. Yük testi için Nginx Hub > Yük Testi ekranında koşunun bitmesini bekleyin ya da Durdur ile durdurun.',
     sql: `SELECT (SELECT COUNT(*) FROM opsx_was_locks WHERE held = 1 AND awx_server_id = $1)
                + (SELECT COUNT(*) FROM crypto_hub_locks WHERE held = 1 AND awx_server_id = $1)
                + (SELECT COUNT(*) FROM (
@@ -166,7 +169,7 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
       const n = Number(rows?.[0]?.n) || 0;
       if (n > 0) engeller.push({ anahtar: e.anahtar, baslik: e.baslik, adet: n, ipucu: e.ipucu });
     } catch (err) {
-      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String((err?.message) || err) });
+      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String(err?.message || err) });
     }
   }
 
@@ -174,9 +177,10 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
     try {
       const { rows } = await db.query(sql, [no]);
       const adlar = (rows || []).map((r) => String(r[alan] == null ? '' : r[alan])).filter(Boolean);
-      if (adlar.length) uyarilar.push({ anahtar, baslik, adet: adlar.length, ornekler: adlar.slice(0, 20), ipucu });
+      if (adlar.length)
+        uyarilar.push({ anahtar, baslik, adet: adlar.length, ornekler: adlar.slice(0, 20), ipucu });
     } catch (err) {
-      okunamayan.push({ anahtar, baslik, hata: String((err?.message) || err) });
+      okunamayan.push({ anahtar, baslik, hata: String(err?.message || err) });
     }
   };
   await liste(
@@ -223,7 +227,8 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
       baslik: 'Eski tek-sunucu AWX_URL bu sunucuyu gösteriyor',
       adet: 1,
       ornekler: ['AWX_URL'],
-      ipucu: 'AI araçları, LogX v1 ve OCP sağlık kontrolü bu yoldan gider; devre dışı bırakmak onları KESMEZ. AWX_URL ve AWX_LOG_FETCH_TEMPLATE_ID değerlerini diğer sunucuya çevirin.',
+      ipucu:
+        'AI araçları, LogX v1 ve OCP sağlık kontrolü bu yoldan gider; devre dışı bırakmak onları KESMEZ. AWX_URL ve AWX_LOG_FETCH_TEMPLATE_ID değerlerini diğer sunucuya çevirin.',
     });
   }
 

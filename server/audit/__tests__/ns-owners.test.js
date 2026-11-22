@@ -9,9 +9,24 @@ const { indexOwners, ownersFor, loadNamespaceOwners, _resetCache } = require('..
 
 test('ekip ozeti: birden fazla namespace, ayni ekip tek kez, sahipsiz namespace gorunur', () => {
   const byNs = indexOwners([
-    { namespace: 'glomo-dev', owner_group_name: 'GT-GLOMO-DEV', owner_email: 'glomo@x', lookup_status: 'OK' },
-    { namespace: 'GLOMO-PROD', owner_group_name: 'GT-GLOMO-DEV', owner_email: 'glomo@x', lookup_status: 'OK' },
-    { namespace: 'saklama-prod', owner_group_name: null, owner_email: null, lookup_status: 'SORUMLU_YOK' },
+    {
+      namespace: 'glomo-dev',
+      owner_group_name: 'GT-GLOMO-DEV',
+      owner_email: 'glomo@x',
+      lookup_status: 'OK',
+    },
+    {
+      namespace: 'GLOMO-PROD',
+      owner_group_name: 'GT-GLOMO-DEV',
+      owner_email: 'glomo@x',
+      lookup_status: 'OK',
+    },
+    {
+      namespace: 'saklama-prod',
+      owner_group_name: null,
+      owner_email: null,
+      lookup_status: 'SORUMLU_YOK',
+    },
   ]);
   const o = ownersFor(byNs, ['glomo-dev', 'glomo-prod', 'saklama-prod', 'hic-yok', null]);
   assert.deepEqual(o.groups, ['GT-GLOMO-DEV']);
@@ -21,7 +36,9 @@ test('ekip ozeti: birden fazla namespace, ayni ekip tek kez, sahipsiz namespace 
 
 test('tablo yoksa ready=false ve bos harita (ekran "veri yok" der, "bilinmiyor" degil)', async () => {
   _resetCache();
-  const r = await loadNamespaceOwners(async () => { throw new Error("Invalid object name 'dbo.Openshift_Namespace_Owners'"); });
+  const r = await loadNamespaceOwners(async () => {
+    throw new Error("Invalid object name 'dbo.Openshift_Namespace_Owners'");
+  });
   assert.equal(r.ready, false);
   assert.equal(r.byNs.size, 0);
   _resetCache();
@@ -33,12 +50,21 @@ test('Nginx_Config_Audit sutun adi location_path (job_3315997 sonrasi: "Invalid 
     .map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8'))
     .join('\n');
   // Nginx_Config_Audit'ten okuyan her SELECT'te ciplak "location" sutunu olmamali.
-  const selects = src.split('FROM dbo.Nginx_Config_Audit').slice(0, -1).map((s) => s.slice(s.lastIndexOf('SELECT')));
+  const selects = src
+    .split('FROM dbo.Nginx_Config_Audit')
+    .slice(0, -1)
+    .map((s) => s.slice(s.lastIndexOf('SELECT')));
   assert.ok(selects.length >= 3);
   for (const sel of selects) {
-    assert.ok(!/(?<!AS\s)(?<=[\s,])location(?=[\s,])/.test(sel), 'Nginx_Config_Audit\'te "location" yok, "location_path" var:\n' + sel);
+    assert.ok(
+      !/(?<!AS\s)(?<=[\s,])location(?=[\s,])/.test(sel),
+      'Nginx_Config_Audit\'te "location" yok, "location_path" var:\n' + sel,
+    );
   }
-  assert.ok(src.includes('location_path AS location'), 'tasima sorgusu location_path AS location kullanmali');
+  assert.ok(
+    src.includes('location_path AS location'),
+    'tasima sorgusu location_path AS location kullanmali',
+  );
 });
 
 // 2026-09-14 canli hata: "loadNamespaceOwners is not defined" - yukleyici tasinirken import
@@ -46,7 +72,13 @@ test('Nginx_Config_Audit sutun adi location_path (job_3315997 sonrasi: "Invalid 
 // Bekci: denetim.cjs'te CAGRILAN her ns-owners / nginx-migration fonksiyonu import edilmis olmali.
 test('denetim.cjs: kullanilan yardimci fonksiyonlar gercekten import edilmis', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
-  for (const fn of ['loadNamespaceOwners', 'ownersFor', 'ownersForApp', 'loadMigration', 'summarizeAudit']) {
+  for (const fn of [
+    'loadNamespaceOwners',
+    'ownersFor',
+    'ownersForApp',
+    'loadMigration',
+    'summarizeAudit',
+  ]) {
     const used = (src.match(new RegExp(`\\b${fn}\\(`, 'g')) || []).length;
     if (!used) continue;
     const imported = new RegExp(`\\{[^}]*\\b${fn}\\b[^}]*\\}\\s*=\\s*require\\(`).test(src);
@@ -68,11 +100,26 @@ function sahipSorgu() {
     st.aktif -= 1;
     if (s.includes('dbo.Openshift_Namespace_Owners')) {
       if (st.nsHata) throw st.nsHata;
-      return { recordset: [{ namespace: 'a-prod', owner_group_name: 'NS', owner_email: null, lookup_status: 'OK' }] };
+      return {
+        recordset: [
+          { namespace: 'a-prod', owner_group_name: 'NS', owner_email: null, lookup_status: 'OK' },
+        ],
+      };
     }
     if (s.includes('dbo.Openshift_App_Owners')) {
       if (st.appHata) throw st.appHata;
-      return { recordset: [{ cluster: 'c', namespace: 'a-prod', application: 'app', owner_group_name: st.grup, kaynak: 'SI51_AGILE', lookup_status: 'OK' }] };
+      return {
+        recordset: [
+          {
+            cluster: 'c',
+            namespace: 'a-prod',
+            application: 'app',
+            owner_group_name: st.grup,
+            kaynak: 'SI51_AGILE',
+            lookup_status: 'OK',
+          },
+        ],
+      };
     }
     throw new Error('beklenmeyen sorgu');
   };
@@ -145,7 +192,9 @@ test('O4 ilk yuklemede gecici hata: sonuc doner (appError), onbellege alinmaz', 
     assert.equal(o2.appError, undefined);
     // Tablo YOK (208) kalici: appError yok, onbellege girer.
     ns._resetCache();
-    st.appHata = Object.assign(new Error("Invalid object name 'dbo.Openshift_App_Owners'."), { number: 208 });
+    st.appHata = Object.assign(new Error("Invalid object name 'dbo.Openshift_App_Owners'."), {
+      number: 208,
+    });
     const o3 = await ns.loadNamespaceOwners(q);
     assert.equal(o3.appError, undefined);
     const n = st.n;

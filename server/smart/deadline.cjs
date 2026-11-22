@@ -48,7 +48,10 @@ function talepSonTarihi(ticket, cfg) {
   let deadlineKaynak = genel != null ? 'genel' : null;
   let pencereSonuMs = null;
 
-  for (const iso of [ticket?.pendingLaunch?.sonBaslamaIso, ticket?.pendingLaunch?.ocoWindowEndIso]) {
+  for (const iso of [
+    ticket?.pendingLaunch?.sonBaslamaIso,
+    ticket?.pendingLaunch?.ocoWindowEndIso,
+  ]) {
     if (!iso) continue;
     const until = new Date(iso).getTime();
     const allowed = (until - createdMs) / 60000;
@@ -78,7 +81,9 @@ function talepSonTarihi(ticket, cfg) {
   }
   // NEDEN: 'oco'da tarih dogrudan pencere sonudur; createdAt + dakika geri donusumu
   // kayan nokta yuzunden milisaniye kaydirabilirdi.
-  const deadline = new Date(pencereSonuMs != null ? pencereSonuMs : createdMs + timeoutMinutes * 60000);
+  const deadline = new Date(
+    pencereSonuMs != null ? pencereSonuMs : createdMs + timeoutMinutes * 60000,
+  );
   return { deadline, deadlineKaynak, timeoutMinutes };
 }
 
@@ -101,7 +106,7 @@ function talepSonTarihiAlanlari(ticket, cfg) {
  */
 function pencereBekliyorMu(ticket, simdiMs = Date.now()) {
   const pl = ticket?.pendingLaunch;
-  if (!pl || pl.pencereBekle !== true) return false;
+  if (pl?.pencereBekle !== true) return false;
   const bas = new Date(pl.ocoWindowStartIso).getTime();
   return Number.isFinite(bas) && simdiMs < bas;
 }

@@ -123,7 +123,7 @@ function createResponseCache({
       let result = null;
       try {
         result = captureResult(key, myGen, res, payload);
-        if (result && result.tooBig) res.setHeader('X-Portal-Cache', 'SKIP-SIZE');
+        if (result?.tooBig) res.setHeader('X-Portal-Cache', 'SKIP-SIZE');
       } catch {
         result = null; /* onbellek hatasi yaniti etkilemez */
       }
@@ -167,7 +167,7 @@ function createResponseCache({
 
   function middleware(req, res, next) {
     if (req.method !== 'GET') return next();
-    const fresh = String((req.query && req.query.fresh) || '') === '1';
+    const fresh = String(req.query?.fresh || '') === '1';
     const key = req.originalUrl.replace(/([?&])fresh=1&?/, '$1').replace(/[?&]$/, '');
     const now = Date.now();
     let hit = store.get(key);

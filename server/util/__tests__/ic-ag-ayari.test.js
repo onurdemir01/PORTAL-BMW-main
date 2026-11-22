@@ -18,15 +18,15 @@ test('IA1 alt aglar: gecerli CIDR alinir, bozuk girdi atilir ve sebep soylenir',
   assert.deepEqual(rvpAltAglari({ NGINX_RVP_ALT_AGLARI: '[]' }).altAglar, {});
   const r = rvpAltAglari({
     NGINX_RVP_ALT_AGLARI: JSON.stringify({
-      gbngxd02: '192.0.2.0/24',
-      GBNGXT34: '198.51.100.0/23',
+      orngxd02: '192.0.2.0/24',
+      ORNGXT34: '198.51.100.0/23',
       KOTU1: '300.1.1.0/24',
       KOTU2: '192.0.2.0/33',
       KOTU3: '192.0.2.0',
       'ad bosluklu': '192.0.2.0/24',
     }),
   });
-  assert.deepEqual(r.altAglar, { GBNGXD02: '192.0.2.0/24', GBNGXT34: '198.51.100.0/23' });
+  assert.deepEqual(r.altAglar, { ORNGXD02: '192.0.2.0/24', ORNGXT34: '198.51.100.0/23' });
   assert.equal(r.hata, 'NGINX_RVP_ALT_AGLARI: 4 gecersiz girdi atildi');
 });
 
@@ -37,12 +37,12 @@ test('IA2 DNS sunuculari: bolge > site > IPv4 listesi; bozuk site / IP atilir', 
   });
   const r = webAppDnsSunuculari({
     WEB_APP_DNS_SUNUCULARI: JSON.stringify({
-      gtdmz: { Pendik: ['192.0.2.22', 'x'], Ankara: ['198.51.100.22'] },
+      dmz: { Pendik: ['192.0.2.22', 'x'], Ankara: ['198.51.100.22'] },
       fw: { Pendik: [], Ankara: '198.51.100.1' },
       bos: [],
     }),
   });
-  assert.deepEqual(r.bolgeler, { gtdmz: { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] } });
+  assert.deepEqual(r.bolgeler, { dmz: { Pendik: ['192.0.2.22'], Ankara: ['198.51.100.22'] } });
   assert.equal(r.hata, 'WEB_APP_DNS_SUNUCULARI: 3 gecersiz girdi atildi');
 });
 

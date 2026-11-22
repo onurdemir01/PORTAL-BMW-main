@@ -1315,7 +1315,9 @@ const WorkloadStep: React.FC<Props> = ({
                       className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-200 transition-colors"
                       onClick={() => {
                         void navigator.clipboard
-                          .writeText('cp -r server/ansible/bmw_portal/ <AWX_PROJECT_DIR>/')
+                          .writeText(
+                            'cp -r server/ansible/playbooks/bmw_portal/ <AWX_PROJECT_DIR>/',
+                          )
                           .then(() => {
                             setPkgCopied(true);
                             setTimeout(() => setPkgCopied(false), 2000);

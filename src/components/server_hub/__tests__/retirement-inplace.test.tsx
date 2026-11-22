@@ -13,13 +13,33 @@
 // Kaynak bekcisi (CreateModal yerlesimi, create() inPlace'e bakmaz): server/retirement/__tests__/ekran-tablo.test.js.
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { InPlaceUyari, inPlaceIpucu, inPlaceOzeti, type InPlaceHedef } from '@/components/server_hub/RetirementInPlace';
+import {
+  InPlaceUyari,
+  inPlaceIpucu,
+  inPlaceOzeti,
+  type InPlaceHedef,
+} from '@/components/server_hub/RetirementInPlace';
 
 // discover.cjs inPlaceIsaretle ciktisinin bicimi (in-place.test.js IN1/IN5 ile ayni senaryo).
-const elle = 'in-place: GBPOSWEBAPI bu sunucuda JBoss 8 kurulumunda da var; ... elle kontrol edilmeli';
-const j7: InPlaceHedef = { host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 7, inPlace: true, digerSurumler: [8], web: [{ elle }, { elle }, {}] };
-const j8: InPlaceHedef = { host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 8, inPlace: true, digerSurumler: [7], web: [] };
-const tek: InPlaceHedef = { host: 'GBJEXP06', appName: 'GBPOSWEBAPI', gen: 7, web: [] };
+const elle =
+  'in-place: ORPOSWEBAPI bu sunucuda JBoss 8 kurulumunda da var; ... elle kontrol edilmeli';
+const j7: InPlaceHedef = {
+  host: 'ORJEXP05',
+  appName: 'ORPOSWEBAPI',
+  gen: 7,
+  inPlace: true,
+  digerSurumler: [8],
+  web: [{ elle }, { elle }, {}],
+};
+const j8: InPlaceHedef = {
+  host: 'ORJEXP05',
+  appName: 'ORPOSWEBAPI',
+  gen: 8,
+  inPlace: true,
+  digerSurumler: [7],
+  web: [],
+};
+const tek: InPlaceHedef = { host: 'ORJEXP06', appName: 'ORPOSWEBAPI', gen: 7, web: [] };
 
 describe('Retirement in-place uyarisi', () => {
   it('IP1 yalniz secili ve inPlace === true', () => {
@@ -28,11 +48,18 @@ describe('Retirement in-place uyarisi', () => {
     expect(inPlaceOzeti([{ ...j7, inPlace: undefined }])).toEqual([]);
     const l = inPlaceOzeti([j7, tek]);
     expect(l).toHaveLength(1);
-    expect(l[0]).toMatchObject({ host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 7, diger: [8], digerSecili: [], elle: 2 });
+    expect(l[0]).toMatchObject({
+      host: 'ORJEXP05',
+      appName: 'ORPOSWEBAPI',
+      gen: 7,
+      diger: [8],
+      digerSecili: [],
+      elle: 2,
+    });
   });
 
   it('IP2 diger kurulum da seciliyse ayrica soylenir', () => {
-    const l = inPlaceOzeti([j7, { ...j8, host: 'gbjexp05' }]);
+    const l = inPlaceOzeti([j7, { ...j8, host: 'orjexp05' }]);
     expect(l.map((x) => x.digerSecili)).toEqual([[8], [7]]);
   });
 
@@ -41,11 +68,15 @@ describe('Retirement in-place uyarisi', () => {
     const kutu = c1.querySelector('[data-rt-inplace]') as HTMLElement;
     expect(kutu).toHaveTextContent('Dikkatli olun: seçili 1 hedef in-place');
     const satir = kutu.querySelector('[data-rt-inplace-liste] li') as HTMLElement;
-    expect(satir).toHaveTextContent('seçilen JBoss 7; aynı sunucuda: JBoss 8 (seçili değil: dokunulmaz) · 2 vhost elle');
+    expect(satir).toHaveTextContent(
+      'seçilen JBoss 7; aynı sunucuda: JBoss 8 (seçili değil: dokunulmaz) · 2 vhost elle',
+    );
     expect(satir).toHaveAttribute('title', satir.textContent);
     expect(kutu).toHaveTextContent('diğer kurulumun JVM’ine ve paketine dokunulmaz');
     expect(kutu).toHaveTextContent('otomatik kapatılmaz');
-    expect(kutu).toHaveTextContent('İşi başlattıktan sonra kontrol edin: diğer kurulumun JVM’i hâlâ çalışıyor mu (Server Hub)');
+    expect(kutu).toHaveTextContent(
+      'İşi başlattıktan sonra kontrol edin: diğer kurulumun JVM’i hâlâ çalışıyor mu (Server Hub)',
+    );
     expect(kutu).toHaveTextContent('Bu uyarı hiçbir adımı engellemez.');
     // Iki kurulum birden secildiyse "dokunulmaz" denmez.
     const { container } = render(<InPlaceUyari hedefler={[j7, j8]} />);
@@ -57,40 +88,60 @@ describe('Retirement in-place uyarisi', () => {
     const { container } = render(<InPlaceUyari hedefler={[tek, { ...j7, inPlace: null }]} />);
     expect(container).toBeEmptyDOMElement();
     const r = render(<InPlaceUyari hedefler={[j7]} />);
-    expect(r.container.querySelector('button, input, [role="alert"], [role="status"], [aria-live]')).toBeNull();
+    expect(
+      r.container.querySelector('button, input, [role="alert"], [role="status"], [aria-live]'),
+    ).toBeNull();
   });
 
   it('IP5 STOP baglami', () => {
     const { container } = render(<InPlaceUyari hedefler={[j7]} baglam="stop" />);
-    expect(container.querySelector('[data-rt-inplace]')).toHaveTextContent('STOP bittikten sonra kontrol edin');
+    expect(container.querySelector('[data-rt-inplace]')).toHaveTextContent(
+      'STOP bittikten sonra kontrol edin',
+    );
   });
 
   it('IP6 satir cipi ipucu', () => {
-    expect(inPlaceIpucu([8])).toMatch(/^Bu sunucuda uygulama JBoss 8 kurulumunda da var\. .*DOKUNULMAZ/);
+    expect(inPlaceIpucu([8])).toMatch(
+      /^Bu sunucuda uygulama JBoss 8 kurulumunda da var\. .*DOKUNULMAZ/,
+    );
     expect(inPlaceIpucu([0])).toMatch(/uygulama sürümü bilinmeyen kurulumunda da var/);
     expect(inPlaceIpucu([])).toMatch(/başka bir JBoss kurulumunda da var/);
     expect(inPlaceIpucu(null)).toMatch(/başka bir JBoss kurulumunda da var/);
-    expect(inPlaceIpucu([8])).toMatch(/adı ya da sertifikasıyla eşleşen vhost’lar otomatik kapatılmaz/);
+    expect(inPlaceIpucu([8])).toMatch(
+      /adı ya da sertifikasıyla eşleşen vhost’lar otomatik kapatılmaz/,
+    );
   });
 
   it('IP7 diger kurulum da seciliyse "hala calisiyor mu" denmez; kismi secimde yalniz secili olmayan icin sorulur', () => {
     const { container } = render(<InPlaceUyari hedefler={[j7, j8]} />);
-    expect(container).toHaveTextContent('aynı sunucudaki kurulumların hepsi seçili — diğer kurulumun çalışmaya devam etmesi beklenmez');
-    expect(container).toHaveTextContent('‘elle’ çipli vhost’lar otomatik kapatılmaz, kurulumlar durduktan sonra elle kapatılmalı');
+    expect(container).toHaveTextContent(
+      'aynı sunucudaki kurulumların hepsi seçili — diğer kurulumun çalışmaya devam etmesi beklenmez',
+    );
+    expect(container).toHaveTextContent(
+      '‘elle’ çipli vhost’lar otomatik kapatılmaz, kurulumlar durduktan sonra elle kapatılmalı',
+    );
     expect(container).not.toHaveTextContent('hâlâ çalışıyor mu');
     expect(container).not.toHaveTextContent('diğer kurulumun JVM’ine ve paketine dokunulmaz');
-    // Kismi: GBJEXP05'te iki kurulum secili, GBJEXP09'da yalniz biri -> "seçili olmayan diger kurulum".
-    const j9: InPlaceHedef = { ...j7, host: 'GBJEXP09' };
+    // Kismi: ORJEXP05'te iki kurulum secili, ORJEXP09'da yalniz biri -> "seçili olmayan diger kurulum".
+    const j9: InPlaceHedef = { ...j7, host: 'ORJEXP09' };
     const k = render(<InPlaceUyari hedefler={[j7, j8, j9]} />).container;
-    expect(k).toHaveTextContent('kontrol edin: seçili olmayan diğer kurulumun JVM’i hâlâ çalışıyor mu (Server Hub)');
+    expect(k).toHaveTextContent(
+      'kontrol edin: seçili olmayan diğer kurulumun JVM’i hâlâ çalışıyor mu (Server Hub)',
+    );
   });
 
   it('IP8 STOP baglaminda diger kurulum kayitta hedefse "bu kayitta hedef" der', () => {
-    const { container } = render(<InPlaceUyari hedefler={[j7]} baglam="stop" kayittakiler={[j7, j8]} />);
+    const { container } = render(
+      <InPlaceUyari hedefler={[j7]} baglam="stop" kayittakiler={[j7, j8]} />,
+    );
     expect(container).toHaveTextContent('JBoss 8 de bu kayıtta hedef: ayrı hedef olarak işlenir');
-    expect(container).toHaveTextContent('STOP bittikten sonra kontrol edin: aynı sunucudaki kurulumların hepsi bu kayıtta hedef');
+    expect(container).toHaveTextContent(
+      'STOP bittikten sonra kontrol edin: aynı sunucudaki kurulumların hepsi bu kayıtta hedef',
+    );
     expect(container).not.toHaveTextContent('hâlâ çalışıyor mu');
-    const yok = render(<InPlaceUyari hedefler={[j7]} baglam="stop" kayittakiler={[j7]} />).container;
+    const yok = render(
+      <InPlaceUyari hedefler={[j7]} baglam="stop" kayittakiler={[j7]} />,
+    ).container;
     expect(yok).toHaveTextContent('(bu kayıtta hedef değil: dokunulmaz)');
     expect(yok).toHaveTextContent('diğer kurulumun JVM’i hâlâ çalışıyor mu');
   });
@@ -99,6 +150,8 @@ describe('Retirement in-place uyarisi', () => {
     const { container } = render(<InPlaceUyari hedefler={[j7]} />);
     const kutu = container.querySelector('[data-rt-inplace] > div') as HTMLElement;
     expect(kutu.style.boxShadow).toMatch(/^inset 4px 0 0 var\(--status-warning\)/);
-    expect(container.querySelector('[data-rt-inplace]')).toHaveTextContent(/^IN-PLACE Dikkatli olun/);
+    expect(container.querySelector('[data-rt-inplace]')).toHaveTextContent(
+      /^IN-PLACE Dikkatli olun/,
+    );
   });
 });

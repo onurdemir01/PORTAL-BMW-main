@@ -110,11 +110,11 @@ async function canliOku(ad, sorgu, zamanAsimiMs) {
     try {
       r = await zamanla(() => sorgu(SQL_BOYUTLU), zamanAsimiMs, ad);
     } catch (e) {
-      if (!IZIN_HATASI.test(String((e && e.message) || e))) throw e;
+      if (!IZIN_HATASI.test(String(e?.message || e))) throw e;
       boyutVar = false;
       r = await zamanla(() => sorgu(SQL_SATIRLI), zamanAsimiMs, ad);
     }
-    const rows = (r && r.recordset) || [];
+    const rows = r?.recordset || [];
     const ilk = rows[0] || {};
     return {
       ok: true,
@@ -134,7 +134,7 @@ async function canliOku(ad, sorgu, zamanAsimiMs) {
         .filter((x) => x.tablo),
     };
   } catch (e) {
-    return { ok: false, hata: String((e && e.message) || e || 'bilinmeyen hata') };
+    return { ok: false, hata: String(e?.message || e || 'bilinmeyen hata') };
   }
 }
 
@@ -148,9 +148,7 @@ const anahtar = (sema, tablo) =>
  */
 function katalogDurumu(katalog, canli, simdi = new Date()) {
   const kimlik = (c) =>
-    c && c.ok && c.dbAdi
-      ? `${String(c.sunucu || '').toLowerCase()}|${c.dbAdi.toLowerCase()}`
-      : null;
+    c?.ok && c.dbAdi ? `${String(c.sunucu || '').toLowerCase()}|${c.dbAdi.toLowerCase()}` : null;
   const kP = kimlik(canli.Portal);
   const kT = kimlik(canli.TBMWANS);
   const ayniFiziksel = !!(kP && kT && kP === kT);
@@ -158,16 +156,18 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
   const haritalar = {};
   for (const db of VERITABANLARI) {
     const c = canli[db];
-    if (!c || !c.ok) continue;
+    if (!c?.ok) continue;
     haritalar[db] = new Map(c.tablolar.map((t) => [anahtar(t.sema, t.tablo), t]));
   }
 
   const tablolar = katalog.map((g) => {
     const h = haritalar[g.db];
     const t = h ? h.get(anahtar('dbo', String(g.tablo).replace(/^dbo\./i, ''))) : null;
+    let durum = 'bilinmiyor';
+    if (h) durum = t ? 'var' : 'yok';
     return {
       ...g,
-      durum: !h ? 'bilinmiyor' : t ? 'var' : 'yok',
+      durum,
       satir: t ? t.satir : null,
       mb: t ? t.mb : null,
     };
@@ -182,7 +182,7 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
     );
   const katalogdaYok = [];
   // Biri okunamadiysa fiziksellik bilinmiyor: okunan DB'yi iki katalogun birlesimiyle suz.
-  const sapmaKismi = !(canli.Portal && canli.Portal.ok) || !(canli.TBMWANS && canli.TBMWANS.ok);
+  const sapmaKismi = !canli.Portal?.ok || !canli.TBMWANS?.ok;
   const gruplar = ayniFiziksel
     ? [{ etiket: 'Portal + TBMWANS', kaynak: 'TBMWANS', dbler: VERITABANLARI }]
     : VERITABANLARI.map((db) => ({
@@ -192,7 +192,7 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
       }));
   for (const gr of gruplar) {
     const c = canli[gr.kaynak];
-    if (!c || !c.ok) continue;
+    if (!c?.ok) continue;
     const adlar = katalogAdlari(gr.dbler);
     for (const t of c.tablolar) {
       if (adlar.has(anahtar(t.sema, t.tablo))) continue;
@@ -315,9 +315,7 @@ function registerVeriKatalogu(router, deps = null) {
       const govde = await vk.sonuc(String(req.query.fresh || '') === '1');
       res.json(govde);
     } catch (err) {
-      res
-        .status(500)
-        .json({ ok: false, message: (err && err.message) || 'Veri kataloğu okunamadı.' });
+      res.status(500).json({ ok: false, message: err?.message || 'Veri kataloğu okunamadı.' });
     }
   });
   return vk;

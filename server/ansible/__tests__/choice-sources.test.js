@@ -8,6 +8,8 @@
 // kaynaga bagli alani secim kutusu olarak sundugu.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -37,7 +39,9 @@ test('CS2 kayit dogrulamasi: bilinmeyen kaynak, bagli olmayan zorunlu parametre,
     /form alanı seçilmemiş/,
   );
   assert.match(
-    cs.validateChoicesSource({ source: 'nginx-api-locations', params: { env: 'ortam' } }, ['env']) || '',
+    cs.validateChoicesSource({ source: 'nginx-api-locations', params: { env: 'ortam' } }, [
+      'env',
+    ]) || '',
     /tanımsız bir alana/,
   );
   assert.equal(
@@ -81,9 +85,11 @@ test('CS3 launch dogrulamasi: listede yoksa 400, kaynak patlarsa 503 (fail-close
 test('CS4 runner: her iki cozumleyici yolundan sonra assertChoiceSources cagrilir', () => {
   const src = codeOnly(read('runner.cjs'));
   assert.match(src, /async function assertChoiceSources\(/, 'dogrulama adimi yok');
-  const custom = /resolveCustomSurveyExtraVars\(overrides\.customSurveyFields, submittedExtraVars\);\s*await assertChoiceSources\(overrides\.customSurveyFields, extraVars\)/;
+  const custom =
+    /resolveCustomSurveyExtraVars\(overrides\.customSurveyFields, submittedExtraVars\);\s*await assertChoiceSources\(overrides\.customSurveyFields, extraVars\)/;
   assert.match(src, custom, 'Survey Tasarimcisi yolunda kaynak dogrulamasi yok');
-  const native = /resolveLaunchExtraVars\(specFields, overrides, submittedExtraVars\);\s*await assertChoiceSources\(/;
+  const native =
+    /resolveLaunchExtraVars\(specFields, overrides, submittedExtraVars\);\s*await assertChoiceSources\(/;
   assert.match(src, native, 'AWX survey yolunda kaynak dogrulamasi yok');
 });
 
@@ -93,15 +99,50 @@ test('CS5 mapSurveySpec: kaynaga bagli alan secim kutusu olarak sunulur, choices
   const body = src.slice(i, i + 1800);
   assert.match(body, /ov\.choicesSource/, 'override choicesSource okunmuyor');
   // Coklu secim alani (AWX multiselect) kaynaga baglaninca coklu kalir; digerleri tekli secim.
-  assert.match(body, /type: (?:choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type|\(\(\) => \{ if \(choicesSource\) \{? if \(field\.type === 'multiselect'\) return 'multiselect'; return 'multiplechoice'; \}? return field\.type; \}\)\(\))/, 'tip secim kutusuna cevrilmiyor');
-  assert.match(body, /\.\.\.\(choicesSource \? \{ choicesSource \} : \{\}\)/, 'choicesSource istemciye gitmiyor');
+  assert.match(
+    body,
+    esnek(
+      /type: (?:choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type|\(\(\) => \{ if \(choicesSource\) \{? if \(field\.type === 'multiselect'\) return 'multiselect'; return 'multiplechoice'; \}? return field\.type; \}\)\(\))/,
+    ),
+    'tip secim kutusuna cevrilmiyor',
+  );
+  assert.match(
+    body,
+    /\.\.\.\(choicesSource \? \{ choicesSource \} : \{\}\)/,
+    'choicesSource istemciye gitmiyor',
+  );
 });
 
 test('CS6 istemci: kaynaga bagli alan DynamicChoiceSelect ile cizilir, statik whitelist atlanir', () => {
-  const page = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'), 'utf8'));
-  assert.match(page, /f\.choicesSource \? \(\s*<DynamicChoiceSelect/, 'kaynakli alan icin ozel secim kutusu yok');
-  assert.match(page, /!f\.choicesSource &&\s*Array\.isArray\(f\.choices\)/, 'statik whitelist kaynakli alanda da calisir - liste bos, her deger hatali olur');
-  const sel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8');
+  const page = codeOnly(
+    fs.readFileSync(
+      path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'),
+      'utf8',
+    ),
+  );
+  assert.match(
+    page,
+    /f\.choicesSource \? \(\s*<DynamicChoiceSelect/,
+    'kaynakli alan icin ozel secim kutusu yok',
+  );
+  assert.match(
+    page,
+    /!f\.choicesSource &&\s*Array\.isArray\(f\.choices\)/,
+    'statik whitelist kaynakli alanda da calisir - liste bos, her deger hatali olur',
+  );
+  const sel = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'self_service',
+      'DynamicChoiceSelect.tsx',
+    ),
+    'utf8',
+  );
   assert.match(sel, /ansibleApi\s*\.choices\(/, 'secenekler sunucudan cekilmiyor');
   assert.doesNotMatch(sel, /<datalist/, 'datalist serbest metne izin verir; select olmali');
 });
@@ -115,88 +156,215 @@ test('CS7 nginx_ops kaynaklari kayitli ve zincir parametreleri dogru', () => {
     assert.ok(names.includes(n), `${n} kaynagi yok`);
   }
   const apps = cs.getSource('ocp-spa-applications');
-  assert.deepEqual(apps.params.map((p) => p.name), ['env', 'namespace'], 'uygulama listesi namespace secimine bagli olmali');
+  assert.deepEqual(
+    apps.params.map((p) => p.name),
+    ['env', 'namespace'],
+    'uygulama listesi namespace secimine bagli olmali',
+  );
   const locs = cs.getSource('nginx-locations');
-  assert.deepEqual(locs.params.filter((p) => p.required).map((p) => p.name), ['env', 'service']);
-  assert.ok(locs.params.some((p) => p.name === 'namespace' && !p.required), 'namespace daraltmasi opsiyonel olmali');
+  assert.deepEqual(
+    locs.params.filter((p) => p.required).map((p) => p.name),
+    ['env', 'service'],
+  );
+  assert.ok(
+    locs.params.some((p) => p.name === 'namespace' && !p.required),
+    'namespace daraltmasi opsiyonel olmali',
+  );
   // SPA kurali Denetim ile AYNI (nginx-migration.cjs)
   assert.equal(String(cs.SPA_RE), String(require('../../audit/nginx-migration.cjs').SPA_RE));
 });
 
 test('CS8 istemci opsiyonel parametreyi "eksik" saymaz (liste yine cekilir)', () => {
-  const sel = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8'));
+  const sel = codeOnly(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'self_service',
+        'DynamicChoiceSelect.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(sel, /source\.optional/, 'optional listesi okunmuyor');
-  assert.match(sel, /!v && !optional\.has\(k\)/, 'eksik parametre hesabi opsiyonelleri disarida birakmiyor');
+  assert.match(
+    sel,
+    /!v && !optional\.has\(k\)/,
+    'eksik parametre hesabi opsiyonelleri disarida birakmiyor',
+  );
 });
 
 // RVP tanimlari YALNIZCA ARK cluster'i icin (kullanici, 2026-09-15): namespace listesi
 // ortamin ARK cluster'larindan gelmeli (test secilirse ARK test). tenant sabit secenek.
-test('CS9 tenant filtresi: yalniz o tenant cluster\'lari; sabit secenek parametreye eklenir', async () => {
+test("CS9 tenant filtresi: yalniz o tenant cluster'lari; sabit secenek parametreye eklenir", async () => {
   const adminPath = require.resolve('../../logx/v2/admin.cjs');
   const saved = require.cache[adminPath];
   require.cache[adminPath] = {
-    id: adminPath, filename: adminPath, loaded: true,
-    exports: { getClusterTree: async () => ({ test: { ark: ['ark-test-1', 'ark-test-2'], gls: ['gls-test'] }, prod: { ark: ['ark-prod'] } }) },
+    id: adminPath,
+    filename: adminPath,
+    loaded: true,
+    exports: {
+      getClusterTree: async () => ({
+        test: { ark: ['ark-test-1', 'ark-test-2'], gls: ['gls-test'] },
+        prod: { ark: ['ark-prod'] },
+      }),
+    },
   };
   try {
     assert.deepEqual(await cs.clustersForEnv('test', 'ark'), ['ark-test-1', 'ark-test-2']);
-    assert.deepEqual(await cs.clustersForEnv('TEST', 'ARK'), ['ark-test-1', 'ark-test-2'], 'buyuk/kucuk harf');
-    assert.deepEqual(await cs.clustersForEnv('test'), ['ark-test-1', 'ark-test-2', 'gls-test'], 'tenant yoksa ortamin tumu');
+    assert.deepEqual(
+      await cs.clustersForEnv('TEST', 'ARK'),
+      ['ark-test-1', 'ark-test-2'],
+      'buyuk/kucuk harf',
+    );
+    assert.deepEqual(
+      await cs.clustersForEnv('test'),
+      ['ark-test-1', 'ark-test-2', 'gls-test'],
+      'tenant yoksa ortamin tumu',
+    );
     assert.deepEqual(await cs.clustersForEnv('qa', 'ark'), [], 'katalogda olmayan ortam bos');
   } finally {
-    if (saved) require.cache[adminPath] = saved; else delete require.cache[adminPath];
+    if (saved) require.cache[adminPath] = saved;
+    else delete require.cache[adminPath];
   }
-  const p = cs.paramsFromValues({ source: 'ocp-namespaces', params: { env: 'env' }, options: { tenant: 'ark' } }, { env: 'test' });
+  const p = cs.paramsFromValues(
+    { source: 'ocp-namespaces', params: { env: 'env' }, options: { tenant: 'ark' } },
+    { env: 'test' },
+  );
   assert.deepEqual(p, { env: 'test', tenant: 'ark' });
   const info = cs.listSources().find((s) => s.name === 'ocp-namespaces');
-  assert.ok(info.options.some((o) => o.name === 'tenant' && o.default === 'ark'), 'ocp-namespaces tenant sabiti (varsayilan ark) yok');
+  assert.ok(
+    info.options.some((o) => o.name === 'tenant' && o.default === 'ark'),
+    'ocp-namespaces tenant sabiti (varsayilan ark) yok',
+  );
   const apps = cs.listSources().find((s) => s.name === 'ocp-spa-applications');
-  assert.ok(apps.options.some((o) => o.name === 'tenant'), 'ocp-spa-applications tenant sabiti yok');
+  assert.ok(
+    apps.options.some((o) => o.name === 'tenant'),
+    'ocp-spa-applications tenant sabiti yok',
+  );
 });
 
 test('CS10 admin ekrani: kaynak editoru METIN alanlarinda cikar (Survey Tasarimcisi + AWX)', () => {
-  const modal = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'FieldOverridesModal.tsx'), 'utf8'));
+  const modal = codeOnly(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'self_service',
+        'FieldOverridesModal.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.match(modal, /SOURCE_BINDABLE_AWX = new Set\(\['text', 'textarea', 'multiselect'\]\)/);
-  assert.match(modal, /SOURCE_BINDABLE_CUSTOM = new Set\(\['text', 'textarea', 'multiplechoice', 'multiselect'\]\)/);
-  assert.match(modal, /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'ozel alanda editor tip kumesine bagli degil');
-  assert.doesNotMatch(modal, /isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/, 'editor hala yalnizca secim tiplerinde (Metin alanlarda cikmaz)');
+  assert.match(
+    modal,
+    /SOURCE_BINDABLE_CUSTOM = new Set\(\['text', 'textarea', 'multiplechoice', 'multiselect'\]\)/,
+  );
+  assert.match(
+    modal,
+    esnek(
+      /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/,
+    ),
+    'ozel alanda editor tip kumesine bagli degil',
+  );
+  assert.doesNotMatch(
+    modal,
+    esnek(/isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/),
+    'editor hala yalnizca secim tiplerinde (Metin alanlarda cikmaz)',
+  );
 });
 
 // COKLU SECIM (2026-09-16, configuration_delivery: "overwrite edilecek dosyalari tikle secebileyim"):
 // istemci onay kutulari, deger satir sonuyla birlesik; sunucu her degeri dogrular ve AWX'e LISTE gonderir.
 test('CS11 multiselect: istemci onay kutusu, sunucu satir-sonu -> liste ve her deger whitelist', () => {
-  const page = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'), 'utf8'));
+  const page = codeOnly(
+    fs.readFileSync(
+      path.join(__dirname, '..', '..', '..', 'src', 'components', 'SelfServicePage.tsx'),
+      'utf8',
+    ),
+  );
   assert.match(page, /f\.type === 'multiselect' \? \(/, 'multiselect icin ayri dal yok');
   assert.match(page, /type="checkbox"/, 'onay kutusu yok');
-  assert.match(page, /multiple=\{f\.type === 'multiselect'\}/, 'kaynakli alanda coklu secim gecirilmiyor');
+  assert.match(
+    page,
+    /multiple=\{f\.type === 'multiselect'\}/,
+    'kaynakli alanda coklu secim gecirilmiyor',
+  );
   const src = codeOnly(read('runner.cjs'));
   assert.match(src, /function splitMulti\(raw\)/, 'splitMulti yok');
-  const occurrences = (src.match(/if \(field\.type === 'multiselect'\) \{\s*const picked = splitMulti\(/g) || []).length;
-  assert.equal(occurrences, 2, 'hem AWX survey hem Survey Tasarimcisi cozumleyicisinde multiselect dali olmali');
+  const occurrences = (
+    src.match(/if \(field\.type === 'multiselect'\) \{\s*const picked = splitMulti\(/g) || []
+  ).length;
+  assert.equal(
+    occurrences,
+    2,
+    'hem AWX survey hem Survey Tasarimcisi cozumleyicisinde multiselect dali olmali',
+  );
   assert.match(src, /extraVars\[field\.variable\] = picked;/, 'AWX yoluna liste gitmiyor');
   assert.match(src, /extraVars\[field\.name\] = picked;/, 'ozel alan yoluna liste gitmiyor');
-  const sel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8');
+  const sel = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'src',
+      'components',
+      'self_service',
+      'DynamicChoiceSelect.tsx',
+    ),
+    'utf8',
+  );
   assert.match(sel, /if \(multiple\) \{/, 'kaynakli coklu secim yok');
-  assert.ok(cs.listSources().some((s) => s.name === 'nginx-hosts'), 'nginx-hosts kaynagi yok');
+  assert.ok(
+    cs.listSources().some((s) => s.name === 'nginx-hosts'),
+    'nginx-hosts kaynagi yok',
+  );
 });
 
 // UX (kullanici, 2026-09-16): arama kutusuna yazinca yerel <select> acilmiyor, kullanici
 // sorgunun calistigini anlamiyordu. Tekli secim artik combobox: yazdikca eslesenler HEMEN
 // listelenir (role=listbox), Enter ilk eslesen; secim rozet + "degistir".
 test('CS12 tekli kaynak secimi combobox: yerel select yok, yazdikca liste, Enter ile secim', () => {
-  const sel = codeOnly(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'self_service', 'DynamicChoiceSelect.tsx'), 'utf8'));
+  const sel = codeOnly(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'src',
+        'components',
+        'self_service',
+        'DynamicChoiceSelect.tsx',
+      ),
+      'utf8',
+    ),
+  );
   assert.doesNotMatch(sel, /<Select\b/, 'yerel <select> hala kullaniliyor (arama sonucu gorunmez)');
   assert.match(sel, /role="listbox"/, 'sonuc listesi yok');
   assert.match(sel, /e\.key === 'Enter' && visible\.length > 0/, 'Enter ilk eslesen secmiyor');
   assert.match(sel, /setFilter\(e\.target\.value\);\s*setOpen\(true\);/, 'yazinca liste acilmiyor');
   assert.match(sel, /değiştir/, 'secili deger degistirilemiyor');
   // hook sirasi: useState(open) erken donusten (multiple) ONCE
-  assert.ok(sel.indexOf('const [open, setOpen] = useState(false)') < sel.indexOf('if (multiple) {'), 'open state erken donusten sonra tanimli (hook sirasi)');
+  assert.ok(
+    sel.indexOf('const [open, setOpen] = useState(false)') < sel.indexOf('if (multiple) {'),
+    'open state erken donusten sonra tanimli (hook sirasi)',
+  );
 });
 
 // CS11 (2026-10-26, kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de
 // ekleme veya karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor"):
-// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu ama -app-v icermiyor.
+// ges-pension-digital-ch-test/public-website-v0 ORNGXT33'te /hysdeploy altinda kurulu ama -app-v icermiyor.
 // RVP listeleri ortamin INTERNET sunucularindaki dizin taramasini (Nginx_Intranet_Audit) da kullanir.
 test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler ve karsilastirir', async () => {
   const adminPath = require.resolve('../../logx/v2/admin.cjs');
@@ -205,59 +373,139 @@ test('CS11 RVP listeleri sunucuda kurulu (ad standardi disi) uygulamalari ekler 
   const savedMssql = require.cache[mssqlPath];
   let taramaHatasi = false;
   const sorgular = [];
-  require.cache[adminPath] = { id: adminPath, filename: adminPath, loaded: true,
-    exports: { getClusterTree: async () => ({ test: { ark: ['ark-test-1'] } }) } };
-  require.cache[mssqlPath] = { id: mssqlPath, filename: mssqlPath, loaded: true, exports: {
-    sql: { NVarChar: () => 'nvarchar' },
-    query: async (q) => {
-      const t = String(q).replace(/\s+/g, ' ');
-      sorgular.push(t);
-      if (t.includes('FROM dbo.Openshift_Inventory')) return { recordset: [
-        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
-        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v1' },
-        { namespace: 'ges-pension-digital-ch-test', application: 'pension-api-v1' },
-        { namespace: 'baska-ns-test', application: 'x-app-v0' },
-      ] };
-      if (t.includes('FROM dbo.Nginx_Intranet_Audit')) {
-        if (taramaHatasi) throw new Error('tablo yok');
-        return { recordset: [
-          { host: 'GBNGXT33', namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
-          { host: 'GBNGXT34', namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
-          { host: 'GBNGXT33', namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
-          { host: 'GBNGXQ02', namespace: 'ges-pension-digital-ch-test', application: 'yalniz-qa-v0' },
-          { host: 'GBNGXT50', namespace: 'ges-pension-digital-ch-test', application: 'intranet-sitesi-v0' },
-          { host: 'GBNGXT33', namespace: 'yalniz-sunucuda-ns-test', application: 'eski-site-v2' },
-        ] };
-      }
-      return { recordset: [] };
-    } } };
+  require.cache[adminPath] = {
+    id: adminPath,
+    filename: adminPath,
+    loaded: true,
+    exports: { getClusterTree: async () => ({ test: { ark: ['ark-test-1'] } }) },
+  };
+  require.cache[mssqlPath] = {
+    id: mssqlPath,
+    filename: mssqlPath,
+    loaded: true,
+    exports: {
+      sql: { NVarChar: () => 'nvarchar' },
+      query: async (q) => {
+        const t = String(q).replace(/\s+/g, ' ');
+        sorgular.push(t);
+        if (t.includes('FROM dbo.Openshift_Inventory'))
+          return {
+            recordset: [
+              {
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'digi-main-container-app-v0',
+              },
+              {
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'digi-main-container-app-v1',
+              },
+              { namespace: 'ges-pension-digital-ch-test', application: 'pension-api-v1' },
+              { namespace: 'baska-ns-test', application: 'x-app-v0' },
+            ],
+          };
+        if (t.includes('FROM dbo.Nginx_Intranet_Audit')) {
+          if (taramaHatasi) throw new Error('tablo yok');
+          return {
+            recordset: [
+              {
+                host: 'ORNGXT33',
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'public-website-v0',
+              },
+              {
+                host: 'ORNGXT34',
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'public-website-v0',
+              },
+              {
+                host: 'ORNGXT33',
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'digi-main-container-app-v0',
+              },
+              {
+                host: 'ORNGXQ02',
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'yalniz-qa-v0',
+              },
+              {
+                host: 'ORNGXT50',
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'intranet-sitesi-v0',
+              },
+              {
+                host: 'ORNGXT33',
+                namespace: 'yalniz-sunucuda-ns-test',
+                application: 'eski-site-v2',
+              },
+            ],
+          };
+        }
+        return { recordset: [] };
+      },
+    },
+  };
   try {
-    const apps = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    const apps = await cs
+      .getSource('ocp-spa-applications')
+      .load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
     const byVal = Object.fromEntries(apps.map((a) => [a.value, a]));
-    assert.deepEqual(apps.map((a) => a.value),
+    assert.deepEqual(
+      apps.map((a) => a.value),
       ['digi-main-container-app-v0', 'digi-main-container-app-v1', 'public-website-v0'],
-      'standart adlilar once; sunucuda kurulu standart disi eklenir; API (pension-api-v1), QA ve intranet sunucusu karismaz');
-    assert.equal(byVal['public-website-v0'].group, 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)');
-    assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: GBNGXT33, GBNGXT34/);
+      'standart adlilar once; sunucuda kurulu standart disi eklenir; API (pension-api-v1), QA ve intranet sunucusu karismaz',
+    );
+    assert.equal(
+      byVal['public-website-v0'].group,
+      'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)',
+    );
+    assert.match(byVal['public-website-v0'].alt, /Sunucuda kurulu: ORNGXT33, ORNGXT34/);
     assert.match(byVal['public-website-v0'].alt, /OpenShift envanterinde yok/);
     assert.match(byVal['public-website-v0'].alt, /ad standardı dışı/);
-    assert.match(byVal['digi-main-container-app-v0'].alt, /^Sunucuda kurulu: GBNGXT33 · OpenShift'te var$/);
-    assert.match(byVal['digi-main-container-app-v1'].alt, /^Sunucuda kurulu değil · OpenShift'te var$/);
-    assert.ok(sorgular.some((q) => /MAX\(scan_date\)/.test(q) && /hys_deployed = 1 OR app_deployed = 1/.test(q)),
-      'son tarama ve dizin izi suzgeci SQL de degil');
+    assert.match(
+      byVal['digi-main-container-app-v0'].alt,
+      /^Sunucuda kurulu: ORNGXT33 · OpenShift'te var$/,
+    );
+    assert.match(
+      byVal['digi-main-container-app-v1'].alt,
+      /^Sunucuda kurulu değil · OpenShift'te var$/,
+    );
+    assert.ok(
+      sorgular.some(
+        (q) => /MAX\(scan_date\)/.test(q) && /hys_deployed = 1 OR app_deployed = 1/.test(q),
+      ),
+      'son tarama ve dizin izi suzgeci SQL de degil',
+    );
 
     const nsler = await cs.getSource('ocp-namespaces').load({ env: 'test', tenant: 'ark' });
     const ns = Object.fromEntries(nsler.map((n) => [n.value, n]));
-    assert.equal(ns['ges-pension-digital-ch-test'].label, 'ges-pension-digital-ch-test  (3 SPA)', 'sayim tekil: 2 OpenShift + 1 yalniz sunucuda');
-    assert.ok(ns['yalniz-sunucuda-ns-test'], 'yalniz sunucuda kurulu uygulamanin namespace i listelenmiyor');
+    assert.equal(
+      ns['ges-pension-digital-ch-test'].label,
+      'ges-pension-digital-ch-test  (3 SPA)',
+      'sayim tekil: 2 OpenShift + 1 yalniz sunucuda',
+    );
+    assert.ok(
+      ns['yalniz-sunucuda-ns-test'],
+      'yalniz sunucuda kurulu uygulamanin namespace i listelenmiyor',
+    );
 
     taramaHatasi = true;
-    const yedek = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
-    assert.deepEqual(yedek.map((a) => a.value), ['digi-main-container-app-v0', 'digi-main-container-app-v1'], 'tarama okunamazsa eski davranis');
-    assert.ok(yedek.every((a) => /Sunucu taraması okunamadı/.test(a.alt)), 'okunamama sessiz');
+    const yedek = await cs
+      .getSource('ocp-spa-applications')
+      .load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(
+      yedek.map((a) => a.value),
+      ['digi-main-container-app-v0', 'digi-main-container-app-v1'],
+      'tarama okunamazsa eski davranis',
+    );
+    assert.ok(
+      yedek.every((a) => /Sunucu taraması okunamadı/.test(a.alt)),
+      'okunamama sessiz',
+    );
   } finally {
-    if (savedAdmin) require.cache[adminPath] = savedAdmin; else delete require.cache[adminPath];
-    if (savedMssql) require.cache[mssqlPath] = savedMssql; else delete require.cache[mssqlPath];
+    if (savedAdmin) require.cache[adminPath] = savedAdmin;
+    else delete require.cache[adminPath];
+    if (savedMssql) require.cache[mssqlPath] = savedMssql;
+    else delete require.cache[mssqlPath];
   }
 });
 
@@ -271,47 +519,108 @@ test('CS12 SPA Kesfi kaniti: konteynerinde nginx olan (ad standardi disi, henuz 
   const savedMssql = require.cache[mssqlPath];
   let kesifHatasi = false;
   const sorgular = [];
-  require.cache[adminPath] = { id: adminPath, filename: adminPath, loaded: true,
-    exports: { getClusterTree: async () => ({ test: { ark: ['gbocptest1', 'gbocptest2'] }, prod: { ark: ['gbocpprod1'] } }) } };
-  require.cache[mssqlPath] = { id: mssqlPath, filename: mssqlPath, loaded: true, exports: {
-    sql: { NVarChar: () => 'nvarchar' },
-    query: async (q) => {
-      const t = String(q).replace(/\s+/g, ' ');
-      sorgular.push(t);
-      if (t.includes('FROM dbo.Openshift_Inventory')) return { recordset: [
-        { namespace: 'ges-pension-digital-ch-test', application: 'digi-main-container-app-v0' },
-        { namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
-      ] };
-      if (t.includes('FROM dbo.Nginx_Intranet_Audit')) return { recordset: [] };
-      if (t.includes('FROM dbo.BMW_Spa_Discovery')) {
-        if (kesifHatasi) throw new Error('tablo yok');
-        return { recordset: [
-          { cluster: 'gbocptest1', namespace: 'ges-pension-digital-ch-test', workload: 'public-website-v0' },
-          { cluster: 'GBOCPTEST2', namespace: 'ges-pension-digital-ch-test', workload: 'public-website-v0' },
-          { cluster: 'gbocpprod1', namespace: 'ges-pension-digital-ch-test', workload: 'baska-ortam-v0' },
-          { cluster: 'gbocptest1', namespace: 'ges-pension-digital-ch-test', workload: '' },
-        ] };
-      }
-      return { recordset: [] };
-    } } };
+  require.cache[adminPath] = {
+    id: adminPath,
+    filename: adminPath,
+    loaded: true,
+    exports: {
+      getClusterTree: async () => ({
+        test: { ark: ['orocptest1', 'orocptest2'] },
+        prod: { ark: ['orocpprod1'] },
+      }),
+    },
+  };
+  require.cache[mssqlPath] = {
+    id: mssqlPath,
+    filename: mssqlPath,
+    loaded: true,
+    exports: {
+      sql: { NVarChar: () => 'nvarchar' },
+      query: async (q) => {
+        const t = String(q).replace(/\s+/g, ' ');
+        sorgular.push(t);
+        if (t.includes('FROM dbo.Openshift_Inventory'))
+          return {
+            recordset: [
+              {
+                namespace: 'ges-pension-digital-ch-test',
+                application: 'digi-main-container-app-v0',
+              },
+              { namespace: 'ges-pension-digital-ch-test', application: 'public-website-v0' },
+            ],
+          };
+        if (t.includes('FROM dbo.Nginx_Intranet_Audit')) return { recordset: [] };
+        if (t.includes('FROM dbo.BMW_Spa_Discovery')) {
+          if (kesifHatasi) throw new Error('tablo yok');
+          return {
+            recordset: [
+              {
+                cluster: 'orocptest1',
+                namespace: 'ges-pension-digital-ch-test',
+                workload: 'public-website-v0',
+              },
+              {
+                cluster: 'OROCPTEST2',
+                namespace: 'ges-pension-digital-ch-test',
+                workload: 'public-website-v0',
+              },
+              {
+                cluster: 'orocpprod1',
+                namespace: 'ges-pension-digital-ch-test',
+                workload: 'baska-ortam-v0',
+              },
+              { cluster: 'orocptest1', namespace: 'ges-pension-digital-ch-test', workload: '' },
+            ],
+          };
+        }
+        return { recordset: [] };
+      },
+    },
+  };
   try {
-    const apps = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
-    assert.deepEqual(apps.map((a) => a.value), ['digi-main-container-app-v0', 'public-website-v0'], 'baska ortamin cluster i karisti ya da kesif kaniti eklenmedi');
+    const apps = await cs
+      .getSource('ocp-spa-applications')
+      .load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(
+      apps.map((a) => a.value),
+      ['digi-main-container-app-v0', 'public-website-v0'],
+      'baska ortamin cluster i karisti ya da kesif kaniti eklenmedi',
+    );
     const pw = apps.find((a) => a.value === 'public-website-v0');
     assert.equal(pw.group, 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)');
-    assert.equal(pw.alt, "Sunucuda kurulu değil · OpenShift'te var · SPA Keşfi: konteynerde nginx (GBOCPTEST2, gbocptest1) · ad standardı dışı");
-    assert.equal(apps.find((a) => a.value === 'digi-main-container-app-v0').alt, "Sunucuda kurulu değil · OpenShift'te var");
+    assert.equal(
+      pw.alt,
+      "Sunucuda kurulu değil · OpenShift'te var · SPA Keşfi: konteynerde nginx (OROCPTEST2, orocptest1) · ad standardı dışı",
+    );
+    assert.equal(
+      apps.find((a) => a.value === 'digi-main-container-app-v0').alt,
+      "Sunucuda kurulu değil · OpenShift'te var",
+    );
     const kq = sorgular.find((q) => q.includes('FROM dbo.BMW_Spa_Discovery'));
-    assert.ok(kq && /d\.is_spa = 1/.test(kq) && /MAX\(scan_date\)/.test(kq) && /GROUP BY cluster/.test(kq), 'kesif sorgusu cluster basina son tarama + is_spa suzgeci degil');
+    assert.ok(
+      kq && /d\.is_spa = 1/.test(kq) && /MAX\(scan_date\)/.test(kq) && /GROUP BY cluster/.test(kq),
+      'kesif sorgusu cluster basina son tarama + is_spa suzgeci degil',
+    );
 
     const nsler = await cs.getSource('ocp-namespaces').load({ env: 'test', tenant: 'ark' });
-    assert.equal(nsler.find((n) => n.value === 'ges-pension-digital-ch-test').label, 'ges-pension-digital-ch-test  (2 SPA)');
+    assert.equal(
+      nsler.find((n) => n.value === 'ges-pension-digital-ch-test').label,
+      'ges-pension-digital-ch-test  (2 SPA)',
+    );
 
     kesifHatasi = true;
-    const yedek = await cs.getSource('ocp-spa-applications').load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
-    assert.deepEqual(yedek.map((a) => a.value), ['digi-main-container-app-v0'], 'kesif okunamazsa liste dusmeli degil, eski kurala donmeli');
+    const yedek = await cs
+      .getSource('ocp-spa-applications')
+      .load({ env: 'test', namespace: 'ges-pension-digital-ch-test', tenant: 'ark' });
+    assert.deepEqual(
+      yedek.map((a) => a.value),
+      ['digi-main-container-app-v0'],
+      'kesif okunamazsa liste dusmeli degil, eski kurala donmeli',
+    );
   } finally {
-    if (savedAdmin) require.cache[adminPath] = savedAdmin; else delete require.cache[adminPath];
-    if (savedMssql) require.cache[mssqlPath] = savedMssql; else delete require.cache[mssqlPath];
+    if (savedAdmin) require.cache[adminPath] = savedAdmin;
+    else delete require.cache[adminPath];
+    if (savedMssql) require.cache[mssqlPath] = savedMssql;
+    else delete require.cache[mssqlPath];
   }
 });

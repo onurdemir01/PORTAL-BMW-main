@@ -22,12 +22,23 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { katalogOku, VERITABANLARI, ALANLAR, YAZAN_TURLERI, GUVENLER } = require('../veri-katalogu.cjs');
+const {
+  katalogOku,
+  VERITABANLARI,
+  ALANLAR,
+  YAZAN_TURLERI,
+  GUVENLER,
+} = require('../veri-katalogu.cjs');
 
 const KOK = path.join(__dirname, '..', '..', '..');
 const KATALOG = katalogOku();
-const ad = (s) => String(s || '').replace(/^\[?dbo\]?\./i, '').replace(/[[\]]/g, '').toLowerCase();
-const katalogAdlari = (db) => new Set(KATALOG.filter((g) => !db || g.db === db).map((g) => ad(g.tablo)));
+const ad = (s) =>
+  String(s || '')
+    .replace(/^\[?dbo\]?\./i, '')
+    .replace(/[[\]]/g, '')
+    .toLowerCase();
+const katalogAdlari = (db) =>
+  new Set(KATALOG.filter((g) => !db || g.db === db).map((g) => ad(g.tablo)));
 
 function dosyalar(dizin, uzantilar, cikti = []) {
   let girdiler;
@@ -37,7 +48,8 @@ function dosyalar(dizin, uzantilar, cikti = []) {
     return cikti;
   }
   for (const g of girdiler) {
-    if (['node_modules', '.git', '__pycache__', '__tests__', '.claude', 'dist'].includes(g.name)) continue;
+    if (['node_modules', '.git', '__pycache__', '__tests__', '.claude', 'dist'].includes(g.name))
+      continue;
     const p = path.join(dizin, g.name);
     if (g.isDirectory()) dosyalar(p, uzantilar, cikti);
     else if (uzantilar.some((u) => g.name.toLowerCase().endsWith(u))) cikti.push(p);
@@ -46,7 +58,8 @@ function dosyalar(dizin, uzantilar, cikti = []) {
 }
 
 // "CREATE TABLE ad (" - parantez SART: yorumdaki "CREATE TABLE blogu" eslesmesin.
-const CREATE_RE = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\[?dbo\]?\.)?\[?([A-Za-z_]\w*)\]?\s*\(/gi;
+const CREATE_RE =
+  /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\[?dbo\]?\.)?\[?([A-Za-z_]\w*)\]?\s*\(/gi;
 
 function portalCreateTablolari() {
   const bulunan = new Map();
@@ -54,7 +67,8 @@ function portalCreateTablolari() {
     const src = fs.readFileSync(f, 'utf8');
     for (const m of src.matchAll(CREATE_RE)) {
       const t = m[1];
-      if (!bulunan.has(t.toLowerCase())) bulunan.set(t.toLowerCase(), `${path.relative(KOK, f)}: ${t}`);
+      if (!bulunan.has(t.toLowerCase()))
+        bulunan.set(t.toLowerCase(), `${path.relative(KOK, f)}: ${t}`);
     }
   }
   return bulunan;
@@ -63,10 +77,17 @@ function portalCreateTablolari() {
 test('VB1 Portal kodundaki her CREATE TABLE katalogda (db=Portal)', () => {
   const bulunan = portalCreateTablolari();
   assert.ok(bulunan.size >= 100, `toplayici bozuk: yalniz ${bulunan.size} CREATE TABLE okundu`);
-  assert.ok(bulunan.has('portal_users') && bulunan.has('ai_conversations'), 'bilinen tablolar okunamadi');
+  assert.ok(
+    bulunan.has('portal_users') && bulunan.has('ai_conversations'),
+    'bilinen tablolar okunamadi',
+  );
   const portal = katalogAdlari('Portal');
   const eksik = [...bulunan.entries()].filter(([k]) => !portal.has(k)).map(([, v]) => v);
-  assert.deepEqual(eksik, [], `Kataloga yazilmamis Portal tablolari (server/katalog/tablolar.json, bkz. docs/VERI-KATALOGU.md):\n${eksik.join('\n')}`);
+  assert.deepEqual(
+    eksik,
+    [],
+    `Kataloga yazilmamis Portal tablolari (server/katalog/tablolar.json, bkz. docs/VERI-KATALOGU.md):\n${eksik.join('\n')}`,
+  );
 });
 
 test('VB2 her girdi gecerli: db/alan/guven/yazan turu, bos olmayan amac, tekil (db, tablo)', () => {
@@ -76,24 +97,31 @@ test('VB2 her girdi gecerli: db/alan/guven/yazan turu, bos olmayan amac, tekil (
   for (const [i, g] of KATALOG.entries()) {
     const yer = `#${i} ${g.db}:${g.tablo}`;
     if (!VERITABANLARI.includes(g.db)) hatalar.push(`${yer} gecersiz db '${g.db}'`);
-    if (typeof g.tablo !== 'string' || !/^[A-Za-z_]\w*$/.test(g.tablo)) hatalar.push(`${yer} gecersiz tablo adi`);
-    if (typeof g.amac !== 'string' || g.amac.trim().length < 10) hatalar.push(`${yer} amac bos/kisa`);
-    if (!ALANLAR.includes(g.alan)) hatalar.push(`${yer} gecersiz alan '${g.alan}' (ALANLAR listesine bakin)`);
+    if (typeof g.tablo !== 'string' || !/^[A-Za-z_]\w*$/.test(g.tablo))
+      hatalar.push(`${yer} gecersiz tablo adi`);
+    if (typeof g.amac !== 'string' || g.amac.trim().length < 10)
+      hatalar.push(`${yer} amac bos/kisa`);
+    if (!ALANLAR.includes(g.alan))
+      hatalar.push(`${yer} gecersiz alan '${g.alan}' (ALANLAR listesine bakin)`);
     if (!GUVENLER.includes(g.guven)) hatalar.push(`${yer} gecersiz guven '${g.guven}'`);
     if (typeof g.kullanilmiyor !== 'boolean') hatalar.push(`${yer} kullanilmiyor boolean degil`);
-    if (typeof g.saklama !== 'string' || typeof g.notlar !== 'string') hatalar.push(`${yer} saklama/notlar metin degil`);
-    if (!Array.isArray(g.yazanlar) || !Array.isArray(g.okuyanlar)) hatalar.push(`${yer} yazanlar/okuyanlar dizi degil`);
+    if (typeof g.saklama !== 'string' || typeof g.notlar !== 'string')
+      hatalar.push(`${yer} saklama/notlar metin degil`);
+    if (!Array.isArray(g.yazanlar) || !Array.isArray(g.okuyanlar))
+      hatalar.push(`${yer} yazanlar/okuyanlar dizi degil`);
     for (const y of g.yazanlar || []) {
       if (!YAZAN_TURLERI.includes(y.tur)) hatalar.push(`${yer} gecersiz yazan turu '${y.tur}'`);
       if (!String(y.ad || '').trim()) hatalar.push(`${yer} yazan adi bos`);
-      for (const k of ['dosya', 'nasil', 'ne_zaman']) if (typeof y[k] !== 'string') hatalar.push(`${yer} yazan.${k} metin degil`);
+      for (const k of ['dosya', 'nasil', 'ne_zaman'])
+        if (typeof y[k] !== 'string') hatalar.push(`${yer} yazan.${k} metin degil`);
     }
     for (const o of g.okuyanlar || []) {
       if (!String(o.ad || '').trim()) hatalar.push(`${yer} okuyan adi bos`);
       if (typeof o.dosya !== 'string') hatalar.push(`${yer} okuyan.dosya metin degil`);
     }
     for (const r of [...(g.yazanlar || []), ...(g.okuyanlar || [])]) {
-      if (r.uzerinden !== undefined && (typeof r.uzerinden !== 'string' || !r.uzerinden.trim())) hatalar.push(`${yer} uzerinden bos/metin degil`);
+      if (r.uzerinden !== undefined && (typeof r.uzerinden !== 'string' || !r.uzerinden.trim()))
+        hatalar.push(`${yer} uzerinden bos/metin degil`);
     }
     const k = `${g.db}:${ad(g.tablo)}`;
     if (gorulen.has(k)) hatalar.push(`${yer} tekrar eden girdi`);
@@ -117,13 +145,22 @@ const YAZMA_RE = new RegExp(
     String.raw`\[?dbo\]?\.\[?([A-Za-z_]\w*)`,
   'gi',
 );
-const SABIT_RE = new RegExp(String.raw`\bTABLE(?:_NAME)?\s*=\s*["']` + DB_ONEKI + String.raw`\[?dbo\]?\.\[?([A-Za-z_]\w*)`, 'g');
-const TIRNAKLI_RE = new RegExp(String.raw`["']` + DB_ONEKI + String.raw`\[?dbo\]?\.\[?([A-Za-z_]\w*)\]?["']`, 'g');
+const SABIT_RE = new RegExp(
+  String.raw`\bTABLE(?:_NAME)?\s*=\s*["']` + DB_ONEKI + String.raw`\[?dbo\]?\.\[?([A-Za-z_]\w*)`,
+  'g',
+);
+const TIRNAKLI_RE = new RegExp(
+  String.raw`["']` + DB_ONEKI + String.raw`\[?dbo\]?\.\[?([A-Za-z_]\w*)\]?["']`,
+  'g',
+);
 const CSV_DEMET_RE = /\(\s*["']([A-Za-z_]\w*)["']\s*,\s*["'][\w.-]+\.csv["']/g;
 const ANSIBLE_RES = [YAZMA_RE, SABIT_RE, TIRNAKLI_RE, CSV_DEMET_RE];
 
 function ansibleDizini() {
-  return process.env.VERI_KATALOGU_ANSIBLE_DIR || path.join(os.homedir(), 'Downloads', 'Compressed', 'gar_bmt_ansible_scripts');
+  return (
+    process.env.VERI_KATALOGU_ANSIBLE_DIR ||
+    path.join(os.homedir(), 'Downloads', 'Compressed', 'gar_bmt_ansible_scripts')
+  );
 }
 
 /** Ansible deposunda yazilan tablo adlari: Map(kucuk ad -> "dosya: ad"). Kaynak metinler testte verilebilir. */
@@ -143,7 +180,10 @@ function ansibleYazilanlar(metinler) {
 }
 
 function ansibleMetinleri(dizin) {
-  return dosyalar(dizin, ['.yml', '.yaml', '.py', '.sh', '.sql', '.j2', '.ps1']).map((f) => [path.relative(dizin, f), fs.readFileSync(f, 'utf8')]);
+  return dosyalar(dizin, ['.yml', '.yaml', '.py', '.sh', '.sql', '.j2', '.ps1']).map((f) => [
+    path.relative(dizin, f),
+    fs.readFileSync(f, 'utf8'),
+  ]);
 }
 
 test('VB3a toplayici her ad bicimini gorur (Ansible deposundan bagimsiz)', () => {
@@ -152,17 +192,33 @@ test('VB3a toplayici her ad bicimini gorur (Ansible deposundan bagimsiz)', () =>
     ['b.yml', `query: "INSERT INTO [TBMWANS].[dbo].[UcParcali] (job_type) VALUES ('x')"`],
     ['c.yml', 'query: "delete from [TBMWANS].[dbo].[KucukHarf] where a = 1"'],
     ['d.py', 'TABLE_NAME = "[TBMWANS].[dbo].[SabitOnekli]"'],
-    ['e.py', 'FILES = [\n    ("x.csv", "dbo.TirnakliSabit"),\n]\ncursor.execute(f"TRUNCATE TABLE {table}")'],
-    ['f.py', 'KINDS = {\n    "ctg": ("WDS_DEMET", "ctg.csv", _BASE),\n}\ntarget = "[" + DATABASE + "].[dbo].[" + table + "]"'],
+    [
+      'e.py',
+      'FILES = [\n    ("x.csv", "dbo.TirnakliSabit"),\n]\ncursor.execute(f"TRUNCATE TABLE {table}")',
+    ],
+    [
+      'f.py',
+      'KINDS = {\n    "ctg": ("WDS_DEMET", "ctg.csv", _BASE),\n}\ntarget = "[" + DATABASE + "].[dbo].[" + table + "]"',
+    ],
     ['g.sh', 'sqlcmd -Q "MERGE INTO dbo.[Koseli] AS t USING ..."'],
     ['i.py', 'bilgi.get("dbo.Server_Hub_" + t, {})'],
   ];
   const bulunan = ansibleYazilanlar(ornek);
-  for (const ad of ['duz', 'ucparcali', 'kucukharf', 'sabitonekli', 'tirnaklisabit', 'wds_demet', 'koseli']) {
+  for (const ad of [
+    'duz',
+    'ucparcali',
+    'kucukharf',
+    'sabitonekli',
+    'tirnaklisabit',
+    'wds_demet',
+    'koseli',
+  ]) {
     assert.ok(bulunan.has(ad), `toplayici '${ad}' bicimini goremiyor`);
   }
   // Okuma ve yorum degil: SELECT ... FROM dbo.X ve "dbo.X_*" yazma sayilmaz.
-  const okuma = ansibleYazilanlar([['h.py', 'cur.execute("SELECT a FROM dbo.SadeceOkunan WHERE b = 1")']]);
+  const okuma = ansibleYazilanlar([
+    ['h.py', 'cur.execute("SELECT a FROM dbo.SadeceOkunan WHERE b = 1")'],
+  ]);
   assert.equal(okuma.has('sadeceokunan'), false);
   assert.equal(bulunan.has('server_hub_'), false, 'birlestirme oneki tablo sayildi');
 });
@@ -174,8 +230,16 @@ test('VB3 Ansible deposunda yazilan her tablo TBMWANS katalogunda', (t) => {
     return;
   }
   const bulunan = ansibleYazilanlar(ansibleMetinleri(dizin));
-  assert.ok(bulunan.size >= 60, `toplayici bozuk: Ansible deposunda yalniz ${bulunan.size} yazilan tablo okundu`);
-  for (const bilinen of ['smartoperations', 'wds_ctg', 'initscriptsinventory', 'cloudformsservices']) {
+  assert.ok(
+    bulunan.size >= 60,
+    `toplayici bozuk: Ansible deposunda yalniz ${bulunan.size} yazilan tablo okundu`,
+  );
+  for (const bilinen of [
+    'smartoperations',
+    'wds_ctg',
+    'initscriptsinventory',
+    'cloudformsservices',
+  ]) {
     assert.ok(bulunan.has(bilinen), `toplayici bilinen '${bilinen}' tablosunu goremiyor`);
   }
   // Yalniz TBMWANS girdileri: Ansible'in yazdigi ad bir Portal girdisiyle eslesip gecmesin.
@@ -208,11 +272,21 @@ test('VB5 Portal kodunun dbo.X ile okudugu her tablo katalogda', () => {
     const k = m[1].toLowerCase();
     if (!bulunan.has(k)) bulunan.set(k, `server/inventory/index.cjs FALLBACK_TABLES: ${m[1]}`);
   }
-  assert.ok(bulunan.size >= 30, `toplayici bozuk: Portal kodunda yalniz ${bulunan.size} dbo.X okundu`);
-  assert.ok(bulunan.has('ekip_infos') && bulunan.has('inventory'), 'bilinen TBMWANS okumalari gorulmedi');
+  assert.ok(
+    bulunan.size >= 30,
+    `toplayici bozuk: Portal kodunda yalniz ${bulunan.size} dbo.X okundu`,
+  );
+  assert.ok(
+    bulunan.has('ekip_infos') && bulunan.has('inventory'),
+    'bilinen TBMWANS okumalari gorulmedi',
+  );
   const hepsi = katalogAdlari();
   const eksik = [...bulunan.entries()].filter(([k]) => !hepsi.has(k)).map(([, v]) => v);
-  assert.deepEqual(eksik, [], `Portal kodunun okudugu ama katalogda olmayan tablolar:\n${eksik.join('\n')}`);
+  assert.deepEqual(
+    eksik,
+    [],
+    `Portal kodunun okudugu ama katalogda olmayan tablolar:\n${eksik.join('\n')}`,
+  );
 });
 
 // VB4 BASVURU BUTUNLUGU: katalogdaki "dosya" (yol[:satir]) ve "uzerinden" yollari GERCEK olmali.
@@ -230,7 +304,10 @@ const PORTAL_KOKLERI = ['server/', 'src/', 'scripts/', 'docs/', 'deploy/'];
 function basvurular(katalog) {
   const out = [];
   for (const g of katalog) {
-    for (const [liste, kayitlar] of [['yazanlar', g.yazanlar || []], ['okuyanlar', g.okuyanlar || []]]) {
+    for (const [liste, kayitlar] of [
+      ['yazanlar', g.yazanlar || []],
+      ['okuyanlar', g.okuyanlar || []],
+    ]) {
       kayitlar.forEach((r, i) => out.push({ g, yer: `${g.db}:${g.tablo} ${liste}[${i}]`, r }));
     }
   }
@@ -238,7 +315,8 @@ function basvurular(katalog) {
 }
 
 function cozumle(yol, ansible) {
-  if (PORTAL_KOKLERI.some((k) => yol.startsWith(k))) return { tam: path.join(KOK, ...yol.split('/')), portal: true };
+  if (PORTAL_KOKLERI.some((k) => yol.startsWith(k)))
+    return { tam: path.join(KOK, ...yol.split('/')), portal: true };
   if (!ansible) return null;
   return { tam: path.join(ansible, ...yol.split('/')), portal: false };
 }
@@ -270,11 +348,14 @@ function basvuruHatalari(katalog, { ansible, okuyucu }) {
     }
     if (m[2]) {
       const n = Number(m[2]);
-      if (n < 1 || n > L.length) hatalar.push(`${yer} satir dosyada yok: ${r.dosya} (${L.length} satir)`);
+      if (n < 1 || n > L.length)
+        hatalar.push(`${yer} satir dosyada yok: ${r.dosya} (${L.length} satir)`);
       else {
         const toks = (L[n - 1].match(/[A-Za-z_]\w*/g) || []).map((x) => x.toLowerCase());
         if (!toks.includes(own) && toks.some((x) => x !== own && tumAdlar.has(x))) {
-          hatalar.push(`${yer} ${r.dosya} baska bir tabloyu gosteriyor: ${L[n - 1].trim().slice(0, 100)}`);
+          hatalar.push(
+            `${yer} ${r.dosya} baska bir tabloyu gosteriyor: ${L[n - 1].trim().slice(0, 100)}`,
+          );
         }
       }
     }
@@ -296,7 +377,9 @@ function basvuruHatalari(katalog, { ansible, okuyucu }) {
       }
     }
     if (!kodda(hedef, re)) {
-      hatalar.push(`${yer} ${hedefAd} tabloyu kodda anmiyor (yalniz yorumda ya da hic); yardimci modul varsa 'uzerinden' yazin`);
+      hatalar.push(
+        `${yer} ${hedefAd} tabloyu kodda anmiyor (yalniz yorumda ya da hic); yardimci modul varsa 'uzerinden' yazin`,
+      );
     }
   }
   return hatalar;
@@ -312,15 +395,24 @@ const diskOkuyucu = (tam) => {
 
 test('VB4a basvuru denetimi kaymis satiri, yorum-okuyucuyu ve eksik dosyayi yakalar (sahte dosyalar)', () => {
   const dosyalarSahte = {
-    [path.join(KOK, 'server', 'x', 'liste.cjs')]: "const T = [\n  { tablo: 'dbo.Alfa' },\n  { tablo: 'dbo.Beta' },\n];\nawait q(`DELETE FROM ${t}`);",
-    [path.join(KOK, 'server', 'x', 'yorum.cjs')]: '// Alfa tablosuna benzer desen\nmodule.exports = {};',
+    [path.join(KOK, 'server', 'x', 'liste.cjs')]:
+      "const T = [\n  { tablo: 'dbo.Alfa' },\n  { tablo: 'dbo.Beta' },\n];\nawait q(`DELETE FROM ${t}`);",
+    [path.join(KOK, 'server', 'x', 'yorum.cjs')]:
+      '// Alfa tablosuna benzer desen\nmodule.exports = {};',
     [path.join(KOK, 'server', 'x', 'yardimci.cjs')]: 'const r = await q(`SELECT * FROM Alfa`);',
-    [path.join(KOK, 'server', 'x', 'cagiran.cjs')]: "const { oku } = require('./yardimci.cjs');\nawait oku();",
+    [path.join(KOK, 'server', 'x', 'cagiran.cjs')]:
+      "const { oku } = require('./yardimci.cjs');\nawait oku();",
   };
   const okuyucu = (tam) => dosyalarSahte[tam] ?? null;
   const G = (tablo, okuyanlar) => ({ db: 'Portal', tablo, yazanlar: [], okuyanlar });
   const temiz = basvuruHatalari(
-    [G('Alfa', [{ ad: 'liste', dosya: 'server/x/liste.cjs:2' }, { ad: 'cagiran', dosya: 'server/x/cagiran.cjs:2', uzerinden: 'server/x/yardimci.cjs' }]), G('Beta', [])],
+    [
+      G('Alfa', [
+        { ad: 'liste', dosya: 'server/x/liste.cjs:2' },
+        { ad: 'cagiran', dosya: 'server/x/cagiran.cjs:2', uzerinden: 'server/x/yardimci.cjs' },
+      ]),
+      G('Beta', []),
+    ],
     { ansible: null, okuyucu },
   );
   assert.deepEqual(temiz, []);
@@ -350,5 +442,9 @@ test('VB4 katalogdaki her dosya/uzerinden basvurusu gercek ve tabloyu kodda aniy
   const dizin = ansibleDizini();
   const ansible = fs.existsSync(dizin) ? dizin : null;
   const hatalar = basvuruHatalari(KATALOG, { ansible, okuyucu: diskOkuyucu });
-  assert.deepEqual(hatalar, [], `Katalog basvurulari bozuk (server/katalog/tablolar.json):\n${hatalar.join('\n')}`);
+  assert.deepEqual(
+    hatalar,
+    [],
+    `Katalog basvurulari bozuk (server/katalog/tablolar.json):\n${hatalar.join('\n')}`,
+  );
 });

@@ -16,8 +16,11 @@
 
 // LogX'in bagli oldugu bes playbook kaydi.
 const LOGX_KEYS = [
-  'logx_legacy_discovery', 'logx_legacy_transfer',
-  'logx_ocp_namespace_discovery', 'logx_ocp_app_discovery', 'logx_ocp_discover_fetch',
+  'logx_legacy_discovery',
+  'logx_legacy_transfer',
+  'logx_ocp_namespace_discovery',
+  'logx_ocp_app_discovery',
+  'logx_ocp_discover_fetch',
 ];
 
 // Ayrintili satirlar (admin gorunumu). AWX okunamazsa alanlar `null` kalir —
@@ -44,7 +47,7 @@ async function getRows(keys = LOGX_KEYS) {
           tpl = await runner.getTemplateSummaryOnServer(serverId, templateId);
           foundOnAwx = true;
         } catch (e) {
-          foundOnAwx = e && e.status === 404 ? false : null;
+          foundOnAwx = e?.status === 404 ? false : null;
         }
       }
       return {
@@ -56,7 +59,8 @@ async function getRows(keys = LOGX_KEYS) {
         foundOnAwx,
         templateName: tpl?.name || null,
         // Bayrak ACIKCA false ise "kapali"; alan yok/okunamadi -> null (bilinmiyor).
-        promptOnLaunch: tpl && typeof tpl.askVariablesOnLaunch === 'boolean' ? tpl.askVariablesOnLaunch : null,
+        promptOnLaunch:
+          tpl && typeof tpl.askVariablesOnLaunch === 'boolean' ? tpl.askVariablesOnLaunch : null,
       };
     }),
   );

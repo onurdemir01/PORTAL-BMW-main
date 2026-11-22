@@ -2,10 +2,9 @@
 
 export interface User {
   username: string;
-  role: "Admin" | "User";
+  role: 'Admin' | 'User';
   displayName?: string;
   mail?: string;
   photoUrl?: string | null;
   authSource?: string;
 }
-

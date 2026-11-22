@@ -26,7 +26,11 @@ export function GuncellemeRozeti({
       }}
       title={title}
     >
-      <ClockIcon className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+      <ClockIcon
+        className="w-3 h-3 flex-shrink-0"
+        style={{ color: 'var(--accent)' }}
+        aria-hidden="true"
+      />
       {etiket}{' '}
       <span className="font-semibold tabular-nums" style={{ color: 'var(--text-primary)' }}>
         {tarih}

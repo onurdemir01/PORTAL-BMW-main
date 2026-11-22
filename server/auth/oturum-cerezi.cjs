@@ -21,7 +21,9 @@ const URETIM_ADI = '__Host-portal.sid';
 // yapamazdi — bu yuzden production disinda `__Host-` acik verilse bile eski ada dusulur.
 function cookieSecure() {
   if (process.env.NODE_ENV === 'production') return true;
-  const raw = String(process.env.COOKIE_SECURE || '').trim().toLowerCase();
+  const raw = String(process.env.COOKIE_SECURE || '')
+    .trim()
+    .toLowerCase();
   return raw === '1' || raw === 'true';
 }
 
@@ -30,7 +32,9 @@ function cerezAdi() {
   const acik = String(process.env.SESSION_COOKIE_NAME || '').trim();
   if (/^__Host-[A-Za-z0-9._-]{1,56}$/.test(acik)) {
     if (guvenli) return acik;
-    console.warn(`[Auth] SESSION_COOKIE_NAME=${acik} yalnizca HTTPS (production veya COOKIE_SECURE=1) ile kullanilabilir; ${ESKI_AD} kullaniliyor.`);
+    console.warn(
+      `[Auth] SESSION_COOKIE_NAME=${acik} yalnizca HTTPS (production veya COOKIE_SECURE=1) ile kullanilabilir; ${ESKI_AD} kullaniliyor.`,
+    );
     return ESKI_AD;
   }
   if (/^[A-Za-z0-9._-]{1,64}$/.test(acik)) return acik;

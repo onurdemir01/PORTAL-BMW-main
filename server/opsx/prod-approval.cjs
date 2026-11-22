@@ -14,7 +14,7 @@
 // Onay sonrasi isi MEVCUT Smart poller'i oynatiyor (`server/smart/poller.cjs` ->
 // runner.performSsLaunch). O yol genel bir AWX launch'idir ve `resolvedLaunchOptions`
 // icindeki `limit`'i launch payload'ina yayar - Legacy OpsX'in `--limit`'i (host listesi +
-// GBLABT02) onay sonrasi replay'de KAYBOLMAZ. Dogrulandi; bu yuzden poller'a ya da
+// ORLABT02) onay sonrasi replay'de KAYBOLMAZ. Dogrulandi; bu yuzden poller'a ya da
 // performSsLaunch'a OpsX bilgisi KONMUYOR (ScaleX'in bilincli olarak kacindigi sey).
 //
 // ── GECICI BLOGUN YERINI ALDI ────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@
 const URETIM_DISI_RE = /(non[-_ ]?prod|pre[-_ ]?prod|prod[-_ ]?(test|like|sim)|sandbox)/i;
 
 // "prod" KELIME ICINDE DE aranir, sinir sarti YOKTUR: gercek cluster adlarinda isaret
-// ayiricisiz gomulu geliyor (`giocpank3rdwyprod1` - uretimdeki Wyden prod cluster'i).
+// ayiricisiz gomulu geliyor (`oiocpank3rdwyprod1` - uretimdeki Wyden prod cluster'i).
 // Sinir sartli bir desen bunu kacirir ve kapi fail-open olurdu.
 const URETIM_GOMULU_RE = /(prod|production|canli|canlı)/i;
 
@@ -158,8 +158,7 @@ async function smartApprovalFor(platform) {
 
   const blob = await smartYapilandirma(plat);
 
-  const flowKey =
-    String(blob?.flowKey || '').trim() || String(process.env[envAdi] || '').trim();
+  const flowKey = String(blob?.flowKey || '').trim() || String(process.env[envAdi] || '').trim();
   if (!flowKey) return null;
 
   return {
@@ -250,7 +249,12 @@ async function opsxProductionKapisi({
   // Platform ayari DEGISMEZ; yalniz bu Admin'in bu istegi onaysiz kosar ve denetime yazilir.
   const atla = require('../ansible/admin-smart-atla.cjs');
   if (await atla.adminSmartAtliyor(req)) {
-    atla.atlamayiDenetle(req, 'opsx_production', { platform, islem: islemAdi, uretimSebebi: sebep, templateId });
+    atla.atlamayiDenetle(req, 'opsx_production', {
+      platform,
+      islem: islemAdi,
+      uretimSebebi: sebep,
+      templateId,
+    });
     return { proceed: true };
   }
 
@@ -330,7 +334,10 @@ async function opsxProductionKapisi({
   try {
     sablonVarsayilan = await runner.getTemplateVariableDefaultsOnServer(serverId, templateId);
   } catch (e) {
-    console.warn('[OpsX] template degiskenleri okunamadi (Smart sablonu yalniz gonderilen degerleri gorur):', e.message);
+    console.warn(
+      '[OpsX] template degiskenleri okunamadi (Smart sablonu yalniz gonderilen degerleri gorur):',
+      e.message,
+    );
   }
 
   const user = req?.session?.user || {};

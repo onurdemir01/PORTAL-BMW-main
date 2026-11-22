@@ -132,7 +132,7 @@ async function ocpPairsForEnv(env, tenant) {
 // -- SUNUCUDA KURULU SPA'LAR (2026-10-26) ---------------------------------------------------
 // Kullanici: "listelemeyi ayni zamanda sunucunun file sistemindeki uygulamalara gore de ekleme veya
 // karsilastirma yapabilir miyiz? Cunku bazi uygulamalar isim standardina uymuyor." Ornek:
-// ges-pension-digital-ch-test/public-website-v0 GBNGXT33'te /hysdeploy altinda kurulu, ama adi
+// ges-pension-digital-ch-test/public-website-v0 ORNGXT33'te /hysdeploy altinda kurulu, ama adi
 // -app-v icermedigi icin RVP Operations listesinde yoktu.
 // Kaynak: nginx_config_audit isinin dizin taramasi (dbo.Nginx_Intranet_Audit - adi tarihsel). Is HER
 // nginx sunucusunda /hysdeploy/<ns>/<app>/ ve /usr/nginx/applications/<ns>/<app>/ dizinlerini ADA
@@ -157,12 +157,17 @@ async function sunucudaKuruluSpalar(env) {
         )
       ).recordset || [];
   } catch (e) {
-    console.warn('[choice-sources] Nginx_Intranet_Audit okunamadi (sunucu dizin taramasi):', e.message);
+    console.warn(
+      '[choice-sources] Nginx_Intranet_Audit okunamadi (sunucu dizin taramasi):',
+      e.message,
+    );
     return null;
   }
   const kurulu = new Map();
   for (const r of rows) {
-    const host = String(r.host || '').trim().toUpperCase();
+    const host = String(r.host || '')
+      .trim()
+      .toUpperCase();
     const namespace = String(r.namespace || '').trim();
     const application = String(r.application || '').trim();
     if (!host || !namespace || !application) continue;
@@ -184,7 +189,9 @@ async function sunucudaKuruluSpalar(env) {
 async function kesifteSpaOlanlar(env, tenant) {
   const clusters = new Set((await clustersForEnv(env, tenant)).map((c) => c.toLowerCase()));
   if (!clusters.size && String(tenant || '').trim()) return [];
-  const sonek = `-${String(env || '').trim().toLowerCase()}`;
+  const sonek = `-${String(env || '')
+    .trim()
+    .toLowerCase()}`;
   const { query } = require('../inventory/mssql.cjs');
   let rows;
   try {
@@ -207,7 +214,12 @@ async function kesifteSpaOlanlar(env, tenant) {
     const namespace = String(r.namespace || '').trim();
     const application = String(r.workload || '').trim();
     if (!cluster || !namespace || !application) continue;
-    if (clusters.size ? !clusters.has(cluster.toLowerCase()) : !namespace.toLowerCase().endsWith(sonek)) continue;
+    if (
+      clusters.size
+        ? !clusters.has(cluster.toLowerCase())
+        : !namespace.toLowerCase().endsWith(sonek)
+    )
+      continue;
     const k = `${namespace}|${application}`;
     if (!kesif.has(k)) kesif.set(k, { namespace, application, clusters: new Set() });
     kesif.get(k).clusters.add(cluster);
@@ -239,14 +251,17 @@ const SOURCES = {
   // Self Servis > Nginx - RVP Operations (nginx_ops): OpenShift namespace'leri. LogX/OpsX
   // ile AYNI envanter tablosu (Openshift_Inventory), ortam cluster katalogundan.
   'ocp-namespaces': {
-    label: 'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu; SPA sayısına sunucuda kurulu olanlar ve SPA Keşfi ile konteynerinde nginx görülenler de girer)',
+    label:
+      'OpenShift namespace listesi (Openshift Uygulama Envanteri, ortam + cluster grubu; SPA sayısına sunucuda kurulu olanlar ve SPA Keşfi ile konteynerinde nginx görülenler de girer)',
     params: [{ name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true }],
     // SABIT secenekler (form alanina bagli degil; admin ekraninda metin olarak girilir).
     // tenant: ocp_cluster_index.tenant (LogX/OpsX ile ayni katalog) — RVP icin 'ark'.
     options: [{ name: 'tenant', label: 'Cluster grubu (tenant, ör. ark)', default: 'ark' }],
     async load({ env, tenant }) {
       const [pairs, sunucu, kesif] = await Promise.all([
-        ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env), kesifteSpaOlanlar(env, tenant),
+        ocpPairsForEnv(env, tenant),
+        sunucudaKuruluSpalar(env),
+        kesifteSpaOlanlar(env, tenant),
       ]);
       // SPA sayisi: ad kuralina uyan OpenShift uygulamalari + sunucuda kurulu olanlar + SPA Kesfi'nde
       // konteynerinde nginx olanlar (tekil). Yalniz sunucuda kurulu bir uygulamanin namespace'i OpenShift
@@ -278,7 +293,8 @@ const SOURCES = {
   // sunucularinda kurulu olanlar (sunucudaKuruluSpalar) + SPA Kesfi'nde konteynerinde nginx olanlar
   // (kesifteSpaOlanlar) - ad standardina uymasa da.
   'ocp-spa-applications': {
-    label: 'SPA uygulamaları (seçilen namespace): OpenShift *-app-v* adlılar + sunucuda kurulu olanlar (dizin taraması) + SPA Keşfi ile konteynerinde nginx görülenler',
+    label:
+      'SPA uygulamaları (seçilen namespace): OpenShift *-app-v* adlılar + sunucuda kurulu olanlar (dizin taraması) + SPA Keşfi ile konteynerinde nginx görülenler',
     params: [
       { name: 'env', label: 'Ortam alanı', required: true },
       { name: 'namespace', label: 'Namespace alanı', required: true },
@@ -287,11 +303,17 @@ const SOURCES = {
     async load({ env, namespace, tenant }) {
       const ns = String(namespace || '').trim();
       const [pairs, sunucu, kesif] = await Promise.all([
-        ocpPairsForEnv(env, tenant), sunucudaKuruluSpalar(env), kesifteSpaOlanlar(env, tenant),
+        ocpPairsForEnv(env, tenant),
+        sunucudaKuruluSpalar(env),
+        kesifteSpaOlanlar(env, tenant),
       ]);
       const ocpde = new Set(pairs.filter((p) => p.namespace === ns).map((p) => p.application));
-      const kurulu = new Map((sunucu || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.hosts]));
-      const kesifte = new Map((kesif || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.clusters]));
+      const kurulu = new Map(
+        (sunucu || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.hosts]),
+      );
+      const kesifte = new Map(
+        (kesif || []).filter((s) => s.namespace === ns).map((s) => [s.application, s.clusters]),
+      );
       const apps = new Set([...[...ocpde].filter(isSpaApp), ...kurulu.keys(), ...kesifte.keys()]);
       // KARSILASTIRMA ikinci satirda: hangi sunucularda kurulu, OpenShift envanterinde var mi, SPA
       // Kesfi konteynerde nginx gordu mu, ad standardina uyuyor mu. Ad standardina uymayanlar ayri
@@ -302,16 +324,26 @@ const SOURCES = {
           const hosts = kurulu.get(a);
           const cls = kesifte.get(a);
           const parca = [
-            (() => { if (hosts) return `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`; if (sunucu) return 'Sunucuda kurulu değil'; return 'Sunucu taraması okunamadı'; })(),
+            (() => {
+              if (hosts)
+                return `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`;
+              if (sunucu) return 'Sunucuda kurulu değil';
+              return 'Sunucu taraması okunamadı';
+            })(),
             ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
           ];
-          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')})`);
+          if (cls)
+            parca.push(
+              `SPA Keşfi: konteynerde nginx (${[...cls].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')})`,
+            );
           if (!isSpaApp(a)) parca.push('ad standardı dışı');
           return {
             value: a,
             label: a,
             alt: parca.join(' · '),
-            group: isSpaApp(a) ? 'Ad standardına uyan' : 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)',
+            group: isSpaApp(a)
+              ? 'Ad standardına uyan'
+              : 'Ad standardı dışı (sunucuda kurulu ya da konteynerde nginx)',
           };
         });
     },
@@ -327,7 +359,7 @@ const SOURCES = {
   //
   // BU KAYNAK `input_url` ALANINA BAGLANIR. Isteyen namespace ve uygulamayi secer, URL'i
   // ELLE YAZMAZ: liste envanterden gelir. Boylece
-  //   * eski GBRVP* akisi (prod_create.yaml) HIC DEGISMEZ - ona yine gercek bir input_url
+  //   * eski ORRVP* akisi (prod_create.yaml) HIC DEGISMEZ - ona yine gercek bir input_url
   //     gider, "sanki URL girilmis gibi" davranir,
   //   * yeni filo akisinin ileri cozumlemesi (nginx_url_resolve.py) BIREBIR FQDN
   //     eslesmesiyle ilk adimda tutar, "birden fazla aday" (rc 91) durumuna girmez,
@@ -367,11 +399,7 @@ const SOURCES = {
         params,
       );
       const { routesForApp } = require('../audit/nginx-app-routes.cjs');
-      const { adaylar, suffixAdded, atfedilmeyen } = routesForApp(
-        r.recordset || [],
-        ns,
-        app,
-      );
+      const { adaylar, suffixAdded, atfedilmeyen } = routesForApp(r.recordset || [], ns, app);
       // ATFEDILEMEYEN ROUTE: envanterde route -> service bagi YOK; adresi kurumsal kaliba
       // uymayan ve adi uygulamadan farkli bir route hangi uygulamaya ait, OLCULEMEZ.
       // Liste "bu uygulamanin TUM route'lari" degil "atfedebildiklerimiz"dir; fark
@@ -404,7 +432,9 @@ const SOURCES = {
       const { query } = require('../inventory/mssql.cjs');
       const { envOfHost } = require('../audit/nginx-hosts.cjs');
       const wantEnv = normEnv(env);
-      const r = await query(`SELECT hostname, env, location, service, services FROM dbo.nginx_inventory`);
+      const r = await query(
+        `SELECT hostname, env, location, service, services FROM dbo.nginx_inventory`,
+      );
       // ELLE ETIKET (2026-11-12, "her yerde gecerli"): yalniz GORUNEN ad; secilen deger host adidir.
       const et = require('../audit/nginx-host-labels.cjs');
       et.degisinceHaberVer(() => {
@@ -421,7 +451,10 @@ const SOURCES = {
         if (wantEnv && e !== wantEnv) continue;
         const e2 = etiketler.get(host);
         const svc = e2
-          ? et.etkinListe(et._bol(row.services || row.service), e2).filter((x) => x !== 'too_many').join(',')
+          ? et
+              .etkinListe(et._bol(row.services || row.service), e2)
+              .filter((x) => x !== 'too_many')
+              .join(',')
           : String(row.service || '').trim();
         out.push({
           value: host,
@@ -524,7 +557,8 @@ const SOURCES = {
         if (conf) confs.add(conf);
       }
       const out = [];
-      for (const v of [...locs].sort((a, b) => Number(a > b) - Number(a < b))) out.push({ value: v, label: v, group: 'API yolu' });
+      for (const v of [...locs].sort((a, b) => Number(a > b) - Number(a < b)))
+        out.push({ value: v, label: v, group: 'API yolu' });
       for (const v of [...confs].sort((a, b) => Number(a > b) - Number(a < b)))
         out.push({ value: v, label: v, group: 'Konfigürasyon dosyası' });
       return out;
@@ -544,25 +578,35 @@ const SOURCES = {
   //     uc nokta yollari (/x/y/v0/ornek/uc) zone govdesine cozulemiyordu. Onek tasimayan ad playbook'ta
   //     yol sanilir -> listeye girmez.
   //   * yalnizca job'in o ortamda (ve production'da `site`ta) calistigi sunuculardaki dosyalar
-  //     (shared/nginxApiClusters.cjs apiGeneratorHosts).
+  //     (server/audit/nginx-api-kumeleri.cjs apiGeneratorHosts).
   //   * production'da kanal (mblcustomers / customers / mcustomers) verilirse yalniz o kanalin kumesi;
   //     kapsam o kumeye gore sayilir (kullanici 2026-10-22: "Prod ve customers secince ... o sunuculara
   //     bakmaliydi").
   // Etiket yalniz "<konfigurasyon> - <kok yol>"; limitler / kapsam / birlikte etkilenecek uclar secimin
   // sagindaki ayrinti panelinde (details).
   'nginx-api-gateway-confs': {
-    label: 'Nginx API Generator — rate limit değiştirilebilir API konfigürasyonları (API envanteri)',
+    label:
+      'Nginx API Generator — rate limit değiştirilebilir API konfigürasyonları (API envanteri)',
     params: [
       { name: 'env', label: 'Ortam alanı (dev/test/qa/prod)', required: true },
       { name: 'site', label: 'Lokasyon alanı (all/pendik/ankara; opsiyonel)', required: false },
-      { name: 'channel', label: 'Kanal alanı (mblcustomers/customers/mcustomers; production rate limit için zorunlu)', required: false },
-      { name: 'islem', label: 'İşlem alanı (op_selection; read ise kanal zorunlu değil)', required: false },
+      {
+        name: 'channel',
+        label:
+          'Kanal alanı (mblcustomers/customers/mcustomers; production rate limit için zorunlu)',
+        required: false,
+      },
+      {
+        name: 'islem',
+        label: 'İşlem alanı (op_selection; read ise kanal zorunlu değil)',
+        required: false,
+      },
     ],
     async load({ env, site, channel, islem }) {
       // Yalniz dogrulama: prod'da rate limit icin kanal kumesi zorunlu (bilinmiyorsa 400).
       apiGatewayKumesi(env, channel, islem);
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const { apiGeneratorHosts } = require('../audit/nginx-api-kumeleri.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
       if (!hosts.size) return [];
       // Kok yol zone adindan cikarilir (kokYolu); ip_zone / server_zone yeni yukleyiciyle gelir, eski
@@ -591,7 +635,7 @@ const SOURCES = {
     async details({ env, site, channel, islem }, conf) {
       const kume = apiGatewayKumesi(env, channel, islem);
       const { query, sql } = require('../inventory/mssql.cjs');
-      const { apiGeneratorHosts } = require('../../shared/nginxApiClusters.cjs');
+      const { apiGeneratorHosts } = require('../audit/nginx-api-kumeleri.cjs');
       const hosts = new Set(apiGeneratorHosts(env, site, channel));
       // ip_zone / server_zone kolonlarini yeni envanter yukleyicisi ekler (metadata-only ALTER);
       // eski kurulumda yoksa sorgu patlamasin diye once varliklari sorulur.
@@ -603,7 +647,12 @@ const SOURCES = {
       );
       const m = meta.recordset?.[0] || {};
       const zoneVar = m.iz != null && m.sz != null;
-      const opts = { kume: kume ? kume.key : '', taramaTarihi: m.d || '', zoneVar, mod: saltOkuma(islem) ? 'bilgi' : 'degisiklik' };
+      const opts = {
+        kume: kume ? kume.key : '',
+        taramaTarihi: m.d || '',
+        zoneVar,
+        mod: saltOkuma(islem) ? 'bilgi' : 'degisiklik',
+      };
       if (!m.d || !hosts.size) return apiGatewayConfDetay([], hosts, conf, opts);
       const kol = zoneVar ? ', ip_zone, server_zone' : '';
       const d = [{ name: 'd', type: sql.NVarChar(10), value: m.d }];
@@ -611,7 +660,11 @@ const SOURCES = {
         `SELECT host, config_file, api_location, ip_rate_limit, server_rate_limit${kol}
            FROM dbo.NginxRateLimitInventory
           WHERE scan_date = @d AND config_file IN (@c1, @c2)`,
-        [...d, { name: 'c1', type: sql.NVarChar(255), value: conf }, { name: 'c2', type: sql.NVarChar(255), value: `${conf}.conf` }],
+        [
+          ...d,
+          { name: 'c1', type: sql.NVarChar(255), value: conf },
+          { name: 'c2', type: sql.NVarChar(255), value: `${conf}.conf` },
+        ],
       );
       const rows = (kendi.recordset || []).slice();
       const zonelar = zoneVar ? confZonelari(rows, hosts, conf) : [];
@@ -642,7 +695,7 @@ const saltOkuma = (islem) => T(islem).toLowerCase() === 'read';
 
 function apiGatewayKumesi(env, channel, islem) {
   if (normEnv(env) !== 'PROD') return null;
-  const { API_CLUSTERS, apiCluster } = require('../../shared/nginxApiClusters.cjs');
+  const { API_CLUSTERS, apiCluster } = require('../audit/nginx-api-kumeleri.cjs');
   const kume = apiCluster(channel);
   if (kume) return kume;
   if (saltOkuma(islem)) return null;
@@ -681,15 +734,20 @@ const API_GENERATOR_GRANTED_DOMAINS = ['GAR', 'GLS', 'GES', 'GFY', 'ORT', 'GSG',
 function apiGatewayConfChoices(rows, hosts) {
   const byConf = new Map();
   for (const row of rows || []) {
-    const host = String(row.host || '').trim().toUpperCase();
+    const host = String(row.host || '')
+      .trim()
+      .toUpperCase();
     if (!hosts.has(host)) continue;
-    const conf = String(row.config_file || '').trim().replace(/\.conf$/i, '');
+    const conf = String(row.config_file || '')
+      .trim()
+      .replace(/\.conf$/i, '');
     if (!conf || !API_GENERATOR_GRANTED_DOMAINS.some((g) => conf.includes(g))) continue;
     if (!byConf.has(conf)) byConf.set(conf, { locs: new Set(), zonlar: new Set() });
     const c = byConf.get(conf);
     const yol = String(row.api_location || '').trim();
     if (yol && !yol.startsWith('@')) c.locs.add(yol);
-    for (const z of [row.ip_zone, row.server_zone]) if (String(z || '').trim()) c.zonlar.add(String(z).trim());
+    for (const z of [row.ip_zone, row.server_zone])
+      if (String(z || '').trim()) c.zonlar.add(String(z).trim());
   }
   // Iki satir (kullanici, 2026-10-22: "<API adi> ile <Kok Yol> alt alta ve farkli renklerle"): label = ad,
   // alt = kok yol. Arama ikisinde de yapilir.
@@ -734,8 +792,12 @@ function kokYolu(locs, zonlar) {
     const adaylar = [...say.keys()];
     const kapsayan = adaylar.filter((a) => yollar.length > 0 && yollar.every((y) => onekMi(a, y)));
     const sec = (liste) =>
-      liste.slice().sort((a, b) => say.get(b) - say.get(a) || a.length - b.length || a.localeCompare(b))[0];
-    const govde = kapsayan.length ? kapsayan.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0] : sec(adaylar);
+      liste
+        .slice()
+        .sort((a, b) => say.get(b) - say.get(a) || a.length - b.length || a.localeCompare(b))[0];
+    const govde = kapsayan.length
+      ? kapsayan.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0]
+      : sec(adaylar);
     const yalin = govde.replace(/(?<!\/)\/+$/, '');
     return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || yalin;
   }
@@ -787,7 +849,8 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
   const icinde = (rows || []).filter((r) => hosts.has(T(r.host).toUpperCase()));
   const kendiMi = (r) => confAdi(r).toLowerCase() === hedef;
   const kendiSatirlar = icinde.filter(kendiMi);
-  const zoneBilgisi = !!opts.zoneVar && kendiSatirlar.some((r) => r.ip_zone != null || r.server_zone != null);
+  const zoneBilgisi =
+    !!opts.zoneVar && kendiSatirlar.some((r) => r.ip_zone != null || r.server_zone != null);
   // SUNUCU BAZINDA (2026-10-22 inceleme): rate_limit_change bir sunucuda yalniz O SUNUCUDAKI
   // konfigurasyonun zone'larini degistirir; konfigurasyonun olmadigi sunucu "bulunamadi" ile durur ve
   // oradaki ortak zone'a dokunmaz. Zone'lar '@ad' location'lardan da toplanir (playbook dosyadaki TUM
@@ -814,12 +877,25 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     const h = T(r.host).toUpperCase();
     const kendi = kendiMi(r);
     const ipEt = zoneBilgisi ? varMi(ipZ, h, T(r.ip_zone)) : kendi && !!T(r.ip_rate_limit);
-    const locEt = zoneBilgisi ? varMi(locZ, h, T(r.server_zone)) : kendi && !!T(r.server_rate_limit);
+    const locEt = zoneBilgisi
+      ? varMi(locZ, h, T(r.server_zone))
+      : kendi && !!T(r.server_rate_limit);
     if (!kendi && !ipEt && !locEt) continue;
     const c = confAdi(r);
     const anahtar = `${c.toLowerCase()} ${T(r.api_location)}`;
     if (!uc.has(anahtar)) {
-      uc.set(anahtar, { conf: c, yol: T(r.api_location), kendi, hosts: new Set(), ip: new Set(), loc: new Set(), ipEt: false, locEt: false, ipZone: new Set(), locZone: new Set() });
+      uc.set(anahtar, {
+        conf: c,
+        yol: T(r.api_location),
+        kendi,
+        hosts: new Set(),
+        ip: new Set(),
+        loc: new Set(),
+        ipEt: false,
+        locEt: false,
+        ipZone: new Set(),
+        locZone: new Set(),
+      });
     }
     const e = uc.get(anahtar);
     e.hosts.add(T(r.host).toUpperCase());
@@ -833,13 +909,16 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
   // Kok: listedeki etiketle AYNI kural (kokYolu: once zone adi, sonra ortak onek). Kok API'nin kendi
   // location'i dosyada yoksa hicbir uc "kok" isaretlenmez; panel kok yolu ayrica yazar.
   const kendiYollar = [...uc.values()].filter((e) => e.kendi).map((e) => e.yol);
-  const kendiZonlar = kendiSatirlar.flatMap((r) => [T(r.ip_zone), T(r.server_zone)]).filter(Boolean);
+  const kendiZonlar = kendiSatirlar
+    .flatMap((r) => [T(r.ip_zone), T(r.server_zone)])
+    .filter(Boolean);
   const kokYol = kokYolu(kendiYollar, zoneBilgisi ? kendiZonlar : []);
   // "kok" etiketi yalniz GERCEK kok'e: dosyada var VE diger tum yollar onunla basliyor (ortak kok yokken
   // kokYolu'nun yedegi olan en kisa yol, kardes bir API'dir - kok diye isaretlenmez).
   const kokSade = kokYol.replace(/(?<!\/)\/+$/, '');
   const kok =
-    kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
+    kendiYollar.includes(kokYol) &&
+    kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
       ? kokYol
       : '';
   const deger = (set) => [...set].sort((a, b) => Number(a > b) - Number(a < b)).join(' / ');
@@ -874,8 +953,12 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     zoneBilgisi,
     zoneKirpildi: !!opts.zoneKirpildi,
     zonelar: {
-      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
-      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
+      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort(
+        (a, b) => Number(a > b) - Number(a < b),
+      ),
+      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort(
+        (a, b) => Number(a > b) - Number(a < b),
+      ),
     },
     // 'degisiklik' (rate_limit_change) | 'bilgi' (read: hicbir sey degismez, panel dili buna gore)
     mod: opts.mod === 'bilgi' ? 'bilgi' : 'degisiklik',
@@ -905,13 +988,13 @@ async function loadChoices(sourceName, params) {
   }
   const p = {};
   for (const def of src.params) {
-    const v = String((params || {})[def.name] ?? '').trim();
+    const v = String(params?.[def.name] ?? '').trim();
     if (def.required && !v) return [];
     p[def.name] = v;
   }
   // Sabit secenekler: istekte varsa o, yoksa kaynak varsayilani.
   for (const def of src.options || []) {
-    const v = String((params || {})[def.name] ?? '').trim();
+    const v = String(params?.[def.name] ?? '').trim();
     p[def.name] = v || String(def.default ?? '');
   }
   const key = cacheKey(sourceName, p);
@@ -947,18 +1030,22 @@ const detailCache = new Map(); // key -> { at, detay }
 async function loadChoiceDetails(sourceName, params, value) {
   const src = getSource(sourceName);
   if (!src || typeof src.details !== 'function') {
-    throw Object.assign(new Error(`Bu seçenek kaynağının ayrıntı görünümü yok: ${sourceName}`), { status: 404 });
+    throw Object.assign(new Error(`Bu seçenek kaynağının ayrıntı görünümü yok: ${sourceName}`), {
+      status: 404,
+    });
   }
   const secilen = String(value ?? '').trim();
   if (!secilen) throw Object.assign(new Error('Ayrıntı için bir seçim gerekli.'), { status: 400 });
   const liste = await loadChoices(sourceName, params);
   if (!liste.some((c) => c.value === secilen)) {
-    throw Object.assign(new Error(`"${secilen}" bu listede yok; ayrıntı gösterilemez.`), { status: 404 });
+    throw Object.assign(new Error(`"${secilen}" bu listede yok; ayrıntı gösterilemez.`), {
+      status: 404,
+    });
   }
   const p = {};
-  for (const def of src.params) p[def.name] = String((params || {})[def.name] ?? '').trim();
+  for (const def of src.params) p[def.name] = String(params?.[def.name] ?? '').trim();
   for (const def of src.options || []) {
-    p[def.name] = String((params || {})[def.name] ?? '').trim() || String(def.default ?? '');
+    p[def.name] = String(params?.[def.name] ?? '').trim() || String(def.default ?? '');
   }
   const key = `${cacheKey(sourceName, p)}|${secilen}`;
   const varolan = detailCache.get(key);
@@ -968,7 +1055,8 @@ async function loadChoiceDetails(sourceName, params, value) {
   }
   const detay = await src.details(p, secilen);
   detailCache.delete(key);
-  while (detailCache.size >= DETAIL_MAX_ENTRIES) detailCache.delete(detailCache.keys().next().value);
+  while (detailCache.size >= DETAIL_MAX_ENTRIES)
+    detailCache.delete(detailCache.keys().next().value);
   detailCache.set(key, { at: Date.now(), detay });
   return detay;
 }
@@ -979,12 +1067,12 @@ async function loadChoiceDetails(sourceName, params, value) {
  */
 function paramsFromValues(choicesSource, values) {
   const out = {};
-  const map = (choicesSource?.params) || {};
+  const map = choicesSource?.params || {};
   for (const [param, fieldName] of Object.entries(map)) {
     out[param] = values?.[String(fieldName)];
   }
   // Sabit secenekler (admin ekraninda girilen; or. tenant=ark) parametrelere eklenir.
-  for (const [k, v] of Object.entries((choicesSource?.options) || {})) {
+  for (const [k, v] of Object.entries(choicesSource?.options || {})) {
     if (String(v ?? '').trim()) out[k] = String(v).trim();
   }
   return out;

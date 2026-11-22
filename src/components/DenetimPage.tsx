@@ -69,12 +69,12 @@ export const NGINX_DENETIM_HELP: HelpSection[] = [
   {
     icon: ServerStackIcon,
     title: 'Nginx SPA Audit',
-    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır; hücredeki H A C harfleri o sunucudaki dizinleri gösterir (H=/hysdeploy, A=/usr/nginx/applications, C=application-confs; büyük harf var, küçük harf yok — matrisin üstündeki sözlük). Internet katmanında ayrıca 'OpenShift route istatistikleri' paneli: ortam başına kaç route, kaçı SPA / SPA değil, hangi IP'lere çözüyor (route_inventory job'ının nslookup sonucu). PROD kapsamı eski GBRVP* sunucularının proxy_pass satırlarından çözülür (Production Taşımaları ile aynı çözüm, -prod eki dâhil); dipnotta kaç satırın çözüldüğü yazar. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski GBRVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni GBNGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir. Satırdaki 'Tanım oluştur' düğmesi, seçilen location için yeni sunucularda <SERVICE>-PROD.conf içine location bloğu ve application-confs/<service>-<app>-<ns>.conf dosyasını üreten AWX job'ını (nginx_ops/nginx_prod_migration.yml) tetikler — non-prod SPA oluşturma akışının aynısı; uygulama dizini yoksa durur, nginx -t düşerse geri alır. Eski sunucuya dokunmaz. 'Eski tanımı kaldır' düğmesi ise eski GBRVP* sunucusundaki location bloğunu ve (başka tanım kullanmıyorsa) upstream'i kaldırmak için mevcut nginx_ops job'ını action=delete/env=prod ile tetikler — PROD kuralı gereği iş şimdi doğrular, 23:00 kesinti penceresine zamanlar, gerçek silmeyi nginx_scheduled_ops yapar; geçiş kaydı 'geçti' değilse pencere uyarır. Geçiş sütunu: planlandı/geçti/iptal + tarih, tıklayarak düzenlenir. Sıralama ekip bazında yapılabilir (çok uygulaması olan ekip üstte).",
+    body: "nginx_config_audit job'ının günlük taramasını gösterir. Her satır bir uygulama; sütunlar ortamlar. Hücre rengi o ortamdaki durumu anlatır; hücredeki H A C harfleri o sunucudaki dizinleri gösterir (H=/hysdeploy, A=/usr/nginx/applications, C=application-confs; büyük harf var, küçük harf yok — matrisin üstündeki sözlük). Internet katmanında ayrıca 'OpenShift route istatistikleri' paneli: ortam başına kaç route, kaçı SPA / SPA değil, hangi IP'lere çözüyor (route_inventory job'ının nslookup sonucu). PROD kapsamı eski …RVP* sunucularının proxy_pass satırlarından çözülür (Production Taşımaları ile aynı çözüm, -prod eki dâhil); dipnotta kaç satırın çözüldüğü yazar. 'Kırık include' = vhost'un çağırdığı conf dosyası yok, nginx -t düşer. 'Paket Nginx'te yok' = konfigürasyon yerinde ama uygulamanın dosyaları /usr/nginx/applications altında bulunamadı, yani o adres 404 döner — ya hiç dağıtılmamış ya da conf adının işaret ettiğinden başka bir namespace dizinine dağıtılmış. 'Envanterde yok' = OpenShift envanterinde karşılığı bulunamadı, uygulama kapatılmış olabilir. Hücre birden çok sunucunun en kötü durumunu gösterir; üzerine gelince hangi sunucular olduğunu görebilirsiniz. PRODUCTION TAŞIMALARI sekmesi (2026-09-14): eski …RVP* sunucularının vhost'larındaki her proxy_pass hedefi OpenShift route envanteriyle (namespace, uygulama)'ya çözülür ve yeni …NGXP4x/5x sunucularında /hysdeploy/<ns>/<app>/ ile /usr/nginx/applications/<ns>/<app>/ var mı gösterilir (H/A/C hücreleri). Bir uygulama ancak yeni sunucuların HEPSİNDE H+A varsa 'hazır'dır; SPA olmayan (API) hedefler dizin beklemez, ayrı listelenir. Satırdaki 'Tanım oluştur' düğmesi, seçilen location için yeni sunucularda <SERVICE>-PROD.conf içine location bloğu ve application-confs/<service>-<app>-<ns>.conf dosyasını üreten AWX job'ını (nginx_ops/nginx_prod_migration.yml) tetikler — non-prod SPA oluşturma akışının aynısı; uygulama dizini yoksa durur, nginx -t düşerse geri alır. Eski sunucuya dokunmaz. 'Eski tanımı kaldır' düğmesi ise eski …RVP* sunucusundaki location bloğunu ve (başka tanım kullanmıyorsa) upstream'i kaldırmak için mevcut nginx_ops job'ını action=delete/env=prod ile tetikler — PROD kuralı gereği iş şimdi doğrular, 23:00 kesinti penceresine zamanlar, gerçek silmeyi nginx_scheduled_ops yapar; geçiş kaydı 'geçti' değilse pencere uyarır. Geçiş sütunu: planlandı/geçti/iptal + tarih, tıklayarak düzenlenir. Sıralama ekip bazında yapılabilir (çok uygulaması olan ekip üstte).",
   },
   {
     icon: ServerStackIcon,
     title: 'Nginx API Envanteri',
-    body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (GBNGWD..=dev, GBNGWT..=test, GBNGWQ..=qa, GBNGWP../GBNGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
+    body: "nginx_ratelimit_inventory job'ının günlük taramasını gösterir: hangi sunucuda, hangi konfigürasyon dosyasında kaç API (location) bloğu tanımlı ve bunların rate limit durumu. ÖNEMLİ: kaynak tablo ortam bilgisi TAŞIMAZ ve konfigürasyon dosya adları ortamdan bağımsız olarak AYNIDIR — aynı 'x.conf' hem DEV hem PROD sunucusunda bulunur. Bu yüzden ortam sunucu adından türetilir (…NGWD..=dev, …NGWT..=test, …NGWQ..=qa, …NGWP../…NGWAP..=prod); kalıba uymayan sunucu sessizce bir ortama atanmaz, 'BİLİNMİYOR' olarak görünür. 'Konfigürasyon Karşılaştırma' görünümü asıl bulguyu üretir: bir satır tek bir dosyanın tüm ortamlardaki hâlidir, hücredeki sayı o ortamdaki API bloğu sayısıdır ve '—' dosyanın o ortamda hiç bulunmadığı anlamına gelir. İki tür sürüklenme ayrı işaretlenir: 'ortam farkı' ortamların beklenen API sayısı birbirinden farklı, 'sunucu farkı' AYNI ortamdaki sunucular birbirinden farklı (hücrede aralık olarak gösterilir, örn. 17–20) — ikincisi genelde bir sunucuya dağıtımın ulaşmadığı anlamına gelir. 'Rate limit tanımı olmayan konfigürasyonlar' listesi ise hiçbir location'ında ne IP bazlı ne de sunucu bazlı limit bulunmayan dosyaları toplar.",
   },
   {
     icon: ServerStackIcon,
@@ -122,7 +122,7 @@ const HELP: HelpSection[] = [
   {
     icon: SignalIcon,
     title: 'Route Trafiği',
-    body: "route_traffic job'ının her cluster'ın Thanos'undan çektiği route başına HTTP istek sayıları (OCP router/HAProxy sayacı, günde bir). Soru: bu uygulama yaşıyor mu? 'aktif' = son 30 günde istek var; 'atıl aday' = 30 gündür istek yok ama 90 gün içinde vardı; 'emekli aday' = 90 gündür (ya da verinin tamamında) hiç istek yok; 'veri yok' = route envanterde var ama router sayacında hiç görünmedi. Job yeni koşmaya başladıysa üstteki not kaç günün kapsandığını yazar — 'emekli' hükmü 90 gün dolunca kesinleşir. 4xx/5xx yüzdeleri son 90 günün toplamına göre; %100 4xx = trafik geliyor ama uygulama cevap vermiyor. Dikkat: GBNGX'e taşınan internet SPA'larında paket doğrudan nginx'ten sunulur, OCP route sayacı düşer — bu atıl demek değildir.",
+    body: "route_traffic job'ının her cluster'ın Thanos'undan çektiği route başına HTTP istek sayıları (OCP router/HAProxy sayacı, günde bir). Soru: bu uygulama yaşıyor mu? 'aktif' = son 30 günde istek var; 'atıl aday' = 30 gündür istek yok ama 90 gün içinde vardı; 'emekli aday' = 90 gündür (ya da verinin tamamında) hiç istek yok; 'veri yok' = route envanterde var ama router sayacında hiç görünmedi. Job yeni koşmaya başladıysa üstteki not kaç günün kapsandığını yazar — 'emekli' hükmü 90 gün dolunca kesinleşir. 4xx/5xx yüzdeleri son 90 günün toplamına göre; %100 4xx = trafik geliyor ama uygulama cevap vermiyor. Dikkat: …NGX'e taşınan internet SPA'larında paket doğrudan nginx'ten sunulur, OCP route sayacı düşer — bu atıl demek değildir.",
   },
   {
     icon: Squares2X2Icon,
@@ -153,7 +153,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   // "Deploy Yok" olarak geciyordu - iki ad tek ada indirildi.
   NOT_DEPLOYED: { label: "Paket Nginx'te yok", cls: 'bg-red-50 text-red-700 border-red-200' },
   BROKEN_INCLUDE: { label: 'Kırık include', cls: 'bg-red-100 text-red-800 border-red-300' },
-  // PROD (2026-09-14): eski GBRVP* sunucusunda proxy_pass ile sunuluyor; SPA include'u yok.
+  // PROD (2026-09-14): eski …RVP* sunucusunda proxy_pass ile sunuluyor; SPA include'u yok.
   PROXY: { label: 'Proxy (eski sunucu)', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
   // Yeni prod SPA sunucusunda dizin var ama eski sunucuda proxy tanimi YOK.
   // Yalnizca dev/test/qa'da gorunen uygulamalara eklenir; baska ortamda olmayanlar satir acmaz.
@@ -389,7 +389,7 @@ export function NginxSpaAudit() {
   // Intranet sunucularinda servis vhost'u YOKTUR; dolayisiyla servis matrisi, location
   // detayi ve proxy tanimlari orada TANIMSIZDIR - gizlenmeleri kozmetik degil, dogru
   // olan.
-  // 'tasima' (2026-09-14): eski GBRVP* -> yeni GBNGXP4x/5x prod tasimasi. Kapsam
+  // 'tasima' (2026-09-14): eski …RVP* -> yeni …NGXP4x/5x prod tasimasi. Kapsam
   // paneli/servis matrisi burada ANLAMSIZ; yalnizca NginxProdMigration gosterilir.
   const [tier, setTier] = useState<'internet' | 'intranet' | 'tasima'>('internet');
   // Kullanici talebi: matrisin yani sira, her servis icin location bazinda AYRINTI.
@@ -1053,7 +1053,7 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
       {cell.dirs.map((d) => (
         <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
           {cell.dirs && (cell.dirs.length > 1 || isProd) && (
-            <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>
+            <span className="text-[9px] opacity-70">{d.host.replace(/^[A-Z]{2}NGX/, '')}</span>
           )}
           <DirCell f={d.flags} />
         </span>
@@ -1077,7 +1077,7 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         (oldMissing.length
           ? `\nTANIM OLMAYAN: ${oldMissing.join(', ')}`
           : '\n(grubun tüm eski sunucularında var)')
-      : 'eski GBRVP* sunucularında proxy tanımı bulunamadı';
+      : 'eski …RVP* sunucularında proxy tanımı bulunamadı';
     return (
       <td className="px-3 py-2">
         <div className="inline-flex flex-col gap-1 text-[11px]" title={title}>
@@ -1093,7 +1093,7 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
             </div>
             {oldMissing.length > 0 && (
               <span className="block text-[10px]">
-                eksik: {oldMissing.map((h) => h.replace(/^GBRVP/, '')).join(', ')}
+                eksik: {oldMissing.map((h) => h.replace(/^[A-Z]{2}RVP/, '')).join(', ')}
               </span>
             )}
             {cell.locationPath && (
@@ -1656,7 +1656,7 @@ function OcpCoverage() {
                           (k
                             ? `VAR: ${[...on].sort((a, b) => a.localeCompare(b)).join(', ')}` +
                               (eksik.length
-                                ? `\nYOK: ${eksik.sort((a, b) => a.localeCompare(b)).join(', ')}`
+                                ? `\nYOK: ${[...eksik].sort((a, b) => a.localeCompare(b)).join(', ')}`
                                 : '') +
                               `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join('\n')}`
                             : `Bu ortamda hiç yok (${n} cluster tarandı)`) +
@@ -1750,7 +1750,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
     await load(root);
   }, [root, load]);
 
-  // GBEVM* / GBPRV* genel envanterden AYRI (kullanici, 2026-09-24; ayni ayrim Server Hub'da).
+  // OREVM* / ORPRV* genel envanterden AYRI (kullanici, 2026-09-24; ayni ayrim Server Hub'da).
   // Cogunluk sunucuda GENEL envanterden hesaplanir; bu sunucular AYNI cogunluga gore olculur,
   // yalnizca ayri listelenir. Ucta `special` yoksa (eski yanit / hic ozel sunucu yok) secim
   // gorunmez ve ekran eskisi gibi calisir.
@@ -1841,7 +1841,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
             {(
               [
                 { id: 'genel', label: 'Genel envanter', n: data.hosts },
-                { id: 'ozel', label: 'GBEVM / GBPRV', n: data.special.hosts },
+                { id: 'ozel', label: '…EVM / …PRV', n: data.special.hosts },
               ] as const
             ).map((c) => (
               <button

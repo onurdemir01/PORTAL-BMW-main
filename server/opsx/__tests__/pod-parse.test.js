@@ -37,40 +37,64 @@ test('bos/eksik alanli satirlar null doner (cagiran filtreler)', () => {
 test('parsePodDiscoveryResult: tek cluster/namespace - lines -> pods, bozuk satirlar elenir', () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'ok',
-    results: [{
-      cluster: 'gbocpqa1',
-      namespace: 'deneme-test',
-      ok: true,
-      lines: [
-        'pod-a-1   1/1   Running   0   5d',
-        '',
-        'bozuk satir',
-        'pod-b-2   0/1   CrashLoopBackOff   7 (2m ago)   1h',
-      ],
-    }],
+    results: [
+      {
+        cluster: 'orocpqa1',
+        namespace: 'deneme-test',
+        ok: true,
+        lines: [
+          'pod-a-1   1/1   Running   0   5d',
+          '',
+          'bozuk satir',
+          'pod-b-2   0/1   CrashLoopBackOff   7 (2m ago)   1h',
+        ],
+      },
+    ],
   });
   assert.equal(out.overallStatus, 'ok');
   assert.deepEqual(out.namespaces, ['deneme-test']);
   assert.equal(out.pods.length, 2);
-  assert.deepEqual(out.pods.map((p) => p.name), ['pod-a-1', 'pod-b-2']);
+  assert.deepEqual(
+    out.pods.map((p) => p.name),
+    ['pod-a-1', 'pod-b-2'],
+  );
   assert.equal(out.pods[1].restarts, '7 (2m ago)');
-  assert.equal(out.pods[0].cluster, 'gbocpqa1', 'her pod HANGI cluster\'dan geldigini tasimali');
-  assert.equal(out.pods[0].namespace, 'deneme-test', 'her pod HANGI namespace\'ten geldigini tasimali');
+  assert.equal(out.pods[0].cluster, 'orocpqa1', "her pod HANGI cluster'dan geldigini tasimali");
+  assert.equal(
+    out.pods[0].namespace,
+    'deneme-test',
+    "her pod HANGI namespace'ten geldigini tasimali",
+  );
 });
 
-test('parsePodDiscoveryResult: coklu cluster x coklu namespace - HER kombinasyon kendi pod\'larini katkilar', () => {
+test("parsePodDiscoveryResult: coklu cluster x coklu namespace - HER kombinasyon kendi pod'larini katkilar", () => {
   const out = parsePodDiscoveryResult({
     overall_status: 'ok',
     results: [
-      { cluster: 'gbocpqa1', namespace: 'ns-a', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
-      { cluster: 'gbocpqa2', namespace: 'ns-a', ok: true, lines: ['pod-b-1   1/1   Running   0   2d'] },
-      { cluster: 'gbocpqa1', namespace: 'ns-b', ok: true, lines: ['pod-c-1   1/1   Running   0   1d'] },
+      {
+        cluster: 'orocpqa1',
+        namespace: 'ns-a',
+        ok: true,
+        lines: ['pod-a-1   1/1   Running   0   5d'],
+      },
+      {
+        cluster: 'orocpqa2',
+        namespace: 'ns-a',
+        ok: true,
+        lines: ['pod-b-1   1/1   Running   0   2d'],
+      },
+      {
+        cluster: 'orocpqa1',
+        namespace: 'ns-b',
+        ok: true,
+        lines: ['pod-c-1   1/1   Running   0   1d'],
+      },
     ],
   });
   assert.equal(out.pods.length, 3);
   assert.deepEqual(
     out.pods.map((p) => `${p.cluster}/${p.namespace}/${p.name}`),
-    ['gbocpqa1/ns-a/pod-a-1', 'gbocpqa2/ns-a/pod-b-1', 'gbocpqa1/ns-b/pod-c-1']
+    ['orocpqa1/ns-a/pod-a-1', 'orocpqa2/ns-a/pod-b-1', 'orocpqa1/ns-b/pod-c-1'],
   );
   assert.deepEqual(out.namespaces.sort(), ['ns-a', 'ns-b']);
 });
@@ -79,13 +103,18 @@ test('parsePodDiscoveryResult: bir (cluster,namespace) cifti basarisiz olsa da d
   const out = parsePodDiscoveryResult({
     overall_status: 'partial',
     results: [
-      { cluster: 'gbocpqa1', namespace: 'ns-a', ok: true, lines: ['pod-a-1   1/1   Running   0   5d'] },
-      { cluster: 'gbocpqa2', namespace: 'ns-a', ok: false, error: 'oc login basarisiz' },
+      {
+        cluster: 'orocpqa1',
+        namespace: 'ns-a',
+        ok: true,
+        lines: ['pod-a-1   1/1   Running   0   5d'],
+      },
+      { cluster: 'orocpqa2', namespace: 'ns-a', ok: false, error: 'oc login basarisiz' },
     ],
   });
   assert.equal(out.pods.length, 1);
-  assert.equal(out.pods[0].cluster, 'gbocpqa1');
-  assert.match(out.error, /gbocpqa2\/ns-a.*oc login basarisiz/);
+  assert.equal(out.pods[0].cluster, 'orocpqa1');
+  assert.match(out.error, /orocpqa2\/ns-a.*oc login basarisiz/);
 });
 
 test('overall_status katlamali skalerden bosluklu gelse de trimlenir', () => {

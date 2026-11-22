@@ -23,7 +23,16 @@ const path = require('node:path');
 
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'spa-discovery.cjs'), 'utf8');
 const UI = fs.readFileSync(
-  path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'NginxSpaDiscovery.tsx'),
+  path.join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'src',
+    'components',
+    'nginx_console',
+    'NginxSpaDiscovery.tsx',
+  ),
   'utf8',
 );
 

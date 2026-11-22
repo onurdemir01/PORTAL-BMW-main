@@ -50,12 +50,37 @@ const PLATFORMLAR: { key: OpsxSmartPlatform; label: string; aciklama: string }[]
 // ONIZLEME ICIN ORNEK {{opsx.*}} DEGERLERI (2026-10-08). Gercek talepte bunlari sunucu
 // (server/opsx/prod-approval.cjs) isin cozulmus haliyle doldurur; anahtarlar AYNI olmali.
 const OPSX_ORNEK: Record<OpsxSmartPlatform, Record<string, string>> = {
-  legacy: { islem: 'restart', platform: 'legacy', uretimSebebi: 'ortam: Production', talepEden: 'ornek.kullanici', uygulama: 'GBCCSECURETRACKER', sunucular: 'GBJBOP18, GBJBOAP18' },
-  was: { islem: 'WAS restart', platform: 'was', uretimSebebi: 'ortam: Production', talepEden: 'ornek.kullanici' },
-  openshift: { islem: 'Openshift rollout (restart)', platform: 'openshift', uretimSebebi: 'ortam: prod', talepEden: 'ornek.kullanici', ortam: 'prod', cluster: 'ark', hedefler: 'ns-a,app-1' },
+  legacy: {
+    islem: 'restart',
+    platform: 'legacy',
+    uretimSebebi: 'ortam: Production',
+    talepEden: 'ornek.kullanici',
+    uygulama: 'ORNEKUYGULAMA',
+    sunucular: 'ORJBOP18, ORJBOAP18',
+  },
+  was: {
+    islem: 'WAS restart',
+    platform: 'was',
+    uretimSebebi: 'ortam: Production',
+    talepEden: 'ornek.kullanici',
+  },
+  openshift: {
+    islem: 'Openshift rollout (restart)',
+    platform: 'openshift',
+    uretimSebebi: 'ortam: prod',
+    talepEden: 'ornek.kullanici',
+    ortam: 'prod',
+    cluster: 'ark',
+    hedefler: 'ns-a,app-1',
+  },
 };
 
-const BOS: OpsxSmartPlatformConfig = { enabled: true, flowKey: '', metadataFields: '', integrationKeySet: false };
+const BOS: OpsxSmartPlatformConfig = {
+  enabled: true,
+  flowKey: '',
+  metadataFields: '',
+  integrationKeySet: false,
+};
 
 type Taslak = Record<OpsxSmartPlatform, OpsxSmartPlatformConfig & { integrationKey: string }>;
 
@@ -200,7 +225,9 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
         // SESSIZ ATLAMA YOK: gecersiz desenli bir anahtar kaydedilmedi ve admin bunu
         // BILMELI, yoksa "kaydettim" sanip production'in reddedilmeye devam ettigini
         // gorur - en bastaki sorunun aynisi.
-        toast.error(`Kaydedilmeyen alan(lar): ${r.reddedilen.join(', ')} — izin verilen karakterler: Flow Key için harf, rakam, . _ : - ; entegrasyon anahtarı için ayrıca = + / ~ (boşluk olmaz)`);
+        toast.error(
+          `Kaydedilmeyen alan(lar): ${r.reddedilen.join(', ')} — izin verilen karakterler: Flow Key için harf, rakam, . _ : - ; entegrasyon anahtarı için ayrıca = + / ~ (boşluk olmaz)`,
+        );
       } else {
         toast.success('Smart onay yapılandırması kaydedildi.');
       }
@@ -245,19 +272,19 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
       <div className="space-y-4">
         <div className="rounded-xl border border-[var(--border)] p-3 text-xs text-[var(--text-secondary)] space-y-1.5">
           <p>
-            OpsX'te <strong>production</strong> olarak tespit edilen bir işlem doğrudan
-            çalışmaz: önce burada tanımlı Flow Key ile Smart talebi açılır, onay akışı
-            tamamlanınca Ansible işi <strong>otomatik</strong> tetiklenir. Reddedilirse ya da
-            onay <strong>15 dakika</strong> içinde gelmezse (zaman aşımı) iş hiç başlamaz.
+            OpsX'te <strong>production</strong> olarak tespit edilen bir işlem doğrudan çalışmaz:
+            önce burada tanımlı Flow Key ile Smart talebi açılır, onay akışı tamamlanınca Ansible
+            işi <strong>otomatik</strong> tetiklenir. Reddedilirse ya da onay{' '}
+            <strong>15 dakika</strong> içinde gelmezse (zaman aşımı) iş hiç başlamaz.
           </p>
           <p>
-            <strong>Flow Key boşsa production işlem reddedilir.</strong> "Yapılandırma yok"
-            durumu, işlemi onaysız çalıştırmak için gerekçe değildir.
+            <strong>Flow Key boşsa production işlem reddedilir.</strong> "Yapılandırma yok" durumu,
+            işlemi onaysız çalıştırmak için gerekçe değildir.
           </p>
           <p className="text-[var(--text-muted)]">
-            <strong>OCO kontrolü OpsX'te yok</strong> — OpsX hiçbir akışta OCO numarası
-            toplamıyor, dolayısıyla kesinti penceresi doğrulanamaz. Kesinti penceresine
-            bağlı akışlar Self Service ▸ Otomasyon ve Server Hub ▸ Retirement tarafındadır.
+            <strong>OCO kontrolü OpsX'te yok</strong> — OpsX hiçbir akışta OCO numarası toplamıyor,
+            dolayısıyla kesinti penceresi doğrulanamaz. Kesinti penceresine bağlı akışlar Self
+            Service ▸ Otomasyon ve Server Hub ▸ Retirement tarafındadır.
           </p>
         </div>
 
@@ -332,8 +359,8 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
               </label>
               {guncel.enabled ? (
                 <p className="text-[11px] text-[var(--text-muted)] mt-1.5">
-                  Production olarak tespit edilen işlem doğrudan çalışmaz; Smart talebi açılır
-                  ve onaydan sonra Ansible tetiklenir.
+                  Production olarak tespit edilen işlem doğrudan çalışmaz; Smart talebi açılır ve
+                  onaydan sonra Ansible tetiklenir.
                 </p>
               ) : (
                 <p className="text-[11px] text-red-600 mt-1.5 leading-relaxed">
@@ -347,7 +374,10 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
 
             {/* ── Flow Key ────────────────────────────────────────────────────────── */}
             <div>
-              <label htmlFor={`${alanId}-flow`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+              <label
+                htmlFor={`${alanId}-flow`}
+                className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+              >
                 Smart Flow Key
               </label>
               <div className="flex items-center gap-2">
@@ -373,23 +403,26 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
               {envUyarisi && (
                 <p className="text-[11px] text-amber-600 mt-1">
                   Bu platformun Flow Key'i şu an <code className="font-mono">{env?.envName}</code>{' '}
-                  ortam değişkeninden geliyor ve akış <strong>çalışıyor</strong>. Buraya bir
-                  değer yazarsanız o değer geçerli olur; boş bırakırsanız ortam değişkeni
-                  kullanılmaya devam eder.
+                  ortam değişkeninden geliyor ve akış <strong>çalışıyor</strong>. Buraya bir değer
+                  yazarsanız o değer geçerli olur; boş bırakırsanız ortam değişkeni kullanılmaya
+                  devam eder.
                 </p>
               )}
               {/* Kapi KAPALIYSA bu uyari yanlis olurdu: anahtar olmasa da islem kosar. */}
               {!envUyarisi && !guncel.flowKey.trim() && guncel.enabled && (
                 <p className="text-[11px] text-red-600 mt-1">
-                  Tanımsız — bu platformda <strong>production işlem REDDEDİLİR</strong>. Ya Flow
-                  Key girin ya da yukarıdaki anahtarı kapatın.
+                  Tanımsız — bu platformda <strong>production işlem REDDEDİLİR</strong>. Ya Flow Key
+                  girin ya da yukarıdaki anahtarı kapatın.
                 </p>
               )}
             </div>
 
             {/* ── Integration Key ─────────────────────────────────────────────────── */}
             <div>
-              <label htmlFor={`${alanId}-integration`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+              <label
+                htmlFor={`${alanId}-integration`}
+                className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1"
+              >
                 Integration Key (opsiyonel)
               </label>
               <TextInput
@@ -410,8 +443,8 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
                 Smart Designer'da her flow ayrı bir "Integration Information" anahtarıyla
                 (rff-request-token) yayınlanmış olabilir. Bu platformun flow'u sistem geneli
                 anahtardan FARKLIYSA doldurun.{' '}
-                <strong>Mevcut değer güvenlik gereği ekrana getirilmez</strong> — boş
-                bırakırsanız değişmez, silinmez.
+                <strong>Mevcut değer güvenlik gereği ekrana getirilmez</strong> — boş bırakırsanız
+                değişmez, silinmez.
               </p>
             </div>
 
@@ -426,7 +459,10 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
             {/* ── Metadata eslemesi ───────────────────────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <label htmlFor={`${alanId}-metadata`} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                <label
+                  htmlFor={`${alanId}-metadata`}
+                  className="block text-[11px] font-semibold text-[var(--text-secondary)]"
+                >
                   Metadata Eşlemesi
                 </label>
                 <button
@@ -441,22 +477,24 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
               </div>
               <p className="text-[11px] text-[var(--text-muted)] mb-1">
                 Her satıra bir tane, <code className="font-mono">ElementName: değer</code>{' '}
-                (yukarıdaki tablonun İLK sütunu). Değer <strong>nunjucks</strong> ile render
-                edilir: <code className="font-mono">{'{{username}}'}</code>,{' '}
+                (yukarıdaki tablonun İLK sütunu). Değer <strong>nunjucks</strong> ile render edilir:{' '}
+                <code className="font-mono">{'{{username}}'}</code>,{' '}
                 <code className="font-mono">{'{{email}}'}</code>,{' '}
                 <code className="font-mono">{'{{templateName}}'}</code>,{' '}
                 <code className="font-mono">{'{{extraVars.ALAN_ADI}}'}</code> ve işin çözülmüş özeti{' '}
-                <code className="font-mono">{'{{opsx.ALAN}}'}</code>: <code className="font-mono">islem</code>,{' '}
-                <code className="font-mono">platform</code>, <code className="font-mono">talepEden</code>,{' '}
+                <code className="font-mono">{'{{opsx.ALAN}}'}</code>:{' '}
+                <code className="font-mono">islem</code>,{' '}
+                <code className="font-mono">platform</code>,{' '}
+                <code className="font-mono">talepEden</code>,{' '}
                 <code className="font-mono">uretimSebebi</code>; Legacy'de ayrıca{' '}
-                <code className="font-mono">uygulama</code>, <code className="font-mono">sunucular</code>;{' '}
-                OpenShift'te <code className="font-mono">ortam</code>, <code className="font-mono">cluster</code>,{' '}
-                <code className="font-mono">hedefler</code>.
+                <code className="font-mono">uygulama</code>,{' '}
+                <code className="font-mono">sunucular</code>; OpenShift'te{' '}
+                <code className="font-mono">ortam</code>, <code className="font-mono">cluster</code>
+                , <code className="font-mono">hedefler</code>.
               </p>
               <p className="text-[11px] text-[var(--text-muted)] mb-1">
                 OpsX'in gönderdiği <code className="font-mono">extraVars</code> anahtarları
-                platforma göre değişir — Legacy:{' '}
-                <code className="font-mono">application</code>,{' '}
+                platforma göre değişir — Legacy: <code className="font-mono">application</code>,{' '}
                 <code className="font-mono">operation</code>; OpenShift:{' '}
                 <code className="font-mono">oc_environment</code>,{' '}
                 <code className="font-mono">oc_cluster</code>,{' '}
@@ -467,9 +505,8 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
                 <strong>Boş bırakılırsa</strong> sabit{' '}
                 <code className="font-mono">application</code>/
                 <code className="font-mono">requestedBy</code> gövdesi gönderilir ve Smart bunu
-                genellikle <strong>"400 Invalid Request"</strong> ile reddeder — yani talep
-                hiç açılmaz. <code className="font-mono">#</code> ile başlayan satırlar yok
-                sayılır.
+                genellikle <strong>"400 Invalid Request"</strong> ile reddeder — yani talep hiç
+                açılmaz. <code className="font-mono">#</code> ile başlayan satırlar yok sayılır.
               </p>
               <Textarea
                 id={`${alanId}-metadata`}

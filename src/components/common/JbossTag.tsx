@@ -9,8 +9,8 @@
 // eski (notr gri). Yesil/kirmizi/sari KULLANILMAZ — onlar bu ekranda "calisiyor /
 // durmus" durumunun rengi ve surum bilgisine tasinmasi iki farkli seyi ayni dile
 // sokardi. Ayirt etme yalnizca renge de birakilmaz: majör surum METIN olarak yazar.
-import React from "react";
-import { jbossLabel } from "@/utils/jboss";
+import React from 'react';
+import { jbossLabel } from '@/utils/jboss';
 
 interface Props {
   /** Majör surum ("7" / "8" / "" = bilinmiyor). */
@@ -22,8 +22,8 @@ interface Props {
 
 const JbossTag: React.FC<Props> = ({ major, version }) => (
   <span
-    className={`pf-label ${major === "8" ? "pf-label--blue" : "pf-label--grey"}`}
-    title={version ? `Envanterdeki sürüm: ${version}` : "Envanterde JBoss sürümü yok"}
+    className={`pf-label ${major === '8' ? 'pf-label--blue' : 'pf-label--grey'}`}
+    title={version ? `Envanterdeki sürüm: ${version}` : 'Envanterde JBoss sürümü yok'}
   >
     {jbossLabel(major)}
     {version ? <span className="ml-1 font-mono opacity-70">{version}</span> : null}

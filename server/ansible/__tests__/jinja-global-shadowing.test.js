@@ -108,7 +108,6 @@ function expressionParts(src) {
 
     const w = line.match(/\bwhen:\s*(.+)$/);
     if (w) push(w[1]);
-
   });
   return parts;
 }

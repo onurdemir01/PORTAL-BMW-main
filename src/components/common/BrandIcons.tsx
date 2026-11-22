@@ -53,7 +53,10 @@ export function TuxIcon({ className = 'h-4 w-4', style, title = 'Linux' }: IconP
     <svg viewBox="0 0 24 24" className={className} style={style} role="img" aria-label={title}>
       <title>{title}</title>
       {/* gövde */}
-      <path d="M12 2c2.5 0 4 1.9 4 4.3 0 1.3-.3 2 .4 2.9 1.4 1.8 2.4 3.9 2.4 6.2 0 3.3-2.9 5.6-6.8 5.6S5.2 18.7 5.2 15.4c0-2.3 1-4.4 2.4-6.2.7-.9.4-1.6.4-2.9C8 3.9 9.5 2 12 2z" fill={TUX_DARK} />
+      <path
+        d="M12 2c2.5 0 4 1.9 4 4.3 0 1.3-.3 2 .4 2.9 1.4 1.8 2.4 3.9 2.4 6.2 0 3.3-2.9 5.6-6.8 5.6S5.2 18.7 5.2 15.4c0-2.3 1-4.4 2.4-6.2.7-.9.4-1.6.4-2.9C8 3.9 9.5 2 12 2z"
+        fill={TUX_DARK}
+      />
       {/* karın */}
       <ellipse cx="12" cy="15" rx="4.1" ry="4.6" fill="#fff" />
       {/* gözler */}
@@ -64,7 +67,10 @@ export function TuxIcon({ className = 'h-4 w-4', style, title = 'Linux' }: IconP
       {/* gaga */}
       <path d="M12 7.4c.9 0 1.6.5 1.6 1s-.7 1-1.6 1-1.6-.5-1.6-1 .7-1 1.6-1z" fill={TUX_YELLOW} />
       {/* ayaklar */}
-      <path d="M8.6 20.2c-.6.9-1.7 1.2-2.2.9-.5-.3-.2-1.2.5-1.9.5-.5 1.2-.8 1.7-.7zM15.4 20.2c.6.9 1.7 1.2 2.2.9.5-.3.2-1.2-.5-1.9-.5-.5-1.2-.8-1.7-.7z" fill={TUX_YELLOW} />
+      <path
+        d="M8.6 20.2c-.6.9-1.7 1.2-2.2.9-.5-.3-.2-1.2.5-1.9.5-.5 1.2-.8 1.7-.7zM15.4 20.2c.6.9 1.7 1.2 2.2.9.5-.3.2-1.2-.5-1.9-.5-.5-1.2-.8-1.7-.7z"
+        fill={TUX_YELLOW}
+      />
     </svg>
   );
 }
@@ -96,7 +102,10 @@ export function WydenIcon({ className = 'h-4 w-4', style, title = 'Wyden' }: Ico
     <svg viewBox="0 0 24 24" className={className} style={style} role="img" aria-label={title}>
       <title>{title}</title>
       <rect x="1" y="1" width="22" height="22" rx="5" fill={WYDEN_INK} />
-      <path d="M5 8.2h2.3l1.7 6 1.9-6h1.9l1.9 6 1.7-6H19l-2.7 8.4h-2.1L12.4 11l-1.8 5.6H8.5z" fill="#fff" />
+      <path
+        d="M5 8.2h2.3l1.7 6 1.9-6h1.9l1.9 6 1.7-6H19l-2.7 8.4h-2.1L12.4 11l-1.8 5.6H8.5z"
+        fill="#fff"
+      />
     </svg>
   );
 }
@@ -108,14 +117,30 @@ const GAR_GREEN = '#00A650';
  * DAS — Dijital Varlık. Blok zinciri düğümleriyle bağlı bir küp: "dijital varlık"ı
  * anlatan genel bir işaret (bir şirket logosu DEĞİL).
  */
-export function DasIcon({ className = 'h-4 w-4', style, title = 'DAS — Dijital Varlık' }: IconProps) {
+export function DasIcon({
+  className = 'h-4 w-4',
+  style,
+  title = 'DAS — Dijital Varlık',
+}: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} style={style} role="img" aria-label={title}>
       <title>{title}</title>
       <rect x="1" y="1" width="22" height="22" rx="6" fill={DAS_VIOLET} />
       {/* kup */}
-      <path d="M12 6.2 17 9v6l-5 2.8L7 15V9z" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinejoin="round" />
-      <path d="M12 6.2V12m0 0 5-3m-5 3-5-3m5 3v5.8" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" opacity=".85" />
+      <path
+        d="M12 6.2 17 9v6l-5 2.8L7 15V9z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 6.2V12m0 0 5-3m-5 3-5-3m5 3v5.8"
+        stroke="#fff"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+        opacity=".85"
+      />
       {/* dugumler */}
       <circle cx="12" cy="6.2" r="1.5" fill="#fff" />
       <circle cx="17" cy="15" r="1.5" fill="#fff" />
@@ -126,7 +151,7 @@ export function DasIcon({ className = 'h-4 w-4', style, title = 'DAS — Dijital
 
 /**
  * GAR — Banka tarafı. Sütunlu banka binası: bankacılık için genel bir işaret.
- * Garanti BBVA'nın resmî logosu DEĞİL; marka dosyası kullanılmıyor.
+ * Kurumun resmî logosu DEĞİL; marka dosyası kullanılmıyor.
  */
 export function GarIcon({ className = 'h-4 w-4', style, title = 'GAR — Banka' }: IconProps) {
   return (
@@ -146,14 +171,32 @@ export function GarIcon({ className = 'h-4 w-4', style, title = 'GAR — Banka' 
 }
 
 /** Domain anahtarından simge: das → dijital varlık, gar → banka. */
-export function DomainIcon({ domain, app, className, style }: { domain: string; app?: string; className?: string; style?: React.CSSProperties }) {
+export function DomainIcon({
+  domain,
+  app,
+  className,
+  style,
+}: {
+  domain: string;
+  app?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   if (domain === 'das') return <DasIcon className={className} style={style} />;
   if (domain === 'gar') return <GarIcon className={className} style={style} />;
   return <AppIcon app={app || ''} className={className} style={style} />;
 }
 
 /** Uygulama anahtarından simge (crypto hub içi). */
-export function AppIcon({ app, className, style }: { app: string; className?: string; style?: React.CSSProperties }) {
+export function AppIcon({
+  app,
+  className,
+  style,
+}: {
+  app: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   if (app === 'metaco') return <RippleIcon className={className} style={style} />;
   if (app === 'wyden') return <WydenIcon className={className} style={style} />;
   return <BitcoinIcon className={className} style={style} />;

@@ -90,7 +90,11 @@ function paralelKostur({
         '  delegate_to: "{{ item.item.runtime_host }}"\n',
         '  # DELEGASYON BILEREK KALDIRILDI (bekci)\n',
       );
-      assert.notEqual(bozuk, src, '`async_status` delegasyonu bulunamadi — bekci kendi hedefini kaybetti');
+      assert.notEqual(
+        bozuk,
+        src,
+        '`async_status` delegasyonu bulunamadi — bekci kendi hedefini kaybetti',
+      );
       gorevDosyasi = path.join(tmp, 'bozuk.yml');
       fs.writeFileSync(gorevDosyasi, bozuk);
     }
@@ -111,7 +115,7 @@ function paralelKostur({
       _disc_runner_path: runnerYolu,
       discovery_async_seconds_effective: asyncSaniye,
       discovery_mode_effective: 'workloads',
-      username: 'uxmid',
+      username: 'svcac',
       pf_sifre: 'gizli',
       oc_namespace: 'ns1',
       oc_namespaces_effective: ['ns1'],
@@ -153,7 +157,11 @@ function paralelKostur({
     const r = spawnSync('ansible-playbook', [play], {
       encoding: 'utf8',
       cwd: tmp,
-      env: { ...process.env, ANSIBLE_LOCALHOST_WARNING: 'False', ANSIBLE_DEPRECATION_WARNINGS: 'False' },
+      env: {
+        ...process.env,
+        ANSIBLE_LOCALHOST_WARNING: 'False',
+        ANSIBLE_DEPRECATION_WARNINGS: 'False',
+      },
     });
     const out = `${r.stdout || ''}${r.stderr || ''}`;
     // `|| [, '']` SEYREK DIZI uretiyordu (lint hatasi). Eslesme yoksa BOS dizi
@@ -163,8 +171,12 @@ function paralelKostur({
       const m = re.exec(out);
       return m ? m[1] : '';
     };
-    const rows = yakala(/ROWS=(.*?)"/).split('~~').filter(Boolean);
-    const failed = yakala(/FAILED=(.*?)"/).split(',').filter(Boolean);
+    const rows = yakala(/ROWS=(.*?)"/)
+      .split('~~')
+      .filter(Boolean);
+    const failed = yakala(/FAILED=(.*?)"/)
+      .split(',')
+      .filter(Boolean);
     const trace = fs.existsSync(iz) ? fs.readFileSync(iz, 'utf8').split('\n').filter(Boolean) : [];
     const kopyaKaldi = fs.existsSync(runnerYolu);
     return { out, rows, failed, trace, kopyaKaldi, playFailed: /PLAY_FAILED/.test(out) };
@@ -182,8 +194,16 @@ function paralelKostur({
 test('PF1 cluster`lar AYNI ANDA kosuyor (ic ice gecme)', { skip: !HAS_ANSIBLE }, () => {
   const r = paralelKostur();
   assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2500)}`);
-  assert.equal(r.trace.filter((x) => x.startsWith('BASLA')).length, 2, `iz: ${JSON.stringify(r.trace)}`);
-  assert.equal(r.trace.filter((x) => x.startsWith('BITTI')).length, 2, `iz: ${JSON.stringify(r.trace)}`);
+  assert.equal(
+    r.trace.filter((x) => x.startsWith('BASLA')).length,
+    2,
+    `iz: ${JSON.stringify(r.trace)}`,
+  );
+  assert.equal(
+    r.trace.filter((x) => x.startsWith('BITTI')).length,
+    2,
+    `iz: ${JSON.stringify(r.trace)}`,
+  );
   const ikinciBasla = r.trace.lastIndexOf(r.trace.filter((x) => x.startsWith('BASLA')).pop());
   const ilkBitti = r.trace.findIndex((x) => x.startsWith('BITTI'));
   assert.ok(
@@ -215,21 +235,25 @@ test('PF2 her cluster`in satirlari toplaniyor', { skip: !HAS_ANSIBLE }, () => {
 //
 // Bu yuzden toplama `rc` alaninin VARLIGINI soruyor. Bu bekci o kurali kilitler:
 // delegasyon kaldirildiginda cluster'lar SESSIZCE bos donmez, FAIL raporlanir.
-test('PF3 delegasyon kaldirilirsa cluster`lar SESSIZCE degil FAIL ile duser', { skip: !HAS_ANSIBLE }, () => {
-  const r = paralelKostur({ delegasyon: false });
-  assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2500)}`);
-  // Her cluster BASARISIZ listesinde olmali.
-  assert.deepEqual(
-    [...r.failed].sort(),
-    ['c1', 'c2'],
-    `delegasyon bozukken cluster'lar sessizce kayboldu — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
-  );
-  // Ve sebep SATIR OLARAK yaziliyor: portal `problems[]` ile gosterir.
-  assert.ok(
-    r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length === 2,
-    `FAIL satirlari yok: ${JSON.stringify(r.rows)}`,
-  );
-});
+test(
+  'PF3 delegasyon kaldirilirsa cluster`lar SESSIZCE degil FAIL ile duser',
+  { skip: !HAS_ANSIBLE },
+  () => {
+    const r = paralelKostur({ delegasyon: false });
+    assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2500)}`);
+    // Her cluster BASARISIZ listesinde olmali.
+    assert.deepEqual(
+      [...r.failed].sort(),
+      ['c1', 'c2'],
+      `delegasyon bozukken cluster'lar sessizce kayboldu — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
+    );
+    // Ve sebep SATIR OLARAK yaziliyor: portal `problems[]` ile gosterir.
+    assert.ok(
+      r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length === 2,
+      `FAIL satirlari yok: ${JSON.stringify(r.rows)}`,
+    );
+  },
+);
 
 // ── PF4: ZAMAN ASIMI DA GURULTULU ───────────────────────────────────────────
 //
@@ -238,22 +262,26 @@ test('PF3 delegasyon kaldirilirsa cluster`lar SESSIZCE degil FAIL ile duser', { 
 // kontrol baska bir sinifi koruyor: yoklama TUKENDIGI halde is HALA KOSUYOR.
 // Bu halde `rc` de gelmez ama sebebi FARKLI — ve kontrol kalkarsa cluster
 // SESSIZCE bos doner.
-test('PF4 yoklama tukenirse (is hala kosuyor) cluster FAIL ile duser', { skip: !HAS_ANSIBLE }, () => {
-  // Async butcesi 3 sn -> `retries = 1`, `delay = 3`. Betik 12 sn uyur, yani ILK
-  // yoklamada is BITMEMISTIR ve yoklama TUKENIR.
-  const r = paralelKostur({ clusters: ['c1'], sleepSaniye: 12, asyncSaniye: 3 });
-  assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2000)}`);
-  assert.deepEqual(
-    r.failed,
-    ['c1'],
-    `bitmemis is basarili sayildi — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
-  );
-  assert.equal(
-    r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length,
-    1,
-    `FAIL satiri yok: ${JSON.stringify(r.rows)}`,
-  );
-});
+test(
+  'PF4 yoklama tukenirse (is hala kosuyor) cluster FAIL ile duser',
+  { skip: !HAS_ANSIBLE },
+  () => {
+    // Async butcesi 3 sn -> `retries = 1`, `delay = 3`. Betik 12 sn uyur, yani ILK
+    // yoklamada is BITMEMISTIR ve yoklama TUKENIR.
+    const r = paralelKostur({ clusters: ['c1'], sleepSaniye: 12, asyncSaniye: 3 });
+    assert.ok(!r.playFailed, `play dustu:\n${r.out.slice(-2000)}`);
+    assert.deepEqual(
+      r.failed,
+      ['c1'],
+      `bitmemis is basarili sayildi — failed=${JSON.stringify(r.failed)} rows=${JSON.stringify(r.rows)}`,
+    );
+    assert.equal(
+      r.rows.filter((x) => /;RUNNER;FAIL;/.test(x)).length,
+      1,
+      `FAIL satiri yok: ${JSON.stringify(r.rows)}`,
+    );
+  },
+);
 
 // ── PF5: KOPYALANAN BETIK SILINIYOR ─────────────────────────────────────────
 //
@@ -279,7 +307,9 @@ test('PF5 kopyalanan betik SONDA siliniyor', { skip: !HAS_ANSIBLE }, () => {
 test('PF6 paralel ve seri yol AYNI ANDA kosamaz', () => {
   const play = fs.readFileSync(path.join(APP, 'discovery.yml'), 'utf8');
   const par = /10_discover_parallel\.yml[\s\S]{0,400}?when: (.+)/.exec(play);
-  const ser = /include_tasks: tasks\/discovery\/10_discover\.yml[\s\S]{0,400}?when: (.+)/.exec(play);
+  const ser = /include_tasks: tasks\/discovery\/10_discover\.yml[\s\S]{0,400}?when: (.+)/.exec(
+    play,
+  );
   assert.ok(par, 'paralel yolun `when` kosulu yok — her zaman kosar');
   assert.ok(ser, 'seri yolun `when` kosulu yok — her zaman kosar');
   assert.match(par[1], /discovery_parallel_effective \| bool/);
@@ -331,7 +361,11 @@ test('PF7 betik sifir disi cikarsa cluster FAIL (satir gelse bile)', { skip: !HA
 // kilitler: izin gercekten calistirilamaz VE cagri yorumlayici uzerinden.
 test('PF8 kopya calistirilamaz (0600) ve betik `/bin/bash` ile okutuluyor', () => {
   const src = fs.readFileSync(path.join(DISC, '10_discover_parallel.yml'), 'utf8');
-  assert.match(src, /dest: "\{\{ _disc_runner_path \}\}"\n\s+mode: "0600"/, 'kopya izni 0600 degil');
+  assert.match(
+    src,
+    /dest: "\{\{ _disc_runner_path \}\}"\n\s+mode: "0600"/,
+    'kopya izni 0600 degil',
+  );
   assert.match(
     src,
     /cmd: "\/bin\/bash \{\{ _disc_runner_path \| quote \}\}"/,
@@ -341,8 +375,15 @@ test('PF8 kopya calistirilamaz (0600) ve betik `/bin/bash` ile okutuluyor', () =
 
 test('PF8b 0600 kopya ile paralel kesif GERCEKTEN satir topluyor', { skip: !HAS_ANSIBLE }, () => {
   const r = paralelKostur({ clusters: ['c1'], sleepSaniye: 0 });
-  assert.deepEqual(r.failed, [], `calistirilamadi: ${JSON.stringify(r.rows)}\n${r.out.slice(-1500)}`);
-  assert.ok(r.rows.some((x) => x.startsWith('c1;jump-c1;odeme-api;')), `satir yok: ${JSON.stringify(r.rows)}`);
+  assert.deepEqual(
+    r.failed,
+    [],
+    `calistirilamadi: ${JSON.stringify(r.rows)}\n${r.out.slice(-1500)}`,
+  );
+  assert.ok(
+    r.rows.some((x) => x.startsWith('c1;jump-c1;odeme-api;')),
+    `satir yok: ${JSON.stringify(r.rows)}`,
+  );
 });
 
 // ── PF9: HATA SATIRI SEBEBI SOYLUYOR ────────────────────────────────────────

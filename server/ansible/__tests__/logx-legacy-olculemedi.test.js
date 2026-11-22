@@ -50,7 +50,7 @@ const {
 } = require('./fixtures/python-bul.cjs');
 const { normalize } = require('../../util/guard-text.cjs');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'logx', 'legacy');
 const KESIF = path.join(DIR, 'logx_legacy_discovery.yml');
 const AKTARIM = path.join(DIR, 'logx_legacy_transfer.yml');
 const README = path.join(DIR, 'README.md');
@@ -593,9 +593,9 @@ EACCES_LF = "[Errno 13] Permission denied: '/vhosting/lost+found'"
 
 def kesif_host(enjekte, hata_gorev=None, ekstra=None):
     oyun = kesif_host_oyunu()
-    e = {'app_name': 'APPX', 'target_hosts': 'GBJBOT22'}
+    e = {'app_name': 'APPX', 'target_hosts': 'ORJBOT22'}
     e.update(ekstra or {})
-    h = Host('GBJBOT22', e, {'groups': {'all': ['GBJBOT22']}}, oyun.get('vars'), enjekte, hata_gorev)
+    h = Host('ORJBOT22', e, {'groups': {'all': ['ORJBOT22']}}, oyun.get('vars'), enjekte, hata_gorev)
     h.ignore_unreachable = bool(oyun.get('ignore_unreachable'))
     try:
         gorevleri_kos(oyun['tasks'], h)
@@ -660,7 +660,7 @@ def stat_sonucu(yollar, durum, boyut=MB):
         elif durum == 'red':
             sonuclar.append({'item': oge, 'failed': True, 'changed': False,
                              'msg': 'MODULE FAILURE',
-                             'module_stderr': 'dzdo: Sorry, user uxmid is not allowed to execute as was'})
+                             'module_stderr': 'dzdo: Sorry, user svcac is not allowed to execute as was'})
     s = {'changed': False, 'results': sonuclar}
     if any(r.get('unreachable') for r in sonuclar):
         s['unreachable'] = True
@@ -772,8 +772,8 @@ def aktarim_kos(secili, host_enjekte, hata_gorev=None, toplayici_enjekte=None,
 
 TEK = [{'host': 'ESJBOT02', 'path': '/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'}]
 TEK_Y = [(TEK[0]['host'], TEK[0]['path'])]
-COK = [{'host': 'GBJBOT21', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'},
-       {'host': 'GBJBOT22', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'}]
+COK = [{'host': 'ORJBOT21', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'},
+       {'host': 'ORJBOT22', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'}]
 
 
 def st(var=True, dizin=True, yazar=True, gecer=True):
@@ -856,15 +856,15 @@ def cok_host_enjekte(host, durum='ok', aday=None):
 
 
 TOPLAYICI_OK = {
-    'part_files': {'changed': False, 'files': [{'path': STAGING + '/x__parts/GBJBOT21.zip'},
-                                               {'path': STAGING + '/x__parts/GBJBOT22.zip'}]},
+    'part_files': {'changed': False, 'files': [{'path': STAGING + '/x__parts/ORJBOT21.zip'},
+                                               {'path': STAGING + '/x__parts/ORJBOT22.zip'}]},
     'combined_archive_result': {'changed': True},
     'combined_archive_stat': {'changed': False, 'stat': {'exists': True, 'size': 999}},
 }
 TOPLAYICI_PARCA_YOK = {'part_files': {'changed': False, 'files': []}}
 TOPLAYICI_HOSTU_ERISILEMEZ = {
     'part_files': {'unreachable': True, 'changed': False,
-                   'msg': 'Failed to connect to the host via ssh: GBJBOT21 timed out'},
+                   'msg': 'Failed to connect to the host via ssh: ORJBOT21 timed out'},
 }
 
 
@@ -902,7 +902,7 @@ SENARYOLAR = {
         'found_ear_dirs': EAR_OK, 'found_log_dirs': LOGDIR_OK, 'found_files': DOSYA_OK}),
     'K2_ear_find_dustu': lambda: kesif_host({
         'found_ear_dirs': {'failed': True, 'changed': False, 'msg': 'MODULE FAILURE',
-                           'module_stderr': 'dzdo: Sorry, user uxmid is not allowed to execute as was'}}),
+                           'module_stderr': 'dzdo: Sorry, user svcac is not allowed to execute as was'}}),
     'K3_erisilemez': lambda: kesif_host({
         'found_ear_dirs': {'unreachable': True, 'changed': False,
                            'msg': 'Failed to connect to the host via ssh: Connection timed out'}}),
@@ -950,34 +950,34 @@ SENARYOLAR = {
             {'path': '/vhosting8/APPX-T.ear/mylogs1/m.log', 'size': 1},
             {'path': '/vhosting8/BASKA.ear/logs2/o.log', 'size': 1}])}),
     'A8_dizin_deseni_yayinlanir': lambda: kesif_topla(
-        'GBJBOT21,GBJBOT22',
-        {'GBJBOT21': hr('GBJBOT21', 'error', error='x'),
-         'GBJBOT22': dict(hr('GBJBOT22'), log_dir_regex='logs?[0-9]*')},
-        ['GBJBOT21', 'GBJBOT22']),
+        'ORJBOT21,ORJBOT22',
+        {'ORJBOT21': hr('ORJBOT21', 'error', error='x'),
+         'ORJBOT22': dict(hr('ORJBOT22'), log_dir_regex='logs?[0-9]*')},
+        ['ORJBOT21', 'ORJBOT22']),
     'A9_eski_host_sonucu_desen_yok': lambda: kesif_topla(
-        'GBJBOT21', {'GBJBOT21': hr('GBJBOT21')}, ['GBJBOT21']),
+        'ORJBOT21', {'ORJBOT21': hr('ORJBOT21')}, ['ORJBOT21']),
     'A1_bir_host_bildirmedi': lambda: kesif_topla(
-        'GBJBOT21,GBJBOT22,GBJBOT23',
-        {'GBJBOT21': hr('GBJBOT21', files=[{'path': '/vhosting8/APPX-T.ear/logs/a.log'}]),
-         'GBJBOT22': hr('GBJBOT22', 'error', error='x')},
-        ['GBJBOT21', 'GBJBOT22', 'GBJBOT23']),
+        'ORJBOT21,ORJBOT22,ORJBOT23',
+        {'ORJBOT21': hr('ORJBOT21', files=[{'path': '/vhosting8/APPX-T.ear/logs/a.log'}]),
+         'ORJBOT22': hr('ORJBOT22', 'error', error='x')},
+        ['ORJBOT21', 'ORJBOT22', 'ORJBOT23']),
     'A2_hicbiri_ok_degil': lambda: kesif_topla(
-        'GBJBOT21,GBJBOT22',
-        {'GBJBOT21': hr('GBJBOT21', 'error', error='x'),
-         'GBJBOT22': hr('GBJBOT22', 'unreachable', error='y')},
-        ['GBJBOT21', 'GBJBOT22']),
+        'ORJBOT21,ORJBOT22',
+        {'ORJBOT21': hr('ORJBOT21', 'error', error='x'),
+         'ORJBOT22': hr('ORJBOT22', 'unreachable', error='y')},
+        ['ORJBOT21', 'ORJBOT22']),
     'A3_hepsi_ok': lambda: kesif_topla(
-        'GBJBOT21,GBJBOT22',
-        {'GBJBOT21': hr('GBJBOT21'), 'GBJBOT22': hr('GBJBOT22')},
-        ['GBJBOT21', 'GBJBOT22']),
+        'ORJBOT21,ORJBOT22',
+        {'ORJBOT21': hr('ORJBOT21'), 'ORJBOT22': hr('ORJBOT22')},
+        ['ORJBOT21', 'ORJBOT22']),
     'A4_hedef_tanimsiz': lambda: kesif_topla(
-        None, {'GBJBOT21': hr('GBJBOT21')}, ['GBJBOT21', 'GBJBOT22']),
+        None, {'ORJBOT21': hr('ORJBOT21')}, ['ORJBOT21', 'ORJBOT22']),
     'A5_envanterde_yok': lambda: kesif_topla(
-        'GBJBOT21,GBELLE99', {'GBJBOT21': hr('GBJBOT21')}, ['GBJBOT21']),
+        'ORJBOT21,ORELLE99', {'ORJBOT21': hr('ORJBOT21')}, ['ORJBOT21']),
     'A6_grup_hedefi': lambda: kesif_topla(
-        'jboss_ekip', {'GBJBOT21': hr('GBJBOT21')}, ['GBJBOT21', 'GBJBOT22'],
-        {'jboss_ekip': ['GBJBOT21', 'GBJBOT22']}),
-    'A7_hic_sonuc_yok': lambda: kesif_topla('GBJBOT21', {}, ['GBJBOT21']),
+        'jboss_ekip', {'ORJBOT21': hr('ORJBOT21')}, ['ORJBOT21', 'ORJBOT22'],
+        {'jboss_ekip': ['ORJBOT21', 'ORJBOT22']}),
+    'A7_hic_sonuc_yok': lambda: kesif_topla('ORJBOT21', {}, ['ORJBOT21']),
     'S1_staging': lambda: aktarim_kos(TEK, tek_enjekte()),
     'S1b_staging_ikinci_kosu': lambda: aktarim_kos(TEK, tek_enjekte()),
     'S2_staging_yazilamaz': lambda: aktarim_kos(TEK, tek_enjekte(
@@ -1050,41 +1050,41 @@ SENARYOLAR = {
         ek_vars={'logx_legacy_tmp_bases': [{'dir': '/ozel/a'},
                                            {'dir': STAGING, 'tur': 'teslim'}]}),
     'GC1_cok_host': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'), 'ORJBOT22': cok_host_enjekte('ORJBOT22')},
         toplayici_enjekte=TOPLAYICI_OK),
     'GC2_bir_hostta_alan_yok': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'),
-              'GBJBOT22': cok_host_enjekte(
-                  'GBJBOT22',
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'),
+              'ORJBOT22': cok_host_enjekte(
+                  'ORJBOT22',
                   aday=aday_enjekte(was=HEPSI_KOTU, ust={'/vhosting8': st(yazar=False)}))},
         toplayici_enjekte=TOPLAYICI_OK),
     'GC3_dosyasi_olmayan_host': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'),
-              'GBJBOT22': cok_host_enjekte('GBJBOT22', 'yok')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'),
+              'ORJBOT22': cok_host_enjekte('ORJBOT22', 'yok')},
         toplayici_enjekte=TOPLAYICI_OK),
     'C1_iki_host_ok': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'), 'ORJBOT22': cok_host_enjekte('ORJBOT22')},
         toplayici_enjekte=TOPLAYICI_OK),
     'C2_host_rescue': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
-        hata_gorev={'GBJBOT22': 'Dosya durumlarini ve gecerli kaynak listesini olustur'},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'), 'ORJBOT22': cok_host_enjekte('ORJBOT22')},
+        hata_gorev={'ORJBOT22': 'Dosya durumlarini ve gecerli kaynak listesini olustur'},
         toplayici_enjekte=TOPLAYICI_OK),
     'C3_host_bildirmedi': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21')},
-        kosmayan_hostlar=('GBJBOT22',), toplayici_enjekte=TOPLAYICI_OK),
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21')},
+        kosmayan_hostlar=('ORJBOT22',), toplayici_enjekte=TOPLAYICI_OK),
     'C4_toplayici_kosmadi': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'), 'ORJBOT22': cok_host_enjekte('ORJBOT22')},
         toplayici_kosmaz=True),
     'C5_parca_yok': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21', 'yok'),
-              'GBJBOT22': cok_host_enjekte('GBJBOT22', 'yok')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21', 'yok'),
+              'ORJBOT22': cok_host_enjekte('ORJBOT22', 'yok')},
         toplayici_enjekte=TOPLAYICI_PARCA_YOK),
     'C7_toplayici_hostu_erisilemez': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'), 'GBJBOT22': cok_host_enjekte('GBJBOT22')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'), 'ORJBOT22': cok_host_enjekte('ORJBOT22')},
         toplayici_enjekte=TOPLAYICI_HOSTU_ERISILEMEZ),
     'C6_host_stat_erisilemez': lambda: aktarim_kos(
-        COK, {'GBJBOT21': cok_host_enjekte('GBJBOT21'),
-              'GBJBOT22': cok_host_enjekte('GBJBOT22', 'erisilemez')},
+        COK, {'ORJBOT21': cok_host_enjekte('ORJBOT21'),
+              'ORJBOT22': cok_host_enjekte('ORJBOT22', 'erisilemez')},
         toplayici_enjekte=TOPLAYICI_OK),
 }
 
@@ -1421,8 +1421,8 @@ test('X03 kesif rescue: host_result error yazar ve gruba girer (artifact tan dus
 test('X03 kesif toplayici: hedeflenip bildirmeyen host unreachable eklenir, overall partial', () => {
   const s = senaryo('A1_bir_host_bildirmedi');
   const r = tekYayin(s, 'A1');
-  const eksik = r.hosts.find((h) => h.host === 'GBJBOT23');
-  assert.ok(eksik, `bildirmeyen GBJBOT23 artifact'ta yok: ${JSON.stringify(r.hosts)}`);
+  const eksik = r.hosts.find((h) => h.host === 'ORJBOT23');
+  assert.ok(eksik, `bildirmeyen ORJBOT23 artifact'ta yok: ${JSON.stringify(r.hosts)}`);
   assert.equal(eksik.status, 'unreachable');
   assert.match(eksik.error, /^sonuc bildirmedi/);
   assert.deepEqual(eksik.files, []);
@@ -1443,7 +1443,7 @@ test('X03 kesif toplayici: hicbir host ok degilse failed + is KIRMIZI (set_stats
   const r7 = senaryo('A7_hic_sonuc_yok').son;
   assert.deepEqual(
     r7.hosts.map((h) => [h.host, h.status]),
-    [['GBJBOT21', 'unreachable']],
+    [['ORJBOT21', 'unreachable']],
   );
 });
 
@@ -1453,8 +1453,8 @@ test('X03 kesif toplayici: hepsi ok -> success; hedef yoksa envanterin tamami he
   assert.deepEqual(
     r4.hosts.map((h) => [h.host, h.status]),
     [
-      ['GBJBOT21', 'ok'],
-      ['GBJBOT22', 'unreachable'],
+      ['ORJBOT21', 'ok'],
+      ['ORJBOT22', 'unreachable'],
     ],
   );
   assert.equal(r4.overall_status, 'partial');
@@ -1462,12 +1462,12 @@ test('X03 kesif toplayici: hepsi ok -> success; hedef yoksa envanterin tamami he
 
 test('X03 kesif toplayici: envanterde olmayan ad ve grup hedefi', () => {
   const r5 = tekYayin(senaryo('A5_envanterde_yok'), 'A5');
-  const yok = r5.hosts.find((h) => h.host === 'GBELLE99');
+  const yok = r5.hosts.find((h) => h.host === 'ORELLE99');
   assert.ok(yok, 'AWX envanterinde olmayan elle girilmis host sessizce kayboldu');
   assert.equal(yok.status, 'unreachable');
   assert.match(yok.error, /envanter/i, 'envanterde eslesmedigi soylenmiyor');
   const r6 = tekYayin(senaryo('A6_grup_hedefi'), 'A6');
-  assert.deepEqual(r6.hosts.map((h) => h.host).sort(), ['GBJBOT21', 'GBJBOT22']);
+  assert.deepEqual(r6.hosts.map((h) => h.host).sort(), ['ORJBOT21', 'ORJBOT22']);
   assert.ok(!r6.hosts.some((h) => /JBOSS_EKIP/i.test(h.host)), 'grup adi host sanildi');
 });
 
@@ -1482,8 +1482,8 @@ test('X03b transfer: iki host ok + arsiv var -> success, TEK yayin', () => {
   assert.equal(Number(r.size_bytes), 999);
   assert.equal(r.is_fallback, false);
   assert.deepEqual(r.hosts.map((h) => [h.host, h.status]).sort(), [
-    ['GBJBOT21', 'ok'],
-    ['GBJBOT22', 'ok'],
+    ['ORJBOT21', 'ok'],
+    ['ORJBOT22', 'ok'],
   ]);
   assert.equal(s.kirmizi, null);
 });
@@ -1491,7 +1491,7 @@ test('X03b transfer: iki host ok + arsiv var -> success, TEK yayin', () => {
 test('X03b transfer: rescue edilen host error + rescue sebebiyle gorunur, overall partial', () => {
   const s = senaryo('C2_host_rescue');
   const r = tekYayin(s, 'C2');
-  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  const h = r.hosts.find((x) => x.host === 'ORJBOT22');
   assert.ok(h, `rescue edilen host artifact'tan dustu: ${JSON.stringify(r.hosts)}`);
   assert.equal(h.status, 'error', `rescue host_logx_result yazmiyor (${h.status}: ${h.error})`);
   assert.match(h.error, /SIMULE HATA/, 'rescue sebebi tasinmiyor');
@@ -1502,7 +1502,7 @@ test('X03b transfer: rescue edilen host error + rescue sebebiyle gorunur, overal
 
 test('X03b transfer: hic bildirmeyen kaynak host unreachable eklenir; success OLAMAZ', () => {
   const r = tekYayin(senaryo('C3_host_bildirmedi'), 'C3');
-  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  const h = r.hosts.find((x) => x.host === 'ORJBOT22');
   assert.ok(h, `bildirmeyen host artifact'ta yok: ${JSON.stringify(r.hosts)}`);
   assert.equal(h.status, 'unreachable');
   assert.match(h.error, /^sonuc bildirmedi/);
@@ -1515,7 +1515,7 @@ test('X03b transfer: toplayici kosmadiysa localhost SENTETIK failed yayinlar + i
   assert.equal(r.overall_status, 'failed');
   assert.equal(r.staged_path, '');
   assert.ok(r.error, 'sentetik sonuc sebep tasimiyor');
-  assert.deepEqual(r.hosts.map((h) => h.host).sort(), ['GBJBOT21', 'GBJBOT22']);
+  assert.deepEqual(r.hosts.map((h) => h.host).sort(), ['ORJBOT21', 'ORJBOT22']);
   assert.ok(s.kirmizi, 'toplayici kosmadigi halde AWX isi yesil');
 });
 
@@ -1541,7 +1541,7 @@ test('X03b transfer: toplayici hostu erisilemez -> failed, sebep "parca gelmedi"
 
 test('X03b transfer: was gecisi erisilemez host -> unreachable, sebep "denetlenemedi"', () => {
   const r = tekYayin(senaryo('C6_host_stat_erisilemez'), 'C6');
-  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  const h = r.hosts.find((x) => x.host === 'ORJBOT22');
   assert.equal(h.status, 'unreachable', JSON.stringify(h));
   assert.match(h.error, /denetlenemedi/, `olculemeyen dosya "yok" gibi yazildi: ${h.error}`);
   assert.equal(r.overall_status, 'partial');
@@ -1981,13 +1981,13 @@ test('X11 cok-host: her sunucu KENDI dizinini kullanir; alanlar hosts[] altinda 
   const s = senaryo('GC1_cok_host');
   const r = tekYayin(s, 'GC1');
   assert.equal(r.overall_status, 'success');
-  const hedefler = ['GBJBOT21', 'GBJBOT22'].map((h) => kosan(s, ARSIV_GOREVI, h)[0].arg.dest);
+  const hedefler = ['ORJBOT21', 'ORJBOT22'].map((h) => kosan(s, ARSIV_GOREVI, h)[0].arg.dest);
   assert.ok(
-    hedefler[0].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-GBJBOT21/`),
+    hedefler[0].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ORJBOT21/`),
     hedefler[0],
   );
   assert.ok(
-    hedefler[1].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-GBJBOT22/`),
+    hedefler[1].startsWith(`${TESLIM}/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ORJBOT22/`),
     hedefler[1],
   );
   for (const h of r.hosts) {
@@ -1998,24 +1998,24 @@ test('X11 cok-host: her sunucu KENDI dizinini kullanir; alanlar hosts[] altinda 
 
 test('X11 cok-host: bir sunucuda gecici alan yoksa O sunucu error + sebep; is kismi', () => {
   const r = tekYayin(senaryo('GC2_bir_hostta_alan_yok'), 'GC2');
-  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  const h = r.hosts.find((x) => x.host === 'ORJBOT22');
   assert.equal(h.status, 'error');
   assert.match(h.error, /^Gecici alan bulunamadi\. Adaylar: .*dizin degil \(dosya\)/);
   assert.ok(!/Per-host ZIP olusturulamadi/.test(h.error), h.error);
   assert.equal(h.tmp_dir, '');
-  assert.equal(r.hosts.find((x) => x.host === 'GBJBOT21').status, 'ok');
+  assert.equal(r.hosts.find((x) => x.host === 'ORJBOT21').status, 'ok');
   assert.equal(r.overall_status, 'partial');
 });
 
 test('X11 cok-host: dosyasi olmayan sunucuda aday OLCULMEZ; sebep gecici alan DEGIL, dosya', () => {
   const s = senaryo('GC3_dosyasi_olmayan_host');
   const r = tekYayin(s, 'GC3');
-  const h = r.hosts.find((x) => x.host === 'GBJBOT22');
+  const h = r.hosts.find((x) => x.host === 'ORJBOT22');
   assert.match(h.error, /Dosya bulunamadi/);
   assert.ok(!/Gecici alan/.test(h.error), h.error);
   assert.deepEqual(h.tmp_adaylar, []);
   assert.deepEqual(
-    s.hostlar.GBJBOT22.arguman.filter((a) => /aday|gecici|Butceli/i.test(a.gorev)),
+    s.hostlar.ORJBOT22.arguman.filter((a) => /aday|gecici|Butceli/i.test(a.gorev)),
     [],
     'arsivlenecek dosya yokken adaylar olculdu ya da dizin acildi',
   );

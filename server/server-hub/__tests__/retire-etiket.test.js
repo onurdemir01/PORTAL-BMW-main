@@ -154,10 +154,10 @@ const ayarlar = require('../ayarlar.cjs');
 // ── tarama fiksturleri (v2-guvenlik.test.js ile ayni bicim) ───────────────────────────────────
 const BUGUN = '2026-11-06';
 const NOW = Date.parse(`${BUGUN}T10:00:00Z`);
-const APP = 'GBCJAP01';
-const APP2 = 'GBCJAP02';
-const TEST_APP = 'GBCJAT01';
-const WEB = 'GBCJWP01';
+const APP = 'ORCJAP01';
+const APP2 = 'ORCJAP02';
+const TEST_APP = 'ORCJAT01';
+const WEB = 'ORCJWP01';
 const H3 = (host, ek = {}) => ({
   host,
   scan_date: BUGUN,
@@ -429,10 +429,30 @@ test('RE2b EAR kullanim kaniti: surec / 7 gun yazma -> JBoss disi kullanim, R5 y
           not: '',
         }),
         // 7 gun esigi TARAMA anina gore (taranma(0) = bugun 06:00Z; NOW 10:00Z)
-        TY('YAZILAN.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR - 7 * 86400000 + 60000), not: '' }),
-        TY('ESKIYAZMA.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR - 7 * 86400000 - 60000), not: '' }),
-        TY('KISMI.ear', { durum: 'KISMI', surecler: [], son_yazma: null, not: 'surec taramasi kesildi' }),
-        TY('OLCMEYEN.ear', { durum: 'OLCULEMEDI', surecler: [], son_yazma: null, not: 'surec listesi okunamadi' }),
+        TY('YAZILAN.ear', {
+          durum: 'YOK',
+          surecler: [],
+          son_yazma: sn(TAR - 7 * 86400000 + 60000),
+          not: '',
+        }),
+        TY('ESKIYAZMA.ear', {
+          durum: 'YOK',
+          surecler: [],
+          son_yazma: sn(TAR - 7 * 86400000 - 60000),
+          not: '',
+        }),
+        TY('KISMI.ear', {
+          durum: 'KISMI',
+          surecler: [],
+          son_yazma: null,
+          not: 'surec taramasi kesildi',
+        }),
+        TY('OLCMEYEN.ear', {
+          durum: 'OLCULEMEDI',
+          surecler: [],
+          son_yazma: null,
+          not: 'surec listesi okunamadi',
+        }),
         TY('ESKITARAYICI.ear', undefined),
       ]),
     ],
@@ -445,21 +465,39 @@ test('RE2b EAR kullanim kaniti: surec / 7 gun yazma -> JBoss disi kullanim, R5 y
     "/vhosting/NODE.ear: JBoss'a bağlı değil ama dizin kullanımda (süreç: node pid 76867 [cwd], son yazma: 06.11.2026 00:53)",
   );
   assert.equal(k['NODE.ear'].severity, 'info');
-  assert.match(k['YAZILAN.ear'].text, /dizin kullanımda \(son yazma: \d\d\.\d\d\.2026 \d\d:\d\d\)$/);
+  assert.match(
+    k['YAZILAN.ear'].text,
+    /dizin kullanımda \(son yazma: \d\d\.\d\d\.2026 \d\d:\d\d\)$/,
+  );
   const j = Object.fromEntries(bul(r, APP, 'EAR_JVM_YOK').map((f) => [f.ear.ad, f.text]));
-  assert.deepEqual(Object.keys(j).sort(), ['ESKITARAYICI.ear', 'ESKIYAZMA.ear', 'KISMI.ear', 'OLCMEYEN.ear']);
+  assert.deepEqual(Object.keys(j).sort(), [
+    'ESKITARAYICI.ear',
+    'ESKIYAZMA.ear',
+    'KISMI.ear',
+    'OLCMEYEN.ear',
+  ]);
   assert.ok(!/ölçülemedi/.test(j['ESKIYAZMA.ear']), 'olculmus ve kullanilmayan EAR icin ek yok');
   assert.match(j['ESKIYAZMA.ear'], /deployment tanımı yok — diskte duruyor/);
   assert.match(j['KISMI.ear'], /— dizin kullanımı ölçülemedi \(surec taramasi kesildi\)$/);
   assert.match(j['OLCMEYEN.ear'], /— dizin kullanımı ölçülemedi \(surec listesi okunamadi\)$/);
-  assert.match(j['ESKITARAYICI.ear'], /— dizin kullanımı ölçülemedi \(tarama kullanım ölçmeyen eski tarayıcıyla yapıldı\)$/);
+  assert.match(
+    j['ESKITARAYICI.ear'],
+    /— dizin kullanımı ölçülemedi \(tarama kullanım ölçmeyen eski tarayıcıyla yapıldı\)$/,
+  );
   const r5 = sunucu(r, APP)
     .retireAdaylari.filter((a) => a.kural === 'R5')
     .map((a) => a.ad)
     .sort();
-  assert.deepEqual(r5, ['ESKITARAYICI.ear', 'ESKIYAZMA.ear', 'KISMI.ear', 'OLCMEYEN.ear'], 'kullanimdaki EAR R5 adayi olmamali');
+  assert.deepEqual(
+    r5,
+    ['ESKITARAYICI.ear', 'ESKIYAZMA.ear', 'KISMI.ear', 'OLCMEYEN.ear'],
+    'kullanimdaki EAR R5 adayi olmamali',
+  );
   // h.ear kullanimi ekrana tasir
-  assert.equal(sunucu(r, APP).ear.uygulamalar.find((u) => u.ad === 'NODE.ear').kullanim.surecler[0].pid, 76867);
+  assert.equal(
+    sunucu(r, APP).ear.uygulamalar.find((u) => u.ad === 'NODE.ear').kullanim.surecler[0].pid,
+    76867,
+  );
 });
 
 // INCELEME (2026-11-17): B1 esigin referansi TARAMA ani (veri 35 gune kadar kullanilir; duvar saati kaniti sessizce
@@ -476,7 +514,11 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
   const GUN = 86400000;
   const TAR10 = Date.parse(taranma(10));
   const yok = (ek) => ({ durum: 'YOK', surecler: [], not: '', ...ek });
-  const SUREC = { durum: 'VAR', surecler: [{ pid: 4242, comm: 'node', kullanici: 'was', nasil: 'cwd' }], son_yazma: null };
+  const SUREC = {
+    durum: 'VAR',
+    surecler: [{ pid: 4242, comm: 'node', kullanici: 'was', nasil: 'cwd' }],
+    son_yazma: null,
+  };
   const d = r1Veri();
   d.ear = {
     okunamadi: false,
@@ -506,7 +548,11 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
   );
   const j = Object.fromEntries(bul(r, APP, 'EAR_JVM_YOK').map((f) => [f.ear.ad, f.text]));
   assert.deepEqual(Object.keys(j).sort(), ['GIZLI.ear', 'ILERI.ear', 'KOR.ear', 'WARSIZBOS.ear']);
-  assert.match(j['ILERI.ear'], /— dizin kullanımı ölçülemedi \(son yazma tarama anından ileri tarihli/, 'B5');
+  assert.match(
+    j['ILERI.ear'],
+    /— dizin kullanımı ölçülemedi \(son yazma tarama anından ileri tarihli/,
+    'B5',
+  );
   assert.match(
     j['GIZLI.ear'],
     /— dizin kullanımı ölçülemedi \(hidepid=2: diğer kullanıcıların süreçleri görünmüyor\)$/,
@@ -517,7 +563,10 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
     /— dizin kullanımı görülmedi ama 112 süreç izin yüzünden yalnız komut satırından denetlendi$/,
     'B3 okunamayan',
   );
-  assert.ok(!/ölçülemedi|görülmedi/.test(j['WARSIZBOS.ear']), 'tam olculmus kullanilmayan EAR icin ek yok');
+  assert.ok(
+    !/ölçülemedi|görülmedi/.test(j['WARSIZBOS.ear']),
+    'tam olculmus kullanilmayan EAR icin ek yok',
+  );
   const w = Object.fromEntries(bul(r, APP, 'EAR_WAR_YOK').map((f) => [f.ear.ad, f]));
   assert.deepEqual(Object.keys(w).sort(), ['WARSIZ.ear', 'WARSIZBOS.ear']);
   assert.equal(
@@ -581,7 +630,12 @@ test('RE4 adaylar bulgudan ayri: R1 / R2; calisan JVM aday degil; engelli R1 yin
     sunucu(r, APP).retireAdaylari.filter((a) => a.kural === 'R1'),
     [{ kural: 'R1', tur: 'JVM', ad: 'oldapp', host: APP, gen: 7, engel: null }],
   );
-  assert.deepEqual(sunucu(r, APP).retireAdaylari.map((a) => a.kural).sort(), ['R1', 'R8']);
+  assert.deepEqual(
+    sunucu(r, APP)
+      .retireAdaylari.map((a) => a.kural)
+      .sort(),
+    ['R1', 'R8'],
+  );
   assert.ok(
     !sunucu(r, APP).findings.some((f) => /^R\d+$/.test(f.code)),
     'etiket bulgu listesine girdi',
@@ -872,8 +926,12 @@ test('RE7 manuel kontrol: imza baglantisi, VERI_DEGISTI, yalniz KESIN + DOGRULAN
   assert.deepEqual([sh.seviye, sh.durum, sh.retirementHazir], ['SUPHELI', 'DOGRULANDI', false]);
   // FAZ 0 (2026-11-11): SUPHELI iken verilen onay, kural sonradan KESIN'e cekilince kapiyi ACMAZ;
   // seviyesi kayitli olmayan eski onay da acmaz (fail-closed).
-  const eskiSuphe = etiketle({ hosts, kontroller: kayit('DOGRULANDI', e.imza, 'SUPHELI') }).etiketler[0];
-  assert.deepEqual([eskiSuphe.seviye, eskiSuphe.durum, eskiSuphe.retirementHazir], ['KESIN', 'DOGRULANDI', false]);
+  const eskiSuphe = etiketle({ hosts, kontroller: kayit('DOGRULANDI', e.imza, 'SUPHELI') })
+    .etiketler[0];
+  assert.deepEqual(
+    [eskiSuphe.seviye, eskiSuphe.durum, eskiSuphe.retirementHazir],
+    ['KESIN', 'DOGRULANDI', false],
+  );
   const seviyesiz = etiketle({ hosts, kontroller: kayit('DOGRULANDI', e.imza, null) }).etiketler[0];
   assert.equal(seviyesiz.retirementHazir, false, 'seviyesi bilinmeyen onay kapiyi acti');
   // Imza: istek sayisi / tarih degisimi imzayi bozmaz; kopya durumu bozar.
@@ -911,7 +969,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   const { earSonDurum } = require('../ear-hub-verisi.cjs');
   DB.earH = [
     {
-      host: 'gbcjap01',
+      host: 'orcjap01',
       kosu_id: 7,
       taranma_utc: new Date('2026-11-05T02:00:00Z'),
       durum: 'TAM',
@@ -926,7 +984,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
       }),
     },
     {
-      host: 'GBCJAP02',
+      host: 'ORCJAP02',
       kosu_id: 8,
       taranma_utc: '2026-11-04 01:00:00',
       durum: 'KISMI',
@@ -935,7 +993,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   ];
   DB.earU = [
     {
-      host: 'GBCJAP01',
+      host: 'ORCJAP01',
       kok: '/vhosting',
       jboss: '7',
       ad: 'A.ear',
@@ -944,7 +1002,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
       xml_eslesme: JSON.stringify({ durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim: KULLANIM_RE8 }),
     },
     {
-      host: 'GBCJAP02',
+      host: 'ORCJAP02',
       kok: '/vhosting8',
       jboss: '8',
       ad: 'B.ear',
@@ -965,13 +1023,21 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
   const v = await earSonDurum();
   assert.equal(v.okunamadi, false);
   const [a, b] = v.hostlar;
-  assert.deepEqual([a.host, a.kosuId, a.taranma], ['GBCJAP01', 7, '2026-11-05T02:00:00.000Z']);
+  assert.deepEqual([a.host, a.kosuId, a.taranma], ['ORCJAP01', 7, '2026-11-05T02:00:00.000Z']);
   assert.deepEqual(a.kokGirdileri, {
     girdiler: [{ kok: '/vhosting', ad: 'X.bak', tip: 'F' }],
     kesilen: 1,
   });
-  assert.deepEqual(a.uygulamalar[0].xml, { durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim: KULLANIM_RE8 });
-  assert.deepEqual(a.uygulamalar[0].kullanim, KULLANIM_RE8, 'tarayici surum 4 kullanim kaniti tasinmali');
+  assert.deepEqual(a.uygulamalar[0].xml, {
+    durum: 'JVM_YOK',
+    neden: 'TANIM_YOK',
+    kullanim: KULLANIM_RE8,
+  });
+  assert.deepEqual(
+    a.uygulamalar[0].kullanim,
+    KULLANIM_RE8,
+    'tarayici surum 4 kullanim kaniti tasinmali',
+  );
   assert.equal(b.uygulamalar[0].kullanim, null, 'xml yok -> kullanim olculmedi (null)');
   assert.equal(b.taranma, '2026-11-04T01:00:00.000Z', 'DATETIME2 metni UTC okunmali');
   assert.equal(b.kokGirdileri, null, 'bozuk JSON olculmedi sayilmali');
@@ -1137,7 +1203,11 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.equal(yasak.status, 403, 'Admin olmayan etiketleri gordu');
     // Uygulama 360 (2026-11-07) ayni kapinin arkasinda; etiket ve kopya ayni degerlendirmeden.
     for (const p of ['/uygulamalar-360', '/uygulama-360/oldapp'])
-      assert.equal((await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status, 403, p);
+      assert.equal(
+        (await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status,
+        403,
+        p,
+      );
     const u360 = await fetch(`${kok}/uygulamalar-360?fresh=1`).then(J);
     assert.equal(u360.status, 200, JSON.stringify(u360.body));
     const old = u360.body.uygulamalar.find((u) => u.anahtar === 'OLDAPP');
@@ -1146,20 +1216,34 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.deepEqual([u360a.status, u360a.body.uygulama.kopyalar.length], [200, 1]);
     // Iliski grafigi (2026-11-07) ayni kapinin arkasinda; Uygulama Envanteri okunamasa da grafik kurulur.
     for (const p of ['/iliski/durum', '/iliski/ara?q=old', '/iliski/varlik?anahtar=app:OLDAPP'])
-      assert.equal((await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status, 403, p);
+      assert.equal(
+        (await fetch(`${kok}${p}`, { headers: { 'x-rol': 'Operator' } })).status,
+        403,
+        p,
+      );
     const il = await fetch(`${kok}/iliski/durum?fresh=1`).then(J);
     assert.equal(il.status, 200, JSON.stringify(il.body));
     assert.ok(il.body.dugum > 0);
     const ia = await fetch(`${kok}/iliski/ara?q=oldapp`).then(J);
     assert.equal(ia.body.sonuclar[0].anahtar, 'app:OLDAPP');
-    const iv = await fetch(`${kok}/iliski/varlik?anahtar=${encodeURIComponent('app:OLDAPP')}`).then(J);
+    const iv = await fetch(`${kok}/iliski/varlik?anahtar=${encodeURIComponent('app:OLDAPP')}`).then(
+      J,
+    );
     assert.equal(iv.status, 200, JSON.stringify(iv.body));
     assert.ok(iv.body.kenarlar.some((e) => e.tur === 'kopya'));
     assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=app:YOKBOYLE`)).status, 409);
     assert.equal((await fetch(`${kok}/iliski/varlik?anahtar=bozuk`)).status, 400);
     // Kalici notlar (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi, varsayilan siniflar.
-    for (const [p, m] of [['/notlar', 'GET'], ['/siniflar', 'GET'], ['/notlar', 'POST']])
-      assert.equal((await fetch(`${kok}${p}`, { method: m, headers: { 'x-rol': 'Operator' } })).status, 403, `${m} ${p}`);
+    for (const [p, m] of [
+      ['/notlar', 'GET'],
+      ['/siniflar', 'GET'],
+      ['/notlar', 'POST'],
+    ])
+      assert.equal(
+        (await fetch(`${kok}${p}`, { method: m, headers: { 'x-rol': 'Operator' } })).status,
+        403,
+        `${m} ${p}`,
+      );
     const nl = await fetch(`${kok}/notlar`).then(J);
     assert.equal(nl.status, 200, JSON.stringify(nl.body));
     assert.equal(nl.body.siniflar.length >= 5, true);
@@ -1167,7 +1251,11 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.equal(kn.status, 200, JSON.stringify(kn.body));
     // Ortak gorunumler (2026-11-07) ayni kapinin arkasinda; sahte DB tabloyu bilmez -> okunamadi (dusmez).
     assert.equal(
-      (await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`, { headers: { 'x-rol': 'Operator' } })).status,
+      (
+        await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`, {
+          headers: { 'x-rol': 'Operator' },
+        })
+      ).status,
       403,
     );
     const gor = await fetch(`${kok}/gorunumler?ekran=server-hub-bulgular`).then(J);
@@ -1178,7 +1266,11 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
     assert.equal(r.body.ear.okunamadi, false);
     // Capraz kaynaklar: sahte envanter bos doner (okundu), sahte Portal DB Retirement sorgusunu bilmez.
     assert.deepEqual(
-      [r.body.capraz.ocp.okunamadi, r.body.capraz.kullanim.okunamadi, r.body.capraz.retirement.okunamadi],
+      [
+        r.body.capraz.ocp.okunamadi,
+        r.body.capraz.kullanim.okunamadi,
+        r.body.capraz.retirement.okunamadi,
+      ],
       [false, false, true],
     );
     assert.deepEqual(
@@ -1352,7 +1444,7 @@ test('RE11 hiz: buyuk filo bir kez indekslenir; ozet kopya tasimaz, sayisi tam',
   const { ozetle } = require('../retire-etiket.cjs');
   const hosts = [];
   for (let i = 0; i < 2000; i++) {
-    const host = `GBXXAP${String(i).padStart(4, '0')}`;
+    const host = `ORXXAP${String(i).padStart(4, '0')}`;
     const env = ['PROD', 'TEST', 'QA', 'DEV'][i % 4];
     const jvms = Array.from({ length: 12 }, (_, k) => ({
       gen: 7,
@@ -1477,31 +1569,68 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   const { ozetle } = require('../retire-etiket.cjs');
   const sirala = (l) => [...l].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
   const kur = (r, h, ad) =>
-    sirala(sunucu(r, h).retireAdaylari.filter((a) => a.ad === ad).map((a) => a.kural));
+    sirala(
+      sunucu(r, h)
+        .retireAdaylari.filter((a) => a.ad === ad)
+        .map((a) => a.kural),
+    );
   const capraz = () => ({
     ocp: {
       okunamadi: false,
       indeks: ocpIndeksi([
-        { cluster: 'gbocpprod1', namespace: 'pay-prod', application: 'pay' },
-        { cluster: 'gbocpprod1', namespace: 'batch-prod', application: 'batch' },
+        { cluster: 'orocpprod1', namespace: 'pay-prod', application: 'pay' },
+        { cluster: 'orocpprod1', namespace: 'batch-prod', application: 'batch' },
       ]),
     },
     kullanim: {
       okunamadi: false,
       indeks: olcumIndeksi([
-        { cluster: 'gbocpprod1', namespace: 'pay-prod', app: 'pay', scan_date: '2026-11-05', window_days: 7, req_total: 50, services_total: 1, measured: 1 },
-        { cluster: 'gbocpprod1', namespace: 'batch-prod', app: 'batch', scan_date: '2026-11-05', window_days: 7, req_total: 0, services_total: 1, measured: 1 },
+        {
+          cluster: 'orocpprod1',
+          namespace: 'pay-prod',
+          app: 'pay',
+          scan_date: '2026-11-05',
+          window_days: 7,
+          req_total: 50,
+          services_total: 1,
+          measured: 1,
+        },
+        {
+          cluster: 'orocpprod1',
+          namespace: 'batch-prod',
+          app: 'batch',
+          scan_date: '2026-11-05',
+          window_days: 7,
+          req_total: 0,
+          services_total: 1,
+          measured: 1,
+        },
       ]),
     },
     retirement: {
       okunamadi: false,
       hedefler: [
-        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20', durdurulduMs: Date.parse('2026-10-20T08:00:00Z') },
+        {
+          hedef: 9,
+          kayit: 4,
+          host: APP2,
+          uygulama: 'pay',
+          gen: 7,
+          yol: '/vhosting/pay.ear',
+          durum: 'stopped',
+          kayitDurum: 'stopped',
+          durduruldu: '2026-10-20',
+          durdurulduMs: Date.parse('2026-10-20T08:00:00Z'),
+        },
       ],
     },
   });
   const veri = () => ({
-    hosts: [H3(APP, { products: 'JBOSS7' }), H3(APP2, { products: 'JBOSS7' }), H3(TEST_APP, { products: 'JBOSS7' })],
+    hosts: [
+      H3(APP, { products: 'JBOSS7' }),
+      H3(APP2, { products: 'JBOSS7' }),
+      H3(TEST_APP, { products: 'JBOSS7' }),
+    ],
     init: [],
     jboss: [],
     jvms: [
@@ -1521,29 +1650,50 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   assert.equal(bul(r, APP, 'REBOOT_RISK').length, 1);
   // batch OpenShift'te de var ama orada istek yok ve JBoss canli: bulgu var, R11 adayi YOK.
   assert.deepEqual(kur(r, APP, 'batch'), ['R7']);
-  assert.match(bul(r, APP, 'OCP_KOPYASI').map((f) => f.text).join(' | '), /JBoss7 batch: OpenShift'te de var: batch-prod/);
+  assert.match(
+    bul(r, APP, 'OCP_KOPYASI')
+      .map((f) => f.text)
+      .join(' | '),
+    /JBoss7 batch: OpenShift'te de var: batch-prod/,
+  );
   assert.deepEqual(kur(r, APP2, 'pay'), ['R8', 'R9', 'R11', 'R12']);
   assert.deepEqual(kur(r, APP, 'pay'), ['R11'], 'canli kopya: OpenShift istek aliyor');
   assert.deepEqual(kur(r, TEST_APP, 'legacy-T'), ['R10']);
   // Bulgular: alan 'capraz', katalog seviyesi, okunur kanit.
   const kopya = bul(r, APP2, 'KOPYA_TUTARSIZ');
   assert.deepEqual([kopya.length, kopya[0].severity, kopya[0].area], [1, 'warning', 'capraz']);
-  assert.match(kopya[0].text, new RegExp(`öteki kopyalar: ${APP} \\(çalışıyor, auto-start açık\\)`));
+  assert.match(
+    kopya[0].text,
+    new RegExp(`öteki kopyalar: ${APP} \\(çalışıyor, auto-start açık\\)`),
+  );
   assert.equal(kopya[0].capraz.tur, 'kopya');
   const cel = bul(r, APP2, 'RETIRE_KAYDI_CELISKI');
   assert.deepEqual([cel.length, cel[0].severity], [1, 'danger']);
-  assert.match(cel[0].text, /JBoss7 pay: Retirement #4 hedefi STOP edildi \(2026-10-20\) ama auto-start AÇIK/);
+  assert.match(
+    cel[0].text,
+    /JBoss7 pay: Retirement #4 hedefi STOP edildi \(2026-10-20\) ama auto-start AÇIK/,
+  );
   const ocp = bul(r, APP2, 'OCP_KOPYASI');
   assert.deepEqual([ocp.length, ocp[0].severity], [1, 'info']);
-  assert.match(ocp[0].text, /pay-prod @ gbocpprod1 — Dynatrace 7 gün: 50 istek — JBoss kopyası boşta/);
+  assert.match(
+    ocp[0].text,
+    /pay-prod @ orocpprod1 — Dynatrace 7 gün: 50 istek — JBoss kopyası boşta/,
+  );
   const kal = bul(r, TEST_APP, 'ORTAM_KALINTISI');
   assert.equal(kal.length, 1);
-  assert.match(kal[0].text, /^JBoss7 legacy-T \(TEST\) çalışıyor ama legacy prod'da çalışmıyor — prod'da kopyası yok/);
+  assert.match(
+    kal[0].text,
+    /^JBoss7 legacy-T \(TEST\) çalışıyor ama legacy prod'da çalışmıyor — prod'da kopyası yok/,
+  );
   assert.equal(bul(r, APP, 'KOPYA_TUTARSIZ').length, 0, 'calisan kopya sapan degil');
   // Uygulama 360 capraz sonucu JVM'den okur (j.capraz); sonucu olmayan JVM'de alan yok.
   const jv = (h, ad) => sunucu(r, h).jvms.find((j) => j.name === ad);
   assert.deepEqual(
-    [!!jv(APP2, 'pay').capraz.kopya, jv(APP2, 'pay').capraz.celiski.length, !!jv(APP2, 'pay').capraz.ocp],
+    [
+      !!jv(APP2, 'pay').capraz.kopya,
+      jv(APP2, 'pay').capraz.celiski.length,
+      !!jv(APP2, 'pay').capraz.ocp,
+    ],
     [true, 1, true],
   );
   assert.equal(jv(TEST_APP, 'legacy-T').capraz.kalinti.neden, 'PROD_YOK');
@@ -1551,7 +1701,10 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   // Etiket: tek konu, iki kopya, Retirement baglami; ozet de baglami tasir.
   const et = etiketle({ hosts: r.hosts });
   const pay = et.etiketler.find((e) => e.anahtar === 'JVM|PAY|PROD|7');
-  assert.deepEqual([pay.kurallar, pay.seviye, pay.hostlar], [['R8', 'R9', 'R11', 'R12'], 'SUPHELI', [APP, APP2]]);
+  assert.deepEqual(
+    [pay.kurallar, pay.seviye, pay.hostlar],
+    [['R8', 'R9', 'R11', 'R12'], 'SUPHELI', [APP, APP2]],
+  );
   assert.deepEqual(pay.retirement, [{ kayit: 4, hedef: 9, durum: 'stopped', host: APP2 }]);
   assert.deepEqual(ozetle(pay).retirement, pay.retirement);
   assert.deepEqual(et.etiketler.find((e) => e.anahtar === 'JVM|BATCH|PROD|7').retirement, []);
@@ -1571,7 +1724,8 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
     d.capraz = c;
     const ro = A(d);
     for (const h of [APP, APP2])
-      for (const kod of ['OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI']) assert.equal(bul(ro, h, kod).length, 0, `${h} ${kod}`);
+      for (const kod of ['OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI'])
+        assert.equal(bul(ro, h, kod).length, 0, `${h} ${kod}`);
     assert.equal(bul(ro, APP2, 'KOPYA_TUTARSIZ').length, 1);
     assert.equal(bul(ro, TEST_APP, 'ORTAM_KALINTISI').length, 1);
     assert.equal(sunucu(ro, APP2).jvms.find((j) => j.name === 'pay').retirement, undefined);
@@ -1581,18 +1735,40 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   b.hosts[1] = H3(APP2, { products: 'JBOSS7', scan_date: '2026-11-01' });
   b.jvms[2] = { ...b.jvms[2], scan_date: '2026-11-01' };
   const rb = A(b);
-  for (const kod of ['KOPYA_TUTARSIZ', 'OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI']) assert.equal(bul(rb, APP2, kod).length, 0, kod);
+  for (const kod of ['KOPYA_TUTARSIZ', 'OCP_KOPYASI', 'RETIRE_KAYDI_CELISKI'])
+    assert.equal(bul(rb, APP2, kod).length, 0, kod);
 
   // JVM taramada yok, paket ozgun adiyla diskte (taze Uygulama Envanteri): sunucu duzeyi + EAR adayi.
   const e = veri();
   e.capraz.retirement.hedefler = [
-    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null, silindiMs: Date.parse('2026-11-01T08:00:00Z') },
+    {
+      hedef: 3,
+      kayit: 2,
+      host: APP,
+      uygulama: 'old',
+      gen: 7,
+      yol: '/vhosting/old.ear',
+      durum: 'deleted',
+      kayitDurum: 'deleted',
+      durduruldu: null,
+      silindiMs: Date.parse('2026-11-01T08:00:00Z'),
+    },
   ];
-  e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear', { xml: { durum: 'VAR', jvmler: [{ ad: 'pay', auto_start: true }] } })])] };
+  e.ear = {
+    okunamadi: false,
+    hostlar: [
+      earHost(APP, [
+        U7('old.ear', { xml: { durum: 'VAR', jvmler: [{ ad: 'pay', auto_start: true }] } }),
+      ]),
+    ],
+  };
   const re = A(e);
   const ec = bul(re, APP, 'RETIRE_KAYDI_CELISKI');
   assert.equal(ec.length, 1);
-  assert.equal(ec[0].text, '/vhosting/old.ear: Retirement #2 hedefi silindi ama paket özgün adıyla diskte (old.ear)');
+  assert.equal(
+    ec[0].text,
+    '/vhosting/old.ear: Retirement #2 hedefi silindi ama paket özgün adıyla diskte (old.ear)',
+  );
   assert.deepEqual(
     sunucu(re, APP).retireAdaylari.filter((a) => a.kural === 'R12'),
     [{ kural: 'R12', tur: 'EAR', ad: 'old.ear', host: APP, kok: '/vhosting' }],
@@ -1631,7 +1807,10 @@ test('RE14 tekrar eden istek: R13 SUPHELI, ONLY_REPEAT_TRAFFIC eylemsiz, gercek 
   assert.ok(kurallar.includes('R13') && !kurallar.includes('R2'), kurallar.join(','));
   const j = sunucu(r, APP).jvms.find((x) => x.name === 'oldapp');
   assert.equal(j.trafficState, 'ACTIVE', 'sayim degismez');
-  assert.deepEqual(j.yalnizTekrar.uriler.map((u) => `${u.metot} ${u.yol}`), ['GET /oldapp/status', 'HEAD /oldapp/status']);
+  assert.deepEqual(
+    j.yalnizTekrar.uriler.map((u) => `${u.metot} ${u.yol}`),
+    ['GET /oldapp/status', 'HEAD /oldapp/status'],
+  );
   sifirla();
   const e = etiketle({ hosts: r.hosts }).etiketler.find((x) => x.kurallar.includes('R13'));
   assert.equal(e.seviye, 'SUPHELI');
@@ -1643,12 +1822,18 @@ test('RE14 tekrar eden istek: R13 SUPHELI, ONLY_REPEAT_TRAFFIC eylemsiz, gercek 
   assert.ok(kk.includes('R2') && !kk.includes('R13'), kk.join(','));
   // Olculemedi (-1) ve eski satir (kolon yok) -> eskisi gibi ACTIVE, bulgu yok
   assert.equal(bul(veri({ repeat_7d: -1, repeat_uris: '' }), APP, 'ONLY_REPEAT_TRAFFIC').length, 0);
-  assert.equal(bul(veri({ repeat_7d: undefined, repeat_uris: undefined }), APP, 'ONLY_REPEAT_TRAFFIC').length, 0);
+  assert.equal(
+    bul(veri({ repeat_7d: undefined, repeat_uris: undefined }), APP, 'ONLY_REPEAT_TRAFFIC').length,
+    0,
+  );
   // Calisan JVM: bilgi metni, retire adayi yok
   const cal = veri({}, CALISAN);
   const fc = bul(cal, APP, 'ONLY_REPEAT_TRAFFIC');
   assert.equal(fc.length, 1);
-  assert.match(fc[0].text, /çalışıyor ama web katmanına 7 gündür yalnız tekrar eden istek geliyor .* gerçek kullanıcı yok/);
+  assert.match(
+    fc[0].text,
+    /çalışıyor ama web katmanına 7 gündür yalnız tekrar eden istek geliyor .* gerçek kullanıcı yok/,
+  );
   assert.ok(!sunucu(cal, APP).retireAdaylari.some((a) => a.kural === 'R13'));
   // Admin R13'u KESIN yapar: kopya yalniz tekrar aliyorsa zincir nedeni yok -> KESIN
   // (R1 ile birlikte gelirse R1 nedeni 'yalniz tekrar' yazar: KESIN'den SUPHELI'ye iner).
@@ -1675,12 +1860,23 @@ test('RE14 tekrar eden istek: R13 SUPHELI, ONLY_REPEAT_TRAFFIC eylemsiz, gercek 
     }),
   ];
   const ri = A(iki);
-  assert.equal(sunucu(ri, APP).jvms.find((x) => x.name === 'oldapp').vhosts.length, 2, 'iki vhost esli');
-  assert.equal(bul(ri, APP, 'ONLY_REPEAT_TRAFFIC').length, 0, 'olculemeyen vhost varken yalniz tekrar');
+  assert.equal(
+    sunucu(ri, APP).jvms.find((x) => x.name === 'oldapp').vhosts.length,
+    2,
+    'iki vhost esli',
+  );
+  assert.equal(
+    bul(ri, APP, 'ONLY_REPEAT_TRAFFIC').length,
+    0,
+    'olculemeyen vhost varken yalniz tekrar',
+  );
   assert.ok(!sunucu(ri, APP).retireAdaylari.some((a) => a.kural === 'R13'));
   // R13 retire kanitini okur: bayat web sunucusu -> engel, etiket SUPHELI ve neden yazilir.
   const bay = r1Veri();
-  bay.hosts = [H3(APP, { products: 'JBOSS7' }), H3(WEB, { products: 'IHS', scan_date: '2026-10-01' })];
+  bay.hosts = [
+    H3(APP, { products: 'JBOSS7' }),
+    H3(WEB, { products: 'IHS', scan_date: '2026-10-01' }),
+  ];
   bay.jvms = [J3(APP, 'oldapp', { auto_start: 'false' })];
   bay.vhosts = [
     V3(WEB, 'oldapp.bmw.local', {

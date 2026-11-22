@@ -71,7 +71,8 @@ const DEFTER_MAX = 2000;
 function defterBirKez(serverId, jobId) {
   const k = `${serverId}:${jobId}`;
   if (DEFTER_YAPILDI.has(k)) return false;
-  if (DEFTER_YAPILDI.size >= DEFTER_MAX) DEFTER_YAPILDI.delete(DEFTER_YAPILDI.values().next().value);
+  if (DEFTER_YAPILDI.size >= DEFTER_MAX)
+    DEFTER_YAPILDI.delete(DEFTER_YAPILDI.values().next().value);
   DEFTER_YAPILDI.add(k);
   return true;
 }
@@ -257,7 +258,10 @@ async function readGateConfig() {
     const cfg = await require('../ansible/ss-customizations.cjs').readCustom(serverId, templateId);
     return { serverId, templateId, svcConfig: cfg || {}, hata: null };
   } catch (e) {
-    console.warn('[ScaleX] kapi ayari okunamadi, varsayilan (prod: OCO acik, SMART gerekli) kullaniliyor:', e.message);
+    console.warn(
+      '[ScaleX] kapi ayari okunamadi, varsayilan (prod: OCO acik, SMART gerekli) kullaniliyor:',
+      e.message,
+    );
     return { serverId: null, templateId: null, svcConfig: {}, hata: e };
   }
 }
@@ -273,7 +277,15 @@ async function resolveGatePolicy(
   req,
   // `herkesIcin`: admin'in KISISEL atlama tercihi hesaba katilmaz. Yalniz durum karti
   // kullanir — orada sorulan "siradan bir kullanici ne gorur", "ben ne gorurum" degil.
-  { action, executionMode, environment, tenant = '', clusters = [], namespace = '', herkesIcin = false },
+  {
+    action,
+    executionMode,
+    environment,
+    tenant = '',
+    clusters = [],
+    namespace = '',
+    herkesIcin = false,
+  },
 ) {
   const gateCfg = await readGateConfig();
   let smartClientReady = false;
@@ -298,7 +310,14 @@ async function resolveGatePolicy(
   if (sa.enabled && executionMode === 'apply') {
     const es = launch.gates.matchSmartSkip(
       sa,
-      launch.buildGateVars({ env: environment, tenant, action, executionMode, clusters, namespace }),
+      launch.buildGateVars({
+        env: environment,
+        tenant,
+        action,
+        executionMode,
+        clusters,
+        namespace,
+      }),
     );
     if (es.skip) skipRule = { field: es.field, value: es.value };
   }
@@ -327,10 +346,25 @@ const ORNEK_PROD_DISI_ORTAM = 'test';
 async function kapiKurallari(req) {
   const ortak = { tenant: '', clusters: [], namespace: '', herkesIcin: true };
   const [prodDisi, bilinmeyen, dryRun, geriAl] = await Promise.all([
-    resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'apply', environment: ORNEK_PROD_DISI_ORTAM }),
+    resolveGatePolicy(req, {
+      ...ortak,
+      action: 'stop',
+      executionMode: 'apply',
+      environment: ORNEK_PROD_DISI_ORTAM,
+    }),
     resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'apply', environment: '' }),
-    resolveGatePolicy(req, { ...ortak, action: 'stop', executionMode: 'dry_run', environment: 'prod' }),
-    resolveGatePolicy(req, { ...ortak, action: 'restore', executionMode: 'apply', environment: 'prod' }),
+    resolveGatePolicy(req, {
+      ...ortak,
+      action: 'stop',
+      executionMode: 'dry_run',
+      environment: 'prod',
+    }),
+    resolveGatePolicy(req, {
+      ...ortak,
+      action: 'restore',
+      executionMode: 'apply',
+      environment: 'prod',
+    }),
   ]);
   const ozet = (p) => ({ oco: p.oco, smart: p.smart, smartStatus: p.smartStatus });
   return {
@@ -371,7 +405,7 @@ function istemciyeUlasan(status, body) {
 // AYAR OKUNAMADIYSA asil sebep odur ("Template ID girilmemis" gibi); "SMART hazir degil"
 // demek kullaniciyi yanlis ekrana gonderirdi. Hata oldugu gibi yukari cikar.
 function engelKarari(req, policy, gateCfg, iz) {
-  if (gateCfg && gateCfg.hata) throw gateCfg.hata;
+  if (gateCfg?.hata) throw gateCfg.hata;
   auditPortal(req, 'scalex_gate_decision', {
     result: 'fail',
     detail: JSON.stringify({
@@ -435,7 +469,13 @@ async function runScaleXGates({
       auditPortal(req, 'scalex_smart_skipped_by_rule', {
         result: 'warn',
         detail: JSON.stringify({
-          env, tenant, clusters, namespace, apps, action, executionMode,
+          env,
+          tenant,
+          clusters,
+          namespace,
+          apps,
+          action,
+          executionMode,
           rule: policy.smartSkipRule || null,
         }),
       });
@@ -463,14 +503,22 @@ async function runScaleXGates({
 
   // SMART gerekli ama hazir degil: EN BASTA, hicbir dis cagri yapmadan (bkz. engelKarari).
   if (policy.blocked) {
-    return engelKarari(req, policy, gateCfg, { env, tenant, clusters, namespace, apps, action, executionMode });
+    return engelKarari(req, policy, gateCfg, {
+      env,
+      tenant,
+      clusters,
+      namespace,
+      apps,
+      action,
+      executionMode,
+    });
   }
 
   // Buradan sonrasi GERCEK sablon kimligi ister (SMART bileti ve zamanlama kaydi ona
   // baglanir). Okunamadiysa is BASLATILMAZ — hata oldugu gibi yukari cikar.
-  if (!gateCfg || gateCfg.serverId == null || gateCfg.templateId == null) {
+  if (gateCfg?.serverId == null || gateCfg.templateId == null) {
     throw (
-      (gateCfg && gateCfg.hata) ||
+      gateCfg?.hata ||
       Object.assign(new Error('ScaleX kapı ayarı okunamadı; iş güvenlik gereği başlatılmadı.'), {
         status: 409,
         code: 'scalex_not_configured',
@@ -686,10 +734,21 @@ async function runScaleXGates({
   // cozuluyor); yarin ortak kapiya eklenecek bir atlama yolu ScaleX'i SESSIZCE
   // onaysiz birakmasin diye is burada durur.
   if (policy.smart === 'require') {
-    console.error('[ScaleX] SMART gerekli dendi ama ortak kapi bilet acmadan gecti — is BASLATILMADI');
+    console.error(
+      '[ScaleX] SMART gerekli dendi ama ortak kapi bilet acmadan gecti — is BASLATILMADI',
+    );
     auditPortal(req, 'scalex_gate_decision', {
       result: 'fail',
-      detail: JSON.stringify({ env, tenant, clusters, namespace, apps, action, executionMode, outcome: 'inconsistent' }),
+      detail: JSON.stringify({
+        env,
+        tenant,
+        clusters,
+        namespace,
+        apps,
+        action,
+        executionMode,
+        outcome: 'inconsistent',
+      }),
     });
     return {
       outcome: 'error',
@@ -777,7 +836,8 @@ function asyncRoute(fn) {
     fn(req, res).catch((err) => {
       const status = err.status || 500;
       if (status >= 500) console.error('[ScaleX]', err);
-      const safeMsg = status === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
+      const safeMsg =
+        status === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
       res.status(status).json({ ok: false, message: safeMsg, code: err.code });
     });
 }
@@ -802,14 +862,24 @@ function eylemRoute(fn) {
   return (req, res) =>
     fn(req, res).catch((err) => {
       const asil = err.status || 500;
-      const status = (() => { if (asil === 501) return 409; if ([502, 503, 504].includes(asil)) return 424; return asil; })();
+      const status = (() => {
+        if (asil === 501) return 409;
+        if ([502, 503, 504].includes(asil)) return 424;
+        return asil;
+      })();
       if (asil >= 500) console.error('[ScaleX]', err);
       const safeMsg =
         asil === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
       res.status(status).json({
         ok: false,
         message: safeMsg,
-        code: err.code || (() => { if (asil === 501) return 'scalex_not_configured'; if (status === 424) return 'awx_unreachable'; return undefined; })(),
+        code:
+          err.code ||
+          (() => {
+            if (asil === 501) return 'scalex_not_configured';
+            if (status === 424) return 'awx_unreachable';
+            return undefined;
+          })(),
         ...(status !== asil ? { upstreamStatus: asil } : {}),
       });
     });
@@ -870,7 +940,9 @@ async function resolveScope(req, { requireApps = true } = {}) {
   const uygulamaSiniri = config.TUNABLES.SCALEX_MAX_TARGETS.hardMax;
   if (apps.length > uygulamaSiniri) {
     throw Object.assign(
-      new Error(`Tek istekte en fazla ${uygulamaSiniri} uygulama gönderilebilir; ${apps.length} gönderildi.`),
+      new Error(
+        `Tek istekte en fazla ${uygulamaSiniri} uygulama gönderilebilir; ${apps.length} gönderildi.`,
+      ),
       { status: 400 },
     );
   }
@@ -953,7 +1025,9 @@ async function launchOnAwx({ keyName, extraVars, req, label }) {
     ONKONTROL_BELLEK.delete(onkontrolAnahtari(serverId, templateId));
     await runner
       .cancelJobOnServer(serverId, job.jobId)
-      .catch((e) => console.warn(`[ScaleX] yutulan degiskenli is #${job.jobId} iptal edilemedi:`, e.message));
+      .catch((e) =>
+        console.warn(`[ScaleX] yutulan degiskenli is #${job.jobId} iptal edilemedi:`, e.message),
+      );
     throw templatePreflight.promptKapaliHatasi({
       templateId,
       templateName: '',
@@ -1069,17 +1143,35 @@ function initScaleX(app) {
   router.get(
     '/gate-summary',
     asyncRoute(async (req, res) => {
-      const env = String(req.query.env || '').trim().slice(0, 64);
+      const env = String(req.query.env || '')
+        .trim()
+        .slice(0, 64);
       if (!env) return res.status(400).json({ ok: false, message: 'env zorunlu.' });
-      const tenant = String(req.query.tenant || '').trim().slice(0, 128);
+      const tenant = String(req.query.tenant || '')
+        .trim()
+        .slice(0, 128);
       const clusters = String(req.query.clusters || '')
         .split(',')
         .map((c) => c.trim())
         .filter(Boolean)
         .slice(0, 100);
       const [degisiklik, geriAlma] = await Promise.all([
-        resolveGatePolicy(req, { action: 'stop', executionMode: 'apply', environment: env, tenant, clusters, namespace: '' }),
-        resolveGatePolicy(req, { action: 'restore', executionMode: 'apply', environment: env, tenant, clusters, namespace: '' }),
+        resolveGatePolicy(req, {
+          action: 'stop',
+          executionMode: 'apply',
+          environment: env,
+          tenant,
+          clusters,
+          namespace: '',
+        }),
+        resolveGatePolicy(req, {
+          action: 'restore',
+          executionMode: 'apply',
+          environment: env,
+          tenant,
+          clusters,
+          namespace: '',
+        }),
       ]);
       const sa = degisiklik.gateCfg.svcConfig.smartApproval || {};
       res.json({
@@ -1093,7 +1185,9 @@ function initScaleX(app) {
           sa.enabled === true &&
           launch.gates
             .parseSmartSkipRules(sa.skipWhen)
-            .rules.some((r) => ['namespace', 'action'].includes(String(r.field || '').toLowerCase())),
+            .rules.some((r) =>
+              ['namespace', 'action'].includes(String(r.field || '').toLowerCase()),
+            ),
         configError: degisiklik.gateCfg.hata ? degisiklik.gateCfg.hata.message : null,
       });
     }),
@@ -1268,7 +1362,7 @@ function initScaleX(app) {
       //   `scalex_extra_kinds`   -> tek birlesik liste (ESKI paketler icin)
       // "Onbellek yok"u "CRD yok" saymak, olceklenebilir operator nesnelerini SESSIZCE
       // listeden dusurmek olurdu; guvenilir kayit YOKSA bos gecilir ve betik tam tarar.
-      const extraKinds = bulunan && bulunan.length ? bulunan.join(',') : '';
+      const extraKinds = bulunan?.length ? bulunan.join(',') : '';
 
       const extraVars = {
         scalex_clusters_override: launch.buildScaleXClusterCatalog({
@@ -1546,7 +1640,7 @@ function initScaleX(app) {
       // yaptirmak, o cagriyi unutan/sekmesini kapatan her kullanicida sapmanin SESSIZCE
       // guncellenmemesi demekti — ki bu ozelligin ilk halinde tam olarak boyle oldu:
       // `refreshDrift` yazildi, test edildi ve HICBIR YERDEN CAGRILMADI.
-      if (status.finished && parsed && parsed.mode === 'state') {
+      if (status.finished && parsed?.mode === 'state') {
         try {
           await state.refreshDrift({
             env: parsed.environment,
@@ -1593,7 +1687,7 @@ function initScaleX(app) {
         // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
         if (status.finished) {
           auditPortal(req, 'scalex_discovery_result', {
-            result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
+            result: parsed?.overallStatus === 'error' ? 'fail' : 'ok',
             detail: JSON.stringify({
               serverId,
               jobId,
@@ -1604,8 +1698,8 @@ function initScaleX(app) {
               clusters: parsed ? parsed.clusters : [],
               failedClusters: parsed ? parsed.failedClusters : [],
               counts: parsed ? parsed.counts : null,
-              workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
-              states: parsed && parsed.states ? parsed.states.length : undefined,
+              workloads: parsed?.workloads ? parsed.workloads.length : undefined,
+              states: parsed?.states ? parsed.states.length : undefined,
             }),
           });
         }
@@ -1615,7 +1709,7 @@ function initScaleX(app) {
         // tekrar tekrar aciliyor, hangi namespace'te neyin eksik oldugu hicbir yerde
         // toplu durmuyordu. `refreshDrift` ile AYNI gerekce: istemciye ikinci bir cagri
         // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
-        if (status.finished && parsed && parsed.mode === 'workloads') {
+        if (status.finished && parsed?.mode === 'workloads') {
           try {
             // SATIR BASINA NAMESPACE: tablo `UNIQUE(env,tenant,cluster,namespace,kind)`.
             // Tek bir `parsed.namespace` gecmek, cok namespace'li bir iste B
@@ -1698,7 +1792,7 @@ function initScaleX(app) {
         // DARALTILMIS KESIF YAZILMAZ: `putApps` gorulmeyen uygulamalari is_deleted=1
         // yapar; 1 uygulamalik bir kesfi yazmak kalan 49'u silerdi.
         const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
-        if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
+        if (status.finished && parsed?.mode === 'workloads' && kapsam?.full) {
           try {
             // ── ANAHTAR (CLUSTER, NAMESPACE) ─────────────────────────────────
             //
@@ -1783,8 +1877,7 @@ function initScaleX(app) {
         // icin merge temiz gecti — hicbiri tek basina bozuk degildi, BIRLESIMI
         // bozuktu. `String(undefined)` -> "undefined" -> 400. Ustelik bekcinin
         // kendisi bu OLU ADI kilitliyordu (bkz. scalex-verify-timing VT1).
-        verificationTimeout:
-          req.body?.verificationTimeout ?? String(launch.verifyTimeoutDefault()),
+        verificationTimeout: req.body?.verificationTimeout ?? String(launch.verifyTimeoutDefault()),
       });
       const selectedTargets = normalizeTargets(req.body?.targets, { clusters, apps });
       const radius = launch.computeBlastRadius({
@@ -1816,10 +1909,14 @@ function initScaleX(app) {
         verification,
         // ScaleX sablonu cozulemediyse HICBIR is baslayamaz (on kontrol dahil). Ekran bunu
         // "Calistir"dan once soyler; `/run` ayni metinle reddeder.
-        configError: (() => { if (gateCfg.hata) return {
+        configError: (() => {
+          if (gateCfg.hata)
+            return {
               code: gateCfg.hata.status === 501 ? 'scalex_not_configured' : 'config_unreadable',
               message: gateCfg.hata.message,
-            }; return null; })(),
+            };
+          return null;
+        })(),
         hpaPinAllowed: launch.isHpaPinAllowed({
           action,
           targetReplicas,
@@ -1927,7 +2024,13 @@ function initScaleX(app) {
       // don — engelli bir istek kilit alip birakmasin, AWX/DB'ye gitmesin.
       if (policy.blocked) {
         const ret = engelKarari(req, policy, gateCfg, {
-          env, tenant, clusters, namespace, apps, action, executionMode,
+          env,
+          tenant,
+          clusters,
+          namespace,
+          apps,
+          action,
+          executionMode,
         });
         return res.status(ret.status).json(ret.body);
       }
@@ -2131,7 +2234,7 @@ function initScaleX(app) {
         // Portal katalogu gonderdigi halde playbook DOSYAYA dustuyse AWX template'inde
         // "Prompt on launch > Variables" kapali demektir — kullanici bunu bilmeli.
         catalogWarning:
-          parsed && parsed.catalogSource === 'file'
+          parsed?.catalogSource === 'file'
             ? 'Playbook cluster kataloğunu portaldan DEĞİL kendi dosyasından okudu — AWX template ayarını kontrol edin (Prompt on launch > Variables).'
             : null,
       });
@@ -2504,7 +2607,7 @@ function initScaleX(app) {
       .map((x) => String(x).trim())
       .filter(Boolean);
   const zamanlamaGorunumu = (rec) => {
-    const ev = (rec.pendingLaunch && rec.pendingLaunch.extraVars) || {};
+    const ev = rec.pendingLaunch?.extraVars || {};
     return {
       id: rec.id,
       username: rec.username,
@@ -2532,8 +2635,7 @@ function initScaleX(app) {
     };
   };
   // Baska modulun kaydi bu uclardan YOK sayilir (403 degil 404: varligini da soylemez).
-  const scalexDisi = (res) =>
-    res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
+  const scalexDisi = (res) => res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' });
 
   router.get(
     '/oco-schedules',
@@ -2589,7 +2691,9 @@ function initScaleX(app) {
           result: 'fail',
           detail: JSON.stringify({ id: rec.id, owner: rec.username }),
         });
-        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+        return res
+          .status(403)
+          .json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
       }
       // ── YALNIZCA `SCHEDULED` KAYIT BURADAN IPTAL EDILIR (2026-10-13) ─────────
       //
@@ -2634,7 +2738,9 @@ function initScaleX(app) {
             WHERE request_key = $1 AND status = 'SCHEDULED'`,
           [`oco:${rec.id}`, `Zamanlama iptal edildi (${u.username}).`],
         )
-        .catch((e) => console.warn('[ScaleX] iptal edilen zamanlamanin islem satiri kapatilamadi:', e.message));
+        .catch((e) =>
+          console.warn('[ScaleX] iptal edilen zamanlamanin islem satiri kapatilamadi:', e.message),
+        );
       auditPortal(req, 'scalex_oco_schedule_cancelled', {
         detail: JSON.stringify({ id: rec.id, owner: rec.username, oco: rec.ocoNumber }),
       });
@@ -2658,7 +2764,9 @@ function initScaleX(app) {
           result: 'fail',
           detail: JSON.stringify({ id: rec.id, owner: rec.username }),
         });
-        return res.status(403).json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
+        return res
+          .status(403)
+          .json({ ok: false, message: 'Bu kayit sizin ya da grubunuzun degil.' });
       }
 
       // YENI NUMARA VERILDIYSE DOGRULANIR. Numara degistirip pencereyi eski
@@ -2681,7 +2789,10 @@ function initScaleX(app) {
             message: `OCO ${yeniNumara} kaydinda planlanan kesinti tarihi yok.`,
           });
         }
-        const w = ocoWindow.evaluateWindow({ startDate: planned.startDate, endDate: planned.endDate });
+        const w = ocoWindow.evaluateWindow({
+          startDate: planned.startDate,
+          endDate: planned.endDate,
+        });
         if (!w.ok) return res.status(400).json({ ok: false, message: w.message });
         if (w.phase === 'expired') {
           return res.status(400).json({ ok: false, ocoExpired: true, message: w.message });
@@ -2846,7 +2957,11 @@ function initScaleX(app) {
         });
       }
       const onceki = config.smartMode().value;
-      await require('../db/env-overrides.cjs').setEnvOverride(config.SMART_MODE_KEY, mode, u.username);
+      await require('../db/env-overrides.cjs').setEnvOverride(
+        config.SMART_MODE_KEY,
+        mode,
+        u.username,
+      );
       auditPortal(req, 'scalex_smart_mode_changed', {
         // Kapatmak bir guvenlik karari: denetim listesinde uyari olarak gorunur.
         result: mode === 'oco_only' ? 'warn' : 'ok',
@@ -3039,7 +3154,11 @@ function initScaleX(app) {
       // UNKNOWN ESIGI AYARDAN (2026-10-14): ekran "24 saat" diye SABIT yaziyordu; uzlastirici
       // `SCALEX_RECONCILE_STALE_HOURS`i okuyor. Ekran sayiyi buradan alir.
       const staleHours = Number(require('./reconciler.cjs').getConfig().staleHours);
-      res.json({ ok: true, items: rows, unknownAfterHours: Number.isFinite(staleHours) ? staleHours : null });
+      res.json({
+        ok: true,
+        items: rows,
+        unknownAfterHours: Number.isFinite(staleHours) ? staleHours : null,
+      });
     }),
   );
 
@@ -3194,7 +3313,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     // ham `rows`/`targets` buraya KONMAZ. Denetime OZET, ham cikti `result_json`a.
     auditPortal(null, 'scalex_finalize', {
       username: op.username,
-      result: parsed && parsed.overallStatus === 'FAIL' ? 'fail' : 'ok',
+      result: parsed?.overallStatus === 'FAIL' ? 'fail' : 'ok',
       detail: JSON.stringify({
         serverId,
         jobId,
@@ -3208,7 +3327,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
       }),
     });
 
-    if (!parsed || parsed.mode !== 'apply') return;
+    if (parsed?.mode !== 'apply') return;
     const idByCluster = new Map(rows.map((r) => [r.cluster_name, r.id]));
     // Aynaya NE YAZILDIGI da ayri bir iz — asagida bkz. `scalex_mirror_update`.
     const mirror = { stopped: [], restored: [], unlocked: [] };

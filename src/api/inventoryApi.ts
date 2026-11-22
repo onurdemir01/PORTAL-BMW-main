@@ -1,5 +1,5 @@
-import { safeJson } from "./http";
-const BASE = "/api/inventory";
+import { safeJson } from './http';
+const BASE = '/api/inventory';
 
 // Short-lived caches to prevent duplicate fetches on tab switches
 const _tablesCache = { data: null as string[] | null, at: 0 };
@@ -8,24 +8,42 @@ const _colCache = new Map<string, { data: unknown; at: number }>();
 const COL_TTL = 5 * 60_000;
 
 export interface TableVisibilityRow {
-  id: number; schemaName: string; tableName: string; displayName: string | null;
-  isActive: boolean; sortOrder: number; description: string | null; overrideCount: number;
+  id: number;
+  schemaName: string;
+  tableName: string;
+  displayName: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  description: string | null;
+  overrideCount: number;
   // Bu tablo User/Admin rolüne görünür mü — ilgili rol için "Tüm tabloları göster" açıksa
   // (bkz. allTablesVisible) her satırda true gelir, ayrı ayrı düzenlenemez.
-  roleVisible: Record<"User" | "Admin", boolean>;
+  roleVisible: Record<'User' | 'Admin', boolean>;
   // Takma adın (displayName) KENDİ aktif/pasif durumu — tablonun isActive'inden AYRI bir
   // kavram: pasif bir takma ad tabloyu gizlemez, sadece ham tablo adına düşürür (eskiden
   // Admin > Sistem > "Tablo Takma Adları" ekranındaki "Aktif/Pasif" anahtarı).
   aliasActive: boolean;
 }
 export interface TableUserOverride {
-  username: string; override_type: "allow" | "deny"; created_by: string | null; created_at: string | null;
+  username: string;
+  override_type: 'allow' | 'deny';
+  created_by: string | null;
+  created_at: string | null;
 }
 
 export type FilterOp =
-  | "contains" | "notContains" | "equals" | "notEquals"
-  | "startsWith" | "endsWith" | "isNull" | "isNotNull"
-  | "gt" | "gte" | "lt" | "lte";
+  | 'contains'
+  | 'notContains'
+  | 'equals'
+  | 'notEquals'
+  | 'startsWith'
+  | 'endsWith'
+  | 'isNull'
+  | 'isNotNull'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte';
 
 export interface ColumnFilter {
   col: string;
@@ -34,7 +52,7 @@ export interface ColumnFilter {
 }
 
 export interface FilterGroup {
-  mode: "AND" | "OR";
+  mode: 'AND' | 'OR';
   filters: ColumnFilter[];
 }
 
@@ -94,7 +112,7 @@ export interface SavedQuery {
   description: string;
 }
 
-export type InventoryRefreshChoice = "all" | "nginx" | "ihs" | "rha" | "jboss" | "was" | "ctg";
+export type InventoryRefreshChoice = 'all' | 'nginx' | 'ihs' | 'rha' | 'jboss' | 'was' | 'ctg';
 
 export interface InventoryRefreshRunResult {
   ok: boolean;
@@ -114,14 +132,13 @@ export interface InventoryRefreshJobStatus {
   message?: string;
 }
 
-
 // ── Envanter geçmişi (SCD-2) ──────────────────────────────────────────────────
 // Kaynak tablolar her yenilemede TRUNCATE edilip yeniden yazıldığı için geçmiş
 // yalnızca Portal'ın gecelik anlık görüntülerinden gelir; GERİYE DÖNÜK VERİ YOKTUR.
 export interface HistoryTableInfo {
   table: string;
   label: string;
-  mode: "snapshot" | "native";
+  mode: 'snapshot' | 'native';
   key: string[];
 }
 
@@ -150,11 +167,10 @@ export interface HistoryRun {
   message: string | null;
 }
 
-
 export interface HistoryConfigRow {
   table: string;
   label: string | null;
-  mode: "snapshot" | "native";
+  mode: 'snapshot' | 'native';
   key: string[];
   enabled: boolean;
   updatedAt: string | null;
@@ -166,24 +182,34 @@ export const inventoryApi = {
 
   // viewAsRole: sadece gerçek rolü Admin olan kullanıcılar için sunucu tarafında geçerli
   // olur (bkz. server/inventory/index.cjs) — "farklı rol gibi görüntüle" önizlemesi içindir.
-  tables: (viewAsRole?: "User" | "Admin"): Promise<{ ok: boolean; tables: string[]; effectiveRole?: string }> => {
+  tables: (
+    viewAsRole?: 'User' | 'Admin',
+  ): Promise<{ ok: boolean; tables: string[]; effectiveRole?: string }> => {
     if (!viewAsRole && _tablesCache.data && Date.now() - _tablesCache.at < TABLES_TTL) {
       return Promise.resolve({ ok: true, tables: _tablesCache.data });
     }
-    const qs = viewAsRole ? `?viewAsRole=${viewAsRole}` : "";
-    return fetch(`${BASE}/tables${qs}`).then(safeJson).then((d) => {
-      if (d.ok && !viewAsRole) { _tablesCache.data = d.tables; _tablesCache.at = Date.now(); }
-      return d;
-    });
+    const qs = viewAsRole ? `?viewAsRole=${viewAsRole}` : '';
+    return fetch(`${BASE}/tables${qs}`)
+      .then(safeJson)
+      .then((d) => {
+        if (d.ok && !viewAsRole) {
+          _tablesCache.data = d.tables;
+          _tablesCache.at = Date.now();
+        }
+        return d;
+      });
   },
 
   columns: (table: string): Promise<{ ok: boolean; columns: ColumnMeta[] }> => {
     const cached = _colCache.get(table);
-    if (cached && Date.now() - cached.at < COL_TTL) return Promise.resolve(cached.data as { ok: boolean; columns: ColumnMeta[] });
-    return fetch(`${BASE}/columns/${encodeURIComponent(table)}`).then(safeJson).then((d) => {
-      _colCache.set(table, { data: d, at: Date.now() });
-      return d;
-    });
+    if (cached && Date.now() - cached.at < COL_TTL)
+      return Promise.resolve(cached.data as { ok: boolean; columns: ColumnMeta[] });
+    return fetch(`${BASE}/columns/${encodeURIComponent(table)}`)
+      .then(safeJson)
+      .then((d) => {
+        _colCache.set(table, { data: d, at: Date.now() });
+        return d;
+      });
   },
 
   distinct: (
@@ -191,15 +217,17 @@ export const inventoryApi = {
     col: string,
     search?: string,
     /** Diger kolonlarda AKTIF olan filtreler; secenekler bunlara gore daralir. */
-    multiFilters?: Record<string, string[]>
+    multiFilters?: Record<string, string[]>,
   ): Promise<{ ok: boolean; values: { value: string; count: number }[] }> => {
-    const qs = new URLSearchParams({ limit: "200" });
-    if (search) qs.set("search", search);
+    const qs = new URLSearchParams({ limit: '200' });
+    if (search) qs.set('search', search);
     // Kendi kolonu sunucu tarafinda haric tutulur; burada olduğu gibi gonderilir.
     if (multiFilters && Object.keys(multiFilters).length) {
-      qs.set("multiFilters", JSON.stringify(multiFilters));
+      qs.set('multiFilters', JSON.stringify(multiFilters));
     }
-    return fetch(`${BASE}/distinct/${encodeURIComponent(table)}/${encodeURIComponent(col)}?${qs}`).then(safeJson);
+    return fetch(
+      `${BASE}/distinct/${encodeURIComponent(table)}/${encodeURIComponent(col)}?${qs}`,
+    ).then(safeJson);
   },
 
   data: (
@@ -212,19 +240,19 @@ export const inventoryApi = {
       multiFilters?: Record<string, string[]>;
       filterGroup?: FilterGroup;
       orderBy?: string;
-      orderDir?: "ASC" | "DESC";
+      orderDir?: 'ASC' | 'DESC';
       /** Toplam sayiyi KESIN olarak istet. Varsayilan hizli yol yalnizca alt sinir
        *  dondurur (bkz. server/inventory: limit+1 yoklamasi). */
       exactCount?: boolean;
-    } = {}
+    } = {},
   ): Promise<TableDataResult> => {
     const qs = new URLSearchParams();
-    if (params.page) qs.set("page", String(params.page));
-    if (params.limit) qs.set("limit", String(params.limit));
-    if (params.search) qs.set("search", params.search);
-    if (params.orderBy) qs.set("orderBy", params.orderBy);
-    if (params.orderDir) qs.set("orderDir", params.orderDir);
-    if (params.exactCount) qs.set("exactCount", "1");
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.search) qs.set('search', params.search);
+    if (params.orderBy) qs.set('orderBy', params.orderBy);
+    if (params.orderDir) qs.set('orderDir', params.orderDir);
+    if (params.exactCount) qs.set('exactCount', '1');
     if (params.filters) {
       for (const [col, val] of Object.entries(params.filters)) {
         if (val) qs.set(`filters[${col}]`, val);
@@ -232,14 +260,14 @@ export const inventoryApi = {
     }
     if (params.multiFilters) {
       const active = Object.fromEntries(
-        Object.entries(params.multiFilters).filter(([, v]) => v.length > 0)
+        Object.entries(params.multiFilters).filter(([, v]) => v.length > 0),
       );
       if (Object.keys(active).length > 0) {
-        qs.set("multiFilters", JSON.stringify(active));
+        qs.set('multiFilters', JSON.stringify(active));
       }
     }
     if (params.filterGroup && params.filterGroup.filters.length > 0) {
-      qs.set("filterGroup", JSON.stringify(params.filterGroup));
+      qs.set('filterGroup', JSON.stringify(params.filterGroup));
     }
     return fetch(`${BASE}/data/${encodeURIComponent(table)}?${qs}`).then(safeJson);
   },
@@ -253,65 +281,81 @@ export const inventoryApi = {
   // actions.md #12 (Bolum K) — her tablo icin bir satir (eski 2-satirlik CSV modeli yerine).
   // Rol-bazli gorunurluk (Admin > Sistem'deki eski "Kullanici Tablo Gorunurlugu" ekraninin
   // yerini alir) artik BURADA, tablo satirinin bir parcasi olarak gelir/duzenlenir.
-  tableVisibilityList: (): Promise<{ ok: boolean; tables: TableVisibilityRow[]; allTablesVisible: Record<"User" | "Admin", boolean> }> =>
-    fetch(`${BASE}/table-visibility`).then(safeJson),
+  tableVisibilityList: (): Promise<{
+    ok: boolean;
+    tables: TableVisibilityRow[];
+    allTablesVisible: Record<'User' | 'Admin', boolean>;
+  }> => fetch(`${BASE}/table-visibility`).then(safeJson),
 
-  updateTableVisibility: (id: number, data: { isActive: boolean; displayName?: string; description?: string; sortOrder?: number; aliasActive?: boolean }) =>
+  updateTableVisibility: (
+    id: number,
+    data: {
+      isActive: boolean;
+      displayName?: string;
+      description?: string;
+      sortOrder?: number;
+      aliasActive?: boolean;
+    },
+  ) =>
     fetch(`${BASE}/table-visibility/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(safeJson),
 
   // Tek bir tablonun bir role gore gorunurlugunu acar/kapatir. "Tum tablolari goster"
   // (setAllTablesVisible) o rol icin AÇIKKEN 400 doner — once o kapatilmali.
-  setTableRoleVisibility: (id: number, role: "User" | "Admin", visible: boolean) =>
+  setTableRoleVisibility: (id: number, role: 'User' | 'Admin', visible: boolean) =>
     fetch(`${BASE}/table-visibility/${id}/role`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role, visible }),
     }).then(safeJson),
 
   // Bir rol icin toplu "tum tablolar gorunur / hicbiri gorunmez" anahtari.
-  setAllTablesVisible: (role: "User" | "Admin", allVisible: boolean) =>
+  setAllTablesVisible: (role: 'User' | 'Admin', allVisible: boolean) =>
     fetch(`${BASE}/table-visibility/role-all`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role, allVisible }),
     }).then(safeJson),
 
   listTableUserOverrides: (id: number): Promise<{ ok: boolean; overrides: TableUserOverride[] }> =>
     fetch(`${BASE}/table-visibility/${id}/user-overrides`).then(safeJson),
 
-  addTableUserOverride: (id: number, username: string, overrideType: "allow" | "deny") =>
+  addTableUserOverride: (id: number, username: string, overrideType: 'allow' | 'deny') =>
     fetch(`${BASE}/table-visibility/${id}/user-overrides`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, overrideType }),
     }).then(safeJson),
 
   removeTableUserOverride: (id: number, username: string) =>
-    fetch(`${BASE}/table-visibility/${id}/user-overrides/${encodeURIComponent(username)}`, { method: "DELETE" }).then(safeJson),
+    fetch(`${BASE}/table-visibility/${id}/user-overrides/${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    }).then(safeJson),
 
-  listTableColumnVisibility: (id: number): Promise<{ ok: boolean; columns: { name: string; isVisible: boolean }[] }> =>
+  listTableColumnVisibility: (
+    id: number,
+  ): Promise<{ ok: boolean; columns: { name: string; isVisible: boolean }[] }> =>
     fetch(`${BASE}/table-visibility/${id}/columns`).then(safeJson),
 
   setColumnVisibility: (id: number, columnName: string, isVisible: boolean) =>
     fetch(`${BASE}/table-visibility/${id}/columns/${encodeURIComponent(columnName)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isVisible }),
     }).then(safeJson),
 
   runQuery: (
     sqlText: string,
-    opts: { save?: boolean; queryName?: string; description?: string } = {}
+    opts: { save?: boolean; queryName?: string; description?: string } = {},
   ): Promise<QueryResult> =>
     fetch(`${BASE}/query`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "x-portal-role": "Admin",
+        'Content-Type': 'application/json',
+        'x-portal-role': 'Admin',
       },
       body: JSON.stringify({ sqlText, ...opts }),
     }).then(safeJson),
@@ -321,18 +365,18 @@ export const inventoryApi = {
 
   deleteSavedQuery: (name: string) =>
     fetch(`${BASE}/saved-queries/${encodeURIComponent(name)}`, {
-      method: "DELETE",
-      headers: { "x-portal-role": "Admin" },
+      method: 'DELETE',
+      headers: { 'x-portal-role': 'Admin' },
     }).then(safeJson),
 
   publishQuery: (name: string) =>
     fetch(`${BASE}/saved-queries/${encodeURIComponent(name)}/publish`, {
-      method: "POST",
+      method: 'POST',
     }).then(safeJson),
 
   setDefaultQuery: (name: string) =>
     fetch(`${BASE}/saved-queries/${encodeURIComponent(name)}/set-default`, {
-      method: "POST",
+      method: 'POST',
     }).then(safeJson),
 
   invalidateCache: () => {
@@ -344,8 +388,8 @@ export const inventoryApi = {
   // "Envanteri Yenile" — Ürün Envanteri (Inventory) tablosu için AWX job'ını tetikler.
   refreshRun: (choices: InventoryRefreshChoice[]): Promise<InventoryRefreshRunResult> =>
     fetch(`${BASE}/refresh/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ choices }),
     }).then(safeJson),
 
@@ -360,8 +404,9 @@ export const inventoryApi = {
     table: string,
     date: string,
   ): Promise<{ ok: boolean; at: string; count: number; rows: HistoryRow[]; message?: string }> =>
-    fetch(`${BASE}/history/at?table=${encodeURIComponent(table)}&date=${encodeURIComponent(date)}`)
-      .then(safeJson),
+    fetch(
+      `${BASE}/history/at?table=${encodeURIComponent(table)}&date=${encodeURIComponent(date)}`,
+    ).then(safeJson),
 
   historyDiff: (table: string, from: string, to: string): Promise<HistoryDiff> =>
     fetch(
@@ -380,18 +425,25 @@ export const inventoryApi = {
 
   // ── Envanter geçmişi kapsamı (Admin) ────────────────────────────────────────
   historyConfig: (): Promise<{
-    ok: boolean; configured: HistoryConfigRow[]; candidates: string[]; message?: string;
+    ok: boolean;
+    configured: HistoryConfigRow[];
+    candidates: string[];
+    message?: string;
   }> => fetch(`${BASE}/history/config`).then(safeJson),
 
   historyColumns: (table: string): Promise<{ ok: boolean; columns: string[]; message?: string }> =>
     fetch(`${BASE}/history/columns/${encodeURIComponent(table)}`).then(safeJson),
 
   historyConfigSave: (body: {
-    table: string; label?: string; mode?: string; key: string[]; enabled: boolean;
+    table: string;
+    label?: string;
+    mode?: string;
+    key: string[];
+    enabled: boolean;
   }): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/history/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 };

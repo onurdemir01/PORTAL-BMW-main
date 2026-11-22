@@ -54,7 +54,14 @@ const OCP_OPERATIONS = Object.freeze([
 
 // java_app_ops.yml'in sonundaki "DB Ops" play'inin sabit hedefi — Legacy restart/stop/
 // start akisinin AWX --limit'ine HER ZAMAN eklenir (bkz. POST /api/opsx/run, "limitHosts").
-const DB_OPS_HOST = 'GBLABT02';
+// "DB Ops" play'inin sunucusu kurum ayarinda (`opsx.dbIslemSunucusu`; sunucu adi koda yazilmaz, K17).
+// Tanimsizsa Legacy istegi BASLATILMAZ: limit'e eklenemeyen sunucu denetim kaydini sessizce atlatirdi.
+function dbIslemSunucusu() {
+  const { sunucuAdi } = require('../util/kurum-ayari.cjs');
+  const { ad, hata } = sunucuAdi('opsx.dbIslemSunucusu');
+  if (!ad) throw hataVer(503, `DB islem sunucusu tanimli degil: ${hata}`, 'kurum_ayari_eksik');
+  return ad;
+}
 
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'opsx_legacy_operation',
@@ -104,13 +111,13 @@ async function resolveTarget(platform) {
 // calisirken bazilari durmus, bkz. java_app_ops/operations/tasks/main.yml) okunur — daha once
 // bir playbook tetikleyip polling yapan /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu
 // deger zaten envanterde hazir.
-// KURULUM KOLU (2026-10-08, uretim: GBJBOP18 / GBCCSECURETRACKER). OpsX playbook'lari kurulumu
+// KURULUM KOLU (2026-10-08, uretim: ORJBOP18 / GBCCSECURETRACKER). OpsX playbook'lari kurulumu
 // SURUME gore degil DIZINE gore secer: "7" kolu = /usr/jboss/AppServer (jboss-cli.sh), "8" kolu =
 // /usr/jboss8/AppServer (jboss-cli8.sh, :9998). CLI adresindeki host adi 2026-11-14'ten beri sabit
 // (master/primary) degil, controller'dan :read-attribute(name=local-host-name) ile okunur (bkz.
 // bmw_portal/java_app_ops/README.md). Standart disi bir sunucuda
 // /usr/jboss altina da JBoss 8 kurulmus: envanter iki satir donduruyor, IKISI DE 8.x (8.0 ve 8.1).
-// Kol urun surumunden turetildigi icin iki satir AYNI kimligi aliyordu (GBJBOP18|8) - birine
+// Kol urun surumunden turetildigi icin iki satir AYNI kimligi aliyordu (ORJBOP18|8) - birine
 // tiklamak ikisini seciyordu - ve /usr/jboss kurulumu hic ayri hedeflenemiyordu.
 // Envanter iki kurulumu app_path ile ayirir (mwapps toplayicisi): /usr/jboss kolu
 // /vhosting/<app>.ear, /usr/jboss8 kolu /vhosting8/<app>.ear yazar. Kol oradan okunur; app_path
@@ -364,7 +371,7 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzin
 // AYNI sorunu cozen, production'da kanitlanmis mekanizmasi burada YENIDEN KULLANILIR
 // (sifirdan yazilmaz): cluster basina bastion+metadata (api_url/vault anahtari) DB'den
 // cozulur, playbook'un `ocp_clusters[]`/`terminal_hosts[]` ile fan-out yapabilmesi icin
-// extra_vars kurulur — bkz. server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
+// extra_vars kurulur — bkz. server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
 async function resolveOcpClusterFanout(envKey, tenantKey, clusterNames) {
   const adminData = require('../logx/v2/admin.cjs');
   const { buildOcpExtraVars } = require('../logx/v2/ocp.cjs');
@@ -482,7 +489,9 @@ async function appsForNamespace(env, tenant, namespace, user) {
   const out = await ocpInventory
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
-  return [...new Set((out.items || []).map((i) => i.name))].sort((a, b) => Number(a > b) - Number(a < b));
+  return [...new Set((out.items || []).map((i) => i.name))].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  );
 }
 
 // Legacy restart / stop / start isteginin dogrulamasi ve AWX girdisi (2026-11-14, POST /api/opsx/run'dan
@@ -508,12 +517,13 @@ async function legacyIstegiHazirla(
   );
 
   // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
-  // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
+  // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: ORLABT02, is
   // calistirmasini denetim icin DB'ye kaydeder) kisitlar. limit sadece secilen hedef
-  // sunucularla sinirlanirsa (or. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
+  // sunucularla sinirlanirsa (or. "ORCJAP01,ORCJAP03") ORLABT02 bu kumede olmadigi
   // icin o play "skipping: no hosts matched" ile sessizce atlanir — is'in kendisi
-  // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden GBLABT02 HER ZAMAN limit'e
+  // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden ORLABT02 HER ZAMAN limit'e
   // eklenir (zaten hedeflerden biriyse tekrar eklenmez).
+  const DB_OPS_HOST = dbIslemSunucusu();
   const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
   const limitValue = limitHosts.join(cfg.separator);
 
@@ -579,7 +589,7 @@ async function legacyIstegiHazirla(
     ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
   };
 
-  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
+  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ' jboss_version=' + jbossVersion : ''}`;
   return { requested, seciliEnvler, limitValue, extraVars, logSummary };
 }
 
@@ -624,7 +634,7 @@ async function opsxIsiBaslat({
       req.session?.user,
     );
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
     throw e;
   }
@@ -690,12 +700,14 @@ async function opsxIsiBaslat({
 // yutar ve is TUM envanterde kosar (bkz. project notu). Toplu yol limit'i kabul etmeyen sablonla BASLATMAZ.
 // METADATAHUB: main.yml bu dort hostta (Ansible `match` basa demirli: adla BASLAYAN her host) operation=
 // restart iken server_config_map'e BAKMADAN script tabanli TAM restart kosar -> toplu yoldan hic gitmez.
-const METADATAHUB_TAM_RESTART = Object.freeze(['GBABAT01', 'GBABAT02', 'GBABAP01', 'GBABAP02']);
+// Host on ekleri kurum ayarinda (`opsx.metadataHubTamRestart`, K17); playbook'taki listeyle ayni olmali.
+const metadataHubTamRestart = () =>
+  require('../util/kurum-ayari.cjs').sunucuListesi('opsx.metadataHubTamRestart').liste;
 const metadatahubHostMu = (h) => {
   const H = String(h || '')
     .trim()
     .toUpperCase();
-  return METADATAHUB_TAM_RESTART.some((x) => H.startsWith(x));
+  return metadataHubTamRestart().some((x) => H.startsWith(x));
 };
 
 // AD KURALI (2026-11-14 inceleme): filo adlandirmasinda kisa adin ortam harfi P = PROD (server-hub assess.cjs
@@ -731,11 +743,11 @@ async function legacyLimitKontrol() {
   } catch (e) {
     throw hataVer(
       503,
-      `AWX şablonunun "Limit" ayarı okunamadı (${e && e.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
+      `AWX şablonunun "Limit" ayarı okunamadı (${e?.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
       'limit_olculemedi',
     );
   }
-  if (!st || st.askLimitOnLaunch !== true)
+  if (st?.askLimitOnLaunch !== true)
     throw hataVer(
       409,
       `"${keyName}" AWX şablonunda Limit "Prompt on launch" kapalı — AWX limit'i yutar ve restart tüm envanterde çalışırdı; toplu restart başlatılmaz. Yönetici şablonda Limit'i "Prompt on launch" yapmalı.`,
@@ -1109,7 +1121,7 @@ function initOpsX(app) {
   // IKI PLATFORM, IKI FARKLI GOVDE (kullanici sartnamesi):
   //
   // Legacy — sunucu listesi AWX'in KENDI `limit` alaninda, extra_vars'ta DEGIL:
-  //   { "limit": "GBCJAP01,GBCJAP03",
+  //   { "limit": "ORCJAP01,ORCJAP03",
   //     "extra_vars": { "application": "...", "operation": "restart" } }
   //
   // Openshift — `limit` YOK; her sey extra_vars icinde, gercek bmw_openshift_jobs
@@ -1122,7 +1134,7 @@ function initOpsX(app) {
   //   CLUSTER ALT KUMESI (AWX limit ile) DENENDI VE KALDIRILDI (2026-08-12). Secilen gercek
   //   cluster adlari AWX'in `limit` alanina konuluyordu. IKI sebeple calismadi:
   //     (1) AWX, template'te Limit icin "Prompt on launch" KAPALIYSA bu alani SESSIZCE yok
-  //         sayar — portal `limit: "gbocpankqa2"` gonderdi, is yine ark_qa'nin DORT
+  //         sayar — portal `limit: "orocpankqa2"` gonderdi, is yine ark_qa'nin DORT
   //         host'unda kostu (uretim job 3217901).
   //     (2) Dogru kisit zaten cluster ADI degil, o cluster'larin bagli oldugu jump server
   //         olurdu; bu grupta oyle bir eslesme yok.
@@ -1131,8 +1143,8 @@ function initOpsX(app) {
   //   adi kuruluyordu) — bu KANITLI calisan bir mekanizma (AWX limit'in aksine extra_vars
   //   sessizce yutulmuyor). O sablonlamayi TEK bir gercek cluster adina (target_cluster)
   //   yonlendirerek ayni yontemle GERCEK kisitlama saglanir. Kullanici oc_cluster/
-  //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (or. gbocptest1/
-  //   gbocptest2/gbocptest4) hedeflenecegini SECEBILIR — YA DA "Tum cluster'lar"i secip
+  //   oc_environment SECTIKTEN SONRA o gruptaki HANGI gercek cluster'in (or. orocptest1/
+  //   orocptest2/orocptest4) hedeflenecegini SECEBILIR — YA DA "Tum cluster'lar"i secip
   //   grubun tamamini hedefleyebilir (bu durumda target_cluster HIC gonderilmez, playbook
   //   eski/kanitli grup-tabanli `hosts:`e doner). Bkz. OcpClusterPickStep.tsx.
   app.post('/api/opsx/run', requireAuth, express.json({ limit: '256kb' }), async (req, res) => {
@@ -1522,7 +1534,7 @@ function initOpsX(app) {
       }
       // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
       //
-      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // Kullanici: Crypto Hub cluster'i (odocptest1 / harmonize-test) icin pod kesfi
       // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
       // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
       // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
@@ -1687,7 +1699,7 @@ function initOpsX(app) {
         }
         // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
         //
-        // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+        // Kullanici: Crypto Hub cluster'i (odocptest1 / harmonize-test) icin pod kesfi
         // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
         // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
         // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
@@ -2014,7 +2026,7 @@ function initOpsX(app) {
       }
       // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
       //
-      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // Kullanici: Crypto Hub cluster'i (odocptest1 / harmonize-test) icin pod kesfi
       // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
       // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
       // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
@@ -2315,12 +2327,10 @@ function initOpsX(app) {
             .json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
         }
         if (!allowedNamespaces.has(namespace)) {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
-            });
+          return res.status(400).json({
+            ok: false,
+            message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
+          });
         }
         if (!podNameRe.test(pod) || pod.length > 253) {
           return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
@@ -2556,7 +2566,7 @@ function initOpsX(app) {
       }
       // BASARISIZ ISTE DE ARTIFACT OKUNUR (2026-09-30, uretimde yakalandi).
       //
-      // Kullanici: Crypto Hub cluster'i (daocptest1 / harmonize-test) icin pod kesfi
+      // Kullanici: Crypto Hub cluster'i (odocptest1 / harmonize-test) icin pod kesfi
       // "patliyor" ama SEBEP gorunmuyordu. Job 3364180'de playbook her seyi dogru
       // yapmis: (cluster,namespace) ciftinin hatasini toplayip `set_stats` ile
       // YAYINLAMIS, sonra AWX isi kirmizi kalsin diye BILEREK `fail` etmis - playbook
@@ -2636,5 +2646,5 @@ module.exports = {
   topluRestartBaslat,
   metadatahubHostMu,
   adKuraliProdMu,
-  METADATAHUB_TAM_RESTART,
+  metadataHubTamRestart,
 };

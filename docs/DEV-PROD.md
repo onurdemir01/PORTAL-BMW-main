@@ -4,7 +4,7 @@
 kullanıcıya gitti ve Portal OOM ile çöktü; ayrıca her release'de dakikalarca 503 görülüyor.
 Kök sebep tek ortam: geliştirme, deneme ve kullanıcıya sunulan sürüm aynı süreç, aynı dal.
 
-**Karar:** aynı sunucuda (GBLABT02) **iki Portal örneği**, aynı **TBMWANS** veritabanında **iki
+**Karar:** aynı sunucuda (ORLABT02) **iki Portal örneği**, aynı **TBMWANS** veritabanında **iki
 şema**, GitHub'da **iki dal**. Yeni veritabanı gerekmez.
 
 | | PROD (kullanıcı) | DEV (biz) |
@@ -54,7 +54,7 @@ SELECT * INTO dev.portal_element_visibility FROM dbo.portal_element_visibility;
 kendi şemasını oluşturmasına izin vermek de olur — ilk açılışta tüm tablolar `dev` altında kurulur,
 kullanıcıları elle eklersin.)
 
-### 2. Dev örneği (GBLABT02, `was` ile)
+### 2. Dev örneği (ORLABT02, `was` ile)
 ```bash
 mkdir -p /vhosting8/bmw_portal_dev/{app,deploy}
 PORTAL_BASE_DIR=/vhosting8/bmw_portal_dev bash /vhosting8/bmw_portal/app/PORTAL-BMW-main/deploy/release-git.sh dev develop
@@ -62,7 +62,7 @@ PORTAL_BASE_DIR=/vhosting8/bmw_portal_dev bash /vhosting8/bmw_portal/app/PORTAL-
 `.env.dev` = `.env.prod` kopyası, şu farklarla: `PORT=3001`, `PORTAL_DB_USER=TBMWANS_dev_usr` +
 parolası, `NGINX_CONSOLE_DIR=/sw/BMW_PORTAL_DEV/nginx_console`, `DB_FULL_BACKUP_DIR=/sw/.../backup_dev`,
 LogX/OpsX staging dizinleri `_DEV`, `TEAMS_*` webhook'ları **boş** (dev'den Teams'e mesaj gitmesin),
-`SMART_*` kapalı ya da test kuyruğu. nginx'e `bmw-dev.fw.garanti.com.tr` (ya da `/dev` yolu) →
+`SMART_*` kapalı ya da test kuyruğu. nginx'e `bmw-dev.fw.sirket.invalid` (ya da `/dev` yolu) →
 `localhost:3001`. systemd: `bmw-portal@dev` (unit'teki `WorkingDirectory`'yi dev dizinine kopyalayıp
 `bmw-portal-dev@.service` olarak ayrı unit).
 
@@ -82,7 +82,7 @@ LogX/OpsX staging dizinleri `_DEV`, `TEAMS_*` webhook'ları **boş** (dev'den Te
 
 1. GitHub'da PR: `develop → main`, başlık `Release YYYY-MM-DD`, açıklamada değişiklik listesi
    (commit başlıkları yeter). Hakan ya da sen onaylar → merge.
-2. GBLABT02'de: `bash deploy/release-git.sh prod main`
+2. ORLABT02'de: `bash deploy/release-git.sh prod main`
    - Yeni: **test kapısı** — `npm test` koşar; bilinen taban dışında hata varsa **swap yapılmaz**,
      eski sürüm çalışmaya devam eder (`SKIP_TESTS=1` acil durum için).
    - Staging build eski sürüm çalışırken yapılır, swap birkaç saniye; kullanıcı 3 dk "Portal

@@ -159,6 +159,6 @@ describe('Renk körü modu', () => {
     expect(html).toContain('document.documentElement.setAttribute("data-renk", "cvd")');
     const srv = oku('server/index.cjs');
     expect(srv).toContain("renk: prefs['bmw-renk'] === 'cvd' ? 'cvd' : null");
-    expect(srv).toContain("if (p && p.renk === 'cvd') boot.renk = 'cvd';");
+    expect(srv).toMatch(/if \((?:p && p\.renk|p\?\.renk) === 'cvd'\) boot\.renk = 'cvd';/);
   });
 });

@@ -31,7 +31,7 @@ const ansibleVar = () => fs.existsSync(path.join(CH, 'crypto_hub_ops.yml'));
 
 const IDX = oku(__dirname, '..', 'index.cjs');
 const { OPS, NODE_OPS, kaynakExtraVars } = require('../index.cjs');
-const { CRYPTO_TENANTS } = require('../../../shared/cryptoHubTenants.cjs');
+const { CRYPTO_TENANTS } = require('../kiracilar.cjs');
 
 /** Yorum satirlarini atar (# ile baslayan). */
 const kodsuz = (s) =>
@@ -63,7 +63,8 @@ test('SB1 Portal OPS == ekran WRITES == API tip birligi (okur/yazar ayni)', () =
 test('SB2 Portal OPS + NODE_OPS == playbook ch_islemler == betik case listesi (Ansible deposu varsa)', (t) => {
   // Indexer / Node (2026-11-02): node_env_get / node_change OPS'ta DEGIL (/ops onlari reddeder,
   // node_change yalniz /node-change kapilarindan gecer) ama playbook ve betik listesinde VAR. Karsilastirma birlesimle yapilir; iki kume ayrik olmali.
-  for (const a of Object.keys(NODE_OPS)) assert.ok(!OPS[a], `${a} OPS'a eklenmis - /ops Smart'siz kostururdu`);
+  for (const a of Object.keys(NODE_OPS))
+    assert.ok(!OPS[a], `${a} OPS'a eklenmis - /ops Smart'siz kostururdu`);
   if (!ansibleVar()) return t.skip('Ansible deposu bu makinede yok (CRYPTO_HUB_ANSIBLE_ROOT)');
   const yml = kodsuz(oku(CH, 'crypto_hub_ops.yml'));
   const blok = /ch_islemler:\n((?:\s+- [a-z_]+\n)+)/.exec(yml);
@@ -87,7 +88,8 @@ const PLAY_DUZEYI = new Set([
   'crypto_hub_timeout', // async
   'crypto_hub_keys', // tarama playbook'u (rescan)
 ]);
-const DEGISKEN_DEGIL = /^crypto_hub_(ops|ops_result|inventory|values_reveal|resources_plan|resources_apply|locks)$/;
+const DEGISKEN_DEGIL =
+  /^crypto_hub_(ops|ops_result|inventory|values_reveal|resources_plan|resources_apply|locks)$/;
 
 test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur', (t) => {
   // Kaynak islerinin TUM bayraklari acik ornegi: hicbir dal atlanmasin.
@@ -128,8 +130,17 @@ test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur',
     tenantKey: 'metaco_das_test',
     grupId: 'uis:evm-ethereum-mainnet',
     talepId: 42,
-    plan: [{ d: 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet', c: 'app', e: 'ETH_INDEXER_NODE_URI', r: 'rpc' }],
-    expect: { 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet/app/ETH_INDEXER_NODE_URI': 'a'.repeat(64) },
+    plan: [
+      {
+        d: 'hmz-harmonize-uis-indexer-evm-ethereum-mainnet',
+        c: 'app',
+        e: 'ETH_INDEXER_NODE_URI',
+        r: 'rpc',
+      },
+    ],
+    expect: {
+      'hmz-harmonize-uis-indexer-evm-ethereum-mainnet/app/ETH_INDEXER_NODE_URI': 'a'.repeat(64),
+    },
     newSha: { rpc: 'b'.repeat(64) },
     hedefler: ['hmz-harmonize-uis-indexer-evm-ethereum-mainnet'],
     email: 'x@y.z',
@@ -166,23 +177,43 @@ test('SB3 Portal crypto_hub_* degiskenleri playbook ortamina gecer, betik okur',
   for (const [v, yolEnv] of DOSYADAN) {
     assert.ok(v in nodeEv, `Portal ${v} gondermiyor (bekci kor)`);
     assert.ok(!esle.has(v), `${v} playbook ORTAMINA gecirilmis (deger -vvv / ps'te gorunur)`);
-    assert.match(env[1], new RegExp(`^\\s+${yolEnv}: "`, 'm'), `playbook ortaminda ${yolEnv} (dosya yolu) yok`);
+    assert.match(
+      env[1],
+      new RegExp(`^\\s+${yolEnv}: "`, 'm'),
+      `playbook ortaminda ${yolEnv} (dosya yolu) yok`,
+    );
     assert.ok(pyOkur(yolEnv), `crypto_hub_node.py ${yolEnv} okumuyor`);
-    assert.match(yml, new RegExp(`stdin: "\\{\\{ ${v} \\}\\}"`), `${v} stdin'le dosyaya yazilmiyor`);
+    assert.match(
+      yml,
+      new RegExp(`stdin: "\\{\\{ ${v} \\}\\}"`),
+      `${v} stdin'le dosyaya yazilmiyor`,
+    );
   }
   for (const v of [...portal].sort()) {
-    if (!v.startsWith('crypto_hub_') || DEGISKEN_DEGIL.test(v) || PLAY_DUZEYI.has(v) || DOSYADAN.has(v)) continue;
+    if (
+      !v.startsWith('crypto_hub_') ||
+      DEGISKEN_DEGIL.test(v) ||
+      PLAY_DUZEYI.has(v) ||
+      DOSYADAN.has(v)
+    )
+      continue;
     const e = [...(esle.get(v) || [])];
-    assert.ok(e.length, `Portal '${v}' gonderiyor ama playbook bunu betige GECIRMIYOR (CM_NAME tuzagi)`);
+    assert.ok(
+      e.length,
+      `Portal '${v}' gonderiyor ama playbook bunu betige GECIRMIYOR (CM_NAME tuzagi)`,
+    );
     if (v.startsWith('crypto_hub_node_')) {
-      assert.ok(e.some(pyOkur), `playbook ${v} -> ${e.join('/')} geciriyor ama crypto_hub_node.py OKUMUYOR`);
+      assert.ok(
+        e.some(pyOkur),
+        `playbook ${v} -> ${e.join('/')} geciriyor ama crypto_hub_node.py OKUMUYOR`,
+      );
     } else {
       assert.ok(e.some(shOkur), `playbook ${v} -> ${e.join('/')} geciriyor ama betik OKUMUYOR`);
     }
   }
 });
 
-test('SB4 resources_* islerinde yol / release / chart / values icerigi Portal\'dan GITMEZ', () => {
+test("SB4 resources_* islerinde yol / release / chart / values icerigi Portal'dan GITMEZ", () => {
   const tam = {
     bilesen: 'access-gateway',
     kap: 'app',
@@ -204,7 +235,9 @@ test('SB4 resources_* islerinde yol / release / chart / values icerigi Portal\'d
   // Kaynak dallarinda AWX'e giden yol/release satiri YOK (helm_upgrade dalindan farkli).
   const f = flatten(IDX);
   const dal = f.slice(
-    f.indexOf("if (params.action === 'resources_plan' || params.action === 'resources_apply') { // KOSAN"),
+    f.indexOf(
+      "if (params.action === 'resources_plan' || params.action === 'resources_apply') { // KOSAN",
+    ),
     f.indexOf("await require('../ansible/template-preflight.cjs')"),
   );
   assert.ok(dal.length > 100, 'kaynak dali bulunamadi');
@@ -216,7 +249,9 @@ test('SB5 katalog: Portal res_* alanlari tenants.yml ile AYNI', (t) => {
   if (!fs.existsSync(p)) return t.skip('Ansible deposu bu makinede yok');
   const text = oku(p);
   for (const tn of CRYPTO_TENANTS) {
-    const block = text.split(/^\s*-\s*key:\s*/m).find((b) => b.startsWith(tn.key + '\n') || b.startsWith(tn.key + '\r\n'));
+    const block = text
+      .split(/^\s*-\s*key:\s*/m)
+      .find((b) => b.startsWith(tn.key + '\n') || b.startsWith(tn.key + '\r\n'));
     assert.ok(block, `${tn.key} tenants.yml'de yok`);
     const yolm = /^\s*res_values_path:\s*"?([^"\n]*)"?\s*$/m.exec(block);
     assert.ok(yolm, `${tn.key}: res_values_path yok`);
@@ -225,10 +260,18 @@ test('SB5 katalog: Portal res_* alanlari tenants.yml ile AYNI', (t) => {
     assert.equal(dg && dg[1], String(tn.resValuesVerified), `${tn.key}: dogrulandi ayristi`);
     const es = /^\s*res_peer_tenants:\s*\[([^\]]*)\]/m.exec(block);
     assert.ok(es, `${tn.key}: res_peer_tenants yok`);
-    const esler = es[1].split(',').map((x) => x.trim()).filter(Boolean).sort();
+    const esler = es[1]
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .sort();
     assert.deepEqual(esler, [...tn.resPeerTenants].sort(), `${tn.key}: es kiracilar ayristi`);
     const ch = /^\s*chart_name:\s*"?([^"\n]*)"?/m.exec(block);
-    assert.equal((ch && ch[1].trim()) || '', tn.chartName, `${tn.key}: chart_name ayristi (Metaco kapisi)`);
+    assert.equal(
+      (ch && ch[1].trim()) || '',
+      tn.chartName,
+      `${tn.key}: chart_name ayristi (Metaco kapisi)`,
+    );
   }
 });
 

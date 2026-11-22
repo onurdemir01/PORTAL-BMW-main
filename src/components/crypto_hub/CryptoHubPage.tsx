@@ -508,8 +508,8 @@ export function valuesSecenekleri(
 }
 
 /** Bir arsiv surumunde KARSILASTIRILACAK dosyalarin tam yollari.
- *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/garanti_values.yaml");
- *  surum kokundeki tek dosya ("1.5.19/garanti_values.yaml") eski duzendir ve bir
+ *  CLUSTER'A OZGU dosyalar alt dizinlerde durur ("1.5.19/clqa1/ornek_values.yaml");
+ *  surum kokundeki tek dosya ("1.5.19/ornek_values.yaml") eski duzendir ve bir
  *  cluster'i temsil etmez. Ikisini ayni tabloda karsilastirmak, "cluster'lar ayrisiyor"
  *  diye okunacak bir fark uretirdi; bu yuzden alt dizindeki dosya VARSA yalniz onlar alinir. */
 export function karsilastirmaYollari(a: { dir: string; values: { file: string }[] }): string[] {
@@ -938,7 +938,10 @@ function IslemKarti({
           <Icon className="h-6 w-6" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+          <span
+            className="block text-[15px] font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {label}
           </span>
           <span className="block text-[12px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -1092,25 +1095,31 @@ export default function CryptoHubPage() {
 
   // URL'de gecerli bir kiraci varsa verisi yuklenir; kullanici menuden geri dondugunde
   // (t parametresi kalkinca) ekran temizlenir.
-  useAsyncEffect(async (alive) => {
-    if (!apps || !alive()) return;
-    if (scope) {
-      setTab(baslangicSekmesi(params.get('s'), sekmeler));
-      if (nodeOnly) {
+  useAsyncEffect(
+    async (alive) => {
+      if (!apps || !alive()) return;
+      if (scope) {
+        setTab(baslangicSekmesi(params.get('s'), sekmeler));
+        if (nodeOnly) {
+          setData(null);
+          setErr('');
+        } else await load(scope.env.key);
+      } else {
         setData(null);
         setErr('');
-      } else await load(scope.env.key);
-    } else {
-      setData(null);
-      setErr('');
-    }
-  }, [scope?.env.key, apps]);
+      }
+    },
+    [scope?.env.key, apps],
+  );
 
   const notes = useMemo(() => data?.notes || [], [data]);
 
   const sekmeSec = (id: CryptoSekme) => {
     setTab(id);
-    if (scope) setParams(id === 'node' ? { t: scope.env.key, s: 'node' } : { t: scope.env.key }, { replace: true });
+    if (scope)
+      setParams(id === 'node' ? { t: scope.env.key, s: 'node' } : { t: scope.env.key }, {
+        replace: true,
+      });
   };
 
   // Ankara onerisi (D4): Ankara kiracisinin node sekmesi acilir ve sihirbaz ayni grupla baslar.
@@ -1261,31 +1270,32 @@ export default function CryptoHubPage() {
             </span>
           </div>
           <div className="grid sm:grid-cols-3 gap-3 p-3">
-            {!nodeOnly && actions.map((a) => {
-              const Icon =
-                a.key === 'upgrade'
-                  ? ArrowUpCircleIcon
-                  : a.key === 'stop'
-                    ? PowerIcon
-                    : PlayCircleIcon;
-              const tone =
-                a.key === 'upgrade'
-                  ? 'var(--accent)'
-                  : a.key === 'stop'
-                    ? 'var(--status-danger)'
-                    : 'var(--status-success)';
-              return (
-                <IslemKarti
-                  key={a.key}
-                  Icon={Icon}
-                  tone={tone}
-                  label={a.label}
-                  hint={a.hint}
-                  writes={a.writes}
-                  onClick={() => setPlanFor(a)}
-                />
-              );
-            })}
+            {!nodeOnly &&
+              actions.map((a) => {
+                const Icon =
+                  a.key === 'upgrade'
+                    ? ArrowUpCircleIcon
+                    : a.key === 'stop'
+                      ? PowerIcon
+                      : PlayCircleIcon;
+                const tone =
+                  a.key === 'upgrade'
+                    ? 'var(--accent)'
+                    : a.key === 'stop'
+                      ? 'var(--status-danger)'
+                      : 'var(--status-success)';
+                return (
+                  <IslemKarti
+                    key={a.key}
+                    Icon={Icon}
+                    tone={tone}
+                    label={a.label}
+                    hint={a.hint}
+                    writes={a.writes}
+                    onClick={() => setPlanFor(a)}
+                  />
+                );
+              })}
             {nodeVar && (
               <IslemKarti
                 Icon={ServerStackIcon}
@@ -1405,34 +1415,34 @@ export default function CryptoHubPage() {
       {!data?.notConfigured && (
         <>
           {navSekmeler.length > 0 && (
-          <nav
-            className="flex items-center gap-1 border-b"
-            style={{ borderColor: 'var(--border-subtle)' }}
-          >
-            {navSekmeler.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => sekmeSec(id)}
-                className="px-3 py-2 text-sm font-medium -mb-px border-b-2"
-                style={
-                  tab === id
-                    ? { color: 'var(--accent)', borderColor: 'var(--accent)' }
-                    : { color: 'var(--text-muted)', borderColor: 'transparent' }
-                }
-              >
-                {label}
-                {id === 'surumler' &&
-                  data?.versions?.measured &&
-                  data.versions.newer.length > 0 && (
-                    <ArrowUpCircleIcon
-                      className="h-3.5 w-3.5 inline-block ml-1"
-                      style={{ color: 'var(--status-warning)' }}
-                    />
-                  )}
-              </button>
-            ))}
-          </nav>
+            <nav
+              className="flex items-center gap-1 border-b"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
+              {navSekmeler.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => sekmeSec(id)}
+                  className="px-3 py-2 text-sm font-medium -mb-px border-b-2"
+                  style={
+                    tab === id
+                      ? { color: 'var(--accent)', borderColor: 'var(--accent)' }
+                      : { color: 'var(--text-muted)', borderColor: 'transparent' }
+                  }
+                >
+                  {label}
+                  {id === 'surumler' &&
+                    data?.versions?.measured &&
+                    data.versions.newer.length > 0 && (
+                      <ArrowUpCircleIcon
+                        className="h-3.5 w-3.5 inline-block ml-1"
+                        style={{ color: 'var(--status-warning)' }}
+                      />
+                    )}
+                </button>
+              ))}
+            </nav>
           )}
 
           {tab === 'node' ? (

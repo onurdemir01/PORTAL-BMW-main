@@ -33,7 +33,7 @@ const S = (v, max) =>
 // dusurmek cozdugu sorundan buyuk olurdu.
 async function record({ env, tenant, namespace, kindReports }) {
   const rows = (kindReports || []).filter(
-    (k) => k && k.readable === false && KNOWN_REASONS.has(String(k.reason || '')),
+    (k) => k?.readable === false && KNOWN_REASONS.has(String(k.reason || '')),
   );
   if (!rows.length) return { written: 0 };
 

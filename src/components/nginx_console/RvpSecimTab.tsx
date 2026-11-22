@@ -23,7 +23,9 @@ import { nginxConsoleApi } from '@/api/nginxConsoleApi';
 import {
   rvpOner,
   rvpSiradakiSoru,
+  BOS_RVP_AYARI,
   GT_EKIP,
+  type RvpAyari,
   type RvpBackend,
   type RvpBlok,
   type RvpGlomo,
@@ -34,7 +36,11 @@ import {
 } from './rvpSecim';
 
 type SoruSecenek = { deger: string; etiket: string; alt: string };
-type Soru = { anahtar: 'backend' | 'kitle' | 'glomo' | 'nprAcik'; baslik: string; secenekler: SoruSecenek[] };
+type Soru = {
+  anahtar: 'backend' | 'kitle' | 'glomo' | 'nprAcik';
+  baslik: string;
+  secenekler: SoruSecenek[];
+};
 
 /** Sorular ve metinleri TEK YERDE: sihirbaz adimlari bunu okur, bekci de bunu sayar. */
 export const RVP_SORULAR: readonly Soru[] = [
@@ -76,7 +82,11 @@ export const RVP_SORULAR: readonly Soru[] = [
     baslik: 'Non-production ortamı da internete açılacak mı?',
     secenekler: [
       { deger: 'evet', etiket: 'Evet, açılacak', alt: 'Non-prod da dış dünyadan erişilecek' },
-      { deger: 'hayir', etiket: 'Hayır, açılmayacak', alt: 'Non-prod yalnız kurum içinden erişilecek' },
+      {
+        deger: 'hayir',
+        etiket: 'Hayır, açılmayacak',
+        alt: 'Non-prod yalnız kurum içinden erişilecek',
+      },
     ],
   },
 ] as const;
@@ -100,7 +110,10 @@ function SunucuSatiri({ s }: { s: RvpSunucu }) {
       <td className="px-2.5 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
         {s.domain}
       </td>
-      <td className="px-2.5 py-1.5 whitespace-nowrap tabular-nums" style={{ color: 'var(--text-muted)' }}>
+      <td
+        className="px-2.5 py-1.5 whitespace-nowrap tabular-nums"
+        style={{ color: 'var(--text-muted)' }}
+      >
         {altAg || '—'}
       </td>
       <td className="px-2.5 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
@@ -141,8 +154,14 @@ function OrtamBlogu({ tur, blok }: { tur: 'nonProd' | 'prod'; blok: RvpBlok }) {
       </div>
     );
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
+      <div
+        className="flex items-center justify-between gap-2 px-3 py-2 border-b"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <div className="text-sm font-semibold">
           {ORTAM_BASLIK[tur]}{' '}
           <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>
@@ -188,14 +207,20 @@ function OrtamBlogu({ tur, blok }: { tur: 'nonProd' | 'prod'; blok: RvpBlok }) {
 export function RvpSecimTab() {
   const [secim, setSecim] = useState<RvpSecim>({});
   const [altAglar, setAltAglar] = useState<Record<string, string>>({});
+  // Kutularin sunuculari kurum ayarindan (nginx.rvp); gelene kadar / yoksa kutular "tanimsiz" gorunur.
+  const [rvpAyar, setRvpAyar] = useState<RvpAyari>(BOS_RVP_AYARI);
+  const [ayarHatasi, setAyarHatasi] = useState<string | null>(null);
   useEffect(() => {
     let iptal = false;
     nginxConsoleApi.rvpAltAglari().then(
       (r) => {
-        if (!iptal) setAltAglar(r.altAglar || {});
+        if (iptal) return;
+        setAltAglar(r.altAglar || {});
+        setRvpAyar(r.rvp || BOS_RVP_AYARI);
+        setAyarHatasi(r.rvpHata || null);
       },
       () => {
-        /* alt ag yalniz bilgi: okunamazsa sutun "—" kalir, sihirbaz calisir */
+        if (!iptal) setAyarHatasi('RP Seçimi kurum verisi okunamadı.');
       },
     );
     return () => {
@@ -203,7 +228,7 @@ export function RvpSecimTab() {
     };
   }, []);
   const siradaki = useMemo(() => rvpSiradakiSoru(secim), [secim]);
-  const oneri = useMemo(() => rvpOner(secim), [secim]);
+  const oneri = useMemo(() => rvpOner(secim, rvpAyar), [secim, rvpAyar]);
 
   const sec = (anahtar: Soru['anahtar'], deger: string) => {
     setSecim((eski) => {
@@ -221,112 +246,149 @@ export function RvpSecimTab() {
     });
   };
 
-  const sorulanlar = RVP_SORULAR.filter((q) => secim[q.anahtar] !== undefined || q.anahtar === siradaki);
+  const sorulanlar = RVP_SORULAR.filter(
+    (q) => secim[q.anahtar] !== undefined || q.anahtar === siradaki,
+  );
 
   return (
     <AltAglar.Provider value={altAglar}>
-    <div className="space-y-4">
-      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-        <h2 className="text-base font-semibold flex items-center gap-2">
-          <QuestionMarkCircleIcon className="w-5 h-5" style={{ color: 'var(--accent)' }} />
-          Uygulamam hangi Nginx sunucusundan reverse proxy hizmeti almalı?
-        </h2>
-        <p className="mt-1 text-sm max-w-4xl" style={{ color: 'var(--text-muted)' }}>
-          Soruları yanıtlayın; hangi reverse proxy sunucularına gideceğinizi non-production ve
-          production olarak gösterir. Bu ekran salt okunurdur — hiçbir tanım yapmaz, hiçbir iş
-          başlatmaz.
-        </p>
-      </div>
-
-      {sorulanlar.map((q) => {
-        const secili = secim[q.anahtar] as string | undefined;
-        return (
-          <div key={q.anahtar} className="rounded-xl border p-4" style={{ borderColor: secili ? 'var(--border-subtle)' : 'var(--accent)', background: 'var(--bg-surface)' }}>
-            <div className="text-sm font-semibold mb-2.5">{q.baslik}</div>
-            <div className="flex flex-wrap gap-2">
-              {q.secenekler.map((o) => {
-                const aktif = secili === o.deger;
-                return (
-                  <button
-                    key={o.deger}
-                    onClick={() => sec(q.anahtar, o.deger)}
-                    className="text-left rounded-lg border px-3 py-2 min-w-[200px] max-w-[340px] transition-colors"
-                    style={{
-                      borderColor: aktif ? 'var(--accent)' : 'var(--border)',
-                      background: aktif ? 'var(--bg-elevated)' : 'transparent',
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5 text-sm font-medium">
-                      {aktif && <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--accent)' }} />}
-                      {o.etiket}
-                    </div>
-                    <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                      {o.alt}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+      <div className="space-y-4">
+        {ayarHatasi && (
+          <div
+            role="alert"
+            className="rounded-lg border px-3 py-2 text-xs"
+            style={{
+              borderColor: 'var(--status-warning)',
+              background: 'var(--status-warning-bg)',
+              color: 'var(--status-warning-text)',
+            }}
+          >
+            {ayarHatasi}
           </div>
-        );
-      })}
-
-      {oneri && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="text-sm font-semibold">{oneri.baslik}</h3>
-            <button
-              onClick={() => setSecim({})}
-              className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-lg border"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
-            >
-              <ArrowPathIcon className="w-3.5 h-3.5" /> baştan sor
-            </button>
-          </div>
-          <p className="text-xs max-w-4xl" style={{ color: 'var(--text-secondary)' }}>
-            {oneri.aciklama}
-          </p>
-
-          {oneri.durum === 'ekip' && (
-            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--status-warning)', background: 'var(--bg-surface)' }}>
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <ExclamationTriangleIcon className="w-4 h-4" style={{ color: 'var(--status-warning)' }} />
-                {GT_EKIP} ekibiyle iletişime geçin
-              </div>
-            </div>
-          )}
-
-          {oneri.durum === 'rvp' && oneri.rvpYolu && (
-            <div className="rounded-xl border p-4" style={{ borderColor: 'var(--accent)', background: 'var(--bg-surface)' }}>
-              <div className="text-sm font-semibold">RVP kaydı açın</div>
-              <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                Glomo tanımları Self Servis üzerindeki “Nginx - RVP Operations” otomasyonuyla yapılır.
-              </p>
-              <Link
-                to={oneri.rvpYolu}
-                className="mt-2.5 inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg"
-                style={{ background: 'var(--accent)', color: '#fff' }}
-              >
-                Nginx - RVP Operations’a git <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          )}
-
-          {oneri.durum === 'sunucu' && (
-            <div className="space-y-3">
-              {oneri.nonProd && <OrtamBlogu tur="nonProd" blok={oneri.nonProd} />}
-              {oneri.prod && <OrtamBlogu tur="prod" blok={oneri.prod} />}
-            </div>
-          )}
-
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Kaynak: GT Agile BMW Nginx sunucu envanteri (Excel, 2026-10-05). Listede göremediğiniz
-            bir aşama ya da sunucu varsa {GT_EKIP} ekibine danışın — bu ekran yalnız onaylı
-            reverse proxy sunucularını önerir.
+        )}
+        <div
+          className="rounded-xl border p-4"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <QuestionMarkCircleIcon className="w-5 h-5" style={{ color: 'var(--accent)' }} />
+            Uygulamam hangi Nginx sunucusundan reverse proxy hizmeti almalı?
+          </h2>
+          <p className="mt-1 text-sm max-w-4xl" style={{ color: 'var(--text-muted)' }}>
+            Soruları yanıtlayın; hangi reverse proxy sunucularına gideceğinizi non-production ve
+            production olarak gösterir. Bu ekran salt okunurdur — hiçbir tanım yapmaz, hiçbir iş
+            başlatmaz.
           </p>
         </div>
-      )}
-    </div>
+
+        {sorulanlar.map((q) => {
+          const secili = secim[q.anahtar] as string | undefined;
+          return (
+            <div
+              key={q.anahtar}
+              className="rounded-xl border p-4"
+              style={{
+                borderColor: secili ? 'var(--border-subtle)' : 'var(--accent)',
+                background: 'var(--bg-surface)',
+              }}
+            >
+              <div className="text-sm font-semibold mb-2.5">{q.baslik}</div>
+              <div className="flex flex-wrap gap-2">
+                {q.secenekler.map((o) => {
+                  const aktif = secili === o.deger;
+                  return (
+                    <button
+                      key={o.deger}
+                      onClick={() => sec(q.anahtar, o.deger)}
+                      className="text-left rounded-lg border px-3 py-2 min-w-[200px] max-w-[340px] transition-colors"
+                      style={{
+                        borderColor: aktif ? 'var(--accent)' : 'var(--border)',
+                        background: aktif ? 'var(--bg-elevated)' : 'transparent',
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 text-sm font-medium">
+                        {aktif && (
+                          <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+                        )}
+                        {o.etiket}
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {o.alt}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {oneri && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold">{oneri.baslik}</h3>
+              <button
+                onClick={() => setSecim({})}
+                className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-lg border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+              >
+                <ArrowPathIcon className="w-3.5 h-3.5" /> baştan sor
+              </button>
+            </div>
+            <p className="text-xs max-w-4xl" style={{ color: 'var(--text-secondary)' }}>
+              {oneri.aciklama}
+            </p>
+
+            {oneri.durum === 'ekip' && (
+              <div
+                className="rounded-xl border p-4"
+                style={{ borderColor: 'var(--status-warning)', background: 'var(--bg-surface)' }}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <ExclamationTriangleIcon
+                    className="w-4 h-4"
+                    style={{ color: 'var(--status-warning)' }}
+                  />
+                  {GT_EKIP} ekibiyle iletişime geçin
+                </div>
+              </div>
+            )}
+
+            {oneri.durum === 'rvp' && oneri.rvpYolu && (
+              <div
+                className="rounded-xl border p-4"
+                style={{ borderColor: 'var(--accent)', background: 'var(--bg-surface)' }}
+              >
+                <div className="text-sm font-semibold">RVP kaydı açın</div>
+                <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Glomo tanımları Self Servis üzerindeki “Nginx - RVP Operations” otomasyonuyla
+                  yapılır.
+                </p>
+                <Link
+                  to={oneri.rvpYolu}
+                  className="mt-2.5 inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg"
+                  style={{ background: 'var(--accent)', color: '#fff' }}
+                >
+                  Nginx - RVP Operations’a git <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            )}
+
+            {oneri.durum === 'sunucu' && (
+              <div className="space-y-3">
+                {oneri.nonProd && <OrtamBlogu tur="nonProd" blok={oneri.nonProd} />}
+                {oneri.prod && <OrtamBlogu tur="prod" blok={oneri.prod} />}
+              </div>
+            )}
+
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Kaynak: GT Agile BMW Nginx sunucu envanteri (Excel, 2026-10-05). Listede göremediğiniz
+              bir aşama ya da sunucu varsa {GT_EKIP} ekibine danışın — bu ekran yalnız onaylı
+              reverse proxy sunucularını önerir.
+            </p>
+          </div>
+        )}
+      </div>
     </AltAglar.Provider>
   );
 }

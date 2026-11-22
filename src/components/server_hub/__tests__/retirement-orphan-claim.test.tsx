@@ -12,7 +12,7 @@ import RetirementCanli, {
 const hedef = (status: RtTarget['status'], overrides: Partial<RtTarget> = {}): RtTarget => ({
   id: 7,
   recordId: 3,
-  host: 'GBJBOP01',
+  host: 'ORJBOP01',
   site: 'Pendik',
   env: 'PROD',
   appName: 'CRM',
@@ -73,11 +73,27 @@ describe('Retirement orphan claim gorunurlugu', () => {
   });
 
   test('RO5 suren silme / geri alma on kontrolu canli tazeleme ister (hedef stopped kalir); biten istemez', () => {
-    const ok = (durum: string) => ({ jobId: 5, at: null, durum, mesaj: null, onkontrol: [], kisaltildi: false, kaynak: null, kullanici: null, kullanildi: false, hazir: false, izinler: [] });
+    const ok = (durum: string) => ({
+      jobId: 5,
+      at: null,
+      durum,
+      mesaj: null,
+      onkontrol: [],
+      kisaltildi: false,
+      kaynak: null,
+      kullanici: null,
+      kullanildi: false,
+      hazir: false,
+      izinler: [],
+    });
     expect(hedefTazelenmeli(hedef('stopped'))).toBe(false);
     expect(hedefTazelenmeli(hedef('stopped', { silmeOnKontrol: ok('running') }))).toBe(true);
     expect(hedefTazelenmeli(hedef('stopped', { geriAlOnKontrol: ok('baslatiliyor') }))).toBe(true);
-    expect(hedefTazelenmeli(hedef('stopped', { geriAlOnKontrol: ok('ok'), silmeOnKontrol: ok('failed') }))).toBe(false);
+    expect(
+      hedefTazelenmeli(
+        hedef('stopped', { geriAlOnKontrol: ok('ok'), silmeOnKontrol: ok('failed') }),
+      ),
+    ).toBe(false);
   });
 
   test('RO6 uzlastirma yalniz gercek STOP/DELETE orphan claim icin sunulur', () => {

@@ -1,6 +1,6 @@
 // server/audit/__tests__/nginx-migration.test.js
 //
-// Nginx SPA > "Prod Tasima" (2026-09-14): eski GBRVP* proxy_pass hedefleri yeni
+// Nginx SPA > "Prod Tasima" (2026-09-14): eski ORRVP* proxy_pass hedefleri yeni
 // GBNGXP4x/5x sunucularinda dizin olarak var mi.
 'use strict';
 
@@ -10,10 +10,10 @@ const {
   buildMigration,
   resolveTarget,
   deriveFromName,
-  MIGRATION_GROUPS,
+  migrationGroups,
 } = require('../nginx-migration.cjs');
 
-const APPS = '.apps.fw.garanti.com.tr';
+const APPS = '.apps.fw.sirket.invalid';
 const P = (host, service, location, target, upstream = 'ups') => ({
   host,
   vhost: service + '-PROD.conf',
@@ -32,33 +32,33 @@ const D = (host, namespace, application, hys = 1, app = 1, conf = 1) => ({
 });
 
 test('gruplar kullanicinin verdigi sunucularla BIREBIR', () => {
-  const g = Object.fromEntries(MIGRATION_GROUPS.map((x) => [x.id, x]));
+  const g = Object.fromEntries(migrationGroups().map((x) => [x.id, x]));
   assert.deepEqual(g.glomo.oldHosts, [
-    'GBRVPP07',
-    'GBRVPP08',
-    'GBRVPP09',
-    'GBRVPP10',
-    'GBRVPAP03',
-    'GBRVPAP04',
-    'GBRVPAP05',
-    'GBRVPAP06',
+    'ORRVPP07',
+    'ORRVPP08',
+    'ORRVPP09',
+    'ORRVPP10',
+    'ORRVPAP03',
+    'ORRVPAP04',
+    'ORRVPAP05',
+    'ORRVPAP06',
   ]);
   assert.deepEqual(g.glomo.newHosts, [
-    'GBNGXP40',
-    'GBNGXP41',
-    'GBNGXP48',
-    'GBNGXP49',
-    'GBNGXAP34',
-    'GBNGXAP35',
+    'ORNGXP40',
+    'ORNGXP41',
+    'ORNGXP48',
+    'ORNGXP49',
+    'ORNGXAP34',
+    'ORNGXAP35',
   ]);
-  assert.deepEqual(g.other.oldHosts, ['GBRVPP01', 'GBRVPP02', 'GBRVPAP01', 'GBRVPAP02']);
+  assert.deepEqual(g.other.oldHosts, ['ORRVPP01', 'ORRVPP02', 'ORRVPAP01', 'ORRVPAP02']);
   assert.deepEqual(g.other.newHosts, [
-    'GBNGXP44',
-    'GBNGXP45',
-    'GBNGXP58',
-    'GBNGXP59',
-    'GBNGXAP32',
-    'GBNGXAP33',
+    'ORNGXP44',
+    'ORNGXP45',
+    'ORNGXP58',
+    'ORNGXP59',
+    'ORNGXAP32',
+    'ORNGXAP33',
   ]);
 });
 
@@ -100,23 +100,23 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   const out = buildMigration({
     proxyRows: [
       // Glomo: iki eski sunucu ayni uygulamaya, farkli location'lardan
-      P('GBRVPP07', 'GLOMO', '/hazir/', 'hazir-app-v1-glomo-prod' + APPS),
-      P('GBRVPP08', 'GLOMO', '/hazir2/', 'hazir-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/kismi/', 'kismi-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/eksik/', 'eksik-app-emb-v2-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/hazir/', 'hazir-app-v1-glomo-prod' + APPS),
+      P('ORRVPP08', 'GLOMO', '/hazir2/', 'hazir-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/kismi/', 'kismi-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/eksik/', 'eksik-app-emb-v2-glomo-prod' + APPS),
       // target_url bos: upstream'in server host'undan cozulur
-      P('GBRVPP09', 'GLOMO', '/ups/', '', 'ups-hazir'),
+      P('ORRVPP09', 'GLOMO', '/ups/', '', 'ups-hazir'),
       // SPA olmayan arka uc: dizin beklenmez
-      P('GBRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS),
       // SPA kalibinda ama envanterde yok: cozulemedi
-      P('GBRVPP10', 'GLOMO', '/hayalet/', 'hayalet-app-v1-yok-prod' + APPS),
+      P('ORRVPP10', 'GLOMO', '/hayalet/', 'hayalet-app-v1-yok-prod' + APPS),
       // Diger grup - Glomo'ya KARISMAMALI
-      P('GBRVPP01', 'WEBFORMS', '/wf/', 'wf-app-v1-webforms-prod' + APPS),
+      P('ORRVPP01', 'WEBFORMS', '/wf/', 'wf-app-v1-webforms-prod' + APPS),
       // Tasima disi sunucu - hic sayilmamali
-      P('GBNGXT33', 'GLOMO', '/test/', 'hazir-app-v1-glomo-test' + APPS),
+      P('ORNGXT33', 'GLOMO', '/test/', 'hazir-app-v1-glomo-test' + APPS),
     ],
     upstreamRows: [
-      { host: 'GBRVPP09', name: 'ups-hazir', server: 'hazir-app-v1-glomo-prod' + APPS + ':443' },
+      { host: 'ORRVPP09', name: 'ups-hazir', server: 'hazir-app-v1-glomo-prod' + APPS + ':443' },
     ],
     routeRows: [
       { namespace_name: 'glomo-prod', route_address: 'hazir-app-v1-glomo-prod' + APPS },
@@ -128,27 +128,27 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
       { namespace: 'webforms-prod', application: 'wf-app-v1' },
     ],
     dirRows: [
-      // 6 yeni Glomo sunucusunun 5'i taranmis (GBNGXAP35 yok)
-      ...['GBNGXP40', 'GBNGXP41', 'GBNGXP48', 'GBNGXP49', 'GBNGXAP34'].map((h) =>
+      // 6 yeni Glomo sunucusunun 5'i taranmis (ORNGXAP35 yok)
+      ...['ORNGXP40', 'ORNGXP41', 'ORNGXP48', 'ORNGXP49', 'ORNGXAP34'].map((h) =>
         D(h, 'glomo-prod', 'hazir-app-v1'),
       ),
-      D('GBNGXP40', 'glomo-prod', 'kismi-app-v1'),
-      D('GBNGXP41', 'glomo-prod', 'kismi-app-v1', 1, 0, 1), // hys var, app yok -> hazir degil
+      D('ORNGXP40', 'glomo-prod', 'kismi-app-v1'),
+      D('ORNGXP41', 'glomo-prod', 'kismi-app-v1', 1, 0, 1), // hys var, app yok -> hazir degil
       // eksik-app-emb-v2 hicbir yeni sunucuda yok
-      D('GBNGXP44', 'webforms-prod', 'wf-app-v1'),
+      D('ORNGXP44', 'webforms-prod', 'wf-app-v1'),
     ],
   });
   const glomo = out.find((g) => g.id === 'glomo');
   const other = out.find((g) => g.id === 'other');
 
   assert.deepEqual(glomo.newHostsScanned, [
-    'GBNGXP40',
-    'GBNGXP41',
-    'GBNGXP48',
-    'GBNGXP49',
-    'GBNGXAP34',
+    'ORNGXP40',
+    'ORNGXP41',
+    'ORNGXP48',
+    'ORNGXP49',
+    'ORNGXAP34',
   ]);
-  assert.deepEqual(glomo.oldHostsSeen, ['GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10']);
+  assert.deepEqual(glomo.oldHostsSeen, ['ORRVPP07', 'ORRVPP08', 'ORRVPP09', 'ORRVPP10']);
 
   const by = Object.fromEntries(glomo.apps.map((a) => [a.application, a]));
   assert.deepEqual(Object.keys(by).sort(), ['eksik-app-emb-v2', 'hazir-app-v1', 'kismi-app-v1']);
@@ -158,17 +158,17 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
   // taranmayan sunucu newHostsScanned/perHost=null ile ayrica gorunur)
   assert.equal(by['hazir-app-v1'].status, 'ready');
   assert.equal(by['hazir-app-v1'].readyHosts, 5);
-  assert.equal(by['hazir-app-v1'].perHost.GBNGXAP35, null, 'taranmayan sunucu null');
+  assert.equal(by['hazir-app-v1'].perHost.ORNGXAP35, null, 'taranmayan sunucu null');
   assert.deepEqual(
     by['hazir-app-v1'].oldHosts,
-    ['GBRVPP07', 'GBRVPP08', 'GBRVPP09'],
-    'upstream server host ile cozulen GBRVPP09 dahil',
+    ['ORRVPP07', 'ORRVPP08', 'ORRVPP09'],
+    'upstream server host ile cozulen ORRVPP09 dahil',
   );
   assert.equal(by['hazir-app-v1'].locationCount, 3);
   assert.equal(by['hazir-app-v1'].how, 'route');
 
   assert.equal(by['kismi-app-v1'].status, 'partial');
-  assert.equal(by['kismi-app-v1'].readyHosts, 1, 'GBNGXP41 app_deployed=0 -> hazir sayilmaz');
+  assert.equal(by['kismi-app-v1'].readyHosts, 1, 'ORNGXP41 app_deployed=0 -> hazir sayilmaz');
   assert.equal(by['kismi-app-v1'].how, 'inventory');
 
   assert.equal(by['eksik-app-emb-v2'].status, 'missing');
@@ -193,7 +193,7 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
     unresolved: 1,
   });
 
-  // Diger grup: yalniz GBNGXP44 taranmis ve orada hazir -> 'ready' (taranan sunucularin hepsi);
+  // Diger grup: yalniz ORNGXP44 taranmis ve orada hazir -> 'ready' (taranan sunucularin hepsi);
   // taranmayan 5 sunucu newHostsScanned disinda gorunur. Glomo satiri sizmamis.
   assert.equal(other.apps.length, 1);
   assert.equal(other.apps[0].application, 'wf-app-v1');
@@ -203,7 +203,7 @@ test('uygulama satiri: her yeni sunucuda hys+app var mi; hazir / kismi / eksik /
 
 test('hic yeni sunucu taranmamissa uygulama satiri "not-scanned" - "eksik" DEGIL', () => {
   const out = buildMigration({
-    proxyRows: [P('GBRVPP01', 'WEBFORMS', '/wf/', 'wf-app-v1-webforms-prod' + APPS)],
+    proxyRows: [P('ORRVPP01', 'WEBFORMS', '/wf/', 'wf-app-v1-webforms-prod' + APPS)],
     upstreamRows: [],
     routeRows: [
       { namespace_name: 'webforms-prod', route_address: 'wf-app-v1-webforms-prod' + APPS },
@@ -227,25 +227,25 @@ test('dort proxy_pass yazimi da ayni uygulamaya cozulur; takma adli upstream ser
   const out = buildMigration({
     proxyRows: [
       // FQDN (yolsuz ve yollu - tarayici ikisini de host'a indirger), proxy_ssl_name YOK
-      R('GBRVPP07', '/a/', 'x-app-v1-glomo-prod' + APPS),
-      R('GBRVPP08', '/b/', 'x-app-v1-glomo-prod' + APPS),
+      R('ORRVPP07', '/a/', 'x-app-v1-glomo-prod' + APPS),
+      R('ORRVPP08', '/b/', 'x-app-v1-glomo-prod' + APPS),
       // ciplak upstream adi, proxy_ssl_name YOK, nginx_audit upstream satiri da YOK
       // -> route envanterinde ILK ETIKET eslesmesiyle cozulmeli (route kesinligi)
-      R('GBRVPP09', '/c/', 'x-app-v1-glomo-prod'),
+      R('ORRVPP09', '/c/', 'x-app-v1-glomo-prod'),
       // ciplak upstream adi + nginx_audit server satiri var
-      R('GBRVPP10', '/d/', 'x-app-v1-glomo-prod'),
+      R('ORRVPP10', '/d/', 'x-app-v1-glomo-prod'),
       // takma adli upstream: adi hicbir kaliba uymaz, server satiri gercek adresi verir
-      R('GBRVPAP03', '/e/', 'onur'),
+      R('ORRVPAP03', '/e/', 'onur'),
       // envanterde route'u olmayan ciplak ad -> OpenShift envanter ciftinden (yedek)
-      R('GBRVPAP04', '/f/', 'y-app-v2-glomo-prod'),
+      R('ORRVPAP04', '/f/', 'y-app-v2-glomo-prod'),
     ],
     upstreamRows: [
       {
-        host: 'GBRVPP10',
+        host: 'ORRVPP10',
         name: 'x-app-v1-glomo-prod',
         server: 'x-app-v1-glomo-prod' + APPS + ':443',
       },
-      { host: 'GBRVPAP03', name: 'onur', server: 'https://x-app-v1-glomo-prod' + APPS + '/' },
+      { host: 'ORRVPAP03', name: 'onur', server: 'https://x-app-v1-glomo-prod' + APPS + '/' },
     ],
     routeRows: [{ namespace_name: 'glomo-prod', route_address: 'x-app-v1-glomo-prod' + APPS }],
     ocpRows: [{ namespace: 'glomo-prod', application: 'y-app-v2' }],
@@ -259,7 +259,7 @@ test('dort proxy_pass yazimi da ayni uygulamaya cozulur; takma adli upstream ser
   assert.equal(x.how, 'route');
   assert.deepEqual(
     x.oldHosts,
-    ['GBRVPAP03', 'GBRVPP07', 'GBRVPP08', 'GBRVPP09', 'GBRVPP10'],
+    ['ORRVPAP03', 'ORRVPP07', 'ORRVPP08', 'ORRVPP09', 'ORRVPP10'],
     'bes yazim tek satirda toplanmali',
   );
   assert.deepEqual(x.forms, ['fqdn', 'upstream']);
@@ -275,11 +275,11 @@ test('gercek arka uc oncelik sirasi: upstream server > proxy_ssl_name > yazilan 
   const out = buildMigration({
     proxyRows: [
       // ucu de var ve FARKLI: upstream server satiri kazanmali
-      P('GBRVPP01', 'WEBFORMS', '/w/', 'sni-app-v1-webforms-prod' + APPS, 'takma'),
+      P('ORRVPP01', 'WEBFORMS', '/w/', 'sni-app-v1-webforms-prod' + APPS, 'takma'),
       // yalniz proxy_ssl_name var
-      P('GBRVPP02', 'WEBFORMS', '/z/', 'ssl-app-v1-webforms-prod' + APPS, 'takma2'),
+      P('ORRVPP02', 'WEBFORMS', '/z/', 'ssl-app-v1-webforms-prod' + APPS, 'takma2'),
     ],
-    upstreamRows: [{ host: 'GBRVPP01', name: 'takma', server: 'ups-app-v1-webforms-prod' + APPS }],
+    upstreamRows: [{ host: 'ORRVPP01', name: 'takma', server: 'ups-app-v1-webforms-prod' + APPS }],
     routeRows: [
       { namespace_name: 'webforms-prod', route_address: 'ups-app-v1-webforms-prod' + APPS },
       { namespace_name: 'webforms-prod', route_address: 'sni-app-v1-webforms-prod' + APPS },
@@ -344,7 +344,7 @@ test('"-prod" eksiz yazim: once oldugu gibi, tutmazsa -prod eklenerek cozulur ve
 
   // Uctan uca: satirda suffixAdded ve namespace -prod'lu (ekip/dizin eslesmesi buna bagli)
   const out = buildMigration({
-    proxyRows: [P('GBRVPP07', 'GLOMO', '/base/', '', 'base-app-v0-digital-banking-ch')],
+    proxyRows: [P('ORRVPP07', 'GLOMO', '/base/', '', 'base-app-v0-digital-banking-ch')],
     upstreamRows: [],
     routeRows: [
       {
@@ -353,22 +353,22 @@ test('"-prod" eksiz yazim: once oldugu gibi, tutmazsa -prod eklenerek cozulur ve
       },
     ],
     ocpRows: [],
-    dirRows: [D('GBNGXP40', 'digital-banking-ch-prod', 'base-app-v0')],
+    dirRows: [D('ORNGXP40', 'digital-banking-ch-prod', 'base-app-v0')],
   });
   const a = out.find((g) => g.id === 'glomo').apps[0];
   assert.equal(a.namespace, 'digital-banking-ch-prod');
   assert.equal(a.suffixAdded, true);
-  assert.equal(a.perHost.GBNGXP40.hys, true, "dizin eslesmesi -prod'lu namespace ile yapilmali");
+  assert.equal(a.perHost.ORNGXP40.hys, true, "dizin eslesmesi -prod'lu namespace ile yapilmali");
 });
 
 test('grup basina servis location sayisi: SPA-disi ve cozulemeyen dahil, mirror sunucu carpilmaz', () => {
   const out = buildMigration({
     proxyRows: [
-      P('GBRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS),
-      P('GBRVPP08', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS), // mirror: ayni location
-      P('GBRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil
-      P('GBRVPP07', 'GLOMO', '/x/', 'hayalet-app-v1-yok-prod' + APPS), // cozulemedi
-      P('GBRVPP01', 'WEBFORMS', '/w/', 'w-app-v1-webforms-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS),
+      P('ORRVPP08', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS), // mirror: ayni location
+      P('ORRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil
+      P('ORRVPP07', 'GLOMO', '/x/', 'hayalet-app-v1-yok-prod' + APPS), // cozulemedi
+      P('ORRVPP01', 'WEBFORMS', '/w/', 'w-app-v1-webforms-prod' + APPS),
     ],
     upstreamRows: [],
     routeRows: [{ namespace_name: 'glomo-prod', route_address: 'a-app-v1-glomo-prod' + APPS }],
@@ -398,13 +398,13 @@ test('location ilerlemesi (2026-09-17): yeni sunuculardaki tanimlara gore define
     vhost: service + '-PROD.conf',
     location,
   });
-  const glomoNew = MIGRATION_GROUPS.find((g) => g.id === 'glomo').newHosts;
+  const glomoNew = migrationGroups().find((g) => g.id === 'glomo').newHosts;
   const out = buildMigration({
     proxyRows: [
-      P('GBRVPP07', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/yarim/', 'yarim-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/yok/', 'yok-app-v1-glomo-prod' + APPS),
-      P('GBRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil, proxy ile tasinir
+      P('ORRVPP07', 'GLOMO', '/tam/', 'tam-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/yarim/', 'yarim-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/yok/', 'yok-app-v1-glomo-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/api/', 'glomo-api-glomo-prod' + APPS), // SPA degil, proxy ile tasinir
     ],
     upstreamRows: [],
     routeRows: ['tam', 'yarim', 'yok'].map((a) => ({
@@ -438,7 +438,7 @@ test('location ilerlemesi (2026-09-17): yeni sunuculardaki tanimlara gore define
   assert.equal(byApp['yok-app-v1'].paths[0].newStatus, 'none');
   // hic yeni sunucu taranmadiysa "none" DEGIL "not-scanned"
   const out2 = buildMigration({
-    proxyRows: [P('GBRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS)],
+    proxyRows: [P('ORRVPP07', 'GLOMO', '/a/', 'a-app-v1-glomo-prod' + APPS)],
     upstreamRows: [],
     routeRows: [{ namespace_name: 'glomo-prod', route_address: 'a-app-v1-glomo-prod' + APPS }],
     ocpRows: [],
@@ -458,18 +458,18 @@ test('SPA kalibi DAR: surum eki tek basina tasinacaklar listesine SOKMAZ', () =>
   const out = buildMigration({
     proxyRows: [
       // Kurumsal kalip: tasinacaklar listesine GIRER.
-      P('GBRVPP07', 'GLOMO', '/sube/', 'sube-portali-app-v1-kurumsal-prod' + APPS),
+      P('ORRVPP07', 'GLOMO', '/sube/', 'sube-portali-app-v1-kurumsal-prod' + APPS),
       // Surum ekli ama kurumsal kalibi YOK: envanterde cozulse bile SPA sayilmaz.
       // (2026-09-28: bir sure SPA sayiliyordu, kullanici geri aldirdi - surum eki
       // SPA'ya ozgu degil, bir API de "-v1" ile biter.)
-      P('GBRVPP07', 'GLOMO', '/nca/', 'non-core-assets-v0-front-architecture' + APPS),
-      P('GBRVPP07', 'GLOMO', '/apigw/', 'apigw' + APPS),
+      P('ORRVPP07', 'GLOMO', '/nca/', 'non-core-assets-v0-front-architecture' + APPS),
+      P('ORRVPP07', 'GLOMO', '/apigw/', 'apigw' + APPS),
     ],
     ocpRows: [
       { namespace: 'kurumsal-prod', application: 'sube-portali-app-v1' },
       { namespace: 'front-architecture-prod', application: 'non-core-assets-v0' },
     ],
-    dirRows: [D('GBNGXP40', 'kurumsal-prod', 'sube-portali-app-v1')],
+    dirRows: [D('ORNGXP40', 'kurumsal-prod', 'sube-portali-app-v1')],
   });
   const g = out.find((x) => x.id === 'glomo');
   assert.deepEqual(
@@ -488,7 +488,7 @@ test('cozulemeyen SPA hedefi: ns/app ADDAN cikarilir ama tasinacaklara GIRMEZ', 
   const out = buildMigration({
     // Envanter BOS: ne route ne OpenShift kaydi var.
     proxyRows: [
-      P('GBRVPP07', 'GLOMO', '/cust/', 'cust-limit-mgmt-app-v0-cust-limit-mgmt-ch' + APPS),
+      P('ORRVPP07', 'GLOMO', '/cust/', 'cust-limit-mgmt-app-v0-cust-limit-mgmt-ch' + APPS),
     ],
     ocpRows: [],
     routeRows: [],

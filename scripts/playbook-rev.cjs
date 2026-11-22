@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/playbook-rev.cjs — AWX'e kopyalanan playbook'lar icin SURUM DAMGASI.
 //
-// NEDEN VAR: `server/ansible/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
+// NEDEN VAR: `server/ansible/playbooks/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
 // Kopyalanmadiginda AWX ESKI surumu kosar, portalda gorunen hata ise repodaki
 // (duzeltilmis) koda ait olur ve teshis yanlis yerde aranir. 2026-09-07'de bu
 // tam dort kez oldu; son seferinde #3297277'nin sebebi zaten duzeltilmisti ama
@@ -117,7 +117,9 @@ function main() {
 
   if (stale.length) {
     console.log('Damga guncellendi:\n' + stale.map((r) => `  - ${r}`).join('\n'));
-    console.log("\nAWX'e KOPYALAMAYI unutmayin: server/ansible/bmw_portal/ -> AWX bmw_portal/");
+    console.log(
+      "\nAWX'e KOPYALAMAYI unutmayin: server/ansible/playbooks/bmw_portal/ -> AWX bmw_portal/",
+    );
   } else {
     console.log('Damgalar zaten guncel.');
   }

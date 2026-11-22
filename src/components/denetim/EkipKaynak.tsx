@@ -18,13 +18,18 @@ const ETIKET: Record<string, string> = {
 
 /** Kaynak kodunun okunur açıklaması ('' = bilinmiyor). */
 export function kaynakEtiketi(kaynak?: string | null): string {
-  const k = String(kaynak || '').trim().toUpperCase();
+  const k = String(kaynak || '')
+    .trim()
+    .toUpperCase();
   if (!k) return '';
   return ETIKET[k] || `kaynak: ${k}`;
 }
 
 /** Grup namespace yedeğinden mi geldi? */
-export const nsSahibiMi = (kaynak?: string | null) => String(kaynak || '').trim().toUpperCase() === 'NAMESPACE';
+export const nsSahibiMi = (kaynak?: string | null) =>
+  String(kaynak || '')
+    .trim()
+    .toUpperCase() === 'NAMESPACE';
 
 /** "(namespace sahibi)" işareti — grup adının hemen yanında, ipucunda açıklama. */
 export function NsSahibiIsareti() {

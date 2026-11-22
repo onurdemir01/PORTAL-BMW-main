@@ -32,8 +32,8 @@ test('NV1 `engines` gercek uyumluluk araligi; guvenlik tabani ayri', () => {
   const pkg = JSON.parse(read('package.json'));
   const range = pkg.engines && pkg.engines.node;
   assert.ok(range, 'engines.node yok');
-  const tabanlar = new semver.Range(range).set.map((cs) =>
-    semver.minVersion(new semver.Range(cs.map((c) => c.value).join(' '))).version,
+  const tabanlar = new semver.Range(range).set.map(
+    (cs) => semver.minVersion(new semver.Range(cs.map((c) => c.value).join(' '))).version,
   );
   // (1) TAAHHUT DURUST: her hattin en eski surumu kilitteki HER paketin engines'ini karsilar.
   // TAM kilit (gelistirme/): derleme ve test araclari da bu Node surumlerinde calismak zorunda.
@@ -42,16 +42,25 @@ test('NV1 `engines` gercek uyumluluk araligi; guvenlik tabani ayri', () => {
   for (const [yol, bilgi] of Object.entries(kilit)) {
     const e = yol && bilgi.engines && bilgi.engines.node;
     if (!e) continue;
-    for (const t of tabanlar) if (!semver.satisfies(t, e)) karsilamayan.push(`${t} < ${yol} (${e})`);
+    for (const t of tabanlar)
+      if (!semver.satisfies(t, e)) karsilamayan.push(`${t} < ${yol} (${e})`);
   }
-  assert.deepEqual(karsilamayan, [], `engines desteklenmeyen surumu vaat ediyor:\n${karsilamayan.join('\n')}`);
+  assert.deepEqual(
+    karsilamayan,
+    [],
+    `engines desteklenmeyen surumu vaat ediyor:\n${karsilamayan.join('\n')}`,
+  );
   // (2) Portalin calistigi makine (22.22.2) kapsaniyor.
   assert.ok(semver.satisfies('22.22.2', range), `engines (${range}) 22.22.2'yi kapsamiyor`);
   // (3) Her hatta guvenlik tabani, uyumluluk tabaninin ALTINDA olamaz.
   const { YAMALI } = require('../node-guvenlik.cjs');
   for (const t of tabanlar) {
     const ana = semver.major(t);
-    if (YAMALI[ana]) assert.ok(semver.gte(YAMALI[ana].join('.'), t), `${ana} hattinda guvenlik tabani ${YAMALI[ana].join('.')} < uyumluluk tabani ${t}`);
+    if (YAMALI[ana])
+      assert.ok(
+        semver.gte(YAMALI[ana].join('.'), t),
+        `${ana} hattinda guvenlik tabani ${YAMALI[ana].join('.')} < uyumluluk tabani ${t}`,
+      );
   }
 });
 

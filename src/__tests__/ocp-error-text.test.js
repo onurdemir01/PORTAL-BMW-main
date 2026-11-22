@@ -11,6 +11,7 @@
 // `oc` cagrisi da dogal olarak kubeconfig'ten sikayet etmisti. Ekran, kullaniciyi
 // YAPACAK HICBIR SEYIN OLMADIGI bir yere (`~/.kube/config`) yonlendiriyordu.
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -80,5 +81,5 @@ test('OE5 yetki hatasi kimlik hatasindan AYRI cumle uretir', () => {
   const forbidden = humanizeOcpError('Error from server (Forbidden): pods is forbidden');
   assert.match(forbidden.text, /yetki/i, 'yetki hatasi ayirt edilmiyor');
   // Yetki hatasi "kimlik cozulemedi" ile karistirilirsa yonetici yanlis seyi duzeltir.
-  assert.doesNotMatch(forbidden.text, /kimlik bilgisi cozulemedi/i);
+  assert.doesNotMatch(forbidden.text, esnek(/kimlik bilgisi cozulemedi/i));
 });

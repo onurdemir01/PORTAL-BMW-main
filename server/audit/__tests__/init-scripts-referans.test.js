@@ -26,7 +26,7 @@
 //   IR18 (B5/B6) sunucu geneli sutun eksigi kok sekmesinde degil sunucuGeneli.missingColumns'ta;
 //       yalniz sunucu geneli sutunu olan kok bos ve aciklamali (message).
 //   IR19 (B4) sunucu geneli degisince oteki kokun yanit onbellegi silinir: iki sekme ayni.
-//   IR6 GBEVM/GBPRV genel envanterin referansina gore olculur (ekip referansi dahil).
+//   IR6 OREVM/ORPRV genel envanterin referansina gore olculur (ekip referansi dahil).
 //   IR7 ek tablo sorgusu duserse uc 200 doner, extrasError dolar, eski davranis.
 //   IR10 KISMI ek tablo hatasi (ayrinti okundu, referans dustu): yari yeni yol URETILMEZ,
 //       tamamen eski yol + extrasError (ekrandaki "okunamadi" notuyla tutarli).
@@ -192,9 +192,9 @@ function kokteAppdomainYok(j) {
 /** Teshisteki dagilim: 30 "LF + son satir sonu", 5 depo birebir, 3 CRLF. */
 function filo() {
   const hosts = [];
-  for (let i = 0; i < 30; i++) hosts.push([`GBNL${String(i).padStart(2, '0')}`, V.nl]);
-  for (let i = 0; i < 5; i++) hosts.push([`GBREPO${i}`, V.repo]);
-  for (let i = 0; i < 3; i++) hosts.push([`GBCRLF${i}`, V.crlf]);
+  for (let i = 0; i < 30; i++) hosts.push([`ORNL${String(i).padStart(2, '0')}`, V.nl]);
+  for (let i = 0; i < 5; i++) hosts.push([`ORREPO${i}`, V.repo]);
+  for (let i = 0; i < 3; i++) hosts.push([`ORCRLF${i}`, V.crlf]);
   return hosts;
 }
 function detay(root, host, script, s, state = 'OK') {
@@ -245,9 +245,9 @@ test('IR1 ekip referansi + ayrinti: bicim farki sapma degil, depo kopyasi uyumlu
     okunamadi: 0,
     kokFarki: 0,
   });
-  assert.equal(sgSatir(a, 'GBREPO0').durum, 'ayni', 'depo birebir kopyasi uyumlu');
-  assert.equal(sgSatir(a, 'GBNL00').durum, 'ayni', 'kanonik bicim uyumlu');
-  const crlf = sgSatir(a, 'GBCRLF0');
+  assert.equal(sgSatir(a, 'ORREPO0').durum, 'ayni', 'depo birebir kopyasi uyumlu');
+  assert.equal(sgSatir(a, 'ORNL00').durum, 'ayni', 'kanonik bicim uyumlu');
+  const crlf = sgSatir(a, 'ORCRLF0');
   assert.deepEqual(
     [crlf.durum, crlf.kaynak, crlf.kokler, crlf.kokFarki, crlf.hash],
     ['bicim', 'vhosting', ['vhosting'], null, fp(V.crlf).raw],
@@ -274,7 +274,7 @@ test('IR2 eski veri (ayrinti/referans yok): ham hash + cogunluk, davranis degism
   assert.equal(a.deviatingCount, 8);
   assert.equal(a.formatOnlyCount, 0);
   assert.deepEqual([a.sayilar.ayni, a.sayilar.farkli, a.sayilar.bicim], [30, 8, 0]);
-  assert.equal(sgSatir(a, 'GBCRLF0').durum, 'farkli', 'eski veride bicim ayrimi yok');
+  assert.equal(sgSatir(a, 'ORCRLF0').durum, 'farkli', 'eski veride bicim ayrimi yok');
   kokteAppdomainYok(j);
   assert.equal(j.identicalHosts, 38, 'kok sayaci yalniz start.sh ile');
 });
@@ -483,14 +483,14 @@ test('IR17 kaynak secimi kenarlari: olculmemis bos yeni kayit, karisik tarih kay
   DB = {
     cols: [...ALL_COLS, 'load_date'],
     cols8: [...ALL_COLS, 'load_date'],
-    rows: [r('GBN1', X, ESKI), r('GBN2', X, YENI), r('GBDUP', X, YENI), r('GBDUP', Y, YENI)],
-    rows8: [r('GBN1', null, YENI), r('gbn2', X, YENI)],
+    rows: [r('ORN1', X, ESKI), r('ORN2', X, YENI), r('ORDUP', X, YENI), r('ORDUP', Y, YENI)],
+    rows8: [r('ORN1', null, YENI), r('orn2', X, YENI)],
   };
   const j1 = await al('vhosting');
   const j8 = await al('vhosting8');
   assert.deepEqual(j1.sunucuGeneli, j8.sunucuGeneli, 'iki sekmede ayni');
   const a = sg(j1);
-  const n1 = sgSatir(a, 'GBN1');
+  const n1 = sgSatir(a, 'ORN1');
   assert.deepEqual(
     [n1.kaynak, n1.hash, n1.durum, n1.kokFarki, n1.digerKaynak],
     ['vhosting', X, 'ayni', 'durum', 'vhosting8'],
@@ -499,11 +499,11 @@ test('IR17 kaynak secimi kenarlari: olculmemis bos yeni kayit, karisik tarih kay
   // B7: buyuk/kucuk harf farki ayni sunucu (tek satir), ayni tabloda yinelenen satir kok farki degil
   assert.deepEqual(
     a.rows.map((x) => x.host),
-    ['GBDUP', 'GBN1', 'GBN2'],
-    'GBN2/gbn2 tek satir, GBDUP tek satir',
+    ['ORDUP', 'ORN1', 'ORN2'],
+    'ORN2/orn2 tek satir, ORDUP tek satir',
   );
-  assert.deepEqual(sgSatir(a, 'GBN2').kokler, ['vhosting', 'vhosting8']);
-  const dup = sgSatir(a, 'GBDUP');
+  assert.deepEqual(sgSatir(a, 'ORN2').kokler, ['vhosting', 'vhosting8']);
+  const dup = sgSatir(a, 'ORDUP');
   assert.deepEqual([dup.kokler, dup.kokFarki, dup.digerKaynak], [['vhosting'], null, null]);
 
   // B1 (olculmus bos): ayrinti MISSING yaziyorsa yeni bos kayit gercek olcumdur -> kazanir.
@@ -601,8 +601,13 @@ test('IR18 sutun eksigi tablo bazinda; yalniz sunucu geneli sutunu olan kok bos 
     rows8: [satir('GBR1', null, SH)],
   };
   const j8 = await al('vhosting8');
-  assert.ok(!j8.missingColumns.includes('appdomain.service'), 'kok sekmesi sunucu geneliyi bildirmez');
-  assert.deepEqual(j8.sunucuGeneli.missingColumns, [{ root: 'vhosting8', label: 'appdomain.service' }]);
+  assert.ok(
+    !j8.missingColumns.includes('appdomain.service'),
+    'kok sekmesi sunucu geneliyi bildirmez',
+  );
+  assert.deepEqual(j8.sunucuGeneli.missingColumns, [
+    { root: 'vhosting8', label: 'appdomain.service' },
+  ]);
   assert.deepEqual(sgSatir(sg(j8), 'GBR1').kokler, ['vhosting']);
   const j1 = await al('vhosting');
   assert.deepEqual(j1.sunucuGeneli, j8.sunucuGeneli);
@@ -742,8 +747,8 @@ const ESKI_INIT_ETIKETLER = [
   ['startCustom_sh', 'startCustom.sh'],
 ];
 function eskiYanit(rows, scripts) {
-  const g = rows.filter((r) => !/^(GBEVM|GBPRV)/i.test(r.host));
-  const o = rows.filter((r) => /^(GBEVM|GBPRV)/i.test(r.host));
+  const g = rows.filter((r) => !/^[A-Z]{2}(?:EVM|PRV)/i.test(r.host));
+  const o = rows.filter((r) => /^[A-Z]{2}(?:EVM|PRV)/i.test(r.host));
   const genel = eskiRapor(g, scripts);
   let special = null;
   if (o.length) {
@@ -776,56 +781,56 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
   // satirlarini GENEL cogunluga, ozel istatistigi KENDI cogunluguna gore sayardi; aynen kalmali.
   const rows = [
     {
-      host: 'GBA01',
+      host: 'ORA01',
       appdomain_service: h('a'),
       start_sh: h('s'),
       functions_sh: h('f'),
       startCustom_sh: h('1'),
     },
     {
-      host: 'GBA02',
+      host: 'ORA02',
       appdomain_service: h('a'),
       start_sh: h('s'),
       functions_sh: null,
       startCustom_sh: null,
     },
     {
-      host: 'GBA03',
+      host: 'ORA03',
       appdomain_service: h('b'),
       start_sh: h('s'),
       functions_sh: h('f'),
       startCustom_sh: h('2'),
     },
     {
-      host: 'GBA04',
+      host: 'ORA04',
       appdomain_service: h('b'),
       start_sh: h('t'),
       functions_sh: h('g'),
       startCustom_sh: null,
     },
     {
-      host: 'GBA05',
+      host: 'ORA05',
       appdomain_service: h('a'),
       start_sh: null,
       functions_sh: null,
       startCustom_sh: null,
     },
     {
-      host: 'GBEVM01',
+      host: 'OREVM01',
       appdomain_service: h('b'),
       start_sh: h('t'),
       functions_sh: null,
       startCustom_sh: h('3'),
     },
     {
-      host: 'GBEVM02',
+      host: 'OREVM02',
       appdomain_service: h('b'),
       start_sh: h('t'),
       functions_sh: h('z'),
       startCustom_sh: null,
     },
     {
-      host: 'GBPRV01',
+      host: 'ORPRV01',
       appdomain_service: h('a'),
       start_sh: h('s'),
       functions_sh: h('z'),
@@ -849,12 +854,20 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
     assert.equal(j.special.formatOnlyHosts, 0);
     kokteAppdomainYok(j);
     // Sunucu geneli bolum: iki kokun birlesimi (burada iki tablo ayni) uzerinde eski algoritma.
-    const genelSatir = rows.filter((r) => !/^(GBEVM|GBPRV)/i.test(r.host));
-    const ozelSatir = rows.filter((r) => /^(GBEVM|GBPRV)/i.test(r.host));
+    const genelSatir = rows.filter((r) => !/^[A-Z]{2}(?:EVM|PRV)/i.test(r.host));
+    const ozelSatir = rows.filter((r) => /^[A-Z]{2}(?:EVM|PRV)/i.test(r.host));
     const eg = eskiRapor(genelSatir, [APP_SC]);
     const a = sg(j);
-    assert.deepEqual(eskiAlanlar(a, eg.scriptStats[0]), eg.scriptStats[0], `${root}: sunucu geneli`);
-    const eo = eskiRapor(ozelSatir, [APP_SC], new Map([[APP_SC.key, eg.scriptStats[0].majorityHash]]));
+    assert.deepEqual(
+      eskiAlanlar(a, eg.scriptStats[0]),
+      eg.scriptStats[0],
+      `${root}: sunucu geneli`,
+    );
+    const eo = eskiRapor(
+      ozelSatir,
+      [APP_SC],
+      new Map([[APP_SC.key, eg.scriptStats[0].majorityHash]]),
+    );
     assert.deepEqual(eskiAlanlar(a.special, eo.scriptStats[0]), eo.scriptStats[0]);
     assert.deepEqual(
       a.rows.map((x) => [x.host, x.durum]),
@@ -865,24 +878,30 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
     );
     // Oteki kokun tablosundan YALNIZ host + sunucu geneli sutun okunur (kok dosyalari degil).
     const oteki = root === 'vhosting' ? 'dbo.InitScriptsInventory8' : 'dbo.InitScriptsInventory';
-    const otekiOkuma = sorgular.filter((t) => new RegExp(`^\\s*SELECT host\\b.*FROM ${oteki}\\s*$`).test(t));
-    assert.deepEqual(otekiOkuma, [`SELECT host, appdomain_service FROM ${oteki}`], `${root}: ${otekiOkuma}`);
+    const otekiOkuma = sorgular.filter((t) =>
+      new RegExp(`^\\s*SELECT host\\b.*FROM ${oteki}\\s*$`).test(t),
+    );
+    assert.deepEqual(
+      otekiOkuma,
+      [`SELECT host, appdomain_service FROM ${oteki}`],
+      `${root}: ${otekiOkuma}`,
+    );
   }
 });
 
-test('IR6 GBEVM/GBPRV genel envanterin ekip referansina gore olculur', async () => {
+test('IR6 OREVM/ORPRV genel envanterin ekip referansina gore olculur', async () => {
   DB = {
     rows: [
-      satir('GBN1', V.nl, SH),
-      satir('GBN2', V.nl, SH),
-      satir('GBEVM01', V.repo, SH),
-      satir('GBPRV01', V.real, SH),
+      satir('ORN1', V.nl, SH),
+      satir('ORN2', V.nl, SH),
+      satir('OREVM01', V.repo, SH),
+      satir('ORPRV01', V.real, SH),
     ],
     detail: [
-      detay('vhosting', 'GBN1', 'appdomain.service', V.nl),
-      detay('vhosting', 'GBN2', 'appdomain.service', V.nl),
-      detay('vhosting', 'GBEVM01', 'appdomain.service', V.repo),
-      detay('vhosting', 'GBPRV01', 'appdomain.service', V.real),
+      detay('vhosting', 'ORN1', 'appdomain.service', V.nl),
+      detay('vhosting', 'ORN2', 'appdomain.service', V.nl),
+      detay('vhosting', 'OREVM01', 'appdomain.service', V.repo),
+      detay('vhosting', 'ORPRV01', 'appdomain.service', V.real),
     ],
     refs: [
       { script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm },
@@ -893,14 +912,14 @@ test('IR6 GBEVM/GBPRV genel envanterin ekip referansina gore olculur', async () 
   const a = sg(j);
   assert.deepEqual(
     a.rows.map((r) => r.host),
-    ['GBN1', 'GBN2'],
+    ['ORN1', 'ORN2'],
     'ozel sunucular genel satirlarda yok',
   );
   const s = a.special;
   assert.equal(s.referenceSource, 'ekip');
-  assert.equal(s.deviatingCount, 1, 'GBPRV01 gercek fark');
-  assert.equal(sgSatir(s, 'GBEVM01').durum, 'ayni');
-  assert.equal(sgSatir(s, 'GBPRV01').durum, 'farkli');
+  assert.equal(s.deviatingCount, 1, 'ORPRV01 gercek fark');
+  assert.equal(sgSatir(s, 'OREVM01').durum, 'ayni');
+  assert.equal(sgSatir(s, 'ORPRV01').durum, 'farkli');
   assert.equal(s.sayilar.hosts, 2);
   kokteAppdomainYok(j);
 });
@@ -1033,10 +1052,10 @@ test('IR11 ayrinti satiri eksik kopya ayni ham hash uzerinden normu alir: tek su
   const hosts = filo();
   DB = {
     rows: hosts.map(([h, s]) => satir(h, s, SH)),
-    // GBCRLF1..2 icin ayrinti satiri YOK (ornegin yarim tarama); ham hash GBCRLF0 ile ayni.
+    // ORCRLF1..2 icin ayrinti satiri YOK (ornegin yarim tarama); ham hash ORCRLF0 ile ayni.
     // (CRLF secildi: kanonik LF kopyanin ham hash'i normuyla ZATEN ayni, kor kalirdi.)
     detail: hosts
-      .filter(([h]) => !/^GBCRLF[12]$/.test(h))
+      .filter(([h]) => !/^ORCRLF[12]$/.test(h))
       .flatMap(([h, s]) => [
         detay('vhosting', h, 'appdomain.service', s),
         detay('vhosting', h, 'start.sh', SH),

@@ -19,7 +19,10 @@ function limitMetni(u: ChoiceDetailUc) {
   if (!u.etkiler.ip && !u.etkiler.location) return 'limit yok — etkilenmez';
   const parca = (ad: string, v: string, farkli: boolean, etkiler: boolean) =>
     etkiler ? `${ad} ${v || 'tanımsız'}${farkli ? ' (sunucular arasında farklı)' : ''}` : '';
-  return [parca('IP', u.ip, u.ipFarkli, u.etkiler.ip), parca('location', u.loc, u.locFarkli, u.etkiler.location)]
+  return [
+    parca('IP', u.ip, u.ipFarkli, u.etkiler.ip),
+    parca('location', u.loc, u.locFarkli, u.etkiler.location),
+  ]
     .filter(Boolean)
     .join(' · ');
 }
@@ -30,21 +33,24 @@ export default function ChoiceDetailsPanel({ source, params, value, className = 
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useAsyncEffect(async (alive) => {
-    setLoading(true);
-    setErr('');
-    setDetay(null);
-    try {
-      const r = await ansibleApi.choiceDetails(source, params, value);
-      if (!alive()) return;
-      if (!r.ok || !r.detay) setErr(r.message || 'Ayrıntı alınamadı.');
-      else setDetay(r.detay);
-    } catch (e: unknown) {
-      if (alive()) setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      if (alive()) setLoading(false);
-    }
-  }, [source, paramsKey, value]);
+  useAsyncEffect(
+    async (alive) => {
+      setLoading(true);
+      setErr('');
+      setDetay(null);
+      try {
+        const r = await ansibleApi.choiceDetails(source, params, value);
+        if (!alive()) return;
+        if (!r.ok || !r.detay) setErr(r.message || 'Ayrıntı alınamadı.');
+        else setDetay(r.detay);
+      } catch (e: unknown) {
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [source, paramsKey, value],
+  );
 
   const zoneSatiri = detay
     ? [
@@ -80,13 +86,20 @@ export default function ChoiceDetailsPanel({ source, params, value, className = 
             </p>
           </div>
           {detay.kokYol && (
-            <div className="text-[11px] min-w-0 truncate" title={detay.kokYol} data-testid="secim-ayrinti-kok">
+            <div
+              className="text-[11px] min-w-0 truncate"
+              title={detay.kokYol}
+              data-testid="secim-ayrinti-kok"
+            >
               <span className="text-[var(--text-secondary)]">Kök API: </span>
               <code className="font-mono text-[var(--accent)]">{detay.kokYol}</code>
             </div>
           )}
           {zoneSatiri.length > 0 && (
-            <div className="text-[11px] text-[var(--text-secondary)] space-y-0.5" data-testid="secim-ayrinti-zone">
+            <div
+              className="text-[11px] text-[var(--text-secondary)] space-y-0.5"
+              data-testid="secim-ayrinti-zone"
+            >
               {zoneSatiri.map(({ z, tur }) => (
                 <div key={`${tur}-${z}`} className="min-w-0 truncate" title={z}>
                   {tur} zone: <code className="font-mono">{z}</code>
@@ -95,11 +108,17 @@ export default function ChoiceDetailsPanel({ source, params, value, className = 
             </div>
           )}
           {detay.uclar.length === 0 ? (
-            <p className="text-[var(--text-muted)]">Bu konfigürasyon için envanterde uç bulunamadı.</p>
+            <p className="text-[var(--text-muted)]">
+              Bu konfigürasyon için envanterde uç bulunamadı.
+            </p>
           ) : (
             <ul className="max-h-72 overflow-y-auto divide-y divide-[var(--border-subtle)]">
               {detay.uclar.map((u) => (
-                <li key={`${u.conf}|${u.yol}`} className="py-1 min-w-0" data-testid="secim-ayrinti-uc">
+                <li
+                  key={`${u.conf}|${u.yol}`}
+                  className="py-1 min-w-0"
+                  data-testid="secim-ayrinti-uc"
+                >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <code className="font-mono truncate" title={u.yol}>
                       {u.yol}
@@ -130,7 +149,8 @@ export default function ChoiceDetailsPanel({ source, params, value, className = 
             {detay.kume ? ` · ${detay.kume} kümesi` : ''}
             {!detay.zoneBilgisi &&
               ' · Envanter zone adını henüz tutmuyor: liste bu konfigürasyondaki uçlardır; aynı zone başka bir konfigürasyonda da kullanılıyorsa o uçlar burada görünmez.'}
-            {detay.zoneKirpildi && ' · Zone sayısı çok fazla: diğer konfigürasyonlardaki ortak kullanıcılar aranmadı.'}
+            {detay.zoneKirpildi &&
+              ' · Zone sayısı çok fazla: diğer konfigürasyonlardaki ortak kullanıcılar aranmadı.'}
           </p>
         </>
       )}

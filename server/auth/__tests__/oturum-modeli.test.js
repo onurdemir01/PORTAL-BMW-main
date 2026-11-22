@@ -57,7 +57,12 @@ const server = app.listen(0);
 base = `http://127.0.0.1:${server.address().port}`;
 after(() => server.close());
 
-const ENV = ['SESSION_IDLE_MINUTES', 'SESSION_ABSOLUTE_HOURS', 'SESSION_REMEMBER_DAYS', 'SESSION_WARN_SECONDS'];
+const ENV = [
+  'SESSION_IDLE_MINUTES',
+  'SESSION_ABSOLUTE_HOURS',
+  'SESSION_REMEMBER_DAYS',
+  'SESSION_WARN_SECONDS',
+];
 beforeEach(() => {
   for (const k of ENV) delete process.env[k];
   simdi = TABAN;
@@ -84,7 +89,10 @@ test('OM0 sahte saat GERCEK saatin gerisinde baslamaz (sabit tarih = saat bombas
   // Taban gecmiste sabit bir tarih olursa testler o tarihten "en uzun cerez omru" kadar sonra
   // kendi kendine kizarir (2026-10-09'da OM5'te oldu). Bu test o gunu beklemeden soyler.
   const geride = Date.now() - TABAN;
-  assert.ok(geride >= 0 && geride < 5 * DK, `sahte saatin tabani gercek saatten ${geride} ms uzakta`);
+  assert.ok(
+    geride >= 0 && geride < 5 * DK,
+    `sahte saatin tabani gercek saatten ${geride} ms uzakta`,
+  );
   assert.equal(TABAN % 1000, 0, 'taban tam saniye degil - Expires karsilastirmalari kayar');
 });
 
@@ -97,7 +105,11 @@ test('OM1 bosta kalma: sinirdan 1 sn once gecer, sinirda imzali 401 + sebep idle
   simdi += 60 * DK;
   const r2 = await iste(cerez);
   assert.equal(r2.status, 401, 'bosta kalma suresi dolunca hala iceride');
-  assert.equal(r2.headers.get('x-portal-session'), 'expired', '401 imzasiz — istemci kapisi ateslenmez');
+  assert.equal(
+    r2.headers.get('x-portal-session'),
+    'expired',
+    '401 imzasiz — istemci kapisi ateslenmez',
+  );
   assert.equal(r2.headers.get('x-portal-session-reason'), 'idle');
   // Oturum gercekten SILINDI: sonraki istek de 401 (sebep artik bilinmez).
   const r3 = await iste(cerez);
@@ -128,12 +140,17 @@ test('OM3 arka plan yoklamasi UZATMAZ, kullanici istegi uzatir, yazma kisitli', 
     simdi = t0 + t;
     assert.equal((await iste(cerez, '/api/users/online')).status, 200);
     assert.equal(
-      (await iste(cerez, '/api/test/ping', { headers: { 'x-portal-activity': 'background' } })).status,
+      (await iste(cerez, '/api/test/ping', { headers: { 'x-portal-activity': 'background' } }))
+        .status,
       200,
     );
   }
   const r0 = await iste(cerez, '/api/users/online');
-  assert.equal(Number(r0.headers.get('x-portal-session-expires')), t0 + 60 * DK, 'yoklama sureyi uzatti');
+  assert.equal(
+    Number(r0.headers.get('x-portal-session-expires')),
+    t0 + 60 * DK,
+    'yoklama sureyi uzatti',
+  );
   simdi = t0 + 60 * DK;
   const r = await iste(cerez, '/api/users/online');
   assert.equal(r.status, 401, 'yalnizca yoklama yapan sekme oturumu acik tuttu');
@@ -144,10 +161,18 @@ test('OM3 arka plan yoklamasi UZATMAZ, kullanici istegi uzatir, yazma kisitli', 
   const t1 = simdi;
   simdi = t1 + 30 * 1000;
   const a = await iste(c2);
-  assert.equal(Number(a.headers.get('x-portal-session-expires')), t1 + 60 * DK, '60 sn icinde yeniden yazildi');
+  assert.equal(
+    Number(a.headers.get('x-portal-session-expires')),
+    t1 + 60 * DK,
+    '60 sn icinde yeniden yazildi',
+  );
   simdi = t1 + 61 * 1000;
   const b = await iste(c2);
-  assert.equal(Number(b.headers.get('x-portal-session-expires')), simdi + 60 * DK, 'kullanici istegi uzatmadi');
+  assert.equal(
+    Number(b.headers.get('x-portal-session-expires')),
+    simdi + 60 * DK,
+    'kullanici istegi uzatmadi',
+  );
 });
 
 test('OM4 ayarlar dinamik: env degisince bir sonraki istek yeni sureyi kullanir', async () => {
@@ -157,7 +182,11 @@ test('OM4 ayarlar dinamik: env degisince bir sonraki istek yeni sureyi kullanir'
   simdi = t0 + 5 * DK - 1000;
   const r1 = await iste(cerez, '/api/users/online');
   assert.equal(r1.status, 200);
-  assert.equal(Number(r1.headers.get('x-portal-session-expires')), t0 + 5 * DK, 'yeni sure okunmadi (boot`ta donmus)');
+  assert.equal(
+    Number(r1.headers.get('x-portal-session-expires')),
+    t0 + 5 * DK,
+    'yeni sure okunmadi (boot`ta donmus)',
+  );
   simdi = t0 + 5 * DK;
   assert.equal((await iste(cerez, '/api/users/online')).status, 401, '5 dk ayari uygulanmadi');
 
@@ -186,7 +215,11 @@ test('OM5 cerez: beni-hatirla KALICI (Expires = mutlak sinir), degilse oturum ce
   const hatirla = await giris({ remember: true });
   const m = hatirla.setCookie.match(/Expires=([^;]+)/i);
   assert.ok(m, 'beni-hatirla cerezi kalici degil');
-  assert.equal(Date.parse(m[1]), Math.floor((t0 + 7 * 24 * SA) / 1000) * 1000, 'kalici cerez 7 gun degil');
+  assert.equal(
+    Date.parse(m[1]),
+    Math.floor((t0 + 7 * 24 * SA) / 1000) * 1000,
+    'kalici cerez 7 gun degil',
+  );
   assert.equal(hatirla.body.session.remember, true);
   assert.equal(hatirla.body.session.absoluteExpiresAt, t0 + 7 * 24 * SA);
 
@@ -195,7 +228,11 @@ test('OM5 cerez: beni-hatirla KALICI (Expires = mutlak sinir), degilse oturum ce
   const r = await iste(hatirla.cerez);
   const m2 = (r.headers.get('set-cookie') || '').match(/Expires=([^;]+)/i);
   assert.ok(m2, 'rolling yok — eski kalici cerezler yeni modele gecmez');
-  assert.equal(Date.parse(m2[1]), Math.floor((t0 + 7 * 24 * SA) / 1000) * 1000, 'kalici cerezin siniri kaydi');
+  assert.equal(
+    Date.parse(m2[1]),
+    Math.floor((t0 + 7 * 24 * SA) / 1000) * 1000,
+    'kalici cerezin siniri kaydi',
+  );
 
   // Beni-hatirla da BOSTA KALMA kuralina tabidir.
   simdi += 60 * DK;
@@ -217,7 +254,11 @@ test('OM6 Admin beni-hatirla`yi kapatinca istek yok sayilir', async () => {
   const t0 = simdi;
   simdi += 61 * 1000;
   const r = await iste(g.cerez);
-  assert.equal(Number(r.headers.get('x-portal-session-absolute')), t0 + 12 * SA, 'kapaliyken istenen beni-hatirla sonradan devreye girdi');
+  assert.equal(
+    Number(r.headers.get('x-portal-session-absolute')),
+    t0 + 12 * SA,
+    'kapaliyken istenen beni-hatirla sonradan devreye girdi',
+  );
 });
 
 test('OM7 suresi dolan cerezle /login calisir', async () => {
@@ -256,7 +297,11 @@ test('OM9 kunyesiz (eski) oturum ATILMAZ, kunye tamamlanir', () => {
   const sess = { user: { username: 'u', loginAt: new Date(now - 7 * SA).toISOString() } };
   assert.equal(policy.eksikMetaTamamla(sess, now), true);
   assert.equal(sess.meta.createdAt, now - 7 * SA, 'mutlak sure girisin kendisinden sayilmali');
-  assert.equal(sess.meta.lastSeenAt, now, 'bosta kalma simdiden baslamali — eski oturum hemen atilir');
+  assert.equal(
+    sess.meta.lastSeenAt,
+    now,
+    'bosta kalma simdiden baslamali — eski oturum hemen atilir',
+  );
   const { idleExpiresAt, absoluteExpiresAt } = policy.bitisler(sess.meta, policy.policy());
   assert.ok(idleExpiresAt > now && absoluteExpiresAt > now);
   // Gelecekteki / bozuk loginAt guvenle "simdi"ye duser.
@@ -286,20 +331,32 @@ test('OM10 bozuk / sinir disi ayar varsayilana duser', () => {
 test('OM11 Taleplerim yoklamasi ve arka plan isaretli istek uzatmaz; isaretsiz istek uzatir', async () => {
   const { cerez } = await giris();
   const t0 = simdi;
-  const bitis = async (yol, opt) => Number((await iste(cerez, yol, opt)).headers.get('x-portal-session-expires'));
+  const bitis = async (yol, opt) =>
+    Number((await iste(cerez, yol, opt)).headers.get('x-portal-session-expires'));
   simdi = t0 + 10 * DK;
   // Eski JS'i tasiyan sekmeler icin sunucu listesi: her sayfadaki panel yoklamasi.
-  assert.equal(await bitis('/api/ansible/ss/smart-tickets/mine'), t0 + 60 * DK, 'Taleplerim yoklamasi oturumu uzatti');
+  assert.equal(
+    await bitis('/api/ansible/ss/smart-tickets/mine'),
+    t0 + 60 * DK,
+    'Taleplerim yoklamasi oturumu uzatti',
+  );
   // Yeni istemci: girdi bayatken HER istegi isaretler — yol ve yontem fark etmez.
   assert.equal(
     await bitis('/api/bilinmeyen/yoklama', { headers: { 'x-portal-activity': 'background' } }),
     t0 + 60 * DK,
   );
   assert.equal(
-    await bitis('/api/bilinmeyen/islem', { method: 'POST', headers: { 'X-Portal-Activity': 'Background' } }),
+    await bitis('/api/bilinmeyen/islem', {
+      method: 'POST',
+      headers: { 'X-Portal-Activity': 'Background' },
+    }),
     t0 + 60 * DK,
     'isaretli POST uzatti',
   );
   // Isaretsiz, listede olmayan istek: etkinlik.
-  assert.equal(await bitis('/api/bilinmeyen/yoklama'), simdi + 60 * DK, 'varsayilan (her istek etkinlik) bozuldu');
+  assert.equal(
+    await bitis('/api/bilinmeyen/yoklama'),
+    simdi + 60 * DK,
+    'varsayilan (her istek etkinlik) bozuldu',
+  );
 });

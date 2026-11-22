@@ -1,5 +1,5 @@
 ---
-# nginx_config_migration.yml - Eski nginx sunucusundaki (GBRVST01) konfigurasyon
+# nginx_config_migration.yml - Eski nginx sunucusundaki (ORRVST01) konfigurasyon
 # dosyalarini ortam bazli yeni sunuculara tasir. Daha once elle calistirilan uc ayri
 # adimi (create.sh + paket kontrolu + migrate.sh) tek otomasyonda birlestirir:
 #
@@ -14,7 +14,7 @@
 #      Ana dosyanin geri kalani orijinaliyle AYNIDIR; yalnizca listen satirindaki IP
 #      hedef sunucununkiyle degistirilir.
 #   3) Hedef sunucuda /hysdeploy/<application> dizini olmayan uygulamalar tespit edilir;
-#      istenirse GBAOCP01 uzerinden ilgili OCP cluster'ina login olunup pod icindeki
+#      istenirse ORAOCP01 uzerinden ilgili OCP cluster'ina login olunup pod icindeki
 #      source klasoru staging dizinine "oc rsync" ile cekilir.
 #
 # VARSAYILAN OLARAK HICBIR SEY YAZILMAZ. Playbook once plani cikarir (hangi dosya
@@ -31,16 +31,16 @@
 # ORNEK - eksik paketleri OCP'den staging'e cek (DEV + TEST cluster'lari):
 #   ansible-playbook server/ansible/playbooks/nginx_config_migration.yml -i <inventory> \
 #     -e ocp_extract=true \
-#     -e '{"ocp_clusters": {"DEV": {"url": "https://api.gbocpdev1.example.corp:6443",
-#                                   "username": "onur.demir", "password": "***"},
-#                           "TEST": {"url": "https://api.gbocptest1.example.corp:6443",
-#                                    "username": "onur.demir", "password": "***"}}}'
+#     -e '{"ocp_clusters": {"DEV": {"url": "https://api.orocpdev1.example.corp:6443",
+#                                   "username": "deneme.kisi", "password": "***"},
+#                           "TEST": {"url": "https://api.orocptest1.example.corp:6443",
+#                                    "username": "deneme.kisi", "password": "***"}}}'
 #
 # Opsiyonel extra_vars (hepsinin makul varsayilani vardir):
-#   source_host          : GBRVST01              - konfigurasyonlarin okundugu eski sunucu
+#   source_host          : ORRVST01              - konfigurasyonlarin okundugu eski sunucu
 #   source_conf_dir      : /usr/nginx/conf.d     - kaynak konfigurasyon dizini
 #   exclude_name_regex   : upstream              - dosya ADINDA gecerse atlanir ("| grep -v upstream")
-#   env_targets          : {DEV: GBNGXD02, TEST: GBNGXT34, QA: GBNGXQ02}
+#   env_targets          : (AWX portal_goc_hedefleri) orn. {DEV: ORNGXD02, TEST: ORNGXT34, QA: ORNGXQ02}
 #   suffix_aliases       : {TST: TEST}           - standart disi sonekler (PLATFORMBANKING-TST.conf)
 #   only_env             : []                    - orn. ["DEV"] -> yalnizca DEV dosyalari islenir
 #   only_services        : []                    - orn. ["APIPORTAL"] -> yalnizca o servis
@@ -48,7 +48,7 @@
 #   app_conf_subdir      : application-confs
 #   app_conf_template    : template.conf         - $context/$application/$cors_application iceren sablon
 #   service_prefix_map   : {}                    - orn. {GEINTDIGITAL: glomo}; varsayilan servis adinin kucuk harfi
-#   listen_ip_map        : {}                    - orn. {GBNGXD02: 10.1.2.3}; bos ise sunucunun birincil IP'si
+#   listen_ip_map        : {}                    - orn. {ORNGXD02: 10.1.2.3}; bos ise sunucunun birincil IP'si
 #   conf_owner/conf_group: (bos)                 - verilirse uretilen dosyalara uygulanir
 #   conf_mode            : "0640"
 #   apply                : false                 - true olmadan hicbir dosya yazilmaz
@@ -57,9 +57,9 @@
 #   nginx_binary         : /usr/nginx/sbin/nginx
 #   package_root         : /hysdeploy            - paket varlik kontrolu bu dizinde yapilir
 #   ocp_extract          : false                 - eksik paketleri OCP'den cek
-#   ocp_terminal_host    : GBAOCP01              - oc client'in bulundugu sunucu
+#   ocp_terminal_host    : (AWX portal_ocp_terminal_host) - oc client'in bulundugu sunucu
 #   ocp_clusters         : {}                    - {ORTAM: {url, username, password}}
-#   ocp_dest_base_dir    : /sw/WAS_IMAGES/Onur   - <prefix>-nginx-<ortam>/<application> altina cekilir
+#   ocp_dest_base_dir    : (ZORUNLU, ocp_extract iken) - <prefix>-nginx-<ortam>/<application> altina cekilir
 #   oc_binary            : /usr/local/bin/oc
 #   pod_source_path      : /opt/app-root/src/
 #   deploy_exclude_pattern: -deploy
@@ -84,16 +84,18 @@
   become: false
 
   vars:
-    source_host: GBRVST01
-    env_targets:
-      DEV: GBNGXD02
-      TEST: GBNGXT34
-      QA: GBNGXQ02
+    # Kaynak ve ortam hedef sunuculari AWX sablon degiskenlerinden (kurum sunucu adlari repoya yazilmaz):
+    #   portal_goc_kaynak_host: <eski RP sunucusu>
+    #   portal_goc_hedefleri: {DEV: <sunucu>, TEST: <sunucu>, QA: <sunucu>}
+    # Tanimsizsa ilk kullanimda acik hata (varsayilan YOK). source_host / env_targets extra var olarak da ezilebilir.
+    source_host: "{{ portal_goc_kaynak_host }}"
+    env_targets: "{{ portal_goc_hedefleri }}"
     suffix_aliases:
       TST: TEST
     apply: false
     ocp_extract: false
-    ocp_terminal_host: GBAOCP01
+    # oc client'in bulundugu jump sunucusu AWX sablon degiskeninden (portal_ocp_terminal_host); varsayilan YOK.
+    ocp_terminal_host: "{{ portal_ocp_terminal_host | default('') }}"
     ocp_clusters: {}
 
     # AWX/Tower survey alanlari yalnizca duz tip (metin, sifre, secim) dondurur;
@@ -117,7 +119,7 @@
           - (only_env | default([])) is sequence
           - (only_services | default([])) is sequence
         fail_msg: >-
-          source_host bos olamaz, env_targets bir sozluk olmali (orn. {DEV: GBNGXD02}),
+          source_host bos olamaz, env_targets bir sozluk olmali (orn. {DEV: ORNGXD02}),
           only_env/only_services liste olmali.
 
     - name: "OCP cekimi istendiyse cluster bilgilerinin verildigini dogrula"
@@ -125,8 +127,11 @@
         that:
           - cluster_map is mapping
           - cluster_map | length > 0
+          - ocp_terminal_host | string | trim | length > 0
+          - ocp_dest_base_dir | default('', true) | string | trim | length > 0
         fail_msg: >-
-          ocp_extract=true verildi ancak ocp_clusters bos. Her ortam icin
+          ocp_extract=true verildi ancak ocp_clusters bos ya da ocp_terminal_host (AWX
+          portal_ocp_terminal_host) / ocp_dest_base_dir (hedef kok dizin) tanimsiz. Her ortam icin
           {ORTAM: {url: ..., username: ..., password: ...}} saglanmalidir.
       when: ocp_extract | bool
 
@@ -185,10 +190,8 @@
   vars:
     source_conf_dir: /usr/nginx/conf.d
     exclude_name_regex: upstream
-    env_targets:
-      DEV: GBNGXD02
-      TEST: GBNGXT34
-      QA: GBNGXQ02
+    # Play vars sonraki play'e TASINMAZ: ayni AWX degiskeni burada da okunur (ilk play'deki yorum).
+    env_targets: "{{ portal_goc_hedefleri }}"
     suffix_aliases:
       TST: TEST
     service_prefix_map: {}
@@ -859,7 +862,6 @@
   vars:
     oc_binary: /usr/local/bin/oc
     ocp_clusters: {}
-    ocp_dest_base_dir: /sw/WAS_IMAGES/Onur
     pod_source_path: /opt/app-root/src/
     deploy_exclude_pattern: -deploy
     ocp_insecure_skip_tls_verify: true

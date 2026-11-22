@@ -17,18 +17,20 @@ function normalizeUsername(username) {
 function trustedHeaderUser(req) {
   const secret = process.env.PORTAL_TRUSTED_HEADER_SECRET;
   if (!secret) return null;
-  if (req.headers["x-portal-auth-secret"] !== secret) return null;
-  const username = req.headers["x-portal-user"];
+  if (req.headers['x-portal-auth-secret'] !== secret) return null;
+  const username = req.headers['x-portal-user'];
   if (!username) return null;
-  const allowlist = String(process.env.PORTAL_TRUSTED_HEADER_ALLOWED_USERS || "")
-    .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const allowlist = String(process.env.PORTAL_TRUSTED_HEADER_ALLOWED_USERS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
   if (allowlist.length > 0 && !allowlist.includes(String(username).toLowerCase())) {
     return null;
   }
   return {
     username,
-    role: req.headers["x-portal-role"] === "Admin" ? "Admin" : "User",
-    authSource: "header",
+    role: req.headers['x-portal-role'] === 'Admin' ? 'Admin' : 'User',
+    authSource: 'header',
   };
 }
 
@@ -43,7 +45,10 @@ function trustedHeaderUser(req) {
 function getRequestUser(req) {
   if (req.session?.user) return req.session.user;
   const hdr = trustedHeaderUser(req);
-  if (hdr) { req.user = hdr; return hdr; }
+  if (hdr) {
+    req.user = hdr;
+    return hdr;
+  }
   return null;
 }
 
@@ -87,4 +92,11 @@ function oturumYok(res) {
   return res;
 }
 
-module.exports = { normalizeUsername, trustedHeaderUser, getRequestUser, getRequestRole, oturumYok, SESSION_HEADER };
+module.exports = {
+  normalizeUsername,
+  trustedHeaderUser,
+  getRequestUser,
+  getRequestRole,
+  oturumYok,
+  SESSION_HEADER,
+};

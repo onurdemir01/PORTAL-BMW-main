@@ -204,7 +204,14 @@ export default function PageVisibilityTab() {
   }
 
   async function removeElement(key: string) {
-    if (!(await onayla({ baslik: 'Öğeyi sil', metin: `"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`, onayMetni: 'Sil', tehlikeli: true })))
+    if (
+      !(await onayla({
+        baslik: 'Öğeyi sil',
+        metin: `"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`,
+        onayMetni: 'Sil',
+        tehlikeli: true,
+      }))
+    )
       return;
     try {
       await elementsApi.remove(key);
@@ -718,7 +725,7 @@ function OverrideEditor({
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="ad.soyad@garantibbva.com.tr"
+            placeholder="ad.soyad@ornekbanka.invalid"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 font-mono min-w-[16rem]"
           />
         )}

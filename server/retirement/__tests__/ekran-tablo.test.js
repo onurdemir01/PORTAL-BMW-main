@@ -27,6 +27,8 @@
 // gorsel yerlesim (tek satir, hiza) jsdom/AST ile olculmez, sartname §11. Davranis: vitest retirement-kayit (RK1-RK6).
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -228,7 +230,9 @@ test('RTU4 smBtn birincil dali --text-on-accent', () => {
   const stil = normalize(oku('retirementStil.ts'));
   assert.match(
     stil,
-    /export const smBtn = \(primary = false\): React\.CSSProperties => \(primary \? \{ background: 'var\(--accent\)', borderColor: 'var\(--accent\)', color: 'var\(--text-on-accent\)' \}/,
+    esnek(
+      /export const smBtn = \(primary = false\): React\.CSSProperties => \(?primary \? \{ background: 'var\(--accent\)', borderColor: 'var\(--accent\)', color: 'var\(--text-on-accent\)' \}/,
+    ),
   );
   assert.ok(
     !/const smBtn|const SM_BTN/.test(RT_RAW),
@@ -345,27 +349,27 @@ function tsModul(dosya, adlar) {
 test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti alanlariyla okunur', () => {
   const { inPlaceOzeti } = tsModul('RetirementInPlace.tsx', ['inPlaceOzeti']);
   const r7 = {
-    app: 'GBPOSWEBAPI',
+    app: 'ORPOSWEBAPI',
     host: 'GOJBAP05',
     env: 'Production',
-    domain: 'garanti.com.tr',
+    domain: 'sirket.invalid',
     jboss_version: '7.4.8',
-    app_path: '/vhosting/GBPOSWEBAPI.ear',
+    app_path: '/vhosting/ORPOSWEBAPI.ear',
     status: 'running',
   };
-  const r8 = { ...r7, jboss_version: '8.0.0', app_path: '/vhosting8/GBPOSWEBAPI.ear' };
+  const r8 = { ...r7, jboss_version: '8.0.0', app_path: '/vhosting8/ORPOSWEBAPI.ear' };
   const certs = [
     {
       host: 'GOJBWP05',
       ip: '',
       port: '443',
-      server_name: 'gbposwebapi.garanti.com.tr',
-      conf_file: '/ihs/GBPOSWEBAPI.conf',
+      server_name: 'orposwebapi.sirket.invalid',
+      conf_file: '/ihs/ORPOSWEBAPI.conf',
       product: 'IHS',
       env: 'PROD',
     },
   ];
-  const t = buildTargets('GBPOSWEBAPI', [r7, r8], certs, [], [], []).targets;
+  const t = buildTargets('ORPOSWEBAPI', [r7, r8], certs, [], [], []).targets;
   const yedi = t.find((x) => x.gen === 7);
   assert.ok(yedi && yedi.inPlace === true, 'kesif in-place isaretlemedi (senaryo bozuk)');
   const [o] = inPlaceOzeti([yedi]);
@@ -377,7 +381,7 @@ test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti ala
     inPlaceOzeti(t).map((x) => x.digerSecili),
     [[8], [7]],
   );
-  const tek = buildTargets('GBPOSWEBAPI', [r7], certs, [], [], []).targets;
+  const tek = buildTargets('ORPOSWEBAPI', [r7], certs, [], [], []).targets;
   assert.deepEqual(inPlaceOzeti(tek), [], 'tek kurulumlu hedef in-place uyarisi uretiyor');
 });
 
@@ -578,9 +582,14 @@ test('ISK1 is ciktisi eski jobStatus ucunu cagirmaz; uc istemciden sunucu / is n
     /retirementApi\.isCiktisi\(kayitId, tid, is\.adim, is\.web, ac\.signal\)/,
   );
   const api = fs.readFileSync(path.join(ROOT, 'src', 'api', 'retirementApi.ts'), 'utf8');
-  const m = api.match(/isCiktisi: \(([^)]*)\)[^\n]*\n\s*fetch\(`([^`]*)`/);
+  const m = api.match(/isCiktisi: \(([^)]*)\)[^\n]*\n\s*fetch\(\s*`([^`]*)`/);
   assert.ok(m, 'isCiktisi tanimi bulunamadi');
-  assert.equal(m[1], 'id: number, tid: number, adim: RtIsAdim, web?: number, signal?: AbortSignal');
+  // Parametreler bir ya da cok satirda olabilir (Prettier); kume ve sira ayni kalmali.
+  const params = m[1].replace(/\s+/g, ' ').replace(/,\s*$/, '').trim();
+  assert.equal(
+    params,
+    'id: number, tid: number, adim: RtIsAdim, web?: number, signal?: AbortSignal',
+  );
   assert.ok(
     !/jobId|serverId|awxServerId/.test(m[2]),
     `URL istemciden is / sunucu numarasi tasiyor: ${m[2]}`,
@@ -664,7 +673,9 @@ test('IPK8 CreateModal in-place uyarisi surum kutusundan hemen sonra, trafik / w
   );
   assert.match(
     oku('RetirementInPlace.tsx'),
-    /<UyariKutusu ton="uyari" vurgu baslik=\{<><Cip ton="uyari" cerceve>IN-PLACE<\/Cip>/,
+    esnek(
+      /<UyariKutusu ton="uyari" vurgu baslik=\{<>\s*<Cip ton="uyari" cerceve>\s*IN-PLACE\s*<\/Cip>/,
+    ),
     'in-place uyarisi digerlerinden ayrismiyor (vurgu + IN-PLACE cipi)',
   );
 });

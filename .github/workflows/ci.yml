@@ -17,6 +17,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # K16 commit -> PR iliskisini GitHub API'den okur (yalniz okuma).
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,6 +47,36 @@ jobs:
           if [ "$OLAY" = pull_request ]; then ARALIK="$TABAN...$SHA"; else ARALIK="$ONCEKI..$SHA"; fi
           case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
           node scripts/sir-tarama.cjs --aralik "$ARALIK"
+
+      - name: Internal Name Gate (K17, whole tree + commit messages)
+        env:
+          OLAY: ${{ github.event_name }}
+          TABAN: ${{ github.event.pull_request.base.sha }}
+          PR_UCU: ${{ github.event.pull_request.head.sha }}
+          ONCEKI: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          node scripts/ic-ad-bekcisi.cjs --tum
+          if [ "$OLAY" = pull_request ]; then ARALIK="$TABAN..$PR_UCU"; else ARALIK="$ONCEKI..$SHA"; fi
+          case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
+          node scripts/ic-ad-bekcisi.cjs --aralik "$ARALIK"
+
+      - name: Main History Gate (K16, PR-less commits and subject lines)
+        env:
+          OLAY: ${{ github.event_name }}
+          TABAN: ${{ github.event.pull_request.base.sha }}
+          PR_UCU: ${{ github.event.pull_request.head.sha }}
+          ONCEKI: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$OLAY" = pull_request ]; then
+            node scripts/gecmis-denetim.cjs --aralik "$TABAN..$PR_UCU" --pr
+          else
+            ARALIK="$ONCEKI..$SHA"
+            case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
+            node scripts/gecmis-denetim.cjs --aralik "$ARALIK"
+          fi
 
       - name: Security Audit Gate
         run: npm run guvenlik

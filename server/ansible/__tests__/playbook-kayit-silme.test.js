@@ -7,6 +7,7 @@
 // "Geri yukle" izi siler ve seed satirini seed degerleriyle yeniden ekler. Silmeden once ekran
 // anahtari kullanan Portal ozelligini gosterir (server/ansible/playbook-kullanim.cjs).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,7 +23,10 @@ const SEED_ANAHTAR = new Set(PLAYBOOK_REGISTRY_SEED.map((r) => r.key_name));
 
 // -- Sahte db (playbook-registry.cjs '../db/index.cjs' ister) --
 const DB_YOL = require.resolve('../../db/index.cjs');
-const db = { cagrilar: [], yanit: /** @type {(sql?: string, params?: any[]) => any} */ (() => ({ rows: [], rowCount: 0 })) };
+const db = {
+  cagrilar: [],
+  yanit: /** @type {(sql?: string, params?: any[]) => any} */ (() => ({ rows: [], rowCount: 0 })),
+};
 require.cache[DB_YOL] = {
   id: DB_YOL,
   filename: DB_YOL,
@@ -63,11 +67,20 @@ test('PK1 kod icinde adiyla anilan HER seed anahtari kullanim haritasinda; harit
       }
     }
   }
-  for (const k of ['nginx_loadtest_run', 'filex_list_files', 'logx_legacy_discovery', 'opsx_was_operation'])
+  for (const k of [
+    'nginx_loadtest_run',
+    'filex_list_files',
+    'logx_legacy_discovery',
+    'opsx_was_operation',
+  ])
     assert.ok(anilan.has(k), `tarama ${k} anahtarini bulamadi (bekci kendini dogrulayamiyor)`);
   for (const [k, yerler] of anilan)
-    assert.ok(kullananOzellik(k), `${k} kodda kullaniliyor (${yerler.join(', ')}) ama kullanim haritasinda yok`);
-  for (const k of Object.keys(KULLANIM)) assert.ok(SEED_ANAHTAR.has(k), `haritada seed'de olmayan anahtar: ${k}`);
+    assert.ok(
+      kullananOzellik(k),
+      `${k} kodda kullaniliyor (${yerler.join(', ')}) ama kullanim haritasinda yok`,
+    );
+  for (const k of Object.keys(KULLANIM))
+    assert.ok(SEED_ANAHTAR.has(k), `haritada seed'de olmayan anahtar: ${k}`);
   for (const k of SEED_ANAHTAR) assert.ok(KULLANIM[k], `seed anahtari haritada yok: ${k}`);
   assert.equal(kullananOzellik('nginx_loadtest_run'), 'Nginx Hub > Yük Testi');
   assert.equal(kullananOzellik('admin_elle_acti'), null);
@@ -87,7 +100,8 @@ function sahtePool({ mevcut = [], silinen = [], silinenHata = null }) {
         },
         async query(sql) {
           if (/FROM ansible_playbook_registry_silinen/.test(sql)) {
-            if (silinenHata) throw typeof silinenHata === 'string' ? new Error(silinenHata) : silinenHata;
+            if (silinenHata)
+              throw typeof silinenHata === 'string' ? new Error(silinenHata) : silinenHata;
             return { recordset: silinen.map((key_name) => ({ key_name })) };
           }
           if (/SELECT 1 FROM ansible_playbook_registry WHERE key_name/.test(sql))
@@ -111,25 +125,46 @@ function sessiz(fn) {
 }
 
 test('PK2 seed izli (silinmis) varsayilani GERI EKLEMEZ, digerlerini ekler', async () => {
-  const pool = sahtePool({ mevcut: ['ocp_pod_status'], silinen: ['nginx_loadtest_run', 'jvm_heap_status'] });
+  const pool = sahtePool({
+    mevcut: ['ocp_pod_status'],
+    silinen: ['nginx_loadtest_run', 'jvm_heap_status'],
+  });
   await sessiz(() => seedPlaybookRegistry(pool));
-  assert.ok(!pool.eklenen.includes('nginx_loadtest_run'), 'silinen varsayilan restart\'ta geri geldi');
-  assert.ok(!pool.eklenen.includes('jvm_heap_status'), 'silinen varsayilan restart\'ta geri geldi');
+  assert.ok(
+    !pool.eklenen.includes('nginx_loadtest_run'),
+    "silinen varsayilan restart'ta geri geldi",
+  );
+  assert.ok(!pool.eklenen.includes('jvm_heap_status'), "silinen varsayilan restart'ta geri geldi");
   assert.ok(!pool.eklenen.includes('ocp_pod_status'), 'mevcut satir yeniden eklendi');
   assert.equal(pool.eklenen.length, PLAYBOOK_REGISTRY_SEED.length - 3);
   assert.ok(pool.eklenen.includes('filex_list_files'));
 });
 
 test('PK3 iz tablosu YOKSA seed bugunku gibi; baska okuma hatasinda HIC ekleme yapmaz', async () => {
-  const yok = sahtePool({ silinenHata: "Invalid object name 'ansible_playbook_registry_silinen'." });
+  const yok = sahtePool({
+    silinenHata: "Invalid object name 'ansible_playbook_registry_silinen'.",
+  });
   await sessiz(() => seedPlaybookRegistry(yok));
   assert.equal(yok.eklenen.length, PLAYBOOK_REGISTRY_SEED.length);
-  const tr = sahtePool({ silinenHata: Object.assign(new Error("Gecersiz nesne adi 'ansible_playbook_registry_silinen'."), { number: 208 }) });
+  const tr = sahtePool({
+    silinenHata: Object.assign(
+      new Error("Gecersiz nesne adi 'ansible_playbook_registry_silinen'."),
+      { number: 208 },
+    ),
+  });
   await sessiz(() => seedPlaybookRegistry(tr));
-  assert.equal(tr.eklenen.length, PLAYBOOK_REGISTRY_SEED.length, 'tablo-yok (208) oturum dili Ingilizce degilken taninmadi');
+  assert.equal(
+    tr.eklenen.length,
+    PLAYBOOK_REGISTRY_SEED.length,
+    'tablo-yok (208) oturum dili Ingilizce degilken taninmadi',
+  );
   const dusen = sahtePool({ silinenHata: 'Connection lost' });
   await sessiz(() => seedPlaybookRegistry(dusen));
-  assert.deepEqual(dusen.eklenen, [], 'iz okunamadan seed calisti: silinmis satirlar geri gelebilir');
+  assert.deepEqual(
+    dusen.eklenen,
+    [],
+    'iz okunamadan seed calisti: silinmis satirlar geri gelebilir',
+  );
 });
 
 test('PK4 varsayilan satir silinirken iz AYNI islemde yazilir; elle acilan satirda iz yok', async () => {
@@ -143,7 +178,10 @@ test('PK4 varsayilan satir silinirken iz AYNI islemde yazilir; elle acilan satir
   const sil = db.cagrilar[1];
   assert.equal(db.cagrilar.length, 2, 'iz ve silme tek batch olmali');
   assert.match(sil.sql, /SET XACT_ABORT ON/);
-  assert.match(sil.sql, /BEGIN TRANSACTION[\s\S]*INSERT INTO ansible_playbook_registry_silinen[\s\S]*DELETE FROM ansible_playbook_registry[\s\S]*COMMIT/);
+  assert.match(
+    sil.sql,
+    /BEGIN TRANSACTION[\s\S]*INSERT INTO ansible_playbook_registry_silinen[\s\S]*DELETE FROM ansible_playbook_registry[\s\S]*COMMIT/,
+  );
   assert.deepEqual(sil.params, ['7', 'nginx_loadtest_run', 'ali']);
 
   dbSifirla((sql) =>
@@ -153,7 +191,10 @@ test('PK4 varsayilan satir silinirken iz AYNI islemde yazilir; elle acilan satir
   );
   const e = await registry.remove('9', { username: 'ali' });
   assert.equal(e.varsayilan, false);
-  assert.ok(!db.cagrilar.some((c) => /_silinen/.test(c.sql)), 'varsayilan olmayan satir icin iz yazildi');
+  assert.ok(
+    !db.cagrilar.some((c) => /_silinen/.test(c.sql)),
+    'varsayilan olmayan satir icin iz yazildi',
+  );
 
   dbSifirla(() => ({ rows: [], rowCount: 0 }));
   assert.equal(await registry.remove('404'), null);
@@ -162,23 +203,42 @@ test('PK4 varsayilan satir silinirken iz AYNI islemde yazilir; elle acilan satir
 
 test('PK5 geri yukleme izi siler ve SEED DEGERLERIYLE ekler; seed disi anahtar reddedilir', async () => {
   dbSifirla(() => ({ rows: [], rowCount: 0 }));
-  await assert.rejects(() => registry.geriYukle('admin_elle_acti'), (e) => e.status === 400);
+  await assert.rejects(
+    () => registry.geriYukle('admin_elle_acti'),
+    (e) => e.status === 400,
+  );
   assert.equal(db.cagrilar.length, 0);
 
   const seed = PLAYBOOK_REGISTRY_SEED.find((r) => r.key_name === 'filex_list_files');
-  dbSifirla((sql) => (/^SELECT \*/.test(sql) ? { rows: [{ id: 3, key_name: seed.key_name }], rowCount: 1 } : { rows: [], rowCount: 1 }));
+  dbSifirla((sql) =>
+    /^SELECT \*/.test(sql)
+      ? { rows: [{ id: 3, key_name: seed.key_name }], rowCount: 1 }
+      : { rows: [], rowCount: 1 },
+  );
   const row = await registry.geriYukle('filex_list_files');
   assert.equal(row.keyName, 'filex_list_files');
   const q = db.cagrilar[0];
-  assert.match(q.sql, /SET XACT_ABORT ON[\s\S]*BEGIN TRANSACTION[\s\S]*DELETE FROM ansible_playbook_registry_silinen[\s\S]*IF NOT EXISTS[\s\S]*INSERT INTO ansible_playbook_registry[\s\S]*COMMIT/);
-  assert.deepEqual(q.params, [seed.key_name, seed.display_name, seed.description, seed.category, seed.handler, seed.playbook_path, seed.env_var_name]);
+  assert.match(
+    q.sql,
+    /SET XACT_ABORT ON[\s\S]*BEGIN TRANSACTION[\s\S]*DELETE FROM ansible_playbook_registry_silinen[\s\S]*IF NOT EXISTS[\s\S]*INSERT INTO ansible_playbook_registry[\s\S]*COMMIT/,
+  );
+  assert.deepEqual(q.params, [
+    seed.key_name,
+    seed.display_name,
+    seed.description,
+    seed.category,
+    seed.handler,
+    seed.playbook_path,
+    seed.env_var_name,
+  ]);
   // Kolon listesi seedPlaybookRegistry'deki INSERT ile ayni olmali (ayrisirsa geri yuklenen satir farkli olur).
-  const kolon = (src) => (src.match(/INSERT INTO ansible_playbook_registry\s*\(([^)]+)\)/) || [])[1].replace(/\s+/g, '');
+  const kolon = (src) =>
+    (src.match(/INSERT INTO ansible_playbook_registry\s*\(([^)]+)\)/) || [])[1].replace(/\s+/g, '');
   const fn = SETUP_SRC.slice(SETUP_SRC.indexOf('async function seedPlaybookRegistry'));
   assert.equal(kolon(q.sql), kolon(fn));
 });
 
-test('PK6 silinen listesi seed\'den cikmis anahtari gostermez (geri yuklenemez)', async () => {
+test("PK6 silinen listesi seed'den cikmis anahtari gostermez (geri yuklenemez)", async () => {
   dbSifirla(() => ({
     rows: [
       { key_name: 'nginx_loadtest_run', deleted_by: 'ali', deleted_at: '2026-11-02T10:00:00Z' },
@@ -186,16 +246,24 @@ test('PK6 silinen listesi seed\'den cikmis anahtari gostermez (geri yuklenemez)'
     ],
   }));
   const l = await registry.listSilinenVarsayilanlar();
-  assert.deepEqual(l.map((x) => x.keyName), ['nginx_loadtest_run']);
+  assert.deepEqual(
+    l.map((x) => x.keyName),
+    ['nginx_loadtest_run'],
+  );
   assert.equal(l[0].deletedBy, 'ali');
-  assert.match(db.cagrilar[0].sql, /NOT EXISTS \(SELECT 1 FROM ansible_playbook_registry r WHERE r.key_name = s.key_name\)/);
+  assert.match(
+    db.cagrilar[0].sql,
+    /NOT EXISTS \(SELECT 1 FROM ansible_playbook_registry r WHERE r.key_name = s.key_name\)/,
+  );
 });
 
 function sahteApp() {
   const rotalar = {};
-  const ekle = (m) => (yol, ...h) => {
-    rotalar[`${m} ${yol}`] = h;
-  };
+  const ekle =
+    (m) =>
+    (yol, ...h) => {
+      rotalar[`${m} ${yol}`] = h;
+    };
   return { rotalar, get: ekle('GET'), delete: ekle('DELETE'), post: ekle('POST') };
 }
 const AUTH = () => {};
@@ -213,7 +281,10 @@ async function cagir(handlers, req) {
       return this;
     },
   };
-  await handlers[handlers.length - 1]({ session: { user: { username: 'ali' } }, params: {}, ...req }, res);
+  await handlers[handlers.length - 1](
+    { session: { user: { username: 'ali' } }, params: {}, ...req },
+    res,
+  );
   return res;
 }
 
@@ -251,15 +322,25 @@ test('PK7 uclar: liste kullanan + varsayilan + silinenleri dondurur; silme / ger
   };
   const l2 = await cagir(app.rotalar['GET /api/ansible/playbooks']);
   assert.equal(l2.kod, 200, 'silinenler okunamayinca liste de dusmemeli');
-  assert.equal(l2.govde.silinenVarsayilanlar, null, 'okunamayan liste bos dizi gibi gosterilmemeli');
+  assert.equal(
+    l2.govde.silinenVarsayilanlar,
+    null,
+    'okunamayan liste bos dizi gibi gosterilmemeli',
+  );
   assert.equal(l2.govde.silinenHata, 'tablo yok');
 
   const d = await cagir(app.rotalar['DELETE /api/ansible/playbooks/:id'], { params: { id: '7' } });
   assert.equal(d.govde.kullanan, 'Nginx Hub > Yük Testi');
   assert.equal(denetim.length, 1);
   assert.equal(denetim[0].action, 'playbook_kayit_sil');
-  assert.deepEqual(JSON.parse(denetim[0].detail), { keyName: 'nginx_loadtest_run', varsayilan: true, kullanan: 'Nginx Hub > Yük Testi' });
-  const d404 = await cagir(app.rotalar['DELETE /api/ansible/playbooks/:id'], { params: { id: '8' } });
+  assert.deepEqual(JSON.parse(denetim[0].detail), {
+    keyName: 'nginx_loadtest_run',
+    varsayilan: true,
+    kullanan: 'Nginx Hub > Yük Testi',
+  });
+  const d404 = await cagir(app.rotalar['DELETE /api/ansible/playbooks/:id'], {
+    params: { id: '8' },
+  });
   assert.equal(d404.kod, 404);
   assert.equal(denetim.length, 1, 'bulunamayan silme denetime yazildi');
 
@@ -280,12 +361,21 @@ test('PK7 uclar: liste kullanan + varsayilan + silinenleri dondurur; silme / ger
 
 test('PK8 runner.cjs uclari modulden baglar; eski liste / silme ucu ikinci kez tanimlanmaz', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
-  assert.match(src, /require\('\.\/playbook-kayit-rotalari\.cjs'\)\.kaydet\(app, \{ requireAuth, requireAdmin \}\)/);
-  assert.doesNotMatch(src, /app\.delete\('\/api\/ansible\/playbooks\/:id'/);
-  assert.doesNotMatch(src, /app\.get\('\/api\/ansible\/playbooks',/);
+  assert.match(
+    src,
+    /require\('\.\/playbook-kayit-rotalari\.cjs'\)\.kaydet\(app, \{ requireAuth, requireAdmin \}\)/,
+  );
+  assert.doesNotMatch(src, esnek(/app\.delete\('\/api\/ansible\/playbooks\/:id'/));
+  assert.doesNotMatch(src, esnek(/app\.get\('\/api\/ansible\/playbooks',/));
 });
 
-test('PK9 iz tablosu TABLES icinde (seed\'den once kurulur), anahtar birincil anahtar', () => {
-  const tablolar = SETUP_SRC.slice(SETUP_SRC.indexOf('const TABLES'), SETUP_SRC.indexOf('const PLAYBOOK_REGISTRY_SEED'));
-  assert.match(tablolar, /CREATE TABLE ansible_playbook_registry_silinen \(\s*key_name\s+NVARCHAR\(100\) NOT NULL PRIMARY KEY/);
+test("PK9 iz tablosu TABLES icinde (seed'den once kurulur), anahtar birincil anahtar", () => {
+  const tablolar = SETUP_SRC.slice(
+    SETUP_SRC.indexOf('const TABLES'),
+    SETUP_SRC.indexOf('const PLAYBOOK_REGISTRY_SEED'),
+  );
+  assert.match(
+    tablolar,
+    /CREATE TABLE ansible_playbook_registry_silinen \(\s*key_name\s+NVARCHAR\(100\) NOT NULL PRIMARY KEY/,
+  );
 });

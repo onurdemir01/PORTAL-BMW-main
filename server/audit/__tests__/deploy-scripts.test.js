@@ -3,6 +3,7 @@
 // veri dbo.DeployScriptsInventory (uzun bicim). Kaynak-sozlesme testi: uc, sekme kapisi,
 // sekme kaydi (UI + seed + erisim anahtarlari) birlikte var mi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -24,11 +25,11 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   assert.match(src, /WHERE root = @root/);
   assert.match(src, /\[\{ name: 'root', type: sql\.NVarChar, value: root \}\]/);
   // Init ile ortak hesap
-  // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - GBEVM/GBPRV sunuculari GENEL
+  // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - OREVM/ORPRV sunuculari GENEL
   // envanterin cogunluguna gore olculur. Init ve Deployment ekranlari ayni fonksiyonu paylasir.
   // 2026-11-14: dorduncu parametre (opts: Init ayrinti/ekip referansi) - Deployment vermez,
   // eski davranis birebir. 2026-11-16: Init'te sunucu geneli dosya (appdomain.service) kok
-  // sekmesinden cikti; iki kokun birlesiminde ayri genel + GBEVM/GBPRV hesabi (buildSunucuGeneli).
+  // sekmesinden cikti; iki kokun birlesiminde ayri genel + OREVM/ORPRV hesabi (buildSunucuGeneli).
   assert.match(
     src,
     /function scriptDeviationReport\(raw, scripts, majorityOverride, opts = \{\}\)/,
@@ -36,9 +37,9 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   assert.equal(
     (src.match(/scriptDeviationReport\(/g) || []).length,
     7,
-    'tanim + sunucu geneli(genel) + sunucu geneli(GBEVM/GBPRV) + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)',
+    'tanim + sunucu geneli(genel) + sunucu geneli(OREVM/ORPRV) + init(genel) + init(OREVM/ORPRV) + deploy(genel) + deploy(OREVM/ORPRV)',
   );
-  // 2026-09-24: Deployment Scripts de GBEVM/GBPRV'yi ayirir - Init ile ayni sekil
+  // 2026-09-24: Deployment Scripts de OREVM/ORPRV'yi ayirir - Init ile ayni sekil
   assert.match(src, /const genelRaw = raw\.filter\(\(r\) => !isSpecialHost\(r\.host\)\)/g);
   assert.equal(
     (src.match(/scriptDeviationReport\(ozelRaw, scripts, majorityOf[,)]/g) || []).length,
@@ -83,5 +84,5 @@ test('DS4 Ansible job dosyalari repo icinde belgelenmis (tablo adi ve CSV sozles
   );
   assert.match(loader, /dbo\.DeployScriptsInventory/);
   assert.match(loader, /scan_date, host, root, script, sha512, size_bytes, mtime/);
-  assert.doesNotMatch(loader, /PWD=[A-Za-z0-9]{8,}/, 'loader parola icermemeli');
+  assert.doesNotMatch(loader, esnek(/PWD=[A-Za-z0-9]{8,}/), 'loader parola icermemeli');
 });

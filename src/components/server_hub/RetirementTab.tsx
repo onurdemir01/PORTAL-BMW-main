@@ -1217,7 +1217,7 @@ export default function RetirementTab({
               onChange={(e) => setSccForm((f) => ({ ...f, to: e.target.value }))}
               className={`${INPUT} mt-1 font-mono`}
               style={inputStyle}
-              placeholder="ornek@garantibbva.com.tr"
+              placeholder="ornek@ornekbanka.invalid"
               // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
               ref={acilincaOdakla}
             />

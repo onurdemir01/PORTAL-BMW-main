@@ -12,7 +12,11 @@
 import type { RtDiscovery, RtTarget, RtVhostTrafik } from '@/api/retirementApi';
 
 export type TrafikIsDurumu = 'suruyor' | 'bitti' | 'hata';
-export interface TrafikSatiri { host: string; serverName: string; trafik: RtVhostTrafik | null }
+export interface TrafikSatiri {
+  host: string;
+  serverName: string;
+  trafik: RtVhostTrafik | null;
+}
 export interface TrafikOzeti {
   satirlar: TrafikSatiri[];
   var: number;
@@ -20,12 +24,24 @@ export interface TrafikOzeti {
   olculemedi: number;
 }
 
-const k = (host: string, sn: string) => `${String(host || '').trim().toUpperCase()}|${String(sn || '').trim().toLowerCase()}`;
+const k = (host: string, sn: string) =>
+  `${String(host || '')
+    .trim()
+    .toUpperCase()}|${String(sn || '')
+    .trim()
+    .toLowerCase()}`;
 
 /** Hedefin dondurulmus vhost'larini kesifteki trafikle eslestirir. Kesif yoksa / eslesme
  *  yoksa satirin trafigi null -> 'olculemedi' sayilir. */
-export function stopTrafikOzeti(t: Pick<RtTarget, 'host' | 'appName' | 'web'>, disc: RtDiscovery | null): TrafikOzeti {
-  const dt = disc?.targets?.find((x) => x.host.toUpperCase() === t.host.toUpperCase() && x.appName.toUpperCase() === t.appName.toUpperCase());
+export function stopTrafikOzeti(
+  t: Pick<RtTarget, 'host' | 'appName' | 'web'>,
+  disc: RtDiscovery | null,
+): TrafikOzeti {
+  const dt = disc?.targets?.find(
+    (x) =>
+      x.host.toUpperCase() === t.host.toUpperCase() &&
+      x.appName.toUpperCase() === t.appName.toUpperCase(),
+  );
   const idx = new Map((dt?.web || []).map((w) => [k(w.host, w.serverName), w.trafik || null]));
   // Ayni host+server_name (ornegin :80 ve :443) TEK satir: trafik vhost adina gore sayiliyor.
   const goruldu = new Set<string>();
@@ -42,7 +58,12 @@ export function stopTrafikOzeti(t: Pick<RtTarget, 'host' | 'appName' | 'web'>, d
 
 /** Onay dugmesi acik mi? Istek varsa onay kutusu sart; tarama surerken kilitli (beklemeyi
  *  bilerek atlamadikca). Web katmani yoksa trafik kapisi yoktur. */
-export function stopOnayAcikMi(o: TrafikOzeti, is: TrafikIsDurumu | undefined, trafikOnay: boolean, beklemeyiAtla: boolean): boolean {
+export function stopOnayAcikMi(
+  o: TrafikOzeti,
+  is: TrafikIsDurumu | undefined,
+  trafikOnay: boolean,
+  beklemeyiAtla: boolean,
+): boolean {
   if (is === 'suruyor' && !beklemeyiAtla) return false;
   if (o.var > 0 && !trafikOnay) return false;
   return true;

@@ -16,15 +16,27 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const { createMcpClient } = require('../server/mcp/client.cjs');
 
-const url = process.env.DT_MANAGED_MCP_URL || 'https://dynatrace-mcp.apps-3rd-t.fw.garanti.com.tr/mcp';
+// Kurum adresi .env'de (koda yazilmaz).
+const url = String(process.env.DT_MANAGED_MCP_URL || '').trim();
+if (!url) {
+  console.error('DT_MANAGED_MCP_URL tanimli degil (.env).');
+  process.exit(2);
+}
 
 async function main() {
   let undiciOk = true;
-  try { require('undici'); } catch { undiciOk = false; }
+  try {
+    require('undici');
+  } catch {
+    undiciOk = false;
+  }
 
   console.log('── Dynatrace MCP baglanti testi ──────────────────────────');
   console.log('URL:              ', url);
-  console.log('MCP_TLS_INSECURE: ', process.env.MCP_TLS_INSECURE || '(kapali — TLS dogrulamasi ACIK)');
+  console.log(
+    'MCP_TLS_INSECURE: ',
+    process.env.MCP_TLS_INSECURE || '(kapali — TLS dogrulamasi ACIK)',
+  );
   console.log('CORP_CA_CERT_PATH:', process.env.CORP_CA_CERT_PATH || '(yok)');
   console.log('HTTPS_PROXY:      ', process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '(yok)');
   console.log('undici paketi:    ', undiciOk ? 'kurulu' : 'KURULU DEGIL → npm install calistirin!');
@@ -33,7 +45,9 @@ async function main() {
   if (process.env.MCP_TLS_INSECURE !== '1' && !process.env.CORP_CA_CERT_PATH) {
     console.warn('⚠ Ne MCP_TLS_INSECURE=1 ne de CORP_CA_CERT_PATH tanimli — kurumsal (self-signed');
     console.warn('  kok CA imzali) sertifikalarda baglanti SELF_SIGNED_CERT_IN_CHAIN ile duser.');
-    console.warn('  Not: .env.local git\'e dahil DEGIL — bu ayarlari bu makinedeki .env.local\'a ekleyin.\n');
+    console.warn(
+      "  Not: .env.local git'e dahil DEGIL — bu ayarlari bu makinedeki .env.local'a ekleyin.\n",
+    );
   }
 
   const mcp = createMcpClient({ name: 'dt-test', url });
@@ -48,12 +62,18 @@ async function main() {
     console.error('  Denenen URL :', status.lastError?.url);
     console.error('  Hata detayi :', status.lastError?.message);
     console.error('\nIpuclari:');
-    console.error('  - SELF_SIGNED_CERT_IN_CHAIN / UNABLE_TO_VERIFY → bu makinenin .env.local dosyasina');
-    console.error('    MCP_TLS_INSECURE=1 ekleyin (gecici) veya bash scripts/fetch-mcp-ca.sh ile zinciri');
+    console.error(
+      '  - SELF_SIGNED_CERT_IN_CHAIN / UNABLE_TO_VERIFY → bu makinenin .env.local dosyasina',
+    );
+    console.error(
+      '    MCP_TLS_INSECURE=1 ekleyin (gecici) veya bash scripts/fetch-mcp-ca.sh ile zinciri',
+    );
     console.error('    cikarip CORP_CA_CERT_PATH ayarlayin (kalici). .env.local git ile gelmez!');
     console.error('  - undici "KURULU DEGIL" gorunuyorsa → once npm install');
     console.error('  - ENOTFOUND/ECONNREFUSED/ETIMEDOUT → ag/VPN erisimi veya yanlis adres');
-    console.error('  - 406/404 → Accept header/path (SDK surumu: package.json @modelcontextprotocol/sdk)');
+    console.error(
+      '  - 406/404 → Accept header/path (SDK surumu: package.json @modelcontextprotocol/sdk)',
+    );
     process.exit(1);
   }
   console.log(`✓ Baglandi (${Date.now() - t0}ms) → ${status.connectedUrl}`);
@@ -63,19 +83,22 @@ async function main() {
   const tools = await mcp.listTools();
   console.log(`✓ ${tools.length} tool listelendi (${Date.now() - t1}ms):`);
   for (const t of tools) {
-    console.log(`  - ${t.name}${t.description ? (" — " + String(t.description).slice(0, 80)) : ''}`);
+    console.log(`  - ${t.name}${t.description ? ' — ' + String(t.description).slice(0, 80) : ''}`);
   }
 
   // Managed sunucu dogrulamasi: tool adlari dynatrace_managed_* olmali
   const managed = tools.filter((t) => t.name.startsWith('dynatrace_managed_'));
   if (managed.length === 0) {
-    console.warn('\n⚠ Bu sunucu dynatrace_managed_* tool\'lari sunmuyor — portal route\'lari Managed varsayar!');
+    console.warn(
+      "\n⚠ Bu sunucu dynatrace_managed_* tool'lari sunmuyor — portal route'lari Managed varsayar!",
+    );
   }
 
   console.log('\n[3/4] get_environments_info (alias kesfi)...');
   try {
     const envResult = await mcp.callTool('dynatrace_managed_get_environments_info', {});
-    const raw = typeof envResult === 'string' ? envResult : (envResult.text || JSON.stringify(envResult));
+    const raw =
+      typeof envResult === 'string' ? envResult : envResult.text || JSON.stringify(envResult);
     const aliases = [...raw.matchAll(/Environment Alias:\s*(\S+)/gi)].map((m) => m[1]);
     console.log(`✓ Alias'lar: ${aliases.join(', ') || '(parse edilemedi — ham cikti asagida)'}`);
     if (aliases.length === 0) console.log(raw.slice(0, 600));
@@ -83,9 +106,12 @@ async function main() {
     console.log('\n[4/4] list_problems (ilk alias ile, uctan uca)...');
     const alias = process.env.DT_DEFAULT_ENV_ALIAS || aliases[0] || 'ALL_ENVIRONMENTS';
     const probs = await mcp.callTool('dynatrace_managed_list_problems', {
-      status: 'OPEN', from: 'now-24h', to: 'now', environment_alias: alias,
+      status: 'OPEN',
+      from: 'now-24h',
+      to: 'now',
+      environment_alias: alias,
     });
-    const ptext = typeof probs === 'string' ? probs : (probs.text || JSON.stringify(probs));
+    const ptext = typeof probs === 'string' ? probs : probs.text || JSON.stringify(probs);
     console.log(`✓ list_problems yaniti (${alias}, ilk 800 karakter):\n${ptext.slice(0, 800)}`);
   } catch (e) {
     console.error('✗ Managed tool cagrisi basarisiz:', e.message);

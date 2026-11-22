@@ -112,19 +112,38 @@ async function sahteAg(input: RequestInfo | URL, init?: RequestInit): Promise<Re
     sv.sebep = undefined;
     sv.idle = now + 60 * DK;
     sv.abs = now + 12 * 60 * DK;
-    return json({ ok: true, ...USER, session: { ok: true, serverNow: now, idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 120 } });
+    return json({
+      ok: true,
+      ...USER,
+      session: {
+        ok: true,
+        serverNow: now,
+        idleExpiresAt: sv.idle,
+        absoluteExpiresAt: sv.abs,
+        warnSeconds: 120,
+      },
+    });
   }
   if (url === '/api/auth/logout') {
     sv.oturum = false;
     return json({ ok: true });
   }
-  if (url === '/api/auth/session-policy') return json({ ok: true, rememberEnabled: true, rememberDays: 7 });
+  if (url === '/api/auth/session-policy')
+    return json({ ok: true, rememberEnabled: true, rememberDays: 7 });
   if (url === '/api/visibility/version' && sv.versiyon401) return json({ ok: false }, 401);
   if (!sv.oturum) return oturumYok();
-  if (url === '/api/auth/session/extend' && sv.extendHata) return json({ ok: false, error: 'gecici hata' }, 500);
-  if (url === '/api/auth/session/extend' || sunucuEtkinlikSayar(url, method, isaret)) sv.idle = now + 60 * DK;
+  if (url === '/api/auth/session/extend' && sv.extendHata)
+    return json({ ok: false, error: 'gecici hata' }, 500);
+  if (url === '/api/auth/session/extend' || sunucuEtkinlikSayar(url, method, isaret))
+    sv.idle = now + 60 * DK;
   if (url.startsWith('/api/auth/session')) {
-    return json({ ok: true, serverNow: now, idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 120 });
+    return json({
+      ok: true,
+      serverNow: now,
+      idleExpiresAt: sv.idle,
+      absoluteExpiresAt: sv.abs,
+      warnSeconds: 120,
+    });
   }
   if (url === '/api/auth/me') return json({ ok: true, user: USER });
   if (url === '/api/visibility/resolved') return json({ ok: true, version: 1, visibility: {} });
@@ -194,7 +213,9 @@ const sayi = (parca: string, method?: string) =>
   cagrilar.filter((c) => c.url.includes(parca) && (!method || c.method === method)).length;
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+  });
   vi.setSystemTime(new Date('2026-10-02T08:00:00Z'));
   const now = Date.now();
   sv = { oturum: true, idle: now + 60 * DK, abs: now + 12 * 60 * DK };
@@ -578,7 +599,12 @@ describe('istemci oturum (Faz B)', () => {
     // Baska sekmeden ayni bitisle ama farkli uyari suresiyle saat mesaji (Admin ayari
     // degistirdi): sunucu bitisi AYNI, yani ayni uyari — kullanici onu zaten kapatti.
     // Uyari suresi UZADI (150 sn): yeni uyari ani gecmiste kalir, zamanlayici hemen atesler.
-    const mesaj = { tur: 'saat', idleExpiresAt: sv.idle, absoluteExpiresAt: sv.abs, warnSeconds: 150 };
+    const mesaj = {
+      tur: 'saat',
+      idleExpiresAt: sv.idle,
+      absoluteExpiresAt: sv.abs,
+      warnSeconds: 150,
+    };
     let bc: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== 'undefined') {
       bc = new BroadcastChannel('portal-session');

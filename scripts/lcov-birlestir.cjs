@@ -14,7 +14,9 @@ const { Buffer } = require('node:buffer');
  * Normalizes an LCOV `SF:` file path to a forward-slash path relative to `repoRoot`.
  */
 function normalizeSfPath(rawPath, repoRoot = process.cwd()) {
-  const s = String(rawPath || '').trim().replaceAll('\\', '/');
+  const s = String(rawPath || '')
+    .trim()
+    .replaceAll('\\', '/');
   if (!s) return '';
   let rootPosix = path.resolve(repoRoot).replaceAll('\\', '/');
   // Sondaki egik cizgiler dongu ile (`/\/+$/` geri izlemede karesel, Sonar S8786).

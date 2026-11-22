@@ -12,6 +12,8 @@
 //   AD7 uclar: admin; son etkin sunucu kapatilmaz; ozet UPDATE'ten once; satir silinmez; restart'siz
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -42,10 +44,17 @@ test('AD1 ozet temiz: kapatilabilir', async () => {
 
 test('AD2 her engel sayilir ve kapatmayi engeller', async () => {
   for (const e of _ENGELLER) {
-    const db = sahteDb((sql) => { if (sql === e.sql) return { rows: [{ n: 3 }] }; if (/COUNT|CASE WHEN/.test(sql)) return bos(); return { rows: [] }; });
+    const db = sahteDb((sql) => {
+      if (sql === e.sql) return { rows: [{ n: 3 }] };
+      if (/COUNT|CASE WHEN/.test(sql)) return bos();
+      return { rows: [] };
+    });
     const o = await bagimlilikOzeti(1, { db, env: {} });
     assert.equal(o.kapatilabilir, false, e.anahtar);
-    assert.deepEqual(o.engeller.map((x) => [x.anahtar, x.adet]), [[e.anahtar, 3]]);
+    assert.deepEqual(
+      o.engeller.map((x) => [x.anahtar, x.adet]),
+      [[e.anahtar, 3]],
+    );
   }
   const anahtarlar = _ENGELLER.map((e) => e.anahtar).sort();
   assert.deepEqual(anahtarlar, ['kilit', 'logx', 'oco', 'opsx', 'retirement', 'scalex', 'smart']);
@@ -67,16 +76,31 @@ test('AD2b Retirement ucus sahipligi guncel registry konumundan bagimsizdir', as
   assert.match(sql, /WHEN 'stopping' THEN t\.last_job_id/);
   assert.match(sql, /WHEN 'deleting' THEN t\.delete_job_id/);
   assert.match(sql, /WHEN 'rolling_back' THEN t\.rollback_job_id/);
-  assert.match(sql, /'\$\.target_host'[\s\S]*'\$\.application'[\s\S]*'\$\.jboss_gen'/,
-    'controller-local job ID hedef host / uygulama / JBoss surumuyle ayrilmiyor');
-  assert.match(sql, /OPENJSON\([\s\S]*'\$\.rt_hedefler'\)/,
-    'toplu STOP history satiri hedefe baglanmiyor');
-  assert.match(sql, /t\.status = 'stop_scheduled' AND EXISTS \([\s\S]*FROM ansible_playbook_registry r[\s\S]*r\.awx_server_id = \$1/,
-    'launch edilmemis zamanlanmis STOP guncel registry sunucusuna baglanmiyor');
-  assert.match(sql, /t\.status IN \('stopping','deleting','rolling_back'\)[\s\S]*owner\.server_count[\s\S]*owner\.history_count = 0/,
-    'history sahipligi belirsiz ucus isi kapatilabilir sayiliyor');
-  assert.doesNotMatch(sql, /SELECT CASE WHEN EXISTS[\s\S]*THEN \(SELECT COUNT\(\*\) FROM retirement_targets/,
-    'ucustaki tum hedefler hala guncel registry sunucusuna mal ediliyor');
+  assert.match(
+    sql,
+    /'\$\.target_host'[\s\S]*'\$\.application'[\s\S]*'\$\.jboss_gen'/,
+    'controller-local job ID hedef host / uygulama / JBoss surumuyle ayrilmiyor',
+  );
+  assert.match(
+    sql,
+    /OPENJSON\([\s\S]*'\$\.rt_hedefler'\)/,
+    'toplu STOP history satiri hedefe baglanmiyor',
+  );
+  assert.match(
+    sql,
+    /t\.status = 'stop_scheduled' AND EXISTS \([\s\S]*FROM ansible_playbook_registry r[\s\S]*r\.awx_server_id = \$1/,
+    'launch edilmemis zamanlanmis STOP guncel registry sunucusuna baglanmiyor',
+  );
+  assert.match(
+    sql,
+    /t\.status IN \('stopping','deleting','rolling_back'\)[\s\S]*owner\.server_count[\s\S]*owner\.history_count = 0/,
+    'history sahipligi belirsiz ucus isi kapatilabilir sayiliyor',
+  );
+  assert.doesNotMatch(
+    sql,
+    esnek(/SELECT CASE WHEN EXISTS[\s\S]*THEN \(SELECT COUNT\(\*\) FROM retirement_targets/),
+    'ucustaki tum hedefler hala guncel registry sunucusuna mal ediliyor',
+  );
 
   // Web geri acma history'ye yazilmaz. Sadece isle birlikte yazilan sunucu isareti guvenilir;
   // eski kaldirma isinden kalan awxServerId tek basina yeterli degildir.
@@ -84,9 +108,15 @@ test('AD2b Retirement ucus sahipligi guncel registry konumundan bagimsizdir', as
   assert.match(sql, /w\.awxServerId = \$1/);
   assert.match(sql, /w\.status <> 'restoring' OR w\.sunucuIsi = w\.jobId/);
   assert.match(sql, /OR w\.awxServerId IS NULL/);
-  assert.match(sql, /w\.status = 'restoring' AND \(w\.sunucuIsi IS NULL OR w\.sunucuIsi <> w\.jobId\)/);
-  assert.match(sql, /\(t\.status IN[\s\S]*\)\)\s*-- Web isi[\s\S]*OR EXISTS \(\s*SELECT 1\s*FROM OPENJSON/,
-    "web isi hedef 'stopped' oldugunda status filtresinin disinda sayilmiyor");
+  assert.match(
+    sql,
+    /w\.status = 'restoring' AND \(w\.sunucuIsi IS NULL OR w\.sunucuIsi <> w\.jobId\)/,
+  );
+  assert.match(
+    sql,
+    /\(t\.status IN[\s\S]*\)\)\s*-- Web isi[\s\S]*OR EXISTS \(\s*SELECT 1\s*FROM OPENJSON/,
+    "web isi hedef 'stopped' oldugunda status filtresinin disinda sayilmiyor",
+  );
 });
 
 test('AD3 okunamayan sorgu sifir sayilmaz', async () => {
@@ -103,12 +133,16 @@ test('AD3 okunamayan sorgu sifir sayilmaz', async () => {
 
 test('AD3b Retirement history okunamazsa disable fail-closed kalir', async () => {
   const db = sahteDb((sql) => {
-    if (/FROM ansible_job_history h\s/.test(sql)) throw new Error("Invalid object name 'ansible_job_history'");
+    if (/FROM ansible_job_history h\s/.test(sql))
+      throw new Error("Invalid object name 'ansible_job_history'");
     return /COUNT|CASE WHEN/.test(sql) ? bos() : { rows: [] };
   });
   const o = await bagimlilikOzeti(1, { db, env: {} });
   assert.deepEqual(o.engeller, []);
-  assert.deepEqual(o.okunamayan.map((x) => x.anahtar), ['retirement']);
+  assert.deepEqual(
+    o.okunamayan.map((x) => x.anahtar),
+    ['retirement'],
+  );
   assert.match(o.okunamayan[0].hata, /ansible_job_history/);
   assert.equal(o.kapatilabilir, false);
 });
@@ -121,8 +155,13 @@ test('AD4 uyarilar', async () => {
       return { rows: [{ key_name: 'opsx_was_restart' }] };
     return bos();
   });
-  const env = { AWX_LOGX_SERVER_ID: '1', OPSX_AWX_SERVER_ID: '2', SCALEX_AWX_SERVER_ID: ' 1 ', AWX_URL: 'https://MAESTRO.fwgaranti.com.tr/' };
-  const o = await bagimlilikOzeti(1, { db, env, sunucuUrl: 'https://maestro.fwgaranti.com.tr' });
+  const env = {
+    AWX_LOGX_SERVER_ID: '1',
+    OPSX_AWX_SERVER_ID: '2',
+    SCALEX_AWX_SERVER_ID: ' 1 ',
+    AWX_URL: 'https://MAESTRO.fwsirket.invalid/',
+  };
+  const o = await bagimlilikOzeti(1, { db, env, sunucuUrl: 'https://maestro.fwsirket.invalid' });
   const k = Object.fromEntries(o.uyarilar.map((u) => [u.anahtar, u]));
   assert.deepEqual(k.ss.ornekler, ['Nginx - RVP Operations']);
   assert.deepEqual(k.kayit.ornekler, ['opsx_was_restart']);
@@ -132,9 +171,15 @@ test('AD4 uyarilar', async () => {
   assert.equal(o.kapatilabilir, true, 'uyari kapatmayi engellememeli');
 
   // #1 disi sunucuda sunucusuz kayit uyarisi yok; AWX_URL baska sunucudaysa uyari yok
-  const o2 = await bagimlilikOzeti(2, { db, env, sunucuUrl: 'https://maestro2.fwgaranti.com.tr' });
-  assert.equal(o2.uyarilar.some((u) => u.anahtar === 'kayit_bos'), false);
-  assert.equal(o2.uyarilar.some((u) => u.anahtar === 'awx_url'), false);
+  const o2 = await bagimlilikOzeti(2, { db, env, sunucuUrl: 'https://maestro2.fwsirket.invalid' });
+  assert.equal(
+    o2.uyarilar.some((u) => u.anahtar === 'kayit_bos'),
+    false,
+  );
+  assert.equal(
+    o2.uyarilar.some((u) => u.anahtar === 'awx_url'),
+    false,
+  );
 });
 
 test('AD5 sorgular parametreli', async () => {
@@ -153,31 +198,56 @@ test('AD6 runner: kapali sunucu listede yok, env den dirilmez, devre disi der, s
     process.env[`AWX_${no}_TOKEN`] = `env-token-${no}-uzun`;
   }
   let satirlar = [
-    { server_no: 1, name: 'maestro', url: 'https://maestro1.ornek.test', enabled: false, token: 'db-sir-maestro1-xyz' },
-    { server_no: 2, name: 'maestro2', url: 'https://maestro2.ornek.test', enabled: true, token: 'db-sir-maestro2-xyz' },
+    {
+      server_no: 1,
+      name: 'maestro',
+      url: 'https://maestro1.ornek.test',
+      enabled: false,
+      token: 'db-sir-maestro1-xyz',
+    },
+    {
+      server_no: 2,
+      name: 'maestro2',
+      url: 'https://maestro2.ornek.test',
+      enabled: true,
+      token: 'db-sir-maestro2-xyz',
+    },
   ];
   const dbYol = require.resolve('../../db/index.cjs');
   require.cache[dbYol] = {
     id: dbYol,
     filename: dbYol,
     loaded: true,
-    exports: { query: async (sql) => (/FROM ansible_awx_servers/.test(sql) ? { rows: satirlar } : { rows: [] }) },
+    exports: {
+      query: async (sql) =>
+        /FROM ansible_awx_servers/.test(sql) ? { rows: satirlar } : { rows: [] },
+    },
   };
   const runner = require('../runner.cjs');
   assert.equal(await runner._loadAwxServers(), true);
-  assert.deepEqual(runner.getServers().map((s) => s.id), [2]);
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [2],
+  );
   assert.equal(runner.getServerById(1), null);
   const h = runner._sunucuYokHatasi(1);
   assert.equal(h.code, 'awx_server_missing');
   assert.match(h.message, /#1 \(maestro\) devre dışı/);
   assert.equal(runner._sunucuYokHatasi(5).message, 'AWX sunucusu bulunamadı.');
   assert.equal(runner.redactSecrets('cikti db-sir-maestro1-xyz env-token-1-uzun'), 'cikti *** ***');
-  await assert.rejects(runner.launchJobOnServer(1, 10, {}), (e) => e.code === 'awx_server_missing' && /devre dışı/.test(e.message));
+  await assert.rejects(
+    runner.launchJobOnServer(1, 10, {}),
+    (e) => e.code === 'awx_server_missing' && /devre dışı/.test(e.message),
+  );
 
   // DB'de etkin satir kalmazsa env fallback'e donulur ama kapatilan #1 geri gelmez
   satirlar = [satirlar[0], { ...satirlar[1], enabled: false }];
   await runner._loadAwxServers();
-  assert.deepEqual(runner.getServers().map((s) => s.id), [], 'kapatilan sunucu env den dirildi');
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [],
+    'kapatilan sunucu env den dirildi',
+  );
 });
 
 test('AD6b disable sonrasi DB reload duserse eski cache ve env sunucuyu diriltmez', async () => {
@@ -185,8 +255,20 @@ test('AD6b disable sonrasi DB reload duserse eski cache ve env sunucuyu diriltme
   process.env.AWX_1_TOKEN = 'reload-env-token-1';
   let hata = false;
   const satirlar = [
-    { server_no: 1, name: 'maestro', url: process.env.AWX_1_URL, enabled: true, token: 'reload-db-token-1' },
-    { server_no: 2, name: 'maestro2', url: 'https://maestro2.reload.test', enabled: true, token: 'reload-db-token-2' },
+    {
+      server_no: 1,
+      name: 'maestro',
+      url: process.env.AWX_1_URL,
+      enabled: true,
+      token: 'reload-db-token-1',
+    },
+    {
+      server_no: 2,
+      name: 'maestro2',
+      url: 'https://maestro2.reload.test',
+      enabled: true,
+      token: 'reload-db-token-2',
+    },
   ];
   const dbYol = require.resolve('../../db/index.cjs');
   require.cache[dbYol].exports = {
@@ -197,12 +279,19 @@ test('AD6b disable sonrasi DB reload duserse eski cache ve env sunucuyu diriltme
   };
   const runner = require('../runner.cjs');
   assert.equal(await runner._loadAwxServers(), true);
-  assert.deepEqual(runner.getServers().map((s) => s.id), [1, 2]);
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [1, 2],
+  );
 
   runner._awxSunucuDurumuBellekteUygula(1, false, satirlar[0]);
   hata = true;
   assert.equal(await runner._loadAwxServers(), false, 'reload hata fixture i calismadi');
-  assert.deepEqual(runner.getServers().map((s) => s.id), [2], 'devre disi sunucu eski cache/env ile dirildi');
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [2],
+    'devre disi sunucu eski cache/env ile dirildi',
+  );
   assert.equal(runner.getServerById(1), null);
   assert.match(runner._sunucuYokHatasi(1).message, /devre dışı/);
   assert.equal(runner.redactSecrets('x reload-db-token-1 reload-env-token-1'), 'x *** ***');
@@ -213,21 +302,38 @@ test('AD6b disable sonrasi DB reload duserse eski cache ve env sunucuyu diriltme
   satirlar.splice(1, 1);
   hata = false;
   assert.equal(await runner._loadAwxServers(), true);
-  assert.deepEqual(runner.getServers().map((s) => s.id), [1]);
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [1],
+  );
   runner._awxSunucuDurumuBellekteUygula(1, false, satirlar[0]);
   hata = true;
   assert.equal(await runner._loadAwxServers(), false);
-  assert.deepEqual(runner.getServers(), [], 'devre disi controller legacy AWX_URL ile id=0 olarak dirildi');
+  assert.deepEqual(
+    runner.getServers(),
+    [],
+    'devre disi controller legacy AWX_URL ile id=0 olarak dirildi',
+  );
   process.env.AWX_URL = satirlar[0].url.replace('.test', '.test:8443');
-  assert.deepEqual(runner.getServers().map((s) => s.id), [0], 'farkli porttaki legacy controller yanlislikla kapatildi');
+  assert.deepEqual(
+    runner.getServers().map((s) => s.id),
+    [0],
+    'farkli porttaki legacy controller yanlislikla kapatildi',
+  );
   delete process.env.AWX_URL;
 });
 
 test('AD7 uclar', () => {
   const s = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
   assert.match(s, /app\.get\('\/api\/ansible\/awx-servers\/yonetim', requireAuth, requireAdmin,/);
-  assert.match(s, /app\.get\('\/api\/ansible\/awx-servers\/:no\/bagimlilik', requireAuth, requireAdmin,/);
-  assert.match(s, /app\.post\('\/api\/ansible\/awx-servers\/:no\/durum', requireAuth, requireAdmin,/);
+  assert.match(
+    s,
+    esnek(/app\.get\('\/api\/ansible\/awx-servers\/:no\/bagimlilik', requireAuth, requireAdmin,/),
+  );
+  assert.match(
+    s,
+    /app\.post\('\/api\/ansible\/awx-servers\/:no\/durum', requireAuth, requireAdmin,/,
+  );
   const i = s.indexOf("app.post('/api/ansible/awx-servers/:no/durum'");
   const b = s.slice(i, i + 4000);
   const sonEtkin = b.indexOf('Son etkin AWX sunucusu');
@@ -240,9 +346,20 @@ test('AD7 uclar', () => {
     'son etkin sunucu kosulu yok ya da reddetmiyor',
   );
   assert.match(b, /if \(!ozet\.kapatilabilir\) \{\s*return res\.status\(409\)/);
-  assert.match(b.slice(guncelle), /_serverTokenCaches\.delete\(no\)[\s\S]*awxSunucuDurumuBellekteUygula\(no, enabled, satir\)[\s\S]*await loadAwxServers\(\)/);
-  assert.match(b.slice(guncelle), /if \(enabled && !yuklendi\) \{\s*return res\.status\(503\)/, 'basarisiz etkinlestirme basari donuyor');
-  assert.doesNotMatch(b, /DELETE FROM ansible_awx_servers/);
+  assert.match(
+    b.slice(guncelle),
+    /_serverTokenCaches\.delete\(no\)[\s\S]*awxSunucuDurumuBellekteUygula\(no, enabled, satir\)[\s\S]*await loadAwxServers\(\)/,
+  );
+  assert.match(
+    b.slice(guncelle),
+    /if \(enabled && !yuklendi\) \{\s*return res\.status\(503\)/,
+    'basarisiz etkinlestirme basari donuyor',
+  );
+  assert.doesNotMatch(b, esnek(/DELETE FROM ansible_awx_servers/));
   const y = s.indexOf("app.get('/api/ansible/awx-servers/yonetim'");
-  assert.doesNotMatch(s.slice(y, y + 900), /token|password|client_secret/, 'liste ucu sir kolonu okuyor');
+  assert.doesNotMatch(
+    s.slice(y, y + 900),
+    /token|password|client_secret/,
+    'liste ucu sir kolonu okuyor',
+  );
 });

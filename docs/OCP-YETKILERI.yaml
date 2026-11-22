@@ -1,10 +1,10 @@
 # docs/OCP-YETKILERI.yaml
 #
-# BMW PORTAL — OpenShift SERVIS HESABI (`uxmid`) YETKI IHTIYACI
+# BMW PORTAL — OpenShift SERVIS HESABI (`svcac`) YETKI IHTIYACI
 # ==============================================================
 #
 # BU DOSYA NEDIR
-#   Portal'in Ansible playbook'lari her OCP cluster'ina `uxmid` kullanicisiyla
+#   Portal'in Ansible playbook'lari her OCP cluster'ina `svcac` kullanicisiyla
 #   `oc login` yapip komut calistirir. Bu dosya, O KOMUTLARIN TAM LISTESIDIR ve
 #   her biri icin hangi RBAC yetkisinin gerektigini yazar. Platform ekibinden
 #   yetki talebi BU DOSYAYA gore acilir.
@@ -37,7 +37,7 @@
 
 surum: 1
 son_guncelleme: "2026-09-10"
-kullanici: uxmid
+kullanici: svcac
 kimlik_kaynagi: >-
   Parola AWX deposundaki bmw_openshift_jobs/global_variables/credentials.yaml
   icinde vault'lu durur; playbook'a `credential_key` ile ADI gecirilir, DEGERI
@@ -92,10 +92,10 @@ komutlar:
   # ── Kimlik ────────────────────────────────────────────────────────────────
   - alt_komut: login
     modul: [LogX-OCP, OpsX, ScaleX, Telnet, OpsX-Rollout]
-    ornek: 'oc login --server=<api_url> --username=uxmid --password=***'
+    ornek: 'oc login --server=<api_url> --username=svcac --password=***'
     rbac:
       aciklama: >-
-        RBAC yetkisi degil KIMLIK DOGRULAMA. `uxmid` hesabi cluster'in kimlik
+        RBAC yetkisi degil KIMLIK DOGRULAMA. `svcac` hesabi cluster'in kimlik
         saglayicisinda (IdP) tanimli ve AKTIF olmali; parola suresi dolmamali.
       not: >-
         Parola suresi dolarsa TUM moduller ayni anda ve ayni sekilde duser.

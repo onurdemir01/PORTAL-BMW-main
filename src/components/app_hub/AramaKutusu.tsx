@@ -5,7 +5,15 @@ import { MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/2
 import { appHubApi, type AppAramaSonucu, type AppTip } from '@/api/appHubApi';
 import { TipHap, TIP_AD } from './ortak';
 
-export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec: (s: AppAramaSonucu) => void; buyuk: boolean }) {
+export default function AramaKutusu({
+  ilk,
+  onSec,
+  buyuk,
+}: {
+  ilk: string;
+  onSec: (s: AppAramaSonucu) => void;
+  buyuk: boolean;
+}) {
   const [q, setQ] = useState(ilk);
   const [sonuclar, setSonuclar] = useState<AppAramaSonucu[]>([]);
   const [okunamayan, setOkunamayan] = useState<{ tip: AppTip; hata: string }[]>([]);
@@ -53,7 +61,10 @@ export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec:
 
   return (
     <div ref={kutu} className={`relative w-full ${buyuk ? 'max-w-2xl mx-auto' : 'max-w-xl'}`}>
-      <MagnifyingGlassIcon className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${buyuk ? 'w-6 h-6' : 'w-5 h-5'}`} style={{ color: 'var(--text-muted)' }} />
+      <MagnifyingGlassIcon
+        className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${buyuk ? 'w-6 h-6' : 'w-5 h-5'}`}
+        style={{ color: 'var(--text-muted)' }}
+      />
       <input
         type="search"
         role="combobox"
@@ -82,17 +93,34 @@ export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec:
         }}
         placeholder="Uygulama adını yazın (ör. GFYINTERNETBRANCH, musteri-api)"
         className={`w-full rounded-full border outline-none transition-shadow focus:ring-2 ${buyuk ? 'pl-14 pr-5 py-4 text-[17px]' : 'pl-11 pr-4 py-2.5 text-[14px]'}`}
-        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)', boxShadow: buyuk ? 'var(--shadow-md)' : undefined }}
+        style={{
+          background: 'var(--bg-surface)',
+          borderColor: 'var(--border)',
+          color: 'var(--text-primary)',
+          boxShadow: buyuk ? 'var(--shadow-md)' : undefined,
+        }}
       />
       {acik && q.trim().length >= 2 && (
         <div
           id="apphub-sonuclar"
           role="listbox"
           className="absolute z-30 mt-2 w-full rounded-xl overflow-hidden"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
         >
-          {ariyor && !gorunen.length && <div className="px-4 py-3 text-[13px]" style={{ color: 'var(--text-muted)' }}>Aranıyor…</div>}
-          {!ariyor && !gorunen.length && <div className="px-4 py-3 text-[13px]" style={{ color: 'var(--text-muted)' }}>Bu adla JBoss, WebSphere ya da OpenShift uygulaması bulunamadı.</div>}
+          {ariyor && !gorunen.length && (
+            <div className="px-4 py-3 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              Aranıyor…
+            </div>
+          )}
+          {!ariyor && !gorunen.length && (
+            <div className="px-4 py-3 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+              Bu adla JBoss, WebSphere ya da OpenShift uygulaması bulunamadı.
+            </div>
+          )}
           <ul className="max-h-[22rem] overflow-y-auto">
             {gorunen.map((s, i) => (
               <li key={`${s.tip}-${s.ad}`} role="option" aria-selected={i === vurgu}>
@@ -104,13 +132,27 @@ export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec:
                   style={{ background: i === vurgu ? 'var(--ah-hue-soft)' : 'transparent' }}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-[14px]" title={s.ad} style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{s.ad}</span>
+                    <span
+                      className="block truncate font-medium text-[14px]"
+                      title={s.ad}
+                      style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}
+                    >
+                      {s.ad}
+                    </span>
                     {s.varyantlar && s.varyantlar.length > 1 && (
-                      <span className="block truncate text-[11px]" title={s.varyantlar.join(', ')} style={{ color: 'var(--text-muted)' }}>{s.varyantlar.join(', ')}</span>
+                      <span
+                        className="block truncate text-[11px]"
+                        title={s.varyantlar.join(', ')}
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {s.varyantlar.join(', ')}
+                      </span>
                     )}
                   </span>
                   <span className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{s.ozet}</span>
+                    <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      {s.ozet}
+                    </span>
                     <TipHap tip={s.tip} />
                   </span>
                 </button>
@@ -118,8 +160,16 @@ export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec:
             ))}
           </ul>
           {okunamayan.length > 0 && (
-            <div className="px-4 py-2 text-[12px] flex items-center gap-1.5" style={{ color: 'var(--status-warning-text)', borderTop: '1px solid var(--border-subtle)' }}>
-              <ExclamationTriangleIcon className="w-4 h-4" /> {okunamayan.map((o) => TIP_AD[o.tip]).join(', ')} envanteri okunamadı; sonuçlar eksik olabilir.
+            <div
+              className="px-4 py-2 text-[12px] flex items-center gap-1.5"
+              style={{
+                color: 'var(--status-warning-text)',
+                borderTop: '1px solid var(--border-subtle)',
+              }}
+            >
+              <ExclamationTriangleIcon className="w-4 h-4" />{' '}
+              {okunamayan.map((o) => TIP_AD[o.tip]).join(', ')} envanteri okunamadı; sonuçlar eksik
+              olabilir.
             </div>
           )}
         </div>

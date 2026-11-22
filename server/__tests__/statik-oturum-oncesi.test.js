@@ -55,7 +55,10 @@ test('kaynak: index.html, 404 bekcisi ve SPA fallback modul dongusunden (oturum)
 
 test('kaynak: cache basliklari korunur', () => {
   assert.match(NORM, /express\.static\(distDir, \{ maxAge: "1y", immutable: true, index: false,/);
-  assert.match(NORM, /express\.static\(prevDir, \{ maxAge: "1y", immutable: true, index: false \}\)/);
+  assert.match(
+    NORM,
+    /express\.static\(prevDir, \{ maxAge: "1y", immutable: true, index: false \}\)/,
+  );
 });
 
 // ── Davranis ────────────────────────────────────────────────────────────────

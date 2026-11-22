@@ -492,7 +492,13 @@ function autoStartOnayMetni(
  * Calisma durumu OLCULEMEYEN JVM'de dugme ACIK kalir (v3, kural 7): onay metni uyarir.
  */
 function autoStartDugmesi(
-  j: { source?: string; cfgSrc?: string | null; yalnizEnvanter?: boolean; domainKapali?: boolean; gen?: number },
+  j: {
+    source?: string;
+    cfgSrc?: string | null;
+    yalnizEnvanter?: boolean;
+    domainKapali?: boolean;
+    gen?: number;
+  },
   h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
 ): { goster: boolean; neden: string } {
   // YALNIZ ENVANTERDE (2026-11-14): taramada JVM'i yok (MWAppsInventory satiri); sunucu 400 doner.
@@ -714,7 +720,8 @@ const KOD_ETIKET: Record<string, string> = {
   EAR_WAR_YOK: 'EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir',
   KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
   EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
-  EAR_JBOSS_DISI_KULLANIM: "EAR JBoss'a bağlı değil ama dizin kullanımda (süreç ya da son 7 günde yazma)",
+  EAR_JBOSS_DISI_KULLANIM:
+    "EAR JBoss'a bağlı değil ama dizin kullanımda (süreç ya da son 7 günde yazma)",
   EAR_XML_OLCULEMEDI:
     'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
   // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; Uygulama Envanteri ayari).
@@ -893,7 +900,8 @@ function CiftSatirBandi({
 }: {
   c: { toplam: number; tablolar: Record<string, number> } | null | undefined;
 }) {
-  if (!c || !(c.toplam > 0)) return null;
+  const ciftVar = c != null && c.toplam > 0;
+  if (!ciftVar) return null;
   const ayrinti = Object.entries(c.tablolar || {})
     .map(([t, n]) => `${t.replace(/^Server_Hub_/, '')} ${n}`)
     .join(', ');
@@ -1537,7 +1545,7 @@ function ReadinessTab() {
           value={metin}
           onChange={(e) => setMetin(e.target.value)}
           rows={3}
-          placeholder="GBAPP01, GBAPP02 … (virgül, boşluk ya da satır ile ayırın; FQDN de olur)"
+          placeholder="SUNUCU01, SUNUCU02 … (virgül, boşluk ya da satır ile ayırın; FQDN de olur)"
           className="w-full px-2 py-1.5 text-xs font-mono border rounded-lg"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         />
@@ -1697,7 +1705,15 @@ function SeviyeAyarBandi({
 }
 
 /** Bulgu seviyesi Admin tarafindan degistirildiyse varsayilani yazan isaret. */
-function SeviyeDegistiIsareti({ d, ortam, prod }: { d?: ShSeverity; ortam?: boolean; prod?: ShSeverity }) {
+function SeviyeDegistiIsareti({
+  d,
+  ortam,
+  prod,
+}: {
+  d?: ShSeverity;
+  ortam?: boolean;
+  prod?: ShSeverity;
+}) {
   if (!d) return null;
   // NON-PROD TAVANI (2026-11-15): Non-Production sunucuda kritik bulgu uyari sayilir; gizlenmez, isaretlenir.
   // prod: prod'daki etkin seviye (Admin degisikligi dahil); eski rapor satirinda yoksa varsayilan.
@@ -1846,15 +1862,15 @@ export default function ServerHubPage() {
                     ? 'Taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan çalışan JVM’ler. Tek düğme önce sunucuları salt okunur yeniden tarar, onaydan sonra JVM’leri tek tek restart eder ve her restart sonrası farkın kapandığını tarar. Prod sunucular OpsX’ten tek tek.'
                     : tab === 'eartemizlik'
                       ? 'Uygulama Envanteri’nde “EAR içinde WAR yok” uyarısı olan EAR’lar. Ön kontrol dizine salt okunur bakar (ls -ltr); çıktıyı görüp teyit ettikten sonra EAR yedeklenip silinir. Uyarı, ardından başlatılan Uygulama Envanteri taraması bitince kalkar.'
-                    : tab === 'kopyadurumu'
-                      ? 'Aynı uygulamanın kopyaları kaç sunucuda çalışıyor: aynı ortam + JBoss nesli + JVM adı başına “çalışan x / y”, kapalı sunucular ve auto-start farkı. Varsayılan yalnız tutarsız gruplar; prod önce.'
-                      : tab === 'kurallar'
-                        ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
-                        : tab === 'uygulama360'
-                          ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
-                          : tab === 'analiz'
-                            ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R13) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
-                            : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
+                      : tab === 'kopyadurumu'
+                        ? 'Aynı uygulamanın kopyaları kaç sunucuda çalışıyor: aynı ortam + JBoss nesli + JVM adı başına “çalışan x / y”, kapalı sunucular ve auto-start farkı. Varsayılan yalnız tutarsız gruplar; prod önce.'
+                        : tab === 'kurallar'
+                          ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                          : tab === 'uygulama360'
+                            ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
+                            : tab === 'analiz'
+                              ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R13) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                              : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -2223,7 +2239,7 @@ function HostsTab({
   const [q, setQ] = useState('');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState('all');
-  // GBEVM*/GBPRV* genel envanterden ayri (kullanici, 2026-09-24): ozet ve varsayilan liste
+  // OREVM*/ORPRV* genel envanterden ayri (kullanici, 2026-09-24): ozet ve varsayilan liste
   // GENEL envanteri gosterir, bu sunucular kendi sekmelerinde listelenir.
   const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const [openHost, setOpenHost] = useState<string | null>(null);
@@ -2950,9 +2966,8 @@ function HostsTab({
             color: 'var(--text-secondary)',
           }}
         >
-          GBEVM* ve GBPRV* sunucuları <b>genel envanterden ayrı</b> tutulur: yukarıdaki özet ve
-          ortam kırılımı bunları saymaz. Taranırlar, bulguları ve “şimdi tara / düzelt” işlemleri
-          çalışır.
+          …EVM* ve …PRV* sunucuları <b>genel envanterden ayrı</b> tutulur: yukarıdaki özet ve ortam
+          kırılımı bunları saymaz. Taranırlar, bulguları ve “şimdi tara / düzelt” işlemleri çalışır.
         </div>
       )}
 
@@ -3014,7 +3029,7 @@ function HostsTab({
           {(
             [
               { id: 'genel', label: 'Genel envanter' },
-              { id: 'ozel', label: 'GBEVM / GBPRV' },
+              { id: 'ozel', label: '…EVM / …PRV' },
             ] as const
           ).map((c) => (
             <button
@@ -3465,7 +3480,11 @@ function HostModal({
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {AREA[f.area] || f.area} · {kodEtiketi(f.code)}
                           {f.defaultSeverity ? ' · ' : ''}
-                          <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} prod={f.prodSeverity} />
+                          <SeviyeDegistiIsareti
+                            d={f.defaultSeverity}
+                            ortam={f.ortamTavani}
+                            prod={f.prodSeverity}
+                          />
                         </div>
                         <LogKanit f={f} />
                         <AtfedilemeyenTrafik f={f} />
@@ -3489,12 +3508,19 @@ function HostModal({
                             <button
                               onClick={() => setXmlKapat({ gen: Number(f.gen), jvms: ad })}
                               className={SM_BTN}
-                              style={{ ...smBtn(), whiteSpace: 'normal', height: 'auto', paddingTop: 4, paddingBottom: 4 }}
+                              style={{
+                                ...smBtn(),
+                                whiteSpace: 'normal',
+                                height: 'auto',
+                                paddingTop: 4,
+                                paddingBottom: 4,
+                              }}
                               data-testid="xml-kapat-domain"
                               title={`Domain kapalı: ${ad.join(', ')} — auto-start host XML'de false yapılır (önce plan)`}
                             >
-                              <WrenchScrewdriverIcon className="w-3.5 h-3.5 shrink-0" /> Bu domain&apos;deki
-                              auto-start&apos;ı açık {ad.length} durmuş JVM&apos;in auto-start&apos;ını kapat (host XML)
+                              <WrenchScrewdriverIcon className="w-3.5 h-3.5 shrink-0" /> Bu
+                              domain&apos;deki auto-start&apos;ı açık {ad.length} durmuş JVM&apos;in
+                              auto-start&apos;ını kapat (host XML)
                             </button>
                           );
                         })()}
@@ -4283,7 +4309,11 @@ function bulguKolonlari(
           <SevPill s={f.severity} />
           {f.defaultSeverity && (
             <div>
-              <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} prod={f.prodSeverity} />
+              <SeviyeDegistiIsareti
+                d={f.defaultSeverity}
+                ortam={f.ortamTavani}
+                prod={f.prodSeverity}
+              />
             </div>
           )}
         </>
@@ -4337,15 +4367,15 @@ function bulguKolonlari(
     {
       anahtar: 'sinif',
       baslik: 'Sınıf',
-      aciklama: 'Genel envanter ya da GBEVM / GBPRV.',
+      aciklama: 'Genel envanter ya da …EVM / …PRV.',
       suzgec: 'secim',
       varsayilan: false,
       secenekler: [
         { deger: 'genel', etiket: 'genel envanter' },
-        { deger: 'ozel', etiket: 'GBEVM / GBPRV' },
+        { deger: 'ozel', etiket: '…EVM / …PRV' },
       ],
       deger: (f) => f.hostClass || 'genel',
-      hucre: (f) => ((f.hostClass || 'genel') === 'ozel' ? 'GBEVM / GBPRV' : 'genel'),
+      hucre: (f) => ((f.hostClass || 'genel') === 'ozel' ? '…EVM / …PRV' : 'genel'),
     },
     {
       anahtar: 'tarama',
@@ -4717,7 +4747,7 @@ export function FindingsTab({
             aria-label="envanter sınıfı"
           >
             <option value="genel">genel envanter</option>
-            <option value="ozel">GBEVM / GBPRV</option>
+            <option value="ozel">…EVM / …PRV</option>
             <option value="all">hepsi</option>
           </select>
           <select

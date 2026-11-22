@@ -40,7 +40,7 @@ const kuralSirasi = (a, b) => Number(String(a).slice(1)) - Number(String(b).slic
 
 /** Faz 2 deployment: null = olculmedi (kontrol kapali, JVM kapali ya da veri yok). */
 function deploymentOf(h, j) {
-  const dep = h.ear && h.ear.durum === 'VAR' ? h.ear.deployment : null;
+  const dep = h.ear?.durum === 'VAR' ? h.ear.deployment : null;
   if (!dep || !Array.isArray(dep.jvmler)) return null;
   const dj = dep.jvmler.find(
     (x) => L(x.ad) === L(j.name) && Number(x.nesil) === (Number(j.gen) || 0),
@@ -56,7 +56,7 @@ function deploymentOf(h, j) {
 
 /** Bu JVM'e bagli EAR'lar (Uygulama Envanteri XML eslemesi); null = EAR verisi yok / eski. */
 function earlerOf(h, j) {
-  if (!h.ear || h.ear.durum !== 'VAR') return null;
+  if (h.ear?.durum !== 'VAR') return null;
   const gen = String(Number(j.gen) || 0);
   return (h.ear.uygulamalar || [])
     .filter(
@@ -71,7 +71,7 @@ function earlerOf(h, j) {
 function kopyaOf(h, j) {
   const calisiyor = j.runningKnown === false ? null : !!j.running;
   const autoStart = j.autoStart || 'unknown';
-  const olculen = (j.vhosts || []).filter((m) => m.v && m.v.req7d != null && m.v.req7d >= 0);
+  const olculen = (j.vhosts || []).filter((m) => m.v?.req7d != null && m.v.req7d >= 0);
   return {
     host: h.host,
     ortam: h.env || 'BILINMIYOR',
@@ -83,7 +83,8 @@ function kopyaOf(h, j) {
     // Domain kapali (taramada host controller calismiyordu) JVM'de assess STOPPED_AUTOSTART_ON uretmez.
     autostartUyumsuz: (() => {
       if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK';
-      if (calisiyor === false && autoStart === 'true' && j.domainKapali !== true) return 'STOPPED_AUTOSTART_ON';
+      if (calisiyor === false && autoStart === 'true' && j.domainKapali !== true)
+        return 'STOPPED_AUTOSTART_ON';
       return null;
     })(),
     trafik: j.trafficState || null,
@@ -147,7 +148,7 @@ function ozetOf(ad, kopyalar, etiketler) {
   const earAdlari = new Set(earli.flatMap((k) => k.ear.map((e) => U(e.ad))));
   const deps = kopyalar.map((k) => k.deployment).filter(Boolean);
   // OpenShift: kopyalarin eslesmeleri (namespace @ cluster bir kez); istek ortam grubu basina bir kez.
-  const ocpKop = kopyalar.filter((k) => k.capraz && k.capraz.ocp);
+  const ocpKop = kopyalar.filter((k) => k.capraz?.ocp);
   const yerler = new Map();
   const grupIstek = new Map();
   for (const k of ocpKop) {
@@ -174,9 +175,9 @@ function ozetOf(ad, kopyalar, etiketler) {
     kapali: say((k) => k.calisiyor === false),
     olculemeyen: say((k) => k.calisiyor === null),
     autostartUyumsuz: say((k) => !!k.autostartUyumsuz),
-    kopyaTutarsiz: say((k) => !!(k.capraz && k.capraz.kopya)),
-    kalinti: say((k) => !!(k.capraz && k.capraz.kalinti)),
-    celiski: say((k) => !!(k.capraz && k.capraz.celiski.length)),
+    kopyaTutarsiz: say((k) => !!k.capraz?.kopya),
+    kalinti: say((k) => !!k.capraz?.kalinti),
+    celiski: say((k) => !!k.capraz?.celiski.length),
     riskliKopya: say(riskli),
     trafik,
     istek7g: istekler.length ? istekler.reduce((a, b) => a + b, 0) : null,
@@ -225,7 +226,7 @@ function ozetOf(ad, kopyalar, etiketler) {
  */
 function uygulamalar360(hosts, etiketler = []) {
   const gruplar = new Map();
-  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (GBFACELIFTSUBE-T1), satir invApp tabaniyla.
+  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (ORFACELIFTSUBE-T1), satir invApp tabaniyla.
   const adAnahtar = new Map();
   for (const h of hosts || []) {
     if (h.taramadanDustu) continue;
@@ -252,7 +253,7 @@ function uygulamalar360(hosts, etiketler = []) {
   );
   uygulamalar.sort(
     (a, b) =>
-      (SEVIYE[b.etiket && b.etiket.seviye] || 0) - (SEVIYE[a.etiket && a.etiket.seviye] || 0) ||
+      (SEVIYE[b.etiket?.seviye] || 0) - (SEVIYE[a.etiket?.seviye] || 0) ||
       b.riskliKopya - a.riskliKopya ||
       a.ad.localeCompare(b.ad, 'tr'),
   );
@@ -294,9 +295,7 @@ function mount(router, { etiketHesabi }) {
         uygulamalar: r.uygulamalar,
       });
     } catch (err) {
-      res
-        .status(424)
-        .json({ ok: false, message: (err && err.message) || 'Uygulama 360 hesaplanamadı.' });
+      res.status(424).json({ ok: false, message: err?.message || 'Uygulama 360 hesaplanamadı.' });
     }
   });
 
@@ -319,9 +318,7 @@ function mount(router, { etiketHesabi }) {
         uygulama: u,
       });
     } catch (err) {
-      res
-        .status(424)
-        .json({ ok: false, message: (err && err.message) || 'Uygulama 360 hesaplanamadı.' });
+      res.status(424).json({ ok: false, message: err?.message || 'Uygulama 360 hesaplanamadı.' });
     }
   });
 }

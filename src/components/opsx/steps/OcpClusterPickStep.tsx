@@ -1,6 +1,6 @@
 // src/components/opsx/steps/OcpClusterPickStep.tsx — restart/rollout tetiklenmeden önce,
 // tenant/env grubundaki GERÇEK cluster'lardan (bkz. OcpTargetStep dosya başı notu — ör.
-// ark_prod → gbocpprod1, gbocpprod2, gbocpprod4) hedeflenecek TEK birinin YA DA grubun
+// ark_prod → orocpprod1, orocpprod2, orocpprod4) hedeflenecek TEK birinin YA DA grubun
 // TAMAMININ seçimi.
 //
 // NEDEN TEK CLUSTER SEÇENEĞİ AWX `limit` DEĞİL: AWX'in `limit` alanı production'da
@@ -9,12 +9,12 @@
 // mümkün. "Tüm cluster'lar" seçilirse `cluster` alanı HİÇ gönderilmez (bkz. onSubmit) —
 // playbook bu durumda zaten KANITLI çalışan eski yönteme (oc_cluster/oc_environment'ın
 // çözdüğü grubun tamamını `hosts:` yapmak) geri döner, AWX limit'e hiç ihtiyaç duymaz.
-import React, { useState } from "react";
-import { ServerStackIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
-import { useAsyncEffect } from "@/hooks/useAsyncEffect";
-import { opsxApi } from "@/api/opsxApi";
+import React, { useState } from 'react';
+import { ServerStackIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { opsxApi } from '@/api/opsxApi';
 
-const ALL = "__all__";
+const ALL = '__all__';
 
 const OcpClusterPickStep: React.FC<{
   env: string;
@@ -32,47 +32,70 @@ const OcpClusterPickStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useAsyncEffect(async (alive) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await opsxApi.getClusters();
-      if (!alive()) return;
-      const names = r.tree?.[env]?.[tenant] || [];
-      setClusters(names);
-      // tek seçenek varsa (ya da bağlantı gruptaki bir cluster'ı adlandırdıysa) önceden işaretle
-      const verilen = initialCluster ? names.find((n) => n.toLowerCase() === initialCluster.toLowerCase()) : undefined;
-      setSelected(verilen ?? (names.length === 1 ? names[0] : null));
-    } catch (err) {
-      if (alive()) setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (alive()) setLoading(false);
-    }
-  }, [env, tenant, initialCluster]);
+  useAsyncEffect(
+    async (alive) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await opsxApi.getClusters();
+        if (!alive()) return;
+        const names = r.tree?.[env]?.[tenant] || [];
+        setClusters(names);
+        // tek seçenek varsa (ya da bağlantı gruptaki bir cluster'ı adlandırdıysa) önceden işaretle
+        const verilen = initialCluster
+          ? names.find((n) => n.toLowerCase() === initialCluster.toLowerCase())
+          : undefined;
+        setSelected(verilen ?? (names.length === 1 ? names[0] : null));
+      } catch (err) {
+        if (alive()) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [env, tenant, initialCluster],
+  );
 
-  if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Cluster'lar yükleniyor...</div>;
-  if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;
+  if (loading)
+    return (
+      <div className="py-8 text-center text-sm text-[var(--text-muted)]">
+        Cluster'lar yükleniyor...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">
+        {error}
+      </div>
+    );
 
   if (clusters.length === 0) {
     return (
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
-        <strong>{tenant} / {env}</strong> için envanterde tanımlı gerçek cluster bulunamadı —
-        Admin &gt; LogX Yapılandırma ekranından cluster kataloğunu kontrol edin.
+        <strong>
+          {tenant} / {env}
+        </strong>{' '}
+        için envanterde tanımlı gerçek cluster bulunamadı — Admin &gt; LogX Yapılandırma ekranından
+        cluster kataloğunu kontrol edin.
       </div>
     );
   }
 
   function submit() {
     if (selected == null) return;
-    onSubmit(selected === ALL ? "" : selected);
+    onSubmit(selected === ALL ? '' : selected);
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-[var(--text-secondary)]">İşlemin hedefleneceği cluster'ı seçin.</p>
+        <p className="text-sm text-[var(--text-secondary)]">
+          İşlemin hedefleneceği cluster'ı seçin.
+        </p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">
-          Cluster grubu: <span className="font-mono text-[var(--text-primary)]">{tenant} / {env}</span>
+          Cluster grubu:{' '}
+          <span className="font-mono text-[var(--text-primary)]">
+            {tenant} / {env}
+          </span>
         </p>
       </div>
 
@@ -86,9 +109,13 @@ const OcpClusterPickStep: React.FC<{
               onChange={() => setSelected(ALL)}
               className="rounded-full"
             />
-            <Squares2X2Icon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
+            <Squares2X2Icon
+              aria-hidden="true"
+              className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
+            />
             <span className="text-sm font-medium text-[var(--text-primary)] flex-1">
-              Tüm cluster'lar <span className="text-[var(--text-muted)] font-normal">({clusters.length})</span>
+              Tüm cluster'lar{' '}
+              <span className="text-[var(--text-muted)] font-normal">({clusters.length})</span>
             </span>
           </label>
         )}
@@ -104,23 +131,27 @@ const OcpClusterPickStep: React.FC<{
               onChange={() => setSelected(name)}
               className="rounded-full"
             />
-            <ServerStackIcon aria-hidden="true" className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0" />
-            <span className="text-sm font-mono text-[var(--text-primary)] flex-1 break-all whitespace-normal" title={name}>{name}</span>
+            <ServerStackIcon
+              aria-hidden="true"
+              className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0"
+            />
+            <span
+              className="text-sm font-mono text-[var(--text-primary)] flex-1 break-all whitespace-normal"
+              title={name}
+            >
+              {name}
+            </span>
           </label>
         ))}
       </div>
 
       {selected === ALL && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-          İşlem grubun TÜM cluster'larında ({clusters.join(", ")}) çalışacak.
+          İşlem grubun TÜM cluster'larında ({clusters.join(', ')}) çalışacak.
         </p>
       )}
 
-      <button
-        onClick={submit}
-        disabled={selected == null || busy}
-        className="btn-primary w-full"
-      >
+      <button onClick={submit} disabled={selected == null || busy} className="btn-primary w-full">
         Devam Et
       </button>
     </div>
