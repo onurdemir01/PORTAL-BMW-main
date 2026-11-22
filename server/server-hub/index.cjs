@@ -1371,6 +1371,15 @@ function initServerHub(app) {
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
       const sk = sunucuYazmaKapisi(a, h, host);
       if (sk) return res.status(sk.status).json({ ok: false, message: sk.message });
+      // PROD ONAYI SUNUCUDA (2026-11-22, PR-R F1): Production ya da ortami bilinmeyen sunucuda uygulama acik
+      // prodOnay ister (toplu yol ile ayni kural, toplu-autostart.cjs prodOnayYok). Eskiden yalniz ekrandaki
+      // kutu vardi: dogrudan API cagrisi prod host XML'ini onaysiz degistirebiliyordu.
+      if (confirmed && h.envGroup !== 'Non-Production' && req.body?.prodOnay !== true)
+        return res.status(400).json({
+          ok: false,
+          code: 'prod_onay',
+          message: `${host} Production ya da ortamı bilinmeyen sunucu — host XML ile kapatma için açık prod onayı gerekli (iş açılmadı).`,
+        });
       // Ayni sunucu + nesilde kayitli XML isi: AWX'e bir kez sorulur (biten isin sonucu islenir, kilit kalkar).
       const xs = confirmed ? _autoStart.xmlSurenIs(host, gen) : null;
       if (xs && (await xmlIsSuruyor(xs)))

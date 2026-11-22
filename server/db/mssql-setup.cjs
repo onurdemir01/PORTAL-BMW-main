@@ -6047,6 +6047,13 @@ async function setupTables() {
       col: 'sil_istendi_at',
       sql: 'ALTER TABLE server_hub_ear_temizlik ADD sil_istendi_at DATETIME2 NULL',
     },
+    // Uretimde silme yalniz acik OCO penceresinde (2026-11-22, PR-R): istekte denetlenen numara; kuyruktan
+    // baslatmadan once ayni numarayla yeniden denetlenir. Non-Production'da NULL.
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'oco_no',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD oco_no NVARCHAR(32) NULL',
+    },
     {
       table: 'server_hub_ear_temizlik',
       col: 'sil_isteyen',

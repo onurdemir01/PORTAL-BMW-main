@@ -158,6 +158,7 @@ export function XmlAutoStartKapatPenceresi({
         gen,
         jvms,
         asama: plan ? 'plan' : 'uygula',
+        prodOnay,
       });
       if (!r.ok || r.jobId == null) {
         toast.error(r.message || 'İş başlatılamadı.');

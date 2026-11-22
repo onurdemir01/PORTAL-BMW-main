@@ -1523,6 +1523,8 @@ export const serverHubApi = {
     gen: number;
     jvms: string[];
     asama: 'plan' | 'uygula';
+    /** Production / ortamı bilinmeyen sunucuda uygulama için açık onay (sunucu da zorlar: code prod_onay). */
+    prodOnay?: boolean;
   }): Promise<ShXmlKapatLaunch> =>
     fetch(
       `${BASE}/jvm-autostart-xml`,
@@ -1530,7 +1532,9 @@ export const serverHubApi = {
         host: p.host,
         gen: p.gen,
         jvms: p.jvms,
-        ...(p.asama === 'plan' ? { plan: true } : { confirmed: true }),
+        ...(p.asama === 'plan'
+          ? { plan: true }
+          : { confirmed: true, prodOnay: p.prodOnay === true }),
       }),
     ).then(safeJson),
   // ACILIS HAZIRLIGI (2026-10-01): "bu sunucular sorunsuz acilir mi" - SALT OKUNUR,
@@ -1623,11 +1627,17 @@ export const serverHubApi = {
   /** onayMetni EAR adiyla birebir, planJobId ekranda gorulen ciktinin isi olmali (sunucu ikisini de denetler). */
   earTemizlikSil: (
     id: number,
-    p: { onayMetni: string; planJobId: number },
+    /** ocoNo: Production / ortamı bilinmeyen sunucuda zorunlu (açık OCO penceresi; sunucu denetler). */
+    p: { onayMetni: string; planJobId: number; ocoNo?: string },
   ): Promise<EtKayitYanit> =>
     fetch(
       `${BASE}/ear-temizlik/${id}/sil`,
-      json({ confirmed: true, onayMetni: p.onayMetni, planJobId: p.planJobId }),
+      json({
+        confirmed: true,
+        onayMetni: p.onayMetni,
+        planJobId: p.planJobId,
+        ...(p.ocoNo ? { ocoNo: p.ocoNo } : {}),
+      }),
     ).then(safeJson),
   earTemizlikIptal: (id: number): Promise<EtKayitYanit> =>
     fetch(`${BASE}/ear-temizlik/${id}/iptal`, json({})).then(safeJson),
@@ -1643,12 +1653,15 @@ export const serverHubApi = {
   earTemizlikTopluSil: (p: {
     onayMetni: string;
     kayitlar: { id: number; planJobId: number }[];
+    /** Seçimde Production kayıt varsa zorunlu: tek OCO numarası hepsini kapsar. */
+    ocoNo?: string;
   }): Promise<EtTopluSilYanit> =>
     fetch(
       `${BASE}/ear-temizlik/toplu/sil`,
       json({
         confirmed: true,
         onayMetni: p.onayMetni,
+        ...(p.ocoNo ? { ocoNo: p.ocoNo } : {}),
         kayitlar: p.kayitlar.map((k) => ({ id: k.id, planJobId: k.planJobId })),
       }),
     ).then(safeJson),

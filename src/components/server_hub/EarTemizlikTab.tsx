@@ -285,6 +285,8 @@ function TeyitPenceresi({
   const k = iz.k;
   const [inceledim, setInceledim] = useState(false);
   const [yazilan, setYazilan] = useState('');
+  // Production / ortamı bilinmeyen sunucuda silme yalnız açık OCO penceresinde (2026-11-22): numara sunucuda denetlenir.
+  const [ocoNo, setOcoNo] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
   const kalan = kalanSaniye(iz, simdi);
@@ -293,9 +295,18 @@ function TeyitPenceresi({
   // Kullanıcı şartı: ls -ltr çıktısı görülmeden silinmez; boş çıktı teyit edilemez.
   const lsVar = !!k.plan && k.plan.ls.length > 0;
   const adTutar = yazilan === k.ad;
+  const ocoTamam = !k.prod || /^\d{1,20}$/.test(ocoNo.trim());
   // Süre bilinmiyorsa (kalanSn null) kapalı: sunucu da plan_bitis_at NULL iken silmeyi reddeder.
   const etkin =
-    hazir && lsVar && !engel && kalan != null && !doldu && inceledim && adTutar && !gonderiliyor;
+    hazir &&
+    lsVar &&
+    !engel &&
+    kalan != null &&
+    !doldu &&
+    inceledim &&
+    adTutar &&
+    ocoTamam &&
+    !gonderiliyor;
   const neden = !hazir
     ? 'Plan artık teyit beklemiyor'
     : !lsVar
@@ -310,7 +321,9 @@ function TeyitPenceresi({
               ? 'Önce çıktıyı incelediğinizi işaretleyin'
               : !adTutar
                 ? 'EAR adını birebir yazın'
-                : undefined;
+                : !ocoTamam
+                  ? 'Production silmesi için açık OCO numarasını yazın'
+                  : undefined;
 
   const sil = async () => {
     if (!etkin || k.planJobId == null) return;
@@ -320,6 +333,7 @@ function TeyitPenceresi({
       const r = await serverHubApi.earTemizlikSil(k.id, {
         onayMetni: yazilan,
         planJobId: k.planJobId,
+        ...(k.prod ? { ocoNo: ocoNo.trim() } : {}),
       });
       const yeni = kayitAl(r, 'Silme başlatılamadı.');
       if (r.sirada || siradaMi(yeni))
@@ -452,6 +466,24 @@ function TeyitPenceresi({
             aria-label="EAR adı"
           />
         </label>
+        {k.prod && (
+          <label className="block">
+            <span className="text-[12px]">
+              Production sunucusu: silme yalnız açık bir OCO değişiklik penceresinde yapılır. OCO
+              numarası:
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="input-modern mt-1 w-full font-mono"
+              value={ocoNo}
+              onChange={(e) => setOcoNo(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="OCO numarası"
+            />
+          </label>
+        )}
         {hata && (
           <p
             className="rounded-lg border px-3 py-2 text-[12px]"

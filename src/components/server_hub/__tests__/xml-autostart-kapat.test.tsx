@@ -279,6 +279,7 @@ describe('XU4 pencere', () => {
         gen: 8,
         jvms: ['yanlis1', 'yanlis2'],
         asama: 'plan',
+        prodOnay: false,
       }),
     );
     await waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
@@ -305,6 +306,7 @@ describe('XU4 pencere', () => {
         gen: 8,
         jvms: ['yanlis1', 'yanlis2'],
         asama: 'uygula',
+        prodOnay: true,
       }),
     );
     await waitFor(() => expect(addJob).toHaveBeenCalledTimes(2));
@@ -347,6 +349,7 @@ describe('XU4 pencere', () => {
         gen: 8,
         jvms: ['yanlis1'],
         asama: 'plan',
+        prodOnay: false,
       }),
     );
     await waitFor(() => expect(addJob).toHaveBeenCalledTimes(1));
