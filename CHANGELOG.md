@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (main kırmızı, 2026-11-23)
+- Nginx Hub SPA keşfi ekran testi (gidiş-dönüş) `main`'de kırmızıydı: PR'sız `bd14d224` / `c58f4b4d` sunucu satırına yalnız sunucu içi `routeDetay` alanını ekledi ve gövdeden sildi; test tam satırın her alanını ekranda bekliyordu. Sunucu içi alanlar artık tek sabitte (`YANIT_SUNUCU_ICI`); gövde kurulumu ve test oradan okur, test bu alanların gövdeye sızmadığını da sınar.
+
 ### Added
 - K17 kurum iç adı (`scripts/ic-ad-bekcisi.cjs`; commit öncesi, commit mesajı, push öncesi, CI tüm ağaç + aralıktaki mesajlar): kurum önekli sunucu adı ve kalıbı, `.com.tr` alan adı (kaçışlı biçim dahil), kurum adı (sözcük özetleri) ve bilinen kurum iç ağı adresi (ağ özetleri) repoya giremez; ad ya da ağ listesi repoda değil, bulunan değer yazdırılmaz (testi `server/__tests__/ic-ad-bekcisi.test.js`, mutasyonla sınandı).
 - Kurum ayarı `KURUM_AYAR_DOSYASI` (`server/util/kurum-ayari.cjs`, biçimi `deploy/kurum-ayari.ornek.json`): nginx filosu, göç grupları, API kümeleri, RVP, OCP kümeleri ve tohumu, Crypto Hub kiracı altyapısı, OpsX ve self servis kurum değerleri koddan çıktı. Dosya yok ya da bozuksa ilgili bölüm boş döner ve ekranda uyarı çıkar; örnek değere düşülmez.
