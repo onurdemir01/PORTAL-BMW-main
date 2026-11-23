@@ -150,6 +150,14 @@ test('IS2 Dynatrace bes durum aynen; sayi yalniz olculduyse', () => {
   assert.equal(out.dynatraceTarihi, '2026-10-18');
   assert.deepEqual(satir(out, 'var1').adresler, ['var1-kart-prod.apps.fw.sirket.invalid']);
   assert.equal(satir(out, 'var1').env, 'PROD');
+  // Paket kurulumunun /config secimi icin route ayrintisi kopyalanir (yoksa bos dizi).
+  assert.deepEqual(satir(out, 'var1').routeDetay, []);
+  const detay = [
+    { host: 'd.invalid', clusters: ['c1'], terms: ['reencrypt'], spa: true, paylasilan: false },
+  ];
+  const r2 = kur([A('det1', { routeDetay: detay })]);
+  assert.deepEqual(satir(r2, 'det1').routeDetay, detay);
+  assert.notEqual(satir(r2, 'det1').routeDetay[0], detay[0], 'kesif nesnesi paylasildi');
 });
 
 // Gercek kesif hesabi: route satiri (BMW_Spa_Discovery) + Dynatrace satiri (BMW_Application_Usage).

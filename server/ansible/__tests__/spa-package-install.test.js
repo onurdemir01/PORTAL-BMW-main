@@ -1,23 +1,24 @@
-// server/ansible/__tests__/spa-package-install.test.js - SPI1..SPI40 (2026-11-23).
+// server/ansible/__tests__/spa-package-install.test.js - SPI1..SPI22, SPI28..SPI34, SPI41..SPI48.
 //
-// Intranet SPA paket kurulumu (bmw_portal/spa_package_install): Artifactory'deki paketi ve OCP
-// ConfigMap'indeki application.json'u PROD intranet Nginx sunucusuna ILK KEZ kurar.
+// Intranet SPA paket kurulumu (bmw_portal/spa_package_install): Artifactory'deki paketi PROD intranet
+// Nginx sunucusuna ILK KEZ kurar; application.json uygulamanin OCP route'undaki /config'ten (pod'daki
+// nginx config.json = ConfigMap application.json sunar) Nginx sunucusunun kendisince cekilir.
+// 2026-11-23 kullanici karari "A": bastion / OCP okumasi YOK (ortak AWX envanteri yok); SPI23-27 ve
+// SPI35-40 (spa_package_ocp.sh / spa_package_merge.py) betiklerle birlikte kalkti.
 //
 // Kilitler:
 //   * Playbook: '#' yorum yok, '{{ }}' icinde kacisli tirnak yok, gorev adlari Ingilizce ASCII,
-//     set_stats son fail'den once, host play'i www + dzdo + ignore_unreachable, kimlik / ConfigMap
-//     gorevleri no_log, girdi kapisi (mod, 1..10 kalem, 1..8 sunucu, izinli sunucu alt kumesi,
-//     regex'ler, https paket koku), kurum degeri varsayilani YOK, erisilemeyen bastion tek hata.
-//   * spa_package_host.sh (GERCEK bash, sahte HYSUXSCRIPTS / curl / unzip): plan hicbir sey
-//     yazmaz, kurulu hedefin ya da var olan paket dizininin uzerine yazilmaz (SKIP), Content-Type
-//     ve yazilabilirlik denetimi, indirme / zip hatasinda yalniz betigin yazdiklari silinir,
-//     kurulumdan once hedef yeniden denetlenir, nginx_delete.sh yalniz hedef bu kosununsa cagrilir,
-//     mutlu yolda betik sirasi ve 7 arguman + job_no; her yolda tek ve son satir RESULT.
-//   * spa_package_ocp.sh (GERCEK bash, sahte oc): replikasi en buyuk workload, volume'lardan tek
-//     ConfigMap, 0 -> etiket yedegi, >1 -> ERR, Secret hic okunmaz, kosuya ozel gecici dizin
-//     silinir, gecersiz girdide oc hic cagrilmaz.
-//   * spa_package_merge.py (GERCEK python): imaj yolu / digest / etiket == surum / application.json
-//     nesne ve boyut kurallari (python yoksa KOSMADI diye atlanir).
+//     set_stats son fail'den once, YALNIZ localhost + spi_nginx play'leri (bastion / oc / kimlik
+//     dosyasi yok), host play'i www + dzdo + ignore_unreachable, kosu gorevi no_log, girdi kapisi
+//     (mod, 1..10 kalem, 1..8 sunucu, izinli sunucu alt kumesi, regex'ler, config_urls 1..3 tekil
+//     https://<host>/config), kurum degeri varsayilani YOK, sonucta 'ocp' alani yok.
+//   * spa_package_host.sh (GERCEK bash + GERCEK python JSON denetimi, sahte HYSUXSCRIPTS / curl /
+//     unzip): plan hicbir sey yazmaz, kurulu hedefin ya da var olan paket dizininin uzerine
+//     yazilmaz (SKIP), Content-Type ve yazilabilirlik denetimi, /config gecerli JSON nesnesi
+//     (HTML / dizi / bos / 404 / 1 MB ustu -> FAIL config; ilk adres duserse sonraki), apply'da
+//     yazilan application.json /config icerigiyle birebir, indirme / zip hatasinda yalniz betigin
+//     yazdiklari silinir, nginx_delete.sh yalniz hedef bu kosununsa cagrilir, mutlu yolda betik
+//     sirasi ve 7 arguman + job_no; her yolda tek ve son satir RESULT; adres mesaja yazilmaz.
 'use strict';
 
 const { test } = require('node:test');
@@ -27,22 +28,39 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BASH, BASH_SURUM, posixYol } = require('./fixtures/kabuk.cjs');
-const { adaylar } = require('./fixtures/python-bul.cjs');
+const { adaylar, pythonBul } = require('./fixtures/python-bul.cjs');
 
 const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'spa_package_install');
 const PLAYBOOK = path.join(DIR, 'spa_package_install.yml');
 const HOST_SH = path.join(DIR, 'files', 'spa_package_host.sh');
-const OCP_SH = path.join(DIR, 'files', 'spa_package_ocp.sh');
-const MERGE_PY = path.join(DIR, 'files', 'spa_package_merge.py');
 const PB = fs.readFileSync(PLAYBOOK, 'utf8');
 
 const TIMEOUT_VAR =
-  spawnSync(BASH, ['-c', 'timeout 1 true && base64 --version >/dev/null && echo ok'], {
+  spawnSync(BASH, ['-c', 'timeout 1 true && mktemp --version >/dev/null && echo ok'], {
     encoding: 'utf8',
   }).stdout === 'ok\n';
+
+/** Betigin JSON denetimi icin gercek python (Git Bash'ten gorunen); yoksa davranis testleri KOSMAZ. */
+function pythonuBul() {
+  for (const [komut, on] of adaylar()) {
+    if (on.length) continue;
+    const r = spawnSync(
+      BASH,
+      ['-c', '"$1" -E -s -c "import json" && command -v -- "$1"', '_', komut],
+      {
+        encoding: 'utf8',
+      },
+    );
+    if (r.status === 0 && r.stdout.trim()) return r.stdout.trim();
+  }
+  return null;
+}
+const PY = TIMEOUT_VAR && BASH_SURUM >= 4 ? pythonuBul() : null;
 const SKIP = (() => {
-  if (TIMEOUT_VAR && BASH_SURUM >= 4) return false;
-  return 'bash 4+ / timeout / base64 bulunamadi (Git Bash gerekir) - SPA paket betik davranis bekcileri KOSMADI';
+  if (!(TIMEOUT_VAR && BASH_SURUM >= 4))
+    return 'bash 4+ / timeout / mktemp bulunamadi (Git Bash gerekir) - SPA paket betik davranis bekcileri KOSMADI';
+  if (!PY) return 'python bulunamadi - SPA paket betik davranis bekcileri KOSMADI';
+  return false;
 })();
 
 const NS = 'musteri-gelir-prod';
@@ -50,8 +68,8 @@ const APP = 'gelir-app-v0';
 const VER = '0.8.0-68-prod';
 const JOB = '424242';
 const URL = `https://repo.invalid/artifactory/ark-binaries/${NS}/${APP}/${VER}.zip`;
-const APPJSON = '{"apiUrl":"https://api.invalid","flag":true}';
-const B64 = Buffer.from(APPJSON).toString('base64');
+const APPJSON = '{\n  "apiUrl": "https://api.invalid",\n  "flag": true\n}\n';
+const CFG = (n) => `https://cfg${n}.invalid/config`;
 
 // -- Playbook metni -------------------------------------------------------------------------------
 
@@ -104,31 +122,32 @@ test('SPI4 playbook: Nginx play www + dzdo, ignore_unreachable; erisilemeyen hos
   assert.match(nginx, /\n {2}become_user: www\n/);
   assert.match(nginx, /\n {2}become_method: dzdo\n/);
   assert.match(nginx, /unreachable/);
-  const bastion = plays().find((p) => /hosts: spi_terminal/.test(p));
-  assert.match(bastion, /\n {2}ignore_unreachable: true\n/);
-  assert.match(bastion, /\n {2}become: false\n/);
   const son = plays().at(-1);
   assert.match(son, /clear_host_errors/);
   assert.match(son, /step: unreachable/);
 });
 
-test('SPI5 playbook: kimlik ve ConfigMap iceren gorevler no_log', () => {
-  const zorunlu = [
-    'Cluster connection details',
-    'Read image and application.json per item',
-    'Bastion results',
-    'Merge input per item',
-    'Merge OCP results',
-    'Merged items',
-    'Final item state',
-    'Run the host script per item',
-  ];
-  for (const ad of zorunlu) assert.match(gorev(ad), /\n\s+no_log: true/, `no_log eksik: ${ad}`);
-  for (const blok of PB.split(/\n\s*- name: /)) {
-    if (/resolved_password:|OCP_PASS:|appjson_b64|spi_appjson\[/.test(blok)) {
-      assert.match(blok, /no_log: true/, `no_log eksik: ${blok.slice(0, 60)}`);
-    }
-  }
+test('SPI5 playbook: bastionsuz - yalniz localhost ve spi_nginx; OCP / kimlik dosyasi yok; ocp alani yok', () => {
+  const hedefler = plays().map((p) => /\n {2}hosts: (\S+)/.exec(p)?.[1]);
+  assert.deepEqual(hedefler, ['localhost', 'spi_nginx', 'localhost']);
+  for (const yasak of [
+    /terminal_hosts/,
+    /ocp_clusters/,
+    /spi_terminal/,
+    /credentials\.yaml/,
+    /bmw_openshift_jobs/,
+    /\boc_bin/,
+    /spa_package_ocp/,
+    /spa_package_merge/,
+    /'ocp':/,
+    /step: ocp/,
+    /appjson/i,
+  ])
+    assert.ok(!yasak.test(PB), `playbookta OCP / bastion izi: ${yasak}`);
+  assert.match(gorev('Run the host script per item'), /\n\s+no_log: true/);
+  const sonuc = gorev('Result per item');
+  assert.match(sonuc, /'version': item\.version,\n\s+'hosts':/, 'sonuc kalemi bicimi');
+  assert.ok(!/'cluster'/.test(sonuc), 'sonuc kalemi cluster tasiyor');
 });
 
 test('SPI6 playbook: girdi kapisi assert kurallari', () => {
@@ -147,9 +166,65 @@ test('SPI6 playbook: girdi kapisi assert kurallari', () => {
     "spi_host_re: '^[A-Z0-9-]{3,32}$'",
     "is match('^[0-9]{1,18}$')",
     "item.id == (item.namespace ~ '/' ~ item.application)",
+    "spi_config_url_re: '^https://([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}/config$'",
+    'item.namespace == (item.namespace | trim)',
+    'item.application == (item.application | trim)',
+    'item.version == (item.version | trim)',
+    "(item.config_urls | map('trim') | list) == item.config_urls",
+    "(item.config_urls | map('length') | max) <= 268",
+    'item.config_urls | length >= 1',
+    'item.config_urls | length <= 3',
+    "(item.config_urls | select('string') | select('match', spi_config_url_re) | list | length) == (item.config_urls | length)",
+    '(item.config_urls | unique | length) == (item.config_urls | length)',
   ];
   for (const b of beklenen) assert.ok(kapi.includes(b), `girdi kapisinda yok: ${b}`);
   assert.match(kapi, /ansible\.builtin\.assert[\s\S]*add_host/, 'add_host kapidan once');
+});
+
+test('SPI41 config_urls deseni: Portal adresi gecer, port / yol / http / kullanici / IP / localhost gecmez; uc yerde ayni', () => {
+  // Desen JS ile sinanir (anchor'lar disinda JS ve Python re burada ayni davranir); Python '$'in
+  // sondaki satir sonunu kabul etmesi SPI48'de gercek Python re + Jinja ile sinanir.
+  const desen = /spi_config_url_re: '([^']+)'/.exec(PB)?.[1];
+  assert.ok(desen, 'spi_config_url_re yok');
+  const re = new RegExp(desen);
+  for (const iyi of [CFG(1), 'https://a-b.c.invalid/config', 'https://x1.apps.c-2.invalid/config'])
+    assert.ok(re.test(iyi), `reddedildi: ${iyi}`);
+  for (const kotu of [
+    'http://cfg1.invalid/config',
+    'https://cfg1.invalid/config/',
+    'https://cfg1.invalid:8443/config',
+    'https://cfg1.invalid/config?x=1',
+    'https://user@cfg1.invalid/config',
+    'https://cfg 1.invalid/config',
+    'https://cfg1.invalid/ready',
+    'https://169.254.169.254/config',
+    'https://127.0.0.1/config',
+    'https://localhost/config',
+    'https://intranetapp/config',
+    'https://a.b.123/config',
+    'https://cfg1.invalid./config',
+  ])
+    assert.ok(!re.test(kotu), `kabul edildi: ${kotu}`);
+  // Ayni desen Portal'da (host) ve betikte (url): biri gevserse digerleri onu yakalamaz.
+  const portal = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'spa-report', 'paket-kurulum.cjs'),
+    'utf8',
+  );
+  const portalHost = /const ROUTE_HOST_RE = \/\^(.+)\$\/;/.exec(portal)?.[1];
+  assert.equal(
+    `^https://${portalHost}/config$`,
+    desen,
+    'Portal ROUTE_HOST_RE playbook deseninden farkli',
+  );
+  const betikDesen = /^CFG_URL_RE='([^']+)'$/m.exec(fs.readFileSync(HOST_SH, 'utf8'))?.[1];
+  assert.equal(`^${betikDesen}$`, desen, 'betik CFG_URL_RE playbook deseninden farkli');
+  const kos = gorev('Run the host script per item');
+  assert.match(kos, /SPI_CONFIG_URLS: "\{\{ item\.config_urls \| join\(' '\) \}\}"/);
+  assert.match(
+    kos,
+    /SPI_PYTHON: "\{\{ ansible_facts\['discovered_interpreter_python'\] \| default\('', true\) \}\}"/,
+  );
+  assert.match(gorev('Jobs per nginx host'), /'config_urls': item\.0\.config_urls/);
 });
 
 test('SPI7 playbook: kurum degerinin varsayilani yok, sabit adres / sunucu yok', () => {
@@ -161,32 +236,26 @@ test('SPI7 playbook: kurum degerinin varsayilani yok, sabit adres / sunucu yok',
   assert.ok(!/\b\d{1,3}(\.\d{1,3}){3}\b/.test(PB), 'playbookta IP');
 });
 
-test('SPI8 playbook: gecici dosya, sha1 dogrulama, timeout -k, kubeconfig deseni', () => {
-  assert.match(PB, /prefix: \.spa_package_ocp\./);
+test('SPI8 playbook: gecici betik, sha1 dogrulama, timeout -k, temizlik', () => {
   assert.match(PB, /prefix: \.spa_package_host\./);
-  assert.equal((PB.match(/checksum_algorithm: sha1/g) || []).length, 3);
-  assert.match(PB, /timeout -k 10 300 bash/);
+  assert.equal((PB.match(/checksum_algorithm: sha1/g) || []).length, 2);
   assert.match(PB, /timeout -k 10 \{\{ spi_run_timeout \}\} bash/);
-  assert.match(PB, /SPI_RUN_PREFIX: "\/tmp\/spa-pkg-\{\{ spi_job \}\}-\{\{ spi_idx \}\}"/);
-  assert.ok(!/KUBECONFIG/.test(PB), 'playbook kubeconfig yolunu kendisi veriyor');
-  assert.equal((PB.match(/patterns: "spa-pkg-\{\{ spi_job \}\}-\*"/g) || []).length, 2);
-  assert.match(gorev('Remove run directories'), /state: absent/);
-  assert.match(gorev('Host fails when temporary files remain'), /spi_run_dirs_after\.matched/);
   assert.match(gorev('Remove the script'), /state: absent/);
-  assert.match(PB, /Host fails when temporary files remain/);
   assert.match(PB, /Host fails when the script remains/);
   assert.match(
-    PB,
-    /- \.\.\/\.\.\/bmw_openshift_jobs\/global_variables\/credentials\.yaml/,
-    'kimlik dosyasi derinlik 1 ile aranmiyor',
+    gorev('Run the host script per item'),
+    /== \(hostvars\['localhost'\]\.spi_host_src_sha1 \| default\('x'\)\)/,
   );
 });
 
-test('SPI9 playbook: application.json stdin ile gider (ortam degiskeni degil)', () => {
+test('SPI9 playbook: betige stdin gitmez; job numarasi ve TLS bayragi', () => {
   const kos = gorev('Run the host script per item');
-  assert.match(kos, /stdin: "\{\{ hostvars\['localhost'\]\.spi_appjson\[item\.id\]/);
-  assert.ok(!/APPJSON/.test(kos), 'application.json ortam degiskeniyle gidiyor');
+  assert.ok(!/\bstdin:/.test(kos), 'betige stdin gidiyor (application.json artik /configten)');
   assert.match(kos, /SPI_JOB_NO: "\{\{ hostvars\['localhost'\]\.spi_job_no \}\}"/);
+  assert.match(
+    kos,
+    /SPI_INSECURE: "\{\{ '0' if \(hostvars\['localhost'\]\.spi_validate_certs \| default\(true\) \| bool\) else '1' \}\}"/,
+  );
 });
 
 // -- spa_package_host.sh --------------------------------------------------------------------------
@@ -211,19 +280,41 @@ const SAHTE_NGINX = [
   '',
 ].join('\n');
 
+// /config adresleri https://cfg<n>.invalid/config: cevap FAKE_CFG<n>_RC (curl cikis kodu),
+// FAKE_CFG<n>_CODE (HTTP, varsayilan 200) ve FAKE_CFG<n>_BODY (govde dosyasi; varsayilan
+// FAKE_CFG_BODY) ile verilir.
 const SAHTE_CURL = [
   '#!/bin/bash',
   'echo "curl $*" >> "$CALLS"',
-  'out=""; head=0; w=""',
+  'out=""; head=0; w=""; url=""; resolve=0; hdr=""',
   'while [ $# -gt 0 ]; do',
   '  case "$1" in',
   '    -sSI) head=1 ;;',
   '    -o) out="$2"; shift ;;',
   '    -w) w="$2"; shift ;;',
-  '    --max-time|--max-redirs|--proto|--proto-redir|--max-filesize|--resolve) shift ;;',
+  '    -D) hdr="$2"; shift ;;',
+  '    --resolve) resolve=1; shift ;;',
+  '    --max-time|--max-redirs|--proto|--proto-redir|--max-filesize) shift ;;',
+  '    https://*) url="$1" ;;',
   '  esac',
   '  shift',
   'done',
+  // /config: basliklar -D dosyasina, govde -o hedefine ("-" = stdout). FAKE_CFG<n>_STREAM=1:
+  // Content-Length'siz akan govde (64 KB parcalar, en cok 1000); yazilan parca sayisi $CALLS.stream'e.
+  'if [ $resolve = 0 ] && [[ "$url" =~ ^https://cfg([0-9])\\.invalid/config$ ]]; then',
+  '  n=${BASH_REMATCH[1]}',
+  '  rcv="FAKE_CFG${n}_RC"; codev="FAKE_CFG${n}_CODE"; bodyv="FAKE_CFG${n}_BODY"; strv="FAKE_CFG${n}_STREAM"',
+  '  [ "${!rcv:-0}" = 0 ] || exit "${!rcv}"',
+  '  [ -n "$hdr" ] && printf \'HTTP/1.1 %s X\\r\\n\\r\\n\' "${!codev:-200}" > "$hdr"',
+  '  [ "$out" = - ] || exec > "$out"',
+  '  if [ "${!strv:-0}" = 1 ]; then',
+  "    parca=$(printf '%065536d' 0); i=0",
+  '    while [ $i -lt 1000 ]; do printf \'%s\' "$parca" || exit 23; i=$((i+1)); echo $i > "$CALLS.stream"; done',
+  '    exit 0',
+  '  fi',
+  '  cat "${!bodyv:-$FAKE_CFG_BODY}" || exit 23',
+  '  exit 0',
+  'fi',
   'if [ $head = 1 ]; then',
   '  [ "${FAKE_HEAD_RC:-0}" = 0 ] || exit "$FAKE_HEAD_RC"',
   '  printf \'HTTP/1.1 %s X\\r\\nContent-Length: %s\\r\\n\' "${FAKE_HEAD_CODE:-200}" "${FAKE_CL:-2048}"',
@@ -278,21 +369,31 @@ function sahteSunucu(eksik = []) {
     calls: path.join(kok, 'calls.txt'),
     curl: path.join(kok, 'bin', 'curl'),
     unzip: path.join(kok, 'bin', 'unzip'),
+    tmp: path.join(kok, 'tmp'),
+    govde: path.join(kok, 'govde'),
   };
   for (const b of BETIKLER)
     if (!eksik.includes(b)) yaz(path.join(d.scripts, `nginx_${b}.sh`), SAHTE_NGINX);
-  for (const x of [d.hys, d.apps, d.conf]) fs.mkdirSync(x, { recursive: true });
+  for (const x of [d.hys, d.apps, d.conf, d.tmp, d.govde]) fs.mkdirSync(x, { recursive: true });
   yaz(d.curl, SAHTE_CURL);
   yaz(d.unzip, SAHTE_UNZIP);
   fs.writeFileSync(d.calls, '');
+  fs.writeFileSync(path.join(d.govde, 'gecerli.json'), APPJSON);
   return d;
 }
 
+/** /config govdesi olarak kullanilacak dosyayi yazar; betige verilecek (posix) yolu dondurur. */
+function govde(d, ad, icerik) {
+  const f = path.join(d.govde, ad);
+  fs.writeFileSync(f, icerik);
+  return posixYol(f);
+}
+
 /** Betigi kosturur; RESULT satirini ve cagrilari dondurur. */
-function hostKos(d, env = {}, stdin = B64) {
+function hostKos(d, env = {}) {
   const r = spawnSync(BASH, [posixYol(HOST_SH)], {
     encoding: 'utf8',
-    input: stdin,
+    input: '',
     env: {
       ...process.env,
       SPI_MODE: 'apply',
@@ -301,6 +402,10 @@ function hostKos(d, env = {}, stdin = B64) {
       SPI_VERSION: VER,
       SPI_JOB_NO: JOB,
       SPI_ZIP_URL: URL,
+      SPI_CONFIG_URLS: CFG(1),
+      SPI_PYTHON: PY || '',
+      FAKE_CFG_BODY: posixYol(path.join(d.govde, 'gecerli.json')),
+      TMPDIR: posixYol(d.tmp),
       SPI_SCRIPTS_DIR: posixYol(d.scripts),
       SPI_HYS_ROOT: posixYol(d.hys),
       SPI_APP_ROOT: posixYol(d.apps),
@@ -316,6 +421,13 @@ function hostKos(d, env = {}, stdin = B64) {
   assert.equal(sonuclar.length, 1, `tek RESULT satiri olmali:\n${r.stdout}\n${r.stderr}`);
   assert.equal(satirlar.at(-1), sonuclar[0], `RESULT son satir degil:\n${r.stdout}`);
   const [, status, step, ...msg] = sonuclar[0].split('\t');
+  assert.deepEqual(
+    fs.readdirSync(d.tmp).filter((f) => f.startsWith('.spa_package_cfg')),
+    [],
+    'kosuya ozel /config gecici dizini silinmedi',
+  );
+  assert.ok(!r.stdout.includes('api.invalid'), `/config icerigi ciktiya yazildi:\n${r.stdout}`);
+  assert.ok(!/cfg\d\.invalid/.test(r.stdout), `/config adresi ciktiya yazildi:\n${r.stdout}`);
   const calls = fs.readFileSync(d.calls, 'utf8').trim().split('\n').filter(Boolean);
   return { r, status, step, message: msg.join('\t'), calls };
 }
@@ -339,15 +451,20 @@ test(
   { skip: SKIP },
   () =>
     sahteIle([], (d) => {
-      const s = hostKos(d, { SPI_MODE: 'plan' }, '');
+      const s = hostKos(d, { SPI_MODE: 'plan' });
       assert.equal(s.status, 'PLAN_OK', s.r.stdout);
       assert.equal(s.step, 'check');
       assert.equal(s.r.status, 0);
       assert.equal(fs.existsSync(hysDir(d)), false, 'plan /hysdeploy dizini acti');
       assert.deepEqual(nginxCagrilari(s.calls), []);
       const curl = curlCagrilari(s.calls);
-      assert.equal(curl.length, 1);
+      assert.equal(curl.length, 2);
       assert.match(curl[0], /-sSI/);
+      assert.match(curl[1], /--proto =https --proto-redir =https/);
+      assert.match(curl[1], /--max-filesize 1048576 /);
+      assert.match(curl[1], /--max-time 30 /);
+      assert.ok(curl[1].endsWith(` ${CFG(1)}`), curl[1]);
+      assert.match(s.message, /application\.json 1\. config adresinden alindi/);
       assert.ok(!curl[0].includes(' -k '), 'varsayilan TLS dogrulamasi kapali');
       assert.ok(!s.message.includes('repo.invalid'), 'mesajda paket adresi');
     }),
@@ -540,7 +657,7 @@ test('SPI33 host plan: Content-Type ZIP degilse FAIL check', { skip: SKIP }, () 
   ];
   for (const [ct, beklenen] of durumlar) {
     sahteIle([], (d) => {
-      const s = hostKos(d, { SPI_MODE: 'plan', FAKE_CT: ct }, '');
+      const s = hostKos(d, { SPI_MODE: 'plan', FAKE_CT: ct });
       assert.equal(s.status, beklenen, `${ct}: ${s.r.stdout}`);
       if (beklenen === 'FAIL') {
         assert.equal(s.step, 'check');
@@ -552,7 +669,7 @@ test('SPI33 host plan: Content-Type ZIP degilse FAIL check', { skip: SKIP }, () 
 
 test('SPI34 host plan: /hysdeploy yazilabilir degilse FAIL check', { skip: SKIP }, () => {
   sahteIle([], (d) => {
-    const s = hostKos(d, { SPI_MODE: 'plan', SPI_HYS_ROOT: posixYol(path.join(d.kok, 'yok')) }, '');
+    const s = hostKos(d, { SPI_MODE: 'plan', SPI_HYS_ROOT: posixYol(path.join(d.kok, 'yok')) });
     assert.equal(s.status, 'FAIL', s.r.stdout);
     assert.match(s.message, /yazilabilir degil/);
     assert.deepEqual(curlCagrilari(s.calls), []);
@@ -563,7 +680,7 @@ test('SPI34 host plan: /hysdeploy yazilabilir degilse FAIL check', { skip: SKIP 
     fs.mkdirSync(nsDir(d), { recursive: true });
     fs.chmodSync(nsDir(d), 0o555);
     try {
-      const s = hostKos(d, { SPI_MODE: 'plan' }, '');
+      const s = hostKos(d, { SPI_MODE: 'plan' });
       assert.equal(s.status, 'FAIL', s.r.stdout);
       assert.match(s.message, new RegExp(`${NS} yazilabilir degil`));
     } finally {
@@ -666,7 +783,7 @@ test('SPI19 host: /ready 200 degilse FAIL verify ve geri alma', { skip: SKIP }, 
 );
 
 test(
-  'SPI20 host: gecersiz girdi FAIL check, paket adresine ve betiklere gidilmez',
+  'SPI20 host: gecersiz girdi (config adresleri dahil) FAIL check, hicbir adrese ve betiklere gidilmez',
   { skip: SKIP },
   () => {
     const durumlar = [
@@ -678,6 +795,24 @@ test(
       { SPI_ZIP_URL: URL.replace('https://', 'http://') },
       { SPI_ZIP_URL: URL.replace(`${VER}.zip`, 'baska.zip') },
       { SPI_MAX_ZIP_MB: '0' },
+      { SPI_CONFIG_URLS: '' },
+      { SPI_CONFIG_URLS: 'http://cfg1.invalid/config' },
+      { SPI_CONFIG_URLS: 'https://cfg1.invalid/ready' },
+      { SPI_CONFIG_URLS: 'https://cfg1.invalid:8443/config' },
+      { SPI_CONFIG_URLS: 'https://u@cfg1.invalid/config' },
+      { SPI_CONFIG_URLS: `${CFG(1)} ${CFG(1)}` },
+      { SPI_CONFIG_URLS: [1, 2, 3, 4].map(CFG).join(' ') },
+      // Satir sonu: read -a yalniz ilk satiri okurdu, ikinci adres sessizce duserdi.
+      { SPI_CONFIG_URLS: `${CFG(1)}\n${CFG(2)}` },
+      { SPI_CONFIG_URLS: `${CFG(1)}\n` },
+      { SPI_CONFIG_URLS: `${CFG(1)}  ${CFG(2)}` },
+      { SPI_CONFIG_URLS: ` ${CFG(1)}` },
+      { SPI_CONFIG_URLS: 'https://169.254.169.254/config' },
+      { SPI_CONFIG_URLS: 'https://127.0.0.1/config' },
+      { SPI_CONFIG_URLS: 'https://localhost/config' },
+      {
+        SPI_CONFIG_URLS: `https://${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.invalid/config`,
+      },
     ];
     for (const env of durumlar) {
       sahteIle([], (d) => {
@@ -693,572 +828,343 @@ test(
 
 test('SPI21 host: eksik betik, HEAD 404 ve boyut siniri FAIL check', { skip: SKIP }, () => {
   sahteIle(['reload'], (d) => {
-    const s = hostKos(d, { SPI_MODE: 'plan' }, '');
+    const s = hostKos(d, { SPI_MODE: 'plan' });
     assert.match(s.message, /eksik deployment betigi.*nginx_reload\.sh/);
   });
   sahteIle([], (d) => {
-    const s = hostKos(d, { SPI_MODE: 'plan', FAKE_HEAD_CODE: '404' }, '');
+    const s = hostKos(d, { SPI_MODE: 'plan', FAKE_HEAD_CODE: '404' });
     assert.equal(s.status, 'FAIL');
     assert.match(s.message, /HTTP 404/);
   });
   sahteIle([], (d) => {
-    const s = hostKos(d, { SPI_MODE: 'plan', SPI_MAX_ZIP_MB: '1', FAKE_CL: '2097152' }, '');
+    const s = hostKos(d, { SPI_MODE: 'plan', SPI_MAX_ZIP_MB: '1', FAKE_CL: '2097152' });
     assert.equal(s.status, 'FAIL');
     assert.match(s.message, /cok buyuk/);
   });
   sahteIle([], (d) => {
-    const s = hostKos(d, { SPI_MODE: 'plan', SPI_INSECURE: '1' }, '');
+    const s = hostKos(d, { SPI_MODE: 'plan', SPI_INSECURE: '1' });
     assert.equal(s.status, 'PLAN_OK');
     assert.match(curlCagrilari(s.calls)[0], / -k /);
   });
 });
 
-test('SPI22 host: bos application.json FAIL write, indirilen paket silinir', { skip: SKIP }, () =>
-  sahteIle([], (d) => {
-    const s = hostKos(d, {}, '');
-    assert.equal(s.step, 'write');
-    assert.equal(fs.existsSync(hysDir(d)), false);
-    assert.deepEqual(nginxCagrilari(s.calls), []);
-  }),
-);
+// -- /config (application.json kaynagi) ----------------------------------------------------------
 
-// -- spa_package_ocp.sh ---------------------------------------------------------------------------
-
-const T = '\t';
-
-/**
- * Sahte oc. Workload ciktisi wl.txt'ten, ConfigMap'ler cm/<ad> (application.json anahtari VAR) ya
- * da nokey/<ad> (anahtar YOK) dosyalarindan, etiket listesi label.txt'ten.
- */
-function sahteOc(kur) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-pkg-oc-'));
-  fs.mkdirSync(path.join(dir, 'cm'));
-  fs.mkdirSync(path.join(dir, 'nokey'));
-  fs.writeFileSync(path.join(dir, 'calls.txt'), '');
-  kur(dir);
-  const D = posixYol(dir);
-  const oc = path.join(dir, 'oc');
-  yaz(
-    oc,
-    [
-      '#!/bin/bash',
-      `D="${D}"`,
-      "printf '%s\\n' \"$(printf '%s' \"$*\" | tr '\\n' ' ')\" >> \"$D/calls.txt\"",
-      'ad=$3',
-      'case "$1 $2" in',
-      '  "login "*) : > "$KUBECONFIG" || exit 8; printf \'%s\\n\' "$KUBECONFIG" > "$D/kc.txt"; exit 0 ;;',
-      '  "get deployment") [ "$ad" = "${WL_NAME:-$APP}" ] && [ -f "$D/wl.txt" ] && cat "$D/wl.txt"; exit 0 ;;',
-      '  "get deploymentconfig") echo "error: the server doesn\'t have a resource type deploymentconfig" >&2; exit 1 ;;',
-      '  "get statefulset"|"get rollouts.argoproj.io") [ -f "$D/$2.txt" ] && cat "$D/$2.txt"; exit 0 ;;',
-      '  "get configmap")',
-      '    case "$*" in',
-      '      *" -l "*) [ -f "$D/label.txt" ] && cat "$D/label.txt"; exit 0 ;;',
-      '      *"Y{{end}}"*) [ -f "$D/cm/$ad" ] && printf Y; exit 0 ;;',
-      '      *) cat "$D/cm/$ad"; exit $? ;;',
-      '    esac ;;',
-      'esac',
-      'echo "beklenmeyen: $*" >&2',
-      'exit 9',
-      '',
-    ].join('\n'),
-  );
-  return { dir, oc };
-}
-
-function wl(dir, satirlar) {
-  fs.writeFileSync(path.join(dir, 'wl.txt'), satirlar.map((s) => s.join(T)).join('\n') + '\n');
-}
-
-/** Onekle baslayan kalinti dizinlerin sayisi (betigin gordugu /tmp, Git Bash'te de). */
-function kalinti(onek) {
-  const r = spawnSync(BASH, ['-c', 'shopt -s nullglob; a=("$1".*); echo ${#a[@]}', '_', onek], {
-    encoding: 'utf8',
-  });
-  return Number(r.stdout.trim());
-}
-
-function ocKos(kur, env = {}) {
-  const { dir, oc } = sahteOc(kur);
-  const onek = `/tmp/spa-pkg-test-${process.pid}-${Math.random().toString(16).slice(2)}`;
-  try {
-    const r = spawnSync(BASH, [posixYol(OCP_SH)], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        OC_BIN: posixYol(oc),
-        OCP_URL: 'https://api.invalid:6443',
-        OCP_USER: 'u',
-        OCP_PASS: 'gizliparola',
-        NS,
-        APP,
-        KUBECONFIG: '/tmp/disaridan-gelen.kubeconfig',
-        SPI_RUN_PREFIX: onek,
-        ...env,
-      },
-    });
-    const calls = fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8').trim();
-    const kcDosya = path.join(dir, 'kc.txt');
-    const kc = fs.existsSync(kcDosya) ? fs.readFileSync(kcDosya, 'utf8').trim() : null;
-    const satir = r.stdout.split('\n').filter(Boolean);
-    return {
-      r,
-      calls,
-      kc,
-      onek,
-      kalan: kalinti(onek),
-      satir,
-      cm: satir.filter((l) => l.startsWith('CM\t')),
-      err: satir.filter((l) => l.startsWith('ERR\t')),
-    };
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-function salt(calls) {
-  const lines = calls.split('\n').filter(Boolean);
-  assert.deepEqual(
-    [...new Set(lines.map((l) => l.split(' ')[0]))].sort(),
-    ['get', 'login'],
-    `salt okunur degil: ${calls}`,
-  );
-  assert.ok(!/secret/i.test(calls), `Secret okundu: ${calls}`);
-}
-
-const ORNEK_WL = [
-  ['KIND', 'Deployment'],
-  ['IMG', 'app', `registry.invalid/${NS}/${APP}:${VER}`],
-  ['IMG', 'sidecar', 'registry.invalid/ortak/proxy:1.2'],
-  ['VOL', `${APP}-j-app-config-6v`],
-  ['VOL', 'ortak-ayar'],
-];
+const ONE_MB = 1048576;
 
 test(
-  'SPI23 ocp: volume icinden application.json anahtarli tek ConfigMap secilir',
+  'SPI22 host: /config bos yanit FAIL config; plan ve apply hicbir sey yazmaz, paket indirilmez',
   { skip: SKIP },
   () => {
-    const o = ocKos((dir) => {
-      wl(dir, ORNEK_WL);
-      fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-      fs.writeFileSync(path.join(dir, 'nokey', 'ortak-ayar'), 'x');
-    });
-    assert.equal(o.r.status, 0, o.r.stderr);
-    assert.deepEqual(o.err, [], o.r.stdout);
-    assert.deepEqual(o.cm, [`CM${T}${APP}-j-app-config-6v${T}${B64}`]);
-    assert.ok(o.satir.includes(`IMG${T}app${T}registry.invalid/${NS}/${APP}:${VER}`));
-    assert.equal(o.satir.at(-1), 'END');
-    assert.ok(!o.r.stdout.includes('gizliparola'));
-    assert.ok(!/ -l /.test(o.calls), 'volume yeterliyken etiket yedegine gidildi');
-    salt(o.calls);
-    assert.ok(
-      o.kc && o.kc.startsWith(`${o.onek}.`) && o.kc.endsWith('/kubeconfig'),
-      `kubeconfig kosuya ozel dizinde degil: ${o.kc}`,
-    );
-    assert.equal(o.kalan, 0, 'kosuya ozel gecici dizin silinmedi');
-  },
-);
-
-test(
-  'SPI35 ocp: ayni adli tum workload turleri okunur, spec.replicas en buyuk olan secilir',
-  { skip: SKIP },
-  () => {
-    const o = ocKos((dir) => {
-      wl(dir, [
-        ['KIND', 'Deployment'],
-        ['REPL', '0'],
-        ['IMG', 'app', `registry.invalid/${NS}/${APP}:0.0.1-eski`],
-        ['VOL', 'eski-cm'],
-      ]);
-      fs.writeFileSync(
-        path.join(dir, 'rollouts.argoproj.io.txt'),
-        [
-          ['KIND', 'Rollout'],
-          ['REPL', '3'],
-          ['IMG', 'app', `registry.invalid/${NS}/${APP}:${VER}`],
-          ['VOL', `${APP}-j-app-config-6v`],
-        ]
-          .map((s) => s.join(T))
-          .join('\n') + '\n',
-      );
-      fs.writeFileSync(path.join(dir, 'cm', 'eski-cm'), '{"eski":true}');
-      fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-    });
-    assert.deepEqual(o.err, [], o.r.stdout);
-    const img = o.satir.filter((l) => l.startsWith('IMG\t'));
-    assert.deepEqual(img, [`IMG${T}app${T}registry.invalid/${NS}/${APP}:${VER}`]);
-    assert.deepEqual(o.cm, [`CM${T}${APP}-j-app-config-6v${T}${B64}`]);
-    for (const tur of ['deployment', 'deploymentconfig', 'statefulset', 'rollouts.argoproj.io'])
-      assert.match(
-        o.calls,
-        new RegExp(`get ${tur.replace('.', '\\.')} ${APP} `),
-        `${tur} okunmadi`,
-      );
-
-    const esit = ocKos((dir) => {
-      wl(dir, [
-        ['KIND', 'Deployment'],
-        ['REPL', '2'],
-        ['IMG', 'app', `registry.invalid/${NS}/${APP}:${VER}`],
-        ['VOL', `${APP}-j-app-config-6v`],
-      ]);
-      fs.writeFileSync(
-        path.join(dir, 'statefulset.txt'),
-        `KIND${T}StatefulSet\nREPL${T}2\nIMG${T}app${T}registry.invalid/${NS}/${APP}:baska\n`,
-      );
-      fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-    });
-    assert.deepEqual(
-      esit.satir.filter((l) => l.startsWith('IMG\t')),
-      [`IMG${T}app${T}registry.invalid/${NS}/${APP}:${VER}`],
-      'esitlikte ilk bulunan secilmedi',
-    );
-  },
-);
-
-test('SPI24 ocp: volume yoksa etiket yedegi; >1 aday ERR; workload yok ERR', { skip: SKIP }, () => {
-  const yedek = ocKos((dir) => {
-    wl(dir, ORNEK_WL.slice(0, 3));
-    fs.writeFileSync(path.join(dir, 'label.txt'), `CAND${T}${APP}-cfg\n`);
-    fs.writeFileSync(path.join(dir, 'cm', `${APP}-cfg`), APPJSON);
-  });
-  assert.deepEqual(yedek.cm, [`CM${T}${APP}-cfg${T}${B64}`], yedek.r.stdout);
-  assert.match(yedek.calls, new RegExp(`-l app=${APP}`));
-  salt(yedek.calls);
-
-  const iki = ocKos((dir) => {
-    wl(dir, ORNEK_WL);
-    fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-    fs.writeFileSync(path.join(dir, 'cm', 'ortak-ayar'), '{}');
-  });
-  assert.deepEqual(iki.cm, []);
-  assert.match(iki.err[0], /birden cok configmap: .*-j-app-config-6v, ortak-ayar/);
-  salt(iki.calls);
-
-  const ikiEtiket = ocKos((dir) => {
-    wl(dir, ORNEK_WL.slice(0, 3));
-    fs.writeFileSync(path.join(dir, 'label.txt'), `CAND${T}a\nCAND${T}b\n`);
-  });
-  assert.deepEqual(ikiEtiket.cm, []);
-  assert.match(ikiEtiket.err[0], /birden cok configmap: a, b/);
-
-  const hic = ocKos((dir) => wl(dir, ORNEK_WL.slice(0, 3)));
-  assert.match(hic.err[0], /application\.json tasiyan configmap yok/);
-
-  const yok = ocKos(() => {});
-  assert.match(yok.err[0], /adli deployment \/ deploymentconfig \/ statefulset \/ rollout yok/);
-  assert.equal(yok.satir.at(-1), 'END');
-  salt(yok.calls);
-});
-
-test(
-  'SPI25 ocp: rollout workloadRef Deployment okunur; buyuk application.json ERR',
-  { skip: SKIP },
-  () => {
-    const ref = ocKos(
-      (dir) => {
-        fs.writeFileSync(
-          path.join(dir, 'rollouts.argoproj.io.txt'),
-          `KIND${T}Rollout\nREF${T}Deployment${T}gercek-dep\n`,
+    for (const mod of ['plan', 'apply']) {
+      sahteIle([], (d) => {
+        const s = hostKos(d, { SPI_MODE: mod, FAKE_CFG_BODY: govde(d, 'bos.json', '') });
+        assert.equal(s.status, 'FAIL', s.r.stdout);
+        assert.equal(s.step, 'config');
+        assert.equal(s.r.status, 1);
+        assert.match(
+          s.message,
+          /^application\.json \/config'ten alinamadi \(1\. adres: bos yanit\)$/,
         );
-        wl(dir, ORNEK_WL);
-        fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-      },
-      { WL_NAME: 'gercek-dep' },
-    );
-    assert.deepEqual(ref.err, [], ref.r.stdout);
-    assert.equal(ref.cm.length, 1);
-    assert.match(ref.calls, /get deployment gercek-dep/);
-
-    const buyuk = ocKos(
-      (dir) => {
-        wl(dir, ORNEK_WL);
-        fs.writeFileSync(path.join(dir, 'cm', `${APP}-j-app-config-6v`), APPJSON);
-      },
-      { SPA_MAX_APPJSON_BYTES: '10' },
-    );
-    assert.deepEqual(buyuk.cm, []);
-    assert.match(buyuk.err[0], /cok buyuk/);
-  },
-);
-
-test(
-  'SPI26 ocp: gecersiz NS / APP / gecici dizin oneki / URL -> ERR, oc HIC cagrilmaz',
-  { skip: SKIP },
-  () => {
-    for (const env of [
-      { NS: 'Kotu NS' },
-      { APP: 'a;rm -rf /' },
-      { SPI_RUN_PREFIX: '/etc/passwd' },
-      { SPI_RUN_PREFIX: '/tmp/app-hub-x' },
-      { SPI_RUN_PREFIX: '/tmp/spa-pkg-../../etc/x' },
-      { OCP_URL: '' },
-    ]) {
-      const o = ocKos(() => {}, env);
-      assert.notEqual(o.r.status, 0, JSON.stringify(env));
-      assert.equal(o.err.length, 1);
-      assert.equal(o.calls, '', `oc cagrildi: ${o.calls}`);
+        assert.equal(fs.existsSync(hysDir(d)), false, `${mod}: /hysdeploy dizini acildi`);
+        assert.equal(fs.existsSync(nsDir(d)), false);
+        assert.deepEqual(nginxCagrilari(s.calls), []);
+        assert.ok(
+          !curlCagrilari(s.calls).some((c) => c.includes(' -o ') && c.endsWith(URL)),
+          'config gecmeden paket indirildi',
+        );
+      });
     }
   },
 );
 
-test('SPI27 ocp betik kaynagi: oc yalniz OC() ile, yalniz login / get; secret sozcugu komutta yok', () => {
-  const s = fs.readFileSync(OCP_SH, 'utf8');
-  const kod = s.split('\n').filter((l) => !/^\s*#/.test(l));
-  const cagrilar = [...kod.join('\n').matchAll(/\bOC\s+([a-z-]+)/g)].map((m) => m[1]);
-  assert.ok(cagrilar.length >= 5, `beklenenden az OC cagrisi: ${cagrilar.length}`);
-  for (const c of cagrilar) assert.ok(['login', 'get'].includes(c), `yazan oc alt komutu: ${c}`);
-  const dogrudan = kod.filter((l) => l.includes('"$OC_BIN"'));
-  assert.equal(dogrudan.length, 1, `OC() disinda oc cagrisi: ${dogrudan.join(' | ')}`);
-  assert.match(dogrudan[0], /^OC\(\) \{ timeout /);
-  assert.ok(!kod.some((l) => /secret/i.test(l)), 'betik kodunda secret');
-  assert.match(s, /unset OCP_PASS/);
-  assert.match(s, /\^\/tmp\/spa-pkg-\[A-Za-z0-9\._-\]\+\$/);
-  assert.match(s, /RUN_DIR=\$\(mktemp -d "\$\{SPI_RUN_PREFIX\}\.XXXXXX"\)/);
-  assert.match(s, /export KUBECONFIG="\$\{RUN_DIR\}\/kubeconfig"/);
-  assert.match(s, /ERRF="\$\{RUN_DIR\}\/oc\.err"/);
-  assert.match(s, /temizle\(\) \{ \[\[ -n "\$RUN_DIR" \]\] && rm -rf -- "\$RUN_DIR"; \}/);
-  assert.ok(!/\/tmp\/\.spapkg_err/.test(s), 'paylasilan /tmp hata dosyasi');
-  assert.ok(!/komut satirina SIR konmaz/i.test(s), 'yanlis sir iddiasi (oc login --password argv)');
-  assert.match(s, /Bilinen sinir/);
+test(
+  'SPI42 host: /config HTML, dizi, gecersiz JSON, 404, erisilemez, 1 MB ustu -> FAIL config',
+  { skip: SKIP },
+  () => {
+    const durumlar = [
+      [{ body: '<!DOCTYPE html>\n<html><body>giris</body></html>' }, 'HTML dondu \\(JSON degil\\)'],
+      [{ body: '  \n <html></html>' }, 'HTML dondu \\(JSON degil\\)'],
+      [{ body: '[{"a":1}]' }, 'JSON nesnesi degil \\(dizi ya da tek deger\\)'],
+      [{ body: '"metin"' }, 'JSON nesnesi degil \\(dizi ya da tek deger\\)'],
+      [{ body: '{"a":' }, 'gecerli JSON degil'],
+      [{ body: '{"a":1} fazla' }, 'gecerli JSON degil'],
+      [{ code: '404' }, 'HTTP 404'],
+      [{ code: '302' }, 'HTTP 302'],
+      [{ rc: '6' }, 'erisilemedi \\(curl rc=6\\)'],
+      [{ rc: '63' }, '1 MB ustu'],
+      [{ body: JSON.stringify({ a: 'x'.repeat(ONE_MB) }) }, '1 MB ustu'],
+    ];
+    for (const [cevap, beklenen] of durumlar) {
+      for (const mod of ['plan', 'apply']) {
+        sahteIle([], (d) => {
+          const env = { SPI_MODE: mod };
+          if (cevap.body !== undefined) env.FAKE_CFG1_BODY = govde(d, 'c.json', cevap.body);
+          if (cevap.code) env.FAKE_CFG1_CODE = cevap.code;
+          if (cevap.rc) env.FAKE_CFG1_RC = cevap.rc;
+          const s = hostKos(d, env);
+          const ad = `${mod} ${JSON.stringify(cevap).slice(0, 60)}`;
+          assert.equal(s.status, 'FAIL', `${ad}: ${s.r.stdout}`);
+          assert.equal(s.step, 'config', ad);
+          assert.match(s.message, new RegExp(`\\(1\\. adres: ${beklenen}\\)$`), ad);
+          assert.equal(fs.existsSync(hysDir(d)), false, `${ad}: yazildi`);
+          assert.deepEqual(nginxCagrilari(s.calls), [], ad);
+        });
+      }
+    }
+  },
+);
+
+test(
+  'SPI43 host: ilk adres duserse sonraki denenir; mesaj sira numarasini yazar, adresi yazmaz',
+  { skip: SKIP },
+  () => {
+    sahteIle([], (d) => {
+      const s = hostKos(d, {
+        SPI_MODE: 'plan',
+        SPI_CONFIG_URLS: `${CFG(1)} ${CFG(2)}`,
+        FAKE_CFG1_CODE: '404',
+      });
+      assert.equal(s.status, 'PLAN_OK', s.r.stdout);
+      assert.match(s.message, /application\.json 2\. config adresinden alindi/);
+      const cfg = curlCagrilari(s.calls).filter(
+        (c) => c.endsWith('/config') && !c.includes('--resolve'),
+      );
+      assert.deepEqual(
+        cfg.map((c) => c.split(' ').at(-1)),
+        [CFG(1), CFG(2)],
+      );
+    });
+    // Ilk gecerli alinir; sonraki adrese gidilmez.
+    sahteIle([], (d) => {
+      const s = hostKos(d, { SPI_MODE: 'plan', SPI_CONFIG_URLS: `${CFG(1)} ${CFG(2)} ${CFG(3)}` });
+      assert.equal(s.status, 'PLAN_OK', s.r.stdout);
+      const cfg = curlCagrilari(s.calls).filter((c) => c.endsWith('/config'));
+      assert.equal(cfg.length, 1, 'gecerli ilk adresten sonra digerlerine gidildi');
+    });
+    // Ucu de duser: her birinin nedeni sirayla.
+    sahteIle([], (d) => {
+      const s = hostKos(d, {
+        SPI_MODE: 'apply',
+        SPI_CONFIG_URLS: `${CFG(1)} ${CFG(2)} ${CFG(3)}`,
+        FAKE_CFG1_CODE: '404',
+        FAKE_CFG2_BODY: govde(d, 'html', '<html></html>'),
+        FAKE_CFG3_BODY: govde(d, 'dizi', '[]'),
+      });
+      assert.equal(s.step, 'config');
+      assert.equal(
+        s.message,
+        "application.json /config'ten alinamadi (1. adres: HTTP 404; 2. adres: HTML dondu (JSON degil); 3. adres: JSON nesnesi degil (dizi ya da tek deger))",
+      );
+      assert.equal(fs.existsSync(hysDir(d)), false);
+    });
+  },
+);
+
+test(
+  'SPI44 host apply: yazilan application.json /config icerigiyle bayt bayt ayni (ikinci adresten)',
+  { skip: SKIP },
+  () =>
+    sahteIle([], (d) => {
+      const icerik = Buffer.from(
+        '﻿{\r\n  "baslik": "Gelir özeti",\r\n  "liste": [1, 2],\r\n  "ic": {"x": null}\r\n}',
+        'utf8',
+      );
+      const ikinci = path.join(d.govde, 'ikinci.json');
+      fs.writeFileSync(ikinci, icerik);
+      const s = hostKos(d, {
+        SPI_CONFIG_URLS: `${CFG(1)} ${CFG(2)}`,
+        FAKE_CFG1_BODY: govde(d, 'html', '<html>oturum</html>'),
+        FAKE_CFG2_BODY: posixYol(ikinci),
+      });
+      assert.equal(s.status, 'OK', s.r.stdout);
+      assert.match(s.message, /application\.json 2\. config adresinden/);
+      const yazilan = fs.readFileSync(path.join(hysDir(d), 'application.json'));
+      assert.ok(yazilan.equals(icerik), 'application.json /config icerigiyle ayni degil');
+      if (process.platform !== 'win32')
+        assert.equal(fs.statSync(path.join(hysDir(d), 'application.json')).mode & 0o777, 0o644);
+      assert.ok(
+        !fs.readdirSync(hysDir(d)).some((f) => f.startsWith('.application.json')),
+        'gecici application.json kaldi',
+      );
+    }),
+);
+
+test('SPI45 host: SPI_INSECURE=1 /config isteginde de -k; varsayilanda yok', { skip: SKIP }, () => {
+  for (const [insecure, beklenen] of [
+    ['0', false],
+    ['1', true],
+  ]) {
+    sahteIle([], (d) => {
+      const s = hostKos(d, { SPI_MODE: 'plan', SPI_INSECURE: insecure });
+      assert.equal(s.status, 'PLAN_OK', s.r.stdout);
+      const cfg = curlCagrilari(s.calls).find((c) => c.endsWith(CFG(1)));
+      assert.equal(/ -k /.test(cfg), beklenen, cfg);
+    });
+  }
 });
 
-test('SPI28 betikler ASCII ve set -u', () => {
-  for (const f of [HOST_SH, OCP_SH]) {
-    const s = fs.readFileSync(f, 'utf8');
-    assert.match(s, /^#!\/bin\/bash\n/);
-    assert.match(s, /\nset -u\n/);
-    assert.ok(!/[^\t\n\x20-\x7e]/.test(s), `ASCII disi karakter: ${path.basename(f)}`);
-  }
-  const py = fs.readFileSync(MERGE_PY, 'utf8');
-  assert.ok(!/[^\t\n\x20-\x7e]/.test(py), 'ASCII disi karakter: spa_package_merge.py');
-  const importlar = [...py.matchAll(/^(?:import|from) ([a-z0-9_.]+)/gm)].map((m) => m[1]);
-  assert.deepEqual(importlar.sort(), ['base64', 'binascii', 'json', 're', 'sys']);
+test(
+  "SPI46 host: SPI_PYTHON yoksa ya da gecersizse PATH'teki python bulunur",
+  { skip: SKIP },
+  () => {
+    const pathte = spawnSync(BASH, ['-c', 'command -v python3 || command -v python'], {
+      encoding: 'utf8',
+    });
+    if (pathte.status !== 0) return;
+    for (const py of ['', '/yok/python3']) {
+      sahteIle([], (d) => {
+        const s = hostKos(d, { SPI_MODE: 'plan', SPI_PYTHON: py });
+        assert.equal(s.status, 'PLAN_OK', `${py}: ${s.r.stdout}`);
+      });
+    }
+  },
+);
+
+test('SPI28 betik ASCII ve set -u; files/ altinda yalniz host betigi (OCP / birlestirme betigi yok)', () => {
+  const s = fs.readFileSync(HOST_SH, 'utf8');
+  assert.match(s, /^#!\/bin\/bash\n/);
+  assert.match(s, /\nset -u\n/);
+  assert.ok(!/[^\t\n\x20-\x7e]/.test(s), 'ASCII disi karakter: spa_package_host.sh');
+  assert.deepEqual(fs.readdirSync(path.join(DIR, 'files')), ['spa_package_host.sh']);
+  assert.ok(!/base64/.test(s), 'betik hala base64 / stdin bekliyor');
+  assert.match(s, /^CFG_MAX=1048576$/m);
+  assert.match(s, /fetch_one_config\(\) \{[\s\S]*--proto '=https' --proto-redir '=https'/);
 });
 
-// -- spa_package_merge.py -------------------------------------------------------------------------
+test(
+  "SPI47 host: Content-Length'siz akan /config govdesi 1 MB + bir parcada kesilir (indirme sinirli)",
+  { skip: SKIP },
+  () => {
+    for (const mod of ['plan', 'apply']) {
+      sahteIle([], (d) => {
+        const s = hostKos(d, { SPI_MODE: mod, FAKE_CFG1_STREAM: '1' });
+        assert.equal(s.status, 'FAIL', s.r.stdout);
+        assert.equal(s.step, 'config');
+        assert.match(s.message, /\(1\. adres: 1 MB ustu\)$/);
+        // 64 KB parcalar: 1 MB'a 16 parca; boru tamponu birkac parca daha alir. Sinirsiz indirme
+        // 1000 parcanin (64 MB) hepsini yazar.
+        const yazilan = Number(fs.readFileSync(`${d.calls}.stream`, 'utf8').trim());
+        assert.ok(yazilan >= 16 && yazilan < 100, `akan govde kesilmedi: ${yazilan} parca`);
+        assert.equal(fs.existsSync(hysDir(d)), false);
+      });
+    }
+  },
+);
 
-function pythonuBul() {
-  for (const [komut, on] of adaylar()) {
-    if (spawnSync(komut, [...on, '-c', 'import json, base64'], { stdio: 'ignore' }).status === 0)
-      return { komut, on };
-  }
-  return null;
-}
-const PY = pythonuBul();
-const PY_SKIP = PY ? false : 'python3 bulunamadi - spa_package_merge.py bekcileri KOSMADI';
+// -- Girdi kapisi gercek Python re + Jinja ile ---------------------------------------------------
+// Ansible 'match' testi Python re.match'tir ve '$' sondaki '\n'i kabul eder; JS RegExp bunu gormez.
+// Ansible bu makinede yok: kapinin 'Item format' kosullari duz jinja2 ile, Ansible'in match / regex
+// testleri ve difference filtresinin esdegeriyle degerlendirilir (Templar degil; kosullar yalniz
+// bunlari kullanir - SPI48 kullanilan test / filtre listesini de kilitler).
+const KAPI_HARNESS = [
+  'import json, re, sys, yaml, jinja2',
+  'pb = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))',
+  'play = pb[0]',
+  'task = next(t for t in play["tasks"] if t["name"] == "Item format")',
+  'that = task["ansible.builtin.assert"]["that"]',
+  'env = jinja2.Environment()',
+  'env.tests["match"] = lambda v, p: re.match(p, v) is not None',
+  'env.filters["difference"] = lambda a, b: [x for x in dict.fromkeys(a) if x not in b]',
+  // Ansible'in unique'i liste dondurur (jinja2'ninki uretec: '| length' patlar).
+  'env.filters["unique"] = lambda a: list(dict.fromkeys(a))',
+  'out = {}',
+  'for ad, item in json.loads(sys.stdin.read()).items():',
+  '    sonuc = []',
+  '    for kosul in that:',
+  '        try:',
+  '            t = env.from_string("{% if " + kosul + " %}1{% else %}0{% endif %}")',
+  '            sonuc.append(t.render(item=item, spi_allowed_hosts=["NGINXP01", "nginxp02"], **play["vars"]))',
+  '        except Exception as e:',
+  '            sonuc.append("hata: " + type(e).__name__)',
+  '    out[ad] = sonuc',
+  'print(json.dumps({"that": that, "out": out}))',
+  '',
+].join('\n');
 
-function rapor(satirlar, ek = {}) {
-  return { ok: true, unreachable: false, error: '', lines: [...satirlar, 'END'], ...ek };
-}
-
-function kalem(ek = {}) {
-  return {
+test('SPI48 girdi kapisi Python re + Jinja: sondaki satir sonu, IP / localhost adresi, izinsiz sunucu gecmez', () => {
+  const py = pythonBul();
+  assert.ok(
+    py,
+    'SPI48 KOR: python3 + jinja2 + PyYAML bulunamadi (PORTAL_TEST_PYTHON ile gosterin)',
+  );
+  const iyi = {
     id: `${NS}/${APP}`,
     namespace: NS,
     application: APP,
     version: VER,
-    cluster: 'ocp-prod-1',
-    catalog: true,
-    owner: 'BASTION01',
-    blocked: '',
-    report: rapor([
-      `IMG${T}app${T}registry.invalid/${NS}/${APP}:${VER}`,
-      `CM${T}${APP}-j-app-config-6v${T}${B64}`,
-    ]),
-    ...ek,
+    cluster: 'arkprod1',
+    hosts: ['NGINXP01', 'NGINXP02'],
+    config_urls: [CFG(1), CFG(2)],
   };
-}
-
-function birlestir(items) {
-  const r = spawnSync(PY.komut, [...PY.on, '-I', MERGE_PY], {
+  const durumlar = {
+    iyi,
+    urlSatirSonu: { ...iyi, config_urls: [`${CFG(1)}\n`] },
+    urlIcindeSatir: { ...iyi, config_urls: [`${CFG(1)}\n${CFG(2)}`] },
+    nsSatirSonu: { ...iyi, namespace: `${NS}\n`, id: `${NS}\n/${APP}` },
+    appSatirSonu: { ...iyi, application: `${APP}\n`, id: `${NS}/${APP}\n` },
+    surumSatirSonu: { ...iyi, version: `${VER}\n` },
+    ip: { ...iyi, config_urls: ['https://169.254.169.254/config'] },
+    localhost: { ...iyi, config_urls: ['https://localhost/config'] },
+    uzun: {
+      ...iyi,
+      config_urls: [
+        `https://${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.invalid/config`,
+      ],
+    },
+    tekrar: { ...iyi, config_urls: [CFG(1), CFG(1)] },
+    dort: { ...iyi, config_urls: [1, 2, 3, 4].map(CFG) },
+    sayi: { ...iyi, config_urls: [5] },
+    izinsiz: { ...iyi, hosts: ['NGINXP09'] },
+  };
+  const r = spawnSync(py.komut, [...py.on, '-c', KAPI_HARNESS, PLAYBOOK], {
+    input: JSON.stringify(durumlar),
     encoding: 'utf8',
-    input: JSON.stringify({ items }),
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' },
   });
   assert.equal(r.status, 0, r.stderr);
-  return JSON.parse(r.stdout).items;
-}
-
-function tek(ek) {
-  const [o] = birlestir([kalem(ek)]);
-  return o;
-}
-
-const img = (imaj) => `IMG${T}app${T}${imaj}`;
-const cmSatir = (veri) => `CM${T}cfg${T}${Buffer.from(veri).toString('base64')}`;
-
-test('SPI36 merge: gecerli kalem OK, application.json base64 doner', { skip: PY_SKIP }, () => {
-  const o = tek({});
-  assert.deepEqual(o, {
-    id: `${NS}/${APP}`,
-    ok: true,
-    image: `registry.invalid/${NS}/${APP}:${VER}`,
-    tag: VER,
-    configmap: `${APP}-j-app-config-6v`,
-    error: null,
-    appjson_b64: B64,
-  });
-  const buyukHarf = tek({
-    report: rapor([
-      img(`registry.invalid/${NS.toUpperCase()}/${APP.toUpperCase()}:${VER}`),
-      cmSatir('{}'),
-    ]),
-  });
-  assert.equal(buyukHarf.ok, true, `harf duyarsiz ns/app: ${buyukHarf.error}`);
-  const portlu = tek({
-    report: rapor([img(`registry.invalid:5000/${NS}/${APP}:${VER}`), cmSatir('{}')]),
-  });
-  assert.equal(portlu.ok, true, portlu.error);
-});
-
-test('SPI37 merge: imaj ve etiket kurallari', { skip: PY_SKIP }, () => {
-  const fark = tek({
-    report: rapor([img(`registry.invalid/${NS}/${APP}:0.0.1-1-prod`), cmSatir('{}')]),
-  });
-  assert.equal(fark.ok, false);
-  assert.match(fark.error, new RegExp(`^OCP'de kosan surum 0\\.0\\.1-1-prod, planlanan ${VER}`));
-  assert.equal(fark.appjson_b64, null);
-
-  const digest = tek({
-    report: rapor([img(`registry.invalid/${NS}/${APP}@sha256:${'a'.repeat(64)}`), cmSatir('{}')]),
-  });
-  assert.equal(digest.ok, false);
-  assert.match(digest.error, /imaj etiketsiz ya da digest ile/);
-
-  const etiketliDigest = tek({
-    report: rapor([
-      img(`registry.invalid/${NS}/${APP}:${VER}@sha256:${'b'.repeat(64)}`),
-      cmSatir('{}'),
-    ]),
-  });
-  assert.equal(etiketliDigest.ok, false);
-  assert.match(etiketliDigest.error, /digest/);
-
-  const etiketsiz = tek({ report: rapor([img(`registry.invalid/${NS}/${APP}`), cmSatir('{}')]) });
-  assert.equal(etiketsiz.ok, false);
-  assert.match(etiketsiz.error, /imaj etiketsiz ya da digest ile/);
-
-  const ikiYol = tek({
-    report: rapor([
-      img('registry.invalid/ortak/proxy:1.2'),
-      img(`registry.invalid/${NS}/${APP}:${VER}`),
-      cmSatir('{}'),
-    ]),
-  });
-  assert.equal(ikiYol.ok, true, ikiYol.error);
-  assert.equal(ikiYol.image, `registry.invalid/${NS}/${APP}:${VER}`);
-
-  const yolYok = tek({
-    report: rapor([
-      img(`registry.invalid/baska-ns/${APP}:${VER}`),
-      img(`registry.invalid/x${NS}/${APP}:${VER}`),
-      cmSatir('{}'),
-    ]),
-  });
-  assert.equal(yolYok.ok, false);
-  assert.match(yolYok.error, /^imaj yolu uygulamayla eslesmiyor: /);
-
-  const ikiEtiket = tek({
-    report: rapor([
-      img(`registry.invalid/${NS}/${APP}:${VER}`),
-      `IMG${T}init${T}registry.invalid/${NS}/${APP}:0.0.2`,
-      cmSatir('{}'),
-    ]),
-  });
-  assert.equal(ikiEtiket.ok, false);
-  assert.match(ikiEtiket.error, /birden cok etiketle kosuyor/);
-});
-
-test('SPI38 merge: application.json ve ConfigMap kurallari', { skip: PY_SKIP }, () => {
-  const imajSatiri = img(`registry.invalid/${NS}/${APP}:${VER}`);
-  const dizi = tek({ report: rapor([imajSatiri, cmSatir('[1,2]')]) });
-  assert.equal(dizi.ok, false);
-  assert.match(dizi.error, /JSON nesnesi degil/);
-
-  const bozuk = tek({ report: rapor([imajSatiri, cmSatir('{"a":')]) });
-  assert.equal(bozuk.ok, false);
-  assert.match(bozuk.error, /gecersiz JSON/);
-
-  const b64Bozuk = tek({ report: rapor([imajSatiri, `CM${T}cfg${T}%%%`]) });
-  assert.equal(b64Bozuk.ok, false);
-  assert.match(b64Bozuk.error, /base64 cozulemedi/);
-
-  const buyuk = tek({
-    report: rapor([imajSatiri, cmSatir(JSON.stringify({ a: 'x'.repeat(1048576) }))]),
-  });
-  assert.equal(buyuk.ok, false);
-  assert.match(buyuk.error, /cok buyuk/);
-
-  const cmYok = tek({ report: rapor([imajSatiri]) });
-  assert.equal(cmYok.ok, false);
-  assert.match(cmYok.error, /ConfigMap'i okunamadi/);
-
-  const cmErr = tek({
-    report: rapor([imajSatiri, `ERR${T}application.json tasiyan birden cok configmap: a, b`]),
-  });
-  assert.equal(cmErr.ok, false);
-  assert.match(cmErr.error, /birden cok configmap: a, b/);
-
-  const endYok = tek({
-    report: { ...rapor([imajSatiri, cmSatir('{}')]), lines: [imajSatiri, cmSatir('{}')] },
-  });
-  assert.equal(endYok.ok, false);
-  assert.match(endYok.error, /END satiri yok/);
-});
-
-test(
-  'SPI39 merge: katalog, bastion erisilemedi, sonuc yok, okuma hatasi',
-  { skip: PY_SKIP },
-  () => {
-    const [katalog, erisilemez, sonucYok, hata] = birlestir([
-      kalem({ catalog: false }),
-      kalem({ report: { ok: false, unreachable: true, error: 'x', lines: [] } }),
-      kalem({ report: null, blocked: 'zaman asimi' }),
-      kalem({
-        report: {
-          ok: false,
-          error: 'OCP okumasi basarisiz (rc=4)',
-          lines: [`ERR${T}oc login basarisiz`],
-        },
-      }),
-    ]);
-    assert.match(katalog.error, /cluster Portal OCP katalogunda yok: ocp-prod-1/);
-    assert.equal(erisilemez.error, 'bastion erisilemedi: BASTION01');
-    assert.match(sonucYok.error, /Bastion sonuc bildirmedi .*BASTION01 zaman asimi/);
-    assert.match(hata.error, /rc=4.*oc login basarisiz/);
-    for (const o of [katalog, erisilemez, sonucYok, hata]) {
-      assert.equal(o.ok, false);
-      assert.equal(o.appjson_b64, null);
-    }
-    const r = spawnSync(PY.komut, [...PY.on, '-I', MERGE_PY], { encoding: 'utf8', input: 'bozuk' });
-    assert.equal(r.status, 2);
-    assert.equal(r.stdout, '');
-  },
-);
-
-test('SPI40 playbook: erisilemeyen bastion tek hata satiri verir; birlestirme betikte', () => {
-  assert.match(gorev('Bastion reachability'), /ansible\.builtin\.ping:/);
-  const dusuk = gorev('Items fail when the bastion is unreachable');
-  assert.match(dusuk, /'unreachable': true/);
-  assert.match(dusuk, /'bastion erisilemedi: ' ~ inventory_hostname/);
-  assert.match(dusuk, /when: spi_bastion_down \| bool/);
-  assert.match(
-    PB,
-    /spi_live: "\{\{ \(my_items \| default\(\[\]\) \| length > 0\) and not \(spi_bastion_down/,
+  const { that, out } = JSON.parse(r.stdout);
+  // Kosullar yalniz harness'in esdegerini sagladigi Ansible test / filtrelerini kullanir.
+  const ansibleOzel = new Set(
+    that.flatMap((k) => [...k.matchAll(/(?:is|\|)\s*(?:not\s+)?([a-z_]+)/g)].map((m) => m[1])),
   );
-  assert.match(
-    gorev('Bastion results'),
-    /when: \(spi_live \| bool\) and \(oc_bin \| default\(''\) \| trim \| length > 0\)/,
+  const bilinen = new Set([
+    'mapping',
+    'defined',
+    'string',
+    'match',
+    'sequence',
+    'length',
+    'select',
+    'list',
+    'unique',
+    'difference',
+    'map',
+    'trim',
+    'max',
+  ]);
+  assert.deepEqual(
+    [...ansibleOzel].filter((x) => !bilinen.has(x)),
+    [],
+    'harness kapsamadigi test / filtre',
   );
-  assert.match(
-    gorev('Items fail when oc is missing'),
-    /when: \(spi_live \| bool\) and \(\(oc_bin \| default\(''\) \| trim \| length\) == 0\)/,
+  assert.deepEqual(
+    out.iyi,
+    that.map(() => '1'),
+    `gecerli kalem reddedildi: ${JSON.stringify(out.iyi)}`,
   );
-  const kos = gorev('Merge OCP results');
-  assert.match(
-    kos,
-    /- "\{\{ ansible_playbook_python \}\}"\n\s+- "-I"\n\s+- "\{\{ playbook_dir \}\}\/files\/spa_package_merge\.py"/,
-  );
-  assert.match(kos, /stdin: "\{\{ \{'items': spi_merge_input\} \| to_json \}\}"/);
-  assert.match(gorev('Merged items'), /\['items'\]/);
-  assert.ok(!/regex_escape|ignorecase/.test(PB), 'kalem gecerliligi hala Jinja icinde');
+  for (const [ad, sonuc] of Object.entries(out)) {
+    if (ad === 'iyi') continue;
+    assert.ok(
+      sonuc.some((x) => x !== '1'),
+      `kapidan gecti: ${ad}`,
+    );
+  }
+  // Kanit: Python re '$' sondaki satir sonunu kabul eder; bu durumu yalniz trim kosulu yakalar.
+  const desenKosulu = that.findIndex((k) => k.includes("select('match', spi_config_url_re)"));
+  const trimKosulu = that.findIndex((k) => k.includes("map('trim')"));
+  assert.equal(out.urlSatirSonu[desenKosulu], '1', "Python re '$' davranisi degisti mi?");
+  assert.equal(out.urlSatirSonu[trimKosulu], '0');
+  const nsDesen = that.findIndex((k) => k.includes('item.namespace is match(spi_ns_re)'));
+  assert.equal(out.nsSatirSonu[nsDesen], '1');
 });

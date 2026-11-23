@@ -226,8 +226,10 @@ export interface IntranetRapor {
 }
 
 /** Intranet SPA paket kurulumu (2026-11-23): PROD intranet Nginx'e gelmeyen paketi Artifactory'den
- *  kurma. Uyari kodlari sunucuda (engel olanlar kurulumu durdurur; 'bayat' / 'taranmayan' engel DEGIL).
- *  Liste server/spa-report/paket-kurulum.cjs UYARI_KODLARI ile birebir (sunucu testi PK13 karsilastirir). */
+ *  kurma; application.json uygulamanin route'undaki /config'ten (bastionsuz). Uyari kodlari sunucuda
+ *  (engel olanlar kurulumu durdurur; 'bayat' 3 saatten eski PROD okumasi ve 'config-adresi-yok' ENGEL,
+ *  'taranmayan' ve 'config-adresi-elendi' engel DEGIL). Liste server/spa-report/paket-kurulum.cjs UYARI_KODLARI ile birebir
+ *  (sunucu testi PK13 karsilastirir). */
 export const PAKET_UYARI_KODLARI = [
   'ad-gecersiz',
   'katalog-yok',
@@ -236,6 +238,8 @@ export const PAKET_UYARI_KODLARI = [
   'imaj-yolu-farkli',
   'etiketsiz',
   'bayat',
+  'config-adresi-yok',
+  'config-adresi-elendi',
   'hedef-yok',
   'hedef-fazla',
   'taranmayan',
@@ -322,19 +326,12 @@ export interface PaketSonucSunucu {
   message: string;
 }
 
+/** set_stats kalemi: playbook OCP okumadigi icin 'ocp' / 'cluster' alani yok. */
 export interface PaketSonucKalem {
   id: string;
   namespace: string;
   application: string;
   version: string;
-  cluster: string;
-  ocp: {
-    ok: boolean;
-    image: string | null;
-    tag: string | null;
-    configmap: string | null;
-    error: string | null;
-  };
   hosts: PaketSonucSunucu[];
 }
 

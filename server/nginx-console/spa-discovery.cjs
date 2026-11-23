@@ -525,6 +525,9 @@ function uygulamalar(rows, coverage, opt = {}) {
   const eski = new Map((coverage?.clusters || []).map((c) => [c.cluster, c]));
   const oran = opt.oran || null;
   const m = new Map();
+  // ROUTE ADRESI SAHIPLERI: adres -> (ns|uygulama) anahtarlari. Birden cok uygulamada gorunen adres
+  // PAYLASILAN sayilir (yol tabanli route olabilir: https://<adres>/config baska uygulamaya gider).
+  const adresSahibi = new Map();
   for (const r of rows) {
     const k = `${L(r.namespace)}|${L(r.application)}`;
     let a = m.get(k);
@@ -534,6 +537,8 @@ function uygulamalar(rows, coverage, opt = {}) {
         namespace: r.namespace,
         env: r.env,
         hosts: new Set(),
+        // adres -> { clusters, terms, spa }: paket kurulumunun /config adresi secimi icin.
+        hostDetay: new Map(),
         routes: new Set(),
         clusters: new Set(),
         signals: new Set(),
@@ -564,7 +569,20 @@ function uygulamalar(rows, coverage, opt = {}) {
       if (r.agCelisik) a.invCelisik.add(rk);
     }
     a.routeCount += 1;
-    if (r.host) a.hosts.add(r.host);
+    if (r.host) {
+      a.hosts.add(r.host);
+      const h = L(r.host);
+      if (!adresSahibi.has(h)) adresSahibi.set(h, new Set());
+      adresSahibi.get(h).add(k);
+      let d = a.hostDetay.get(h);
+      if (!d) {
+        d = { host: h, clusters: new Set(), terms: new Set(), spa: false };
+        a.hostDetay.set(h, d);
+      }
+      if (r.cluster) d.clusters.add(L(r.cluster));
+      d.terms.add(r.termination == null ? 'bilinmiyor' : r.termination || 'yok');
+      if (r.isSpa) d.spa = true;
+    }
     if (r.route) a.routes.add(r.route);
     if (r.cluster) a.clusters.add(r.cluster);
     if (r.isSpa) {
@@ -666,6 +684,16 @@ function uygulamalar(rows, coverage, opt = {}) {
       invRoutes: a.invRoutes,
       routeCount: a.routeCount,
       hosts: [...a.hosts].sort(varsayilanSira),
+      // ROUTE ADRESI AYRINTISI (yalniz sunucu ici; HTTP govdesine yazilmaz, bkz. yanitUygulamasi).
+      routeDetay: [...a.hostDetay.values()]
+        .map((d) => ({
+          host: d.host,
+          clusters: [...d.clusters].sort(varsayilanSira),
+          terms: [...d.terms].sort(varsayilanSira),
+          spa: d.spa,
+          paylasilan: (adresSahibi.get(d.host)?.size || 0) > 1,
+        }))
+        .sort((x, y) => varsayilanSira(x.host, y.host)),
       routes: [...a.routes].sort(varsayilanSira),
       clusters,
       // ESKI VERI: bu cluster'in son kosusu basarisiz, satir onceki bir kosudan.
@@ -759,6 +787,7 @@ function yanitUygulamasi(a) {
     if (YANIT_BOS_DIZI.has(k) && Array.isArray(v) && !v.length) continue;
     o[k] = v;
   }
+  delete o.routeDetay;
   if (a.inventory !== 'kismen') {
     delete o.invRoutes;
     delete o.routeCount;

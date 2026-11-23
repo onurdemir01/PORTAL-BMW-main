@@ -1,13 +1,17 @@
-// server/spa-report/__tests__/paket-kurulum.test.js - PK1..PK14 (2026-11-23).
+// server/spa-report/__tests__/paket-kurulum.test.js - PK1..PK17 (2026-11-23).
 //
-// Intranet SPA paket kurulumu (paket-kurulum.cjs). Kilitler:
+// Intranet SPA paket kurulumu (paket-kurulum.cjs). Bastionsuz (kullanici karari "A"): playbook OCP'yi
+// okumaz; application.json route'taki /config'ten Nginx sunucusunca cekilir. Kilitler:
 //   PK1 imajCoz: registry:port, digest, etiketsiz, derin yol
 //   PK2 aday: yalniz PROD + kurulum 'yok'; hedef = taranan ve status YOK; taranmayan bilgi (engel degil)
 //   PK3 surum: en yeni basarili PROD okumasi; prod cluster'lari arasinda farkli etiket, imaj yolu ns/app
-//       uyusmazligi, digest / etiketsiz, katalog-yok, okuma yok -> engel; bayat engel DEGIL
+//       uyusmazligi, digest / etiketsiz, PROD cluster yok, okuma yok -> engel; katalogda olmayan cluster
+//       bilgi; 3 saatten eski okuma 'bayat' ENGEL; route adresi yoksa 'config-adresi-yok' ENGEL
 //   PK4 POST yetki ve girdi: Admin degil 403; kurulabilir degil 400; >10 400; apply onayMetni != PROD 428
 //       (AWX cagrilmaz); registry yok 501
-//   PK5 POST extra_vars sozlesmeyle birebir; istemcinin surum / host'u yok sayilir; is gecmisi params
+//   PK5 POST extra_vars YALNIZ spi_mode + spi_items (terminal_hosts / ocp_clusters YOK), kalem config_urls
+//       route adreslerinden; istemcinin surum / host / config_urls'u yok sayilir; is gecmisi params ve
+//       denetim config_urls tasimaz
 //   PK6 GET is: sahiplik yoksa 404; templateId uyusmazsa 409; artifact kalemleri uyusmazsa 409
 //   PK7 GET is: bitince tabloya bir kez yazar (ikinci cagri yazmaz); apply OK -> intranet onbellegi silinir
 //   PK8 uygula plana bagli: plan yok 404, baska kullanici / tur / sablon / sunucu 409, 2 saatten eski 409,
@@ -20,6 +24,11 @@
 //   PK13 uretilen her uyari kodu UYARI_KODLARI'nda; ekranin PAKET_UYARI_KODLARI'yla birebir
 //   PK14 yoklanmamis bitmis apply eszamanli denetimde tabloya yazilir; is gecmisi yazilamazsa yanit ve
 //       denetim uyarir; uygulama imaji birden cok etiketle kosuyorsa 'surum-farkli' engeli
+//   PK15 config_urls: yalniz PROD cluster + SPA + paylasilmayan route adresi (yol tabanli route yanlis
+//       /config dondurmesin), IP / localhost / tek etiket yok, intranet once, en cok 3; elenen sayisi
+//       'config-adresi-elendi' bilgi; katalog okunamazsa 'katalog-yok' engel
+//   PK16 bayat siniri 3 saat; bayat aday POST'ta 400 (AWX cagrilmaz)
+//   PK17 registry seed: bastionlu ilk aciklama YALNIZ birebir eskiyse yenisiyle degisir
 'use strict';
 
 const { test } = require('node:test');
@@ -104,24 +113,10 @@ sahte(require.resolve('../../app-hub/filo.cjs'), {
   ...gercekFilo,
   filoOkumalari: async (app) => (okumalar.get(app) || []).filter((o) => o.kaynak === 'saatlik'),
 });
-const BASTION = { arkprod1: 'BASTION1', arkprod2: 'BASTION2' };
+// Bastionsuz (2026-11-23 karar "A"): canli.cjs'ten yalniz son okumalar kullanilir; hedefleriKur
+// sahtede YOK, cagrilirsa test patlar.
 sahte(require.resolve('../../app-hub/canli.cjs'), {
   sonOkumalar: async (app) => (okumalar.get(app) || []).filter((o) => o.kaynak !== 'saatlik'),
-  hedefleriKur: async (ad, yerler) => ({
-    extraVars: {
-      oc_binary: '/opt/oc',
-      terminal_hosts: yerler.map((y) => BASTION[y.cluster]),
-      ocp_clusters: yerler.map((y) => ({
-        env: y.ortam,
-        tenant: y.tenant,
-        cluster_name: y.cluster,
-        terminal_host: BASTION[y.cluster],
-      })),
-      app_hub_app: ad,
-      app_hub_targets: yerler.map((y) => ({ cluster: y.cluster, namespace: y.namespace })),
-    },
-    atlanan: [],
-  }),
 });
 
 const tabloSorgu = (t, p) => {
@@ -192,11 +187,12 @@ const P = require('../paket-kurulum.cjs');
 
 const REG = 'registry.example:5000';
 function satir(app, ek = {}) {
-  return {
+  const r = {
     env: 'PROD',
     namespace: 'kart-prod',
     application: app,
     clusters: ['arkprod1', 'arkprod2', 'arktest1'],
+    adresler: [`${app}.apps.invalid`],
     kurulum: {
       durum: 'yok',
       sunucular: [
@@ -207,6 +203,16 @@ function satir(app, ek = {}) {
     },
     ...ek,
   };
+  // Kesifteki route ayrintisi: satirin adresi, satirin cluster'larinda, intranet SPA route'u.
+  if (!('routeDetay' in ek))
+    r.routeDetay = r.adresler.map((host) => ({
+      host,
+      clusters: [...r.clusters],
+      terms: ['reencrypt'],
+      spa: true,
+      paylasilan: false,
+    }));
+  return r;
 }
 function okuma(cluster, imaj, ek = {}) {
   return {
@@ -245,7 +251,10 @@ const RAPOR = {
     satir('digest-ui'),
     satir('etiketsiz-ui'),
     satir('katalog-ui', { clusters: ['arkprod1', 'arkprod9'] }),
+    satir('prodsuz-ui', { clusters: ['arktest1'] }),
     satir('bayat-ui', { clusters: ['arkprod2'] }),
+    satir('iki-ui', { clusters: ['arkprod2'] }),
+    satir('rotasiz-ui', { clusters: ['arkprod1'], adresler: [], routeDetay: [] }),
     satir('okumasiz-ui'),
     satir('hedefsiz-ui', {
       clusters: ['arkprod1'],
@@ -272,9 +281,14 @@ function okumalariKur() {
   okumalar.set('digest-ui', [okuma('arkprod1', `${REG}/kart-prod/digest-ui@sha256:abc`)]);
   okumalar.set('etiketsiz-ui', [okuma('arkprod1', `${REG}/kart-prod/etiketsiz-ui`)]);
   okumalar.set('katalog-ui', [okuma('arkprod1', imaj('katalog-ui', '1.0.0'))]);
+  okumalar.set('prodsuz-ui', [okuma('arktest1', imaj('prodsuz-ui', '1.0.0'))]);
   okumalar.set('bayat-ui', [
-    okuma('arkprod2', imaj('bayat-ui', '2.0.0'), { alinma: once(10 * SAAT) }),
+    okuma('arkprod2', imaj('bayat-ui', '2.0.0'), { alinma: once(3 * SAAT + 60000) }),
   ]);
+  okumalar.set('iki-ui', [
+    okuma('arkprod2', imaj('iki-ui', '2.0.0'), { alinma: once(3 * SAAT - 60000) }),
+  ]);
+  okumalar.set('rotasiz-ui', [okuma('arkprod1', imaj('rotasiz-ui', '1.0.0'))]);
   okumalar.set('hedefsiz-ui', [okuma('arkprod1', imaj('hedefsiz-ui', '1.0.0'))]);
   okumalar.set('k-ui', [okuma('arkprod1', imaj('k-ui', '3.0.0'))]);
 }
@@ -375,20 +389,44 @@ test('PK2-PK3 aday hesabi: kapsam, hedefler, surum ve engeller', async () => {
   assert.deepEqual(a.hedefler, ['NGINXP01', 'NGINXP02']);
   assert.deepEqual(a.taranmayan, ['NGINXP03']);
   assert.deepEqual(kodlar(a), ['taranmayan:b']);
-  assert.equal('_yer' in a, false, 'ic alan yanita sizmamali');
   assert.deepEqual(kodlar(ix.get('farkli-ui')), ['surum-farkli:E']);
   assert.equal(ix.get('farkli-ui').kurulabilir, false);
   assert.deepEqual(kodlar(ix.get('yol-ui')), ['imaj-yolu-farkli:E', 'surum-yok:b']);
   assert.deepEqual(kodlar(ix.get('digest-ui')), ['etiketsiz:E', 'surum-yok:b']);
   assert.deepEqual(kodlar(ix.get('etiketsiz-ui')), ['etiketsiz:E', 'surum-yok:b']);
   assert.equal(ix.get('etiketsiz-ui').surum, null);
-  assert.deepEqual(kodlar(ix.get('katalog-ui')), ['katalog-yok:E']);
+  // Katalogda olmayan cluster artik bilgi (OCP okumasi yok); PROD cluster'i olan kurulabilir.
+  const katalog = ix.get('katalog-ui');
+  assert.deepEqual([kodlar(katalog), katalog.kurulabilir], [['katalog-yok:b'], true]);
+  assert.match(katalog.uyarilar[0].metin, /arkprod9/);
+  // PROD ortamli ARK cluster'i yok: engel; route'u da yalniz PROD disi cluster'da (adres alinmaz).
+  assert.deepEqual(kodlar(ix.get('prodsuz-ui')), [
+    'katalog-yok:E',
+    'surum-yok:E',
+    'config-adresi-yok:E',
+    'config-adresi-elendi:b',
+  ]);
+  assert.match(
+    ix.get('prodsuz-ui').uyarilar.at(-1).metin,
+    /^\/config için denenmeyen route adresi: PROD dışı cluster'da 1$/,
+  );
+  // Bayat: kullanilan PROD okumasi 3 saatten eski -> ENGEL (playbook surumu teyit etmiyor).
   const bayat = ix.get('bayat-ui');
-  assert.deepEqual([bayat.kurulabilir, bayat.surum], [true, '2.0.0']);
-  assert.deepEqual(kodlar(bayat), ['bayat:b']);
+  assert.deepEqual([bayat.kurulabilir, bayat.surum], [false, '2.0.0']);
+  assert.deepEqual(kodlar(bayat), ['bayat:E']);
+  assert.match(bayat.uyarilar[0].metin, /3 saatten eski/);
+  const iki = ix.get('iki-ui');
+  assert.deepEqual(
+    [kodlar(iki), iki.kurulabilir],
+    [[], true],
+    '3 saatin altindaki okuma bayat degil',
+  );
+  const rotasiz = ix.get('rotasiz-ui');
+  assert.deepEqual([kodlar(rotasiz), rotasiz.kurulabilir], [['config-adresi-yok:E'], false]);
+  assert.equal('_configUrls' in a, false, 'ic alan yanita sizmamali');
   assert.deepEqual(kodlar(ix.get('okumasiz-ui')), ['surum-yok:E']);
   assert.deepEqual(kodlar(ix.get('hedefsiz-ui')), ['hedef-yok:E', 'taranmayan:b']);
-  assert.deepEqual(b.ozet, { toplam: 10, kurulabilir: 3 });
+  assert.deepEqual(b.ozet, { toplam: 13, kurulabilir: 4 });
 });
 
 test('PK2b hedef tavani: 8 sunucudan fazlasi engel', () => {
@@ -447,7 +485,7 @@ test('PK5 POST plan ve uygula: extra_vars sozlesmesi, istemci verisi yok sayilir
   sifirla();
   const secim = [
     { namespace: 'kart-prod', application: 'a-ui', surum: '6.6.6', hosts: ['KOTU01'] },
-    { namespace: 'kart-prod', application: 'bayat-ui', cluster: 'arktest1' },
+    { namespace: 'kart-prod', application: 'iki-ui', cluster: 'arktest1', config_urls: ['x'] },
     { namespace: 'kart-prod', application: 'k-ui' },
   ];
   const r = await istek('POST', '/intranet/paket/kur', { secim, surum: '6.6.6' });
@@ -462,9 +500,9 @@ test('PK5 POST plan ve uygula: extra_vars sozlesmesi, istemci verisi yok sayilir
       hosts: ['NGINXP01', 'NGINXP02'],
     },
     {
-      id: 'kart-prod/bayat-ui',
+      id: 'kart-prod/iki-ui',
       namespace: 'kart-prod',
-      application: 'bayat-ui',
+      application: 'iki-ui',
       version: '2.0.0',
       cluster: 'arkprod2',
       hosts: ['NGINXP01', 'NGINXP02'],
@@ -488,16 +526,12 @@ test('PK5 POST plan ve uygula: extra_vars sozlesmesi, istemci verisi yok sayilir
   assert.equal(kayit.launch.length, 1);
   const { serverId, templateId, extraVars } = kayit.launch[0];
   assert.deepEqual([serverId, templateId], [2, 77]);
-  assert.deepEqual(extraVars, {
-    oc_binary: '/opt/oc',
-    terminal_hosts: ['BASTION1', 'BASTION2'],
-    ocp_clusters: [
-      { env: 'PROD', tenant: 'ark', cluster_name: 'arkprod1', terminal_host: 'BASTION1' },
-      { env: 'prod', tenant: 'ark', cluster_name: 'arkprod2', terminal_host: 'BASTION2' },
-    ],
-    spi_mode: 'plan',
-    spi_items: beklenenKalem,
-  });
+  // Bastionsuz: extra_vars YALNIZ spi_mode + spi_items; kalem config_urls tasir (route adreslerinden).
+  const cfg = (app) => [`https://${app}.apps.invalid/config`];
+  const gidenKalem = beklenenKalem.map((k) => ({ ...k, config_urls: cfg(k.application) }));
+  assert.deepEqual(extraVars, { spi_mode: 'plan', spi_items: gidenKalem });
+  for (const yasak of ['terminal_hosts', 'ocp_clusters', 'oc_binary'])
+    assert.equal(yasak in extraVars, false, `extra_vars'ta ${yasak}`);
   const g = kayit.gecmis[0];
   assert.deepEqual(g.slice(0, 6), [
     'onur',
@@ -520,7 +554,7 @@ test('PK5 POST plan ve uygula: extra_vars sozlesmesi, istemci verisi yok sayilir
     501,
     planBitti(beklenenKalem, {
       'kart-prod/a-ui': { NGINXP01: 'PLAN_OK', NGINXP02: 'SKIP' },
-      'kart-prod/bayat-ui': { NGINXP01: 'PLAN_OK', NGINXP02: 'PLAN_OK' },
+      'kart-prod/iki-ui': { NGINXP01: 'PLAN_OK', NGINXP02: 'PLAN_OK' },
       'kart-prod/k-ui': { NGINXP01: 'FAIL', NGINXP02: 'FAIL' },
     }),
   );
@@ -535,8 +569,10 @@ test('PK5 POST plan ve uygula: extra_vars sozlesmesi, istemci verisi yok sayilir
   const gonderilen = [{ ...beklenenKalem[0], hosts: ['NGINXP01'] }];
   assert.deepEqual(u.body.items, gonderilen, 'PLAN_OK olmayan sunucu ve kalem gonderilmez');
   assert.equal(kayit.launch[1].extraVars.spi_mode, 'apply');
-  assert.deepEqual(kayit.launch[1].extraVars.spi_items, gonderilen);
-  assert.deepEqual(kayit.launch[1].extraVars.terminal_hosts, ['BASTION1']);
+  assert.deepEqual(kayit.launch[1].extraVars, {
+    spi_mode: 'apply',
+    spi_items: [{ ...gonderilen[0], config_urls: cfg('a-ui') }],
+  });
   assert.equal(kayit.gecmis[1][3], 'Intranet SPA paket kurulumu: uygula');
   assert.deepEqual(JSON.parse(kayit.gecmis[1][6]).items, gonderilen);
   assert.equal(kayit.denetim[1].eylem, 'spa_paket_kurulum_uygula');
@@ -554,7 +590,6 @@ function planBitti(items, durumlar) {
       'plan',
       items.map((k) => ({
         ...k,
-        ocp: { ok: true },
         hosts: Object.entries(durumlar[k.id] || {}).map(([host, status]) => ({
           host,
           status,
@@ -631,7 +666,6 @@ test('PK7 GET is: bitince bir kez yazar; apply OK onbellegi siler; son deneme ad
     artifacts: sonucArtifact('apply', [
       {
         ...KALEM,
-        ocp: { ok: true },
         hosts: [
           { host: 'NGINXP01', status: 'OK', step: 'cleanup', message: 'kuruldu' },
           { host: 'NGINXP99', status: 'OK', step: 'cleanup', message: 'planda yok' },
@@ -819,7 +853,6 @@ test('PK14 yoklanmamis bitmis apply eszamanli denetimde tabloya yazilir; gecmis 
     artifacts: sonucArtifact('apply', [
       {
         ...KALEM,
-        ocp: { ok: true },
         hosts: [
           { host: 'NGINXP01', status: 'OK', step: 'cleanup', message: 'kuruldu' },
           { host: 'NGINXP02', status: 'OK', step: 'cleanup', message: 'kuruldu' },
@@ -939,6 +972,106 @@ test('PK12 ayni uyari kodu cluster basina tekrarlanmaz: iki PROD digest -> tek e
   );
 });
 
+test('PK15 config_urls route ayrintisindan: PROD + SPA + paylasilmayan, intranet once, en cok 3; katalog okunamazsa engel', () => {
+  const PRODA = new Set(['arkprod1']);
+  const d = (host, ek = {}) => ({
+    host,
+    clusters: ['arkprod1'],
+    terms: ['reencrypt'],
+    spa: true,
+    paylasilan: false,
+    ...ek,
+  });
+  const ca = (detay) => P._ic.configAdresleri(detay, PRODA);
+  // Bicim: kucuk harf, tekil; port / kullanici / bosluk / IP / localhost / tek etiket / sayisal TLD gecmez.
+  const bicim = ca([
+    d('A-UI.Apps.Invalid'),
+    d('a-ui.apps.invalid'),
+    ...[
+      'kotu host.invalid',
+      'x.invalid:8443',
+      'u@y.invalid',
+      '',
+      null,
+      '127.0.0.1',
+      '169.254.169.254',
+      'localhost',
+      'intranetapp',
+      'a.b.123',
+      `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}.invalid`,
+    ].map((h) => d(h)),
+  ]);
+  assert.deepEqual(bicim.urls, ['https://a-ui.apps.invalid/config']);
+  assert.equal(bicim.elenen.gecersiz, 9, JSON.stringify(bicim.elenen));
+  // PROD disi cluster, SPA olmayan route ve paylasilan adres alinmaz; sayilir.
+  const ele = ca([
+    d('test.apps.invalid', { clusters: ['arktest1'] }),
+    d('api.apps.invalid', { spa: false }),
+    d('ortak.apps.invalid', { paylasilan: true }),
+    d('iyi.apps.invalid', { clusters: ['arktest1', 'ARKPROD1'] }),
+  ]);
+  assert.deepEqual(ele.urls, ['https://iyi.apps.invalid/config']);
+  assert.deepEqual(ele.elenen, { gecersiz: 0, spaDegil: 1, prodDisi: 1, paylasilan: 1 });
+  // Sira: intranet (reencrypt) once, belirsiz / edge ortada, yalniz internet (passthrough) sonda.
+  assert.deepEqual(
+    ca([
+      d('a.invalid', { terms: ['passthrough'] }),
+      d('b.invalid', { terms: ['passthrough'] }),
+      d('c.invalid', { terms: ['edge'] }),
+      d('d.invalid', { terms: ['passthrough', 'reencrypt'] }),
+      d('e.invalid'),
+    ]).urls,
+    ['https://d.invalid/config', 'https://e.invalid/config', 'https://c.invalid/config'],
+  );
+  assert.deepEqual(P._ic.configAdresleri(undefined, PRODA).urls, []);
+  // Aday: paylasilan tek adres -> config-adresi-yok ENGEL + elendi bilgisi (adres metne yazilmaz).
+  const paylasilan = P._ic.adayKur(
+    satir('k-ui', {
+      clusters: ['arkprod1'],
+      routeDetay: [d('k-ui.apps.invalid', { paylasilan: true })],
+    }),
+    {
+      katalog: new Map([['arkprod1', [{ env: 'PROD', tenant: 'ark', ad: 'arkprod1' }]]]),
+      okumalar: [okuma('arkprod1', imaj('k-ui', '3.0.0'))],
+      simdi: Date.now(),
+    },
+  );
+  assert.deepEqual(
+    [kodlar(paylasilan), paylasilan.kurulabilir],
+    [['config-adresi-yok:E', 'config-adresi-elendi:b'], false],
+  );
+  assert.ok(!JSON.stringify(paylasilan.uyarilar).includes('apps.invalid'), 'adres uyariya yazildi');
+  const ctx = {
+    katalog: new Map(),
+    katalogHata: 'baglanti yok',
+    okumalar: [okuma('arkprod1', imaj('k-ui', '3.0.0'))],
+    simdi: Date.now(),
+  };
+  const a = P._ic.adayKur(satir('k-ui', { clusters: ['arkprod1'] }), ctx);
+  assert.equal(a.kurulabilir, false);
+  assert.equal(a.uyarilar[0].kod, 'katalog-yok');
+  assert.equal(a.uyarilar[0].engel, true);
+  assert.match(a.uyarilar[0].metin, /okunamadı: baglanti yok/);
+});
+
+test('PK16 bayat sinir: 3 saat; bayat aday POST ile de kurulamaz (AWX cagrilmaz)', async () => {
+  const kur = (dk) =>
+    P._ic.adayKur(satir('k-ui', { clusters: ['arkprod1'] }), {
+      katalog: new Map([['arkprod1', [{ env: 'PROD', tenant: 'ark', ad: 'arkprod1' }]]]),
+      okumalar: [okuma('arkprod1', imaj('k-ui', '3.0.0'), { alinma: once(dk * 60000) })],
+      simdi: Date.now(),
+    });
+  assert.deepEqual([kur(179).kurulabilir, kodlar(kur(179))], [true, []]);
+  assert.deepEqual([kur(181).kurulabilir, kodlar(kur(181))], [false, ['bayat:E']]);
+  sifirla();
+  const r = await istek('POST', '/intranet/paket/kur', {
+    secim: [{ namespace: 'kart-prod', application: 'bayat-ui' }],
+  });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /Kurulabilir değil: kart-prod\/bayat-ui/);
+  assert.equal(kayit.launch.length, 0);
+});
+
 test('PK13 uyari kodlari: sunucunun urettigi her kod UYARI_KODLARI listesinde ve ekran tipiyle birebir', () => {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -966,4 +1099,45 @@ test('PK13 uyari kodlari: sunucunun urettigi her kod UYARI_KODLARI listesinde ve
   const tsKodlar = [...blok[1].matchAll(/'([a-z-]+)'/g)].map((m) => m[1]);
   assert.deepEqual([...tsKodlar].sort(), [...P.UYARI_KODLARI].sort());
   assert.match(ts, /export type PaketUyariKod = \(typeof PAKET_UYARI_KODLARI\)\[number\];/);
+});
+
+test('PK17 registry seed: bastionlu ilk aciklama yalniz birebir eskiyse guncellenir', async () => {
+  const { PLAYBOOK_REGISTRY_SEED, seedPlaybookRegistry } = require('../../db/mssql-setup.cjs');
+  const guncellemeler = [];
+  const pool = {
+    request() {
+      const girdi = {};
+      return {
+        input(k, v) {
+          girdi[k] = v;
+          return this;
+        },
+        async query(sql) {
+          if (/^\s*UPDATE ansible_playbook_registry/.test(sql)) guncellemeler.push({ sql, girdi });
+          if (/SELECT 1 FROM ansible_playbook_registry WHERE key_name/.test(sql))
+            return { recordset: [{ x: 1 }] };
+          return { recordset: [] };
+        },
+      };
+    },
+  };
+  const [l, w] = [console.log, console.warn];
+  console.log = () => {};
+  console.warn = () => {};
+  try {
+    await seedPlaybookRegistry(pool);
+  } finally {
+    console.log = l;
+    console.warn = w;
+  }
+  const g = guncellemeler.find((x) => /key_name = 'spa_package_install'/.test(x.sql));
+  assert.ok(g, 'spa_package_install aciklama guncellemesi yok');
+  assert.match(g.sql, /CAST\(description AS NVARCHAR\(MAX\)\) = @old_desc/);
+  assert.match(
+    g.girdi.old_desc,
+    /Bastion: oc get ile kosan imaj etiketi ve application\.json ConfigMap/,
+  );
+  const seed = PLAYBOOK_REGISTRY_SEED.find((r) => r.key_name === 'spa_package_install');
+  assert.equal(g.girdi.new_desc, seed.description);
+  assert.doesNotMatch(seed.description, /Bastion:/);
 });
