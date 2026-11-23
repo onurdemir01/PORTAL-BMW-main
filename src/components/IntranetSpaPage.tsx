@@ -28,6 +28,7 @@ import { toast } from '@/hooks/useToast';
 import { downloadCsv } from '@/utils/csv';
 import { fmtDate, EMPTY_MARK } from '@/utils/datetime';
 import { EkipListesi } from '@/components/denetim/EkipKaynak';
+import IntranetPaketKurulum from '@/components/IntranetPaketKurulum';
 import {
   BEYAN_ETIKET,
   DEGERLENDIRME,
@@ -467,6 +468,9 @@ export default function IntranetSpaPage() {
           — bu cluster’lardaki intranet SPA’lar listede eksik ya da eski olabilir.
         </div>
       )}
+
+      {/* PAKET KURULUMU (2026-11-23): PROD'da Nginx'e gelmeyenler; yalniz Admin'e cizilir. */}
+      <IntranetPaketKurulum />
 
       {envs.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Ortam">

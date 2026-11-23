@@ -123,4 +123,4 @@ Toplanan bilgi canlı okumayla aynıdır: tür, replika, imaj, CPU / bellek iste
   - Koşu satırları 14 gün tutulur.
   - `/sw` koşu dizinleri 48 saat tutulur.
   - 7 gündür tazelenmeyen önbellek satırı silinir; bu, katalogdan çıkan cluster'ları kapsar.
-- **Bekçi:** `server/app-hub/__tests__/app-hub-filo.test.cjs` (AF1-AF12) ve `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP4).
+- **Bekçi:** `server/app-hub/__tests__/app-hub-filo.test.js` (AF1-AF12), `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP5) ve ekranda ortam içi cluster karşılaştırması `src/components/app_hub/__tests__/ocp-karsilastir.test.tsx` (OK1-OK8).

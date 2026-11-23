@@ -90,6 +90,20 @@ Yalnızca **admin** ekranında (Playbook Kayıtları), yapılandırma eksikliği
 sistemin dışındadır ve bu playbook kayıt sistemi tarafından hiçbir şekilde değiştirilmez veya
 üzerine yazılmaz.
 
+## Yazan iş kayıtları (AI aracı değil)
+
+Bazı kayıtlar AI tanılama aracı değildir: Portal ekranı onları anahtarla çağırır. Şablonun playbook'u
+`server/ansible/template-preflight.cjs` (`BEKLENEN_PLAYBOOK`) ile doğrulanır; yanlış şablon eşlenmişse iş başlamaz.
+
+| Anahtar               | Playbook                                                 | Ekran                                                     | Ortam değişkeni                   |
+| --------------------- | -------------------------------------------------------- | --------------------------------------------------------- | --------------------------------- |
+| `spa_package_install` | `bmw_portal/spa_package_install/spa_package_install.yml` | Ark SPA > Intranet SPA paket kurulumu (Admin, PROD onayı) | `SPA_PACKAGE_INSTALL_TEMPLATE_ID` |
+
+Şablon kurulumu ve kurum değerleri: [spa_package_install README](../server/ansible/playbooks/bmw_portal/spa_package_install/README.md).
+`spa_package_install` bastion'a gitmez: envanter ve makine kimliği `bmw_nginx/nginx_deployment_spa` şablonuyla
+aynıdır, OpenShift kimliği (`bmw_openshift_jobs/global_variables/credentials.yaml`) gerekmez. `application.json`
+uygulamanın route'undaki `/config`'ten Nginx sunucusunca çekilir.
+
 ## AWX sunucu geçişi (maestro2 → maestro3): Self Servis Taşıma
 
 OpsX, ScaleX, LogX gibi modüllerin template bağları bu ekranda (Playbook Kayıtları) sunucu ve

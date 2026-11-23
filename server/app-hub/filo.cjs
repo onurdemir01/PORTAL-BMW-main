@@ -578,4 +578,5 @@ module.exports = {
   filoOkumalari,
   sonKosuDurumu,
   birlestir,
+  anaNesne,
 };

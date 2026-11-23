@@ -225,6 +225,132 @@ export interface IntranetRapor {
   cached?: boolean;
 }
 
+/** Intranet SPA paket kurulumu (2026-11-23): PROD intranet Nginx'e gelmeyen paketi Artifactory'den
+ *  kurma; application.json uygulamanin route'undaki /config'ten (bastionsuz). Uyari kodlari sunucuda
+ *  (engel olanlar kurulumu durdurur; 'bayat' 3 saatten eski PROD okumasi ve 'config-adresi-yok' ENGEL,
+ *  'taranmayan' ve 'config-adresi-elendi' engel DEGIL). Liste server/spa-report/paket-kurulum.cjs UYARI_KODLARI ile birebir
+ *  (sunucu testi PK13 karsilastirir). */
+export const PAKET_UYARI_KODLARI = [
+  'ad-gecersiz',
+  'katalog-yok',
+  'surum-yok',
+  'surum-farkli',
+  'imaj-yolu-farkli',
+  'etiketsiz',
+  'bayat',
+  'config-adresi-yok',
+  'config-adresi-elendi',
+  'hedef-yok',
+  'hedef-fazla',
+  'taranmayan',
+  'yakin-zamanda-kuruldu',
+] as const;
+export type PaketUyariKod = (typeof PAKET_UYARI_KODLARI)[number];
+
+export interface PaketUyari {
+  kod: PaketUyariKod;
+  metin: string;
+  engel: boolean;
+}
+
+export type PaketSunucuDurum = 'PLAN_OK' | 'OK' | 'SKIP' | 'FAIL';
+
+export interface PaketSonDeneme {
+  zaman: string;
+  kullanici: string;
+  mod: 'plan' | 'apply';
+  jobId: number | string;
+  serverId: number | string;
+  sunucular: { host: string; status: PaketSunucuDurum | string; message: string }[];
+}
+
+export interface PaketAday {
+  namespace: string;
+  application: string;
+  env: 'PROD';
+  /** OCP imaj etiketi (paket surumu) */
+  surum: string | null;
+  /** Tam imaj adresi */
+  imaj: string | null;
+  cluster: string | null;
+  clusters: string[];
+  /** OCP okuma zamani */
+  alinma: string | null;
+  hedefler: string[];
+  taranmayan: string[];
+  uyarilar: PaketUyari[];
+  kurulabilir: boolean;
+  sonDeneme: PaketSonDeneme | null;
+}
+
+export interface PaketAdaylarYanit {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  hesaplandi?: string;
+  dizinTarihi?: string | null;
+  ozet?: { toplam: number; kurulabilir: number };
+  adaylar?: PaketAday[];
+}
+
+export interface PaketSecim {
+  namespace: string;
+  application: string;
+}
+
+export interface PaketKalem {
+  id: string;
+  namespace: string;
+  application: string;
+  version: string;
+  cluster: string;
+  hosts: string[];
+}
+
+export interface PaketKurYanit {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  serverId?: number | string;
+  jobId?: number | string;
+  mod?: 'plan' | 'apply';
+  items?: PaketKalem[];
+  /** Is basladi ama is gecmisine yazilamadi: kapilar bu isi goremez. */
+  uyari?: string;
+}
+
+export interface PaketSonucSunucu {
+  host: string;
+  status: PaketSunucuDurum | string;
+  step: string;
+  message: string;
+}
+
+/** set_stats kalemi: playbook OCP okumadigi icin 'ocp' / 'cluster' alani yok. */
+export interface PaketSonucKalem {
+  id: string;
+  namespace: string;
+  application: string;
+  version: string;
+  hosts: PaketSonucSunucu[];
+}
+
+/** set_stats spa_package_install_result */
+export interface PaketSonuc {
+  mode: 'plan' | 'apply';
+  overall: 'ok' | 'partial' | 'failed';
+  items: PaketSonucKalem[];
+}
+
+export interface PaketIsYanit {
+  ok: boolean;
+  status?: string;
+  finished?: boolean;
+  sonuc?: PaketSonuc;
+  error?: string;
+  message?: string;
+}
+
 const BASE = '/api/spa-report';
 const safeJson = (r: Response) =>
   r.json().catch(() => ({ ok: false, message: 'Yanıt okunamadı.' }));
@@ -269,6 +395,24 @@ export const arkSpaApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }).then(safeJson),
+  paketAdaylari: (fresh = false): Promise<PaketAdaylarYanit> =>
+    fetch(`${BASE}/intranet/paket/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  paketKur: (p: {
+    secim: PaketSecim[];
+    apply: boolean;
+    onayMetni?: string;
+    /** apply icin zorunlu: dayandigi bitmis plan isi */
+    plan?: { serverId: number | string; jobId: number | string };
+  }): Promise<PaketKurYanit> =>
+    fetch(`${BASE}/intranet/paket/kur`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(safeJson),
+  paketIs: (serverId: number | string, jobId: number | string): Promise<PaketIsYanit> =>
+    fetch(
+      `${BASE}/intranet/paket/is/${encodeURIComponent(String(serverId))}/${encodeURIComponent(String(jobId))}`,
+    ).then(safeJson),
   gecis: (): Promise<GecisPlani> => fetch(`${BASE}/gecis`).then(safeJson),
   gecisApp: (p: {
     namespace: string;

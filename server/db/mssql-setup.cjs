@@ -1657,6 +1657,28 @@ const TABLES = [
       )`,
   },
   {
+    // Intranet SPA paket kurulumu (2026-11-23, server/spa-report/paket-kurulum.cjs): AWX isinin kalem x sunucu
+    // sonucu. Ayni (server_id, job_id) bir kez yazilir; ekran uygulamanin son denemesini buradan gosterir.
+    name: 'spa_paket_kurulum',
+    sql: `
+      CREATE TABLE spa_paket_kurulum (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        server_id       INT NOT NULL,
+        job_id          INT NOT NULL,
+        mod             NVARCHAR(8) NOT NULL,
+        namespace       NVARCHAR(63) NOT NULL,
+        application     NVARCHAR(253) NOT NULL,
+        version         NVARCHAR(128),
+        cluster         NVARCHAR(100),
+        host            NVARCHAR(64),
+        status          NVARCHAR(16) NOT NULL,
+        step            NVARCHAR(32),
+        message         NVARCHAR(1000),
+        kullanici       NVARCHAR(255),
+        zaman           DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // BMW Hub is gecmisi: notlar + otomatik kayitlar (olusturma, durum/sahip/tarih degisimi).
     name: 'bmw_hub_notlar',
     sql: `
@@ -4274,6 +4296,19 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'APP_HUB_OCP_FILO_TEMPLATE_ID',
   },
   {
+    // Intranet SPA paket kurulumu (2026-11-23): Nginx'e gelmeyen PROD intranet SPA paketini Artifactory'den
+    // ceker, application.json'u uygulamanin route'undaki /config'ten alir (bastionsuz) ve mevcut deployment
+    // betikleriyle ilk kez kurar.
+    key_name: 'spa_package_install',
+    display_name: 'Intranet SPA — Paket Kurulumu',
+    category: 'nginx',
+    handler: 'spa_package_install',
+    description:
+      'bmw_portal/spa_package_install/spa_package_install.yml - spi_mode plan|apply + spi_items [{id, namespace, application, version, cluster, hosts, config_urls}] (en cok 10 kalem, kalem basina en cok 8 sunucu, en cok 3 config adresi). Bastion yok; envanter ve makine kimligi nginx_deployment_spa ile ayni. Nginx (www): application.json route /config adresinden (JSON nesnesi), /vhosting/HYSUXSCRIPTS betikleriyle kurulum, hata olursa nginx_delete.sh ile geri alma. Sonuc set_stats spa_package_install_result. Variables: spi_package_base_url, spi_allowed_hosts (zorunlu); prompt-on-launch ACIK.',
+    playbook_path: null,
+    env_var_name: 'SPA_PACKAGE_INSTALL_TEMPLATE_ID',
+  },
+  {
     key_name: 'opsx_openshift_pods',
     display_name: 'OpsX — Openshift Pod Keşfi',
     category: 'opsx',
@@ -4448,7 +4483,26 @@ async function seedPlaybookRegistry(pool) {
   } catch (err) {
     console.warn('[DB] opsx_legacy_operation aciklamasi guncellenemedi:', err.message);
   }
+  // spa_package_install ilk surumu (bd14d224) bastionlu akisi anlatiyordu; o surumle acilmis DB'de
+  // satir eski metinle kalirdi. Ayni kural: YALNIZ metin BIREBIR eski seed ise guncellenir.
+  const spaPaket = PLAYBOOK_REGISTRY_SEED.find((r) => r.key_name === 'spa_package_install');
+  try {
+    await pool
+      .request()
+      .input('old_desc', SPA_PACKAGE_INSTALL_ESKI_ACIKLAMA)
+      .input('new_desc', spaPaket.description)
+      .query(
+        `UPDATE ansible_playbook_registry SET description = @new_desc
+          WHERE key_name = 'spa_package_install' AND CAST(description AS NVARCHAR(MAX)) = @old_desc`,
+      );
+  } catch (err) {
+    console.warn('[DB] spa_package_install aciklamasi guncellenemedi:', err.message);
+  }
 }
+
+// spa_package_install'in bastionlu ilk seed aciklamasi (yalniz yukaridaki birebir guncelleme icin).
+const SPA_PACKAGE_INSTALL_ESKI_ACIKLAMA =
+  'bmw_portal/spa_package_install/spa_package_install.yml - spi_mode plan|apply + spi_items [{id, namespace, application, version, cluster, hosts}] (en cok 10 kalem, kalem basina en cok 8 sunucu). Bastion: oc get ile kosan imaj etiketi ve application.json ConfigMap (salt okunur); Nginx (www): /vhosting/HYSUXSCRIPTS betikleriyle kurulum, hata olursa nginx_delete.sh ile geri alma. Sonuc set_stats spa_package_install_result. Variables: spi_package_base_url, spi_allowed_hosts (zorunlu); prompt-on-launch ACIK.';
 
 // ── Maskeleme kurallari seed'i — server/logx/masker.cjs'teki RULES ile birebir ayni.
 // Regex kaynaklari string olarak saklanir; masker bunlari new RegExp(pattern, flags) ile
@@ -6200,6 +6254,9 @@ async function setupTables() {
     { name: 'IX_ahof_app', table: 'app_hub_ocp_filo', cols: 'uygulama' },
     { name: 'IX_ahof_cluster', table: 'app_hub_ocp_filo', cols: 'cluster, namespace' },
     { name: 'IX_ahofk_durum', table: 'app_hub_ocp_filo_kosu', cols: 'durum, id' },
+    // Intranet SPA paket kurulumu: ekran son denemeyi uygulamaya gore, yazim tekrari is numarasina gore arar.
+    { name: 'IX_spk_app', table: 'spa_paket_kurulum', cols: 'namespace, application, zaman' },
+    { name: 'IX_spk_job', table: 'spa_paket_kurulum', cols: 'server_id, job_id' },
     // Server Hub toplu is (2026-11-14): yurutucu durumla, ekran / kilit is + host ile, izleme is numarasiyla okur.
     { name: 'IX_shti_durum', table: 'server_hub_toplu_isler', cols: 'durum, id' },
     { name: 'IX_shto_is', table: 'server_hub_toplu_ogeler', cols: 'is_id, host, sira' },
