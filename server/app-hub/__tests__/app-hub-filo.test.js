@@ -24,6 +24,12 @@
 //   AF14 canli okuma pod ozeti: pod listesi okunamadiysa sayi yok; 200 ustunde gercek toplam END'den
 //   AF15 betik: tarama butcesi (slot SONRASI baslar) bitince kalan turler KINDFAIL, satir silinmez
 //   AF16 kosu dizini: sondaki egik cizgiler dongu ile atilir (regex geri izlemesi yok, Sonar S8786)
+//   AF17 betik slot dizini (2026-11-22, PR-R): yok / symlink / baskasina yazilabilir dizin REDDEDILIR (tahmin edilebilir
+//        /tmp yolunda baska yerel kullanici slot.N -> <kurban dosya> koyup `exec 9>` ile sifirlatabiliyordu); flock
+//        varken symlink slot dosyasi acilmaz (hedef bozulmaz)
+//   AF17c betik parola dosyasi: okunur ve HEMEN silinir; kosu dizini disinda / symlink / baska yol reddedilir (login yok)
+//   AF18 alim: giris kapisi dusunce (results bos + error) kosu HATA'si sebebi tasir ("sonuc yayinlanmadi" degil)
+//   AF19 alim: bastionda gecici dosya kaldiysa (cleanup_errors) kosu BITTI ama hata alaninda gorunur
 'use strict';
 
 const { test } = require('node:test');
@@ -121,7 +127,7 @@ function sahteOcKur({ yasak = false, loginHata = false, bozukNs = '' } = {}) {
       `D="${ux(dir)}"`,
       'echo "$1 $2 $3 $4" >> "$D/calls.txt"',
       'case "$1" in',
-      `  login) : > "$KUBECONFIG"; ${loginHata ? 'echo "Login failed (401 Unauthorized)" >&2; exit 1' : 'exit 0'} ;;`,
+      `  login) IFS= read -r P || true; printf '%s' "$P" > "$D/login-stdin.txt"; printf '%s' "$KUBECONFIG" > "$D/kubeconfig-yolu"; : > "$KUBECONFIG"; ${loginHata ? 'echo "Login failed (401 Unauthorized)" >&2; exit 1' : 'exit 0'} ;;`,
       '  get)',
       '    case "$2" in',
       `      deployment) if [ "$3" = "-A" ]; then ${yasak ? 'echo "Error from server (Forbidden)" >&2; exit 1' : 'cat "$D/obj-musteri.txt"'}; else [ "$4" = "${bozukNs}" ] && { echo boom >&2; exit 1; }; cat "$D/obj-$4.txt" 2>/dev/null; fi ;;`,
@@ -139,31 +145,57 @@ function sahteOcKur({ yasak = false, loginHata = false, bozukNs = '' } = {}) {
   return { dir, oc };
 }
 
+// Parola STDIN'den gelir (2026-11-22: Ansible `environment:` uzak komut satirina ve -vvv ciktisina yaziyordu);
+// KUBECONFIG betigin kendi 0700 is dizinindedir (/tmp/app-hub-fleet-w.<is>.XXXXXXXX), cagiranin verdigi yol yok sayilir.
 function betikKos(secenek = {}, ekEnv = {}) {
   const { dir, oc } = sahteOcKur(secenek);
-  const kubeconfig = `/tmp/app-hub-fleet-test-${process.pid}-${Math.random().toString(16).slice(2)}.kubeconfig`;
+  const is = `af${process.pid}`;
+  const tuzak = `/tmp/app-hub-fleet-test-${process.pid}-${Math.random().toString(16).slice(2)}.kubeconfig`;
   try {
     const r = spawnSync('bash', [ux(BETIK)], {
       encoding: 'utf8',
+      input: 'parola-x\n',
       env: {
         ...process.env,
         OC_BIN: ux(oc),
         OCP_URL: 'https://api.x:6443',
         OCP_USER: 'u',
-        OCP_PASS: 'parola-x',
         CLUSTER: 'c1',
-        KUBECONFIG: kubeconfig,
+        FLEET_JOB: is,
+        KUBECONFIG: tuzak,
         ...ekEnv,
       },
     });
-    assert.equal(fs.existsSync(kubeconfig), false, 'betik kubeconfig dosyasini temizlemedi');
+    assert.equal(fs.existsSync(tuzak), false, 'cagiranin KUBECONFIG yolu kullanildi');
+    const yolDosyasi = path.join(dir, 'kubeconfig-yolu');
+    const kubeconfig = fs.existsSync(yolDosyasi) ? fs.readFileSync(yolDosyasi, 'utf8') : null;
+    if (kubeconfig != null) {
+      assert.match(
+        kubeconfig,
+        new RegExp(`^/tmp/app-hub-fleet-w\\.${is}\\.[A-Za-z0-9]+/kubeconfig$`),
+        'kubeconfig betigin ozel is dizininde degil',
+      );
+      assert.equal(
+        fs.existsSync(path.dirname(kubeconfig)),
+        false,
+        'is dizini (kubeconfig) silinmedi',
+      );
+    }
     const satirlar = r.stdout.split('\n');
     const i = satirlar.indexOf('@@APPHUB_FLEET_BEGIN@@');
     const kayit =
       i >= 0 ? zlib.gunzipSync(Buffer.from(satirlar[i + 1], 'base64')).toString('utf8') : '';
-    return { ...r, kayit, calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8') };
+    const stdinDosyasi = path.join(dir, 'login-stdin.txt');
+    const loginStdin = fs.existsSync(stdinDosyasi) ? fs.readFileSync(stdinDosyasi, 'utf8') : null;
+    return {
+      ...r,
+      kayit,
+      kubeconfig,
+      loginStdin,
+      calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8'),
+    };
   } finally {
-    fs.rmSync(kubeconfig, { force: true });
+    fs.rmSync(tuzak, { force: true });
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -203,6 +235,14 @@ test(
       1,
       'cluster basina tek login degil',
     );
+    assert.match(
+      r.calls,
+      /^login --server=https:\/\/api\.x:6443 --username=u --insecure-skip-tls-verify=true$/m,
+    );
+    // Parola oc'ye STDIN'den gider (argv `ps`'te herkese gorunur; 2026-11-22, kanarya: ilk saatlik kosu).
+    assert.equal(r.loginStdin, 'parola-x', "parola oc login'e stdin ile ulasmadi");
+    assert.ok(!r.calls.includes('parola-x'), "parola oc argv'sinde");
+    assert.ok(r.kubeconfig, 'oc login KUBECONFIG gormedi');
   },
 );
 
@@ -293,9 +333,31 @@ test('AF5 playbook: yorum yok, no_log, set_stats fail oncesi, always temizligi, 
     .split('- name: "Application Hub fleet - collect and publish"')[0];
   const always = tarama.split('\n      always:\n');
   assert.equal(always.length, 2, 'temizlik always sinirinda degil');
-  assert.match(always[1], /Remove leftover kubeconfig files/);
+  assert.match(always[1], /Remove work directories \(they hold the kubeconfig\)/);
   assert.match(always[1], /Remove the script and the slot directory/);
-  assert.match(always[1], /fleet_kube_after\.files \| length == 0/);
+  assert.match(always[1], /fleet_cleanup_error:[\s\S]*fleet_work_after\.files/);
+  // Temizlikte assert YOK: tek bastionda dusen assert tum partiyi dusurur, toplayici play kosmaz (sonuc kaybolur).
+  assert.ok(
+    !/ansible\.builtin\.assert/.test(always[1]),
+    'always icinde assert (sonuc yayinlanmaz)',
+  );
+  // 2026-11-22 (PR-R): parola uzak komut satirina / -vvv ciktisina ve async is dosyasina gitmez; kosu dizini
+  // tahmin edilemez; yazma hatasi "yazildi" sayilmaz. Davranis: server/ansible/__tests__/app-hub-filo-gercek-kosum.test.js.
+  assert.ok(!/OCP_PASS:/.test(s), 'parola environment ile gidiyor (uzak komut satirinda gorunur)');
+  const baslat = bloklar.find((b) => b.startsWith('"Start one scan per cluster"'));
+  assert.ok(
+    baslat && !/\bstdin:/.test(baslat),
+    'async goreve stdin: (2.16 async is dosyasina duz yazar)',
+  );
+  assert.match(baslat, /FLEET_PASS_FILE: "\{\{ fleet_slot_dir \}\}\/p\.\{\{ item \}\}"/);
+  const parolaDosyasi = bloklar.find((b) => b.startsWith('"One-shot password file per cluster'));
+  assert.ok(
+    parolaDosyasi && /no_log: true/.test(parolaDosyasi) && /mode: "0600"/.test(parolaDosyasi),
+  );
+  assert.ok(!/\/tmp\/app-hub-fleet-slots-\{\{/.test(s), 'slot dizini tahmin edilebilir yolda');
+  assert.ok(!/KUBECONFIG:/.test(s), 'kubeconfig yolu playbook tarafindan /tmp altinda veriliyor');
+  assert.ok(yaz && /ignore_errors: true/.test(yaz) && !/failed_when: false/.test(yaz), yaz);
+  assert.match(s, /\(write_row is not unreachable\) and \(write_row is succeeded\)/);
   for (const ad of s.matchAll(/- name: "([^"]+)"/g))
     assert.ok(!/[çğıöşüÇĞİÖŞÜ]/.test(ad[1]), `Turkce gorev adi: ${ad[1]}`);
   assert.match(
@@ -1106,5 +1168,203 @@ test('AF16 kosu dizini: sondaki egik cizgiler atilir; goreli, .. ve sig dizin 42
   } finally {
     if (onceki === undefined) delete process.env.APP_HUB_FILO_DIR;
     else process.env.APP_HUB_FILO_DIR = onceki;
+  }
+});
+
+const flockVar = spawnSync('flock', ['--version'], { stdio: 'ignore' }).status === 0;
+
+test(
+  'AF17 betik slot dizini: yok / symlink / baskasina yazilabilir reddedilir',
+  { skip: !bashVar && 'bash/awk/gzip yok' },
+  () => {
+    const kok = fs.mkdtempSync('/tmp/app-hub-fleet-slots-af17.');
+    const hedef = fs.mkdtempSync(path.join(os.tmpdir(), 'af17-hedef-'));
+    const bag = `${kok}-bag`;
+    try {
+      fs.chmodSync(kok, 0o700);
+      const ret = (dizin) => {
+        const r = betikKos({}, { FLEET_SLOT_DIR: dizin });
+        assert.equal(r.status, 2, `${dizin}: ${r.stdout}`);
+        assert.match(r.stdout, /^ERR\tunsafe slot directory/m, dizin);
+        assert.ok(!/^login /m.test(r.calls), `${dizin}: guvensiz slot dizininde login yapildi`);
+      };
+      ret(`${kok}-yok`);
+      fs.symlinkSync(hedef, bag);
+      ret(bag);
+      fs.chmodSync(kok, 0o777);
+      ret(kok);
+      fs.chmodSync(kok, 0o720);
+      ret(kok);
+      fs.chmodSync(kok, 0o700);
+      const r = betikKos({}, { FLEET_SLOT_DIR: kok });
+      assert.equal(r.status, 0, r.stdout);
+      assert.match(r.kayit, /^END\t1\t1$/m);
+    } finally {
+      fs.rmSync(bag, { force: true });
+      fs.rmSync(kok, { recursive: true, force: true });
+      fs.rmSync(hedef, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'AF17b betik slot dosyasi symlink ise acilmaz; hedef bozulmaz',
+  { skip: (!bashVar && 'bash/awk/gzip yok') || (!flockVar && 'flock yok') },
+  () => {
+    const kok = fs.mkdtempSync('/tmp/app-hub-fleet-slots-af17b.');
+    const kurban = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'af17b-')), 'onemli');
+    try {
+      fs.chmodSync(kok, 0o700);
+      fs.writeFileSync(kurban, 'silinmemeli');
+      fs.symlinkSync(kurban, path.join(kok, 'slot.0'));
+      const r = betikKos({}, { FLEET_SLOT_DIR: kok, FLEET_SLOTS: '2' });
+      assert.equal(r.status, 0, r.stdout);
+      assert.equal(
+        fs.readFileSync(kurban, 'utf8'),
+        'silinmemeli',
+        'slot.0 symlink hedefi sifirlandi',
+      );
+      assert.ok(fs.existsSync(path.join(kok, 'slot.1')), 'ikinci slot kullanilmadi');
+    } finally {
+      fs.rmSync(kok, { recursive: true, force: true });
+      fs.rmSync(path.dirname(kurban), { recursive: true, force: true });
+    }
+  },
+);
+
+test('AF18 alim: giris kapisi dusunce kosu HATA sebebi tasir', async () => {
+  runnerDurum.durum = {
+    status: 'failed',
+    artifacts: {
+      app_hub_fleet_result: {
+        run: '',
+        dir: '',
+        overall_status: 'failed',
+        error: 'Required variables are missing or invalid: terminal_hosts=0',
+        results: [],
+      },
+    },
+  };
+  dbDurum.yanit = (sql) => {
+    if (sql.includes('FROM app_hub_ocp_filo_kosu WHERE durum IN'))
+      return {
+        rows: [
+          {
+            id: 9,
+            durum: 'CALISIYOR',
+            awx_server_id: 2,
+            awx_job_id: 778,
+            yas: 100,
+            alim_yas: null,
+          },
+        ],
+      };
+    if (sql.includes("SET durum = 'ALINIYOR'")) return { rows: [], rowCount: 1 };
+    return null;
+  };
+  dbDurum.sorgular = [];
+  try {
+    await P.ilerlet();
+    const hata = dbDurum.sorgular.find((q) => q.sql.includes("durum = 'HATA'"));
+    assert.ok(hata, 'kosu HATA yazilmadi');
+    assert.match(hata.p[0], /^Tarama başlamadı \(giriş kapısı\): Required variables are missing/);
+    assert.ok(!/başka bir koşuya/.test(hata.p[0]), 'kapi hatasi kosu uyusmazligi sanildi');
+    assert.ok(
+      !dbDurum.sorgular.some((q) => q.sql.includes("SET durum = 'BITTI'")),
+      'kapi hatasi BITTI yazdi',
+    );
+  } finally {
+    dbDurum.yanit = null;
+  }
+});
+
+test(
+  'AF17c betik parola dosyasi: okunur, silinir; disaridaki / symlink reddedilir',
+  { skip: !bashVar && 'bash/awk/gzip yok' },
+  () => {
+    const kok = fs.mkdtempSync('/tmp/app-hub-fleet-slots-af17c.');
+    const disari = fs.mkdtempSync(path.join(os.tmpdir(), 'af17c-'));
+    try {
+      fs.chmodSync(kok, 0o700);
+      const pf = path.join(kok, 'p.c1');
+      fs.writeFileSync(pf, 'dosyadan-parola', { mode: 0o600 });
+      const r = betikKos({}, { FLEET_SLOT_DIR: kok, FLEET_PASS_FILE: pf });
+      assert.equal(r.status, 0, r.stdout);
+      assert.match(
+        r.calls,
+        /^login --server=https:\/\/api\.x:6443 --username=u --insecure-skip-tls-verify=true$/m,
+      );
+      assert.equal(r.loginStdin, 'dosyadan-parola');
+      assert.equal(fs.existsSync(pf), false, 'parola dosyasi okunduktan sonra silinmedi');
+      const ret = (yol, ad) => {
+        const x = betikKos({}, { FLEET_SLOT_DIR: kok, FLEET_PASS_FILE: yol });
+        assert.equal(x.status, 2, `${ad}: ${x.stdout}`);
+        assert.match(x.stdout, /^ERR\tinvalid password file$/m, ad);
+        assert.ok(!/^login /m.test(x.calls), `${ad}: gecersiz parola dosyasiyla login yapildi`);
+      };
+      const dis = path.join(disari, 'p.c1');
+      fs.writeFileSync(dis, 'x', { mode: 0o600 });
+      ret(dis, 'kosu dizini disinda');
+      fs.symlinkSync(dis, path.join(kok, 'p.bag'));
+      ret(path.join(kok, 'p.bag'), 'symlink');
+      ret(path.join(kok, 'p.yok'), 'yok');
+      assert.equal(fs.readFileSync(dis, 'utf8'), 'x', 'reddedilen dosya silindi');
+    } finally {
+      fs.rmSync(kok, { recursive: true, force: true });
+      fs.rmSync(disari, { recursive: true, force: true });
+    }
+  },
+);
+
+test('AF19 alim: bastionda kalan gecici dosya kosu hata alaninda gorunur', async () => {
+  const kok = fs.mkdtempSync(path.join(os.tmpdir(), 'apphub-filo-'));
+  const dizin = path.join(kok, 'a', 'b', 'c');
+  const onceki = { ...process.env };
+  process.env.APP_HUB_FILO_DIR = ux(dizin);
+  try {
+    fs.mkdirSync(path.join(dizin, 'run-9', 'raw'), { recursive: true });
+    fs.writeFileSync(path.join(dizin, 'run-9', 'raw', 'c1.out'), paketle(kayitlar()));
+    dbDurum.satirlar = [];
+    runnerDurum.durum = {
+      status: 'failed',
+      started: '2026-11-18T10:00:00.000Z',
+      artifacts: {
+        app_hub_fleet_result: {
+          run: '9',
+          overall_status: 'ok',
+          results: [{ cluster: 'c1', ok: true, written: true }],
+          cleanup_errors: [
+            'bast1: temporary credential, script or run files could not be removed: /tmp/x',
+          ],
+        },
+      },
+    };
+    dbDurum.yanit = (sql) => {
+      if (sql.includes('FROM app_hub_ocp_filo_kosu WHERE durum IN'))
+        return {
+          rows: [
+            {
+              id: 9,
+              durum: 'CALISIYOR',
+              awx_server_id: 2,
+              awx_job_id: 779,
+              yas: 100,
+              alim_yas: null,
+            },
+          ],
+        };
+      if (sql.includes("SET durum = 'ALINIYOR'")) return { rows: [], rowCount: 1 };
+      return null;
+    };
+    dbDurum.sorgular = [];
+    await P.ilerlet();
+    const bitti = dbDurum.sorgular.find((q) => q.sql.includes("SET durum = 'BITTI'"));
+    assert.ok(bitti, 'kosu BITTI yazilmadi (tarama sonucu kayboldu)');
+    assert.equal(JSON.parse(bitti.p[0]).clusterlar[0].ok, true);
+    assert.match(String(bitti.p[1]), /^Bastion'da geçici dosya kaldı: bast1: temporary credential/);
+  } finally {
+    dbDurum.yanit = null;
+    process.env = onceki;
+    fs.rmSync(kok, { recursive: true, force: true });
   }
 });
