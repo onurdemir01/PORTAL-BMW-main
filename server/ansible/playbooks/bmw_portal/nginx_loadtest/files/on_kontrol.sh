@@ -20,6 +20,10 @@
 #           nginx_pid yok|olu -> 0 (nginx KURULU ama DURMUS; ayni sunucuda Apache gibi baska bir sunucu hizmet
 #           veriyor olabilir: hedef nginx'siz olculur); digeri (master 0 ama pid canli ya da olculemedi: hidepid;
 #           master var ama -T basarisiz) -> '-' (belirlenemedi; playbook olcum yapmaz).
+#           HIDEPID (2026-11-23, PR-R): /proc baskasinin sureclerini gizliyorsa (pid 1 gorunmuyor; apache_yaz ile ayni
+#           sezgi) master 0 KANIT DEGILDIR: calisan nginx pid dosyasini -T'de gorunmeyen bir yola yaziyorsa (-g 'pid
+#           ...;', baska -c) pid 'yok' cikar ve hedef nginx'siz olculurdu. Bu durumda '-', tek istisna: nginx ikilisi
+#           yok VE -T basarisiz (kurulu degil) -> 0.
 #           nginx_pid: konfigurasyondaki `pid` dosyasi (nginx -T ciktisindan; yoksa <prefix>/logs/nginx.pid, goreli
 #           yol prefix'e gore). yok: dizin aranabilir ve dosya yok (nginx duzgun durunca dosyayi siler); olu: pid
 #           yazili ama `kill -0` "No such process" ya da /proc'ta gorunen surec nginx master degil (bayat dosya);
@@ -244,7 +248,7 @@ apache_yaz() {
 }
 
 nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basilmaz)
-  local tok=fail master var=- n b=0 pd
+  local tok=fail master var=- n b=0 pd gizli
   nginx_hazirla
   [ -f "$NG_BIN" ] && [ -x "$NG_BIN" ] && b=1
   printf 'nginx_bin\t%d\n' "$b"
@@ -254,7 +258,10 @@ nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basi
   printf 'master_sayisi\t%d\n' "$master"
   pd="$(nginx_pid_durumu "$(pid_yolu)")"
   printf 'nginx_pid\t%s\n' "$pd"
+  gizli=0
+  [ -d "$PROC/1" ] || gizli=1
   if [ "$master" -ge 1 ] && [ "$tok" = ok ]; then var=1
+  elif [ "$master" -eq 0 ] && [ "$gizli" = 1 ] && ! { [ "$b" = 0 ] && [ "$tok" = fail ]; }; then var=-
   elif [ "$master" -eq 0 ] && [ "$tok" = fail ]; then var=0
   elif [ "$master" -eq 0 ] && [ "$tok" = ok ] && { [ "$pd" = yok ] || [ "$pd" = olu ]; }; then var=0
   fi

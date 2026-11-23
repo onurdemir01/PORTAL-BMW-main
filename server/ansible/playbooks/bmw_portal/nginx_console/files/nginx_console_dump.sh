@@ -112,8 +112,14 @@ done
 #### onbellektekiyle ayniysa onceki ozet kullanilir; ctime cp -p ile geri alinamaz. Onbellek yalniz
 #### bu kullanicinin kendi dosyasiysa okunur. Deployment yedegi (<app>_<job>, kardes <app> varken)
 #### yalniz hicbir conf onu gostermiyorsa atlanir.
+#### SYMLINK (2026-11-23, PR-R, kullanici karari "hedefi izle"): paket icindeki bag IZLENIR (find -L): hedef
+#### dosyanin icerigi ozete, hedef agacin (yol, boyut, mtime, ctime) satirlari ize girer; bagin hedef METNI de
+#### ize girer (yeniden yonlendirme). Eskiden `find -type f` bagi hic gormuyordu: farkli kutuphaneye giden ayni
+#### adli bag iki sunucuyu "esit" gosteriyordu. Kirik bag ya da dongu -> okunamadi (esit degil). Disari giden
+#### bag cok buyuk bir agaca gidebilir: uygulama basina PKG_DOSYA_SINIRI dosya; asilirsa okunamadi.
 APPS="${NGINX_APPS:-$PREFIX/applications}"
 PKG_CACHE="${NGINX_PKG_CACHE:-/var/tmp/.nginx_console_pkg_cache.v2}"
+PKG_DOSYA_SINIRI="${NGINX_PKG_DOSYA_SINIRI:-50000}"
 echo "@@SPAPKG"
 (
   export LC_ALL=C
@@ -159,8 +165,21 @@ echo "@@SPAPKG"
             echo "okunamadi: .version" >> "$hataf"
           fi
         fi
-        liste="$(cd "$d" && find . -type f -printf '%P\t%s\t%T@\t%C@\n' 2>>"$hataf" | sort)" || echo "find" >> "$hataf"
-        iz="$(printf '%s\n' "$liste" | sha256sum | cut -c1-16)"
+        liste="$(cd "$d" && find -L . -type f -printf '%P\t%s\t%T@\t%C@\n' 2>>"$hataf" \
+          | head -n "$((PKG_DOSYA_SINIRI + 1))" | sort)" || echo "find" >> "$hataf"
+        if [ -n "$liste" ] && [ "$(printf '%s\n' "$liste" | wc -l)" -gt "$PKG_DOSYA_SINIRI" ]; then
+          echo "dosya siniri $PKG_DOSYA_SINIRI asildi (bag buyuk bir agaca gidiyor olabilir)" >> "$hataf"
+        fi
+        # -L altinda yalniz KIRIK bag 'l' kalir (dongu find hatasidir, yukarida hataf'a gider).
+        kirik="$(cd "$d" && find -L . -type l -printf '%P\n' 2>/dev/null | head -n 1)"
+        [ -n "$kirik" ] && echo "kirik bag: $kirik" >> "$hataf"
+        baglar="$(cd "$d" && find . -type l -printf '%P\t%l\n' 2>>"$hataf" | sort)" || echo "find bag" >> "$hataf"
+        # Bagsiz uygulamada iz eskisiyle ayni (onbellek isabeti korunur); bagliysa hedef metni de ize girer.
+        if [ -n "$baglar" ]; then
+          iz="$(printf '%s\n@@BAG\n%s\n' "$liste" "$baglar" | sha256sum | cut -c1-16)"
+        else
+          iz="$(printf '%s\n' "$liste" | sha256sum | cut -c1-16)"
+        fi
         k="$ns/$app"
         onceki="${OLD[$k]:-}"
         if [ ! -s "$hataf" ] && [ -n "$onceki" ] && [ "${onceki%%$'\t'*}" = "$iz" ]; then

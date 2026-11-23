@@ -397,6 +397,9 @@ test(
       const onek = path.join(d, 'ng');
       fs.mkdirSync(bin);
       fs.mkdirSync(path.join(d, 'proc', '4242'), { recursive: true });
+      // pid 1 gorunur: /proc baskasinin sureclerini gosteriyor (hidepid yok). Hidepid dali asagida ayrica.
+      fs.mkdirSync(path.join(d, 'proc', '1'), { recursive: true });
+      fs.writeFileSync(path.join(d, 'proc', '1', 'cmdline'), '/sbin/init\0');
       fs.mkdirSync(path.join(onek, 'logs'), { recursive: true });
       fs.mkdirSync(path.join(onek, 'run'), { recursive: true });
       fs.writeFileSync(path.join(bin, 'dzdo'), '#!/bin/bash\nexit 1\n', { mode: 0o755 });
@@ -479,6 +482,16 @@ test(
       pidSil();
       fs.rmSync(path.join(onek, 'logs', 'yorum.pid'), { force: true });
 
+      // HIDEPID (2026-11-23, PR-R): pid 1 gorunmuyorsa master 0 kanit degil: calisan nginx pid dosyasini -T'de
+      // gorunmeyen bir yola yaziyor olabilir. 'yok' / 'olu' pid -> belirsiz (eskiden 0: nginx'siz olculurdu).
+      fs.rmSync(path.join(d, 'proc', '1'), { recursive: true, force: true });
+      bak('hidepid, pid dosyasi yok', 'ngok', 'yok', '-');
+      pidYaz('logs/nginx.pid', '999999999\n');
+      bak('hidepid, olu pid', 'ngok', 'olu', '-');
+      pidSil();
+      fs.mkdirSync(path.join(d, 'proc', '1'), { recursive: true });
+      fs.writeFileSync(path.join(d, 'proc', '1', 'cmdline'), '/sbin/init\0');
+
       // CANLI surec /proc'ta GORUNMEZ (hidepid): kill -0 onu bulur -> belirsiz (nginx calisiyor olabilir), engel kalir.
       const pidDosyasi = path.join(onek, 'run', 'uyuyan.pid');
       uyuyan = require('node:child_process').spawn(
@@ -503,6 +516,8 @@ test(
       // Yalniz bunu uretebilen ortamda kosar (Linux, root olmayan kullanici); CI boyle. Digerinde bilerek ATLANDIGI yazilir.
       const eperm = spawnSync(BASH, ['-c', 'kill -0 1'], { encoding: 'utf8' });
       if (eperm.status !== 0 && /not permitted/.test(eperm.stderr)) {
+        // Gercek hidepid: pid 1 /proc'ta gorunmez, kill -0 EPERM der.
+        fs.rmSync(path.join(d, 'proc', '1'), { recursive: true, force: true });
         pidYaz('run/ng.pid', '1\n');
         bak('baska kullanicinin canli sureci', 'ngpid', 'canli', '-');
       } else {
@@ -548,13 +563,14 @@ test(
           },
         });
       const deger = (out, k) => (new RegExp(`^${k}\\t(.*)$`, 'm').exec(out) || [])[1];
-      const bak = (etiket, sayi, deg) => {
+      const bak = (etiket, sayi, deg, ngVar = '0') => {
         const r = kos();
         assert.equal(r.status, 0, r.stderr);
         assert.equal(deger(r.stdout, 'apache_surec'), sayi, `apache_surec (${etiket})`);
         assert.equal(deger(r.stdout, 'apache_var'), deg, `apache_var (${etiket})`);
-        // Bilgi nginx kararini degistirmez: master yok + nginx -T fail -> 0, Apache olsa da olmasa da.
-        assert.equal(deger(r.stdout, 'nginx_var'), '0', `nginx_var (${etiket})`);
+        // Bilgi nginx kararini degistirmez: master yok + nginx -T fail -> 0, Apache olsa da olmasa da. Hidepid'de
+        // master 0 kanit degil (2026-11-23) -> '-'; bu da Apache'den degil /proc gorunurlugunden gelir.
+        assert.equal(deger(r.stdout, 'nginx_var'), ngVar, `nginx_var (${etiket})`);
       };
 
       temizle();
@@ -575,7 +591,9 @@ test(
 
       temizle();
       surec(300, '/bin/bash\0');
-      bak('Apache yok, pid 1 gorunmuyor (hidepid)', '0', '-');
+      bak('Apache yok, pid 1 gorunmuyor (hidepid)', '0', '-', '-');
+      surec(301, '/usr/sbin/httpd\0');
+      bak('Apache var, pid 1 gorunmuyor (hidepid)', '1', '1', '-');
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }
