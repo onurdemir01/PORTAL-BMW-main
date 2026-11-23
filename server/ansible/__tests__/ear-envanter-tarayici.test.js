@@ -1742,7 +1742,15 @@ test(
       domain: domainXml([{ ad: 'BAGLI.ear', grup: 'g' }]),
       host: hostXml([{ ad: 'J1', grup: 'g' }]),
     });
-    const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+    // ET20 GERCEK /proc'ta surec ESLESMESINI sinar; okunamayan surecin sahibi ET22'nin isi. Makinedeki yabanci
+    // uygulama hesabi surecleri (CI kosucusu) YOKAPP'i KISMI yapmasin: UID_MIN en buyuk deger (hicbiri sayilmaz).
+    const defs = path.join(kok, 'login.defs');
+    fs.writeFileSync(defs, 'UID_MIN 4294967294\n');
+    const ORT = {
+      EAR_JBOSS: jbossKokleri(kok),
+      EAR_WAS: path.join(kok, 'yok'),
+      EAR_LOGIN_DEFS: defs,
+    };
     const k = (yuk, ad) => uyg(yuk, ad).kullanim;
     const saniye = (an) => Math.floor(an.getTime() / 1000);
     if (GERCEK_PROC_YOK) {
