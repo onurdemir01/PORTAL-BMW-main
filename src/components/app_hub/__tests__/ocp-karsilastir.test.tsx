@@ -1,7 +1,7 @@
 // src/components/app_hub/__tests__/ocp-karsilastir.test.tsx — Application Hub OCP: ortam içi cluster karşılaştırması (2026-11-23).
 // Kullanıcı: "her ortam için küme halinde her cluster için alt alta gözüksün ki insanlar kontrol ederken hemen bir
 // fark var mı görebilsin". Kurallar ocpKarsilastir.ts başında.
-//   OK1 imajSurumu: etiket, digest kısa, etiketsiz, boş
+//   OK1 imajSurumu: etiket, digest kısa, etiketsiz, boş; boş etiket ('reg/ns/app:') sunucu imajCoz ile aynı
 //   OK2 gruplama: ortam büyük harf, PROD önce, katalog dışı en sonda ve karşılaştırılmaz; ortamlar arası fark yok
 //   OK3 çoğunluk: 3 cluster'da sapan tek üye fark alır, ipucu çoğunluk değeri; beraberlikte iki taraf "diğerleri"
 //   OK4 JVM: eksik / fazla / değer farkı (sırasız, aynı argümanlar farklı sırada fark DEĞİL); referans env
@@ -13,6 +13,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import OcpOrtamlar from '@/components/app_hub/OcpOrtamlar';
 import { imajSurumu, ortamGruplari } from '@/components/app_hub/ocpKarsilastir';
+import { imajCoz } from '../../../../shared/ocpImaj.cjs';
 import type { OcpCanliNesne, OcpCanliOkuma, OcpYer } from '@/api/appHubApi';
 
 type Ctr = OcpCanliNesne['containerlar'][number];
@@ -77,6 +78,11 @@ describe('Application Hub — OCP ortam içi cluster karşılaştırması', () =
     expect(imajSurumu('reg.example:5000/x/app')).toBe('latest (etiketsiz)');
     expect(imajSurumu(null)).toBe('—');
     expect(imajSurumu('  ')).toBe('—');
+    // Sınır: boş etiket iki tarafta da etiketsiz (sunucu paket kurulumu kurulabilir saymaz).
+    expect(imajCoz('reg.example/ns/app:').etiket).toBeNull();
+    expect(imajSurumu('reg.example/ns/app:')).toBe('latest (etiketsiz)');
+    expect(imajSurumu('reg.example:5000/ns/app:1.0@sha256:abc')).toBe('sha256:abc');
+    expect(imajSurumu('r/a:9.9.9')).toBe(imajCoz('r/a:9.9.9').etiket);
   });
 
   it('OK2 gruplama ve sıralama; ortamlar arası karşılaştırma yok', () => {

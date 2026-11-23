@@ -294,4 +294,9 @@ function initAppHub(app) {
   console.log('[AppHub] module mounted at /api/app-hub');
 }
 
-module.exports = { initAppHub, createRouter, _ic: { onbellekli, detayOku, _onbellek } };
+module.exports = {
+  initAppHub,
+  createRouter,
+  resolveByKey,
+  _ic: { onbellekli, detayOku, _onbellek },
+};

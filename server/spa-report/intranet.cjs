@@ -449,6 +449,12 @@ function mountIntranet(router, deps) {
       res.status(500).json({ ok: false, message: 'Beyan güncellenemedi.' });
     }
   });
+
+  // PAKET KURULUMU (2026-11-23, paket-kurulum.cjs): Artifactory -> PROD intranet Nginx; uclar yalniz Admin.
+  require('./paket-kurulum.cjs').mount(router, {
+    loadIntranet: (fresh) => loadIntranet(fresh, deps),
+    intranetOnbellekSil: onbellekSil,
+  });
 }
 
 module.exports = { mountIntranet, buildIntranetRapor, degerlendir, loadIntranet, onbellekSil };

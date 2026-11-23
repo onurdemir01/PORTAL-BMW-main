@@ -16,6 +16,7 @@
 //   * Maskeli değer (***) metin olarak karşılaştırılır: maske belirleyicidir, *** kısımları eşit çıkar.
 import type { OcpCanliNesne, OcpCanliOkuma, OcpYer } from '@/api/appHubApi';
 import { argOzu } from '../../../shared/jvmArg.cjs';
+import { imajCoz } from '../../../shared/ocpImaj.cjs';
 
 /** Pod sayısı: hazır / toplam; okunamadıysa null (0 DEĞİL). Eski canlı okumada podOzet yoksa listeden sayılır. */
 export function podSayisi(o?: OcpCanliOkuma): { hazir: number; toplam: number } | null {
@@ -76,18 +77,18 @@ const JVM_ATILDI = /JVM ayrıntısı boyut sınırı/;
 export const yerAnahtari = (c: string, n: string) => `${c.toLowerCase()}|${n.toLowerCase()}`;
 
 /** İmaj → görünen sürüm: etiket (registry/yol atılır), digest ise kısa özet; etiket yoksa "latest (etiketsiz)". */
+// Ayrıştırma shared/ocpImaj.cjs imajCoz ile (sunucu: Intranet SPA paket sürümü); iki taraf aynı kuralı taşır.
+// Boş etiket ("reg/ns/app:") etiketsiz sayılır; ayrıştırılamayan adres olduğu gibi gösterilir.
 export function imajSurumu(imaj: string | null | undefined): string {
   const s = String(imaj || '').trim();
   if (!s) return '—';
-  const at = s.indexOf('@');
-  if (at >= 0) {
-    const d = s.slice(at + 1);
-    const [alg, ozet = ''] = d.split(':');
-    return ozet ? `${alg}:${ozet.slice(0, 12)}` : d;
+  const p = imajCoz(s);
+  if (p.digest) {
+    const [alg, ozet = ''] = p.digest.split(':');
+    return ozet ? `${alg}:${ozet.slice(0, 12)}` : p.digest;
   }
-  const son = s.slice(s.lastIndexOf('/') + 1);
-  const ik = son.lastIndexOf(':');
-  return ik >= 0 ? son.slice(ik + 1) : 'latest (etiketsiz)';
+  if (!p.uygulama) return s;
+  return p.etiket ?? 'latest (etiketsiz)';
 }
 
 /** Aynı adda Deployment (workloadRef, 0'a ölçekli) + Rollout varsa replikası olan nesne asıl nesnedir. */
