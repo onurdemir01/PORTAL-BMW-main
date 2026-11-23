@@ -15,19 +15,19 @@ const NOW = Date.parse(`${D}T12:00:00Z`);
 const assess = (d, o) => assessHam(d, { now: NOW, ...(o || {}) });
 const base = () => ({
   hosts: [
-    { host: 'DACRAAP01', scan_date: D, products: 'JBOSS7 RHA', wall_s: 4.2, cpu_s: 1.1 },
-    { host: 'DACRWAP01', scan_date: D, products: 'RHA', wall_s: 2, cpu_s: 0.5 },
+    { host: 'ODCRAAP01', scan_date: D, products: 'JBOSS7 RHA', wall_s: 4.2, cpu_s: 1.1 },
+    { host: 'ODCRWAP01', scan_date: D, products: 'RHA', wall_s: 2, cpu_s: 0.5 },
   ],
   init: [
-    { host: 'DACRAAP01', root: 'vhosting', file: 'start.sh', status: 'OK' },
-    { host: 'DACRAAP01', root: 'vhosting', file: 'functions.sh', status: 'DIFF' },
+    { host: 'ODCRAAP01', root: 'vhosting', file: 'start.sh', status: 'OK' },
+    { host: 'ODCRAAP01', root: 'vhosting', file: 'functions.sh', status: 'DIFF' },
   ],
   jboss: [
-    { host: 'DACRAAP01', gen: 7, host_name: 'master', host_state: 'running', cli: 'OK', note: '' },
+    { host: 'ODCRAAP01', gen: 7, host_name: 'master', host_state: 'running', cli: 'OK', note: '' },
   ],
   jvms: [
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       gen: 7,
       jvm: 'crm',
       grp: 'g',
@@ -37,7 +37,7 @@ const base = () => ({
       ports: '8080,9990',
     },
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       gen: 7,
       jvm: 'oldapp',
       grp: 'g',
@@ -47,7 +47,7 @@ const base = () => ({
       ports: '',
     },
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       gen: 7,
       jvm: 'batch',
       grp: 'g',
@@ -57,16 +57,16 @@ const base = () => ({
       ports: '8180',
     },
   ],
-  web: [{ host: 'DACRWAP01', product: 'RHA', running: 1, syntax: 'OK', detail: '2 vhost' }],
+  web: [{ host: 'ODCRWAP01', product: 'RHA', running: 1, syntax: 'OK', detail: '2 vhost' }],
   vhosts: [
     {
-      host: 'DACRWAP01',
+      host: 'ODCRWAP01',
       product: 'RHA',
       listen: '10.1.1.13:443',
       server_name: 'crm.fw.local',
       aliases: '',
       access_log: '/l/crm',
-      proxy_targets: 'dacraap01.fw.local:8080',
+      proxy_targets: 'odcraap01.fw.local:8080',
       req_24h: 50,
       req_7d: 900,
       hc_24h: 5,
@@ -75,13 +75,13 @@ const base = () => ({
       conf_file: '/usr/apache/conf/vhosts.conf',
     },
     {
-      host: 'DACRWAP01',
+      host: 'ODCRWAP01',
       product: 'RHA',
       listen: '10.1.1.14:443',
       server_name: 'oldapp.fw.local',
       aliases: '',
       access_log: '/l/old',
-      proxy_targets: 'dacraap01:8280',
+      proxy_targets: 'odcraap01:8280',
       req_24h: 0,
       req_7d: 0,
       hc_24h: 40,
@@ -91,15 +91,15 @@ const base = () => ({
     },
   ],
   ips: [
-    { host: 'DACRWAP01', ip: '10.1.1.13', iface: 'eth0', used_by: 'RHA', is_primary: 0 },
-    { host: 'DACRWAP01', ip: '10.1.1.99', iface: 'eth0', used_by: 'none', is_primary: 0 },
-    { host: 'DACRWAP01', ip: '10.1.1.10', iface: 'eth0', used_by: 'other', is_primary: 1 },
+    { host: 'ODCRWAP01', ip: '10.1.1.13', iface: 'eth0', used_by: 'RHA', is_primary: 0 },
+    { host: 'ODCRWAP01', ip: '10.1.1.99', iface: 'eth0', used_by: 'none', is_primary: 0 },
+    { host: 'ODCRWAP01', ip: '10.1.1.10', iface: 'eth0', used_by: 'other', is_primary: 1 },
   ],
 });
 
 test("SH1: proxy hedefi (host:port) ile JVM<->vhost kesin eslesir; trafik JVM'e yazilir", () => {
   const r = assess(base());
-  const app = r.hosts.find((h) => h.host === 'DACRAAP01');
+  const app = r.hosts.find((h) => h.host === 'ODCRAAP01');
   const crm = app.jvms.find((j) => j.name === 'crm');
   assert.equal(crm.matchKind, 'proxy');
   assert.equal(crm.req7d, 900);
@@ -111,22 +111,22 @@ test("SH1: proxy hedefi (host:port) ile JVM<->vhost kesin eslesir; trafik JVM'e 
 // 5. harf A->W, eslesme server_name icinde uygulama adi. matchKind bu yuzden 'web-app'.
 test('SH2: proxy hedefi tutmazsa Web-App iliskisi devreye girer (5. harf A->W web sunucusu)', () => {
   const r = assess(base());
-  const app = r.hosts.find((h) => h.host === 'DACRAAP01');
+  const app = r.hosts.find((h) => h.host === 'ODCRAAP01');
   const old = app.jvms.find((j) => j.name === 'oldapp');
-  assert.equal(old.matchKind, 'web-app'); // port 8280 JVM'de yok (kapali, port yok) -> Web-App ile DACRWAP01
+  assert.equal(old.matchKind, 'web-app'); // port 8280 JVM'de yok (kapali, port yok) -> Web-App ile ODCRWAP01
   assert.equal(old.req7d, 0);
-  assert.equal(old.vhosts[0].host, 'DACRWAP01');
+  assert.equal(old.vhosts[0].host, 'ODCRWAP01');
   assert.match(old.webMatch.how, /server_name/);
   // kanit bulgu metninde: web sunucusu / vhost / access log
   const f = app.findings.find((x) => x.code === 'RETIRE_CANDIDATE');
   assert.match(f.text, /hc\.jsp\/hc\.html hariç/i);
-  assert.match(f.text, /DACRWAP01\/oldapp\.fw\.local/);
+  assert.match(f.text, /ODCRWAP01\/oldapp\.fw\.local/);
   assert.match(f.text, /\/l\/old/);
 });
 
 test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning, RESTART_REQUIRED warning, INIT_DIFF warning', () => {
   const r = assess(base());
-  const app = r.hosts.find((h) => h.host === 'DACRAAP01');
+  const app = r.hosts.find((h) => h.host === 'ODCRAAP01');
   const codes = Object.fromEntries(app.findings.map((f) => [f.code, f]));
   assert.equal(codes.REBOOT_RISK.severity, 'danger');
   assert.deepEqual(codes.REBOOT_RISK.fix, { action: 'jboss_autostart_on', gen: 7, jvm: 'crm' });
@@ -153,7 +153,7 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
 test('SH4: web sunucusu: bosta IP BILGI (uyari degil, 2026-10-19), JVM\'e esli vhost "idle" sayilmaz, esli olmayan idle vhost info + retire eylemi', () => {
   const d = base();
   d.vhosts.push({
-    host: 'DACRWAP01',
+    host: 'ODCRWAP01',
     product: 'RHA',
     listen: '*:80',
     server_name: 'lonely.fw.local',
@@ -168,7 +168,7 @@ test('SH4: web sunucusu: bosta IP BILGI (uyari degil, 2026-10-19), JVM\'e esli v
     conf_file: '/usr/apache/conf/lonely.conf',
   });
   const r = assess(d);
-  const web = r.hosts.find((h) => h.host === 'DACRWAP01');
+  const web = r.hosts.find((h) => h.host === 'ODCRWAP01');
   const codes = web.findings.map((f) => f.code);
   assert.ok(codes.includes('IP_UNUSED'));
   // Kullanici (2026-10-19): "bosta IP olan sunucu bunlari warning olarak gosterme lutfen".
@@ -186,21 +186,21 @@ test('SH4: web sunucusu: bosta IP BILGI (uyari degil, 2026-10-19), JVM\'e esli v
 test('SH5: apache sozdizimi hatasi -> danger + satir yorumlama eylemi (dosya:satir ayristirilir); nginx icin eylem yok', () => {
   const d = base();
   d.web.push({
-    host: 'DACRWAP01',
+    host: 'ODCRWAP01',
     product: 'IHS',
     running: 0,
     syntax: 'FAIL',
     detail: "Syntax error on line 12 of /usr/IBMIHS/conf/httpd.conf: Invalid command 'Foo'",
   });
   d.web.push({
-    host: 'DACRWAP01',
+    host: 'ODCRWAP01',
     product: 'NGINX',
     running: 1,
     syntax: 'FAIL',
     detail: 'nginx: [emerg] unknown directive',
   });
   const r = assess(d);
-  const web = r.hosts.find((h) => h.host === 'DACRWAP01');
+  const web = r.hosts.find((h) => h.host === 'ODCRWAP01');
   const fails = web.findings.filter((f) => f.code === 'SYNTAX_FAIL');
   assert.equal(fails.length, 2);
   const ihs = fails.find((f) => f.text.startsWith('IHS'));
@@ -223,7 +223,7 @@ test('SH6: ozet sayilari', () => {
   assert.equal(r.summary.jvm.rebootRisk, 1);
   assert.equal(r.summary.jvm.retireCandidates, 1);
   assert.equal(r.summary.jvm.restartRequired, 1);
-  // OLCUT YALNIZ start.sh (kullanici 2026-10-06). Fixture'da DACRAAP01 start.sh OK ve
+  // OLCUT YALNIZ start.sh (kullanici 2026-10-06). Fixture'da ODCRAAP01 start.sh OK ve
   // functions.sh DIFF. ESKIDEN: tum dosyalar sayildigi icin compliant 0 / diffFiles 1 idi -
   // tek bir yan dosya sunucuyu "uyumsuz" yapiyordu. ARTIK: start.sh OK oldugu icin sunucu
   // uyumlu, functions.sh farki otherDiffFiles'ta GORUNUR ama sayimi bozmaz.
@@ -233,7 +233,7 @@ test('SH6: ozet sayilari', () => {
   assert.equal(r.summary.init.olcutDosyasi, 'start.sh');
   assert.equal(r.summary.web.RHA.vhosts, 2);
   assert.equal(r.summary.ips.unused, 1);
-  assert.equal(r.summary.scan.maxCpuHost, 'DACRAAP01');
+  assert.equal(r.summary.scan.maxCpuHost, 'ODCRAAP01');
   assert.equal(r.latestScan, D);
 });
 
@@ -241,14 +241,14 @@ test('SH7: kapali JVM web katmanina eslenemezse retire adayi DENMEZ (kanit yok)'
   const d = base();
   d.vhosts = [];
   const r = assess(d);
-  const app = r.hosts.find((h) => h.host === 'DACRAAP01');
+  const app = r.hosts.find((h) => h.host === 'ODCRAAP01');
   assert.ok(!app.findings.some((f) => f.code === 'RETIRE_CANDIDATE'));
   assert.ok(app.findings.some((f) => f.code === 'STOPPED'));
 });
 
 test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
-  assert.deepEqual(parseTargets('dacraap01.fw.local:8080, 10.1.1.5:8180'), [
-    { host: 'DACRAAP01', port: 8080 },
+  assert.deepEqual(parseTargets('odcraap01.fw.local:8080, 10.1.1.5:8180'), [
+    { host: 'ODCRAAP01', port: 8080 },
     { host: '10.1.1.5', port: 8180 },
   ]);
   assert.deepEqual(parseTargets('app1_up'), [{ host: 'APP1_UP', port: null }]);
@@ -325,17 +325,17 @@ test('SH9: init uyumu FILO COGUNLUGUNA gore (Denetim ile ayni): repo referansind
   );
   // start.sh: 3 sunucuda ayni sha 'A' ama repo referansi baska (hepsi DIFF geldi) -> cogunluk A, hepsi OK
   d.init = [
-    { host: 'DACRAAP01', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
+    { host: 'ODCRAAP01', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
     { host: 'H2', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
     { host: 'H3', root: 'vhosting', file: 'start.sh', status: 'DIFF', sha512: 'A' },
     // functions.sh: 2 sunucu B (repo ile ayni), 1 sunucu C -> C cogunluktan farkli (DIFF), digerleri OK
-    { host: 'DACRAAP01', root: 'vhosting', file: 'functions.sh', status: 'OK', sha512: 'B' },
+    { host: 'ODCRAAP01', root: 'vhosting', file: 'functions.sh', status: 'OK', sha512: 'B' },
     { host: 'H2', root: 'vhosting', file: 'functions.sh', status: 'OK', sha512: 'B' },
     { host: 'H3', root: 'vhosting', file: 'functions.sh', status: 'DIFF', sha512: 'C' },
     { host: 'H3', root: 'vhosting', file: 'startNginx.sh', status: 'MISSING', sha512: null },
   ];
   const r = assess(d);
-  const h1 = r.hosts.find((h) => h.host === 'DACRAAP01'),
+  const h1 = r.hosts.find((h) => h.host === 'ODCRAAP01'),
     h3 = r.hosts.find((h) => h.host === 'H3');
   assert.ok(
     !h1.findings.some((f) => f.code === 'INIT_DIFF'),
@@ -374,9 +374,9 @@ test('SH9b: appdomain.service sunucuya OZELDIR - warning degil, metrikleri bozma
   const d = base();
   d.hosts.push({ host: 'H2', scan_date: D, products: 'JBOSS7' });
   d.init = [
-    { host: 'DACRAAP01', root: 'systemd', file: 'appdomain.service', status: 'DIFF', sha512: 'X' },
+    { host: 'ODCRAAP01', root: 'systemd', file: 'appdomain.service', status: 'DIFF', sha512: 'X' },
     { host: 'H2', root: 'systemd', file: 'appdomain.service', status: 'DIFF', sha512: 'Y' },
-    { host: 'DACRAAP01', root: 'vhosting', file: 'start.sh', status: 'OK', sha512: 'B' },
+    { host: 'ODCRAAP01', root: 'vhosting', file: 'start.sh', status: 'OK', sha512: 'B' },
     { host: 'H2', root: 'vhosting', file: 'start.sh', status: 'OK', sha512: 'B' },
   ];
   const r = assess(d);
@@ -409,13 +409,13 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
   // crm CALISIYOR; iki vhost ona proxy'liyor. Biri okundu (7g=0), oteki OKUNAMADI.
   d.vhosts = [
     {
-      host: 'DACRWAP01',
+      host: 'ODCRWAP01',
       product: 'RHA',
       listen: '10.1.1.13:443',
       server_name: 'crm.fw.local',
       aliases: '',
       access_log: '/l/crm',
-      proxy_targets: 'dacraap01.fw.local:8080',
+      proxy_targets: 'odcraap01.fw.local:8080',
       req_24h: 0,
       req_7d: 0,
       hc_24h: 0,
@@ -424,13 +424,13 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
       conf_file: '/usr/apache/conf/vhosts.conf',
     },
     {
-      host: 'DACRWAP01',
+      host: 'ODCRWAP01',
       product: 'RHA',
       listen: '10.1.1.15:443',
       server_name: 'crm2.fw.local',
       aliases: '',
       access_log: '/l/crm2',
-      proxy_targets: 'dacraap01.fw.local:8080',
+      proxy_targets: 'odcraap01.fw.local:8080',
       req_24h: null,
       req_7d: null,
       hc_24h: null,
@@ -443,7 +443,7 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
   // iddiasi HIC kurulmaz - eskiden yalniz okunabilen loglar toplaniyor ve okunamayan log
   // sessizce "0" gibi davraniyordu. Bu senaryoda NO_LOAD artik URETILMEZ.
   const r0 = assess(d);
-  const h0 = r0.hosts.find((x) => x.host === 'DACRAAP01');
+  const h0 = r0.hosts.find((x) => x.host === 'ODCRAAP01');
   assert.ok(
     !h0.findings.some((x) => x.code === 'NO_LOAD'),
     'okunamayan log varken "yuk yok" iddia edildi',
@@ -454,7 +454,7 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
   d.vhosts[1].req_7d = 0;
   d.vhosts[1].hc_24h = 0;
   const r = assess(d);
-  const h = r.hosts.find((x) => x.host === 'DACRAAP01');
+  const h = r.hosts.find((x) => x.host === 'ODCRAAP01');
   const f = h.findings.find((x) => x.code === 'NO_LOAD');
   assert.ok(f, 'NO_LOAD bulgusu uretilmedi - senaryo kurulamadi');
   assert.ok(
@@ -468,7 +468,7 @@ test('SH9c: NO_LOAD bulgusu HANGI LOGA dayandigini tasir; okunamayan log KANIT D
   assert.equal(f.scanDate, D, 'loglarin NE ZAMAN okundugu tasinmiyor');
   // OKUNAMAYAN LOG "0 ISTEK" SAYILMAZ (-1 de okunamadi demektir; v3 D1-C13).
   d.vhosts[1].req_7d = -1;
-  const hb = assess(d).hosts.find((x) => x.host === 'DACRAAP01');
+  const hb = assess(d).hosts.find((x) => x.host === 'ODCRAAP01');
   assert.ok(!hb.findings.some((x) => x.code === 'NO_LOAD'), '-1 log "0 istek" sayildi');
 });
 
@@ -480,7 +480,7 @@ test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {
   d.jvms = [
     // CLI auto-start'i okuyamadi, envanterde de kayit yok.
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       gen: 7,
       jvm: 'cliyok',
       grp: 'g',
@@ -491,7 +491,7 @@ test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {
     },
     // Envanterde kayit VAR ama autostarts alani celiskili.
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       gen: 7,
       jvm: 'celiskili',
       grp: 'g',
@@ -503,7 +503,7 @@ test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {
   ];
   d.mwApps = [
     {
-      host: 'DACRAAP01',
+      host: 'ODCRAAP01',
       app: 'celiskili',
       domain: 'd1',
       status: 'running',
@@ -512,7 +512,7 @@ test('SH9d: auto-start "bilinmiyor" SEBEBIYLE gelir; ucu ayri sayilir', () => {
     },
   ];
   const r = assess(d);
-  const h = r.hosts.find((x) => x.host === 'DACRAAP01');
+  const h = r.hosts.find((x) => x.host === 'ODCRAAP01');
   const bulgular = h.findings.filter((f) => f.code === 'AUTOSTART_UNKNOWN');
   assert.equal(bulgular.length, 2, 'iki JVM de bilinmiyor olmali');
   const sebepler = bulgular.map((f) => f.autoStartReason).sort();
@@ -724,7 +724,7 @@ test('SH10: nginx sozdizimi OLCULEMEDI ile HATALI ayri raporlanir', () => {
   const d = base();
   d.web = [
     {
-      host: 'DACRWAP01',
+      host: 'ODCRWAP01',
       product: 'NGINX',
       running: 1,
       syntax: 'UNKNOWN',
@@ -732,7 +732,7 @@ test('SH10: nginx sozdizimi OLCULEMEDI ile HATALI ayri raporlanir', () => {
     },
   ];
   const r = assess(d);
-  const host = r.hosts.find((h) => h.host === 'DACRWAP01');
+  const host = r.hosts.find((h) => h.host === 'ODCRWAP01');
   const bulgular = (host.findings || []).filter((f) => f.code === 'SYNTAX_UNKNOWN');
   assert.equal(bulgular.length, 1, 'olculemedi bir bulgu uretmeli');
   assert.equal(bulgular[0].severity, 'info', 'olculemedi bir HATA degil, bilgidir');
@@ -1041,8 +1041,8 @@ test('AH5 sebepler sunucu adlariyla toplanir; uc SALT OKUNUR', () => {
 // satirini yorumlamak uretimde SSL'i kirar.
 const webBul = (detail, product = 'IHS') => {
   const d = base();
-  d.web.push({ host: 'DACRWAP01', product, running: 1, syntax: 'FAIL', detail });
-  return assess(d).hosts.find((h) => h.host === 'DACRWAP01').findings;
+  d.web.push({ host: 'ODCRWAP01', product, running: 1, syntax: 'FAIL', detail });
+  return assess(d).hosts.find((h) => h.host === 'ODCRWAP01').findings;
 };
 
 test('SHX1 erisim kaynakli FAIL "dogrulanamadi" olur ve HICBIR config eylemi onerilmez', () => {
@@ -1086,7 +1086,7 @@ test('SHX2 GERCEK sozdizimi hatasi (satir 13 dahil) yine SYNTAX_FAIL + duzeltme'
 const webBulRunAs = (runAs) => {
   const d = base();
   d.web.push({
-    host: 'DACRWAP01',
+    host: 'ODCRWAP01',
     product: 'IHS',
     running: 1,
     syntax: 'FAIL',
@@ -1096,7 +1096,7 @@ const webBulRunAs = (runAs) => {
     syntax_verification: 'VERIFIED',
     run_as: runAs,
   });
-  return assess(d).hosts.find((h) => h.host === 'DACRWAP01').findings;
+  return assess(d).hosts.find((h) => h.host === 'ODCRWAP01').findings;
 };
 
 test("SHX4 run_as='dzdo' (scan_ver 2.2 estate bicimi) duzeltme onerisini ENGELLEMEZ", () => {

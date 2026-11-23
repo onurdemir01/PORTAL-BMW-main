@@ -52,8 +52,8 @@ const uye = (host, args, ek = {}) => ({
 
 test('JK1 sira onemsiz: ayni argumanlar farkli sirada ESIT', () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx2g -Xms1g -XX:+UseG1GC -Da=1'),
-    uye('GOJBAP02', '-Da=1 -XX:+UseG1GC -Xms1g -Xmx2g'),
+    uye('OPJBAP01', '-Xmx2g -Xms1g -XX:+UseG1GC -Da=1'),
+    uye('OPJBAP02', '-Da=1 -XX:+UseG1GC -Xms1g -Xmx2g'),
   ]);
   assert.equal(r.durum, 'ESIT');
   assert.equal(r.farkSayisi, 0);
@@ -62,51 +62,51 @@ test('JK1 sira onemsiz: ayni argumanlar farkli sirada ESIT', () => {
 
 test('JK2 deger farki: cogunluk degeri ve sapan sunucu', () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx2g -Da=1'),
-    uye('GOJBAP02', '-Xmx2g -Da=1'),
-    uye('GOJBAP03', '-Xmx4g -Da=1'),
+    uye('OPJBAP01', '-Xmx2g -Da=1'),
+    uye('OPJBAP02', '-Xmx2g -Da=1'),
+    uye('OPJBAP03', '-Xmx4g -Da=1'),
   ]);
   assert.equal(r.durum, 'FARKLI');
   assert.equal(r.degerFarklari.length, 1);
   const f = r.degerFarklari[0];
   assert.equal(f.anahtar, '-Xmx');
   assert.equal(f.cogunluk, '2g');
-  assert.deepEqual(f.cogunlukUyeler, ['GOJBAP01/MUSTERI', 'GOJBAP02/MUSTERI']);
+  assert.deepEqual(f.cogunlukUyeler, ['OPJBAP01/MUSTERI', 'OPJBAP02/MUSTERI']);
   assert.deepEqual(
     f.sapanlar.map((s) => [s.uye, s.deger]),
-    [['GOJBAP03/MUSTERI', '4g']],
+    [['OPJBAP03/MUSTERI', '4g']],
   );
   // esit bolunme: cogunluk yok, tum degerler sapan
-  const e = grupKarsilastir([uye('GOJBAP01', '-Da=1'), uye('GOJBAP02', '-Da=2')]);
+  const e = grupKarsilastir([uye('OPJBAP01', '-Da=1'), uye('OPJBAP02', '-Da=2')]);
   assert.equal(e.degerFarklari[0].cogunluk, null);
   assert.equal(e.degerFarklari[0].sapanlar.length, 2);
 });
 
 test('JK3 eksik/fazla: yalniz bazi sunucularda olan arguman', () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Da=1 -Db=2'),
-    uye('GOJBAP02', '-Da=1 -Db=2'),
-    uye('GOJBAP03', '-Da=1 -Dc=3'),
+    uye('OPJBAP01', '-Da=1 -Db=2'),
+    uye('OPJBAP02', '-Da=1 -Db=2'),
+    uye('OPJBAP03', '-Da=1 -Dc=3'),
   ]);
   assert.equal(r.durum, 'FARKLI');
   assert.equal(r.farkSayisi, 2);
   const b = r.eksikFazla.find((x) => x.anahtar === '-Db');
-  assert.deepEqual(b.olmayan, ['GOJBAP03/MUSTERI']);
+  assert.deepEqual(b.olmayan, ['OPJBAP03/MUSTERI']);
   assert.equal(b.cogunlukta, true);
   const c = r.eksikFazla.find((x) => x.anahtar === '-Dc');
-  assert.deepEqual(c.olan, ['GOJBAP03/MUSTERI']);
+  assert.deepEqual(c.olan, ['OPJBAP03/MUSTERI']);
   assert.equal(c.cogunlukta, false);
 });
 
 test('JK4 sunucuya ozgu: host / IP / JVM adi gecen deger esitsizlik sayilmaz', () => {
   const a = uye(
-    'GOJBAP01',
-    '-Djboss.server.log.dir=/log/gojbap01/MUSTERI -Dx.url=http://10.0.0.1:8080 -Xmx2g',
+    'OPJBAP01',
+    '-Djboss.server.log.dir=/log/opjbap01/MUSTERI -Dx.url=http://10.0.0.1:8080 -Xmx2g',
     { ip: '10.0.0.1' },
   );
   const b = uye(
-    'GOJBAP02',
-    '-Djboss.server.log.dir=/log/GOJBAP02/MUSTERI -Dx.url=http://10.0.0.2:8080 -Xmx2g',
+    'OPJBAP02',
+    '-Djboss.server.log.dir=/log/OPJBAP02/MUSTERI -Dx.url=http://10.0.0.2:8080 -Xmx2g',
     { ip: '10.0.0.2' },
   );
   const r = grupKarsilastir([a, b]);
@@ -115,11 +115,11 @@ test('JK4 sunucuya ozgu: host / IP / JVM adi gecen deger esitsizlik sayilmaz', (
     '-Djboss.server.log.dir',
     '-Dx.url',
   ]);
-  assert.equal(normallestir('/log/gojbap01/MUSTERI', a), '/log/<HOST>/<JVM>');
+  assert.equal(normallestir('/log/opjbap01/MUSTERI', a), '/log/<HOST>/<JVM>');
   // normallestirme gercek farki ortmez: yol ayni sunucu yer tutucusuyla ama farkli kokte
   const c = uye(
-    'GOJBAP03',
-    '-Djboss.server.log.dir=/baska/GOJBAP03/MUSTERI -Dx.url=http://10.0.0.3:8080 -Xmx2g',
+    'OPJBAP03',
+    '-Djboss.server.log.dir=/baska/OPJBAP03/MUSTERI -Dx.url=http://10.0.0.3:8080 -Xmx2g',
     { ip: '10.0.0.3' },
   );
   const r2 = grupKarsilastir([a, b, c]);
@@ -133,28 +133,28 @@ test('JK4 sunucuya ozgu: host / IP / JVM adi gecen deger esitsizlik sayilmaz', (
 
 test('JK5 kimlik anahtari esitsizlik degil; port ofseti sunucular arasi FARKLI, sunucu ici dogal; bind adresi yutulmaz', () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Djboss.node.name=n1 -Djboss.tx.node.id=t1'),
-    uye('GOJBAP02', '-Djboss.node.name=n2 -Djboss.tx.node.id=t2'),
+    uye('OPJBAP01', '-Djboss.node.name=n1 -Djboss.tx.node.id=t1'),
+    uye('OPJBAP02', '-Djboss.node.name=n2 -Djboss.tx.node.id=t2'),
   ]);
   assert.equal(r.durum, 'ESIT');
   assert.equal(r.sunucuyaOzgu.length, 2);
   // farkli sunucularda farkli port ofseti: web worker'i bu portu bekler
   const o = grupKarsilastir([
-    uye('GOJBAP01', '-Djboss.socket.binding.port-offset=0'),
-    uye('GOJBAP02', '-Djboss.socket.binding.port-offset=100'),
-    uye('GOJBAP03', '-Djboss.socket.binding.port-offset=0'),
+    uye('OPJBAP01', '-Djboss.socket.binding.port-offset=0'),
+    uye('OPJBAP02', '-Djboss.socket.binding.port-offset=100'),
+    uye('OPJBAP03', '-Djboss.socket.binding.port-offset=0'),
   ]);
   assert.equal(o.durum, 'FARKLI');
   assert.deepEqual(
     o.degerFarklari[0].sapanlar.map((s) => s.uye),
-    ['GOJBAP02/MUSTERI'],
+    ['OPJBAP02/MUSTERI'],
   );
   // ayni sunucudaki iki JVM 0 / 100, her sunucuda ayni dizilim: dogal fark
   const ic = grupKarsilastir([
-    uye('GOJBAP01', '-Djboss.socket.binding.port-offset=0', { etiket: 'GOJBAP01/A', jvm: 'A' }),
-    uye('GOJBAP01', '-Djboss.socket.binding.port-offset=100', { etiket: 'GOJBAP01/B', jvm: 'B' }),
-    uye('GOJBAP02', '-Djboss.socket.binding.port-offset=0', { etiket: 'GOJBAP02/A', jvm: 'A' }),
-    uye('GOJBAP02', '-Djboss.socket.binding.port-offset=100', { etiket: 'GOJBAP02/B', jvm: 'B' }),
+    uye('OPJBAP01', '-Djboss.socket.binding.port-offset=0', { etiket: 'OPJBAP01/A', jvm: 'A' }),
+    uye('OPJBAP01', '-Djboss.socket.binding.port-offset=100', { etiket: 'OPJBAP01/B', jvm: 'B' }),
+    uye('OPJBAP02', '-Djboss.socket.binding.port-offset=0', { etiket: 'OPJBAP02/A', jvm: 'A' }),
+    uye('OPJBAP02', '-Djboss.socket.binding.port-offset=100', { etiket: 'OPJBAP02/B', jvm: 'B' }),
   ]);
   assert.equal(ic.durum, 'ESIT');
   assert.deepEqual(
@@ -163,13 +163,13 @@ test('JK5 kimlik anahtari esitsizlik degil; port ofseti sunucular arasi FARKLI, 
   );
   // bind adresi: 0.0.0.0 ile sunucunun kendi IP'si gercek fark; kendi IP'leri ise normallesir
   const b = grupKarsilastir([
-    uye('GOJBAP01', '-Djboss.bind.address=0.0.0.0', { ip: '10.0.0.1' }),
-    uye('GOJBAP02', '-Djboss.bind.address=10.0.0.2', { ip: '10.0.0.2' }),
+    uye('OPJBAP01', '-Djboss.bind.address=0.0.0.0', { ip: '10.0.0.1' }),
+    uye('OPJBAP02', '-Djboss.bind.address=10.0.0.2', { ip: '10.0.0.2' }),
   ]);
   assert.equal(b.durum, 'FARKLI');
   const b2 = grupKarsilastir([
-    uye('GOJBAP01', '-Djboss.bind.address=10.0.0.1', { ip: '10.0.0.1' }),
-    uye('GOJBAP02', '-Djboss.bind.address=10.0.0.2', { ip: '10.0.0.2' }),
+    uye('OPJBAP01', '-Djboss.bind.address=10.0.0.1', { ip: '10.0.0.1' }),
+    uye('OPJBAP02', '-Djboss.bind.address=10.0.0.2', { ip: '10.0.0.2' }),
   ]);
   assert.equal(b2.durum, 'ESIT');
   assert.equal(b2.sunucuyaOzgu[0].normal, '<IP>');
@@ -177,50 +177,50 @@ test('JK5 kimlik anahtari esitsizlik degil; port ofseti sunucular arasi FARKLI, 
 
 test('JK6 maskeli deger esit sayilir ve notlanir; varlik farki yine fark', () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Ddb.password=*** -Xmx2g'),
-    uye('GOJBAP02', '-Ddb.password=*** -Xmx2g'),
+    uye('OPJBAP01', '-Ddb.password=*** -Xmx2g'),
+    uye('OPJBAP02', '-Ddb.password=*** -Xmx2g'),
   ]);
   assert.equal(r.durum, 'ESIT');
   assert.deepEqual(r.maskeli, ['-Ddb.password']);
   // maske yalniz parolayi gizler: acik kalan veritabani host farki gorunmeli
   const r1 = grupKarsilastir([
-    uye('GOJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
-    uye('GOJBAP02', '-Ddb.url=jdbc:oracle:thin:usr/***@TESTDB'),
+    uye('OPJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
+    uye('OPJBAP02', '-Ddb.url=jdbc:oracle:thin:usr/***@TESTDB'),
   ]);
   assert.equal(r1.durum, 'FARKLI');
   assert.deepEqual(r1.maskeli, ['-Ddb.url']);
   const r1b = grupKarsilastir([
-    uye('GOJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
-    uye('GOJBAP02', '-Ddb.url=jdbc:oracle:thin:@TESTDB'),
+    uye('OPJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
+    uye('OPJBAP02', '-Ddb.url=jdbc:oracle:thin:@TESTDB'),
   ]);
   assert.equal(r1b.durum, 'FARKLI');
   const r1c = grupKarsilastir([
-    uye('GOJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
-    uye('GOJBAP02', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
+    uye('OPJBAP01', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
+    uye('OPJBAP02', '-Ddb.url=jdbc:oracle:thin:usr/***@PRODDB'),
   ]);
   assert.equal(r1c.durum, 'ESIT');
   const r2 = grupKarsilastir([
-    uye('GOJBAP01', '-Ddb.password=*** -Xmx2g'),
-    uye('GOJBAP02', '-Xmx2g'),
+    uye('OPJBAP01', '-Ddb.password=*** -Xmx2g'),
+    uye('OPJBAP02', '-Xmx2g'),
   ]);
   assert.equal(r2.durum, 'FARKLI');
   assert.equal(r2.eksikFazla[0].anahtar, '-Ddb.password');
 });
 
 test('JK7 TEK_SUNUCU / OLCULEMEDI / BULUNAMADI', () => {
-  assert.equal(grupKarsilastir([uye('GOJBAP01', '-Xmx2g')]).durum, 'TEK_SUNUCU');
-  assert.equal(grupKarsilastir([uye('GOJBAP01', null), uye('GOJBAP02', '')]).durum, 'OLCULEMEDI');
-  const tekOlculen = grupKarsilastir([uye('GOJBAP01', '-Xmx2g'), uye('GOJBAP02', null)]);
+  assert.equal(grupKarsilastir([uye('OPJBAP01', '-Xmx2g')]).durum, 'TEK_SUNUCU');
+  assert.equal(grupKarsilastir([uye('OPJBAP01', null), uye('OPJBAP02', '')]).durum, 'OLCULEMEDI');
+  const tekOlculen = grupKarsilastir([uye('OPJBAP01', '-Xmx2g'), uye('OPJBAP02', null)]);
   assert.equal(tekOlculen.durum, 'OLCULEMEDI');
-  assert.match(tekOlculen.uyarilar[0], /GOJBAP02\/MUSTERI/);
+  assert.match(tekOlculen.uyarilar[0], /OPJBAP02\/MUSTERI/);
   const bayat = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx2g', { taze: false }),
-    uye('GOJBAP02', '-Xmx2g', { taze: false }),
+    uye('OPJBAP01', '-Xmx2g', { taze: false }),
+    uye('OPJBAP02', '-Xmx2g', { taze: false }),
   ]);
   assert.equal(bayat.durum, 'OLCULEMEDI');
   const yariBayat = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx2g', { taze: false }),
-    uye('GOJBAP02', '-Xmx2g'),
+    uye('OPJBAP01', '-Xmx2g', { taze: false }),
+    uye('OPJBAP02', '-Xmx2g'),
   ]);
   assert.equal(yariBayat.durum, 'ESIT');
   assert.ok(yariBayat.uyarilar.some((u) => /bayat/.test(u)));
@@ -260,10 +260,10 @@ const detay = (sunucular, ek = {}) => ({
 
 test('JK8 JBoss 7 ile 8 ayri gruplarda; nesil suzgeci', () => {
   const d = detay([
-    sunucu('GOJBAP01', 'PROD', 7, [jvm('MUSTERI', 7, '-Xmx1g')]),
-    sunucu('GOJBAP02', 'PROD', 7, [jvm('MUSTERI', 7, '-Xmx1g')]),
-    sunucu('GOJBAP03', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -XX:+UseG1GC')]),
-    sunucu('GOJBAP04', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -XX:+UseG1GC')]),
+    sunucu('OPJBAP01', 'PROD', 7, [jvm('MUSTERI', 7, '-Xmx1g')]),
+    sunucu('OPJBAP02', 'PROD', 7, [jvm('MUSTERI', 7, '-Xmx1g')]),
+    sunucu('OPJBAP03', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -XX:+UseG1GC')]),
+    sunucu('OPJBAP04', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -XX:+UseG1GC')]),
   ]);
   const r = uygulamaKarsilastir('MUSTERI', d, { ortam: 'PROD', nesil: 'hepsi' });
   assert.equal(r.durum, 'ESIT', 'JBoss 7 ile 8 birbiriyle karsilastirildi');
@@ -282,18 +282,18 @@ test('JK8 JBoss 7 ile 8 ayri gruplarda; nesil suzgeci', () => {
   assert.equal(r8.sunucuSayisi, 2);
   // JVM nesli yoksa sunucu nesli kullanilir
   const d2 = detay([
-    sunucu('GOJBAP01', 'PROD', 8, [jvm('MUSTERI', null, '-Xmx1g')]),
-    sunucu('GOJBAP02', 'PROD', 8, [jvm('MUSTERI', 0, '-Xmx2g')]),
+    sunucu('OPJBAP01', 'PROD', 8, [jvm('MUSTERI', null, '-Xmx1g')]),
+    sunucu('OPJBAP02', 'PROD', 8, [jvm('MUSTERI', 0, '-Xmx2g')]),
   ]);
   assert.equal(uygulamaKarsilastir('MUSTERI', d2, { ortam: 'PROD', nesil: 8 }).durum, 'FARKLI');
 });
 
 test('JK9 ortam suzgeci: PROD varsayilan; Production PROD sayilir; TUMU ortam basina gruplar', () => {
   const d = detay([
-    sunucu('GOJBAP01', 'Production', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
-    sunucu('GOJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
-    sunucu('GOJBAT01', 'TEST', 8, [jvm('MUSTERI-T', 8, '-Xmx1g')], { uygulama: 'MUSTERI-T' }),
-    sunucu('GOJBAX01', null, 8, [jvm('MUSTERI', 8, '-Xmx9g')]),
+    sunucu('OPJBAP01', 'Production', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
+    sunucu('OPJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
+    sunucu('OPJBAT01', 'TEST', 8, [jvm('MUSTERI-T', 8, '-Xmx1g')], { uygulama: 'MUSTERI-T' }),
+    sunucu('OPJBAX01', null, 8, [jvm('MUSTERI', 8, '-Xmx9g')]),
   ]);
   const r = uygulamaKarsilastir('MUSTERI', d, { nesil: 'hepsi' });
   assert.equal(r.durum, 'ESIT', 'TEST ya da ortami bilinmeyen sunucu prod karsilastirmasina girdi');
@@ -312,7 +312,7 @@ test('JK9 ortam suzgeci: PROD varsayilan; Production PROD sayilir; TUMU ortam ba
   // Server Hub okunamadiysa JVM'siz sonuc BULUNAMADI degil OLCULEMEDI
   const shYok = uygulamaKarsilastir(
     'MUSTERI',
-    detay([sunucu('GOJBAP01', 'PROD', 8, [])], {
+    detay([sunucu('OPJBAP01', 'PROD', 8, [])], {
       kaynaklar: { serverHub: { hata: 'baglanti yok' } },
     }),
     { ortam: 'PROD', nesil: 'hepsi' },
@@ -322,10 +322,10 @@ test('JK9 ortam suzgeci: PROD varsayilan; Production PROD sayilir; TUMU ortam ba
 
 test('JK10 calismayan JVM yapilandirilan argumanla; grup kaynagi tutarli', () => {
   const d = detay([
-    sunucu('GOJBAP01', 'PROD', 8, [
+    sunucu('OPJBAP01', 'PROD', 8, [
       jvm('MUSTERI', 8, '-Xmx4g -Djboss.home.dir=/opt/jboss', { yapilandirilanJvmArgs: '-Xmx4g' }),
     ]),
-    sunucu('GOJBAP02', 'PROD', 8, [
+    sunucu('OPJBAP02', 'PROD', 8, [
       jvm('MUSTERI', 8, null, { calisiyor: false, yapilandirilanJvmArgs: '-Xmx4g' }),
     ]),
   ]);
@@ -366,22 +366,22 @@ test('JK11 anahtar=deger ayristirma', () => {
   assert.equal(h.get('-server'), '');
   assert.ok(!h.has('/a/b.jar'));
   // -XX:+Foo ile -XX:-Foo ayni anahtarin deger farkidir
-  const r = grupKarsilastir([uye('GOJBAP01', '-XX:+Foo'), uye('GOJBAP02', '-XX:-Foo')]);
+  const r = grupKarsilastir([uye('OPJBAP01', '-XX:+Foo'), uye('OPJBAP02', '-XX:-Foo')]);
   assert.equal(r.degerFarklari[0].anahtar, '-XX:Foo');
   // etkin deger son yazilan: -Xmx2g -Xmx4g (4g) ile -Xmx4g -Xmx2g (2g) esit DEGIL
   const t = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx2g -Xmx4g -XX:+UseG1GC -XX:-UseG1GC'),
-    uye('GOJBAP02', '-Xmx4g -Xmx2g -XX:-UseG1GC -XX:+UseG1GC'),
+    uye('OPJBAP01', '-Xmx2g -Xmx4g -XX:+UseG1GC -XX:-UseG1GC'),
+    uye('OPJBAP02', '-Xmx4g -Xmx2g -XX:-UseG1GC -XX:+UseG1GC'),
   ]);
   assert.equal(t.durum, 'FARKLI');
   assert.deepEqual(
     t.degerFarklari.map((f) => f.anahtar),
     ['-XX:UseG1GC', '-Xmx'],
   );
-  assert.ok(t.uyarilar.some((u) => /GOJBAP01\/MUSTERI: .*-Xmx.*son yazılan/.test(u)));
+  assert.ok(t.uyarilar.some((u) => /OPJBAP01\/MUSTERI: .*-Xmx.*son yazılan/.test(u)));
   // tekrar edip ayni etkin degere inen: esit
   assert.equal(
-    grupKarsilastir([uye('GOJBAP01', '-Xmx2g -Xmx4g'), uye('GOJBAP02', '-Xmx4g')]).durum,
+    grupKarsilastir([uye('OPJBAP01', '-Xmx2g -Xmx4g'), uye('OPJBAP02', '-Xmx4g')]).durum,
     'ESIT',
   );
 });
@@ -515,16 +515,16 @@ test('JK14 uc: ozet, okunamayan uygulama OLCULEMEDI, denetim kaydi', async () =>
   detaylar.set(
     'MUSTERI',
     detay([
-      sunucu('GOJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -Da=1')]),
-      sunucu('GOJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -Da=2')]),
+      sunucu('OPJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -Da=1')]),
+      sunucu('OPJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g -Da=2')]),
     ]),
   );
   detaylar.set(
     'KREDI',
     detay(
       [
-        sunucu('GOJBAP05', 'PROD', 8, [jvm('KREDI', 8, '-Xmx4g')]),
-        sunucu('GOJBAP06', 'PROD', 8, [jvm('KREDI', 8, '-Xmx4g')]),
+        sunucu('OPJBAP05', 'PROD', 8, [jvm('KREDI', 8, '-Xmx4g')]),
+        sunucu('OPJBAP06', 'PROD', 8, [jvm('KREDI', 8, '-Xmx4g')]),
       ],
       { ad: 'KREDI' },
     ),
@@ -572,57 +572,57 @@ test('JK14 uc: ozet, okunamayan uygulama OLCULEMEDI, denetim kaydi', async () =>
 
 test("JK15 kesik arguman: ...+N belirtec degil; kesik JVM'de olmayan anahtar eksik sayilmaz", () => {
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Xmx4g -Dx=1 -Dy=2 ...+3'),
-    uye('GOJBAP02', '-Xmx4g -Dx=1 ...+4'),
-    uye('GOJBAP03', '-Xmx4g -Dx=1 -Dy=2 -Dz=1'),
+    uye('OPJBAP01', '-Xmx4g -Dx=1 -Dy=2 ...+3'),
+    uye('OPJBAP02', '-Xmx4g -Dx=1 ...+4'),
+    uye('OPJBAP03', '-Xmx4g -Dx=1 -Dy=2 -Dz=1'),
   ]);
   assert.equal(r.durum, 'ESIT', JSON.stringify(r.eksikFazla));
   assert.ok(!r.eksikFazla.some((x) => /^\.\.\./.test(x.anahtar)));
   assert.deepEqual(
     r.karsilastirilamadi.map((x) => [x.anahtar, x.kesik.join(',')]),
     [
-      ['-Dy', 'GOJBAP02/MUSTERI'],
-      ['-Dz', 'GOJBAP01/MUSTERI,GOJBAP02/MUSTERI'],
+      ['-Dy', 'OPJBAP02/MUSTERI'],
+      ['-Dz', 'OPJBAP01/MUSTERI,OPJBAP02/MUSTERI'],
     ],
   );
   assert.ok(r.uyarilar.some((u) => /kesilmiş/.test(u)));
   // tam metinli JVM'de olmayan anahtar yine eksik/fazla (kesik olan da sahip olsa)
-  const f = grupKarsilastir([uye('GOJBAP01', '-Xmx4g -Dfazla=1 ...+2'), uye('GOJBAP02', '-Xmx4g')]);
+  const f = grupKarsilastir([uye('OPJBAP01', '-Xmx4g -Dfazla=1 ...+2'), uye('OPJBAP02', '-Xmx4g')]);
   assert.equal(f.durum, 'FARKLI');
   assert.deepEqual(
     f.eksikFazla.map((x) => [x.anahtar, x.olmayan.join(',')]),
-    [['-Dfazla', 'GOJBAP02/MUSTERI']],
+    [['-Dfazla', 'OPJBAP02/MUSTERI']],
   );
   // kesik iki JVM'de ortak anahtarin deger farki yine fark
   assert.equal(
-    grupKarsilastir([uye('GOJBAP01', '-Xmx4g ...+2'), uye('GOJBAP02', '-Xmx8g ...+2')]).durum,
+    grupKarsilastir([uye('OPJBAP01', '-Xmx4g ...+2'), uye('OPJBAP02', '-Xmx8g ...+2')]).durum,
     'FARKLI',
   );
   // yalniz belirtec kalan metin olculemedi sayilir
   assert.equal(
-    grupKarsilastir([uye('GOJBAP01', '...+40'), uye('GOJBAP02', '-Xmx4g')]).durum,
+    grupKarsilastir([uye('OPJBAP01', '...+40'), uye('OPJBAP02', '-Xmx4g')]).durum,
     'OLCULEMEDI',
   );
 });
 
 test('JK16 normallestirme belirtec sinirinda, JVM adi harf duyarli; ham/normal cogunluk catisirsa belirsiz', () => {
-  const a = uye('GOJBAP01', '');
+  const a = uye('OPJBAP01', '');
   assert.equal(
     normallestir('/x/GOJBAP011/y', a),
     '/x/GOJBAP011/y',
     'host adi daha uzun adin icinde degistirildi',
   );
-  assert.equal(normallestir('gojbap01.corp', a), '<HOST>.corp');
+  assert.equal(normallestir('opjbap01.corp', a), '<HOST>.corp');
   assert.equal(normallestir('musteri', a), 'musteri');
   assert.equal(normallestir('MUSTERI2', a), 'MUSTERI2');
   assert.equal(normallestir('10.0.0.10', { ...a, ip: '10.0.0.1' }), '10.0.0.10');
-  const m = grupKarsilastir([uye('GOJBAP01', '-Dmode=musteri'), uye('GOJBAP02', '-Dmode=MUSTERI')]);
+  const m = grupKarsilastir([uye('OPJBAP01', '-Dmode=musteri'), uye('OPJBAP02', '-Dmode=MUSTERI')]);
   assert.equal(m.durum, 'FARKLI');
-  // -Dmaster=GOJBAP01 uc sunucuda; GOJBAP03 kendini gosteriyor: GOJBAP02 sapan diye suclanmamali
+  // -Dmaster=OPJBAP01 uc sunucuda; OPJBAP03 kendini gosteriyor: OPJBAP02 sapan diye suclanmamali
   const r = grupKarsilastir([
-    uye('GOJBAP01', '-Dmaster=GOJBAP01'),
-    uye('GOJBAP02', '-Dmaster=GOJBAP01'),
-    uye('GOJBAP03', '-Dmaster=GOJBAP03'),
+    uye('OPJBAP01', '-Dmaster=OPJBAP01'),
+    uye('OPJBAP02', '-Dmaster=OPJBAP01'),
+    uye('OPJBAP03', '-Dmaster=OPJBAP03'),
   ]);
   assert.equal(r.durum, 'FARKLI');
   assert.equal(r.degerFarklari[0].cogunluk, null);
@@ -630,9 +630,9 @@ test('JK16 normallestirme belirtec sinirinda, JVM adi harf duyarli; ham/normal c
   assert.equal(r.degerFarklari[0].sapanlar.length, 3);
   // catisma yoksa cogunluk korunur (JK4 ile ayni yol)
   const n = grupKarsilastir([
-    uye('GOJBAP01', '-Dlog=/l/GOJBAP01'),
-    uye('GOJBAP02', '-Dlog=/l/GOJBAP02'),
-    uye('GOJBAP03', '-Dlog=/k/GOJBAP03'),
+    uye('OPJBAP01', '-Dlog=/l/OPJBAP01'),
+    uye('OPJBAP02', '-Dlog=/l/OPJBAP02'),
+    uye('OPJBAP03', '-Dlog=/k/OPJBAP03'),
   ]);
   assert.equal(n.degerFarklari[0].cogunluk, '/l/<HOST>');
   assert.equal(n.degerFarklari[0].belirsiz, false);
@@ -641,9 +641,9 @@ test('JK16 normallestirme belirtec sinirinda, JVM adi harf duyarli; ham/normal c
 test('JK17 ortam: taninmayan etiket ve kesif hatasi uyarida; Server Hub hatasi neden metninde', () => {
   const d = detay(
     [
-      sunucu('GOJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
-      sunucu('GOJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
-      sunucu('GOJBAP03', 'P', 8, [jvm('MUSTERI', 8, '-Xmx8g')]),
+      sunucu('OPJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
+      sunucu('OPJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, '-Xmx4g')]),
+      sunucu('OPJBAP03', 'P', 8, [jvm('MUSTERI', 8, '-Xmx8g')]),
     ],
     { kaynaklar: { serverHub: { hata: null }, kesif: { hata: 'zaman asimi' } } },
   );
@@ -663,8 +663,8 @@ test('JK17 ortam: taninmayan etiket ve kesif hatasi uyarida; Server Hub hatasi n
     'MUSTERI',
     detay(
       [
-        sunucu('GOJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, null)]),
-        sunucu('GOJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, null)]),
+        sunucu('OPJBAP01', 'PROD', 8, [jvm('MUSTERI', 8, null)]),
+        sunucu('OPJBAP02', 'PROD', 8, [jvm('MUSTERI', 8, null)]),
       ],
       { kaynaklar: { serverHub: { hata: 'TBMWANS baglanti yok' } } },
     ),

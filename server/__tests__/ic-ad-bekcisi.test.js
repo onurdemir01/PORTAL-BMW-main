@@ -51,6 +51,8 @@ test('IA1 her desen kendi ornegini yakalar', () => {
     [`api.${ornek.istirakOcp}.fw:6443`, [istirak]],
     [`jump: ${ornek.istirakHst}`, [istirak]],
     [`kume ${ornek.dijital}`, [istirak]],
+    [`hosts: ['${'DA'}CRWAP${'01'}']`, [istirak]], // istirak sunucusu
+    [`jvm ${'GO'}JBAP${'01'} ve ${'go'}jbap${'01'}`, [istirak]], // grup sirketi sunucusu
     [`SERVER=${ornek.alan},1453`, [alan]],
     [`mail_from: ${ornek.eposta}`, [alan]],
     [`name: /ui\\.apps\\.fw\\.${'kurum'}\\.com\\${'.tr'}/,`, [alan]], // regex icinde kacisli
@@ -74,6 +76,8 @@ test('IA2 kurgusal ve zararsiz bicimler bulgu degil', () => {
     `ab${ONEK}NGXT33`, // sozcuk icinde
     'kurum alan adi uzantisi `.com.tr`',
     'giris ve dagitim', // 'gi'/'da' ile baslayan siradan sozcukler
+    'kolon tipi DATETIME2 ve sifre gizli123', // tek hane / uc hane: ad degil
+    'ESLINT kurali ve GET01 istegi',
   ])
     assert.deepEqual(ia.satirTara(s), [], s);
 });

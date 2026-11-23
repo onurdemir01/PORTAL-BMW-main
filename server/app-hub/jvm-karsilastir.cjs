@@ -254,7 +254,7 @@ function grupKarsilastir(uyeler) {
       continue;
     }
     let cogunlukVar = cogunlukVarMi(sirali);
-    // Ham degerlerin cogunlugu baska JVM'leri gosteriyorsa (or. -Dmaster=GOJBAP01 uc sunucuda, biri kendini
+    // Ham degerlerin cogunlugu baska JVM'leri gosteriyorsa (or. -Dmaster=OPJBAP01 uc sunucuda, biri kendini
     // gosteriyor) normallestirme sapani yanlis secebilir: cogunluk yazilmaz, tum degerler gosterilir.
     const etiketler = (xs) =>
       xs

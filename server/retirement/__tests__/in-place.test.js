@@ -104,7 +104,7 @@ test('IN4 envanterin NF isareti ve goreli yol paket yolu DEGIL', () => {
 test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle); AJP / mod_cluster eslesmesi otomatik kalir', () => {
   const certs = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       ip: '',
       port: '443',
       server_name: 'orposwebapi.sirket.invalid',
@@ -113,10 +113,10 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       env: 'PROD',
     },
   ];
-  const ips = [{ host: 'GOJBAP05', ip: '10.0.0.5' }];
+  const ips = [{ host: 'OPJBAP05', ip: '10.0.0.5' }];
   const jvm = [
     {
-      host: 'GOJBAP05',
+      host: 'OPJBAP05',
       jvm: 'ORPOSWEBAPI',
       gen: 7,
       running: 1,
@@ -126,7 +126,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       cfg_ports: '8009',
     },
     {
-      host: 'GOJBAP05',
+      host: 'OPJBAP05',
       jvm: 'ORPOSWEBAPI',
       gen: 8,
       running: 1,
@@ -138,7 +138,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
   ];
   const vh = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'pos7.sirket.invalid',
       aliases: '',
       listen: '*:443',
@@ -147,7 +147,7 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       proxy_targets: '10.0.0.5:8009',
     },
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'pos8.sirket.invalid',
       aliases: '',
       listen: '*:443',
@@ -156,8 +156,8 @@ test('IN5 in-place hedefte yalniz AD ile eslesen vhost otomatik kapatilmaz (elle
       proxy_targets: '~DYNAMIC,orposwebapi',
     },
   ];
-  const a7 = { ...r7, host: 'GOJBAP05', domain: 'sirket.invalid' };
-  const a8 = { ...r8, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const a7 = { ...r7, host: 'OPJBAP05', domain: 'sirket.invalid' };
+  const a8 = { ...r8, host: 'OPJBAP05', domain: 'sirket.invalid' };
   const t = buildTargets('ORPOSWEBAPI', [a7, a8], certs, jvm, vh, ips).targets;
   const yedi = t.find((x) => x.gen === 7);
   const sekiz = t.find((x) => x.gen === 8);
@@ -316,7 +316,7 @@ test('IN9 diger kurulumun kesin (ajp/mc) vhost u bu hedefin listesinden cikar; s
 test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/ajp/mc fark etmez)', () => {
   const certs = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       ip: '',
       port: '443',
       server_name: 'orposwebapi.sirket.invalid',
@@ -325,7 +325,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       env: 'PROD',
     },
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       ip: '',
       port: '8543',
       server_name: 'orposwebapi.sirket.invalid',
@@ -334,7 +334,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       env: 'PROD',
     },
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       ip: '',
       port: '9443',
       server_name: 'orposwebapi.sirket.invalid',
@@ -343,10 +343,10 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       env: 'PROD',
     },
   ];
-  const ips = [{ host: 'GOJBAP05', ip: '10.0.0.5' }];
+  const ips = [{ host: 'OPJBAP05', ip: '10.0.0.5' }];
   const jvm = [
     {
-      host: 'GOJBAP05',
+      host: 'OPJBAP05',
       jvm: 'ORPOSWEBAPI',
       running: 1,
       auto_start: 'true',
@@ -357,7 +357,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
   ];
   const vh = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'ajp-rha.sirket.invalid',
       aliases: '',
       listen: '*:443',
@@ -366,7 +366,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
       proxy_targets: '10.0.0.5:8009',
     },
   ];
-  const a7 = { ...r7, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const a7 = { ...r7, host: 'OPJBAP05', domain: 'sirket.invalid' };
   const yedi = buildTargets('ORPOSWEBAPI', [a7], certs, jvm, vh, ips).targets[0];
   assert.deepEqual(
     yedi.web.map((w) => w.product).sort(),
@@ -377,7 +377,7 @@ test('IN10 JBoss 7 yalniz IHS, JBoss 8 yalniz Red Hat Apache vhost listeler (ad/
     yedi.webHow,
     /JBoss 7 için 2 Red Hat Apache vhost'u sayılmadı \(JBoss 7 yalnız IBM HTTP Server arkasında çalışır\)/,
   );
-  const a8 = { ...r8, host: 'GOJBAP05', domain: 'sirket.invalid' };
+  const a8 = { ...r8, host: 'OPJBAP05', domain: 'sirket.invalid' };
   const sekiz = buildTargets('ORPOSWEBAPI', [a8], certs, [], [], []).targets[0];
   assert.deepEqual(
     sekiz.web.map((w) => w.product).sort(),

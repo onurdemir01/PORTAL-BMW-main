@@ -70,7 +70,7 @@ function hedefOrtami(app, envanterEnv) {
 }
 
 /**
- * JVM SECIMI SURUMLE (2026-10-13, GOJBAP10: ayni adli iki GFYINTERNETBRANCH JVM'i - JBoss 7 ve 8, portlari
+ * JVM SECIMI SURUMLE (2026-10-13, OPJBAP10: ayni adli iki GFYINTERNETBRANCH JVM'i - JBoss 7 ve 8, portlari
  * farkli). Eskiden `sunucu|ad` anahtari ikinciyi birinciye YAZIYORDU: AJP eslesmesi ve "calisiyor/kapali"
  * bilgisi yanlis surumden okunabiliyordu. Kural: surum biliniyorsa AYNI surumun JVM'i; yoksa ya da
  * eslesen surum yoksa ve ayni adla TEK JVM varsa (surum bilgisi tasimayan eski satir) o; birden fazlaysa
@@ -219,7 +219,7 @@ function hubWebFallback(app, appHost, certSonucu, hubVhostsByHost) {
       .split('.')[0];
   // Aday aplikasyon sunucusunun KENDISIYSE etiketi 'ayni host' (harf donusumu bir sey bulmadi).
   // TUM 3-tier adaylari (webHostAdaylari: A->W ve son harf P; Pendik 6, Ankara 7 harf) - sertifika envanterinde vhost'u olmayan
-  // aday Server Hub taramasinda olabilir (2026-10-12: GOJBAB03 -> GOJBWP03).
+  // aday Server Hub taramasinda olabilir (2026-10-12: OPJBAB03 -> OPJBWP03).
   const adaylar = [
     {
       host: certSonucu.webHostCandidate,

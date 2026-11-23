@@ -35,14 +35,14 @@ test('WK2 GFY_INTERNET_SERVICES: sertifika (tire) ve Server Hub (bitisik, BIREBI
   const inv = [
     {
       app: 'GFY_INTERNET_SERVICES',
-      host: 'GOJBAP10',
+      host: 'OPJBAP10',
       env: 'PROD',
       domain: 'odmz.invalid',
       jboss_version: '7',
     },
     {
       app: 'GFY_INTERNET_SERVICES-T',
-      host: 'GOJBAT01',
+      host: 'OPJBAT01',
       env: 'Test',
       domain: 'odmz.invalid',
       jboss_version: '7',
@@ -50,7 +50,7 @@ test('WK2 GFY_INTERNET_SERVICES: sertifika (tire) ve Server Hub (bitisik, BIREBI
   ];
   const certs = [
     {
-      host: 'GOJBWP10',
+      host: 'OPJBWP10',
       server_name: 'gfy-internet-services.odmz.invalid',
       port: '443',
       conf_file: '/a.conf',
@@ -59,7 +59,7 @@ test('WK2 GFY_INTERNET_SERVICES: sertifika (tire) ve Server Hub (bitisik, BIREBI
   ];
   const vh = [
     {
-      host: 'GOJBWT01',
+      host: 'OPJBWT01',
       server_name: 'gfyinternetservices-t.odmz.invalid',
       aliases: '',
       listen: '*:443',
@@ -68,7 +68,7 @@ test('WK2 GFY_INTERNET_SERVICES: sertifika (tire) ve Server Hub (bitisik, BIREBI
     },
     // Kardes ortamin vhost'u -T hedefine BAGLANMAMALI (ilk etiket birebir).
     {
-      host: 'GOJBWT01',
+      host: 'OPJBWT01',
       server_name: 'gfyinternetservices-d.odmz.invalid',
       aliases: '',
       listen: '*:443',
@@ -77,9 +77,9 @@ test('WK2 GFY_INTERNET_SERVICES: sertifika (tire) ve Server Hub (bitisik, BIREBI
     },
   ];
   const t = buildTargets('GFY_INTERNET_SERVICES', inv, certs, [], vh).targets;
-  const prod = t.find((x) => x.host === 'GOJBAP10');
-  const test_ = t.find((x) => x.host === 'GOJBAT01');
-  assert.equal(prod.web[0]?.host, 'GOJBWP10', prod.webHow);
+  const prod = t.find((x) => x.host === 'OPJBAP10');
+  const test_ = t.find((x) => x.host === 'OPJBAT01');
+  assert.equal(prod.web[0]?.host, 'OPJBWP10', prod.webHow);
   assert.deepEqual(
     test_.web.map((w) => w.serverName),
     ['gfyinternetservices-t.odmz.invalid'],
@@ -152,15 +152,15 @@ test('WK5 zamanlanmis STOP yeni vhostlari da kapatir; calisan is ve silinmis hed
   );
 });
 
-test('WK6 ad standardi DISI web sunucusu (GOJBAP07 <- GOJBWP03): vhost konfigundeki AJP/proxy hedefinden bulunur', () => {
-  // Ad kurali GOJBAP07 icin GOJBWP07 der; gercek web sunucusu GOJBWP03. Kesif TUM taranmis vhost'lara
+test('WK6 ad standardi DISI web sunucusu (OPJBAP07 <- OPJBWP03): vhost konfigundeki AJP/proxy hedefinden bulunur', () => {
+  // Ad kurali OPJBAP07 icin OPJBWP07 der; gercek web sunucusu OPJBWP03. Kesif TUM taranmis vhost'lara
   // bakar: worker/proxy hedefi bu uygulamanin sunucusu + JVM portu ise vhost bu uygulamanindir.
   const inv = [
-    { app: 'ODEME', host: 'GOJBAP07', env: 'PROD', domain: 'odmz.invalid', jboss_version: '7' },
+    { app: 'ODEME', host: 'OPJBAP07', env: 'PROD', domain: 'odmz.invalid', jboss_version: '7' },
   ];
   const jvm = [
     {
-      host: 'GOJBAP07',
+      host: 'OPJBAP07',
       jvm: 'ODEME',
       running: 1,
       auto_start: 'true',
@@ -169,19 +169,19 @@ test('WK6 ad standardi DISI web sunucusu (GOJBAP07 <- GOJBWP03): vhost konfigund
       cfg_ports: '8159,8230',
     },
   ];
-  const ips = [{ host: 'GOJBAP07', ip: '10.5.5.7' }];
+  const ips = [{ host: 'OPJBAP07', ip: '10.5.5.7' }];
   const vh = [
     {
-      host: 'GOJBWP03',
+      host: 'OPJBWP03',
       server_name: 'odemeportal.odmz.invalid',
       aliases: '',
       listen: '*:443',
       conf_file: '/a.conf',
       product: 'IHS',
-      proxy_targets: 'gojbap07.odmz.invalid:8159',
+      proxy_targets: 'opjbap07.odmz.invalid:8159',
     },
     {
-      host: 'GOJBWP03',
+      host: 'OPJBWP03',
       server_name: 'baska.odmz.invalid',
       aliases: '',
       listen: '*:443',
@@ -190,7 +190,7 @@ test('WK6 ad standardi DISI web sunucusu (GOJBAP07 <- GOJBWP03): vhost konfigund
       proxy_targets: '10.5.5.7:9999',
     },
     {
-      host: 'GOJBWP04',
+      host: 'OPJBWP04',
       server_name: 'odeme-ip.odmz.invalid',
       aliases: '',
       listen: '*:443',
@@ -202,16 +202,16 @@ test('WK6 ad standardi DISI web sunucusu (GOJBAP07 <- GOJBWP03): vhost konfigund
   const t = buildTargets('ODEME', inv, [], jvm, vh, ips).targets[0];
   assert.deepEqual(
     t.web.map((w) => `${w.host}/${w.serverName}`).sort(),
-    ['GOJBWP03/odemeportal.odmz.invalid', 'GOJBWP04/odeme-ip.odmz.invalid'],
+    ['OPJBWP03/odemeportal.odmz.invalid', 'OPJBWP04/odeme-ip.odmz.invalid'],
     t.webHow,
   );
   assert.ok(t.web.every((w) => w.kaynak === 'ajp'));
 });
 
-test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surumunun portuyla (GOJBAP10 GFYINTERNETBRANCH)', () => {
+test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surumunun portuyla (OPJBAP10 GFYINTERNETBRANCH)', () => {
   const jvm = [
     {
-      host: 'GOJBAP10',
+      host: 'OPJBAP10',
       jvm: 'GFYINTERNETBRANCH',
       gen: 7,
       running: 1,
@@ -221,7 +221,7 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
       cfg_ports: '8009,8080',
     },
     {
-      host: 'GOJBAP10',
+      host: 'OPJBAP10',
       jvm: 'GFYINTERNETBRANCH',
       gen: 8,
       running: 0,
@@ -231,10 +231,10 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
       cfg_ports: '8108,8182',
     },
   ];
-  const ips = [{ host: 'GOJBAP10', ip: '192.168.114.76' }];
+  const ips = [{ host: 'OPJBAP10', ip: '192.168.114.76' }];
   const vh = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'isube.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -243,7 +243,7 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
       proxy_targets: '192.168.114.76:8009',
     },
     {
-      host: 'GOJBWP06',
+      host: 'OPJBWP06',
       server_name: 'isube8.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -257,7 +257,7 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
     [
       {
         app: 'GFYINTERNETBRANCH',
-        host: 'GOJBAP10',
+        host: 'OPJBAP10',
         env: 'PROD',
         domain: 'odmz.invalid',
         jboss_version: '7',
@@ -273,7 +273,7 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
     [
       {
         app: 'GFYINTERNETBRANCH',
-        host: 'GOJBAP10',
+        host: 'OPJBAP10',
         env: 'PROD',
         domain: 'odmz.invalid',
         jboss_version: '8',
@@ -302,7 +302,7 @@ test('WK7 ayni sunucuda ayni adli JBoss 7 ve 8 JVMi: AJP eslesmesi HEDEFIN surum
 test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 7 hedefine, baska siteye ve baska ortama BAGLANMAZ', () => {
   const vh = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'intservices.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -311,7 +311,7 @@ test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 
       proxy_targets: '~DYNAMIC,gfyinternetservices',
     },
     {
-      host: 'GOJBWAP05',
+      host: 'OPJBWAP05',
       server_name: 'intservices-ank.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -320,7 +320,7 @@ test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 
       proxy_targets: '~DYNAMIC,gfyinternetservices',
     },
     {
-      host: 'GOJBWT05',
+      host: 'OPJBWT05',
       server_name: 'intservices-t.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -329,7 +329,7 @@ test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 
       proxy_targets: '~DYNAMIC,gfyinternetservices',
     },
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       server_name: 'baska.ornekbankakirala.invalid',
       aliases: '',
       listen: '*:443',
@@ -341,7 +341,7 @@ test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 
   const inv = (v) => [
     {
       app: 'GFYINTERNETSERVICES',
-      host: 'GOJBAP10',
+      host: 'OPJBAP10',
       env: 'PROD',
       domain: 'odmz.invalid',
       jboss_version: v,
@@ -350,7 +350,7 @@ test('WK8 mod_cluster: balancer://<app> vhostu JBoss 8 hedefine baglanir; JBoss 
   const sekiz = buildTargets('GFYINTERNETSERVICES', inv('8'), [], [], vh).targets[0];
   assert.deepEqual(
     sekiz.web.map((w) => `${w.host}/${w.serverName}`),
-    ['GOJBWP05/intservices.ornekbankakirala.invalid'],
+    ['OPJBWP05/intservices.ornekbankakirala.invalid'],
     sekiz.webHow,
   );
   assert.equal(sekiz.web[0].kaynak, 'mc');

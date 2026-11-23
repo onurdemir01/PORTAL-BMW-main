@@ -161,7 +161,7 @@ function xmlEngeli(h, kok, ad) {
 
 /**
  * Ayni kok/ad dizini kullanimdaysa (surec ya da taramadan once 7 gunde yazma; ear-kullanim.cjs, Server Hub
- * bulgusuyla ayni karar ve ayni referans: h.ear.taranma) engel metni (2026-11-17, DACRPAP01: domain.xml'de
+ * bulgusuyla ayni karar ve ayni referans: h.ear.taranma) engel metni (2026-11-17, ODCRPAP01: domain.xml'de
  * olmayan EAR'da canli Node.js). FAIL-CLOSED (kullanici karari 2026-11-17): kullanim olculup YOK cikmadikca
  * (eski tarayici / alan yok, /proc okunamadi, KISMI, ileri tarihli mtime, envanter kaydi yok) silme REDDEDILIR.
  * Yalniz izin yuzunden okunamayan (root) surecler engel degil; uyari olarak gosterilir (kullanimUyarisi).

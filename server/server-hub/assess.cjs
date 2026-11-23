@@ -2193,7 +2193,7 @@ function assess(data, opts = {}) {
         const yer = `${u.kok}/${u.ad}`;
         const konu = { kok: u.kok, ad: u.ad, jboss: u.jboss };
         const x = u.xml;
-        // KULLANIM KANITI (2026-11-17, DACRPAP01 canli Node.js): tarayici yalniz JVM_YOK EAR'da olcer. Dizini
+        // KULLANIM KANITI (2026-11-17, ODCRPAP01 canli Node.js): tarayici yalniz JVM_YOK EAR'da olcer. Dizini
         // gosteren surec ya da TARAMA anindan 7 gun icinde yazma varsa EAR "artik" degildir: ne "silinebilir"
         // metni ne R3 / R5 retire adayi. Referans tarama ani (veri 35 gune kadar kullanilir), duvar saati degil.
         const kk =

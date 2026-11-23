@@ -127,7 +127,7 @@ function filo(ek = {}) {
   hub.schemaUnknown = false;
   hub.hosts = [
     {
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       env: 'TEST',
       envGroup: 'Non-Production',
       fresh: true,
@@ -145,7 +145,7 @@ const sifirla = () => {
   kapiYaniti = { proceed: true };
 };
 const govde = (ek = {}) => ({
-  host: 'GOJBAP01',
+  host: 'OPJBAP01',
   gen: 8,
   jvm: 'MUSTERI',
   parametre: '-Dapp.env=prod',
@@ -218,7 +218,7 @@ test('JP2 plan: plan_only, prod kapisi yok, kayitlarda deger acik (sir anahtari 
   const ev = kayit.launch[0].extraVars;
   assert.deepEqual(
     [ev.action, ev.plan_only, ev.target_host, ev.jvm, ev.gen, ev.jvm_option],
-    ['jboss_jvm_option', true, 'GOJBAP01', 'MUSTERI', 8, '-Dapp.env=prod'],
+    ['jboss_jvm_option', true, 'OPJBAP01', 'MUSTERI', 8, '-Dapp.env=prod'],
   );
   assert.ok(
     JSON.stringify(kayit.gecmis).includes('Application Hub JVM parametresi plan'),
@@ -242,7 +242,7 @@ test('JP3 uygula: onay metni, prod kapisi (ortam bilinmiyorsa uretim), Smart tal
   assert.equal(kayit.kapi[0].platform, 'legacy');
   assert.deepEqual(kayit.kapi[0].etiketler, [
     { alan: 'ortam', deger: 'TEST' },
-    { alan: 'sunucu', deger: 'GOJBAP01' },
+    { alan: 'sunucu', deger: 'OPJBAP01' },
   ]);
   assert.equal(kayit.launch[0].extraVars.plan_only, false);
   // FAIL-CLOSED: yalniz envGroup Non-Production prod disi; BILINMIYOR / bos / PROD -> prod etiketi

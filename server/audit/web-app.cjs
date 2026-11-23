@@ -10,8 +10,8 @@
 //
 // ESLESTIRME KURALLARI (kullanici verdi)
 //   3-tier (genellikle odmz.invalid): uygulama sunucusunun adindaki 5. KARAKTER 'A' ise
-//     web sunucusunda 'W' olur.  DACRAAP01 -> DACRWAP01,  ORCJAP01 -> ORCJWP01
-//     DIKKAT: "ilk A" degil, 5. KONUM. DACRAAP01'de iki 'A' var, yalnizca 5.'si doner.
+//     web sunucusunda 'W' olur.  ODCRAAP01 -> ODCRWAP01,  ORCJAP01 -> ORCJWP01
+//     DIKKAT: "ilk A" degil, 5. KONUM. ODCRAAP01'de iki 'A' var, yalnizca 5.'si doner.
 //   2-tier (genellikle .fw.sirket.invalid): web sunucusu uygulamanin KENDI sunucusudur.
 //   Her iki durumda da dogru vhost'u bulmak icin uygulama adi KUCUK HARFLE server_name
 //   icinde aranir.
@@ -63,13 +63,13 @@ function webHostOf(host) {
 
 /**
  * 3-tier web sunucusu ADAYLARI (2026-10-12, kullanici: "3-tier sunucularin web sunucularini
- * bulamiyorsun; GOJBAB03'un web hostu GOJBWP03" ve "Pendik icin kural 5. harf, toplam 6 harf;
+ * bulamiyorsun; OPJBAB03'un web hostu OPJBWP03" ve "Pendik icin kural 5. harf, toplam 6 harf;
  * Ankara icin 5. harf, toplam 7 harf"). Ad = <harfler><rakamlar>; Pendik 6 harf, Ankara 7 harf
- * (fazladan site harfi A). Tek kural (5. harf A->W) GOJBAB03'ten var olmayan GOJBWB03'u
+ * (fazladan site harfi A). Tek kural (5. harf A->W) OPJBAB03'ten var olmayan OPJBWB03'u
  * uretiyordu ve web katmani sessizce "eslenemedi" kaliyordu. Adaylar:
- *   1) 5. harf A->W                          ORCJAP01 -> ORCJWP01, DACRAAP01 -> DACRWAP01
- *   2) 5. harf A->W + SON harf (ortam) -> P  GOJBAB03 -> GOJBWP03 (Pendik, 6 harf)
- *                                            DACRAAB01 -> DACRWAP01 (Ankara, 7 harf)
+ *   1) 5. harf A->W                          ORCJAP01 -> ORCJWP01, ODCRAAP01 -> ODCRWAP01
+ *   2) 5. harf A->W + SON harf (ortam) -> P  OPJBAB03 -> OPJBWP03 (Pendik, 6 harf)
+ *                                            ODCRAAB01 -> ODCRWAP01 (Ankara, 7 harf)
  * Aday TAHMIN olarak kullanilmaz: yalniz envanterde/taramada VHOST'U OLAN aday secilir ve
  * vhost'un server_name'i uygulamayla eslesmek zorunda. Hicbiri yoksa satir "eslenemedi" kalir.
  */

@@ -102,7 +102,7 @@ const HELP: HelpSection[] = [
   {
     icon: LinkIcon,
     title: 'Web-App Relations',
-    body: "Her uygulama satırının önünde onu servis eden web sunucusunu gösterir: host, IP, port, server_name. Kaynak MWAppsInventory/WASAppsInventory ile BMW_Certificates_Inventory'nin çarpıştırılmasıdır. 3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki 5. karakter A→W çevrilerek bulunur (DACRAAP01 → DACRWAP01); 2-tier'de web sunucusu uygulamanın kendi sunucusudur. Doğru vhost'u seçmek için uygulama adı küçük harfle server_name içinde aranır — önce tam ad, tutmazsa ortam son eki atılmış taban ad. Eşleşmenin hangi yolla kurulduğu her satırda yazar; kural tahmine dayalı olduğu için bu bilgi gizlenmez. Hiçbir yol tutmazsa satır 'eşleşmedi' der ve uydurma bir sunucu yazılmaz, yalnızca kurala göre beklenen aday gösterilir.",
+    body: "Her uygulama satırının önünde onu servis eden web sunucusunu gösterir: host, IP, port, server_name. Kaynak MWAppsInventory/WASAppsInventory ile BMW_Certificates_Inventory'nin çarpıştırılmasıdır. 3-tier sunucularda web sunucusu, uygulama sunucusunun adındaki 5. karakter A→W çevrilerek bulunur (ODCRAAP01 → ODCRWAP01); 2-tier'de web sunucusu uygulamanın kendi sunucusudur. Doğru vhost'u seçmek için uygulama adı küçük harfle server_name içinde aranır — önce tam ad, tutmazsa ortam son eki atılmış taban ad. Eşleşmenin hangi yolla kurulduğu her satırda yazar; kural tahmine dayalı olduğu için bu bilgi gizlenmez. Hiçbir yol tutmazsa satır 'eşleşmedi' der ve uydurma bir sunucu yazılmaz, yalnızca kurala göre beklenen aday gösterilir.",
   },
   {
     icon: RectangleGroupIcon,
