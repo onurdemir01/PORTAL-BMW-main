@@ -13,10 +13,11 @@
 //                DEGIL: veri EAR_VERI_MAX_GUN (35) gun kullanilir; surec kaniti gibi yazma kaniti da taramaya aittir.
 //   olculemedi = aktif degil ve kullanim KISMI / OLCULEMEDI ya da hic yok (eski tarayici), son yazma tarama
 //                anindan payin otesinde gelecekte (kanit sayilmaz), hidepid acik (diger kullanicilarin
-//                surecleri gorunmez) YA DA root disi bir surec izin yuzunden okunamadi / okunamayanlarin sahibi
-//                ayrilmadi (eski tarayici): sessiz basari yok. Kullanici karari 2026-11-23: tarayici `was` ile
-//                kosar ve baska kullanicinin cwd / fd'sini okuyamaz; o surec dizini kullaniyor olabilir.
-//   kor        = aktif degil, olculemedi degil ama N ROOT sureci (sshd, systemd ...) izin yuzunden yalniz komut
+//                surecleri gorunmez) YA DA bir UYGULAMA HESABININ (uid >= UID_MIN) sureci izin yuzunden okunamadi /
+//                okunamayanlarin sahibi ayrilmadi (eski tarayici): sessiz basari yok. Kullanici karari 2026-11-23:
+//                tarayici `was` ile kosar ve baska kullanicinin cwd / fd'sini okuyamaz; o surec dizini kullaniyor
+//                olabilir. Root, sistem hesaplari (dbus, polkitd ...) ve taramanin kendi oturum zinciri engel degil.
+//   kor        = aktif degil, olculemedi degil ama N root / sistem hesabi sureci izin yuzunden yalniz komut
 //                satirindan denetlendi: metin bunu ek olarak soyler ("kullanilmiyor" kesin degil).
 'use strict';
 
@@ -45,7 +46,7 @@ function olculemediNedeni(k, gelecek, digerSayi, sahipBilinmiyor) {
   if (k.durum === 'YOK' && k.hidepid)
     return `hidepid=${String(k.hidepid).slice(0, 16)}: diğer kullanıcıların süreçleri görünmüyor`;
   if (digerSayi)
-    return `root dışı ${digerSayi} süreç izin yüzünden okunamadı; dizini kullanıyor olabilir`;
+    return `uygulama hesabına ait ${digerSayi} süreç izin yüzünden okunamadı; dizini kullanıyor olabilir`;
   if (sahipBilinmiyor)
     return `${pozitif(k.okunamayan)} süreç okunamadı ve sahipleri bu tarayıcı sürümünde ayrılmadı`;
   return String(k.not || k.durum || '').slice(0, 200);
@@ -108,7 +109,7 @@ function kullanimKaniti(k, tarama, simdi = Date.now()) {
     neden: nedenMetni,
     kor:
       !aktif && !olculemedi && okunamayan
-        ? `${okunamayan} root süreci izin yüzünden yalnız komut satırından denetlendi`
+        ? `${okunamayan} root / sistem hesabı süreci izin yüzünden yalnız komut satırından denetlendi`
         : '',
     cozum: olculemedi && digerSayi != null && !gelecek && !gizli ? COZUM_DIGER : COZUM_YENIDEN_TARA,
   };

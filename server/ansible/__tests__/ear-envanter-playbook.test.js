@@ -17,6 +17,8 @@
 //     paketinden SONRA; alim ikisini de okur; set_stats ozeti degismez; kapaliyken blok YOK
 // EP10 FAZ W GERCEK ansible-playbook (ear_web_kontrol=true): web blogu ayni dosyada onceki bloklardan SONRA;
 //     alim webCoz okur, tarama paketi etkilenmez; kapaliyken blok YOK
+// EP12 GERCEK ansible-playbook (PR-R, 2026-11-23): tarama gorevi kesin zaman asimina duserse durum ZAMAN_ASIMI (eskiden
+//      rescue HATA yaziyordu: gorev zaman asimi failed_when'i atlar; 2.16 "expected time frame", 2.21 "Timed out")
 // EP11 portal_yazici_host (AWX template Variables) yoksa girdi dogrulamasi durur: hicbir sey taranmaz /
 //     yazilmaz (kurum sunucu adi playbook'ta varsayilan DEGIL, K17)
 'use strict';
@@ -110,11 +112,17 @@ test('EP2 hedefte tek raw: dzdo + was, kesin timeout, no_log, heredoc acik metin
   assert.match(KOD, /PYTHONIOENCODING=utf-8:surrogateescape/);
   assert.match(KOD, /become_method: dzdo/);
   assert.match(KOD, /ear_okuma_kullanicisi \| default\('was'\)/);
-  // Kesin sinir yumusak butceden (ear_sure) en az 300 sn genis: kullanim olcumu (60 sn) ve baglanti ornekleri
-  // butcenin DISINDA kosar; ear_sure 540 ustune cekilince tarama ZAMAN_ASIMI oluyordu (PR-R, 2026-11-23).
+  // Kesin sinir yumusak butceden (ear_sure) genis: kullanim olcumu (60 sn) + pay ve baglanti ornekleri butcenin
+  // DISINDA kosar; ear_sure 420 ustune cekilince gorev zaman asimina dusuyordu (PR-R, 2026-11-23). Davranis: EP12.
+  const zaman =
+    /timeout: >-\n\s+\{\{ \[ear_zaman_asimi \| default\(600\) \| int,\n([\s\S]*?)\] \| max \}\}/.exec(
+      KOD,
+    );
+  assert.ok(zaman, 'kesin timeout ifadesi bulunamadi');
+  assert.match(zaman[1], /\(ear_sure \| default\(300\) \| int\) \+ 180/);
   assert.match(
-    KOD,
-    /timeout: "\{\{ \[ear_zaman_asimi \| default\(600\) \| int, \(ear_sure \| default\(300\) \| int\) \+ 300\] \| max \}\}"/,
+    zaman[1],
+    /\(\(ear_baglanti_ornek \| default\(3\) \| int\) - 1\) \* \(ear_baglanti_ara \| default\(10\) \| int\)/,
   );
   assert.ok(
     !/\bnamespace\b/.test(KOD),
@@ -666,5 +674,63 @@ test(
     // Gecerli yazici sunucuyla ayni girdi gecer (kapi yalniz eksik degeri reddeder).
     const r2 = oynat(inv, [], { ...ev, portal_yazici_host: 'ORLABT02' });
     assert.equal(r2.status, 0, `ansible-playbook kod ${r2.status}\n${r2.stdout.slice(-1500)}`);
+  },
+);
+
+test(
+  'EP12 GERCEK ansible-playbook: tarama kesin zaman asimina duserse ZAMAN_ASIMI (HATA degil)',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  () => {
+    const kok = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ear-ep12-')));
+    // Takilan "python3": raw komutu PATH'ten bulur; Ansible kendi yorumlayicisini envanterden kullanir.
+    const bin = path.join(kok, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'python3'), '#!/bin/sh\ncat >/dev/null\nexec sleep 60\n', {
+      mode: 0o755,
+    });
+    const py = ansiblePythonu() || 'python3';
+    const inv = path.join(kok, 'envanter.ini');
+    fs.writeFileSync(
+      inv,
+      [
+        `localhost ansible_connection=local ansible_python_interpreter=${py}`,
+        `ORLABT02 ansible_connection=local ansible_python_interpreter=${py}`,
+        `HOSTA ansible_connection=local ear_kokler=${kok}/yok`,
+        '',
+      ].join('\n'),
+    );
+    const ev = {
+      hedefler: ['hosta'],
+      ear_kip: 'OZET',
+      ear_kosu_no: 6,
+      ear_parti_no: 1,
+      ear_okuma_kullanicisi: '',
+      ear_dizin: path.join(kok, 'sw'),
+      portal_yazici_host: 'ORLABT02',
+      // Kesin sinir = max(ear_zaman_asimi, ear_sure + 180) = 4 sn (ear_sure betikte 10'a kirpilir; burada
+      // yalniz Ansible sinirini kisaltir).
+      ear_sure: -176,
+      ear_zaman_asimi: 2,
+    };
+    const r = spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, '-e', JSON.stringify(ev)], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        ANSIBLE_SHOW_CUSTOM_STATS: 'True',
+        ANSIBLE_STDOUT_CALLBACK: 'default',
+        ANSIBLE_NOCOLOR: '1',
+      },
+      timeout: 120000,
+    });
+    try {
+      const run = r.stdout.split('\n').find((s) => s.includes('RUN: {'));
+      assert.ok(run, `CUSTOM STATS satiri yok\n${r.stdout.slice(-1500)}`);
+      const ozet = JSON.parse(run.slice(run.indexOf('{'))).ear_envanter_result;
+      const h = ozet.hostlar.find((x) => x.host === 'HOSTA');
+      assert.equal(h.durum, 'ZAMAN_ASIMI', JSON.stringify(h));
+    } finally {
+      fs.rmSync(kok, { recursive: true, force: true });
+    }
   },
 );

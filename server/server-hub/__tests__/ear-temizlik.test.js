@@ -2373,7 +2373,7 @@ test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil 
   assert.equal(engel('KORROOT.ear'), null, 'yalniz root surecleri okunamadi: engel degil');
   assert.equal(
     engel('KORDIGER.ear'),
-    'dizin kullanımı ölçülemedi (root dışı 2 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir); silme kapalı: o süreçlerin bu dizini kullanmadığı doğrulanamıyor (tarama kimliği başka kullanıcıların süreçlerini okuyamaz)',
+    'dizin kullanımı ölçülemedi (uygulama hesabına ait 2 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir); silme kapalı: o süreçlerin bu dizini kullanmadığı doğrulanamıyor (tarama kimliği başka kullanıcıların süreçlerini okuyamaz)',
   );
   assert.equal(
     engel('KORESKI.ear'),
@@ -2386,7 +2386,7 @@ test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil 
   assert.equal(uyari('SUREC.ear'), null);
   assert.equal(
     uyari('KORROOT.ear'),
-    'dizin kullanımı kısmen görüldü: 40 root süreci izin yüzünden yalnız komut satırından denetlendi',
+    'dizin kullanımı kısmen görüldü: 40 root / sistem hesabı süreci izin yüzünden yalnız komut satırından denetlendi',
   );
   for (const ad of [
     'SUREC.ear',

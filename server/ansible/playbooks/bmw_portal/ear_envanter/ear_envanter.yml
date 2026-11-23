@@ -13,8 +13,10 @@
 #   ear_okuma_kullanicisi: was                      (dzdo ile; bos -> become YOK)
 #   ear_kokler:            "/vhosting:/vhosting8"
 #   ear_sure:              300   (betik ici yumusak butce, sn)
-#   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir; en az ear_sure + 300: kullanim olcumu
-#                                 EAR_KULLANIM_SURE 60 sn ve baglanti ornekleri yumusak butcenin DISINDA kosar)
+#   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir; en az ear_sure + 180 + baglanti
+#                                 uykusu ((ornek-1) x ara): kullanim olcumu (EAR_KULLANIM_SURE 60 sn) ve baglanti
+#                                 ornekleri yumusak butcenin DISINDA kosar. Gorev zaman asimi rescue'ya duser:
+#                                 rescue de ZAMAN_ASIMI yazar (2.16 "expected time frame", 2.21 "Timed out").
 #   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
 #   ear_baglanti_kontrol:  false (FAZ A: yapilandirilmis JVM / WAS portlarina ESTABLISHED baglanti goruntusu; Admin acar)
 #   ear_baglanti_ornek:    3     (ornek sayisi) / ear_baglanti_ara: 10 (ornekler arasi sn)
@@ -167,7 +169,11 @@
             {{ lookup('ansible.builtin.file', 'files/ear_tara.py') }}
             EAR_TARA_SON
           register: ear_tarama
-          timeout: "{{ [ear_zaman_asimi | default(600) | int, (ear_sure | default(300) | int) + 300] | max }}"
+          timeout: >-
+            {{ [ear_zaman_asimi | default(600) | int,
+                (ear_sure | default(300) | int) + 180
+                + (((ear_baglanti_ornek | default(3) | int) - 1) * (ear_baglanti_ara | default(10) | int)
+                   if (ear_baglanti_kontrol | default(false) | bool) else 0)] | max }}
           changed_when: false
           failed_when: false
           no_log: true
@@ -181,7 +187,7 @@
                 {{ 'ULASILAMADI' if (ear_tarama.unreachable | default(false) | bool)
                    else 'SONUC' if '@@EAR_ENVANTER_BITTI@@' in (ear_tarama.stdout | default(''))
                    else 'PYTHON_YOK' if '@@EAR_PYTHON_YOK@@' in (ear_tarama.stdout | default(''))
-                   else 'ZAMAN_ASIMI' if ('timed out' in (ear_tarama.msg | default('') | lower) or 'timeout' in (ear_tarama.msg | default('') | lower))
+                   else 'ZAMAN_ASIMI' if ('timed out' in (ear_tarama.msg | default('') | lower) or 'timeout' in (ear_tarama.msg | default('') | lower) or 'expected time frame' in (ear_tarama.msg | default('') | lower))
                    else 'KIMLIK_GECISI_YOK' if ('dzdo' in ((ear_tarama.msg | default('')) ~ (ear_tarama.stderr | default('')) ~ (ear_tarama.module_stderr | default(''))) | lower)
                    else 'HATA' }}
               rc: "{{ ear_tarama.rc | default(-1) }}"
@@ -241,7 +247,11 @@
             ear_ozet:
               host: "{{ ear_host_adi }}"
               paket: false
-              durum: "{{ 'YAZILAMADI' if (ear_ozet is defined and (ear_ozet.paket | default(false) | bool)) else 'HATA' }}"
+              durum: >-
+                {{ 'YAZILAMADI' if (ear_ozet is defined and (ear_ozet.paket | default(false) | bool))
+                   else 'ZAMAN_ASIMI' if ('timed out' in (ansible_failed_result.msg | default('') | lower)
+                                          or 'expected time frame' in (ansible_failed_result.msg | default('') | lower))
+                   else 'HATA' }}
               rc: -1
               bayt: 0
               hata: "{{ (ansible_failed_result.msg | default('tarama sirasinda hata')) | truncate(300, true, '') }}"

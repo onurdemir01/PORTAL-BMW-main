@@ -125,7 +125,7 @@ export interface EarKullanim {
   son_yazma: number | null;
   /** İzin yüzünden yalnız komut satırından denetlenen süreç sayısı (eski kayıtta yok). */
   okunamayan?: number;
-  /** Root disi okunamayan surec (2026-11-23); null = eski tarayici (sahip ayrilmadi). >0 ise silme engeli. */
+  /** Uygulama hesabinin (uid >= UID_MIN) okunamayan sureci (2026-11-23); null = eski tarayici. >0 ise silme engeli. */
   okunamayan_diger?: number | null;
   /** /proc hidepid değeri; doluysa diğer kullanıcıların süreçleri görünmez. */
   hidepid?: string | null;

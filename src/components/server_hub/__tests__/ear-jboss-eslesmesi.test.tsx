@@ -314,9 +314,11 @@ describe('DizinKullanimi okunamayan surec sahibi', () => {
   };
   it('hepsi root / root disi / eski tarayici ayri yazilir', () => {
     expect(metin({ okunamayan_diger: 0 })).toContain(
-      '7 süreç izin yüzünden yalnız komut satırından denetlendi (hepsi root)',
+      '7 süreç izin yüzünden yalnız komut satırından denetlendi (hepsi root / sistem hesabı)',
     );
-    expect(metin({ okunamayan_diger: 2 })).toContain('(2 root dışı: dizini kullanıyor olabilir)');
+    expect(metin({ okunamayan_diger: 2 })).toContain(
+      '(2 uygulama hesabı: dizini kullanıyor olabilir)',
+    );
     expect(metin({})).toContain('(sahipleri ayrılmadı: eski tarayıcı)');
   });
 });

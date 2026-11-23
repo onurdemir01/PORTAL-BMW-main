@@ -565,7 +565,8 @@ const SINIR_OKUNAMAYAN = 1000000;
 /**
  * KULLANIM KANITI (tarayici surum 4, 2026-11-17): JVM_YOK EAR'in dizinini kullanan surecler ve son yazma.
  * Beyaz liste: yalniz {durum, surecler[{pid, comm, kullanici, nasil}], son_yazma, okunamayan, okunamayan_diger, hidepid,
- * not}; okunamayan_diger (2026-11-23) = root disi okunamayan surec; alan yoksa null (eski tarayici: sahip ayrilmadi);
+ * not}; okunamayan_diger (2026-11-23) = uygulama hesabinin (uid >= UID_MIN; tarama oturumu haric) okunamayan sureci;
+ * alan yoksa null (eski tarayici: sahip ayrilmadi);
  * cmdline / args gibi bilinmeyen alan ATILIR (parola tasiyabilir). Bilinmeyen 'nasil' '?' olur (uydurulmaz).
  * Surec varsa durum VAR; surecsiz VAR tutarsiz -> OLCULEMEDI.
  * Alan yok (eski tarayici) -> null (olculmedi; "kullanilmiyor" DEGIL).

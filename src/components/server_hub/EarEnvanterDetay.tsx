@@ -104,8 +104,8 @@ export function DizinKullanimi({
           {k.okunamayan_diger == null
             ? ' (sahipleri ayrılmadı: eski tarayıcı)'
             : k.okunamayan_diger > 0
-              ? ` (${fmtNumber(k.okunamayan_diger)} root dışı: dizini kullanıyor olabilir)`
-              : ' (hepsi root)'}
+              ? ` (${fmtNumber(k.okunamayan_diger)} uygulama hesabı: dizini kullanıyor olabilir)`
+              : ' (hepsi root / sistem hesabı)'}
         </div>
       )}
       {k.not && <div style={{ color: 'var(--text-muted)' }}>{k.not}</div>}

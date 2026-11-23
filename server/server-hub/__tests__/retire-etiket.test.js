@@ -577,12 +577,12 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
   );
   assert.match(
     j['KOR.ear'],
-    /— dizin kullanımı görülmedi ama 112 root süreci izin yüzünden yalnız komut satırından denetlendi$/,
-    'B3 okunamayan (hepsi root)',
+    /— dizin kullanımı görülmedi ama 112 root \/ sistem hesabı süreci izin yüzünden yalnız komut satırından denetlendi$/,
+    'B3 okunamayan (hepsi root / sistem hesabi)',
   );
   assert.match(
     j['KORDIGER.ear'],
-    /— dizin kullanımı ölçülemedi \(root dışı 3 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir\)$/,
+    /— dizin kullanımı ölçülemedi \(uygulama hesabına ait 3 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir\)$/,
     'root disi okunamayan',
   );
   assert.match(
