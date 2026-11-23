@@ -3,7 +3,8 @@
 //   OP1 pod sayısı tüm pod'lardan (podOzet); okunamadıysa null (0 DEĞİL); eski canlı okumada listeden sayılır
 //   OP2 birleştirme: (cluster, namespace) başına daha yeni okuma kalır; yeni canlı okuma diğer cluster'ları silmez
 //   OP3 cluster başına dağılım: aynı cluster'ın namespace'leri toplanır, ölçülemeyen ayrı sayılır
-//   OP4 ekran: satırda pod sütunu, cluster başına pod rozetleri, kaynak (saatlik tarama) ve son koşu metni
+//   OP4 ekran: satırda pod sütunu, ortam başlığında pod toplamı (2026-11-23: cluster rozetleri yerine ortam
+//       kartı, ocp-karsilastir.test.tsx), kaynak (saatlik tarama) ve son koşu metni
 import { describe, it, expect } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -101,7 +102,7 @@ describe('Application Hub — OpenShift pod sayısı ve saatlik tarama', () => {
     ]);
   });
 
-  it('OP4 ekran: pod sütunu, cluster rozetleri, kaynak ve son koşu', () => {
+  it('OP4 ekran: pod sütunu, ortam kartı pod toplamı, kaynak ve son koşu', () => {
     const d: OcpDetay = {
       tip: 'ocp',
       ad: 'musteri-api',
@@ -150,9 +151,10 @@ describe('Application Hub — OpenShift pod sayısı ve saatlik tarama', () => {
     const podHucreleri = screen.getAllByTestId('yer-pod');
     expect(podHucreleri[0]).toHaveTextContent('2 / 3');
     expect(podHucreleri[1]).toHaveTextContent('ölçülemedi');
-    const dagilim = screen.getByTestId('cluster-pod-dagilimi');
-    expect(within(dagilim).getByText('c1').parentElement).toHaveTextContent('3 pod · 2 hazır');
-    expect(dagilim).toHaveTextContent('1 namespace ölçülemedi');
+    const ortam = screen.getByTestId('ocp-ortam');
+    expect(ortam).toHaveAttribute('data-ortam', 'PROD');
+    expect(ortam).toHaveTextContent('2 cluster / namespace · pod 2 / 3 hazır · 1 yerde ölçülemedi');
+    expect(within(ortam).getAllByTestId('ocp-uye')).toHaveLength(2);
     expect(screen.getByTestId('filo-durumu')).toHaveTextContent('44/45 cluster okundu');
     expect(screen.getAllByText('saatlik tarama').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('kart-pod')[0]).toHaveTextContent('3 pod · 2 hazır');
