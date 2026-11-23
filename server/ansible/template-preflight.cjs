@@ -121,6 +121,8 @@ const BEKLENEN_PLAYBOOK = Object.freeze({
   server_hub_ear_envanter: 'ear_envanter.yml',
   // Application Hub saatlik tarama: her saat kendiliginden baslar; yanlis sablon baska isi kosturmasin.
   app_hub_ocp_filo: 'app_hub_fleet.yml',
+  // Intranet SPA paket kurulumu: PROD Nginx'e yazar; yanlis sablon baska isi spi_items ile kosturmasin.
+  spa_package_install: 'spa_package_install.yml',
 });
 /** Playbook Kayitlari anahtarina gore sablonun playbook'unu dogrular. */
 function assertRegistryPlaybook(serverId, templateId, key) {

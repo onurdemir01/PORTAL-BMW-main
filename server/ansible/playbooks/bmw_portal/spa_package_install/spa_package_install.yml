@@ -1,0 +1,344 @@
+---
+- name: "SPA package install - input gate and host jobs"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    spi_ns_re: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+    spi_app_re: '^[A-Za-z0-9]([-A-Za-z0-9._]*[A-Za-z0-9])?$'
+    spi_ver_re: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
+    spi_cluster_re: '^[A-Za-z0-9._-]+$'
+    spi_host_re: '^[A-Z0-9-]{3,32}$'
+    spi_config_url_re: '^https://([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}/config$'
+  tasks:
+    - name: "Required inputs"
+      ansible.builtin.assert:
+        that:
+          - spi_mode is defined and spi_mode is string and spi_mode in ['plan', 'apply']
+          - spi_items is defined and spi_items is sequence and spi_items is not string and spi_items is not mapping
+          - spi_items | length >= 1
+          - spi_items | length <= 10
+          - (tower_job_id | default(awx_job_id | default('')) | string) is match('^[0-9]{1,18}$')
+        fail_msg: >-
+          Zorunlu degiskenler eksik ya da gecersiz: spi_mode={{ spi_mode | default('?') | string | truncate(20) }},
+          spi_items={{ spi_items | default([]) | length }} (1..10),
+          job={{ tower_job_id | default(awx_job_id | default('yok')) }} (sayisal olmali).
+          Hepsi bossa AWX job template'inde extra variables prompt-on-launch kapali olabilir.
+        quiet: true
+
+    - name: "AWX template variables"
+      ansible.builtin.assert:
+        that:
+          - spi_package_base_url | default('', true) is string
+          - (spi_package_base_url | default('', true)) is match('^https://[!-~]+$')
+          - spi_allowed_hosts | default([], true) is sequence
+          - spi_allowed_hosts | default([], true) is not string
+          - spi_allowed_hosts | default([], true) is not mapping
+          - spi_allowed_hosts | default([], true) | length > 0
+          - (spi_validate_certs | default(true) | string | lower) in ['true', 'false', 'yes', 'no', '1', '0']
+          - (spi_download_timeout | default(600) | string) is match('^[1-9][0-9]{0,3}$')
+          - (spi_download_timeout | default(600) | int) <= 3600
+          - (spi_max_zip_mb | default(512) | string) is match('^[1-9][0-9]{0,3}$')
+          - (spi_max_zip_mb | default(512) | int) <= 2048
+        fail_msg: >-
+          AWX sablon degiskenleri eksik ya da gecersiz: spi_package_base_url (https:// ile baslar) ve
+          spi_allowed_hosts (bos olmayan liste) zorunlu; spi_download_timeout 1..3600, spi_max_zip_mb 1..2048.
+          Bkz. README.md "AWX sablonu".
+        quiet: true
+
+    - name: "Item format"
+      ansible.builtin.assert:
+        that:
+          - item is mapping
+          - item.namespace is defined and item.namespace is string and item.namespace is match(spi_ns_re)
+          - item.namespace | length <= 63
+          - item.namespace == (item.namespace | trim)
+          - item.application is defined and item.application is string and item.application is match(spi_app_re)
+          - item.application | length <= 253
+          - item.application == (item.application | trim)
+          - item.version is defined and item.version is string and item.version is match(spi_ver_re)
+          - item.version == (item.version | trim)
+          - item.cluster is defined and item.cluster is string and item.cluster is match(spi_cluster_re)
+          - item.id is defined and item.id is string and item.id == (item.namespace ~ '/' ~ item.application)
+          - item.hosts is defined and item.hosts is sequence and item.hosts is not string and item.hosts is not mapping
+          - item.hosts | length >= 1
+          - item.hosts | length <= 8
+          - (item.hosts | select('string') | select('match', spi_host_re) | list | length) == (item.hosts | length)
+          - (item.hosts | unique | length) == (item.hosts | length)
+          - (item.hosts | difference(spi_allowed_hosts | map('string') | map('upper') | list) | length) == 0
+          - item.config_urls is defined and item.config_urls is sequence
+          - item.config_urls is not string and item.config_urls is not mapping
+          - item.config_urls | length >= 1
+          - item.config_urls | length <= 3
+          - (item.config_urls | select('string') | select('match', spi_config_url_re) | list | length) == (item.config_urls | length)
+          - (item.config_urls | unique | length) == (item.config_urls | length)
+          - (item.config_urls | map('trim') | list) == item.config_urls
+          - (item.config_urls | map('length') | max) <= 268
+        fail_msg: >-
+          gecersiz kalem (hosts 1..8 ve spi_allowed_hosts alt kumesi; config_urls 1..3 tekil
+          https://<host>/config olmali): {{ item | string | truncate(200) }}
+        quiet: true
+      loop: "{{ spi_items }}"
+      loop_control:
+        label: "{{ item.id | default('?') }}"
+
+    - name: "Item ids are unique"
+      ansible.builtin.assert:
+        that:
+          - (spi_items | map(attribute='id') | unique | length) == (spi_items | length)
+        fail_msg: "ayni uygulama iki kez secilmis"
+        quiet: true
+
+    - name: "Job number and package base"
+      ansible.builtin.set_fact:
+        spi_job_no: "{{ tower_job_id | default(awx_job_id | default('')) | string }}"
+        spi_base: "{{ spi_package_base_url | regex_replace('/+$', '') }}"
+
+    - name: "Source checksum of the host script"
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/files/spa_package_host.sh"
+        checksum_algorithm: sha1
+      register: spi_src_stat
+
+    - name: "Source sha1"
+      ansible.builtin.set_fact:
+        spi_host_src_sha1: "{{ spi_src_stat.stat.checksum | default('') }}"
+
+    - name: "Nginx hosts to the dynamic inventory"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: spi_nginx
+      loop: "{{ spi_items | map(attribute='hosts') | flatten | unique | list }}"
+      changed_when: false
+
+    - name: "No host jobs yet"
+      ansible.builtin.set_fact:
+        spi_host_jobs: {}
+
+    - name: "Jobs per nginx host"
+      ansible.builtin.set_fact:
+        spi_host_jobs: >-
+          {{ spi_host_jobs | combine({item.1: (spi_host_jobs[item.1] | default([])) + [{
+               'id': item.0.id, 'namespace': item.0.namespace, 'application': item.0.application,
+               'version': item.0.version, 'config_urls': item.0.config_urls,
+               'zip_url': spi_base ~ '/' ~ item.0.namespace ~ '/' ~ item.0.application ~ '/' ~ item.0.version ~ '.zip'
+             }]}) }}
+      loop: "{{ spi_items | subelements('hosts') }}"
+      loop_control:
+        label: "{{ item.0.id }} -> {{ item.1 }}"
+      changed_when: false
+
+- name: "SPA package install - install on nginx hosts"
+  hosts: spi_nginx
+  ignore_unreachable: true
+  any_errors_fatal: false
+  gather_facts: false
+  become: true
+  become_user: www
+  become_method: dzdo
+  vars:
+    spi_tab: "\t"
+    spi_mode_run: "{{ hostvars['localhost'].spi_mode }}"
+    spi_jobs: "{{ hostvars['localhost'].spi_host_jobs[inventory_hostname] | default([]) }}"
+    spi_host_script: "{{ spi_host_tmp.path | default('') }}"
+    spi_run_timeout: "{{ (hostvars['localhost'].spi_download_timeout | default(600) | int) + 3600 }}"
+  tasks:
+    - name: "Install"
+      block:
+        - name: "Run-specific script name"
+          ansible.builtin.tempfile:
+            state: file
+            path: /var/tmp
+            prefix: .spa_package_host.
+            suffix: .sh
+          register: spi_host_tmp
+          changed_when: false
+          when: spi_jobs | length > 0
+
+        - name: "Script to the host"
+          ansible.builtin.copy:
+            src: files/spa_package_host.sh
+            dest: "{{ spi_host_script }}"
+            mode: "0700"
+          changed_when: false
+          when: (spi_jobs | length > 0) and (spi_host_script | length > 0)
+
+        - name: "Verify the copy"
+          ansible.builtin.stat:
+            path: "{{ spi_host_script }}"
+            checksum_algorithm: sha1
+          register: spi_host_stat
+          failed_when: false
+          when: (spi_jobs | length > 0) and (spi_host_script | length > 0)
+
+        - name: "Run the host script per item"
+          ansible.builtin.command:
+            cmd: "timeout -k 10 {{ spi_run_timeout }} bash {{ spi_host_script }}"
+          environment:
+            SPI_MODE: "{{ spi_mode_run }}"
+            SPI_NS: "{{ item.namespace }}"
+            SPI_APP: "{{ item.application }}"
+            SPI_VERSION: "{{ item.version }}"
+            SPI_ZIP_URL: "{{ item.zip_url }}"
+            SPI_CONFIG_URLS: "{{ item.config_urls | join(' ') }}"
+            SPI_PYTHON: "{{ ansible_facts['discovered_interpreter_python'] | default('', true) }}"
+            SPI_JOB_NO: "{{ hostvars['localhost'].spi_job_no }}"
+            SPI_MAX_ZIP_MB: "{{ hostvars['localhost'].spi_max_zip_mb | default(512) | string }}"
+            SPI_DOWNLOAD_TIMEOUT: "{{ hostvars['localhost'].spi_download_timeout | default(600) | string }}"
+            SPI_INSECURE: "{{ '0' if (hostvars['localhost'].spi_validate_certs | default(true) | bool) else '1' }}"
+          loop: "{{ spi_jobs }}"
+          loop_control:
+            label: "{{ item.id }}"
+          register: spi_runs
+          no_log: true
+          changed_when: (spi_mode_run == 'apply') and ((spi_runs.rc | default(1)) == 0)
+          failed_when: false
+          when: >-
+            (spi_jobs | length > 0)
+            and ((spi_host_stat.stat.checksum | default('')) == (hostvars['localhost'].spi_host_src_sha1 | default('x')))
+
+        - name: "Host script output"
+          ansible.builtin.debug:
+            msg: "{{ (item.stdout_lines | default([]))[-60:] }}"
+          loop: "{{ spi_runs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.id | default('?') }}"
+          when: not (item.skipped | default(false))
+
+      rescue:
+        - name: "Record the error (host stays up)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: "{{ ansible_failed_result.msg | default('Bu sunucuda kurulum tamamlanamadi.') | string | truncate(300) }}"
+
+      always:
+        - name: "Host results"
+          ansible.builtin.set_fact:
+            spi_host_results: >-
+              {{
+                (spi_host_results | default([])) + [{
+                  'id': item.item.id,
+                  'status': parts[1] if (kind == 'result') else 'FAIL',
+                  'step': parts[2] if (kind == 'result') else (kind_step[kind] | default('check')),
+                  'message': (parts[3:] | join(' ')) if (kind == 'result') else (kind_message[kind] | default(''))
+                }]
+              }}
+          vars:
+            result_line: >-
+              {{ item.stdout_lines | default([]) | select('match', '^RESULT' ~ spi_tab) | list | last | default('', true) }}
+            parts: "{{ result_line.split(spi_tab) }}"
+            kind: >-
+              {%- if (spi_host_tmp.unreachable | default(false)) or (item.unreachable | default(false)) -%}unreachable
+              {%- elif item.skipped | default(false) -%}skipped
+              {%- elif (parts | length >= 4) and (parts[1] in ['OK', 'PLAN_OK', 'SKIP', 'FAIL']) -%}result
+              {%- else -%}noresult
+              {%- endif -%}
+            kind_step:
+              unreachable: unreachable
+              skipped: check
+              noresult: check
+            kind_message:
+              unreachable: "sunucuya erisilemedi"
+              skipped: "betik kopyasi dogrulanamadi (sha1)"
+              noresult: "betik sonuc satiri vermedi (rc={{ item.rc | default('?') }})"
+          loop: "{{ spi_runs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.id | default('?') }}"
+          changed_when: false
+
+        - name: "Remove the script"
+          ansible.builtin.file:
+            path: "{{ spi_host_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: spi_host_script | length > 0
+
+        - name: "Verify script cleanup"
+          ansible.builtin.stat:
+            path: "{{ spi_host_script }}"
+          register: spi_host_script_after
+          changed_when: false
+          failed_when: false
+          when: spi_host_script | length > 0
+
+        - name: "Host fails when the script remains"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (spi_host_script | length == 0)
+                or (spi_host_tmp.unreachable | default(false))
+                or ((spi_host_script_after.stat.exists | default(true)) == false)
+            fail_msg: "SPA paket kurulumu gecici betigi silinemedi."
+            quiet: true
+
+- name: "SPA package install - publish the result"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: "Clear host errors"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Start empty"
+      ansible.builtin.set_fact:
+        spi_rows: []
+        spi_result_items: []
+
+    - name: "Row per item and host"
+      ansible.builtin.set_fact:
+        spi_rows: >-
+          {{ spi_rows + [({'id': item.0.id, 'host': item.1} | combine(row))] }}
+      vars:
+        host_vars: "{{ hostvars[item.1] | default({}, true) }}"
+        reported: "{{ host_vars.spi_host_results | default([], true) | selectattr('id', 'equalto', item.0.id) | list }}"
+        blocked: "{{ host_vars.host_blocked_reason | default('') }}"
+        missing_row:
+          status: FAIL
+          step: unreachable
+          message: "{{ ('sunucu sonuc bildirmedi (erisilemedi ya da erken dustu) ' ~ blocked) | trim }}"
+        row: "{{ ((reported | first) if (reported | length > 0) else missing_row) | dict2items | rejectattr('key', 'equalto', 'id') | items2dict }}"
+      loop: "{{ spi_items | default([]) | subelements('hosts') }}"
+      loop_control:
+        label: "{{ item.0.id }} -> {{ item.1 }}"
+      changed_when: false
+
+    - name: "Result per item"
+      ansible.builtin.set_fact:
+        spi_result_items: >-
+          {{ spi_result_items + [{
+               'id': item.id, 'namespace': item.namespace, 'application': item.application,
+               'version': item.version,
+               'hosts': spi_rows | selectattr('id', 'equalto', item.id)
+                                 | map('dict2items') | map('rejectattr', 'key', 'equalto', 'id')
+                                 | map('items2dict') | list
+             }] }}
+      loop: "{{ spi_items | default([]) }}"
+      loop_control:
+        label: "{{ item.id }}"
+      changed_when: false
+
+    - name: "spa_package_install_result is published"
+      ansible.builtin.set_stats:
+        data:
+          spa_package_install_result:
+            mode: "{{ spi_mode }}"
+            overall: >-
+              {%- set failed = spi_rows | selectattr('status', 'equalto', 'FAIL') | list | length -%}
+              {%- if failed == 0 and (spi_rows | length) > 0 -%}ok
+              {%- elif failed < (spi_rows | length) -%}partial
+              {%- else -%}failed
+              {%- endif -%}
+            items: "{{ spi_result_items }}"
+        per_host: false
+
+    - name: "Failed rows"
+      ansible.builtin.debug:
+        msg: "{{ spi_rows | selectattr('status', 'equalto', 'FAIL') | list }}"
+      when: (spi_rows | selectattr('status', 'equalto', 'FAIL') | list | length) > 0
+
+    - name: "Job fails when any row failed"
+      ansible.builtin.fail:
+        msg: "Basarisiz satir: {{ spi_rows | selectattr('status', 'equalto', 'FAIL') | list | length }} / {{ spi_rows | length }}"
+      when: (spi_rows | length == 0) or ((spi_rows | selectattr('status', 'equalto', 'FAIL') | list | length) > 0)

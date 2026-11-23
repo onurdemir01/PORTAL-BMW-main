@@ -237,6 +237,8 @@ function buildIntranetRapor({
       ag: a.ag,
       // Route adresleri (kullanicinin uygulamayi tanidigi ad) ve cluster'lar.
       adresler: [...(a.hosts || [])],
+      // Adres basina cluster / termination / SPA / paylasilan (paket kurulumu /config secimi).
+      routeDetay: (a.routeDetay || []).map((d) => ({ ...d })),
       clusters: [...(a.clusters || [])],
       eskiCluster: [...(a.staleClusters || [])],
       kapsam: {
@@ -448,6 +450,12 @@ function mountIntranet(router, deps) {
       console.error('[IntranetSPA] beyan yazma hatasi:', err.message);
       res.status(500).json({ ok: false, message: 'Beyan güncellenemedi.' });
     }
+  });
+
+  // PAKET KURULUMU (2026-11-23, paket-kurulum.cjs): Artifactory -> PROD intranet Nginx; uclar yalniz Admin.
+  require('./paket-kurulum.cjs').mount(router, {
+    loadIntranet: (fresh) => loadIntranet(fresh, deps),
+    intranetOnbellekSil: onbellekSil,
   });
 }
 
