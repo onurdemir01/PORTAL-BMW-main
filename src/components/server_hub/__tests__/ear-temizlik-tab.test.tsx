@@ -62,6 +62,12 @@ import type { EtAday, EtDurum, EtKayit } from '@/api/serverHubApi';
 const yanit = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+// Secimde Production kayit varsa toplu teyit OCO numarasi ister (2026-11-22); yalniz alan gorunurse doldurulur.
+const ocoVarsaYaz = (pencere: HTMLElement) => {
+  const g = within(pencere).queryByLabelText('OCO numarası');
+  if (g) fireEvent.change(g, { target: { value: '123456' } });
+};
+
 const kayit = (durum: EtDurum, ek: Partial<EtKayit> = {}): EtKayit => ({
   id: 11,
   host: 'hosta01',
@@ -272,6 +278,46 @@ describe('EarTemizlikTab', () => {
     });
     await waitFor(() => expect(screen.queryByTestId('et-teyit')).toBeNull());
     expect(screen.getByRole('button', { name: /Siliniyor/ })).toBeDisabled();
+  });
+
+  it('ET4b Production kaydında silme açık OCO numarası ister; numara gövdede gider', async () => {
+    yonlendir = (url, method) =>
+      method === 'POST' && url.endsWith('/ear-temizlik/11/sil')
+        ? yanit({
+            ok: true,
+            kayit: kayit('SILINIYOR', { plan: null, silJobId: 778, prod: true, host: 'hostp01' }),
+          })
+        : yanit(
+            liste([
+              aday({
+                host: 'hostp01',
+                ortam: 'Production',
+                prod: true,
+                kayit: kayit('PLAN_HAZIR', { planJobId: 4243, prod: true, host: 'hostp01' }),
+              }),
+            ]),
+          );
+    render(<EarTemizlikTab />);
+    fireEvent.click(await screen.findByRole('button', { name: /Çıktıyı gör ve teyit et/ }));
+    fireEvent.click(await screen.findByRole('checkbox', INCELEDIM));
+    fireEvent.change(screen.getByLabelText('EAR adı'), {
+      target: { value: 'ORSTPCOMPLIANCE.ear' },
+    });
+    const dugme = screen.getByRole('button', { name: 'Yedekle ve sil' });
+    expect(dugme).toBeDisabled();
+    expect(dugme).toHaveAttribute('title', 'Production silmesi için açık OCO numarasını yazın');
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: 'OCO-1' } });
+    expect(dugme).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('OCO numarası'), { target: { value: ' 123456 ' } });
+    expect(dugme).toBeEnabled();
+    fireEvent.click(dugme);
+    await waitFor(() => expect(cagrilar.some((c) => c.method === 'POST')).toBe(true));
+    expect(cagrilar.find((c) => c.method === 'POST')!.body).toEqual({
+      confirmed: true,
+      onayMetni: 'ORSTPCOMPLIANCE.ear',
+      planJobId: 4243,
+      ocoNo: '123456',
+    });
   });
 
   it('ET5 hatalar: liste okunamadı; ön kontrol reddi; silme reddi pencerede kalır', async () => {
@@ -752,6 +798,15 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.change(giris, { target: { value: '3 EAR SIL' } });
     expect(sil()).toBeDisabled();
     fireEvent.change(giris, { target: { value: '2 EAR SIL' } });
+    // Secimde Production kayit var: acik OCO numarasi olmadan pasif (sunucu da zorlar).
+    expect(sil()).toBeDisabled();
+    expect(sil()).toHaveAttribute(
+      'title',
+      'Seçimde Production kayıt var: açık OCO numarasını yazın',
+    );
+    fireEvent.change(within(pencere).getByLabelText('OCO numarası'), {
+      target: { value: '123456' },
+    });
     expect(sil()).toBeEnabled();
     fireEvent.click(within(ogeler[1]).getByRole('checkbox'));
     expect(sil()).toHaveTextContent('Sil (1)');
@@ -768,6 +823,7 @@ describe('EarTemizlikTab toplu', () => {
       confirmed: true,
       onayMetni: '1 EAR SIL',
       kayitlar: [{ id: 31, planJobId: 631 }],
+      ocoNo: '123456',
     });
     await waitFor(() => expect(screen.queryByTestId('et-toplu-teyit')).toBeNull());
     expect(toastM.success).toHaveBeenCalledWith(expect.stringMatching(/1 başladı, 0 sırada/));
@@ -791,6 +847,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.change(within(pencere).getByLabelText('Toplu onay metni'), {
       target: { value: '2 EAR SIL' },
     });
+    ocoVarsaYaz(pencere);
     fireEvent.click(screen.getByRole('button', { name: 'Sil (2)' }));
     const red = await within(pencere).findByTestId('et-toplu-red');
     expect(red).toHaveTextContent(
@@ -983,6 +1040,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.change(within(pencere).getByLabelText('Toplu onay metni'), {
       target: { value: '2 EAR SIL' },
     });
+    ocoVarsaYaz(pencere);
     fireEvent.click(screen.getByRole('button', { name: 'Sil (2)' }));
     await waitFor(() => expect(toastM.success).toHaveBeenCalled());
     expect(toastM.success).toHaveBeenCalledWith('1 EAR için silme istendi: 1 başladı, 0 sırada.');
@@ -1011,6 +1069,7 @@ describe('EarTemizlikTab toplu', () => {
     fireEvent.change(within(pencere).getByLabelText('Toplu onay metni'), {
       target: { value: '2 EAR SIL' },
     });
+    ocoVarsaYaz(pencere);
     fireEvent.click(screen.getByRole('button', { name: 'Sil (2)' }));
     await waitFor(() =>
       expect(toastM.success).toHaveBeenCalledWith('1 EAR için silme istendi: 0 başladı, 1 sırada.'),
