@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "853d15fa9810adcc4ce8fb3174a8b828ae2b2d2f",
+  "kaynak": "20a850312634487885c78070bc22e7c7edbc5c70",
   "dosyaSayisi": 1633,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -78,8 +78,8 @@
     "docs/adr/0004-kapsam-raporu-repoda.md": "0d068f5ec3892238552a69c72d95a32649cfcb38",
     "eslint.config.js": "c3d9ad8b2234a9efa3812de94cdcaa70dac82444",
     "gelistirme/README.md": "49c83f5496581ca3662da52b4768f989620ad8f2",
-    "gelistirme/package-lock.json": "4bb1fcef807fbec868c5ecc69996d6812337b00a",
-    "gelistirme/package.json": "a07a6dfb056814fe41f57a939e251876b3eb9297",
+    "gelistirme/package-lock.json": "6795368747f469a43b0bcc00a1eff56cfd4837bf",
+    "gelistirme/package.json": "13cd0e7ffb734549a512fabceb29d643a8a33f14",
     "index.html": "d2f514b7fb6319f10741e406ececdab67b2487c0",
     "package-lock.json": "de448d8e659121ee9339b23a74ecb0154b620f3a",
     "package.json": "c39ad01e73f8c466fcea045d65b41b42668390db",
