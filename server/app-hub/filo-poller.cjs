@@ -233,6 +233,19 @@ async function isGecmisi(s, jobId, kosuId, kur) {
   );
 }
 
+/**
+ * Alinan kosunun hata alani: hic cluster alinamadiysa o; bastionda gecici dosya (kimlik / betik) kaldiysa o da
+ * (playbook sonucu yayinlayip isi sonra dusurur, 2026-11-22). Ikisi de yoksa null.
+ */
+function kosuHatasi(ok, raw) {
+  const kalan = Array.isArray(raw?.cleanup_errors) ? raw.cleanup_errors.filter(Boolean) : [];
+  const parcalar = [
+    ok ? null : 'Hiçbir cluster alınamadı.',
+    kalan.length ? `Bastion'da geçici dosya kaldı: ${M(kalan.join(' | '), 600)}` : null,
+  ].filter(Boolean);
+  return parcalar.length ? parcalar.join(' · ') : null;
+}
+
 /** Biten isin sonucunu alir (ALINIYOR kilidi alinmis olmali). */
 async function al(r, st) {
   const C = require('./canli.cjs');
@@ -243,6 +256,11 @@ async function al(r, st) {
       `İş ${st.status} bitti ama sonuç yayınlanmadı (set_stats ${filo().STATS_KEY}); AWX iş çıktısına bakın.`,
       'ALINIYOR',
     );
+    return;
+  }
+  // Giris kapisi dustu (playbook play 1 rescue, 2026-11-22): cluster sonucu yok, sebep AWX ciktisinda kalmasin.
+  if (raw.error && !(Array.isArray(raw.results) && raw.results.length)) {
+    await kosuHata(r.id, `Tarama başlamadı (giriş kapısı): ${M(raw.error, 400)}`, 'ALINIYOR');
     return;
   }
   if (String(raw.run) !== String(r.id)) {
@@ -265,7 +283,7 @@ async function al(r, st) {
         genel: raw.overall_status || null,
         clusterlar: sonuc.clusterlar,
       }),
-      ok ? null : 'Hiçbir cluster alınamadı.',
+      kosuHatasi(ok, raw),
       r.id,
     ],
   );

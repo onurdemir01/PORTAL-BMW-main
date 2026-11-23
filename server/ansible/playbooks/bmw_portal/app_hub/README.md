@@ -88,12 +88,19 @@ Toplanan bilgi canlı okumayla aynıdır: tür, replika, imaj, CPU / bellek iste
 | `app_hub_fleet_writer` | Dosyayı yazan sunucu (`delegate_to`) |
 | `app_hub_fleet_slots` | Aynı bastion'da aynı anda taranan cluster sayısı (varsayılan 3). `oc get pods -A` belleği nedeniyle sınırlıdır. |
 | `app_hub_fleet_parallel` | `-A` yasaksa, namespace başına okumanın paralelliği (varsayılan 6) |
-| `app_hub_fleet_cluster_timeout` | Cluster başına süre sınırı (varsayılan 2700 sn) |
+| `app_hub_fleet_cluster_timeout` | Cluster başına süre sınırı (varsayılan 1800 sn; slot alındıktan sonra başlar) |
+| `app_hub_fleet_poll_delay` | Taramaların bitişini yoklama aralığı (varsayılan 15 sn; testler 1 verir) |
 
 ## Çıktı
 
 - **Dosya:** cluster başına bir dosya oluşur. Dosyanın ilk satırı `APPHUB_FLEET_SUMMARY`'dir, ardından `@@APPHUB_FLEET_BEGIN@@ base64(gzip(kayıtlar)) @@APPHUB_FLEET_END@@` gelir. Kayıt biçimi `files/app_hub_fleet.sh` dosyasının başında yazar. Veri AWX artifact'ına konmaz, çünkü filo verisi AWX ve Portal JSON sınırlarını aşar.
 - **set_stats:** `app_hub_fleet_result = { run, dir, overall_status, results: [{cluster, ok, complete, written, summary, error}] }`. Yalnız özet içerir.
+  - `written` yalnız paylaşılan dosya gerçekten yazıldıysa `true` olur. Yazma düşerse (dizin yok, disk dolu, izin yok) `error` "could not write to the shared directory: <sebep>" olur ve cluster `ok` sayılmaz. Hiçbir cluster yazılamazsa iş FAILED biter.
+  - Giriş kapısı düşerse (eksik ya da geçersiz değişken) de yayınlanır: `{ overall_status: failed, error, results: [] }`. Portal koşuyu bu sebeple HATA yazar.
+  - Ulaşılamayan bastion'un cluster'ları "bastion unreachable: <sebep>" taşır.
+  - `terminal_host`'u boş ya da `null` olan cluster sıralanmış ilk bastion'da taranır; toplayıcı da aynı bastion'a bakar.
+  - Bastion'da geçici dosya (kubeconfig, parola, betik) silinemezse sonuç yine yayınlanır, `cleanup_errors` dolar ve iş en sonda FAILED olur. Portal bunu koşunun hata alanına yazar. Temizlikte `assert` yoktur: tek bastion'lık partide düşen assert toplayıcı play'i hiç koşturmazdı.
+  - Yazıcı sunucu giriş kapısında ulaşılamazsa sebep "writer host unreachable" ile yayınlanır; yazma anında ulaşılamazsa cluster `written:false` olur.
 - **Portal tarafı:** dosyaları `server/app-hub/filo.cjs` okur ve `app_hub_ocp_filo` tablosuna **fark** yazar:
   - yeni satır eklenir,
   - değişen satır güncellenir,
@@ -123,4 +130,13 @@ Toplanan bilgi canlı okumayla aynıdır: tür, replika, imaj, CPU / bellek iste
   - Koşu satırları 14 gün tutulur.
   - `/sw` koşu dizinleri 48 saat tutulur.
   - 7 gündür tazelenmeyen önbellek satırı silinir; bu, katalogdan çıkan cluster'ları kapsar.
-- **Bekçi:** `server/app-hub/__tests__/app-hub-filo.test.js` (AF1-AF12), `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP5) ve ekranda ortam içi cluster karşılaştırması `src/components/app_hub/__tests__/ocp-karsilastir.test.tsx` (OK1-OK8).
+- **Bastion'da geçici dosyalar (2026-11-22):**
+  - Parola betiğe tek seferlik bir dosyayla gider: koşu dizininde `p.<cluster>` (0600, `no_log` ile yazılır). Betik dosyayı okur ve hemen siler.
+    - Ansible `environment:` kullanılmaz: ortam değişkenleri uzak komut satırına (`/bin/sh -c 'OCP_PASS=…'`) yazılır. Bu satır `ps`'te ve `-vvv` AWX çıktısında görünür; `no_log` bunu gizlemez.
+    - `command` `stdin:` de kullanılmaz: ansible-core 2.16 modül argümanlarını (stdin dahil) async iş dosyasına (`~/.ansible_async/<jid>`) düz metin yazar.
+    - `oc login` parolayı `--password` yerine stdin'den alır; argv login süresince `ps`'te herkese görünüyordu. oc 4.22'nin tty olmayan stdin'den parola okuduğu sahte bir OAuth sunucusuyla doğrulandı (2026-11-22). Bastion'daki oc okumazsa login boş parolayla düşer, tarama "oc login failed" der. Merge sonrası ilk saatlik koşu kanaryadır; düşerse yalnız bu değişikliğin commit'i geri alınır.
+  - Kubeconfig betiğin kendi iş dizinindedir (`/tmp/app-hub-fleet-w.<iş>.XXXXXXXX`, 0700, mktemp). Tahmin edilebilir bir `/tmp` yolu yoktur. Playbook iş sonunda bu işin dizinlerini siler ve kalmadığını doğrular; 3 saatten eski artıklar da silinir.
+  - Koşu (slot) dizini `ansible.builtin.tempfile` ile açılır (0700, rastgele ad). Slot kilitleri ve tek seferlik parola dosyaları buradadır; 3 saatten eski artıklar (iptal edilen işler) sonraki koşuda silinir. Betik sahibi kendisi olmayan, symlink olan ya da başkasına yazılabilir slot dizinini reddeder ve symlink slot dosyasını açmaz. Eski sabit yol (`/tmp/app-hub-fleet-slots-<iş>`) başka bir yerel kullanıcının `slot.N -> <dosya>` koyup dosyayı sıfırlatmasına ya da kilitleri tutmasına izin veriyordu.
+- **Bekçi:**
+  - `server/app-hub/__tests__/app-hub-filo.test.js` (AF1-AF19), `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP5) ve ekranda ortam içi cluster karşılaştırması `src/components/app_hub/__tests__/ocp-karsilastir.test.tsx` (OK1-OK8).
+  - Gerçek `ansible-playbook` koşumu: `server/ansible/__tests__/app-hub-filo-gercek-kosum.test.js` (FK1-FK7: async dosyasında ve `-vvv`'de parola, yazılamayan dosya, ulaşılamayan bastion ve yazıcı, boş `terminal_host`, giriş kapısı, silinemeyen geçici dosya). CI'da da koşar (GitHub Ubuntu imajında `ansible-playbook` kurulu); 2.16'ya özgü async sızıntısı için yerelde PATH'e eski sürüm konur.
