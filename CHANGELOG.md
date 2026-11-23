@@ -4,6 +4,13 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22: Application Hub saatlik filo taramasi)
+- Paylaşılan dizine yazılamayan tarama "ok / written" yayınlanıyor ve iş yeşil bitiyordu (copy eylemi modül düşse de `checksum` ekliyordu). Artık `written:false`, sebep metni, cluster `ok` değil; hiçbir cluster yazılamazsa iş FAILED.
+- OCP parolası Ansible `environment:` ile uzak komut satırına ve `-vvv` AWX çıktısına gidiyordu; artık 0700 koşu dizininde tek seferlik 0600 dosyayla gidiyor, betik okuyup siliyor (`stdin:` değil: ansible-core 2.16 onu async iş dosyasına düz yazar). Kubeconfig betiğin 0700 iş dizininde, koşu dizini `tempfile` ile açılıyor (tahmin edilebilir `/tmp` yolları kalktı; güvensiz dizin ya da parola dosyası reddediliyor).
+- Bastion'da geçici dosya silinemeyince ya da yazıcı ulaşılamayınca sonuç artık yine yayınlanıyor (`cleanup_errors`, "writer host unreachable"); yazma anında ulaşılamayan yazıcı `written:true` sayılmıyor.
+- Ulaşılamayan bastion "oc binary is missing" yerine "bastion unreachable" raporlanıyor; `terminal_host`'u boş / `null` cluster'lar ilk bastion'da taranıyor (önceden hiç taranmıyordu); giriş kapısı düşünce de sonuç yayınlanıyor ve Portal koşuyu sebebiyle HATA yazıyor.
+- Tarama yükü yazma döngüsünde yeniden gömülmüyor (denetleyici belleği); `until: fleet_wait is finished` (2.16 DEPRECATION uyarısı); README'deki süre varsayılanı düzeltildi (1800 sn).
+
 ### Added
 - K17 kurum iç adı (`scripts/ic-ad-bekcisi.cjs`; commit öncesi, commit mesajı, push öncesi, CI tüm ağaç + aralıktaki mesajlar): kurum önekli sunucu adı ve kalıbı, `.com.tr` alan adı (kaçışlı biçim dahil), kurum adı (sözcük özetleri) ve bilinen kurum iç ağı adresi (ağ özetleri) repoya giremez; ad ya da ağ listesi repoda değil, bulunan değer yazdırılmaz (testi `server/__tests__/ic-ad-bekcisi.test.js`, mutasyonla sınandı).
 - Kurum ayarı `KURUM_AYAR_DOSYASI` (`server/util/kurum-ayari.cjs`, biçimi `deploy/kurum-ayari.ornek.json`): nginx filosu, göç grupları, API kümeleri, RVP, OCP kümeleri ve tohumu, Crypto Hub kiracı altyapısı, OpsX ve self servis kurum değerleri koddan çıktı. Dosya yok ya da bozuksa ilgili bölüm boş döner ve ekranda uyarı çıkar; örnek değere düşülmez.

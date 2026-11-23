@@ -3,12 +3,22 @@
 #
 # READ ONLY: only `oc login` + `oc get`. Never writes to any object, never scales / rolls out.
 #
-# Input (environment; no SECRET on the command line):
-#   OC_BIN  oc binary          OCP_URL  API address      OCP_USER / OCP_PASS  credentials
+# Input (environment; the PASSWORD is never in the environment of the Ansible command: Ansible writes
+# `environment:` into the remote `/bin/sh -c` line, visible in `ps` and in -vvv job output):
+#   FLEET_PASS_FILE  one-shot password file <FLEET_SLOT_DIR>/p.<cluster> (0600, written by the playbook with
+#                    no_log). Read and DELETED at once. Not `command` `stdin:` either: ansible-core 2.16 keeps
+#                    module arguments (stdin included) in plain text in the async job file ~/.ansible_async/<jid>.
+#                    Without FLEET_PASS_FILE (manual run) the first stdin line is the password.
+#   OC_BIN  oc binary          OCP_URL  API address      OCP_USER  user name
 #   CLUSTER cluster name (summary only)
-#   KUBECONFIG  per-run temp file /tmp/app-hub-fleet-*.kubeconfig (caller creates and deletes)
-#   FLEET_SLOT_DIR  optional /tmp/app-hub-fleet-slots-* : flock semaphore shared by the clusters
-#                   of one bastion (FLEET_SLOTS at a time; memory of `oc get pods -A`)
+#   FLEET_JOB  job number; names the private work directory /tmp/app-hub-fleet-w.<job>.XXXXXXXX
+#              (0700, mktemp). KUBECONFIG lives INSIDE it, so the token never sits at a guessable
+#              /tmp path; the caller removes leftovers of its own job by that name.
+#   FLEET_SLOT_DIR  optional /tmp/app-hub-fleet-slots-* created by the caller with mktemp (0700):
+#                   flock semaphore shared by the clusters of one bastion (FLEET_SLOTS at a time;
+#                   memory of `oc get pods -A`). A directory that is not ours, is a symlink or is
+#                   writable by others is refused: a guessable shared path let another local user
+#                   plant slot.N -> <victim file> (truncated by `exec 9>`) or hold the locks.
 #   FLEET_SLOTS (3)  FLEET_SLOT_WAIT (7200 s)  FLEET_CALL_TIMEOUT (300 s, one -A call)
 #   FLEET_SCAN_BUDGET (1800 s; starts AFTER the slot is taken, so queueing never eats the scan time)
 #   FLEET_NS_TIMEOUT (60 s, one per-namespace call)  FLEET_PARALLEL (6, per-namespace fallback)
@@ -37,7 +47,7 @@
 set -u
 export LC_ALL=C
 
-: "${OC_BIN:?}" "${KUBECONFIG:?}"
+: "${OC_BIN:?}"
 
 T=$'\t'
 CALL_TIMEOUT=${FLEET_CALL_TIMEOUT:-300}
@@ -61,26 +71,42 @@ if [[ "${1:-}" == "__ns" ]]; then
 fi
 
 : "${OCP_URL:=}"
+OCP_PASS=''
 START=$(date +%s)
 W=''
-SLOT_FD_OPEN=0
+JOB_TAG=${FLEET_JOB:-x}
+[[ "$JOB_TAG" =~ ^[A-Za-z0-9]{1,20}$ ]] || JOB_TAG=x
 
-if [[ ! "$KUBECONFIG" =~ ^/tmp/app-hub-fleet-[A-Za-z0-9._-]+\.kubeconfig$ ]]; then
-  printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tinvalid kubeconfig path\n'; exit 2
+if [[ -n "${FLEET_SLOT_DIR:-}" ]]; then
+  if [[ ! "$FLEET_SLOT_DIR" =~ ^/tmp/app-hub-fleet-slots-[A-Za-z0-9._-]+$ ]]; then
+    printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tinvalid slot directory\n'; exit 2
+  fi
+  if [[ ! -d "$FLEET_SLOT_DIR" || -L "$FLEET_SLOT_DIR" || ! -O "$FLEET_SLOT_DIR" ]] \
+     || [[ -n "$(find "$FLEET_SLOT_DIR" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ]]; then
+    printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tunsafe slot directory (missing, not owned, symlink or writable by others)\n'; exit 2
+  fi
 fi
-if [[ -n "${FLEET_SLOT_DIR:-}" && ! "$FLEET_SLOT_DIR" =~ ^/tmp/app-hub-fleet-slots-[A-Za-z0-9._-]+$ ]]; then
-  printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tinvalid slot directory\n'; exit 2
+if [[ -n "${FLEET_PASS_FILE:-}" ]]; then
+  if [[ -z "${FLEET_SLOT_DIR:-}" || ! "$FLEET_PASS_FILE" =~ ^/tmp/app-hub-fleet-slots-[A-Za-z0-9._-]+/p\.[A-Za-z0-9._-]+$ \
+        || "${FLEET_PASS_FILE%/*}" != "$FLEET_SLOT_DIR" || ! -f "$FLEET_PASS_FILE" || -L "$FLEET_PASS_FILE" \
+        || ! -O "$FLEET_PASS_FILE" ]]; then
+    printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tinvalid password file\n'; exit 2
+  fi
+  IFS= read -r OCP_PASS <"$FLEET_PASS_FILE" || true
+  rm -f -- "$FLEET_PASS_FILE"
+else
+  IFS= read -r OCP_PASS || true
 fi
 
 cleanup() {
   [[ -n "$W" && -d "$W" ]] && rm -rf -- "$W"
-  rm -f -- "$KUBECONFIG"
 }
 trap cleanup EXIT
 trap 'exit 143' TERM INT
 
-W=$(mktemp -d /tmp/app-hub-fleet-w.XXXXXXXX) || { printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tmktemp failed\n'; exit 3; }
+W=$(mktemp -d "/tmp/app-hub-fleet-w.$JOB_TAG.XXXXXXXX") || { printf 'APPHUB_FLEET_SUMMARY\t0\t0\t1\t0\nERR\tmktemp failed\n'; exit 3; }
 chmod 700 "$W"
+export KUBECONFIG="$W/kubeconfig"
 mkdir -p "$W/ns"
 OUT="$W/records"
 : >"$OUT"
@@ -106,12 +132,12 @@ if [[ -z "$OCP_URL" ]]; then err "cluster API address / credentials could not be
 slot_take() {
   [[ -z "${FLEET_SLOT_DIR:-}" ]] && return 0
   command -v flock >/dev/null 2>&1 || { note "flock missing, no slot limit"; return 0; }
-  mkdir -p "$FLEET_SLOT_DIR" 2>/dev/null; chmod 700 "$FLEET_SLOT_DIR" 2>/dev/null
   local n=${FLEET_SLOTS:-3} waited=0 i
   while (( waited < ${FLEET_SLOT_WAIT:-7200} )); do
     for (( i = 0; i < n; i++ )); do
+      [[ -L "$FLEET_SLOT_DIR/slot.$i" ]] && continue
       exec 9>"$FLEET_SLOT_DIR/slot.$i" || continue
-      if flock -n 9; then SLOT_FD_OPEN=1; return 0; fi
+      if flock -n 9; then return 0; fi
       exec 9>&-
     done
     sleep 3; waited=$(( waited + 3 ))

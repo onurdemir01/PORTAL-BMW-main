@@ -4,59 +4,85 @@
   gather_facts: false
   become: false
   tasks:
-    - name: "Required inputs"
-      ansible.builtin.assert:
-        that:
-          - terminal_hosts is defined and terminal_hosts | length > 0
-          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
-          - ocp_clusters | length <= 200
-          - app_hub_fleet_run is defined and (app_hub_fleet_run | string) is match('^[0-9]{1,12}$')
-          - app_hub_fleet_dir is defined and app_hub_fleet_dir is string
-          - app_hub_fleet_dir is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
-          - "'..' not in app_hub_fleet_dir"
-          - (app_hub_fleet_dir.split('/') | select | list | length) >= 3
-          - app_hub_fleet_writer is defined and app_hub_fleet_writer is string
-          - app_hub_fleet_writer is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
-        fail_msg: >-
-          Required variables are missing or invalid: terminal_hosts={{ terminal_hosts | default([]) | length }},
-          ocp_clusters={{ ocp_clusters | default([]) | length }} (at most 200), app_hub_fleet_run, app_hub_fleet_dir,
-          app_hub_fleet_writer. If all are empty, extra variables prompt-on-launch is off on the AWX job template.
-        quiet: true
+    - name: "Gate"
+      block:
+        - name: "Required inputs"
+          ansible.builtin.assert:
+            that:
+              - terminal_hosts is defined and terminal_hosts | length > 0
+              - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+              - ocp_clusters | length <= 200
+              - app_hub_fleet_run is defined and (app_hub_fleet_run | string) is match('^[0-9]{1,12}$')
+              - app_hub_fleet_dir is defined and app_hub_fleet_dir is string
+              - app_hub_fleet_dir is match('^/[A-Za-z0-9_][A-Za-z0-9._/-]*$')
+              - "'..' not in app_hub_fleet_dir"
+              - (app_hub_fleet_dir.split('/') | select | list | length) >= 3
+              - app_hub_fleet_writer is defined and app_hub_fleet_writer is string
+              - app_hub_fleet_writer is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+            fail_msg: >-
+              Required variables are missing or invalid: terminal_hosts={{ terminal_hosts | default([]) | length }},
+              ocp_clusters={{ ocp_clusters | default([]) | length }} (at most 200), app_hub_fleet_run, app_hub_fleet_dir,
+              app_hub_fleet_writer. If all are empty, extra variables prompt-on-launch is off on the AWX job template.
+            quiet: true
 
-    - name: "Cluster name format"
-      ansible.builtin.assert:
-        that:
-          - item.cluster_name is defined and item.cluster_name is string and item.cluster_name is match('^[A-Za-z0-9._-]+$')
-        fail_msg: "invalid cluster: {{ item | string | truncate(120) }}"
-        quiet: true
-      loop: "{{ ocp_clusters }}"
-      loop_control:
-        label: "{{ item.cluster_name | default('?') }}"
+        - name: "Cluster name format"
+          ansible.builtin.assert:
+            that:
+              - item.cluster_name is defined and item.cluster_name is string and item.cluster_name is match('^[A-Za-z0-9._-]+$')
+            fail_msg: "invalid cluster: {{ item | string | truncate(120) }}"
+            quiet: true
+          loop: "{{ ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name | default('?') }}"
 
-    - name: "Source sha1 of the scan script"
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/files/app_hub_fleet.sh"
-        checksum_algorithm: sha1
-      register: fleet_src_stat
+        - name: "Source sha1 of the scan script"
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/files/app_hub_fleet.sh"
+            checksum_algorithm: sha1
+          register: fleet_src_stat
 
-    - name: "Remember source sha1"
-      ansible.builtin.set_fact:
-        fleet_src_sha1: "{{ fleet_src_stat.stat.checksum | default('') }}"
-        fleet_out_dir: "{{ app_hub_fleet_dir }}/run-{{ app_hub_fleet_run }}/raw"
+        - name: "Remember source sha1"
+          ansible.builtin.set_fact:
+            fleet_src_sha1: "{{ fleet_src_stat.stat.checksum | default('') }}"
+            fleet_out_dir: "{{ app_hub_fleet_dir }}/run-{{ app_hub_fleet_run }}/raw"
 
-    - name: "Create the output directory on the writer host"
-      ansible.builtin.file:
-        path: "{{ fleet_out_dir }}"
-        state: directory
-        mode: "0775"
-      delegate_to: "{{ app_hub_fleet_writer }}"
+        - name: "Create the output directory on the writer host"
+          ansible.builtin.file:
+            path: "{{ fleet_out_dir }}"
+            state: directory
+            mode: "0775"
+          delegate_to: "{{ app_hub_fleet_writer }}"
+          ignore_unreachable: true
+          register: fleet_mkdir
 
-    - name: "Add bastions to the dynamic inventory"
-      ansible.builtin.add_host:
-        name: "{{ item }}"
-        groups: app_hub_fleet_terminal
-      loop: "{{ terminal_hosts }}"
-      changed_when: false
+        - name: "Writer host reachable"
+          ansible.builtin.assert:
+            that:
+              - fleet_mkdir is not unreachable
+            fail_msg: "writer host unreachable: {{ app_hub_fleet_writer }} - {{ fleet_mkdir.msg | default('') | string | truncate(200) }}"
+            quiet: true
+
+        - name: "Owner bastion of each cluster (empty or null terminal_host -> first bastion)"
+          ansible.builtin.set_fact:
+            fleet_clusters: "{{ (fleet_clusters | default([])) + [item | combine({'terminal_host': owner})] }}"
+          vars:
+            owner: "{{ (item.terminal_host | default('', true) | string | trim) or (terminal_hosts | sort | first) }}"
+          loop: "{{ ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          changed_when: false
+
+        - name: "Add bastions to the dynamic inventory"
+          ansible.builtin.add_host:
+            name: "{{ item }}"
+            groups: app_hub_fleet_terminal
+          loop: "{{ terminal_hosts }}"
+          changed_when: false
+
+      rescue:
+        - name: "Record the gate failure (published by the last play)"
+          ansible.builtin.set_fact:
+            fleet_gate_error: "{{ ansible_failed_result.msg | default('The input gate failed.') | string | truncate(500) }}"
 
 - name: "Application Hub fleet - read-only scan per bastion"
   hosts: app_hub_fleet_terminal
@@ -80,25 +106,27 @@
       }}
     fleet_job: "{{ tower_job_id | default(awx_job_id | default('manual')) }}"
     fleet_script: "{{ fleet_tmp.path | default('') }}"
-    fleet_slot_dir: "/tmp/app-hub-fleet-slots-{{ fleet_job }}"
+    fleet_job_tag: "{{ ((fleet_job | string | regex_replace('[^A-Za-z0-9]', ''))[:20]) or 'x' }}"
+    fleet_slot_dir: "{{ fleet_slot_tmp.path | default('') }}"
+    fleet_host_ok: "{{ ((fleet_reach | default({})) is not unreachable) and ((fleet_reach | default({'failed': true})) is succeeded) }}"
+    fleet_go: "{{ (fleet_host_ok | bool) and ((my_cluster_names | default([])) | length > 0) }}"
     fleet_scan_budget: "{{ app_hub_fleet_cluster_timeout | default(1800) | int }}"
     fleet_slot_wait: "{{ app_hub_fleet_slot_wait | default(7200) | int }}"
     fleet_outer_timeout: "{{ (fleet_slot_wait | int) + (fleet_scan_budget | int) + 300 }}"
+    fleet_poll_delay: "{{ [app_hub_fleet_poll_delay | default(15) | int, 1] | max }}"
     fleet_out_dir: "{{ hostvars['localhost'].fleet_out_dir }}"
   tasks:
     - name: "Scan"
       block:
+        - name: "Bastion reachable"
+          ansible.builtin.ping:
+          register: fleet_reach
+
         - name: "Clusters of this bastion"
           ansible.builtin.set_fact:
             my_ocp_clusters: >-
-              {{
-                (ocp_clusters | selectattr('terminal_host', 'defined')
-                              | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
-                +
-                ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
-                 if inventory_hostname == ((groups['app_hub_fleet_terminal'] | default([])) | sort | first)
-                 else [])
-              }}
+              {{ hostvars['localhost'].fleet_clusters | default([])
+                 | selectattr('terminal_host', 'equalto', inventory_hostname) | list }}
           changed_when: false
 
         - name: "Cluster names of this bastion"
@@ -113,7 +141,7 @@
           register: oc_stats
           changed_when: false
           failed_when: false
-          when: my_cluster_names | length > 0
+          when: fleet_go | bool
 
         - name: "Usable oc paths"
           ansible.builtin.set_fact:
@@ -124,7 +152,7 @@
                 | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
                 | map(attribute='stat.path') | list
               }}
-          when: my_cluster_names | length > 0
+          when: fleet_go | bool
           changed_when: false
 
         - name: "oc on PATH"
@@ -132,7 +160,7 @@
           args:
             executable: /bin/bash
           register: oc_which
-          when: (my_cluster_names | length > 0) and (oc_stat_hits | default([]) | length == 0)
+          when: (fleet_go | bool) and (oc_stat_hits | default([]) | length == 0)
           changed_when: false
           failed_when: false
 
@@ -143,7 +171,7 @@
                 oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
                 else (oc_which.stdout | default('', true) | trim)
               }}
-          when: my_cluster_names | length > 0
+          when: fleet_go | bool
           changed_when: false
 
         - name: "Cluster connection records"
@@ -172,7 +200,7 @@
             label: "{{ item.cluster_name }}"
           no_log: true
           changed_when: false
-          when: my_cluster_names | length > 0
+          when: fleet_go | bool
 
         - name: "Per-run script name"
           ansible.builtin.tempfile:
@@ -182,7 +210,7 @@
             suffix: .sh
           register: fleet_tmp
           changed_when: false
-          when: (my_cluster_names | length > 0) and (oc_bin | default('') | trim | length > 0)
+          when: (fleet_go | bool) and (oc_bin | default('') | trim | length > 0)
 
         - name: "Copy the script to the bastion"
           ansible.builtin.copy:
@@ -190,7 +218,7 @@
             dest: "{{ fleet_script }}"
             mode: "0700"
           changed_when: false
-          when: (my_cluster_names | length > 0) and (oc_bin | default('') | trim | length > 0)
+          when: (fleet_go | bool) and (oc_bin | default('') | trim | length > 0)
 
         - name: "Verify the copy"
           ansible.builtin.stat:
@@ -198,7 +226,29 @@
             checksum_algorithm: sha1
           register: fleet_stat
           failed_when: false
-          when: (my_cluster_names | length > 0) and (oc_bin | default('') | trim | length > 0)
+          when: (fleet_go | bool) and (oc_bin | default('') | trim | length > 0)
+
+        - name: "Private run directory (slots and one-shot password files)"
+          ansible.builtin.tempfile:
+            state: directory
+            path: /tmp
+            prefix: app-hub-fleet-slots-
+          register: fleet_slot_tmp
+          changed_when: false
+          when: (fleet_go | bool) and (oc_bin | default('') | trim | length > 0)
+
+        - name: "One-shot password file per cluster (the script reads and deletes it)"
+          ansible.builtin.copy:
+            content: "{{ resolved_clusters[item].password | default('') }}"
+            dest: "{{ fleet_slot_dir }}/p.{{ item }}"
+            mode: "0600"
+          loop: "{{ my_cluster_names }}"
+          no_log: true
+          changed_when: false
+          when: >-
+            (fleet_go | bool)
+            and (oc_bin | default('') | trim | length > 0)
+            and (fleet_slot_dir | length > 0)
 
         - name: "Start one scan per cluster"
           ansible.builtin.command:
@@ -207,10 +257,10 @@
             OC_BIN: "{{ oc_bin }}"
             OCP_URL: "{{ resolved_clusters[item].url | default('') }}"
             OCP_USER: "{{ resolved_clusters[item].username | default('') }}"
-            OCP_PASS: "{{ resolved_clusters[item].password | default('') }}"
             CLUSTER: "{{ item }}"
-            KUBECONFIG: "/tmp/app-hub-fleet-{{ fleet_job }}-{{ item | regex_replace('[^A-Za-z0-9._-]', '-') }}.kubeconfig"
+            FLEET_JOB: "{{ fleet_job_tag }}"
             FLEET_SLOT_DIR: "{{ fleet_slot_dir }}"
+            FLEET_PASS_FILE: "{{ fleet_slot_dir }}/p.{{ item }}"
             FLEET_SLOTS: "{{ app_hub_fleet_slots | default(3) | int }}"
             FLEET_PARALLEL: "{{ app_hub_fleet_parallel | default(6) | int }}"
             FLEET_SLOT_WAIT: "{{ fleet_slot_wait }}"
@@ -222,7 +272,7 @@
           no_log: true
           changed_when: false
           when: >-
-            (my_cluster_names | length > 0)
+            (fleet_go | bool)
             and (oc_bin | default('') | trim | length > 0)
             and ((fleet_stat.stat.checksum | default('')) == (hostvars['localhost'].fleet_src_sha1 | default('x')))
 
@@ -233,27 +283,27 @@
           loop_control:
             label: "{{ item.item }}"
           register: fleet_wait
-          until: fleet_wait.finished
-          retries: "{{ (((fleet_outer_timeout | int) + 120) / 15) | round(0, 'ceil') | int }}"
-          delay: 15
+          until: fleet_wait is finished
+          retries: "{{ (((fleet_outer_timeout | int) + 120) / (fleet_poll_delay | int)) | round(0, 'ceil') | int }}"
+          delay: "{{ fleet_poll_delay | int }}"
           ignore_errors: true
           no_log: true
           changed_when: false
 
         - name: "Write each scan to the shared directory"
           ansible.builtin.copy:
-            content: "{{ item.stdout }}"
-            dest: "{{ fleet_out_dir }}/{{ item.item.item | regex_replace('[^A-Za-z0-9._-]', '_') }}.out"
+            content: "{{ fleet_wait.results[item].stdout }}"
+            dest: "{{ fleet_out_dir }}/{{ fleet_wait.results[item].item.item | regex_replace('[^A-Za-z0-9._-]', '_') }}.out"
             mode: "0644"
-          loop: "{{ fleet_wait.results | default([]) }}"
+          loop: "{{ range(fleet_wait.results | default([]) | length) | list }}"
           loop_control:
-            label: "{{ item.item.item | default('?') }}"
+            label: "{{ fleet_wait.results[item].item.item | default('?') }}"
           register: fleet_writes
           delegate_to: "{{ hostvars['localhost'].app_hub_fleet_writer }}"
           throttle: 4
-          failed_when: false
+          ignore_errors: true
           no_log: true
-          when: "'@@APPHUB_FLEET_END@@' in (item.stdout | default(''))"
+          when: "'@@APPHUB_FLEET_END@@' in (fleet_wait.results[item].stdout | default(''))"
 
         - name: "Results of this bastion"
           ansible.builtin.set_fact:
@@ -268,20 +318,22 @@
                   'error': ('' if (complete and written and ((item.rc | default(1)) == 0))
                             else ('scan did not finish (rc=' ~ (item.rc | default('?') | string) ~ ') '
                                   ~ ((item.msg | default('')) | string | truncate(200))) if not complete
-                            else ('could not write to the shared directory' if not written
+                            else (('could not write to the shared directory: '
+                                   ~ (write_row.msg | default('') | string | truncate(200))) if not written
                             else ('scan rc=' ~ (item.rc | default('?') | string))))
                 }]
               }}
           vars:
             complete: "{{ '@@APPHUB_FLEET_END@@' in (item.stdout | default('')) }}"
-            write_row: >-
-              {{ (fleet_writes.results | default([])) | selectattr('item.item.item', 'defined')
-                 | selectattr('item.item.item', 'equalto', item.item.item) | list | first | default({}) }}
-            written: "{{ write_row.checksum is defined }}"
+            write_row: "{{ ((fleet_writes.results | default([]))[fleet_i:fleet_i + 1] | first) | default({}, true) }}"
+            written: >-
+              {{ (write_row | length > 0) and (write_row is not skipped)
+                 and (write_row is not unreachable) and (write_row is succeeded) }}
             summary: "{{ (item.stdout_lines | default([]) | select('match', '^APPHUB_FLEET_SUMMARY') | list | first | default('')) }}"
           loop: "{{ fleet_wait.results | default([]) }}"
           loop_control:
             label: "{{ item.item.item | default('?') }}"
+            index_var: fleet_i
           no_log: true
           changed_when: false
 
@@ -291,9 +343,11 @@
               {{
                 (fleet_results | default([])) + [{
                   'cluster': item, 'ok': false, 'complete': false, 'written': false, 'summary': '',
-                  'error': ("the oc binary is missing on this bastion: " ~ (oc_probe_paths | join(', ')))
+                  'error': ('bastion unreachable: ' ~ ((fleet_reach | default({})).msg | default('') | string | truncate(200)))
+                           if ((fleet_reach | default({})) is unreachable)
+                           else (("the oc binary is missing on this bastion: " ~ (oc_probe_paths | join(', ')))
                            if (oc_bin | default('') | trim | length == 0)
-                           else 'the script copy could not be verified'
+                           else 'the script copy could not be verified')
                 }]
               }}
           loop: "{{ my_cluster_names }}"
@@ -308,89 +362,97 @@
             host_blocked_reason: "{{ ansible_failed_result.msg | default('The scan could not finish on this bastion.') | string | truncate(300) }}"
 
       always:
-        - name: "Remove the async job files of the scans"
-          ansible.builtin.async_status:
-            jid: "{{ item.ansible_job_id }}"
-            mode: cleanup
-          loop: "{{ fleet_jobs.results | default([]) | selectattr('ansible_job_id', 'defined') | list }}"
-          loop_control:
-            label: "{{ item.item | default('?') }}"
-          no_log: true
-          changed_when: false
-          failed_when: false
+        - name: "Clean up (skipped when the bastion check failed: nothing was created)"
+          when: fleet_host_ok | bool
+          block:
+            - name: "Remove the async job files of the scans"
+              ansible.builtin.async_status:
+                jid: "{{ item.ansible_job_id }}"
+                mode: cleanup
+              loop: "{{ fleet_jobs.results | default([]) | selectattr('ansible_job_id', 'defined') | list }}"
+              loop_control:
+                label: "{{ item.item | default('?') }}"
+              no_log: true
+              changed_when: false
+              failed_when: false
 
-        - name: "Find leftover scan work directories"
-          ansible.builtin.find:
-            paths: /tmp
-            patterns: "app-hub-fleet-w.*"
-            file_type: directory
-            age: 3h
-            hidden: true
-          register: fleet_work_left
-          failed_when: false
+            - name: "Find work directories of this job"
+              ansible.builtin.find:
+                paths: /tmp
+                patterns: "app-hub-fleet-w.{{ fleet_job_tag }}.*"
+                file_type: directory
+                hidden: true
+              register: fleet_work_job
+              failed_when: false
 
-        - name: "Remove leftover scan work directories"
-          ansible.builtin.file:
-            path: "{{ item.path }}"
-            state: absent
-          loop: "{{ fleet_work_left.files | default([]) }}"
-          loop_control:
-            label: "{{ item.path }}"
-          changed_when: false
-          failed_when: false
+            - name: "Find stale work and run directories of earlier runs (cancelled jobs)"
+              ansible.builtin.find:
+                paths: /tmp
+                patterns: "app-hub-fleet-w.*,app-hub-fleet-slots-*"
+                file_type: directory
+                age: 3h
+                hidden: true
+              register: fleet_work_left
+              failed_when: false
 
-        - name: "Find leftover kubeconfig files"
-          ansible.builtin.find:
-            paths: /tmp
-            patterns: "app-hub-fleet-{{ fleet_job }}-*.kubeconfig"
-            hidden: true
-          register: fleet_kube_left
-          failed_when: false
+            - name: "Find stale script copies of earlier runs"
+              ansible.builtin.find:
+                paths: /var/tmp
+                patterns: ".app_hub_fleet.*.sh"
+                age: 3h
+                hidden: true
+              register: fleet_script_left
+              failed_when: false
 
-        - name: "Remove leftover kubeconfig files"
-          ansible.builtin.file:
-            path: "{{ item.path }}"
-            state: absent
-          loop: "{{ fleet_kube_left.files | default([]) }}"
-          loop_control:
-            label: "{{ item.path }}"
-          changed_when: false
-          failed_when: false
+            - name: "Remove work directories (they hold the kubeconfig) and stale leftovers"
+              ansible.builtin.file:
+                path: "{{ item.path }}"
+                state: absent
+              loop: >-
+                {{ (fleet_work_job.files | default([])) + (fleet_work_left.files | default([]))
+                   + (fleet_script_left.files | default([])) }}
+              loop_control:
+                label: "{{ item.path }}"
+              changed_when: false
+              failed_when: false
 
-        - name: "Remove the script and the slot directory"
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: absent
-          loop: "{{ ([fleet_script] if (fleet_script | length > 0) else []) + [fleet_slot_dir] }}"
-          changed_when: false
-          failed_when: false
+            - name: "Remove the script and the slot directory"
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: absent
+              loop: "{{ ([fleet_script] if (fleet_script | length > 0) else []) + ([fleet_slot_dir] if (fleet_slot_dir | length > 0) else []) }}"
+              changed_when: false
+              failed_when: false
 
-        - name: "Verify kubeconfig cleanup"
-          ansible.builtin.find:
-            paths: /tmp
-            patterns: "app-hub-fleet-{{ fleet_job }}-*.kubeconfig"
-            hidden: true
-          register: fleet_kube_after
-          failed_when: false
+            - name: "Verify work directory cleanup"
+              ansible.builtin.find:
+                paths: /tmp
+                patterns: "app-hub-fleet-w.{{ fleet_job_tag }}.*"
+                file_type: directory
+                hidden: true
+              register: fleet_work_after
+              failed_when: false
 
-        - name: "Verify script cleanup"
-          ansible.builtin.stat:
-            path: "{{ fleet_script }}"
-          register: fleet_script_after
-          changed_when: false
-          failed_when: false
-          when: fleet_script | length > 0
+            - name: "Verify script and run directory cleanup"
+              ansible.builtin.stat:
+                path: "{{ item }}"
+              loop: "{{ ([fleet_script] if (fleet_script | length > 0) else []) + ([fleet_slot_dir] if (fleet_slot_dir | length > 0) else []) }}"
+              register: fleet_left_after
+              changed_when: false
+              failed_when: false
 
-        - name: "Fail the host when temporary files remain"
-          ansible.builtin.assert:
-            that:
-              - fleet_kube_after.files is defined
-              - fleet_kube_after.files | length == 0
-              - >-
-                (fleet_script | length == 0)
-                or ((fleet_script_after.stat.exists | default(true)) == false)
-            fail_msg: "Application Hub fleet temporary credential or script file could not be removed."
-            quiet: true
+            - name: "Record temporary files that remain (published, then the job fails)"
+              ansible.builtin.set_fact:
+                fleet_cleanup_error: >-
+                  {{ 'temporary credential, script or run files could not be removed: '
+                     ~ (((fleet_work_after.files | default([])) | map(attribute='path') | list)
+                        + ((fleet_left_after.results | default([])) | selectattr('stat', 'defined')
+                           | selectattr('stat.exists', 'defined') | selectattr('stat.exists') | map(attribute='item') | list))
+                       | join(', ') | truncate(300) }}
+              when: >-
+                ((fleet_work_after.files | default([])) | length > 0)
+                or ((fleet_left_after.results | default([])) | selectattr('stat', 'defined')
+                    | selectattr('stat.exists', 'defined') | selectattr('stat.exists') | list | length > 0)
 
 - name: "Application Hub fleet - collect and publish"
   hosts: localhost
@@ -400,6 +462,23 @@
   tasks:
     - name: "Clear host errors"
       ansible.builtin.meta: clear_host_errors
+
+    - name: "Publish the gate failure"
+      ansible.builtin.set_stats:
+        data:
+          app_hub_fleet_result:
+            run: "{{ app_hub_fleet_run | default('') | string }}"
+            dir: "{{ fleet_out_dir | default('') }}"
+            overall_status: failed
+            error: "{{ fleet_gate_error }}"
+            results: []
+        per_host: false
+      when: fleet_gate_error is defined
+
+    - name: "Fail the job on a gate failure"
+      ansible.builtin.fail:
+        msg: "{{ fleet_gate_error }}"
+      when: fleet_gate_error is defined
 
     - name: "Each cluster from its own bastion"
       ansible.builtin.set_fact:
@@ -412,12 +491,19 @@
             }])
           }}
       vars:
-        owner_host: "{{ item.terminal_host | default((groups['app_hub_fleet_terminal'] | default([]) | sort | first), true) }}"
+        owner_host: "{{ item.terminal_host }}"
         host_results: "{{ (hostvars[owner_host] | default({}, true)).fleet_results | default([], true) }}"
         reported: "{{ host_results | selectattr('cluster', 'equalto', item.cluster_name) | list }}"
-      loop: "{{ ocp_clusters }}"
+      loop: "{{ fleet_clusters }}"
       loop_control:
         label: "{{ item.cluster_name }}"
+      changed_when: false
+
+    - name: "Bastions that left temporary files"
+      ansible.builtin.set_fact:
+        fleet_cleanup_errors: "{{ (fleet_cleanup_errors | default([])) + [item ~ ': ' ~ hostvars[item].fleet_cleanup_error] }}"
+      loop: "{{ groups['app_hub_fleet_terminal'] | default([]) }}"
+      when: hostvars[item].fleet_cleanup_error is defined
       changed_when: false
 
     - name: "Publish app_hub_fleet_result"
@@ -433,6 +519,7 @@
                 else ('partial' if (merged_results | selectattr('ok', 'equalto', true) | list | length) > 0 else 'failed')
               }}
             results: "{{ merged_results }}"
+            cleanup_errors: "{{ fleet_cleanup_errors | default([]) }}"
         per_host: false
 
     - name: "Reasons of failed clusters"
@@ -444,3 +531,8 @@
       ansible.builtin.fail:
         msg: "No cluster could be scanned."
       when: (merged_results | selectattr('ok', 'equalto', true) | list | length) == 0
+
+    - name: "Fail the job when temporary files remain on a bastion"
+      ansible.builtin.fail:
+        msg: "{{ fleet_cleanup_errors | join(' | ') }}"
+      when: (fleet_cleanup_errors | default([]) | length) > 0
