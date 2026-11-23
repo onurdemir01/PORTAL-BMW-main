@@ -1,7 +1,8 @@
 // server/ansible/__tests__/app-hub-filo-gercek-kosum.test.js - Application Hub saatlik filo playbook'u GERCEK
 // ansible-playbook ile (2026-11-22, PR-R). app_hub/ gecici dizine kopyalanir; `oc` sahte bir betiktir (argv'yi,
 // KUBECONFIG'i ve slot dizinini gunluge yazar); bastion yerel baglantidir, ikinci bastion ulasilamaz (127.0.0.1:1).
-// CI'da Ansible kurulu degil: bu dosya gelistirici makinesinde (npm run kapi) kosar; 2.16 icin PATH'e eski surum.
+// CI'da da kosar (GitHub Ubuntu imajinda ansible-playbook kurulu; #322'nin ilk CI kosusunda FK1-FK7 gecti); yerelde
+// npm run kapi. 2.16 icin PATH'e eski surum (2.16'ya ozgu async sizintisi yalniz orada olur).
 //
 // NEDEN: fc7678e9 (main'e PR'siz) ile gelen saatlik tarama paylasilan dizine YAZAMADIGINDA da "ok / written"
 // yayinliyordu: copy eylemi modul dustugunde de `checksum` ekler, `failed_when: false` da `failed`'i siler; is yesil
