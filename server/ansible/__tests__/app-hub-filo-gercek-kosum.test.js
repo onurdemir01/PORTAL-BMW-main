@@ -82,7 +82,7 @@ function ortam({ taramadaSil = false, kalintiBirak = false, yaziciyiKopar = fals
       '#!/bin/bash',
       `echo "$* KUBECONFIG=$KUBECONFIG SLOT=\${FLEET_SLOT_DIR:-}" >> '${gunluk}'`,
       'case "$1" in',
-      '  login) echo "apiVersion: v1" > "$KUBECONFIG"; exit 0 ;;',
+      `  login) IFS= read -r P || true; echo "login-stdin $P" >> '${gunluk}'; echo "apiVersion: v1" > "$KUBECONFIG"; exit 0 ;;`,
       '  get)',
       '    case "$2" in',
       "      deployment) printf 'OBJ\\tns1\\tDeployment\\tapp1\\t2\\t2\\t2\\t2\\tRollingUpdate\\t\\t2026-01-01T00:00:00Z\\n'; exit 0 ;;",
@@ -228,7 +228,11 @@ test(
       assert.equal(r.asyncSizinti, 0, 'parola async is dosyasinda (ansible_async_dir)');
       const login = r.gunluk.split('\n').find((l) => l.startsWith('login '));
       assert.ok(login, r.gunluk);
-      assert.ok(login.includes(`--password=${PAROLA} `), "parola oc login'e ulasmadi");
+      assert.ok(!login.includes(PAROLA), "parola oc argv'sinde (ps ile gorunur)");
+      assert.ok(
+        r.gunluk.includes(`login-stdin ${PAROLA}\n`),
+        "parola oc login'e stdin ile ulasmadi",
+      );
       const kc = /KUBECONFIG=(\S+)/.exec(login)[1];
       assert.match(kc, new RegExp(`^/tmp/app-hub-fleet-w\\.${r.is}\\.[A-Za-z0-9]+/kubeconfig$`));
       const slot = /SLOT=(\S*)/.exec(login)[1];

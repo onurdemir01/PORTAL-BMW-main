@@ -53,7 +53,8 @@ T=$'\t'
 CALL_TIMEOUT=${FLEET_CALL_TIMEOUT:-300}
 NS_TIMEOUT=${FLEET_NS_TIMEOUT:-60}
 
-OC() { timeout --foreground -k 5 "${OC_TIMEOUT:-60}" "$OC_BIN" "$@" </dev/null 9>&-; }
+# stdin is /dev/null except for `oc login`, which reads the password from stdin (OC_IN=/dev/stdin; never argv).
+OC() { timeout --foreground -k 5 "${OC_TIMEOUT:-60}" "$OC_BIN" "$@" <"${OC_IN:-/dev/null}" 9>&-; }
 
 # Per-namespace worker (xargs fallback): bash <self> __ns <resource> <namespace> <workdir>
 if [[ "${1:-}" == "__ns" ]]; then
@@ -149,7 +150,10 @@ DEADLINE=$(( $(date +%s) + ${FLEET_SCAN_BUDGET:-1800} ))
 # Remaining scan budget, capped by the per-call limit (at least 5 s so a call can still fail cleanly).
 budget() { local r=$(( DEADLINE - $(date +%s) )); (( r > $1 )) && r=$1; (( r < 5 )) && r=5; echo "$r"; }
 
-if ! OC_TIMEOUT=60 OC login --server="$OCP_URL" --username="${OCP_USER:-}" --password="${OCP_PASS:-}" \
+# Password on stdin, NOT --password: argv is visible in `ps` to every local user for the whole login. oc reads a
+# non-tty stdin for the password (verified with oc 4.22 against a fake OAuth server, 2026-11-22). If a bastion's
+# oc does not, login fails with an empty password and the scan reports "oc login failed" (canary: first hourly run).
+if ! printf '%s\n' "${OCP_PASS:-}" | OC_IN=/dev/stdin OC_TIMEOUT=60 OC login --server="$OCP_URL" --username="${OCP_USER:-}" \
      --insecure-skip-tls-verify=true >/dev/null 2>"$W/login.err"; then
   err "oc login failed: $(head -c 300 "$W/login.err")"
   unset OCP_PASS

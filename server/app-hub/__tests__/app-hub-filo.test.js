@@ -127,7 +127,7 @@ function sahteOcKur({ yasak = false, loginHata = false, bozukNs = '' } = {}) {
       `D="${ux(dir)}"`,
       'echo "$1 $2 $3 $4" >> "$D/calls.txt"',
       'case "$1" in',
-      `  login) printf '%s' "$KUBECONFIG" > "$D/kubeconfig-yolu"; : > "$KUBECONFIG"; ${loginHata ? 'echo "Login failed (401 Unauthorized)" >&2; exit 1' : 'exit 0'} ;;`,
+      `  login) IFS= read -r P || true; printf '%s' "$P" > "$D/login-stdin.txt"; printf '%s' "$KUBECONFIG" > "$D/kubeconfig-yolu"; : > "$KUBECONFIG"; ${loginHata ? 'echo "Login failed (401 Unauthorized)" >&2; exit 1' : 'exit 0'} ;;`,
       '  get)',
       '    case "$2" in',
       `      deployment) if [ "$3" = "-A" ]; then ${yasak ? 'echo "Error from server (Forbidden)" >&2; exit 1' : 'cat "$D/obj-musteri.txt"'}; else [ "$4" = "${bozukNs}" ] && { echo boom >&2; exit 1; }; cat "$D/obj-$4.txt" 2>/dev/null; fi ;;`,
@@ -185,7 +185,15 @@ function betikKos(secenek = {}, ekEnv = {}) {
     const i = satirlar.indexOf('@@APPHUB_FLEET_BEGIN@@');
     const kayit =
       i >= 0 ? zlib.gunzipSync(Buffer.from(satirlar[i + 1], 'base64')).toString('utf8') : '';
-    return { ...r, kayit, kubeconfig, calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8') };
+    const stdinDosyasi = path.join(dir, 'login-stdin.txt');
+    const loginStdin = fs.existsSync(stdinDosyasi) ? fs.readFileSync(stdinDosyasi, 'utf8') : null;
+    return {
+      ...r,
+      kayit,
+      kubeconfig,
+      loginStdin,
+      calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8'),
+    };
   } finally {
     fs.rmSync(tuzak, { force: true });
     fs.rmSync(dir, { recursive: true, force: true });
@@ -229,8 +237,11 @@ test(
     );
     assert.match(
       r.calls,
-      /^login --server=https:\/\/api\.x:6443 --username=u --password=parola-x$/m,
+      /^login --server=https:\/\/api\.x:6443 --username=u --insecure-skip-tls-verify=true$/m,
     );
+    // Parola oc'ye STDIN'den gider (argv `ps`'te herkese gorunur; 2026-11-22, kanarya: ilk saatlik kosu).
+    assert.equal(r.loginStdin, 'parola-x', "parola oc login'e stdin ile ulasmadi");
+    assert.ok(!r.calls.includes('parola-x'), "parola oc argv'sinde");
     assert.ok(r.kubeconfig, 'oc login KUBECONFIG gormedi');
   },
 );
@@ -1281,8 +1292,9 @@ test(
       assert.equal(r.status, 0, r.stdout);
       assert.match(
         r.calls,
-        /^login --server=https:\/\/api\.x:6443 --username=u --password=dosyadan-parola$/m,
+        /^login --server=https:\/\/api\.x:6443 --username=u --insecure-skip-tls-verify=true$/m,
       );
+      assert.equal(r.loginStdin, 'dosyadan-parola');
       assert.equal(fs.existsSync(pf), false, 'parola dosyasi okunduktan sonra silinmedi');
       const ret = (yol, ad) => {
         const x = betikKos({}, { FLEET_SLOT_DIR: kok, FLEET_PASS_FILE: yol });
