@@ -2283,51 +2283,6 @@ const TABLES = [
       )`,
   },
   {
-    // Glomo Gecis Plani (2026-10-13, server/spa-report/gecis.cjs): setin calisma ani (TR saati,
-    // girildigi gibi metin) ve OCO numarasi. Setler 1-7 ilk okumada olusur.
-    name: 'spa_gecis_set',
-    sql: `
-      CREATE TABLE spa_gecis_set (
-        no          INT           NOT NULL PRIMARY KEY,
-        calisma_at  NVARCHAR(16)  NULL,
-        oco_no      NVARCHAR(64)  NULL,
-        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
-      )`,
-  },
-  {
-    // Glomo Gecis Plani: uygulama basina tek satir. app_key = SHA-256(namespace + NUL + application)
-    // (900 bayt indeks siniri, bkz. nginx_spa_location_in_use). Kim yazdi TUTULMAZ (kullanici
-    // istegi: "tabloyu dolduran kisinin ismi gorunmesin"); katilimci = calismaya katilacak kisi.
-    name: 'spa_gecis_app',
-    sql: `
-      CREATE TABLE spa_gecis_app (
-        id            INT IDENTITY(1,1) PRIMARY KEY,
-        app_key       CHAR(64)      NOT NULL,
-        namespace     NVARCHAR(200) NOT NULL,
-        application   NVARCHAR(200) NOT NULL,
-        set_no        INT           NOT NULL,
-        kaynak        NVARCHAR(16)  NOT NULL DEFAULT 'excel',
-        kullanimda    NVARCHAR(8)   NULL,
-        katilimci     NVARCHAR(400) NULL,
-        gecti         BIT           NOT NULL DEFAULT 0,
-        gecis_tarihi  NVARCHAR(10)  NULL,
-        kontrol_at    DATETIME2     NULL,
-        updated_at    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        UNIQUE(app_key)
-      )`,
-  },
-  {
-    // Glomo Gecis Plani tek seferlik gocleri (2026-10-16): ad = uygulanan gocun adi (ornegin
-    // 'set7-talep-2026-10-16', kurum ayari spaRapor.glomoGecis.set7Talep). Satir varsa goc bir daha calismaz;
-    // Admin'in sonradan yaptigi set degisikligi geri cekilmez.
-    name: 'spa_gecis_goc',
-    sql: `
-      CREATE TABLE spa_gecis_goc (
-        ad            NVARCHAR(64)  NOT NULL PRIMARY KEY,
-        uygulandi_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
-      )`,
-  },
-  {
     // Crypto Hub CPU/bellek uygulama kilidi (2026-10-02) - compare-and-set, ScaleX
     // tryLockRestore deseni (bkz. server/crypto-hub/resources.cjs kilitAl). Anahtar
     // `<kiraci>|<release>` basina TEK satir; satir SILINMEZ, kilit `held = 0` UPDATE'iyle
@@ -3027,17 +2982,6 @@ const ELEMENT_SEED = [
     label: 'SPA Raporu',
     route: '/ark-spa/spa-raporu',
     sort_order: 1,
-    roles: ['Admin', 'User'],
-  },
-  {
-    // GLOMO GECIS PLANI (kullanici, 2026-10-13): Nginx ARK SPA altinda ayri sayfa. Ekiplere acik
-    // (calismaya katilacak kisiyi ekip girer); set/OCO/gecti alanlari sunucuda yalniz Admin.
-    element_key: 'ArkGlomoGecis',
-    element_type: 'page',
-    parent_key: 'navgroup:arkspa',
-    label: 'Glomo Geçiş Planı',
-    route: '/ark-spa/glomo-gecis-plani',
-    sort_order: 2,
     roles: ['Admin', 'User'],
   },
   {
@@ -4866,6 +4810,30 @@ async function removeRetiredAdminTabs(pool) {
   }
 }
 
+// 2026-11-23: kaldirilan sayfalar (kullanici: "Glomo Gecis Plani sayfasini komple kaldiralim").
+// Seed'den cikarmak YETMEZ: ELEMENT_SEED yalniz eksik kaydi ekler, mevcut kurulumda menu ogesi ve
+// gorunurluk kurallari kalir (removeRetiredAdminTabs ile ayni kalip). YALNIZ menu kaydi silinir;
+// sayfanin veri tablolari (spa_gecis_set / spa_gecis_app / spa_gecis_goc) DOKUNULMADAN durur.
+async function removeRetiredPages(pool) {
+  try {
+    let removed = 0;
+    for (const key of ['ArkGlomoGecis']) {
+      await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_element_visibility WHERE element_key = @k`);
+      const r = await pool
+        .request()
+        .input('k', key)
+        .query(`DELETE FROM portal_elements WHERE element_key = @k`);
+      removed += r.rowsAffected?.[0] || 0;
+    }
+    if (removed) console.log(`[DB] kaldirilan sayfalar menuden temizlendi: ${removed} element`);
+  } catch (e) {
+    console.warn('[DB] removeRetiredPages:', e.message);
+  }
+}
+
 // portal_links tablosu ve server/links/* API'si HIC ELLENMEDI, link verisi duruyor.
 async function removeKaynaklarNavGroup(pool) {
   try {
@@ -5114,6 +5082,7 @@ async function setupTables() {
   await placeBmwHubFlowPages(pool);
   await removeMovedDenetimTabs(pool);
   await removeRetiredAdminTabs(pool);
+  await removeRetiredPages(pool);
   await allowMultipleCisOverrides(pool);
   // removeKaynaklarNavGroup ARTIK CAGRILMIYOR (2026-09-07): "Linkler" sayfasi geri
   // acildi. Cagri kalsaydi kayit HER ACILISTA silinir, sayfa her restart'ta menuden
@@ -5981,13 +5950,6 @@ async function setupTables() {
       table: 'opsx_was_locks',
       col: 'last_op_finished_at',
       sql: `ALTER TABLE opsx_was_locks ADD last_op_finished_at NVARCHAR(40) NULL`,
-    },
-    {
-      // Glomo Gecis Plani "Kontrol Ettim" ani (2026-10-16, server/spa-report/gecis.cjs). Kimin
-      // bastigi TUTULMAZ (sayfa kurali: tabloyu dolduranin adi gorunmez); NULL = kontrol edilmedi.
-      table: 'spa_gecis_app',
-      col: 'kontrol_at',
-      sql: `ALTER TABLE spa_gecis_app ADD kontrol_at DATETIME2 NULL`,
     },
     {
       // Nginx Yuk Testi tur 2 (2026-10-27): bu kolonlar CREATE TABLE'da da var; tablo onceki bicimiyle
