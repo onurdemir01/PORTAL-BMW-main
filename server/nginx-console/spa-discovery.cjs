@@ -771,6 +771,11 @@ const YANIT_VARSAYILAN = Object.freeze({
 });
 /** Bos oldugunda yazilmayan diziler (istemci [] doldurur). */
 const YANIT_BOS_DIZI = new Set(['signals', 'staleClusters', 'notes', 'routes', 'hosts']);
+/**
+ * Yalniz sunucu icinde kullanilan alanlar: HTTP govdesine HIC yazilmaz (routeDetay: SPA paket kurulumunun adres
+ * secimi, c58f4b4d). Tek kaynak: govde kurulumu ve ekranin gidis-donus testi buradan okur.
+ */
+const YANIT_SUNUCU_ICI = Object.freeze(['routeDetay']);
 
 /**
  * Uygulama satirinin HTTP govdesindeki kisa hali.
@@ -787,7 +792,7 @@ function yanitUygulamasi(a) {
     if (YANIT_BOS_DIZI.has(k) && Array.isArray(v) && !v.length) continue;
     o[k] = v;
   }
-  delete o.routeDetay;
+  for (const k of YANIT_SUNUCU_ICI) delete o[k];
   if (a.inventory !== 'kismen') {
     delete o.invRoutes;
     delete o.routeCount;
@@ -825,6 +830,7 @@ module.exports = {
   yanitUygulamasi,
   YANIT_VARSAYILAN,
   YANIT_BOS_DIZI,
+  YANIT_SUNUCU_ICI,
   olcumIndeksi,
   uygulamaAdi,
   notKovasi,
