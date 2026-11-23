@@ -34,7 +34,9 @@ vi.mock('@/utils/csv', async (orijinal) => ({
 
 const requireCjs = createRequire(import.meta.url);
 const KOK = '../../../../server';
-const { buildSpaDiscovery, spaYanitGovdesi } = requireCjs(`${KOK}/nginx-console/spa-discovery.cjs`);
+const { buildSpaDiscovery, spaYanitGovdesi, YANIT_SUNUCU_ICI } = requireCjs(
+  `${KOK}/nginx-console/spa-discovery.cjs`,
+);
 const { internetRpHosts } = requireCjs(`${KOK}/audit/nginx-hosts.cjs`);
 const { rpTanimlari } = requireCjs(`${KOK}/nginx-console/spa-rp.cjs`);
 const RP = internetRpHosts() as { byEnv: Record<string, string[]>; all: Set<string> };
@@ -240,6 +242,11 @@ describe('NginxSpaDiscovery — kırpılmış gövde', () => {
       // invRoutes/routeCount: yalnız envanter 'kismen' iken gelir (ekran yalnız orada okur).
       for (const k of Object.keys(tamJ)) {
         if (k === 'routes') continue;
+        // Yalniz sunucu ici alan (routeDetay): ekran kullanmaz, govdede OLMAMALI (sizma da kirmizi).
+        if (YANIT_SUNUCU_ICI.includes(k)) {
+          expect(k in govde.apps[i], `${t.application}.${k} HTTP govdesine yazildi`).toBe(false);
+          continue;
+        }
         if ((k === 'invRoutes' || k === 'routeCount') && tamJ.inventory !== 'kismen') continue;
         expect(dolu[k], `${t.application}.${k}`).toEqual(tamJ[k]);
       }
