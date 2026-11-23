@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "c58f4b4de198b1e6ad5656ff1c2b570f447284a5",
+  "kaynak": "32efb423a50dbe717d0bf410bb8608133d39337a",
   "dosyaSayisi": 1633,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -274,7 +274,7 @@
     "server/ansible/__tests__/smart-gate-input.test.js": "8a6c52542b679ffaeb2adff4de69f9ab2b61177e",
     "server/ansible/__tests__/smart-gate.test.js": "f077c7d0167ce09da3a83eb0b18d957689cc5ad5",
     "server/ansible/__tests__/smart-metadata-multiline.test.js": "39f7b97507f3593092b822e55a98b26675edc97b",
-    "server/ansible/__tests__/spa-package-install.test.js": "16b816da9c1ccfc365dcdfec6db92df3e85524da",
+    "server/ansible/__tests__/spa-package-install.test.js": "0db7528734e10508826540b68ab2979660adf66e",
     "server/ansible/__tests__/ss-custom-history.test.js": "e02f557db4df44e8ff44d68de7647edde29aa2bb",
     "server/ansible/__tests__/ss-erisim.test.js": "8613d4124a7d5bdb2c17dc0e040f9834981a9f1d",
     "server/ansible/__tests__/ss-tasima-rotalar.test.js": "0444d0b868aa77a6a2b137530228cf4021d8faa8",
@@ -313,8 +313,8 @@
     "server/app-hub/__tests__/app-hub-jvm-karsilastir.test.js": "49345804ba5f5e8d3b88a3fba041121849612a80",
     "server/app-hub/__tests__/app-hub-jvm-param.test.js": "ccc5b6c2702bc4a847cb063dbadbc6a51e7c2098",
     "server/app-hub/__tests__/app-hub-retirement.test.js": "2e3edcb5d216bbf9129c09f3733d78c325871881",
-    "server/app-hub/__tests__/app-hub.test.js": "0af9176283e11711bd4811e57b89c87866fb1c4c",
-    "server/app-hub/canli.cjs": "ca51fd4ca31a5fb3d86a878d202222dd6126c051",
+    "server/app-hub/__tests__/app-hub.test.js": "233b6db5afc8f4dc30dbd2f1e5a9936cd09330be",
+    "server/app-hub/canli.cjs": "8d3cace8def7d3abdccef9646ab9c39fdf8043d9",
     "server/app-hub/filo-poller.cjs": "b3a675b1ae39c2a207e62fe8eb7374847d6481e1",
     "server/app-hub/filo.cjs": "0fb4ade22021c451d6e24262ee10be86dca06efa",
     "server/app-hub/index.cjs": "154b53cd6f03ca98b6b9d79875a774928cfb1ed5",
