@@ -13,7 +13,8 @@
 #   ear_okuma_kullanicisi: was                      (dzdo ile; bos -> become YOK)
 #   ear_kokler:            "/vhosting:/vhosting8"
 #   ear_sure:              300   (betik ici yumusak butce, sn)
-#   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir)
+#   ear_zaman_asimi:       600   (Ansible gorev zaman asimi, sn: kesin sinir; en az ear_sure + 300: kullanim olcumu
+#                                 EAR_KULLANIM_SURE 60 sn ve baglanti ornekleri yumusak butcenin DISINDA kosar)
 #   ear_sinir_uygulama:    25000 / ear_sinir_host: 200000 / ear_arsiv_mb: 64
 #   ear_baglanti_kontrol:  false (FAZ A: yapilandirilmis JVM / WAS portlarina ESTABLISHED baglanti goruntusu; Admin acar)
 #   ear_baglanti_ornek:    3     (ornek sayisi) / ear_baglanti_ara: 10 (ornekler arasi sn)
@@ -166,7 +167,7 @@
             {{ lookup('ansible.builtin.file', 'files/ear_tara.py') }}
             EAR_TARA_SON
           register: ear_tarama
-          timeout: "{{ ear_zaman_asimi | default(600) | int }}"
+          timeout: "{{ [ear_zaman_asimi | default(600) | int, (ear_sure | default(300) | int) + 300] | max }}"
           changed_when: false
           failed_when: false
           no_log: true

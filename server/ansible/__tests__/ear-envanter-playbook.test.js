@@ -110,7 +110,12 @@ test('EP2 hedefte tek raw: dzdo + was, kesin timeout, no_log, heredoc acik metin
   assert.match(KOD, /PYTHONIOENCODING=utf-8:surrogateescape/);
   assert.match(KOD, /become_method: dzdo/);
   assert.match(KOD, /ear_okuma_kullanicisi \| default\('was'\)/);
-  assert.match(KOD, /timeout: "\{\{ ear_zaman_asimi \| default\(600\) \| int \}\}"/);
+  // Kesin sinir yumusak butceden (ear_sure) en az 300 sn genis: kullanim olcumu (60 sn) ve baglanti ornekleri
+  // butcenin DISINDA kosar; ear_sure 540 ustune cekilince tarama ZAMAN_ASIMI oluyordu (PR-R, 2026-11-23).
+  assert.match(
+    KOD,
+    /timeout: "\{\{ \[ear_zaman_asimi \| default\(600\) \| int, \(ear_sure \| default\(300\) \| int\) \+ 300\] \| max \}\}"/,
+  );
   assert.ok(
     !/\bnamespace\b/.test(KOD),
     "Jinja'nin kendi adi `namespace` degisken olarak kullanilmaz",

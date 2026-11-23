@@ -740,9 +740,18 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
     'hidepid',
     'not',
     'okunamayan',
+    'okunamayan_diger',
     'son_yazma',
     'surecler',
   ]);
+  // Eski tarayici okunamayanlarin sahibini ayirmaz: null (0 DEGIL; 0 "hepsi root" demektir).
+  assert.equal(ham.kullanim.okunamayan_diger, null);
+  const yeni = (v) =>
+    kayit({ durum: 'YOK', surecler: [], okunamayan: 5, okunamayan_diger: v }).kullanim;
+  assert.equal(yeni(2).okunamayan_diger, 2);
+  assert.equal(yeni(0).okunamayan_diger, 0);
+  assert.equal(yeni('bozuk').okunamayan_diger, null, 'bozuk sayi bilinmiyor sayilir (fail-closed)');
+  assert.equal(yeni(-1).okunamayan_diger, null);
   assert.equal(ham.kullanim.durum, 'VAR');
   assert.deepEqual(
     ham.kullanim.surecler.map((p) => Object.keys(p).sort()),
@@ -775,6 +784,7 @@ test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir,
     surecler: [],
     son_yazma: null,
     okunamayan: 0,
+    okunamayan_diger: null,
     hidepid: null,
     not: null,
   });

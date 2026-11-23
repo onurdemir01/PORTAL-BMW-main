@@ -40,6 +40,8 @@
 //        cmdline metni pakete girmez, son yazma (OZET gezisi / TAM satirlari), sinirlar KISMI, proc yok OLCULEMEDI
 //   ET21 kullanim kaniti inceleme: gercek mmap (fd kapali) -> maps; sahte maps / maps siniri KISMI; okunamayan
 //        surec yapisal sayilir (cekirdek is parcacigi sayilmaz); hidepid alani; EAR disina bagli logs/ izlenir
+//   ET22 okunamayan surecin sahibi (2026-11-23, kullanici karari): /proc/<pid>/status etkin Uid'i 0 ise root (yalniz
+//        uyari); root disi ya da status okunamiyor -> okunamayan_diger ve kullanim KISMI ("kullanilmiyor" denmez)
 'use strict';
 
 const { test } = require('node:test');
@@ -1792,6 +1794,7 @@ test(
           'hidepid',
           'not',
           'okunamayan',
+          'okunamayan_diger',
           'son_yazma',
           'surecler',
         ]);
@@ -1994,13 +1997,85 @@ test(
         [[300, 'maps']],
       );
       assert.equal(f.hidepid, 'invisible');
-      if (!ROOT)
+      if (!ROOT) {
         assert.equal(f.okunamayan, 1, 'cekirdek is parcacigi (bos cmdline) okunamayan sayilmaz');
+        assert.equal(
+          f.okunamayan_diger,
+          1,
+          'status dosyasi yok: sahip bilinmiyor -> root disi (fail-closed)',
+        );
+      }
       const ms = k(tara([v8], { ...ORT, EAR_PROC: proc, EAR_MAPS_BAYT: '10' }), 'BOS.ear');
       assert.equal(ms.durum, 'KISMI');
       assert.match(ms.not, /maps siniri 10 bayt/);
     } finally {
       for (const p of [301, 302]) fs.chmodSync(path.join(proc, String(p), 'fd'), 0o755);
+    }
+  },
+);
+
+test(
+  'ET22 okunamayan surecin sahibi: root uyari, root disi / bilinmeyen KISMI',
+  { skip: SKIP || (ROOT && 'root izin reddi uretemez') },
+  () => {
+    const kok = geciciKok('et22');
+    const v8 = path.join(kok, 'vhosting8');
+    const eski = new Date(Date.now() - 30 * 86400000);
+    const p = path.join(v8, 'TEK.ear', 'app.js');
+    dosya(p, 8);
+    fs.utimesSync(p, eski, eski);
+    jbossYaz(kok, 'jboss8', { domain: domainXml([]), host: hostXml([]) });
+    const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+    const proc = path.join(kok, 'proc');
+    fs.mkdirSync(proc);
+    fs.writeFileSync(path.join(proc, 'mounts'), 'proc /proc proc rw 0 0\n');
+    const kilitli = [];
+    const pidKur = (pid, uid) => {
+      const d = path.join(proc, String(pid));
+      fs.mkdirSync(path.join(d, 'fd'), { recursive: true });
+      fs.symlinkSync('/', path.join(d, 'cwd'));
+      fs.symlinkSync('/', path.join(d, 'root'));
+      fs.symlinkSync('/usr/sbin/sshd', path.join(d, 'exe'));
+      fs.writeFileSync(path.join(d, 'cmdline'), 'sshd\0');
+      fs.writeFileSync(path.join(d, 'comm'), 'sshd\n');
+      if (uid !== undefined)
+        fs.writeFileSync(
+          path.join(d, 'status'),
+          `Name:\tsshd\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\n`,
+        );
+      fs.chmodSync(path.join(d, 'fd'), 0);
+      kilitli.push(path.join(d, 'fd'));
+    };
+    const kul = () => uyg(tara([v8], { ...ORT, EAR_PROC: proc }), 'TEK.ear').kullanim;
+    try {
+      pidKur(500, 0);
+      pidKur(501, 0);
+      const r = kul();
+      assert.deepEqual(
+        [r.durum, r.okunamayan, r.okunamayan_diger],
+        ['YOK', 2, 0],
+        JSON.stringify(r),
+      );
+      assert.match(
+        r.not,
+        /2 surec okunamadi \(izin; yalniz komut satiri denetlendi; 0 root disi\)/,
+      );
+      pidKur(502, 1001);
+      const d = kul();
+      assert.deepEqual(
+        [d.durum, d.okunamayan, d.okunamayan_diger],
+        ['KISMI', 3, 1],
+        JSON.stringify(d),
+      );
+      pidKur(503);
+      const b = kul();
+      assert.deepEqual(
+        [b.durum, b.okunamayan, b.okunamayan_diger],
+        ['KISMI', 4, 2],
+        'status yok: bilinmeyen sahip root sayilmaz',
+      );
+    } finally {
+      for (const f of kilitli) fs.chmodSync(f, 0o755);
     }
   },
 );

@@ -101,6 +101,11 @@ export function DizinKullanimi({
       {(k.okunamayan ?? 0) > 0 && (
         <div style={{ color: 'var(--text-muted)' }}>
           {fmtNumber(k.okunamayan ?? 0)} süreç izin yüzünden yalnız komut satırından denetlendi
+          {k.okunamayan_diger == null
+            ? ' (sahipleri ayrılmadı: eski tarayıcı)'
+            : k.okunamayan_diger > 0
+              ? ` (${fmtNumber(k.okunamayan_diger)} root dışı: dizini kullanıyor olabilir)`
+              : ' (hepsi root)'}
         </div>
       )}
       {k.not && <div style={{ color: 'var(--text-muted)' }}>{k.not}</div>}

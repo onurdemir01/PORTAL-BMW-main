@@ -4,6 +4,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Changed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: EAR kullanım kanıtı)
+- EAR Temizliği: izin yüzünden okunamayan **root dışı** süreç (ya da sahibi ayrılmamış okunamayan, eski tarama) artık "kullanılmıyor" sayılmıyor; silme reddediliyor (kullanıcı kararı). Tarayıcı `was` ile koşar ve başka kullanıcının `cwd` / `fd`'sini göremez; o süreç dizini kullanıyor olabilir. Tarayıcı okunamayanları `/proc/<pid>/status` Uid'ine göre ayırır (`okunamayan_diger`); root daemon'ları uyarı olarak kalır. Eski taramalar yeniden taranana kadar okunamayan süreç varsa silme kapalıdır.
+- EAR envanter taraması: kesin zaman aşımı yumuşak bütçeden (`ear_sure`) en az 300 sn geniş; kullanım ölçümü bütçenin dışında koştuğu için `ear_sure` 540 üstüne çekilince tarama ZAMAN_ASIMI oluyordu.
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22)
 - Server Hub EAR Temizliği: Production / ortamı bilinmeyen sunucuda silme artık yalnız açık bir OCO değişiklik penceresinde (tekli ve toplu silmede OCO numarası; kuyrukta bekleyen iş açılmadan önce pencere yeniden denetlenir, kapanmışsa kayıt sebebiyle iptal; OCO okunamazsa silme yok). Kullanıcı kararı; ScaleX gibi diğer yıkıcı üretim işlemleriyle aynı kapı.
 - Server Hub host XML ile auto-start kapatma (tekli): Production onayı yalnız ekrandaydı; doğrudan API çağrısı prod host XML'ini onaysız değiştirebiliyordu. Sunucu artık `prodOnay` ister (toplu yolla aynı kural, `400 prod_onay`).

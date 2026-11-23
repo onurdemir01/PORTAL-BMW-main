@@ -532,7 +532,17 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
           TY('WARSIZ.ear', SUREC, { warSayisi: 0 }),
           TY('WARSIZBOS.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN) }), { warSayisi: 0 }),
           TY('GIZLI.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN), hidepid: '2' })),
-          TY('KOR.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN), okunamayan: 112 })),
+          TY(
+            'KOR.ear',
+            yok({ son_yazma: sn(TAR10 - 30 * GUN), okunamayan: 112, okunamayan_diger: 0 }),
+          ),
+          // 2026-11-23 (kullanici karari): root disi okunamayan surec ve sahibi ayrilmamis okunamayan (eski
+          // tarayici) "kullanilmiyor" DEMEZ: olculemedi.
+          TY(
+            'KORDIGER.ear',
+            yok({ son_yazma: sn(TAR10 - 30 * GUN), okunamayan: 112, okunamayan_diger: 3 }),
+          ),
+          TY('KORESKI.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN), okunamayan: 112 })),
         ],
         null,
         10,
@@ -547,7 +557,14 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
     'B1: 10 gunluk taramada taramadan 1 saat once yazma kanittir',
   );
   const j = Object.fromEntries(bul(r, APP, 'EAR_JVM_YOK').map((f) => [f.ear.ad, f.text]));
-  assert.deepEqual(Object.keys(j).sort(), ['GIZLI.ear', 'ILERI.ear', 'KOR.ear', 'WARSIZBOS.ear']);
+  assert.deepEqual(Object.keys(j).sort(), [
+    'GIZLI.ear',
+    'ILERI.ear',
+    'KOR.ear',
+    'KORDIGER.ear',
+    'KORESKI.ear',
+    'WARSIZBOS.ear',
+  ]);
   assert.match(
     j['ILERI.ear'],
     /— dizin kullanımı ölçülemedi \(son yazma tarama anından ileri tarihli/,
@@ -560,8 +577,18 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
   );
   assert.match(
     j['KOR.ear'],
-    /— dizin kullanımı görülmedi ama 112 süreç izin yüzünden yalnız komut satırından denetlendi$/,
-    'B3 okunamayan',
+    /— dizin kullanımı görülmedi ama 112 root süreci izin yüzünden yalnız komut satırından denetlendi$/,
+    'B3 okunamayan (hepsi root)',
+  );
+  assert.match(
+    j['KORDIGER.ear'],
+    /— dizin kullanımı ölçülemedi \(root dışı 3 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir\)$/,
+    'root disi okunamayan',
+  );
+  assert.match(
+    j['KORESKI.ear'],
+    /— dizin kullanımı ölçülemedi \(112 süreç okunamadı ve sahipleri bu tarayıcı sürümünde ayrılmadı\)$/,
+    'eski tarayici: sahip ayrilmadi',
   );
   assert.ok(
     !/ölçülemedi|görülmedi/.test(j['WARSIZBOS.ear']),
@@ -583,7 +610,14 @@ test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, h
       .map((a) => a.ad)
       .sort();
   assert.deepEqual(aday('R3'), ['WARSIZBOS.ear'], 'B2: kullanimdaki WARsiz EAR R3 adayi degil');
-  assert.deepEqual(aday('R5'), ['GIZLI.ear', 'ILERI.ear', 'KOR.ear', 'WARSIZBOS.ear']);
+  assert.deepEqual(aday('R5'), [
+    'GIZLI.ear',
+    'ILERI.ear',
+    'KOR.ear',
+    'KORDIGER.ear',
+    'KORESKI.ear',
+    'WARSIZBOS.ear',
+  ]);
 });
 
 test('RE3 EAR verisi eski / okunamadi / yok: bulgu ve aday yok, nedeni h.ear tasir', () => {

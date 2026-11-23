@@ -1299,6 +1299,17 @@ def surec_eslesmeleri(pid_dizin, hedefler, sayac):
     return bulunan, (izin or maps_izin) and not cekirdek
 
 
+def surec_euid(pid_dizin):
+    """Etkin uid /proc/<pid>/status 'Uid:' satirindan (gercek /proc'ta herkese acik). Okunamazsa None."""
+    ham = kucuk_oku(pid_dizin + '/status', 4096)
+    for satir in (ham or b'').split(b'\n'):
+        if satir.startswith(b'Uid:'):
+            p = satir.split()
+            if len(p) >= 3 and p[2].isdigit():
+                return int(p[2])
+    return None
+
+
 def surec_kimligi(pid_dizin, adlar):
     comm = (kucuk_oku(pid_dizin + '/comm', 256) or b'').decode('utf-8', 'replace').strip()[:32]
     try:
@@ -1327,8 +1338,8 @@ def _surec_kaydet(sonuc, pid, pid_dizin, bulunan):
 
 def surec_tara(hedefler, bitis):
     """TEK /proc taramasi: {'durum': TAM | KISMI | OLCULEMEDI, 'eslesme': {indeks: [surec]}, 'not': [...]}."""
-    sonuc = {'durum': 'TAM', 'eslesme': {}, 'okunamayan': 0, 'fd_kesildi': 0, 'maps_kesildi': 0, 'hidepid': '',
-             'not': []}
+    sonuc = {'durum': 'TAM', 'eslesme': {}, 'okunamayan': 0, 'okunamayan_diger': 0, 'fd_kesildi': 0,
+             'maps_kesildi': 0, 'hidepid': '', 'not': []}
     pidler, hata = _pid_listesi()
     if not pidler:
         sonuc['durum'] = 'OLCULEMEDI'
@@ -1349,7 +1360,12 @@ def surec_tara(hedefler, bitis):
             continue
         pid_dizin = PROC + '/' + pid
         bulunan, izin = surec_eslesmeleri(pid_dizin, hedefler, sonuc)
-        sonuc['okunamayan'] += 1 if izin else 0
+        if izin:
+            sonuc['okunamayan'] += 1
+            # Root disi (ya da sahibi okunamayan) okunamayan surec EAR'i kullaniyor olabilir: kullanim YOK
+            # denemez (kullanici karari 2026-11-23). Root daemon'lari (sshd, systemd, crond) yalniz uyari.
+            if surec_euid(pid_dizin) != 0:
+                sonuc['okunamayan_diger'] += 1
         if bulunan:
             _surec_kaydet(sonuc, pid, pid_dizin, bulunan)
     if sonuc['fd_kesildi']:
@@ -1359,7 +1375,8 @@ def surec_tara(hedefler, bitis):
         sonuc['durum'] = 'KISMI'
         sonuc['not'].append('maps siniri {} bayt: {} surecte kesildi'.format(MAPS_BAYT, sonuc['maps_kesildi']))
     if sonuc['okunamayan']:
-        sonuc['not'].append('{} surec okunamadi (izin; yalniz komut satiri denetlendi)'.format(sonuc['okunamayan']))
+        sonuc['not'].append('{} surec okunamadi (izin; yalniz komut satiri denetlendi; {} root disi)'.format(
+            sonuc['okunamayan'], sonuc['okunamayan_diger']))
     return sonuc
 
 
@@ -1442,12 +1459,13 @@ def son_yazma_olc(u, bitis):
     return son, kesik, notlar
 
 
-def kullanim_durumu(surecler, proc_durum, kesik):
+def kullanim_durumu(surecler, proc_durum, kesik, okunamayan_diger=0):
+    """Root disi okunamayan surec varsa YOK DEGIL, KISMI: o surec dizini gosteriyor olabilir (cwd / fd gorulmedi)."""
     if surecler:
         return 'VAR'
     if proc_durum == 'OLCULEMEDI':
         return 'OLCULEMEDI'
-    if proc_durum == 'KISMI' or kesik:
+    if proc_durum == 'KISMI' or kesik or okunamayan_diger:
         return 'KISMI'
     return 'YOK'
 
@@ -1469,9 +1487,10 @@ def kullanim_olc(uygulamalar):
             notlar.append('son yazma kismi: ' + kesik)
         if len(surecler) > KULLANIM_SUREC_SINIRI:
             notlar.append('{} surec daha'.format(len(surecler) - KULLANIM_SUREC_SINIRI))
-        u['kullanim'] = {'durum': kullanim_durumu(surecler, s['durum'], kesik),
+        u['kullanim'] = {'durum': kullanim_durumu(surecler, s['durum'], kesik, s['okunamayan_diger']),
                          'surecler': surecler[:KULLANIM_SUREC_SINIRI], 'son_yazma': son,
-                         'okunamayan': s['okunamayan'], 'hidepid': s['hidepid'],
+                         'okunamayan': s['okunamayan'], 'okunamayan_diger': s['okunamayan_diger'],
+                         'hidepid': s['hidepid'],
                          'not': '; '.join(notlar)[:300]}
 
 
