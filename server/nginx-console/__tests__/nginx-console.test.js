@@ -1189,3 +1189,45 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
     }
   }
 });
+
+test('GS29 routeDetay: adres basina cluster / termination / SPA, paylasilan adres isaretli; HTTP govdesine yazilmaz', () => {
+  const r = buildSpaDiscovery(
+    [
+      D({ route: 'w1', host: 'Web.apps', workload: 'web-ui', is_spa: 1, termination: 'reencrypt' }),
+      D({
+        cluster: 'orocpprod2',
+        route: 'w2',
+        host: 'web.apps',
+        workload: 'web-ui',
+        is_spa: 0,
+        termination: 'passthrough',
+      }),
+      D({ route: 'o1', host: 'ortak.apps', workload: 'web-ui', is_spa: 1 }),
+      D({ route: 'o2', host: 'ortak.apps', workload: 'diger-ui', is_spa: 1, termination: null }),
+    ],
+    GS_INV,
+    GS_USE,
+    [],
+  );
+  const web = r.apps.find((x) => x.application === 'web-ui');
+  assert.deepEqual(web.routeDetay, [
+    { host: 'ortak.apps', clusters: ['orocpprod1'], terms: ['yok'], spa: true, paylasilan: true },
+    {
+      host: 'web.apps',
+      clusters: ['orocpprod1', 'orocpprod2'],
+      terms: ['passthrough', 'reencrypt'],
+      spa: true,
+      paylasilan: false,
+    },
+  ]);
+  const diger = r.apps.find((x) => x.application === 'diger-ui');
+  assert.deepEqual(diger.routeDetay[0].terms, ['bilinmiyor']);
+  assert.equal(diger.routeDetay[0].paylasilan, true);
+  const { spaYanitGovdesi } = require('../spa-discovery.cjs');
+  const govde = spaYanitGovdesi(r);
+  assert.ok(
+    govde.apps.every((a) => !('routeDetay' in a)),
+    'routeDetay HTTP govdesine yazildi',
+  );
+  assert.ok('routeDetay' in web, 'govde kurulurken hesap nesnesi degisti');
+});

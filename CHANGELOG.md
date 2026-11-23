@@ -11,6 +11,13 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Ulaşılamayan bastion "oc binary is missing" yerine "bastion unreachable" raporlanıyor; `terminal_host`'u boş / `null` cluster'lar ilk bastion'da taranıyor (önceden hiç taranmıyordu); giriş kapısı düşünce de sonuç yayınlanıyor ve Portal koşuyu sebebiyle HATA yazıyor.
 - Tarama yükü yazma döngüsünde yeniden gömülmüyor (denetleyici belleği); `until: fleet_wait is finished` (2.16 DEPRECATION uyarısı); README'deki süre varsayılanı düzeltildi (1800 sn).
 
+### Fixed (main kırmızı, 2026-11-23)
+- Nginx Hub SPA keşfi ekran testi (gidiş-dönüş) `main`'de kırmızıydı: PR'sız `bd14d224` / `c58f4b4d` sunucu satırına yalnız sunucu içi `routeDetay` alanını ekledi ve gövdeden sildi; test tam satırın her alanını ekranda bekliyordu. Sunucu içi alanlar artık tek sabitte (`YANIT_SUNUCU_ICI`); gövde kurulumu ve test oradan okur, test bu alanların gövdeye sızmadığını da sınar.
+
+### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22)
+- Server Hub EAR Temizliği: Production / ortamı bilinmeyen sunucuda silme artık yalnız açık bir OCO değişiklik penceresinde (tekli ve toplu silmede OCO numarası; kuyrukta bekleyen iş açılmadan önce pencere yeniden denetlenir, kapanmışsa kayıt sebebiyle iptal; OCO okunamazsa silme yok). Kullanıcı kararı; ScaleX gibi diğer yıkıcı üretim işlemleriyle aynı kapı.
+- Server Hub host XML ile auto-start kapatma (tekli): Production onayı yalnız ekrandaydı; doğrudan API çağrısı prod host XML'ini onaysız değiştirebiliyordu. Sunucu artık `prodOnay` ister (toplu yolla aynı kural, `400 prod_onay`).
+
 ### Added
 - K17 kurum iç adı (`scripts/ic-ad-bekcisi.cjs`; commit öncesi, commit mesajı, push öncesi, CI tüm ağaç + aralıktaki mesajlar): kurum önekli sunucu adı ve kalıbı, `.com.tr` alan adı (kaçışlı biçim dahil), kurum adı (sözcük özetleri) ve bilinen kurum iç ağı adresi (ağ özetleri) repoya giremez; ad ya da ağ listesi repoda değil, bulunan değer yazdırılmaz (testi `server/__tests__/ic-ad-bekcisi.test.js`, mutasyonla sınandı).
 - Kurum ayarı `KURUM_AYAR_DOSYASI` (`server/util/kurum-ayari.cjs`, biçimi `deploy/kurum-ayari.ornek.json`): nginx filosu, göç grupları, API kümeleri, RVP, OCP kümeleri ve tohumu, Crypto Hub kiracı altyapısı, OpsX ve self servis kurum değerleri koddan çıktı. Dosya yok ya da bozuksa ilgili bölüm boş döner ve ekranda uyarı çıkar; örnek değere düşülmez.
@@ -48,6 +55,7 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Kurumsal iş tanımı kurumdaki çalışan işler ve `standart_pipeline` koduyla hizalandı: `tools: [nodejs]` (Linux ajanı), `npm run kur`, paket `build/` altında, war `BMWPORTAL.war`, deployment `BMWPORTAL-D` (SI kaydı). `scripts/paket.cjs` repo içinde yalnız `build/` altına yazabilir.
 
 ### Removed
+- Glomo Geçiş Planı sayfası (2026-11-23, kullanıcı: artık ihtiyaç yok): menü, `/api/spa-report/gecis/*` uçları ve kurum ayarındaki `spaRapor` bölümü kalktı; eski menü kaydı açılışta silinir (`removeRetiredPages`). `spa_gecis_*` tabloları ve verisi DB'de olduğu gibi kalır.
 - Kullanılmayan dosyalar (2026-11-18): `docs/archive/` (QUICK-SOLVER, TOPOLOGY, deploy-legacy.sh), iki yol haritası ve MINDMAP, OpenShift arayüz önizlemesi (`docs/UI-OPENSHIFT.md`, `docs/ui-onizleme.html`), tek seferlik betikler (`fix-username-case`, `oco-arama-dene`, `standardize-src`) ve SQL (`2026-07-27-envanter-navgroup.sql`).
 - İş kaydı niteliğindeki üç belge (`docs/PBI-2026-09-19-*`, `docs/NETWORK-HARDENING-BACKLOG.md`, `docs/OCO-SMART-CHAOS-SCALE-IHTIYAC.md`) repodan çıkıp git dışındaki backlog'a taşındı.
 - Ölü kod: `src/utils/url.ts`, `src/utils/safeUrl.ts` (Linkler sayfası 2026-10-02'de kalktı; sunucu kapısı duruyor) ve `server/opsx/ocp-target.cjs` (2026-08-11'den beri çağrılmıyordu). Mutasyon kapısında `url.ts` hedefinin yerini app-hub sahiplik doğrulaması aldı.

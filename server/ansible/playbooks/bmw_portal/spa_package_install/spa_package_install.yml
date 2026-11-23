@@ -1,5 +1,5 @@
 ---
-- name: "SPA package install - input gate and dynamic groups"
+- name: "SPA package install - input gate and host jobs"
   hosts: localhost
   connection: local
   gather_facts: false
@@ -10,6 +10,7 @@
     spi_ver_re: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'
     spi_cluster_re: '^[A-Za-z0-9._-]+$'
     spi_host_re: '^[A-Z0-9-]{3,32}$'
+    spi_config_url_re: '^https://([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}/config$'
   tasks:
     - name: "Required inputs"
       ansible.builtin.assert:
@@ -17,14 +18,12 @@
           - spi_mode is defined and spi_mode is string and spi_mode in ['plan', 'apply']
           - spi_items is defined and spi_items is sequence and spi_items is not string and spi_items is not mapping
           - spi_items | length >= 1
-          - spi_items | length <= 10
-          - terminal_hosts is defined and terminal_hosts is sequence and terminal_hosts | length > 0
-          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+          - spi_items | length <= 50
           - (tower_job_id | default(awx_job_id | default('')) | string) is match('^[0-9]{1,18}$')
         fail_msg: >-
           Zorunlu degiskenler eksik ya da gecersiz: spi_mode={{ spi_mode | default('?') | string | truncate(20) }},
-          spi_items={{ spi_items | default([]) | length }} (1..10), terminal_hosts={{ terminal_hosts | default([]) | length }},
-          ocp_clusters={{ ocp_clusters | default([]) | length }}, job={{ tower_job_id | default(awx_job_id | default('yok')) }} (sayisal olmali).
+          spi_items={{ spi_items | default([]) | length }} (1..50),
+          job={{ tower_job_id | default(awx_job_id | default('yok')) }} (sayisal olmali).
           Hepsi bossa AWX job template'inde extra variables prompt-on-launch kapali olabilir.
         quiet: true
 
@@ -54,9 +53,12 @@
           - item is mapping
           - item.namespace is defined and item.namespace is string and item.namespace is match(spi_ns_re)
           - item.namespace | length <= 63
+          - item.namespace == (item.namespace | trim)
           - item.application is defined and item.application is string and item.application is match(spi_app_re)
           - item.application | length <= 253
+          - item.application == (item.application | trim)
           - item.version is defined and item.version is string and item.version is match(spi_ver_re)
+          - item.version == (item.version | trim)
           - item.cluster is defined and item.cluster is string and item.cluster is match(spi_cluster_re)
           - item.id is defined and item.id is string and item.id == (item.namespace ~ '/' ~ item.application)
           - item.hosts is defined and item.hosts is sequence and item.hosts is not string and item.hosts is not mapping
@@ -65,7 +67,17 @@
           - (item.hosts | select('string') | select('match', spi_host_re) | list | length) == (item.hosts | length)
           - (item.hosts | unique | length) == (item.hosts | length)
           - (item.hosts | difference(spi_allowed_hosts | map('string') | map('upper') | list) | length) == 0
-        fail_msg: "gecersiz kalem (hosts 1..8 ve spi_allowed_hosts alt kumesi olmali): {{ item | string | truncate(200) }}"
+          - item.config_urls is defined and item.config_urls is sequence
+          - item.config_urls is not string and item.config_urls is not mapping
+          - item.config_urls | length >= 1
+          - item.config_urls | length <= 3
+          - (item.config_urls | select('string') | select('match', spi_config_url_re) | list | length) == (item.config_urls | length)
+          - (item.config_urls | unique | length) == (item.config_urls | length)
+          - (item.config_urls | map('trim') | list) == item.config_urls
+          - (item.config_urls | map('length') | max) <= 268
+        fail_msg: >-
+          gecersiz kalem (hosts 1..8 ve spi_allowed_hosts alt kumesi; config_urls 1..3 tekil
+          https://<host>/config olmali): {{ item | string | truncate(200) }}
         quiet: true
       loop: "{{ spi_items }}"
       loop_control:
@@ -83,26 +95,15 @@
         spi_job_no: "{{ tower_job_id | default(awx_job_id | default('')) | string }}"
         spi_base: "{{ spi_package_base_url | regex_replace('/+$', '') }}"
 
-    - name: "Source checksums of the scripts"
+    - name: "Source checksum of the host script"
       ansible.builtin.stat:
-        path: "{{ playbook_dir }}/files/{{ item }}"
+        path: "{{ playbook_dir }}/files/spa_package_host.sh"
         checksum_algorithm: sha1
-      loop:
-        - spa_package_ocp.sh
-        - spa_package_host.sh
-      register: spi_src_stats
+      register: spi_src_stat
 
     - name: "Source sha1"
       ansible.builtin.set_fact:
-        spi_ocp_src_sha1: "{{ spi_src_stats.results[0].stat.checksum | default('') }}"
-        spi_host_src_sha1: "{{ spi_src_stats.results[1].stat.checksum | default('') }}"
-
-    - name: "Bastions to the dynamic inventory"
-      ansible.builtin.add_host:
-        name: "{{ item }}"
-        groups: spi_terminal
-      loop: "{{ terminal_hosts }}"
-      changed_when: false
+        spi_host_src_sha1: "{{ spi_src_stat.stat.checksum | default('') }}"
 
     - name: "Nginx hosts to the dynamic inventory"
       ansible.builtin.add_host:
@@ -111,398 +112,19 @@
       loop: "{{ spi_items | map(attribute='hosts') | flatten | unique | list }}"
       changed_when: false
 
-- name: "SPA package install - read-only OCP read per bastion"
-  hosts: spi_terminal
-  ignore_unreachable: true
-  any_errors_fatal: false
-  gather_facts: false
-  become: false
-  vars_files:
-    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
-    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
-  vars:
-    oc_binary: ""
-    oc_binary_candidates:
-      - /bin/oc
-      - /usr/local/bin/oc
-      - /usr/bin/oc
-    oc_probe_paths: >-
-      {{
-        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
-         + (oc_binary_candidates | default([]))) | unique | list
-      }}
-    spi_ocp_script: "{{ spi_ocp_tmp.path | default('') }}"
-    spi_job: "{{ hostvars['localhost'].spi_job_no | default('manual') }}"
-    spi_live: "{{ (my_items | default([]) | length > 0) and not (spi_bastion_down | default(false) | bool) }}"
-  tasks:
-    - name: "OCP read"
-      block:
-        - name: "Clusters of this bastion"
-          ansible.builtin.set_fact:
-            my_ocp_clusters: >-
-              {{
-                (ocp_clusters | selectattr('terminal_host', 'defined')
-                              | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
-                +
-                ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
-                 if inventory_hostname == ((groups['spi_terminal'] | default([])) | sort | first)
-                 else [])
-              }}
-          changed_when: false
-
-        - name: "Items of this bastion"
-          ansible.builtin.set_fact:
-            my_items: >-
-              {{ spi_items | selectattr('cluster', 'in', my_ocp_clusters | map(attribute='cluster_name') | list) | list }}
-          changed_when: false
-
-        - name: "Bastion reachability"
-          ansible.builtin.ping:
-          register: spi_ping
-          changed_when: false
-          failed_when: false
-          when: my_items | length > 0
-
-        - name: "Bastion reachable"
-          ansible.builtin.set_fact:
-            spi_bastion_down: "{{ (my_items | length > 0) and (spi_ping.unreachable | default(false) | bool) }}"
-          changed_when: false
-
-        - name: "Items fail when the bastion is unreachable"
-          ansible.builtin.set_fact:
-            spi_ocp_results: >-
-              {{
-                (spi_ocp_results | default([])) + [{
-                  'id': item.id, 'ok': false, 'unreachable': true, 'lines': [],
-                  'error': 'bastion erisilemedi: ' ~ inventory_hostname
-                }]
-              }}
-          loop: "{{ my_items }}"
-          loop_control:
-            label: "{{ item.id }}"
-          when: spi_bastion_down | bool
-          changed_when: false
-
-        - name: "oc candidates"
-          ansible.builtin.stat:
-            path: "{{ item }}"
-          loop: "{{ oc_probe_paths }}"
-          register: oc_stats
-          changed_when: false
-          failed_when: false
-          when: spi_live | bool
-
-        - name: "Usable oc paths"
-          ansible.builtin.set_fact:
-            oc_stat_hits: >-
-              {{
-                oc_stats.results | default([])
-                | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
-                | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
-                | map(attribute='stat.path') | list
-              }}
-          when: spi_live | bool
-          changed_when: false
-
-        - name: "oc in PATH"
-          ansible.builtin.shell: command -v oc || true
-          args:
-            executable: /bin/bash
-          register: oc_which
-          when: (spi_live | bool) and (oc_stat_hits | default([]) | length == 0)
-          changed_when: false
-          failed_when: false
-
-        - name: "oc binary"
-          ansible.builtin.set_fact:
-            oc_bin: >-
-              {{
-                oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
-                else (oc_which.stdout | default('', true) | trim)
-              }}
-          when: spi_live | bool
-          changed_when: false
-
-        - name: "Cluster connection details"
-          ansible.builtin.set_fact:
-            resolved_clusters: >-
-              {{
-                (resolved_clusters | default({})) | combine({
-                  item.cluster_name: {'url': resolved_url, 'username': resolved_username, 'password': resolved_password}
-                })
-              }}
-          vars:
-            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
-            inv_row: >-
-              {{ (clusters[inventory_key][item.cluster_name])
-                 if (clusters is defined and clusters[inventory_key] is defined
-                     and clusters[inventory_key][item.cluster_name] is defined)
-                 else {} }}
-            resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
-            resolved_username: "{{ item.username | default('') | trim or (ocp_username | default(username | default(''))) }}"
-            resolved_password: >-
-              {{ (lookup('vars', item.credential_key, default=''))
-                 if (item.credential_key | default('') | trim | length > 0)
-                 else (inv_row.password | default('')) }}
-          loop: "{{ my_ocp_clusters }}"
-          loop_control:
-            label: "{{ item.cluster_name }}"
-          no_log: true
-          changed_when: false
-          when: spi_live | bool
-
-        - name: "Run-specific script name"
-          ansible.builtin.tempfile:
-            state: file
-            path: /var/tmp
-            prefix: .spa_package_ocp.
-            suffix: .sh
-          register: spi_ocp_tmp
-          changed_when: false
-          when: (spi_live | bool) and (oc_bin | default('') | trim | length > 0)
-
-        - name: "Script to the bastion"
-          ansible.builtin.copy:
-            src: files/spa_package_ocp.sh
-            dest: "{{ spi_ocp_script }}"
-            mode: "0700"
-          changed_when: false
-          when: (spi_live | bool) and (oc_bin | default('') | trim | length > 0)
-
-        - name: "Verify the copy"
-          ansible.builtin.stat:
-            path: "{{ spi_ocp_script }}"
-            checksum_algorithm: sha1
-          register: spi_ocp_stat
-          failed_when: false
-          when: (spi_live | bool) and (oc_bin | default('') | trim | length > 0)
-
-        - name: "Read image and application.json per item"
-          ansible.builtin.command:
-            cmd: "timeout -k 10 300 bash {{ spi_ocp_script }}"
-          environment:
-            OC_BIN: "{{ oc_bin }}"
-            OCP_URL: "{{ resolved_clusters[item.cluster].url | default('') }}"
-            OCP_USER: "{{ resolved_clusters[item.cluster].username | default('') }}"
-            OCP_PASS: "{{ resolved_clusters[item.cluster].password | default('') }}"
-            NS: "{{ item.namespace }}"
-            APP: "{{ item.application }}"
-            SPI_RUN_PREFIX: "/tmp/spa-pkg-{{ spi_job }}-{{ spi_idx }}"
-          loop: "{{ my_items }}"
-          loop_control:
-            label: "{{ item.id }}"
-            index_var: spi_idx
-          register: spi_ocp_runs
-          no_log: true
-          changed_when: false
-          failed_when: false
-          when: >-
-            (spi_live | bool)
-            and (oc_bin | default('') | trim | length > 0)
-            and ((spi_ocp_stat.stat.checksum | default('')) == (hostvars['localhost'].spi_ocp_src_sha1 | default('x')))
-
-        - name: "Bastion results"
-          ansible.builtin.set_fact:
-            spi_ocp_results: >-
-              {{
-                (spi_ocp_results | default([])) + [
-                  ({'id': item.item.id, 'ok': true, 'lines': (item.stdout_lines | default([]))[:200]})
-                  if ((item.rc | default(1)) == 0)
-                  else {'id': item.item.id, 'ok': false,
-                        'lines': (item.stdout_lines | default([]))[:50],
-                        'error': ('OCP okumasi basarisiz (rc=' ~ (item.rc | default('?') | string) ~ ')')
-                                 if not (item.skipped | default(false))
-                                 else 'betik kopyasi dogrulanamadi (sha1)'}
-                ]
-              }}
-          loop: "{{ spi_ocp_runs.results | default([]) }}"
-          loop_control:
-            label: "{{ item.item.id | default('?') }}"
-          no_log: true
-          changed_when: false
-          when: (spi_live | bool) and (oc_bin | default('') | trim | length > 0)
-
-        - name: "Items fail when oc is missing"
-          ansible.builtin.set_fact:
-            spi_ocp_results: >-
-              {{
-                (spi_ocp_results | default([])) + [{
-                  'id': item.id, 'ok': false, 'lines': [],
-                  'error': "Bu bastion'da 'oc' bulunamadi: " ~ (oc_probe_paths | join(', '))
-                }]
-              }}
-          loop: "{{ my_items }}"
-          loop_control:
-            label: "{{ item.id }}"
-          when: (spi_live | bool) and ((oc_bin | default('') | trim | length) == 0)
-          changed_when: false
-
-      rescue:
-        - name: "Record the error (host stays up)"
-          ansible.builtin.set_fact:
-            host_blocked_reason: "{{ ansible_failed_result.msg | default('Bu bastion uzerinde OCP okumasi tamamlanamadi.') | string | truncate(300) }}"
-
-      always:
-        - name: "Find run directories"
-          ansible.builtin.find:
-            paths: /tmp
-            patterns: "spa-pkg-{{ spi_job }}-*"
-            file_type: any
-          register: spi_run_dirs
-          changed_when: false
-          failed_when: false
-          when: not (spi_bastion_down | default(false) | bool)
-
-        - name: "Remove run directories"
-          ansible.builtin.file:
-            path: "{{ item.path }}"
-            state: absent
-          loop: "{{ spi_run_dirs.files | default([]) }}"
-          loop_control:
-            label: "{{ item.path }}"
-          changed_when: false
-          failed_when: false
-          when: not (spi_bastion_down | default(false) | bool)
-
-        - name: "Remove the script"
-          ansible.builtin.file:
-            path: "{{ spi_ocp_script }}"
-            state: absent
-          changed_when: false
-          failed_when: false
-          when: (spi_ocp_script | length > 0) and not (spi_bastion_down | default(false) | bool)
-
-        - name: "Verify run directory cleanup"
-          ansible.builtin.find:
-            paths: /tmp
-            patterns: "spa-pkg-{{ spi_job }}-*"
-            file_type: any
-          register: spi_run_dirs_after
-          changed_when: false
-          failed_when: false
-          when: not (spi_bastion_down | default(false) | bool)
-
-        - name: "Verify script cleanup"
-          ansible.builtin.stat:
-            path: "{{ spi_ocp_script }}"
-          register: spi_ocp_script_after
-          changed_when: false
-          failed_when: false
-          when: (spi_ocp_script | length > 0) and not (spi_bastion_down | default(false) | bool)
-
-        - name: "Host fails when temporary files remain"
-          ansible.builtin.assert:
-            that:
-              - >-
-                (spi_bastion_down | default(false) | bool)
-                or ((spi_run_dirs_after.matched | default(-1) | int) == 0)
-              - >-
-                (spi_bastion_down | default(false) | bool)
-                or (spi_ocp_script | length == 0)
-                or ((spi_ocp_script_after.stat.exists | default(true)) == false)
-            fail_msg: "SPA paket kurulumu gecici kimlik dizini veya betik dosyasi temizlenemedi."
-            quiet: true
-
-- name: "SPA package install - merge OCP results and build host jobs"
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  become: false
-  tasks:
-    - name: "Clear host errors"
-      ansible.builtin.meta: clear_host_errors
-
-    - name: "Start empty"
+    - name: "No host jobs yet"
       ansible.builtin.set_fact:
-        spi_merge_input: []
-        spi_items_final: []
-        spi_appjson: {}
         spi_host_jobs: {}
-
-    - name: "Merge input per item"
-      ansible.builtin.set_fact:
-        spi_merge_input: >-
-          {{ spi_merge_input + [{
-               'id': item.id, 'namespace': item.namespace, 'application': item.application,
-               'version': item.version, 'cluster': item.cluster,
-               'catalog': owner_row | length > 0,
-               'owner': owner_host | default('', true) | string,
-               'blocked': (hostvars[owner_host] | default({}, true)).host_blocked_reason | default('', true) | string,
-               'report': (reported | first) if (reported | length > 0) else none
-             }] }}
-      vars:
-        owner_row: "{{ (ocp_clusters | selectattr('cluster_name', 'equalto', item.cluster) | list | first) | default({}, true) }}"
-        owner_host: "{{ owner_row.terminal_host | default((groups['spi_terminal'] | default([]) | sort | first), true) }}"
-        host_results: "{{ (hostvars[owner_host] | default({}, true)).spi_ocp_results | default([], true) }}"
-        reported: "{{ host_results | selectattr('id', 'equalto', item.id) | list }}"
-      loop: "{{ spi_items }}"
-      loop_control:
-        label: "{{ item.id }}"
-      no_log: true
-      changed_when: false
-
-    - name: "Merge OCP results"
-      ansible.builtin.command:
-        argv:
-          - "{{ ansible_playbook_python }}"
-          - "-I"
-          - "{{ playbook_dir }}/files/spa_package_merge.py"
-        stdin: "{{ {'items': spi_merge_input} | to_json }}"
-      register: spi_merge_run
-      no_log: true
-      changed_when: false
-      failed_when: false
-
-    - name: "Merged items"
-      ansible.builtin.set_fact:
-        spi_merged: >-
-          {{ (spi_merge_run.stdout | from_json)['items']
-             if ((spi_merge_run.rc | default(1)) == 0 and (spi_merge_run.stdout | default('') | trim)[:1] == '{')
-             else [] }}
-      no_log: true
-      changed_when: false
-
-    - name: "Final item state"
-      ansible.builtin.set_fact:
-        spi_items_final: >-
-          {{ spi_items_final + [{
-               'id': item.id, 'namespace': item.namespace, 'application': item.application,
-               'version': item.version, 'cluster': item.cluster, 'hosts': item.hosts,
-               'ocp': {'ok': spi_ok | bool, 'image': merged.image | default(none),
-                       'tag': merged.tag | default(none), 'configmap': merged.configmap | default(none),
-                       'error': none if (spi_ok | bool) else (merged.error | default(missing_msg, true))}
-             }] }}
-        spi_appjson: >-
-          {{ spi_appjson | combine({item.id: merged.appjson_b64} if (spi_ok | bool) else {}) }}
-      vars:
-        found: "{{ spi_merged | selectattr('id', 'equalto', item.id) | list }}"
-        merged: "{{ (found | first) if (found | length > 0) else {} }}"
-        spi_ok: "{{ (merged.ok | default(false)) is sameas true and (merged.appjson_b64 | default('', true) | length > 0) }}"
-        missing_msg: "kalem birlestirme sonucu yok (spa_package_merge.py rc={{ spi_merge_run.rc | default('?') }})"
-      loop: "{{ spi_items }}"
-      loop_control:
-        label: "{{ item.id }}"
-      no_log: true
-      changed_when: false
-
-    - name: "OCP summary"
-      ansible.builtin.debug:
-        msg: >-
-          {{ item.id }} {{ item.version }} @ {{ item.cluster }}:
-          {{ 'ok (' ~ (item.ocp.configmap | default('')) ~ ')' if item.ocp.ok else 'FAIL - ' ~ (item.ocp.error | default('')) }}
-      loop: "{{ spi_items_final }}"
-      loop_control:
-        label: "{{ item.id }}"
 
     - name: "Jobs per nginx host"
       ansible.builtin.set_fact:
         spi_host_jobs: >-
           {{ spi_host_jobs | combine({item.1: (spi_host_jobs[item.1] | default([])) + [{
                'id': item.0.id, 'namespace': item.0.namespace, 'application': item.0.application,
-               'version': item.0.version,
+               'version': item.0.version, 'config_urls': item.0.config_urls,
                'zip_url': spi_base ~ '/' ~ item.0.namespace ~ '/' ~ item.0.application ~ '/' ~ item.0.version ~ '.zip'
              }]}) }}
-      loop: "{{ spi_items_final | selectattr('ocp.ok') | list | subelements('hosts') }}"
+      loop: "{{ spi_items | subelements('hosts') }}"
       loop_control:
         label: "{{ item.0.id }} -> {{ item.1 }}"
       changed_when: false
@@ -553,13 +175,14 @@
         - name: "Run the host script per item"
           ansible.builtin.command:
             cmd: "timeout -k 10 {{ spi_run_timeout }} bash {{ spi_host_script }}"
-            stdin: "{{ hostvars['localhost'].spi_appjson[item.id] if (spi_mode_run == 'apply') else omit }}"
           environment:
             SPI_MODE: "{{ spi_mode_run }}"
             SPI_NS: "{{ item.namespace }}"
             SPI_APP: "{{ item.application }}"
             SPI_VERSION: "{{ item.version }}"
             SPI_ZIP_URL: "{{ item.zip_url }}"
+            SPI_CONFIG_URLS: "{{ item.config_urls | join(' ') }}"
+            SPI_PYTHON: "{{ ansible_facts['discovered_interpreter_python'] | default('', true) }}"
             SPI_JOB_NO: "{{ hostvars['localhost'].spi_job_no }}"
             SPI_MAX_ZIP_MB: "{{ hostvars['localhost'].spi_max_zip_mb | default(512) | string }}"
             SPI_DOWNLOAD_TIMEOUT: "{{ hostvars['localhost'].spi_download_timeout | default(600) | string }}"
@@ -671,17 +294,12 @@
         host_vars: "{{ hostvars[item.1] | default({}, true) }}"
         reported: "{{ host_vars.spi_host_results | default([], true) | selectattr('id', 'equalto', item.0.id) | list }}"
         blocked: "{{ host_vars.host_blocked_reason | default('') }}"
-        ocp_row:
-          status: FAIL
-          step: ocp
-          message: "{{ item.0.ocp.error | default('OCP okumasi basarisiz', true) }}"
         missing_row:
           status: FAIL
           step: unreachable
           message: "{{ ('sunucu sonuc bildirmedi (erisilemedi ya da erken dustu) ' ~ blocked) | trim }}"
-        host_row: "{{ ((reported | first) if (reported | length > 0) else missing_row) | dict2items | rejectattr('key', 'equalto', 'id') | items2dict }}"
-        row: "{{ host_row if item.0.ocp.ok else ocp_row }}"
-      loop: "{{ spi_items_final | default([]) | subelements('hosts') }}"
+        row: "{{ ((reported | first) if (reported | length > 0) else missing_row) | dict2items | rejectattr('key', 'equalto', 'id') | items2dict }}"
+      loop: "{{ spi_items | default([]) | subelements('hosts') }}"
       loop_control:
         label: "{{ item.0.id }} -> {{ item.1 }}"
       changed_when: false
@@ -691,12 +309,12 @@
         spi_result_items: >-
           {{ spi_result_items + [{
                'id': item.id, 'namespace': item.namespace, 'application': item.application,
-               'version': item.version, 'cluster': item.cluster, 'ocp': item.ocp,
+               'version': item.version,
                'hosts': spi_rows | selectattr('id', 'equalto', item.id)
                                  | map('dict2items') | map('rejectattr', 'key', 'equalto', 'id')
                                  | map('items2dict') | list
              }] }}
-      loop: "{{ spi_items_final | default([]) }}"
+      loop: "{{ spi_items | default([]) }}"
       loop_control:
         label: "{{ item.id }}"
       changed_when: false

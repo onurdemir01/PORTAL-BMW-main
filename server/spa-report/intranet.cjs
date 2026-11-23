@@ -237,6 +237,8 @@ function buildIntranetRapor({
       ag: a.ag,
       // Route adresleri (kullanicinin uygulamayi tanidigi ad) ve cluster'lar.
       adresler: [...(a.hosts || [])],
+      // Adres basina cluster / termination / SPA / paylasilan (paket kurulumu /config secimi).
+      routeDetay: (a.routeDetay || []).map((d) => ({ ...d })),
       clusters: [...(a.clusters || [])],
       eskiCluster: [...(a.staleClusters || [])],
       kapsam: {

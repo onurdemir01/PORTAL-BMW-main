@@ -1,6 +1,7 @@
 #!/bin/bash
 # spa_package_host.sh - Intranet SPA paket kurulumu: tek uygulamayi BIR Nginx sunucusuna ilk kez
-# kurar (Artifactory'den paket + OCP ConfigMap'inden application.json). www olarak kosar.
+# kurar (Artifactory'den paket + uygulamanin OCP route'undaki /config'ten application.json). www
+# olarak kosar.
 #
 # Mevcut deployment betikleri YENIDEN YAZILMAZ, cagrilir (/vhosting/HYSUXSCRIPTS):
 #   nginx_pre_deployment -> nginx_unzip -> nginx_configuration -> nginx_syntax_check -> nginx_reload
@@ -10,23 +11,30 @@
 # Girdi (ortam degiskeni):
 #   SPI_MODE plan|apply   SPI_NS   SPI_APP   SPI_VERSION   SPI_JOB_NO (sayisal)
 #   SPI_ZIP_URL  https://.../<ns>/<app>/<surum>.zip (sir degil; curl'e komut satirindan verilir)
-#   SPI_MAX_ZIP_MB (512)  SPI_DOWNLOAD_TIMEOUT sn (600)  SPI_INSECURE 1 -> curl -k (yalniz Artifactory)
+#   SPI_CONFIG_URLS  bosluk ayrimli 1..3 adres, her biri https://<route host>/config (tekil). OCP'de
+#     kosan pod'daki nginx ayni configuration_template ile /config -> config.json (= ConfigMap'teki
+#     application.json) sunar. Sirayla denenir; ilk gecerli JSON NESNESI alinir.
+#   SPI_MAX_ZIP_MB (512)  SPI_DOWNLOAD_TIMEOUT sn (600)  SPI_INSECURE 1 -> curl -k (paket ve /config)
 #   SPI_STEP_TIMEOUT sn (900): her deployment betigi icin sure siniri
-#   apply: application.json BASE64 olarak STDIN'den (ortam degiskeni 128 KB tek dize sinirina takilir
-#   ve /proc/<pid>/environ'da gorunur; stdin ikisini de onler).
+#   SPI_PYTHON: JSON denetimi icin yorumlayici (Ansible'in bu sunucuda buldugu); yoksa
+#     /usr/libexec/platform-python, python3, python aranir.
 # Test icin yollar: SPI_SCRIPTS_DIR SPI_HYS_ROOT SPI_APP_ROOT SPI_CONF_DIR SPI_CURL SPI_UNZIP.
 #
-# PLAN hicbir sey yazmaz:
+# PLAN sunucuya hicbir sey yazmaz (/config icerigi kosuya ozel gecici dizine iner, cikista silinir):
 #   - deployment betikleri var mi;
 #   - hedef (uygulama dizini, iki conf) YOK mu; biri varsa SKIP "zaten kurulu" (uzerine yazilmaz);
 #   - paket dizini /hysdeploy/<ns>/<app> YOK mu; varsa SKIP (pipeline yuklemis olabilir, elle bakilir);
 #   - /hysdeploy/<ns> varsa o, yoksa /hysdeploy yazilabilir mi;
 #   - paket HEAD 200, Content-Type ZIP (application/zip | application/x-zip-compressed |
-#     application/octet-stream; parametre ve harf farki yok sayilir), boyut siniri icinde mi.
+#     application/octet-stream; parametre ve harf farki yok sayilir), boyut siniri icinde mi;
+#   - /config: HTTP 200, bos degil, en cok 1 MB, HTML degil, gecerli JSON ve JSON NESNESI.
+#     Hicbir adres gecmezse FAIL step 'config'. Mesaja adres yazilmaz, yalniz sira numarasi.
 # APPLY: plan denetimleri; /hysdeploy/<ns> (yoksa; 777, 1-nginx_pre_deployment.sh ile ayni kural:
 # pipeline yukleyicisi orada yeni uygulama dizini acabilsin) ve /hysdeploy/<ns>/<app> acilir;
-# indirme (.part -> unzip -t -> kokte index.html -> <surum>.zip), application.json; kurulumdan HEMEN
-# once hedefler yeniden denetlenir; deployment betikleri, /ready ve /config 200, cleanup_backup.
+# indirme (.part -> unzip -t -> kokte index.html -> <surum>.zip), application.json (/config'ten
+# cekilen icerik birebir); kurulumdan HEMEN once hedefler yeniden denetlenir; deployment betikleri,
+# / (index.html) ve /config 200 (/ready DENETLENMEZ: sablonda dizine alias, nginx her zaman 301 doner;
+# job 3590287), cleanup_backup.
 #
 # Geri alma:
 #   - indirme / zip / application.json / yeniden denetim hatasi: yalniz bu betigin yazdigi dosyalar
@@ -38,8 +46,10 @@
 #
 # Cikti: log satirlari, en sonda TEK satir `RESULT<TAB>status<TAB>step<TAB>mesaj`.
 #   status OK | PLAN_OK | SKIP | FAIL ; exit 0 (OK/PLAN_OK/SKIP) ya da 1 (FAIL).
-#   step check|download|zip_check|write|pre_deployment|unzip|configuration|syntax_check|reload|verify|cleanup
-# Mesajda paket adresi YAZILMAZ (Portal DB'sine kurum host'u tasinmaz).
+#   step check|config|download|zip_check|write|pre_deployment|unzip|configuration|syntax_check|reload|
+#        verify|cleanup
+# Mesajda paket ve /config adresi YAZILMAZ (Portal DB'sine kurum host'u tasinmaz); /config icerigi de
+# hicbir satira yazilmaz.
 
 set -u
 export LC_ALL=C
@@ -61,6 +71,9 @@ URL="${SPI_ZIP_URL:-}"
 MAX_MB="${SPI_MAX_ZIP_MB:-512}"
 DL_TIMEOUT="${SPI_DOWNLOAD_TIMEOUT:-600}"
 STEP_TIMEOUT="${SPI_STEP_TIMEOUT:-900}"
+CFG_URLS_RAW="${SPI_CONFIG_URLS:-}"
+CFG_MAX=1048576
+CFG_TIMEOUT=30
 
 STEP=check
 DONE=0
@@ -72,6 +85,11 @@ APPJSON_WRITTEN=0
 UNDO_MSG=''
 UNDO_NOTE=''
 CLEANUP_NOTE=''
+CFG_URLS=()
+CFG_DIR=''
+CFG_FILE=''
+CFG_IDX=''
+PY=''
 TLS=()
 [[ "${SPI_INSECURE:-0}" == 1 ]] && TLS=(-k)
 REQUIRED_SCRIPTS=(nginx_pre_deployment.sh nginx_unzip.sh nginx_configuration.sh nginx_syntax_check.sh
@@ -189,6 +207,7 @@ undo_install() {
 
 on_exit() {
   local rc=$?
+  [[ -n "$CFG_DIR" ]] && rm -rf -- "$CFG_DIR"
   [[ $DONE -eq 1 ]] && return 0
   case "$PHASE" in
     files) undo_files ;;
@@ -213,6 +232,24 @@ validate_inputs() {
   [[ "$STEP_TIMEOUT" =~ ^[1-9][0-9]{0,4}$ ]] || finish FAIL check "gecersiz adim suresi"
   [[ "$URL" =~ ^https://[^[:space:]]+$ ]] || finish FAIL check "paket adresi https:// ile baslamiyor"
   [[ "$URL" == *"/${NS}/${APP}/${VER}.zip" ]] || finish FAIL check "paket adresi namespace / uygulama / surumle bitmiyor"
+  validate_config_urls
+}
+
+# SPI_CONFIG_URLS: 1..3 tekil https://<host>/config, TEK bosluk ayrimli, satir sonu yok. Host deseni
+# Portal (paket-kurulum.cjs ROUTE_HOST_RE) ve playbook (spi_config_url_re) ile ayni: en az bir nokta,
+# harfle baslayan son etiket (IP literal'i, localhost, tek etiketli ad gecmez), en cok 253 karakter.
+CFG_URL_RE='https://([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}/config'
+validate_config_urls() {
+  local u seen=' ' all_re="^${CFG_URL_RE}( ${CFG_URL_RE}){0,2}\$" one_re="^${CFG_URL_RE}\$"
+  # Tum deger tek seferde: read -a yalniz ilk satiri okur, satir sonundan sonraki adres sessizce dusmesin.
+  [[ "$CFG_URLS_RAW" =~ $all_re ]] || finish FAIL check "config adresleri 1..3 adet, tek bosluk ayrimli https://<host>/config olmali"
+  read -r -a CFG_URLS <<<"$CFG_URLS_RAW"
+  [[ ${#CFG_URLS[@]} -ge 1 && ${#CFG_URLS[@]} -le 3 ]] || finish FAIL check "config adresi sayisi 1..3 olmali (${#CFG_URLS[@]})"
+  for u in "${CFG_URLS[@]}"; do
+    [[ "$u" =~ $one_re && ${#u} -le 268 ]] || finish FAIL check "config adresi https://<host>/config bicimine uymuyor"
+    [[ "$seen" != *" ${u} "* ]] || finish FAIL check "config adresi tekrarli"
+    seen+="${u} "
+  done
 }
 
 # -- PLAN ------------------------------------------------------------------------------------------
@@ -280,11 +317,108 @@ check_package() {
   fi
 }
 
+# JSON denetimi icin python: SPI_PYTHON (mutlak yol), sonra bilinen adlar. Ansible bu sunucuda
+# modul kosturdugu icin bir yorumlayici vardir; bulunamazsa FAIL (yapisal tahmine dusulmez).
+find_python() {
+  local c
+  for c in "${SPI_PYTHON:-}" /usr/libexec/platform-python python3 python; do
+    [[ -n "$c" ]] || continue
+    if [[ "$c" == /* ]]; then
+      [[ -x "$c" ]] || continue
+    else
+      command -v -- "$c" >/dev/null 2>&1 || continue
+    fi
+    if "$c" -E -s -c 'import json' </dev/null >/dev/null 2>&1; then
+      PY="$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# stdin'deki icerik: 0 JSON nesnesi, 3 JSON ama nesne degil, 2 gecersiz JSON / UTF-8 degil.
+JSON_CHECK='import json, sys
+data = getattr(sys.stdin, "buffer", sys.stdin).read()
+try:
+    doc = json.loads(data.decode("utf-8-sig"))
+except Exception:
+    sys.exit(2)
+sys.exit(0 if isinstance(doc, dict) else 3)'
+
+# Tek /config adresi: gecerliyse 0; degilse CFG_WHY'a neden (adres YAZILMAZ).
+# Govde stdout'tan head -c ile en cok CFG_MAX+1 bayt alinir: --max-filesize yalniz bilinen boyutta
+# (Content-Length) isler, eski curl (8.4 oncesi) chunked yanitta govdeyi kesmez; siniri asan yanit
+# boru kapaninca durur (curl rc=23) ve '1 MB ustu' sayilir. Durum kodu -D basliklarindan (son blok).
+CFG_WHY=''
+fetch_one_config() {
+  local url="$1" out="$2" hdr="${2}.hdr" code rc size first
+  rm -f -- "$out" "$hdr"
+  "$CURL" -sS -g -L --max-redirs 3 --proto '=https' --proto-redir '=https' --max-time "$CFG_TIMEOUT" \
+    --max-filesize "$CFG_MAX" ${TLS[@]+"${TLS[@]}"} -D "$hdr" -o - "$url" </dev/null 2>/dev/null \
+    | head -c "$((CFG_MAX + 1))" >"$out"
+  rc=${PIPESTATUS[0]}
+  size=$(wc -c <"$out" 2>/dev/null | tr -d '[:space:]')
+  code=$(tr -d '\r' <"$hdr" 2>/dev/null | awk '/^HTTP\//{c=$2} END{print c}')
+  rm -f -- "$hdr"
+  if [[ $rc -eq 63 || ("$size" =~ ^[0-9]+$ && "$size" -gt "$CFG_MAX") ]]; then
+    CFG_WHY='1 MB ustu'
+    return 1
+  fi
+  if [[ $rc -ne 0 ]]; then
+    CFG_WHY="erisilemedi (curl rc=${rc})"
+    return 1
+  fi
+  if [[ "$code" != 200 ]]; then
+    CFG_WHY="HTTP ${code:-?}"
+    return 1
+  fi
+  if [[ ! "$size" =~ ^[0-9]+$ || "$size" -eq 0 ]]; then
+    CFG_WHY='bos yanit'
+    return 1
+  fi
+  first=$(head -c 512 -- "$out" | tr -d '[:space:]' | head -c 1)
+  if [[ "$first" == '<' ]]; then
+    CFG_WHY='HTML dondu (JSON degil)'
+    return 1
+  fi
+  "$PY" -E -s -c "$JSON_CHECK" <"$out" >/dev/null 2>&1
+  rc=$?
+  case $rc in
+    0) return 0 ;;
+    3) CFG_WHY='JSON nesnesi degil (dizi ya da tek deger)' ;;
+    *) CFG_WHY='gecerli JSON degil' ;;
+  esac
+  return 1
+}
+
+# /config adresleri sirayla; ilk gecerli JSON nesnesi CFG_FILE'a. Hicbiri gecmezse FAIL config.
+check_config() {
+  STEP=config
+  local i=0 u notes=''
+  find_python || finish FAIL config "JSON denetimi icin python bulunamadi"
+  CFG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/.spa_package_cfg.XXXXXX" 2>/dev/null) || {
+    CFG_DIR=''
+    finish FAIL config "gecici dizin acilamadi"
+  }
+  for u in "${CFG_URLS[@]}"; do
+    i=$((i + 1))
+    if fetch_one_config "$u" "${CFG_DIR}/config.json"; then
+      CFG_FILE="${CFG_DIR}/config.json"
+      CFG_IDX=$i
+      return 0
+    fi
+    notes+="${notes:+; }${i}. adres: ${CFG_WHY}"
+  done
+  rm -f -- "${CFG_DIR}/config.json"
+  finish FAIL config "application.json /config'ten alinamadi (${notes})"
+}
+
 plan_checks() {
   check_scripts
   check_targets
   check_hys
   check_package
+  check_config
 }
 
 size_text() {
@@ -350,11 +484,9 @@ zip_check() {
 write_appjson() {
   STEP=write
   local target="${HYS_DIR}/application.json" tmp="${HYS_DIR}/.application.json.spi-new"
-  local b64
-  b64=$(tr -d '[:space:]')
-  [[ -n "$b64" ]] || fail_files write "application.json (stdin) bos"
-  printf '%s' "$b64" | base64 -d >"$tmp" 2>/dev/null || fail_files write "application.json base64 cozulemedi"
-  [[ -s "$tmp" ]] || fail_files write "application.json bos"
+  [[ -s "$CFG_FILE" ]] || fail_files write "application.json (/config icerigi) bos"
+  cp -- "$CFG_FILE" "$tmp" 2>/dev/null || fail_files write "application.json gecici dosyaya yazilamadi"
+  [[ "$(wc -c <"$tmp")" == "$(wc -c <"$CFG_FILE")" ]] || fail_files write "application.json kopyasi eksik yazildi"
   if [[ -e "$target" || -L "$target" ]]; then
     fail_files write "application.json zaten var, uzerine yazilmadi"
   fi
@@ -398,7 +530,7 @@ verify() {
   ip=$(sed -n -E 's/^[[:space:]]*listen[[:space:]]+([0-9]{1,3}(\.[0-9]{1,3}){3}):443([^0-9].*)?$/\1/p' "$SERVER_CONF" 2>/dev/null | head -n 1)
   [[ "$name" =~ ^[A-Za-z0-9]([-A-Za-z0-9.]*[A-Za-z0-9])?$ ]] || fail_install verify "server_name okunamadi (${SERVER_CONF})"
   [[ -n "$ip" ]] || fail_install verify "listen IP okunamadi (${SERVER_CONF})"
-  for path in /ready /config; do
+  for path in / /config; do
     code=$(http_code "$name" "$ip" "$path")
     [[ "$code" == 200 ]] || fail_install verify "${path} HTTP ${code:-?} (beklenen 200)"
   done
@@ -426,7 +558,7 @@ apply() {
   verify
   PHASE=done
   cleanup_backup
-  finish OK cleanup "kuruldu: surum ${VER}, /ready ve /config 200${CLEANUP_NOTE}"
+  finish OK cleanup "kuruldu: surum ${VER}, application.json ${CFG_IDX}. config adresinden, / ve /config 200${CLEANUP_NOTE}"
 }
 
 main() {
@@ -438,7 +570,7 @@ main() {
   APP_CONF="${CONF_DIR}/application-confs/${APP}-${NS}.conf"
   plan_checks
   if [[ "$MODE" == plan ]]; then
-    finish PLAN_OK check "kurulabilir: paket erisilebilir ($(size_text)), hedef ve paket dizini bos"
+    finish PLAN_OK check "kurulabilir: paket erisilebilir ($(size_text)), application.json ${CFG_IDX}. config adresinden alindi (JSON nesnesi), hedef ve paket dizini bos"
   fi
   apply
 }

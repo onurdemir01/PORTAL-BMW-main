@@ -544,7 +544,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/spa_package_install/spa_package_install.yml set_stats sonucu, Portal yazar",
-        "dosya": "server/spa-report/paket-kurulum.cjs:589",
+        "dosya": "server/spa-report/paket-kurulum.cjs:615",
         "nasil": "iş bitince (server_id, job_id) başına bir kez INSERT (UPDLOCK ile tekrar yazılmaz)",
         "ne_zaman": "Paket kurulumu işi bitip ekran yokladığında ya da eşzamanlı iş denetimi bitmiş işi gördüğünde"
       }
@@ -552,10 +552,10 @@
     "okuyanlar": [
       {
         "ad": "Intranet SPA > paket kurulumu: son deneme, plan bağlılığı, 24 saat yakın kurulum kapısı",
-        "dosya": "server/spa-report/paket-kurulum.cjs:333"
+        "dosya": "server/spa-report/paket-kurulum.cjs:370"
       }
     ],
-    "saklama": "Silinmez; satır sayısı küçük (yalnız elle başlatılan kurulum işleri, iş başına en çok 10 kalem x 8 sunucu).",
+    "saklama": "Silinmez; satır sayısı küçük (yalnız elle başlatılan kurulum işleri, iş başına en çok 50 kalem x 8 sunucu).",
     "notlar": "Kurulum durumu (tamam / yok) bu tablodan değil gece dizin taramasından (dbo.Nginx_Intranet_Audit) gelir.",
     "kullanilmiyor": false,
     "guven": "KESIN"
@@ -2347,24 +2347,11 @@
     "tablo": "spa_gecis_app",
     "amac": "Glomo (SPA) Gecis Plani: uygulama basina hangi sete atandigi, kullanimda mi, katilimci, gecti mi ve gecis tarihi.",
     "alan": "Nginx Denetim",
-    "yazanlar": [
-      {
-        "tur": "portal",
-        "ad": "Gecis Plani: PUT /api/spa-report/gecis/app, /app-kontrol, /app-admin, POST /gecis/set/:no/gecti",
-        "dosya": "server/spa-report/gecis.cjs:349",
-        "nasil": "UPDATE; Excel/Portal kaynakli ilk INSERT (:79, :212)",
-        "ne_zaman": "Kullanici/Admin eylemi; ilk okumada doldurma"
-      }
-    ],
-    "okuyanlar": [
-      {
-        "ad": "GET /api/spa-report/gecis",
-        "dosya": "server/spa-report/gecis.cjs:248"
-      }
-    ],
-    "saklama": "yok",
-    "notlar": "Kim yazdi bilerek tutulmuyor.",
-    "kullanilmiyor": false,
+    "yazanlar": [],
+    "okuyanlar": [],
+    "saklama": "yok - tablo artik olusturulmuyor ve kullanilmiyor; mevcut satirlar DB'de oldugu gibi duruyor",
+    "notlar": "Glomo Gecis Plani sayfasi 2026-11-23'te kaldirildi (kullanici: artik ihtiyac yok). Portal kodu bu tabloyu artik olusturmuyor, okumuyor, yazmiyor; veri silinmedi (DROP/DELETE yok). Istenirse elle DROP TABLE edilebilir.",
+    "kullanilmiyor": true,
     "guven": "KESIN"
   },
   {
@@ -2372,24 +2359,11 @@
     "tablo": "spa_gecis_goc",
     "amac": "Gecis Plani'na uygulanmis tek seferlik veri goclerinin listesi; ayni goc ikinci kez calismasin diye.",
     "alan": "Nginx Denetim",
-    "yazanlar": [
-      {
-        "tur": "portal",
-        "ad": "Gecis Plani goc (gecis.cjs)",
-        "dosya": "server/spa-report/gecis.cjs:141",
-        "nasil": "goc basina INSERT (bir kerelik)",
-        "ne_zaman": "Gecis Plani ilk okunurken"
-      }
-    ],
-    "okuyanlar": [
-      {
-        "ad": "Goc yapildi mi kontrolu",
-        "dosya": "server/spa-report/gecis.cjs:136"
-      }
-    ],
-    "saklama": "yok",
-    "notlar": "",
-    "kullanilmiyor": false,
+    "yazanlar": [],
+    "okuyanlar": [],
+    "saklama": "yok - tablo artik olusturulmuyor ve kullanilmiyor; mevcut satirlar DB'de oldugu gibi duruyor",
+    "notlar": "Glomo Gecis Plani sayfasi 2026-11-23'te kaldirildi (kullanici: artik ihtiyac yok). Portal kodu bu tabloyu artik olusturmuyor, okumuyor, yazmiyor; veri silinmedi (DROP/DELETE yok). Istenirse elle DROP TABLE edilebilir.",
+    "kullanilmiyor": true,
     "guven": "KESIN"
   },
   {
@@ -2397,24 +2371,11 @@
     "tablo": "spa_gecis_set",
     "amac": "Gecis Plani setlerinin (1-7) calisma zamani ve OCO numarasi.",
     "alan": "Nginx Denetim",
-    "yazanlar": [
-      {
-        "tur": "portal",
-        "ad": "PUT /api/spa-report/gecis/set (Admin)",
-        "dosya": "server/spa-report/gecis.cjs:443",
-        "nasil": "UPDATE; setler ilk okumada INSERT (:69)",
-        "ne_zaman": "Admin elle"
-      }
-    ],
-    "okuyanlar": [
-      {
-        "ad": "GET /api/spa-report/gecis",
-        "dosya": "server/spa-report/gecis.cjs:246"
-      }
-    ],
-    "saklama": "yok",
-    "notlar": "",
-    "kullanilmiyor": false,
+    "yazanlar": [],
+    "okuyanlar": [],
+    "saklama": "yok - tablo artik olusturulmuyor ve kullanilmiyor; mevcut satirlar DB'de oldugu gibi duruyor",
+    "notlar": "Glomo Gecis Plani sayfasi 2026-11-23'te kaldirildi (kullanici: artik ihtiyac yok). Portal kodu bu tabloyu artik olusturmuyor, okumuyor, yazmiyor; veri silinmedi (DROP/DELETE yok). Istenirse elle DROP TABLE edilebilir.",
+    "kullanilmiyor": true,
     "guven": "KESIN"
   },
   {
@@ -5390,7 +5351,7 @@
         "dosya": "server/nginx-console/index.cjs:702"
       },
       {
-        "ad": "Nginx ARK SPA Raporu + Glomo Geçiş Planı",
+        "ad": "Nginx ARK SPA Raporu",
         "dosya": "server/spa-report/index.cjs:111"
       },
       {
@@ -5776,11 +5737,6 @@
         "uzerinden": "server/audit/ns-owners.cjs"
       },
       {
-        "ad": "Glomo Geçiş Planı",
-        "dosya": "server/spa-report/gecis.cjs:271",
-        "uzerinden": "server/audit/ns-owners.cjs"
-      },
-      {
         "ad": "--mode export (önbellek)",
         "dosya": "bmw_inventory/openshift_inventory/files/openshift_app_owners_db.py:8"
       }
@@ -5890,11 +5846,6 @@
       {
         "ad": "Uygulama -> sorumlu ekip (Denetim SPA ekranları, OwnerCell)",
         "dosya": "server/audit/ns-owners.cjs:9"
-      },
-      {
-        "ad": "Nginx ARK SPA > Glomo Geçiş Planı",
-        "dosya": "server/spa-report/gecis.cjs:206",
-        "uzerinden": "server/audit/ns-owners.cjs"
       },
       {
         "ad": "owners_db --mode export (CMDB sorgu önbelleği)",

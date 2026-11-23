@@ -15,6 +15,8 @@
 //   XK6 (inceleme F1/F2) sunucu + nesil basina TEK XML isi: kayitli XML isi surerken BASKA JVM'e uygulama 409 (plan
 //       serbest); is bitince acilir; launch suresince ikinci istek await'ten once 409; katman xmlRezervasyon
 //   XK7 (inceleme F4) /host: katman JBOSS_DOMAIN_DOWN'u bilgiye indirince sunucu durumu / sayaclar ayni bulgulardan
+//   XK8 (PR-R F1, 2026-11-22) prod onayi SUNUCUDA: Production / ortami bilinmeyen sunucuda uygulama prodOnay:true
+//       ister (toplu yol ile ayni); yoksa 400 prod_onay ve is acilmaz. Plan onay istemez.
 'use strict';
 const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
@@ -491,12 +493,14 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
       'plan isi dogrulama katmanina kaydedilmemeli',
     );
     // uygulama
-    const u = await (await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true })).json();
+    const u = await (
+      await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true, prodOnay: true })
+    ).json();
     assert.equal(u.ok, true);
     assert.equal(awx.launch[1].extraVars.plan_only, false);
     assert.equal(awx.launch[1].extraVars.jvms, 'yanlis1 yanlis2');
     // is surerken ayni JVM'e yeni is 409 (tek satir /jvm-autostart-xml ve plan degil)
-    const kilit = await postXml(kok, { jvms: ['yanlis1'], confirmed: true });
+    const kilit = await postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: true });
     assert.equal(kilit.status, 409);
     assert.match((await kilit.json()).message, /hâlâ sürüyor/);
     assert.equal(awx.launch.length, 2);
@@ -542,7 +546,7 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
     );
     assert.equal(fl.autoStartAcik, 0);
     // ikinci uygulama: zaten kapali (dogrulanmis deger) -> 400, is yok
-    const ik = await postXml(kok, { jvms: ['yanlis1'], confirmed: true });
+    const ik = await postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: true });
     assert.equal(ik.status, 400);
     assert.match(
       (await ik.json()).message,
@@ -561,7 +565,10 @@ test('XK5 red: calisan domain / JVM, plan+confirmed, cift ad, gecersiz girdi; /j
     };
     await bekle({ gen: 7, jvms: ['acikdomain'], plan: true }, /domain'i kapalı görünmüyor/);
     await bekle({ jvms: ['kosan8'], plan: true }, /ÇALIŞIYOR/);
-    await bekle({ jvms: ['zatenkapali'], confirmed: true }, /zaten auto-start KAPALI/);
+    await bekle(
+      { jvms: ['zatenkapali'], confirmed: true, prodOnay: true },
+      /zaten auto-start KAPALI/,
+    );
     await bekle(
       { jvms: ['yanlis1', 'kosan8', 'yok9'], plan: true },
       /^2 JVM reddedildi \(iş açılmadı\):.*ÇALIŞIYOR.*taramada yok/,
@@ -612,10 +619,12 @@ test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bit
   assert.equal(k.xmlSurenIs(APP, 8), null, 'XML disi toplu is XML kilidi sayilmaz');
 
   await httpIle(async (kok) => {
-    const u = await (await postXml(kok, { jvms: ['yanlis1'], confirmed: true })).json();
+    const u = await (
+      await postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: true })
+    ).json();
     assert.equal(u.ok, true);
     // ayni dosya, BASKA JVM: 409 (eskiden JVM kilidi yalniz yanlis1'i tutuyordu)
-    const r = await postXml(kok, { jvms: ['yanlis2'], confirmed: true });
+    const r = await postXml(kok, { jvms: ['yanlis2'], confirmed: true, prodOnay: true });
     assert.equal(r.status, 409);
     const rj = await r.json();
     assert.equal(rj.code, 'xml_is_suruyor');
@@ -638,7 +647,7 @@ test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bit
         },
       },
     });
-    const r2 = await postXml(kok, { jvms: ['yanlis2'], confirmed: true });
+    const r2 = await postXml(kok, { jvms: ['yanlis2'], confirmed: true, prodOnay: true });
     assert.equal(r2.status, 200, JSON.stringify(await r2.clone().json()));
     assert.equal(awx.launch.length, 3);
     // launch suresince (kayit henuz yok) ikinci istek: HICBIR await'ten once 409
@@ -648,15 +657,35 @@ test('XK6 sunucu + nesil basina tek XML isi: baska JVM 409, plan serbest, is bit
     awx.bekle = new Promise((x) => {
       ac = x;
     });
-    const p1 = postXml(kok, { jvms: ['yanlis1'], confirmed: true });
+    const p1 = postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: true });
     for (let i = 0; i < 200 && awx.bekleyen === 0; i++) await new Promise((x) => setTimeout(x, 10));
     assert.equal(awx.bekleyen, 1, 'ilk istek launch asamasina ulasmadi');
-    const p2 = await postXml(kok, { jvms: ['yanlis2'], confirmed: true });
+    const p2 = await postXml(kok, { jvms: ['yanlis2'], confirmed: true, prodOnay: true });
     assert.equal(p2.status, 409);
     assert.match((await p2.json()).message, /şu an başlatılıyor — aynı dosyaya ikinci iş açılmaz/);
     ac();
     assert.equal((await p1).status, 200);
     assert.equal(SH._autoStart._boyut().rezerveXml, 0, 'rezervasyon birakilmadi');
+  });
+});
+
+test('XK8 prod onayi SUNUCUDA: prod sunucuda prodOnay yoksa 400 prod_onay ve is acilmaz; onayla gecer', async () => {
+  await httpIle(async (kok) => {
+    const once = awx.launch.length;
+    const r = await postXml(kok, { jvms: ['yanlis1'], confirmed: true });
+    assert.equal(r.status, 400);
+    const j = await r.json();
+    assert.equal(j.code, 'prod_onay');
+    assert.match(j.message, /açık prod onayı gerekli \(iş açılmadı\)/);
+    assert.equal(awx.launch.length, once, 'prod onaysiz is acildi');
+    const yanlisTip = await postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: 'true' });
+    assert.equal((await yanlisTip.json()).code, 'prod_onay', 'metin "true" onay sayilmamali');
+    // Plan salt okunur: prod onayi istemez.
+    const plan = await postXml(kok, { jvms: ['yanlis1'], plan: true });
+    assert.equal(plan.status, 200);
+    const u = await postXml(kok, { jvms: ['yanlis1'], confirmed: true, prodOnay: true });
+    assert.equal(u.status, 200, 'prod onayiyla uygulama gecmeli');
+    assert.equal(awx.launch.length, once + 2, 'plan + uygulama: iki is');
   });
 });
 
@@ -666,7 +695,9 @@ test('XK7 /host: katman JBOSS_DOMAIN_DOWN bilgiye inince sunucu durumu / sayacla
     const ilk = (await (await al(`${kok}/host/${APP}`)).json()).host;
     const f0 = ilk.findings.find((f) => f.code === 'JBOSS_DOMAIN_DOWN');
     assert.equal(f0.severity, 'warning');
-    const u = await (await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true })).json();
+    const u = await (
+      await postXml(kok, { jvms: ['yanlis1', 'yanlis2'], confirmed: true, prodOnay: true })
+    ).json();
     awx.durum.set(u.jobId, {
       status: 'successful',
       artifacts: {

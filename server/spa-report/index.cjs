@@ -270,18 +270,8 @@ function initSpaReport(app) {
   } catch {
     /* gorunurluk motoru yoksa yoksay */
   }
-  // GLOMO GECIS PLANI AYRI SAYFA (2026-10-13): /gecis uclari kendi gorunurluk anahtariyla
-  // ('ArkGlomoGecis') ve rapor router'indan ONCE baglanir - rapor kapisi ('ArkSpaRaporu')
-  // yalniz plani goren kullaniciyi disarida birakmasin. Plan canli raporu sunucu icinde okur.
-  const gecisRouter = express.Router();
-  gecisRouter.use(express.json({ limit: '256kb' }));
-  gecisRouter.use('/gecis', requireAuth);
-  if (requireVisible) gecisRouter.use('/gecis', requireVisible('ArkGlomoGecis'));
-  require('./gecis.cjs').mountGecis(gecisRouter, { loadReport });
-  app.use('/api/spa-report', gecisRouter);
-
   // INTRANET SPA AYRI SAYFA (2026-10-19): kendi gorunurluk anahtari ('ArkIntranetSpa'), rapor
-  // router'indan ONCE (Glomo plani gibi). Beyan SPA Raporu ile AYNI uygulama alanina yazilir.
+  // router'indan ONCE. Beyan SPA Raporu ile AYNI uygulama alanina yazilir.
   const intranetRouter = express.Router();
   intranetRouter.use(express.json({ limit: '64kb' }));
   intranetRouter.use('/intranet', requireAuth);

@@ -15,8 +15,16 @@
 // SURUM = OCP'de kosan imajin etiketi: Application Hub saatlik filo taramasi + elle canli okuma (filo.birlestir),
 // yalniz uygulamanin PROD cluster'larinda (Portal cluster katalogunda env 'PROD' ve platform 'ark'), ayni
 // namespace'te, basarili okumalar. Ana nesnenin (Deployment / Rollout) imaji <namespace>/<uygulama>:<etiket>
-// olmali. Prod cluster'lari arasinda etiket farkliysa kurulmaz (hangisi dogru bilinmiyor). Playbook ayrica
-// OCP'yi yeniden okur ve etiket planlanandan farkliysa kalemi durdurur (Portal verisi eski olabilir).
+// olmali. Prod cluster'lari arasinda etiket farkliysa kurulmaz (hangisi dogru bilinmiyor).
+// BASTIONSUZ (2026-11-23 kullanici karari "A": bastion'lara ve Nginx'lere birlikte baglanan ortak AWX envanteri
+// yok): playbook OCP'yi OKUMAZ, surumu teyit edemez. Bu yuzden kullanilan PROD okumasi 3 saatten eskiyse
+// 'bayat' ENGELDIR (saatlik tarama ya da canli okuma beklenir).
+// APPLICATION.JSON = uygulamanin route'u uzerinden https://<route host>/config (pod'daki nginx ayni
+// configuration_template ile config.json = ConfigMap application.json sunar). Nginx sunucusu kendisi ceker;
+// Portal kalem basina config_urls gonderir (en cok 3, tekil): yalniz uygulamanin PROD cluster'indaki SPA
+// route'larinin adresleri; baska bir uygulamayla paylasilan adres (yol tabanli route olabilir) alinmaz;
+// intranet (reencrypt) route'u once. Elenen adres sayisi 'config-adresi-elendi' (bilgi); adres kalmazsa
+// 'config-adresi-yok' engeli. config_urls is gecmisine / denetime YAZILMAZ (kalem kimligi yeter).
 //
 // GUVEN: POST istemcinin gonderdigi surum / sunucu / cluster'i KULLANMAZ; adaylari yeniden hesaplar ve yalniz
 // (namespace, application) secimini alir. Uygulamak icin onay kutusuna 'PROD' yazilir (Smart yok, kullanici
@@ -37,16 +45,18 @@ const STATS_KEY = 'spa_package_install_result';
 const PLATFORM = 'spa-package-install';
 const TEMPLATE_ONEK = 'Intranet SPA paket kurulumu';
 const PLAN_ADI = `${TEMPLATE_ONEK}: plan`;
-const KALEM_TAVAN = 10;
+const KALEM_TAVAN = 50;
 const HOST_TAVAN = 8;
 const SAAT_MS = 60 * 60 * 1000;
-const BAYAT_MS = 6 * SAAT_MS;
+const BAYAT_MS = 3 * SAAT_MS;
 const PLAN_OMRU_MS = 2 * SAAT_MS;
-// Pencere bir isin en kotu suresinden (10 kalem x (indirme + 3600 sn)) uzun: daha eski isler bitmis sayilir.
+// Pencere: 50 kalemlik bir is sunucu basina sirali kosar (kalem basina tipik 1-2 dk); 24 saatten eski
+// isler bitmis sayilir. Daha uzun suren is AWX'ten yine bitmemis okunursa kapi onu gorur (isBittiMi).
 const ESZAMANLI_MS = 24 * SAAT_MS;
 const YAKIN_KURULUM_MS = 24 * SAAT_MS;
 const ONBELLEK_MS = 60 * 1000;
 const PARALEL = 6;
+const CONFIG_ADRES_TAVAN = 3;
 const MESAJ_TAVAN = 1000;
 
 /** Sunucunun urettigi tum uyari kodlari (ekran: src/api/arkSpaApi.ts PAKET_UYARI_KODLARI ile birebir). */
@@ -58,6 +68,8 @@ const UYARI_KODLARI = Object.freeze([
   'imaj-yolu-farkli',
   'etiketsiz',
   'bayat',
+  'config-adresi-yok',
+  'config-adresi-elendi',
   'hedef-yok',
   'hedef-fazla',
   'taranmayan',
@@ -69,6 +81,11 @@ const NS_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const APP_RE = /^[A-Za-z0-9]([-A-Za-z0-9._]*[A-Za-z0-9])?$/;
 const VER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const HOST_RE = /^[A-Z0-9-]{3,32}$/;
+// Route host'u: playbook girdi kapisi (spi_config_url_re) ve spa_package_host.sh ile ayni desen
+// (https://<host>/config). En az bir nokta ve harfle baslayan son etiket: IP literal'i, localhost ve
+// tek etiketli ad gecmez (ic adrese istek gitmesin). Uzunluk ayrica en cok 253.
+const ROUTE_HOST_RE = /^([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}$/;
+const ROUTE_HOST_TAVAN = 253;
 const SONUC_DURUM = new Set(['PLAN_OK', 'OK', 'SKIP', 'FAIL']);
 const BITTI = new Set(['successful', 'failed', 'error', 'canceled']);
 
@@ -115,26 +132,32 @@ function prodClusterlari(clusters, katalog) {
   const { platformOfCluster } = require('../audit/ocp-platforms.cjs');
   const prod = [];
   const katalogYok = [];
+  // Satirdaki adiyla (kucuk harf) PROD cluster'lar: /config adresi yalniz bunlarin route'larindan.
+  const prodAdlari = new Set();
   for (const c of clusters || []) {
     if (platformOfCluster(c) !== 'ark') continue;
     const girdiler = katalog.get(L(c)) || [];
     if (!girdiler.length) katalogYok.push(T(c));
     const p = girdiler.find((g) => U(g.env) === 'PROD');
-    if (p) prod.push({ cluster: p.ad, ortam: p.env, tenant: p.tenant });
+    if (p) {
+      prod.push({ cluster: p.ad, ortam: p.env, tenant: p.tenant });
+      prodAdlari.add(L(c));
+    }
   }
-  return { prod, katalogYok };
+  return { prod, katalogYok, prodAdlari };
 }
 
 function katalogUyarisi(prod, katalogYok, katalogHata) {
   if (katalogHata) return uyari('katalog-yok', `Cluster kataloğu okunamadı: ${katalogHata}`, true);
+  if (!prod.length)
+    return uyari('katalog-yok', "Uygulamanın kataloğunda PROD ortamlı ARK cluster'ı yok.", true);
+  // Katalogda olmayan cluster'in ortami bilinmez; okumasi surum hesabina girmez (bilgi, engel degil).
   if (katalogYok.length)
     return uyari(
       'katalog-yok',
-      `Portal cluster kataloğunda olmayan cluster: ${katalogYok.join(', ')} (OpenShift okunamaz).`,
-      true,
+      `Portal cluster kataloğunda olmayan cluster (sürüm hesabına girmedi): ${katalogYok.join(', ')}`,
+      false,
     );
-  if (!prod.length)
-    return uyari('katalog-yok', "Uygulamanın kataloğunda PROD ortamlı ARK cluster'ı yok.", true);
   return null;
 }
 
@@ -148,8 +171,8 @@ function okumaSurumu(okuma, ns, app) {
     return L(p.namespace) === L(ns) && L(p.uygulama) === L(app);
   });
   const eslesen = eslesenler[0];
-  // spa_package_merge.py ile ayni kural: uygulama imaji birden cok container'da farkli etiketle kosuyorsa
-  // hangi paketin kurulacagi belli degil.
+  // Uygulama imaji ana nesnenin birden cok container'inda farkli etiketle kosuyorsa hangi paketin
+  // kurulacagi belli degil: surum verilmez (surum-farkli engeli).
   const etiketler = [...new Set(eslesenler.map((i) => imajCoz(i).etiket || i))];
   if (etiketler.length > 1)
     return {
@@ -221,7 +244,13 @@ function surumHesapla(okumalar, prod, ns, app, simdi) {
   const son = enYeni(gecerli);
   if (!son) return { uyarilar };
   if (bayatMi(son.alinma, simdi))
-    uyarilar.push(uyari('bayat', `Son okuma ${son.alinma || '?'} (6 saatten eski).`, false));
+    uyarilar.push(
+      uyari(
+        'bayat',
+        `Son PROD okuması ${son.alinma || '?'} (3 saatten eski); playbook sürümü yeniden okumadığı için saatlik tarama ya da canlı okuma bekleniyor.`,
+        true,
+      ),
+    );
   const yer = prodIx.get(L(son.cluster));
   return { surum: son.etiket, imaj: son.imaj, alinma: son.alinma, yer, uyarilar };
 }
@@ -264,7 +293,65 @@ function adGecerliMi(ns, app) {
   return NS_RE.test(ns) && APP_RE.test(app);
 }
 
-/** Rapor satiri -> aday (ic alan _yer: hedefleriKur icin katalog kaydi; yanitta atilir). */
+/** Adresin route termination'ina gore sirasi: intranet (reencrypt) once, yalniz internet sona. */
+function adresSirasi(terms) {
+  if (terms.includes('reencrypt')) return 0;
+  if (terms.length && terms.every((t) => t === 'passthrough')) return 2;
+  return 1;
+}
+
+/**
+ * Rapor satirinin route ayrintisindan (routeDetay) /config adresleri. Alinan adres:
+ *   - gecerli host (ROUTE_HOST_RE, en cok 253), kucuk harf, tekil;
+ *   - en az bir SPA route'u (nginx bulunmus) ve en az bir PROD cluster'da (katalog);
+ *   - PAYLASILAN DEGIL: baska bir (ns, uygulama) satirinda da gorunen adres yol tabanli route olabilir,
+ *     /config baska uygulamanin icerigini dondurur (yanlis application.json) - alinmaz.
+ * Sira: intranet (reencrypt) route'u once, yalniz internet (passthrough) olan sonra; en cok 3.
+ * Elenenler neden basina sayilir (adres YAZILMAZ).
+ */
+function configAdresleri(detay, prodAdlari) {
+  const elenen = { gecersiz: 0, spaDegil: 0, prodDisi: 0, paylasilan: 0 };
+  const adaylar = [];
+  const gorulen = new Set();
+  for (const d of detay || []) {
+    const h = L(d?.host);
+    if (!h || gorulen.has(h)) continue;
+    gorulen.add(h);
+    const clusters = (d.clusters || []).map(L);
+    let neden = null;
+    if (h.length > ROUTE_HOST_TAVAN || !ROUTE_HOST_RE.test(h)) neden = 'gecersiz';
+    else if (d.paylasilan) neden = 'paylasilan';
+    else if (!d.spa) neden = 'spaDegil';
+    else if (!clusters.some((c) => prodAdlari?.has(c))) neden = 'prodDisi';
+    if (neden) elenen[neden] += 1;
+    else adaylar.push({ h, sira: adresSirasi((d.terms || []).map(L)) });
+  }
+  adaylar.sort((x, y) => x.sira - y.sira);
+  return {
+    urls: adaylar.slice(0, CONFIG_ADRES_TAVAN).map((a) => `https://${a.h}/config`),
+    elenen,
+  };
+}
+
+/** Elenen adresler bilgi uyarisi (engel degil; adres kalmadiysa engel config-adresi-yok). */
+function elenenUyarisi(elenen) {
+  const parca = [
+    ['paylasilan', 'başka uygulamayla paylaşılan adres'],
+    ['prodDisi', "PROD dışı cluster'da"],
+    ['spaDegil', 'SPA olmayan route'],
+    ['gecersiz', 'geçersiz adres'],
+  ]
+    .filter(([k]) => elenen[k])
+    .map(([k, ad]) => `${ad} ${elenen[k]}`);
+  if (!parca.length) return null;
+  return uyari(
+    'config-adresi-elendi',
+    `/config için denenmeyen route adresi: ${parca.join(', ')}`,
+    false,
+  );
+}
+
+/** Rapor satiri -> aday (ic alan _configUrls kaleme gider; yanitta atilir). */
 function adayKur(row, ctx) {
   const ns = T(row.namespace);
   const app = T(row.application);
@@ -277,7 +364,7 @@ function adayKur(row, ctx) {
   const hedefler = tumHedefler.filter((h) => !yakin.has(h));
   const cikan = tumHedefler.filter((h) => yakin.has(h));
   const taranmayan = (k.taranmayan || []).map(U);
-  const { prod, katalogYok } = prodClusterlari(row.clusters, ctx.katalog);
+  const { prod, katalogYok, prodAdlari } = prodClusterlari(row.clusters, ctx.katalog);
   const uyarilar = [];
   if (!adGecerliMi(ns, app))
     uyarilar.push(
@@ -286,7 +373,19 @@ function adayKur(row, ctx) {
   const ku = katalogUyarisi(prod, katalogYok, ctx.katalogHata);
   if (ku) uyarilar.push(ku);
   const s = surumHesapla(ctx.okumalar, prod, ns, app, ctx.simdi);
-  uyarilar.push(...s.uyarilar, ...hedefUyarilari(hedefler, taranmayan, cikan, yakin));
+  uyarilar.push(...s.uyarilar);
+  const { urls: configUrls, elenen } = configAdresleri(row.routeDetay, prodAdlari);
+  if (!configUrls.length)
+    uyarilar.push(
+      uyari(
+        'config-adresi-yok',
+        "Uygulamanın PROD cluster'da kendine ait SPA route adresi yok: application.json OpenShift'teki /config'ten çekilemez.",
+        true,
+      ),
+    );
+  const eu = elenenUyarisi(elenen);
+  if (eu) uyarilar.push(eu);
+  uyarilar.push(...hedefUyarilari(hedefler, taranmayan, cikan, yakin));
   const birlesik = uyarilariBirlestir(uyarilar);
   const kurulabilir = !birlesik.some((x) => x.engel) && !!s.surum && !!s.yer;
   return {
@@ -303,7 +402,7 @@ function adayKur(row, ctx) {
     uyarilar: birlesik,
     kurulabilir,
     sonDeneme: ctx.sonDeneme || null,
-    _yer: s.yer ? { ...s.yer, namespace: ns, katalogda: true } : null,
+    _configUrls: configUrls,
   };
 }
 
@@ -411,35 +510,13 @@ async function hesapla(deps, fresh) {
 
 function disaVer(a) {
   const gorunen = { ...a };
-  delete gorunen._yer;
+  delete gorunen._configUrls;
   return gorunen;
 }
 
 // ── AWX ────────────────────────────────────────────────────────────────────────
 
-/** Kalem basina canli.hedefleriKur; terminal_hosts ve ocp_clusters (cluster_name tekil) birlestirilir. */
-async function ocpDegiskenleri(adaylar) {
-  const C = require('../app-hub/canli.cjs');
-  const terminal = new Set();
-  const clusters = new Map();
-  let runtime = {};
-  for (const a of adaylar) {
-    const { extraVars } = await C.hedefleriKur(a.application, [a._yer], null);
-    runtime = { ...extraVars };
-    for (const k of ['terminal_hosts', 'ocp_clusters', 'app_hub_app', 'app_hub_targets'])
-      delete runtime[k];
-    for (const t of extraVars.terminal_hosts || []) terminal.add(t);
-    for (const c of extraVars.ocp_clusters || [])
-      if (!clusters.has(L(c.cluster_name))) clusters.set(L(c.cluster_name), c);
-  }
-  const { varsayilanSira } = require('../util/siralama.cjs');
-  return {
-    ...runtime,
-    terminal_hosts: [...terminal].sort(varsayilanSira),
-    ocp_clusters: [...clusters.values()],
-  };
-}
-
+/** AWX'e giden kalem (spi_items[]): kimlik + config_urls. cluster bilgi icindir, playbook kullanmaz. */
 const kalem = (a) => ({
   id: `${a.namespace}/${a.application}`,
   namespace: a.namespace,
@@ -447,6 +524,17 @@ const kalem = (a) => ({
   version: a.surum,
   cluster: a.cluster,
   hosts: [...a.hedefler],
+  config_urls: [...a._configUrls],
+});
+
+/** Is gecmisi / denetim / yanit icin kalem kimligi (config_urls yazilmaz). */
+const kimlik = (k) => ({
+  id: k.id,
+  namespace: k.namespace,
+  application: k.application,
+  version: k.version,
+  cluster: k.cluster,
+  hosts: [...k.hosts],
 });
 
 /** Govde secimini dogrular. Donus: { secim } ya da { hata }. */
@@ -811,12 +899,7 @@ async function kurUcu(req, res, deps) {
         .json({ ok: false, error: `Kurulabilir değil: ${es.red.join(', ')}. Sayfayı yenileyin.` });
     const tumKalemler = es.secilen.map(kalem);
     const items = plan ? planaBagla(tumKalemler, plan) : tumKalemler;
-    const gidenler = new Set(items.map((k) => k.id));
-    extraVars = {
-      ...(await ocpDegiskenleri(es.secilen.filter((a) => gidenler.has(kalem(a).id)))),
-      spi_mode: uygula ? 'apply' : 'plan',
-      spi_items: items,
-    };
+    extraVars = { spi_mode: uygula ? 'apply' : 'plan', spi_items: items };
   } catch (e) {
     return res.status(e.status || 502).json({ ok: false, error: e.message });
   }
@@ -825,7 +908,7 @@ async function kurUcu(req, res, deps) {
 
 async function baslat(req, res, { serverId, templateId, extraVars, uygula }) {
   const mod = extraVars.spi_mode;
-  const items = extraVars.spi_items;
+  const items = extraVars.spi_items.map(kimlik);
   try {
     const tp = require('../ansible/template-preflight.cjs');
     await tp.assertRegistryPlaybook(serverId, templateId, REGISTRY_KEY);
@@ -945,6 +1028,7 @@ module.exports = {
     prodClusterlari,
     okumaSurumu,
     secimDogrula,
+    configAdresleri,
     tabloSatirlari,
     artifactEslesir,
   },

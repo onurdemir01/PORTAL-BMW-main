@@ -199,13 +199,20 @@ function sonucuCoz(raw) {
     return {
       cluster: String(r.cluster || ''),
       namespace: String(r.namespace || ''),
-      ok: r.ok !== false && c.bitti,
+      ok: r.ok !== false && c.bitti && c.hatalar.length === 0,
       hata: hata || null,
       ...c,
       podOzet: canliPodOzeti(c),
     };
   });
-  return { genel: raw?.overall_status || null, hedefler: sonuc };
+  const basarili = sonuc.filter((h) => h.ok).length;
+  let genel = raw?.overall_status || null;
+  if (sonuc.length > 0) {
+    genel = 'failed';
+    if (basarili === sonuc.length) genel = 'ok';
+    else if (basarili > 0) genel = 'partial';
+  }
+  return { genel, hedefler: sonuc };
 }
 
 function hedefAnahtarlari(hedefler) {

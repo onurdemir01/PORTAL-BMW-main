@@ -3,9 +3,12 @@
 // Kullanici (2026-11-23): "Intranet SPA'lerimdeki eksik paketlerin Nginx'lere gelmesinde maalesef yeterince
 // hizli degiliz. o yuzden gecisleri beklemeden paketleri Artifactory'den sunucuya cekmek istiyorum."
 // Kararlar: yalniz PROD intranet sunuculari, yalniz kurulum durumu 'yok' olan satirlar; surum OCP'de kosan
-// imaj etiketi; kapi Portal'da ACIK PROD ONAYI (onay kutusuna birebir "PROD" yazilir, Smart yok).
+// imaj etiketi (Portal'in saatlik taramasi; 3 saatten eskiyse engel); application.json uygulamanin
+// route'undaki /config'ten (bastionsuz, 2026-11-23 karar "A"); kapi Portal'da ACIK PROD ONAYI (onay
+// kutusuna birebir "PROD" yazilir, Smart yok).
 //
-// AKIS: once PLAN (sunucuya hicbir sey yazilmaz; betikler, hedefin boslugu, paketin erisilebilirligi denetlenir),
+// AKIS: once PLAN (sunucuya hicbir sey yazilmaz; betikler, hedefin boslugu, paketin erisilebilirligi ve
+// /config'in JSON nesnesi oldugu denetlenir),
 // plan bitip en az bir PLAN_OK varsa UYGULA; uygulama plan {serverId, jobId} ile gider, yalniz PLAN_OK
 // sunucusu olan kalemler secilir. Sunucu adaylari her istekte yeniden hesaplar (istemci verisine guvenmez),
 // plani dogrular (ayni kullanici, en cok 2 saat, surum degismemis) ve yalniz PLAN_OK sunuculara kurar. Kurulum durumu gece dizin taramasindan gelir:
@@ -33,7 +36,7 @@ import { fmtDateTime, fmtRelative } from '@/utils/datetime';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 /** Is basina en cok kalem (sozlesme: tavan 10). */
-export const PAKET_EN_COK = 10;
+export const PAKET_EN_COK = 50;
 /** Is durumu yoklama araligi. */
 export const PAKET_YOKLAMA_MS = 5000;
 /** Uygulamak icin yazilacak metin (birebir, buyuk harf). */
@@ -219,13 +222,8 @@ function SonucKalemi({ k }: { k: PaketSonucKalem }) {
         <td className="px-2 py-1 font-semibold" colSpan={4}>
           {k.application}{' '}
           <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
-            {k.namespace} · {k.version} · {k.cluster}
+            {k.namespace} · {k.version}
           </span>
-          {!k.ocp.ok && (
-            <span className="ml-2" style={{ color: 'var(--status-danger-text)' }}>
-              OCP: {k.ocp.error || 'okunamadı'}
-            </span>
-          )}
         </td>
       </tr>
       {k.hosts.map((h) => (
@@ -427,9 +425,10 @@ function UstBilgi({
       <div className="min-w-0 flex-1">
         <h2 className="text-sm font-semibold">Nginx’e gelmeyenler (PROD) · paket kurulumu</h2>
         <p className="text-[11px] max-w-3xl" style={{ color: 'var(--text-secondary)' }}>
-          PROD intranet sunucularında hiç kurulu olmayan intranet SPA’lar. Sürüm OCP’de koşan imaj
-          etiketidir; paket Artifactory’den bu sürümle çekilir. Önce plan (sunucuya bir şey
-          yazılmaz), sonra onaylı uygulama. Admin.
+          PROD intranet sunucularında hiç kurulu olmayan intranet SPA’lar. Sürüm, saatlik OCP
+          taramasında koşan imaj etiketidir (3 saatten eski okuma kurulmaz); paket Artifactory’den
+          bu sürümle, application.json uygulamanın route’undaki /config’ten çekilir. Önce plan
+          (sunucuya bir şey yazılmaz), sonra onaylı uygulama. Admin.
         </p>
       </div>
       <div className="flex items-center gap-2 text-[12px]">

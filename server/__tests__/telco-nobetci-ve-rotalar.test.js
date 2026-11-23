@@ -714,7 +714,6 @@ test('server/auth/visibility-routes & server/spa-report/index HTTP routes and he
     },
     backups,
   );
-  setMockModule('../spa-report/gecis.cjs', { mountGecis: () => {} }, backups);
   setMockModule(
     '../spa-report/intranet.cjs',
     {

@@ -46,6 +46,10 @@ yollarının **kendi derinliğiyle** tutarlı olduğunu ölçer.
 | `bmw_portal/spa_package_install/` | aynı                      | 1        |
 | `bmw_portal/telnet_openshift/`    | aynı                      | 1        |
 
+`spa_package_install` 2026-11-23'ten beri bastion'a gitmez ve kimlik dosyasını okumaz: AWX şablonu
+`bmw_nginx/nginx_deployment_spa` ile aynı envanteri ve makine kimliğini kullanır,
+`bmw_openshift_jobs/global_variables/credentials.yaml` gerekmez. Satır yalnız yol eşlemesi için durur.
+
 `bmw_openshift_jobs/` **`bmw_portal/` ile kardeştir** — yani her iki repoda da aynı
 kökün altında. Derinlik `d` olan bir playbook'un kimlik dosyasına ulaşmak için
 `(d+1)` adet `../` gerekir.

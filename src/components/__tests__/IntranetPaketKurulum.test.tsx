@@ -3,19 +3,24 @@
 // Kullanici: PROD intranet Nginx'e gelmeyen paketleri gecisleri beklemeden Artifactory'den cekmek.
 //   PK1 Admin olmayan kullanici bolumu gormez (uc da cagrilmaz)
 //   PK2 kurulabilir olmayan satirin kutusu pasif; engel uyarisi metniyle gorunur
-//   PK3 en cok 10 secim: 10. secimden sonra secilmemis kutular pasif
+//   PK3 en cok 50 secim (2026-11-23, 10'dan yukseltildi): 50. secimden sonra secilmemis kutular pasif
 //   PK4 planla -> paketKur apply:false; is izlenir (5 sn'de bir), bitince sonuc haplari
 //   PK2b ayni kodlu iki uyari ikisi de cizilir (anahtar kod+indeks, React anahtar uyarisi yok)
 //   PK5 Uygula: 'PROD' yazilmadan / 'prod' ile pasif, 'PROD' ile aktif; apply:true + onayMetni + plan
 //   PK5b onay listesi yalniz PLAN_OK sunucusu olan kalemler; digeri gonderilmez
-//   PK6 FAIL satirinda adim + mesaj; OCP hatasi kalem satirinda
+//   PK6 FAIL satirinda adim + mesaj (config adimi dahil); sonuc kalemi 'ocp' / 'cluster' tasimaz ve
+//       ekranda OCP hatasi satiri yok (bastionsuz, 2026-11-23 karar "A")
+//   PK2c 'bayat' (3 saat) ve 'config-adresi-yok' engel olarak cizilir, kutu pasif
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { ContextType, ReactElement } from 'react';
 import { render } from '@/test/test-utils';
 import { zamanlayiciKuruluncaIlerlet } from '@/test/zamanlayici';
 import { AuthContext } from '@/contexts/AuthContext';
-import IntranetPaketKurulum, { PAKET_YOKLAMA_MS } from '@/components/IntranetPaketKurulum';
+import IntranetPaketKurulum, {
+  PAKET_EN_COK,
+  PAKET_YOKLAMA_MS,
+} from '@/components/IntranetPaketKurulum';
 import type { PaketAday, PaketIsYanit, PaketSonuc } from '@/api/arkSpaApi';
 
 const api = vi.hoisted(() => ({ adaylar: vi.fn(), kur: vi.fn(), is: vi.fn() }));
@@ -57,8 +62,6 @@ const SONUC_PLAN: PaketSonuc = {
       namespace: 'kart-prod',
       application: 'kart-app-v0',
       version: '0.0.32-391-prod',
-      cluster: 'orocpp1',
-      ocp: { ok: true, image: 'x', tag: '0.0.32-391-prod', configmap: 'cm', error: null },
       hosts: [
         { host: 'NGINXP01', status: 'PLAN_OK', step: 'check', message: 'hazir' },
         { host: 'NGINXP02', status: 'FAIL', step: 'check', message: 'paket bulunamadi (404)' },
@@ -137,18 +140,19 @@ describe('IntranetPaketKurulum', () => {
     expect(screen.getByText(/kurulabilir/)).toHaveTextContent('Toplam 2 · kurulabilir 1');
   });
 
-  it("PK3 10'dan fazla secilemez", async () => {
-    const adlar = Array.from({ length: 12 }, (_, i) => `app-${String(i).padStart(2, '0')}-v0`);
+  it("PK3 50'den fazla secilemez", async () => {
+    expect(PAKET_EN_COK).toBe(50);
+    const adlar = Array.from({ length: 52 }, (_, i) => `app-${String(i).padStart(2, '0')}-v0`);
     api.adaylar.mockResolvedValue(yanit(adlar.map((n) => A(n))));
     cizAdmin(<IntranetPaketKurulum />);
     await screen.findByText(adlar[0]);
-    adlar.slice(0, 10).forEach((n) => fireEvent.click(kutu(n)));
-    expect(screen.getByText(/10 seçili/)).toBeInTheDocument();
-    expect(kutu(adlar[10])).toBeDisabled();
-    expect(kutu(adlar[11])).toBeDisabled();
+    adlar.slice(0, 50).forEach((n) => fireEvent.click(kutu(n)));
+    expect(screen.getByText(/50 seçili/)).toBeInTheDocument();
+    expect(kutu(adlar[50])).toBeDisabled();
+    expect(kutu(adlar[51])).toBeDisabled();
     expect(kutu(adlar[0])).not.toBeDisabled();
     fireEvent.click(kutu(adlar[0]));
-    expect(kutu(adlar[10])).not.toBeDisabled();
+    expect(kutu(adlar[50])).not.toBeDisabled();
   });
 
   it('PK4 planla -> apply:false, is 5 sn arayla izlenir, bitince sonuc haplari', async () => {
@@ -296,7 +300,7 @@ describe('IntranetPaketKurulum', () => {
     expect(anahtarUyarisi).toBe(false);
   });
 
-  it('PK6 FAIL satirinda adim + mesaj; OCP hatasi kalem satirinda', async () => {
+  it('PK6 FAIL satirinda adim + mesaj; config adimi; OCP hatasi satiri yok', async () => {
     const sonuc: PaketSonuc = {
       mode: 'plan',
       overall: 'failed',
@@ -306,14 +310,14 @@ describe('IntranetPaketKurulum', () => {
           ...SONUC_PLAN.items[0],
           id: 'kart-prod/kart-ui-v0',
           application: 'kart-ui-v0',
-          ocp: {
-            ok: false,
-            image: null,
-            tag: null,
-            configmap: null,
-            error: 'OCP’de koşan sürüm 0.0.33, planlanan 0.0.32',
-          },
-          hosts: [{ host: 'NGINXP03', status: 'FAIL', step: 'ocp', message: 'OCP okunamadi' }],
+          hosts: [
+            {
+              host: 'NGINXP03',
+              status: 'FAIL',
+              step: 'config',
+              message: "application.json /config'ten alinamadi (1. adres: HTML dondu (JSON degil))",
+            },
+          ],
         },
       ],
     };
@@ -323,9 +327,32 @@ describe('IntranetPaketKurulum', () => {
     expect(within(satir).getByText('FAIL')).toBeInTheDocument();
     expect(within(satir).getByText('check')).toBeInTheDocument();
     expect(within(satir).getByText('paket bulunamadi (404)')).toBeInTheDocument();
-    expect(within(tablo).getByText(/OCP: OCP’de koşan sürüm 0.0.33/)).toBeInTheDocument();
-    const ocpSatir = within(tablo).getByText('NGINXP03').closest('tr') as HTMLElement;
-    expect(within(ocpSatir).getByText('ocp')).toBeInTheDocument();
+    const cfgSatir = within(tablo).getByText('NGINXP03').closest('tr') as HTMLElement;
+    expect(within(cfgSatir).getByText('config')).toBeInTheDocument();
+    expect(within(cfgSatir).getByText(/1\. adres: HTML dondu/)).toBeInTheDocument();
+    expect(within(tablo).queryByText(/OCP:/)).toBeNull();
+    expect(within(tablo).queryByText(/orocpp1/)).toBeNull();
+  });
+
+  it('PK2c bayat ve config-adresi-yok engel olarak cizilir, kutu pasif', async () => {
+    api.adaylar.mockResolvedValue(
+      yanit([
+        A('kart-bayat-v0', {
+          kurulabilir: false,
+          uyarilar: [{ kod: 'bayat', metin: 'Son PROD okuması 3 saatten eski', engel: true }],
+        }),
+        A('kart-rotasiz-v0', {
+          kurulabilir: false,
+          uyarilar: [{ kod: 'config-adresi-yok', metin: 'route adresi yok', engel: true }],
+        }),
+      ]),
+    );
+    cizAdmin(<IntranetPaketKurulum />);
+    await screen.findByText('kart-bayat-v0');
+    expect(kutu('kart-bayat-v0')).toBeDisabled();
+    expect(kutu('kart-rotasiz-v0')).toBeDisabled();
+    expect(screen.getByText('Son PROD okuması 3 saatten eski')).toHaveAttribute('title', 'bayat');
+    expect(screen.getByText('route adresi yok')).toHaveAttribute('title', 'config-adresi-yok');
   });
 
   it('PK7 sunucunun hata mesaji gosterilir', async () => {
