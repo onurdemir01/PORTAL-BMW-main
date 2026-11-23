@@ -59,7 +59,7 @@ export const PAGES: PageElement[] = [
   // Nginx ARK SPA (2026-10-13): iki sayfa. element_key 'ArkSpaRaporu' DEGISMEDI (mevcut gorunurluk
   // kurallari ve /api/spa-report kapisi ona bagli); yalniz etiket + adres.
   { id: 'ArkSpaRaporu', label: 'SPA Raporu', route: '/ark-spa/spa-raporu' },
-  { id: 'ArkGlomoGecis', label: 'Glomo Geçiş Planı', route: '/ark-spa/glomo-gecis-plani' },
+  // Glomo Gecis Plani sayfasi 2026-11-23'te kaldirildi; eski DB menu kaydini removeRetiredPages siler.
   // Intranet SPA (2026-10-19): yuk + ekip kullanim beyani, kendi gorunurluk anahtari.
   { id: 'ArkIntranetSpa', label: 'Intranet SPA', route: '/ark-spa/intranet-spa' },
   // "Linkler" sayfasi: 2026-09-19 menu/route kaldirildi, 2026-10-02 sayfa bileseni ve
@@ -110,7 +110,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
   {
     id: 'arkspa',
     label: 'Nginx ARK SPA',
-    itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'],
+    itemIds: ['ArkSpaRaporu', 'ArkIntranetSpa'],
   },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.

@@ -232,7 +232,7 @@ test('O6 ana havuz query verilse de okuma uzun havuzdan yapilir (30 sn hatasi uz
   m.query = ana.q;
   m.queryLong = uzun.q;
   try {
-    const anaCagiran = ns.loadNamespaceOwners(m.query); // denetim.cjs / gecis.cjs gibi
+    const anaCagiran = ns.loadNamespaceOwners(m.query); // denetim.cjs gibi
     const uzunCagiran = ns.loadNamespaceOwners(m.queryLong); // nginx-migration gibi
     const [a, b] = await Promise.all([anaCagiran, uzunCagiran]);
     assert.equal(ana.st.n, 0, 'ana havuzdan okundu');

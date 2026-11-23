@@ -13,7 +13,7 @@
 //      "bulunamazsa namespace sahibi gosterilsin").
 //
 // Kullanici talebi (2026-09-14): Denetim > Nginx SPA'da uygulamanin yaninda ekip.
-// Ayni harita Prod Tasima, SPA Raporu, Glomo gecis plani ve Intranet SPA'da da kullanilir.
+// Ayni harita Prod Tasima, SPA Raporu ve Intranet SPA'da da kullanilir.
 //
 // Namespace tablosu YOKSA ya da sorgu duserse: bos harita + ready=false. Ekran "ekip
 // bilinmiyor" yerine "ekip verisi yok" der - ikisi farkli sey. Uygulama tablosu YOKSA

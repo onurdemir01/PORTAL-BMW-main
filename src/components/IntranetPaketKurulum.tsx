@@ -36,7 +36,7 @@ import { fmtDateTime, fmtRelative } from '@/utils/datetime';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 
 /** Is basina en cok kalem (sozlesme: tavan 10). */
-export const PAKET_EN_COK = 10;
+export const PAKET_EN_COK = 50;
 /** Is durumu yoklama araligi. */
 export const PAKET_YOKLAMA_MS = 5000;
 /** Uygulamak icin yazilacak metin (birebir, buyuk harf). */

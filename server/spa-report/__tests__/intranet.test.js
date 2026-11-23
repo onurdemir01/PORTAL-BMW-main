@@ -533,10 +533,7 @@ test('IS10 sayfa kaydi + kesif hesabi paylasilir', () => {
     oku('src/config/elements.ts'),
     /id: 'ArkIntranetSpa', label: 'Intranet SPA', route: '\/ark-spa\/intranet-spa'/,
   );
-  assert.match(
-    oku('src/config/elements.ts'),
-    /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'\]/,
-  );
+  assert.match(oku('src/config/elements.ts'), /itemIds: \['ArkSpaRaporu', 'ArkIntranetSpa'\]/);
   assert.match(
     oku('src/App.tsx'),
     /pageId='ArkIntranetSpa' \/>\}>\s*<Route path='\/ark-spa\/intranet-spa' element=\{<IntranetSpaPage \/>\}/,
