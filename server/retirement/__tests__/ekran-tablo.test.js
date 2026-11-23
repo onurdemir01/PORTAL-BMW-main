@@ -350,7 +350,7 @@ test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti ala
   const { inPlaceOzeti } = tsModul('RetirementInPlace.tsx', ['inPlaceOzeti']);
   const r7 = {
     app: 'ORPOSWEBAPI',
-    host: 'GOJBAP05',
+    host: 'OPJBAP05',
     env: 'Production',
     domain: 'sirket.invalid',
     jboss_version: '7.4.8',
@@ -360,7 +360,7 @@ test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti ala
   const r8 = { ...r7, jboss_version: '8.0.0', app_path: '/vhosting8/ORPOSWEBAPI.ear' };
   const certs = [
     {
-      host: 'GOJBWP05',
+      host: 'OPJBWP05',
       ip: '',
       port: '443',
       server_name: 'orposwebapi.sirket.invalid',

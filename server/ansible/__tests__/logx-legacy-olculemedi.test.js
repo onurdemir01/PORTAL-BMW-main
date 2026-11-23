@@ -770,7 +770,7 @@ def aktarim_kos(secili, host_enjekte, hata_gorev=None, toplayici_enjekte=None,
     }
 
 
-TEK = [{'host': 'ESJBOT02', 'path': '/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'}]
+TEK = [{'host': 'OFJBOT02', 'path': '/vhosting8/ESOUTBOUNDWS-T.ear/logs/SystemOut.log'}]
 TEK_Y = [(TEK[0]['host'], TEK[0]['path'])]
 COK = [{'host': 'ORJBOT21', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'},
        {'host': 'ORJBOT22', 'path': '/vhosting8/APPX-T.ear/logs/SystemOut.log'}]
@@ -832,7 +832,7 @@ def tek_enjekte(aday=None, **kw):
         'final_archive_stat': {'changed': False, 'stat': {'exists': True, 'size': 4321}},
     })
     e.update(kw)
-    return {'ESJBOT02': e}
+    return {'OFJBOT02': e}
 
 
 def tek_aday(ek_vars=None, enj=None, **olcum):
@@ -1587,7 +1587,7 @@ test('X09 tek-host: staging / staging yazilamaz / staging yok / okunamaz / erisi
 // alanin %80'i), sonra dumpdir'ler, en son logx-tmp (yoksa acilir); Admin ekrani yok.
 
 const TESLIM = '/sw/BMW_PORTAL/logs/legacy';
-const IS_DIZINI = 'logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ESJBOT02';
+const IS_DIZINI = 'logx-fa52e9adfd9fc71572ea8c7b15b65ed4-OFJBOT02';
 const HAZIRLA_WAS = 'Okuma kullanicisinin gecici dizinini hazirla';
 const HAZIRLA_BAGLANAN = 'Ise ozel gecici dizini baglanan kullaniciyla hazirla';
 const ARSIV_GOREVI = "Loglari okuma kullanicisiyla gecici ZIP'e yaz";
@@ -1595,15 +1595,15 @@ const TEMIZLE_WAS = 'Okuma kullanicisinin ise ozel gecici dizinini temizle';
 const TEMIZLE_BAGLANAN = 'Baglanan kullanicinin actigi ise ozel gecici dizini temizle';
 
 /** Host olgularindaki aday tablosu: {dir: 'uygun/<olusturan>' | '<sebep>'}. */
-const adayTablosu = (s, host = 'ESJBOT02') =>
+const adayTablosu = (s, host = 'OFJBOT02') =>
   Object.fromEntries(
     s.hostlar[host].tmp_adaylar.map((a) => [a.dir, a.uygun ? `uygun/${a.olusturan}` : a.sebep]),
   );
 /** O adla GERCEKTEN kosmus gorevlerin argumanlari (atlanan gorev kayda girmez). */
-const kosan = (s, gorev, host = 'ESJBOT02') =>
+const kosan = (s, gorev, host = 'OFJBOT02') =>
   s.hostlar[host].arguman.filter((a) => a.gorev === gorev);
 /** Dosya sistemine DOKUNAN gorevler (dizin acma, arsiv, kopya, silme). */
-const dokunan = (s, host = 'ESJBOT02') =>
+const dokunan = (s, host = 'OFJBOT02') =>
   s.hostlar[host].arguman.filter((a) =>
     ['ansible.builtin.file', 'ansible.builtin.copy', 'community.general.archive'].includes(a.modul),
   );
@@ -1637,7 +1637,7 @@ test('X11 varsayilan: teslim dizini ILK adaydir; her aday olculur ve tablo yayin
   });
   const r = tekYayin(s, 'S1');
   assert.equal(r.tmp_dir, TESLIM);
-  assert.deepEqual(r.tmp_adaylar, s.hostlar.ESJBOT02.tmp_adaylar, 'aday tablosu yayinlanmiyor');
+  assert.deepEqual(r.tmp_adaylar, s.hostlar.OFJBOT02.tmp_adaylar, 'aday tablosu yayinlanmiyor');
   assert.deepEqual(Object.keys(r.tmp_adaylar[0]).sort(), ['dir', 'olusturan', 'sebep', 'uygun']);
   // Tek dizin acilir: okuma kullanicisiyla, 0711, secilen adayin altinda.
   const dizinler = dokunan(s).filter((a) => a.arg.state === 'directory');
@@ -1805,14 +1805,14 @@ test('X11 yazarken dusen adaydan sonra siradaki BIR KEZ denenir; ilkinin dizini 
     assert.equal(r.tmp_dir, '/tmp', ad);
     assert.equal(r.error, '', ad);
     assert.deepEqual(
-      s.hostlar.ESJBOT02.tmp_denemeler.map((d) => [d.dir, d.ok]),
+      s.hostlar.OFJBOT02.tmp_denemeler.map((d) => [d.dir, d.ok]),
       [
         [TESLIM, false],
         ['/tmp', true],
       ],
       ad,
     );
-    assert.match(s.hostlar.ESJBOT02.tmp_denemeler[0].hata, /No space left on device/, ad);
+    assert.match(s.hostlar.OFJBOT02.tmp_denemeler[0].hata, /No space left on device/, ad);
     // Basarisiz denemenin dizini HEMEN temizlenir (yarim ZIP teslim dizininde kalmasin).
     assert.deepEqual(
       kosan(s, 'Basarisiz ilk denemenin gecici dizinini okuma kullanicisiyla temizle').map((a) => [
@@ -2039,7 +2039,7 @@ test('X08 yapi: ZIP adi block un ilk set_fact inde, play vars altinda lookup YOK
 
 test('X08 render: ad 24 karakter [a-z0-9]; archive, copy ve always AYNI yolu gorur', () => {
   const s = senaryo('S1_staging');
-  const h = s.hostlar.ESJBOT02;
+  const h = s.hostlar.OFJBOT02;
   assert.match(String(h.was_tmp_zip), /^[a-z0-9]{24}\.zip$/, `ZIP adi: ${h.was_tmp_zip}`);
   const arsiv = h.arguman.find((a) => a.modul === 'community.general.archive');
   assert.ok(arsiv, 'gecici ZIP i yazan archive gorevi kosmadi');
@@ -2048,7 +2048,7 @@ test('X08 render: ad 24 karakter [a-z0-9]; archive, copy ve always AYNI yolu gor
   // sunucu ayni dizini kullansaydi birinin temizligi otekinin ZIP'ini silerdi.
   assert.equal(
     hedef,
-    `/sw/BMW_PORTAL/logs/legacy/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-ESJBOT02/${h.was_tmp_zip}`,
+    `/sw/BMW_PORTAL/logs/legacy/logx-fa52e9adfd9fc71572ea8c7b15b65ed4-OFJBOT02/${h.was_tmp_zip}`,
     'ZIP yolu dizinden turetilebiliyor ya da gecici alan yanlis adayda',
   );
   const kopyalar = h.arguman.filter((a) => a.modul === 'ansible.builtin.copy');
@@ -2059,7 +2059,7 @@ test('X08 render: ad 24 karakter [a-z0-9]; archive, copy ve always AYNI yolu gor
   );
   assert.ok(temizlik.length > 0, 'always temizligi kosmadi');
   for (const t of temizlik) assert.equal(`${t.arg.path}/${h.was_tmp_zip}`, hedef);
-  const ikinci = senaryo('S1b_staging_ikinci_kosu').hostlar.ESJBOT02.was_tmp_zip;
+  const ikinci = senaryo('S1b_staging_ikinci_kosu').hostlar.OFJBOT02.was_tmp_zip;
   assert.notEqual(ikinci, h.was_tmp_zip, 'iki kosu ayni ZIP adini uretti - rastgele degil');
 });
 

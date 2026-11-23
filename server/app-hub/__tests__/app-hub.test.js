@@ -96,6 +96,8 @@ function sahteOcKur() {
       'case "$1" in',
       '  login) : > "$KUBECONFIG"; [ -n "${APP_HUB_FAKE_SLEEP:-}" ] && sleep "$APP_HUB_FAKE_SLEEP"; exit 0 ;;',
       '  get)',
+      '    if [ "${APP_HUB_FAKE_TIMEOUT_KIND:-}" = "$2" ]; then echo "command timed out" >&2; exit 124; fi',
+      '    if [ "${APP_HUB_FAKE_FAIL_KIND:-}" = "$2" ]; then echo "Error from server (Forbidden): $2 is forbidden" >&2; exit 1; fi',
       '    case "$2" in',
       '      deployment) cat "$D/dep.txt" ;;',
       '      rollouts.argoproj.io) echo "error: the server doesn\'t have a resource type \\"rollouts\\"" >&2; exit 1 ;;',
@@ -217,6 +219,26 @@ test(
   () => {
     const r = betikKos({ APP_HUB_FAKE_SLEEP: '2' }, true);
     assert.notEqual(r.status, 0, 'sure siniri betigi durdurmadi');
+  },
+);
+
+test(
+  'AH3c betik: workload, pod ve HPA okuma hatasi ERR + nonzero olur',
+  { skip: !bashVar && 'bash/awk yok' },
+  () => {
+    for (const [kind, mesaj] of Object.entries({
+      deployment: 'deployment okunamadi',
+      pods: 'pod listesi okunamadi',
+      hpa: 'hpa okunamadi',
+    })) {
+      const r = betikKos({ APP_HUB_FAKE_FAIL_KIND: kind });
+      assert.notEqual(r.status, 0, `${kind} hatasi basarili cikti:\n${r.stdout}`);
+      assert.match(r.stdout, new RegExp(`^ERR\\t${mesaj}`, 'm'), r.stdout);
+      assert.match(r.stdout, /^END\t/m, 'kismi veri END ile sinirlanmadi');
+    }
+    const timeout = betikKos({ APP_HUB_FAKE_TIMEOUT_KIND: 'pods' });
+    assert.notEqual(timeout.status, 0, `pod timeout basarili cikti:\n${timeout.stdout}`);
+    assert.match(timeout.stdout, /^ERR\tpod listesi okunamadi: command timed out/m);
   },
 );
 
@@ -453,6 +475,12 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
     ],
   });
   assert.equal(yarim.hedefler[0].ok, false, 'END gelmeyen (kesilen) cikti tamam sayildi');
+  const errYutma = C.sonucuCoz({
+    overall_status: 'ok',
+    results: [{ cluster: 'c', namespace: 'n', ok: true, lines: ['ERR\tforbidden', 'END\t0\t0'] }],
+  });
+  assert.equal(errYutma.hedefler[0].ok, false, 'ERR satiri basarili hedef sayildi');
+  assert.equal(errYutma.genel, 'failed', 'ERR satiri genel basari arkasinda gizlendi');
   assert.equal(C.statsOku({ ansible_stats: { data: { app_hub_ocp_result: { a: 1 } } } }).a, 1);
 });
 
@@ -496,7 +524,7 @@ sahte(require.resolve('../../retirement/discover.cjs'), {
   discover: async () => ({
     targets: [
       {
-        host: 'GOJBAP01',
+        host: 'OPJBAP01',
         appName: 'MUSTERI',
         env: 'PROD',
         site: 'Pendik',
@@ -504,7 +532,7 @@ sahte(require.resolve('../../retirement/discover.cjs'), {
         tier: '3-tier',
         web: [
           {
-            host: 'GOJBWP01',
+            host: 'OPJBWP01',
             serverName: 'musteri.bank',
             product: 'RHA',
             kaynak: 'ajp',
@@ -615,8 +643,8 @@ test("AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tab
   const metinler = [];
   const tablo = {
     MWAppsInventory: [
-      { app: 'GEINTERNETBRANCH-T', host: 'GEJBOT03' },
-      { app: 'GEINTERNETBRANCH-D', host: 'GEJBOT03' },
+      { app: 'GEINTERNETBRANCH-T', host: 'OGJBOT03' },
+      { app: 'GEINTERNETBRANCH-D', host: 'OGJBOT03' },
     ],
     WASAppsInventory: [{ app: 'GEINTERNETWAS', n: 1 }],
     Openshift_Inventory: [{ app: 'geinternet-api', ns: 1, cl: 1 }],
@@ -654,7 +682,7 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
         recordset: [
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             jboss_version: 'EAP 8.0',
             jdk_type: 'OpenJDK',
@@ -667,13 +695,13 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
       };
     if (t.includes('FROM dbo.Inventory'))
       return {
-        recordset: [{ host: 'GOJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }],
+        recordset: [{ host: 'OPJBAP01', cpu: 8, memory: 32768, os: 'RHEL', os_version: '8.10' }],
       };
     return { recordset: [] };
   };
   hub.hosts = [
     {
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       fresh: true,
       scanDate: '2026-11-08',
       jvms: [
@@ -693,14 +721,14 @@ test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -
   const d = await V.jbossDetay('MUSTERI');
   assert.equal(d.sunucular.length, 1);
   const s = d.sunucular[0];
-  assert.equal(s.host, 'GOJBAP01');
+  assert.equal(s.host, 'OPJBAP01');
   assert.equal(s.ortam, 'PROD');
   assert.equal(s.minHeap, '1024 MB');
   assert.equal(s.kapasite.bellekGb, 32);
   assert.equal(s.kapasite.cpu, 8);
   assert.equal(s.jvmler.length, 1, 'baska uygulamanin JVM i karisti');
   assert.equal(s.jvmler[0].jvmArgs, '-Xmx4g -Dsifre=*** -Dfile.encoding=UTF-8');
-  assert.equal(d.webSunuculari[0].host, 'GOJBWP01');
+  assert.equal(d.webSunuculari[0].host, 'OPJBWP01');
   assert.equal(d.webSunuculari[0].istek7g, 1200);
   assert.equal(d.ozet.calisanJvm, 1);
   assert.equal(d.kaynaklar.envanter.hata, null);
@@ -775,14 +803,14 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
         recordset: [
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             domain: 'dom-a',
             jboss_version: 'EAP 8.0',
           },
           {
             app: 'MUSTERI',
-            host: 'gojbap01',
+            host: 'opjbap01',
             env: 'Production',
             domain: 'dom-b',
             jboss_version: 'EAP 8.0',
@@ -793,7 +821,7 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
   };
   hub.hosts = [
     {
-      host: 'GOJBAP01',
+      host: 'OPJBAP01',
       fresh: true,
       scanDate: '2026-11-11',
       jvms: [

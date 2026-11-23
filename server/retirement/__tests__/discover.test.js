@@ -10,7 +10,7 @@ test('RD1: site kurali ...AP<n> = Ankara, aksi Pendik', () => {
   assert.equal(siteOf('ORNGXAP34'), 'Ankara');
   assert.equal(siteOf('ORCJAAP02'), 'Ankara');
   assert.equal(siteOf('ORNGXP40'), 'Pendik');
-  assert.equal(siteOf('DACRAAP01'), 'Ankara');
+  assert.equal(siteOf('ODCRAAP01'), 'Ankara');
   assert.equal(siteOf('ORCJAP01'), 'Pendik'); // tier A, site harfi yok (cepsube restart Pendik seti)
   assert.equal(siteOf('ORCJAAP02'), 'Ankara'); // cepsube restart Ankara seti
   assert.equal(siteOf('ORCRAT01'), 'Pendik');
@@ -255,15 +255,15 @@ test('RD11 JVM portu bilinmiyorsa (cfg_ports ve ports bos) AJP eslesmesi YAPILMA
   );
 });
 
-// 3-TIER WEB ADAYI AB->WP (2026-10-12, kullanici: "GOJBAB03'un web hostu GOJBWP03"). Eski tek kural
-// (5. harf A->W) var olmayan GOJBWB03'u uretiyordu; web katmani sessizce "eslenemedi" kaliyordu.
-test('T3W1 GOJBAB03 -> web GOJBWP03 (Server Hub vhost) bulunur', () => {
+// 3-TIER WEB ADAYI AB->WP (2026-10-12, kullanici: "OPJBAB03'un web hostu OPJBWP03"). Eski tek kural
+// (5. harf A->W) var olmayan OPJBWB03'u uretiyordu; web katmani sessizce "eslenemedi" kaliyordu.
+test('T3W1 OPJBAB03 -> web OPJBWP03 (Server Hub vhost) bulunur', () => {
   const inv = [
-    { app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
+    { app: 'GFYSVC-D', host: 'OPJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
   ];
   const vh = [
     {
-      host: 'GOJBWP03',
+      host: 'OPJBWP03',
       server_name: 'gfysvc-d.odmz.invalid',
       aliases: '',
       listen: '*:443',
@@ -273,17 +273,17 @@ test('T3W1 GOJBAB03 -> web GOJBWP03 (Server Hub vhost) bulunur', () => {
   ];
   const t = buildTargets('GFYSVC', inv, [], [], vh).targets[0];
   assert.equal(t.web.length, 1, t.webHow);
-  assert.equal(t.web[0].host, 'GOJBWP03');
+  assert.equal(t.web[0].host, 'OPJBWP03');
   assert.equal(t.webUyari, null);
 });
 
-test('T3W2 sertifika envanterinde GOJBWP03 de bulunur', () => {
+test('T3W2 sertifika envanterinde OPJBWP03 de bulunur', () => {
   const inv = [
-    { app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
+    { app: 'GFYSVC-D', host: 'OPJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
   ];
   const certs = [
     {
-      host: 'GOJBWP03',
+      host: 'OPJBWP03',
       server_name: 'gfysvc-d.odmz.invalid',
       port: '443',
       conf_file: '/x/a.conf',
@@ -291,27 +291,27 @@ test('T3W2 sertifika envanterinde GOJBWP03 de bulunur', () => {
     },
   ];
   const t = buildTargets('GFYSVC', inv, certs, [], []).targets[0];
-  assert.equal(t.web[0]?.host, 'GOJBWP03', t.webHow);
+  assert.equal(t.web[0]?.host, 'OPJBWP03', t.webHow);
 });
 
 test('T3W3 web bulunamazsa SESSIZ KALINMAZ: 3-tier uyarisi denenen adaylarla', () => {
   const inv = [
-    { app: 'GFYSVC-D', host: 'GOJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
+    { app: 'GFYSVC-D', host: 'OPJBAB03', env: 'DEV', domain: 'odmz.invalid', jboss_version: '7' },
   ];
   const r = buildTargets('GFYSVC', inv, [], [], []);
   const t = r.targets[0];
   assert.equal(t.web.length, 0);
   assert.match(t.webUyari, /^3-tier: web vhost'u BULUNAMADI/);
-  assert.match(t.webUyari, /GOJBWB03/);
-  assert.match(t.webUyari, /GOJBWP03 \(taramada yok\)/);
+  assert.match(t.webUyari, /OPJBWB03/);
+  assert.match(t.webUyari, /OPJBWP03 \(taramada yok\)/);
   assert.equal(r.summary.webBulunamadi, 1);
 });
 
 test('T3W4 aday kurali: Pendik 6 harf, Ankara 7 harf; 5. harf A->W, son harf -> P', () => {
   const { webHostAdaylari } = require('../../audit/web-app.cjs');
-  assert.deepEqual(webHostAdaylari('GOJBAB03'), ['GOJBWB03', 'GOJBWP03']);
+  assert.deepEqual(webHostAdaylari('OPJBAB03'), ['OPJBWB03', 'OPJBWP03']);
   assert.deepEqual(webHostAdaylari('ORCJAP01'), ['ORCJWP01']);
-  assert.deepEqual(webHostAdaylari('DACRAAP01'), ['DACRWAP01']);
-  assert.deepEqual(webHostAdaylari('DACRAAB01'), ['DACRWAB01', 'DACRWAP01']);
+  assert.deepEqual(webHostAdaylari('ODCRAAP01'), ['ODCRWAP01']);
+  assert.deepEqual(webHostAdaylari('ODCRAAB01'), ['ODCRWAB01', 'ODCRWAP01']);
   assert.deepEqual(webHostAdaylari('ORNGXP40'), []);
 });

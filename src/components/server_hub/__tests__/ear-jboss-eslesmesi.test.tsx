@@ -160,7 +160,7 @@ describe('EJ4 JBoss eşlemesi bölümü', () => {
   });
 });
 
-// EJ5 dizin kullanımı (tarayıcı sürüm 4, 2026-11-17; DACRPAP01 canlı Node.js): JBoss'a bağlı olmayan EAR'da süreç /
+// EJ5 dizin kullanımı (tarayıcı sürüm 4, 2026-11-17; ODCRPAP01 canlı Node.js): JBoss'a bağlı olmayan EAR'da süreç /
 // son yazma görünür; yakın yazma ve süreç uyarı (silinmemeli); ölçülemeyen "kullanılmıyor" denmez; hiçbiri yeşil değil.
 describe('EJ5 dizin kullanımı', () => {
   const SIMDI = Date.parse('2026-11-17T10:00:00Z');

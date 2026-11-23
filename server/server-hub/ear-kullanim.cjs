@@ -1,6 +1,6 @@
 // server/server-hub/ear-kullanim.cjs - JBoss'a bagli olmayan EAR dizininin kullanim kaniti (2026-11-17).
 //
-// Saha (DACRPAP01): /vhosting8/DASCRYPTOWEBSITENODE.ear domain.xml'de yok (EAR_JVM_YOK, TANIM_YOK) ama dizinde
+// Saha (ODCRPAP01): /vhosting8/DASCRYPTOWEBSITENODE.ear domain.xml'de yok (EAR_JVM_YOK, TANIM_YOK) ama dizinde
 // canli bir Node.js sureci calisiyor (cwd = .../X.war) ve logs/ bugun yaziliyor. "Diskte duruyor, hicbir JVM'e
 // yuklenmiyor" metni kullaniciyi "artik, silinebilir" sonucuna goturuyordu.
 //

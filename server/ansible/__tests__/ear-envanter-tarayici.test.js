@@ -1000,7 +1000,7 @@ test(
       dosya(path.join(v7, ad, 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'IKI.ear', 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'SEKIZ.ear', 'META-INF', 'application.xml'), 10);
-    // EAR icindeki modul ayri deployment (DACRAAP11 2026-11-16) ve onek tuzagi (TUZ.ear1 TUZ.ear degil)
+    // EAR icindeki modul ayri deployment (ODCRAAP11 2026-11-16) ve onek tuzagi (TUZ.ear1 TUZ.ear degil)
     dosya(path.join(v8, 'ALTLI.ear', 'ALTLI.war', 'WEB-INF', 'web.xml'), 10);
     dosya(path.join(v8, 'TUZ.ear', 'META-INF', 'application.xml'), 10);
     const surum = path.join(kok, 'releases', 'BAGLI-2.0.ear');
@@ -1697,7 +1697,7 @@ test(
   },
 );
 
-// ET20 KULLANIM KANITI (surum 4, 2026-11-17; DACRPAP01: domain.xml'de olmayan EAR'da canli Node.js sureci). GERCEK
+// ET20 KULLANIM KANITI (surum 4, 2026-11-17; ODCRPAP01: domain.xml'de olmayan EAR'da canli Node.js sureci). GERCEK
 // alt surecler: cwd = EAR/X.war ('sleep'), EAR icindeki dosyayi acik tutan python (fd), arguman yolunda EAR'i
 // tasiyan ve cmdline'inda sir gecen python (cmdline). Onek tuzagi (X.ear1). Sahte proc koku: ' (deleted)',
 // hidepid notu, okunamayan surec, fd / surec / mtime sinirlari -> KISMI; proc yok / bos -> OLCULEMEDI.

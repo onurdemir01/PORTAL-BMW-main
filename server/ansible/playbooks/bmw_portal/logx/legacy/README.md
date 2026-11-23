@@ -35,7 +35,7 @@ yazıldığını merak ediyorsanız önce buraya bakın.
 - Okuma kullanıcısı değişkendir: `logx_legacy_user`, varsayılan `was`. Sabit kodlanmaz.
 - Keşif yalnız OKUR (find); play düzeyinde `become: true`, `become_user: was`,
   `become_method: dzdo`.
-- Transferde yetki BÖLÜNMÜŞTÜR (üretim olayı 2026-10-01, ESJBOT02): kaynak logu OKUYAN görevler
+- Transferde yetki BÖLÜNMÜŞTÜR (üretim olayı 2026-10-01, OFJBOT02): kaynak logu OKUYAN görevler
   (stat ve geçici ZIP) görev düzeyinde `was`/dzdo ile; staging/fallback'e YAZAN görevler
   (copy `remote_src`, dizin oluşturma) bağlanan kullanıcıyla. Play'in tamamını `was` yapmak
   YANLIŞTI: staging (`/sw/BMW_PORTAL/logs/legacy`) ve fallback dizinleri bağlanan kullanıcınındır,

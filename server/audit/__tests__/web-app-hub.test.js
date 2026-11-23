@@ -60,12 +60,12 @@ async function getir() {
   }
 }
 
-test('WH1 3-tier GOJBAB03: sertifikada yok, Server Hub GOJBWP03 vhostu bulunur ve eslesmis sayilir', async () => {
+test('WH1 3-tier OPJBAB03: sertifikada yok, Server Hub OPJBWP03 vhostu bulunur ve eslesmis sayilir', async () => {
   veri = {
-    apps: [{ app: 'gfysvc-d', host: 'GOJBAB03', env: 'DEV', domain: 'odmz.invalid' }],
+    apps: [{ app: 'gfysvc-d', host: 'OPJBAB03', env: 'DEV', domain: 'odmz.invalid' }],
     vhosts: [
       {
-        host: 'GOJBWP03',
+        host: 'OPJBWP03',
         server_name: 'gfysvc-d.odmz.invalid',
         aliases: '',
         listen: '*:443',
@@ -79,7 +79,7 @@ test('WH1 3-tier GOJBAB03: sertifikada yok, Server Hub GOJBWP03 vhostu bulunur v
   assert.equal(j.ok, true);
   const r = j.rows[0];
   assert.equal(r.matched, true, r.how);
-  assert.equal(r.web[0].host, 'GOJBWP03');
+  assert.equal(r.web[0].host, 'OPJBWP03');
   assert.match(r.how, /Server Hub/);
   assert.equal(j.matchedTotal, 1);
 });
@@ -304,17 +304,17 @@ test('WH8 DNS bolgesi vhost basina: server_name alani kazanir, yoksa uygulama do
 test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster kaynagi, topoloji nedeni; eslesmeyende sebep', async () => {
   veri = {
     apps: [
-      { app: 'crm', host: 'DACRAAB01', env: 'PROD', domain: 'odmz.invalid' },
+      { app: 'crm', host: 'ODCRAAB01', env: 'PROD', domain: 'odmz.invalid' },
       { app: 'yalniz', host: 'ORYLAP01', env: 'PROD', domain: '' },
     ],
     certs: [
-      cert('DACRWAP01', 'crm.odmz.invalid'),
+      cert('ODCRWAP01', 'crm.odmz.invalid'),
       cert('ORYLWP01', 'baska.odmz.invalid'),
       cert('ORYLWP01', 'diger.odmz.invalid'),
     ],
     vhosts: [
       {
-        host: 'DACRWAB02',
+        host: 'ODCRWAB02',
         server_name: 'x.odmz.invalid',
         aliases: '',
         listen: '*:443',
@@ -331,7 +331,7 @@ test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster k
   assert.ok(
     crm.nasil.some(
       (s) =>
-        s.startsWith('DACRAAB01 → DACRWAP01: 5. harf A→W + son harf P (7 harf = Ankara)') &&
+        s.startsWith('ODCRAAB01 → ODCRWAP01: 5. harf A→W + son harf P (7 harf = Ankara)') &&
         s.includes('server_name\'de "crm" geçiyor (tam ad; sertifika envanteri)'),
     ),
     JSON.stringify(crm.nasil),
@@ -339,7 +339,7 @@ test('WH9 satir basina aciklama: Ankara 7 harf kurali, sertifika + mod_cluster k
   assert.ok(
     crm.nasil.some(
       (s) =>
-        s.startsWith('DACRWAB02: ad kuralı dışında') &&
+        s.startsWith('ODCRWAB02: ad kuralı dışında') &&
         s.includes('mod_cluster balancer adı = uygulama adı (balancer://crm)'),
     ),
     JSON.stringify(crm.nasil),

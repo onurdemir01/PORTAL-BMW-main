@@ -41,7 +41,7 @@ test('PA1 URETIM etiketleri yakalanir (serbest yazim + kelime icine gomulu)', ()
     // GERCEK cluster/host adlari: isaret ayirici olmadan gomulu
     'orocpprod1',
     'oiocpank3rdwyprod1',
-    'DACRWAP01-PROD',
+    'ODCRWAP01-PROD',
   ])
     assert.equal(ga.uretimEtiketi(e), true, `uretim sayilmadi: ${e}`);
 });

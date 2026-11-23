@@ -1987,7 +1987,7 @@ export function CreateModal({
                 <p>
                   Retirement bu hedeflerin vhost’unu <b>kapatmaz</b> ve trafiğini kontrol edemez.
                   3-tier uygulamalarda web sunucusu ad kuralıyla aranır (5. harf A→W, ayrıca son
-                  harf P; Pendik 6 harf: GOJBAB03 → GOJBWP03, Ankara 7 harf: DACRAAB01 → DACRWAP01);
+                  harf P; Pendik 6 harf: OPJBAB03 → OPJBWP03, Ankara 7 harf: ODCRAAB01 → ODCRWAP01);
                   aday sunucu Server Hub taramasında ya da sertifika envanterinde yoksa bulunamaz.
                   Devam etmeden önce web sunucusunu elle doğrulayın.
                 </p>

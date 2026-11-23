@@ -111,11 +111,11 @@ describe('Web-App: uygulama başına tek satır', () => {
   });
 
   it("WG4 domain boş: Ankara üyesi server_name bölgesiyle Ankara DNS'ine sorulur, Pendik cevabı gösterilmez", async () => {
-    const r = satir('DACRAAB01', {
+    const r = satir('ODCRAAB01', {
       domain: '',
       dnsBolge: null,
       tierKaynak: 'eşleşme',
-      web: [vh('DACRWAP01', '20.0.0.1', 'Ankara', { dnsBolge: 'dmz' })],
+      web: [vh('ODCRWAP01', '20.0.0.1', 'Ankara', { dnsBolge: 'dmz' })],
     });
     mockWebApp.mockResolvedValue(veri([r]));
     mockDns.mockResolvedValue({

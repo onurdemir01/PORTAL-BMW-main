@@ -405,7 +405,7 @@ test('RE2 EAR bulgulari: WAR yok, JVM yok (3 neden), XML okunamadi, kok girdiler
   );
 });
 
-// KULLANIM KANITI (2026-11-17, DACRPAP01: domain.xml'de olmayan EAR'da canli Node.js): surec ya da 7 gun icinde
+// KULLANIM KANITI (2026-11-17, ODCRPAP01: domain.xml'de olmayan EAR'da canli Node.js): surec ya da 7 gun icinde
 // yazma -> EAR_JVM_YOK YERINE EAR_JBOSS_DISI_KULLANIM (bilgi), R5 retire adayi YOK; olculemediyse uyari + ek.
 test('RE2b EAR kullanim kaniti: surec / 7 gun yazma -> JBoss disi kullanim, R5 yok; KISMI / eski tarayici eki', () => {
   const sn = (ms) => Math.floor(ms / 1000);

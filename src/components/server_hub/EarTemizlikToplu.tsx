@@ -215,6 +215,8 @@ export function TopluTeyitPenceresi({
   const [haric, setHaric] = useState<Set<number>>(() => new Set());
   const [acik, setAcik] = useState<Set<number>>(() => new Set());
   const [yazilan, setYazilan] = useState('');
+  // Secimde Production kayit varsa tek OCO numarasi hepsini kapsar (sunucu acik pencereyi denetler).
+  const [ocoNo, setOcoNo] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
   const [reddedilenler, setReddedilenler] = useState<{ id: number; message: string }[]>([]);
@@ -228,7 +230,8 @@ export function TopluTeyitPenceresi({
   const prodSayisi = dahil.filter((o) => o.k.prod).length;
   const toplamKb = dahil.reduce((t, o) => t + (Number(bilgiDegeri(o.k, 'boyut_kb')) || 0), 0);
   const asti = n > TOPLU_UST_SINIR;
-  const etkin = n > 0 && !asti && yazilan === beklenen && !gonderiliyor;
+  const ocoTamam = prodSayisi === 0 || /^\d{1,20}$/.test(ocoNo.trim());
+  const etkin = n > 0 && !asti && yazilan === beklenen && ocoTamam && !gonderiliyor;
   const neden =
     n === 0
       ? 'Dahil edilen kayıt yok'
@@ -236,7 +239,9 @@ export function TopluTeyitPenceresi({
         ? `En çok ${fmtNumber(TOPLU_UST_SINIR)} kayıt tek seferde silinebilir`
         : yazilan !== beklenen
           ? `Onaylamak için tam “${beklenen}” yazın`
-          : undefined;
+          : !ocoTamam
+            ? 'Seçimde Production kayıt var: açık OCO numarasını yazın'
+            : undefined;
 
   const kume = (s: Set<number>, id: number, ekle: boolean) => {
     const m = new Set(s);
@@ -254,7 +259,11 @@ export function TopluTeyitPenceresi({
       o.k.planJobId == null ? [] : [{ id: o.k.id, planJobId: o.k.planJobId }],
     );
     try {
-      const r = await serverHubApi.earTemizlikTopluSil({ onayMetni: yazilan, kayitlar });
+      const r = await serverHubApi.earTemizlikTopluSil({
+        onayMetni: yazilan,
+        kayitlar,
+        ...(prodSayisi > 0 ? { ocoNo: ocoNo.trim() } : {}),
+      });
       if (!r || !r.ok) {
         setReddedilenler((r && r.reddedilenler) || []);
         throw new Error((r && r.message) || 'Toplu silme başlatılamadı.');
@@ -342,6 +351,24 @@ export function TopluTeyitPenceresi({
             aria-label="Toplu onay metni"
           />
         </label>
+        {prodSayisi > 0 && (
+          <label className="block">
+            <span className="text-[12px]">
+              Seçimde {fmtNumber(prodSayisi)} Production kayıt var: silme yalnız açık bir OCO
+              değişiklik penceresinde yapılır. OCO numarası:
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="input-modern mt-1 w-full font-mono"
+              value={ocoNo}
+              onChange={(e) => setOcoNo(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="OCO numarası"
+            />
+          </label>
+        )}
         {hata && (
           <div
             className="rounded-lg border px-3 py-2 text-[12px] space-y-1"
