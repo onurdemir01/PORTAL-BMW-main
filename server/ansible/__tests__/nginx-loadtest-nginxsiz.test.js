@@ -489,6 +489,15 @@ test(
       pidYaz('logs/nginx.pid', '999999999\n');
       bak('hidepid, olu pid', 'ngok', 'olu', '-');
       pidSil();
+      // hidepid=1 (noaccess): pid 1 GORUNUR ama cmdline okunamaz -> yine belirsiz.
+      if (!(typeof process.getuid === 'function' && process.getuid() === 0)) {
+        fs.mkdirSync(path.join(d, 'proc', '1'), { recursive: true });
+        fs.writeFileSync(path.join(d, 'proc', '1', 'cmdline'), '/sbin/init\0');
+        fs.chmodSync(path.join(d, 'proc', '1', 'cmdline'), 0);
+        bak('hidepid=1, pid dosyasi yok', 'ngok', 'yok', '-');
+        fs.chmodSync(path.join(d, 'proc', '1', 'cmdline'), 0o644);
+        fs.rmSync(path.join(d, 'proc', '1'), { recursive: true, force: true });
+      }
       fs.mkdirSync(path.join(d, 'proc', '1'), { recursive: true });
       fs.writeFileSync(path.join(d, 'proc', '1', 'cmdline'), '/sbin/init\0');
 

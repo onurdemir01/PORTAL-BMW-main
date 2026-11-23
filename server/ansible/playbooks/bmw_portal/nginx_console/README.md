@@ -153,9 +153,14 @@ Sebepleri:
   - Hedef dosyanın içeriği özete, hedef ağacın satırları ize girer; bağın hedef **metni** de ize girer (yeniden yönlendirme).
   - Eskiden `find -type f` bağı hiç görmüyordu: farklı kütüphanelere giden aynı adlı bağ (`assets -> /paylasilan/<host>/lib`) iki sunucuyu bayt bayt aynı satırla "eşit" gösteriyordu.
   - Kırık bağ ya da döngü `okunamadi` olur.
-  - Dışarıya giden bağ çok büyük bir ağaca gidebilir: uygulama başına `NGINX_PKG_DOSYA_SINIRI` (50000) dosya; aşılırsa `okunamadi`.
+  - Dışarıya giden bağ çok büyük (ya da NFS) bir ağaca gidebilir:
+    - tek gezinti yapılır (`%Y` ile tür);
+    - sınır uygulama başına `NGINX_PKG_DOSYA_SINIRI` (50000) **girdidir** (dosya ve dizin; `head` gezintiyi de durdurur);
+    - `find` süresi `NGINX_PKG_FIND_SN` (120 sn) ile sınırlıdır (`timeout` varsa).
+    - Sınır ya da süre aşılırsa `okunamadi`.
+  - Ansible görev sınırları: parmak izi `nginx_console_fp_timeout` (300 sn), döküm `nginx_console_dump_timeout` (1800 sn). Asılan tek sunucu tüm dökümü bekletmez; o sunucu "döküm alınamadı" kaydını alır.
   - Bağsız uygulamada iz eskisiyle aynı kalır (önbellek isabeti korunur; dağıtım sonrası yalnız bağlı uygulamalar yeniden özetlenir).
-  - Bekçi: `server/ansible/__tests__/nginx-paket-dokum.test.js` (NP1-NP5, gerçek bash; bash 4+ ve GNU find ister, CI'da koşar).
+  - Bekçi: `server/ansible/__tests__/nginx-paket-dokum.test.js` (NP1-NP7, gerçek bash; bash 4+ ve GNU find ister, CI'da koşar).
 - **Gizlilik:** dosya ve config içeriği dökülmez, yalnız özet.
 - **İlk sürümün açıkları** (aynı gün bağımsız incelemede bulundu):
   - okunamayan dosya ya da dizin özetten sessizce düşüyor, farklı içeriği eşit gösteriyordu;

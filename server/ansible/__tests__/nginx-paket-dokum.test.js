@@ -11,6 +11,8 @@
 //   NP3 kirik bag ve dongu: durum okunamadi (esit sayilmaz)
 //   NP4 dosya siniri asilinca okunamadi (disari giden bag cok buyuk agaca gidebilir)
 //   NP5 bagsiz uygulamada parmak izi eski algoritmayla ayni: onbellek isabeti korunur (gereksiz sha256 yok)
+//   NP6 sinir GIRDI sayar: dosyasi az ama dizini cok agaca giden bag da durdurulur (gezinti sinirsiz degil)
+//   NP7 find zaman asimina duserse (timeout 124) okunamadi; timeout komutu yoksa uygulamalar yine olculur
 // bash 4+ (iliskisel dizi) ve GNU find (-printf) gerekir; yoksa gerekceyle atlanir (CI Ubuntu'da kosar).
 'use strict';
 
@@ -67,7 +69,7 @@ function agac(kok, uygulamalar) {
   return { prefix, apps };
 }
 
-function paketler(a, ek = {}) {
+function paketler(a, ek = {}, pathOnEk = null) {
   const r = spawnSync('bash', [BETIK], {
     encoding: 'utf8',
     env: {
@@ -77,6 +79,7 @@ function paketler(a, ek = {}) {
       NGINX_ERRLOG: '/dev/null',
       NGINX_APPS: a.apps,
       NGINX_PKG_CACHE: a.onbellek || path.join(path.dirname(a.prefix), 'onbellek'),
+      ...(pathOnEk ? { PATH: `${pathOnEk}:${process.env.PATH}` } : {}),
       ...ek,
     },
     timeout: 60000,
@@ -201,6 +204,36 @@ test('NP5 bagsiz uygulamada parmak izi eski algoritmayla ayni (onbellek isabeti)
       eski,
       'bagsiz pakette iz degisti: dagitim sonrasi tum onbellek bosa gider',
     );
+  } finally {
+    fs.rmSync(kok, { recursive: true, force: true });
+  }
+});
+
+test('NP6 sinir girdi sayar: dizin dolu agaca giden bag durdurulur', ATLA, () => {
+  const kok = fs.mkdtempSync(path.join(os.tmpdir(), 'np6-'));
+  try {
+    const dev = path.join(kok, 'dev-agac');
+    for (let i = 0; i < 40; i++) fs.mkdirSync(path.join(dev, `d${i}`, 'alt'), { recursive: true });
+    fs.writeFileSync(path.join(dev, 'tek.js'), 'x');
+    const h = agac(path.join(kok, 'h'), { ui: { ...PAKET, dis: { bag: dev } } });
+    assert.equal(paketler(h, { NGINX_PKG_DOSYA_SINIRI: '30' }).ui.durum, 'okunamadi');
+    assert.equal(paketler(h, { NGINX_PKG_DOSYA_SINIRI: '500' }).ui.durum, 'var');
+  } finally {
+    fs.rmSync(kok, { recursive: true, force: true });
+  }
+});
+
+test('NP7 find zaman asimi okunamadi; timeout komutu yoksa olcum surer', ATLA, () => {
+  const kok = fs.mkdtempSync(path.join(os.tmpdir(), 'np7-'));
+  try {
+    const h = agac(path.join(kok, 'h'), { ui: PAKET });
+    const sahte = path.join(kok, 'bin');
+    fs.mkdirSync(sahte);
+    fs.writeFileSync(path.join(sahte, 'timeout'), '#!/bin/sh\nexit 124\n', { mode: 0o755 });
+    assert.equal(paketler(h, {}, sahte).ui.durum, 'okunamadi', 'zaman asimi esit sayilabilir');
+    // timeout komutu yoksa (sahte kaldirildi; gercek coreutils PATH'te olsa da betik onu bulur) olcum surer.
+    fs.rmSync(path.join(sahte, 'timeout'));
+    assert.equal(paketler(h, {}, sahte).ui.durum, 'var');
   } finally {
     fs.rmSync(kok, { recursive: true, force: true });
   }
