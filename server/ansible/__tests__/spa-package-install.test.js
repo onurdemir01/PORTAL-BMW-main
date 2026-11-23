@@ -322,7 +322,8 @@ const SAHTE_CURL = [
   "  printf '\\r\\n'",
   '  exit 0',
   'fi',
-  'if [ -n "$w" ]; then printf \'%s\' "${FAKE_VERIFY_CODE:-200}"; exit 0; fi',
+  // Gercek sablon: /ready bir dizine alias, nginx sondaki '/' icin her zaman 301 doner (job 3590287).
+  'if [ -n "$w" ]; then case "$url" in */ready) printf 301 ;; *) printf \'%s\' "${FAKE_VERIFY_CODE:-200}" ;; esac; exit 0; fi',
   'if [ "${FAKE_DL_RC:-0}" != 0 ]; then printf partial > "$out"; exit "$FAKE_DL_RC"; fi',
   'printf PKfake > "$out"',
   '[ -n "${FAKE_DL_ALSO:-}" ] && printf foreign > "$(dirname "$out")/$FAKE_DL_ALSO"',
@@ -761,23 +762,27 @@ test(
       assert.ok(!fs.readdirSync(hysDir(d)).some((f) => f.endsWith('.part')), '.part kaldi');
       const dogrulama = curlCagrilari(s.calls).filter((c) => c.includes('--resolve'));
       assert.equal(dogrulama.length, 2);
-      for (const yol of ['/ready', '/config']) {
+      // /ready dogrulanmaz: sablonda dizine alias, her zaman 301 (job 3590287); kok (index.html) ve /config 200.
+      for (const yol of ['/', '/config']) {
         assert.ok(
           dogrulama.some(
-            (c) => c.includes(`${APP}-${NS}.apps.invalid:443:192.0.2.10`) && c.endsWith(yol),
+            (c) =>
+              c.includes(`${APP}-${NS}.apps.invalid:443:192.0.2.10`) &&
+              c.endsWith(`${APP}-${NS}.apps.invalid${yol}`),
           ),
           `${yol} dogrulanmadi`,
         );
       }
+      assert.ok(!dogrulama.some((c) => c.endsWith('/ready')), '/ready dogrulanmamali');
       assert.ok(!s.message.includes('apps.invalid'), 'mesajda server_name');
     }),
 );
 
-test('SPI19 host: /ready 200 degilse FAIL verify ve geri alma', { skip: SKIP }, () =>
+test('SPI19 host: kok adres 200 degilse FAIL verify ve geri alma', { skip: SKIP }, () =>
   sahteIle([], (d) => {
     const s = hostKos(d, { FAKE_VERIFY_CODE: '404' });
     assert.equal(s.step, 'verify');
-    assert.match(s.message, /\/ready HTTP 404/);
+    assert.match(s.message, /^\/ HTTP 404 \(beklenen 200\)/);
     assert.equal(nginxCagrilari(s.calls).at(-1), `nginx_delete.sh 2 ${NS} ${APP}`);
   }),
 );

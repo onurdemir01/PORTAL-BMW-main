@@ -79,7 +79,7 @@ Portal `config_urls`'ü SPA keşfinin route ayrıntısından kurar (küçük har
 | `write` | `/config`'ten çekilen içerik **birebir** `/hysdeploy/<ns>/<app>/application.json` (0644) olarak yazılır; dosya varsa üzerine yazılmaz | aynı |
 | `check` (yeniden) | Kurulum adımlarından **hemen önce** hedefler yeniden denetlenir | Hedef artık varsa `FAIL kurulum sirasinda baska bir deployment hedefi olusturdu`. İndirilen dosyalar silinir, `nginx_delete.sh` **çağrılmaz**. |
 | `pre_deployment` `unzip` `configuration` `syntax_check` `reload` | `bash nginx_<adım>.sh prod <ns> <app> <sürüm> portal / <job_no>` | "Hata ve geri alma notları" bölümündeki kurallar. İlk kurulumda yedek olmadığından `nginx_rollback.sh` 49 ile düşerdi. Mesaj geri almanın sonucunu da yazar. |
-| `verify` | `server_name` ve listen IP üretilen conf'tan okunur, `/ready` ve `/config` 200 dönmeli | aynı |
+| `verify` | `server_name` ve listen IP üretilen conf'tan okunur, `/` (`index.html`) ve `/config` 200 dönmeli. `/ready` denetlenmez: şablonda bir dizine alias olduğu için nginx her zaman 301 döner (job 3590287'de bu yüzden 6 sunucuda kurulum geri alınmıştı). | aynı |
 | `cleanup` | `nginx_cleanup_backup.sh` | Kurulum `OK` kalır, mesaja uyarı eklenir. |
 
 Plan denetimleri, sırayla:
