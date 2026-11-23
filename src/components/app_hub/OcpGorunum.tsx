@@ -5,6 +5,8 @@
 //   * saatlik tarama (2026-11-18): Portal saatte bir tüm cluster'ları salt okunur tarar (filo-poller);
 //   * "Canlı oku": o anki durum için tek uygulamalık salt okunur AWX işi.
 // (cluster, namespace) başına hangisi daha yeniyse o gösterilir; kartta kaynağı ve zamanı yazar.
+// 2026-11-23: düz "Çalıştığı yerler" tablosu ve "Cluster başına pod" çipleri yerine ortam başına küme, cluster'lar
+// alt alta (OcpOrtamlar.tsx): aynı ortamda çoğunluktan sapan sürüm / JVM / kaynak / replika sarı görünür.
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon, BoltIcon } from '@heroicons/react/24/outline';
 import { appHubApi, type OcpCanliOkuma, type OcpDetay, type OcpYer } from '@/api/appHubApi';
@@ -13,6 +15,10 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { toast } from '@/hooks/useToast';
 import { fmtDateTime, fmtNumber, fmtRelative } from '@/utils/datetime';
 import { Bolum, Hap, JvmArglari, KaynakUyarisi, OzetKutusu, TD, TH } from './ortak';
+import OcpOrtamlar from './OcpOrtamlar';
+import { ORTAM_SIRA, podSayisi, yerAnahtari as anahtar } from './ocpKarsilastir';
+
+export { podSayisi } from './ocpKarsilastir';
 
 const KAYNAK_AD: Record<string, string> = {
   envanter: 'OpenShift envanteri (Openshift_Inventory)',
@@ -21,27 +27,7 @@ const KAYNAK_AD: Record<string, string> = {
   kullanim: 'Dynatrace kullanım verisi',
 };
 
-const anahtar = (c: string, n: string) => `${c.toLowerCase()}|${n.toLowerCase()}`;
-
 const kaynakAdi = (o: OcpCanliOkuma) => (o.kaynak === 'saatlik' ? 'saatlik tarama' : 'canlı okuma');
-
-/** Pod sayısı: hazır / toplam; okunamadıysa null (0 DEĞİL). Eski canlı okumada podOzet yoksa listeden sayılır. */
-export function podSayisi(o?: OcpCanliOkuma): { hazir: number; toplam: number } | null {
-  if (!o || !o.ok) return null;
-  if (o.podOzet) {
-    if (o.podOzet.okunamadi || o.podOzet.toplam == null) return null;
-    return { hazir: o.podOzet.hazir ?? 0, toplam: o.podOzet.toplam };
-  }
-  // Eski kayıt (podOzet yok): pod listesi okunamadıysa sayı yok; liste en çok 200 olduğu için tam sayı da değil.
-  if (!o.podlar || (o.hatalar || []).some((h) => /pod listesi okunamadi/i.test(h))) return null;
-  const hazir = o.podlar.filter((p) => {
-    const [r, t] = String(p.hazir || '')
-      .split('/')
-      .map(Number);
-    return p.faz === 'Running' && t > 0 && r === t;
-  }).length;
-  return { hazir, toplam: o.podlar.length };
-}
 
 /** Okumaları birleştirir: (cluster, namespace) başına daha yeni olan kalır. */
 export function okumaBirlestir(eski: OcpCanliOkuma[], yeni: OcpCanliOkuma[]): OcpCanliOkuma[] {
@@ -85,29 +71,7 @@ export function clusterPodlari(okumalar: OcpCanliOkuma[]) {
   return [...m.values()].sort((a, b) => a.cluster.localeCompare(b.cluster));
 }
 
-/** Aynı adda Deployment (workloadRef, 0'a ölçekli) + Rollout varsa replikası olan nesne gösterilir. */
-function anaNesne(o?: OcpCanliOkuma) {
-  return (o?.nesneler || []).reduce<NonNullable<OcpCanliOkuma['nesneler']>[number] | null>(
-    (a, n) => (!a || (n.istenen || 0) > (a.istenen || 0) ? n : a),
-    null,
-  );
-}
-
-function turOzeti(y: OcpYer, canli?: OcpCanliOkuma) {
-  const n = anaNesne(canli);
-  if (n && canli)
-    return { tur: n.tur, replika: `${n.hazir ?? 0} / ${n.istenen ?? 0}`, kaynak: kaynakAdi(canli) };
-  const c = y.onbellek?.kayitlar?.[0];
-  if (c && c.kind && c.kind !== 'Unknown')
-    return {
-      tur: c.kind,
-      replika: c.replicas == null ? '?' : String(c.replicas),
-      kaynak: 'önbellek' as const,
-    };
-  return null;
-}
-
-function CanliKart({ o }: { o: OcpCanliOkuma }) {
+function CanliKart({ o, ortam }: { o: OcpCanliOkuma; ortam: string | null }) {
   const pod = podSayisi(o);
   const kisaltildi =
     !!o.podOzet && o.podOzet.toplam != null && o.podOzet.listelenen < o.podOzet.toplam;
@@ -117,6 +81,7 @@ function CanliKart({ o }: { o: OcpCanliOkuma }) {
       style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
     >
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        {ortam && <Hap ton="bilgi">{ortam}</Hap>}
         <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
           {o.cluster} / {o.namespace}
         </strong>
@@ -322,7 +287,18 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
     [],
   );
   const canliHata = !Array.isArray(d.canli) ? d.canli.hata : null;
-  const canliIx = new Map(okumalar.map((o) => [anahtar(o.cluster, o.namespace), o]));
+  const ortamIx = new Map(d.yerler.map((y) => [anahtar(y.cluster, y.namespace), y.ortam]));
+  const ortamOf = (o: OcpCanliOkuma) => ortamIx.get(anahtar(o.cluster, o.namespace)) ?? null;
+  const sira = (x: string | null) => {
+    const i = x ? ORTAM_SIRA.indexOf(x.toUpperCase()) : -1;
+    return i < 0 ? 99 : i;
+  };
+  const kartlar = [...okumalar].sort(
+    (a, b) =>
+      sira(ortamOf(a)) - sira(ortamOf(b)) ||
+      a.cluster.localeCompare(b.cluster) ||
+      a.namespace.localeCompare(b.namespace),
+  );
 
   const izle = async (serverId: number, jobId: number) => {
     for (let i = 0; i < 120 && yasiyor.current; i++) {
@@ -438,33 +414,9 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
       >
         {filoMetni}
       </p>
-      {dagilim.length > 0 && (
-        <div
-          className="flex flex-wrap items-center gap-2 text-[12px]"
-          data-testid="cluster-pod-dagilimi"
-        >
-          <span style={{ color: 'var(--text-secondary)' }}>Cluster başına pod:</span>
-          {dagilim.map((g) => {
-            const tamam = !g.olculemeyen && g.toplam > 0 && g.hazir === g.toplam;
-            return (
-              <Hap
-                key={g.cluster}
-                ton={tamam ? 'iyi' : g.toplam || g.olculemeyen ? 'uyari' : 'notr'}
-              >
-                <span style={{ fontFamily: 'var(--font-mono)' }}>{g.cluster}</span>{' '}
-                <span className="tabular-nums">
-                  {g.toplam} pod{g.toplam ? ` · ${g.hazir} hazır` : ''}
-                  {g.olculemeyen ? ` · ${g.olculemeyen} namespace ölçülemedi` : ''}
-                </span>
-              </Hap>
-            );
-          })}
-        </div>
-      )}
-
       <Bolum
-        baslik="Çalıştığı yerler"
-        aciklama="Envanterdeki cluster / namespace kayıtları. Tür, replika ve pod sayısı saatlik taramadan ya da daha yeniyse canlı okumadan (ikisi de yoksa LogX keşif önbelleğinden) gelir."
+        baslik="Ortamlar ve cluster'lar"
+        aciklama="Her ortam ayrı; içinde cluster / namespace'ler alt alta. Aynı ortamda çoğunluktan farklı olan tür, replika, sürüm, CPU / bellek ve JVM parametresi sarı görünür, altında çoğunluk değeri yazar. Veri saatlik taramadan ya da daha yeniyse canlı okumadan gelir."
         sag={
           <>
             <Button
@@ -488,6 +440,13 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
           </>
         }
       >
+        <OcpOrtamlar yerler={d.yerler} okumalar={okumalar} />
+      </Bolum>
+
+      <Bolum
+        baslik="Adresler ve istek"
+        aciklama="Uygulamaya atfedilen route'lar ve Dynatrace istek sayısı (cluster / namespace başına)."
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -495,158 +454,83 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
                 <th className={TH}>Ortam</th>
                 <th className={TH}>Cluster</th>
                 <th className={TH}>Namespace</th>
-                <th className={TH}>Tür</th>
-                <th className={TH}>Replika (hazır / istenen)</th>
-                <th className={TH}>Pod (hazır / toplam)</th>
                 <th className={TH}>Root adres (route)</th>
                 <th className={TH}>İstek</th>
               </tr>
             </thead>
             <tbody>
-              {!d.yerler.length && <TableEmptyRow colSpan={8} />}
-              {d.yerler.map((y) => {
-                const o = canliIx.get(anahtar(y.cluster, y.namespace));
-                const t = turOzeti(y, o);
-                const p = podSayisi(o);
-                return (
-                  <tr
-                    key={`${y.cluster}|${y.namespace}`}
-                    style={{ borderTop: '1px solid var(--border-subtle)' }}
-                  >
-                    <td className={TD}>
-                      {y.ortam || (
-                        <span
-                          style={{ color: 'var(--status-warning-text)' }}
-                          title="Cluster Portal kataloğunda yok; canlı okuma yapılamaz"
-                        >
-                          katalogda yok
-                        </span>
-                      )}
-                      {y.tenant && (
-                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {y.tenant}
-                        </div>
-                      )}
-                    </td>
-                    <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
-                      {y.konsol ? (
-                        <a
-                          href={y.konsol}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 hover:underline"
-                        >
-                          {y.cluster} <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
-                        </a>
-                      ) : (
-                        y.cluster
-                      )}
-                    </td>
-                    <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
-                      {y.namespace}
-                    </td>
-                    <td className={TD}>
-                      {t ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          {t.tur}
-                          {t.kaynak !== 'önbellek' && (
-                            <Hap
-                              ton="notr"
-                              title={o && o.alinma ? fmtDateTime(o.alinma) : undefined}
+              {!d.yerler.length && <TableEmptyRow colSpan={5} />}
+              {d.yerler.map((y) => (
+                <tr
+                  key={`${y.cluster}|${y.namespace}`}
+                  style={{ borderTop: '1px solid var(--border-subtle)' }}
+                >
+                  <td className={TD}>
+                    {y.ortam || (
+                      <span
+                        style={{ color: 'var(--status-warning-text)' }}
+                        title="Cluster Portal kataloğunda yok; canlı okuma yapılamaz"
+                      >
+                        katalogda yok
+                      </span>
+                    )}
+                  </td>
+                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {y.cluster}
+                  </td>
+                  <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>
+                    {y.namespace}
+                  </td>
+                  <td className={`${TD} text-[12px]`}>
+                    {y.routelar.length ? (
+                      <ul className="space-y-0.5">
+                        {y.routelar.map((r) => (
+                          <li key={r.adres} className="break-all">
+                            <a
+                              href={`https://${r.adres}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                              style={{ fontFamily: 'var(--font-mono)' }}
                             >
-                              {t.kaynak}
-                            </Hap>
-                          )}
-                          {t.kaynak === 'önbellek' && (
-                            <Hap
-                              ton="notr"
-                              title={
-                                y.onbellek?.alinma
-                                  ? `LogX keşfi ${fmtDateTime(y.onbellek.alinma)}`
-                                  : undefined
-                              }
-                            >
-                              önbellek{y.onbellek?.bayat ? ' · bayat' : ''}
-                            </Hap>
-                          )}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>bilinmiyor</span>
-                      )}
-                    </td>
-                    <td className={`${TD} tabular-nums`}>{t ? t.replika : '—'}</td>
-                    <td className={`${TD} tabular-nums`} data-testid="yer-pod">
-                      {p ? (
-                        <span
-                          style={{
-                            color:
-                              p.toplam && p.hazir < p.toplam
-                                ? 'var(--status-warning-text)'
-                                : undefined,
-                          }}
-                        >
-                          {p.hazir} / {p.toplam}
-                        </span>
-                      ) : (
-                        <span
-                          style={{ color: 'var(--text-muted)' }}
-                          title={o ? 'Pod listesi okunamadı' : 'Bu yer için tarama verisi yok'}
-                        >
-                          {o ? 'ölçülemedi' : '—'}
-                        </span>
-                      )}
-                    </td>
-                    <td className={`${TD} text-[12px]`}>
-                      {y.routelar.length ? (
-                        <ul className="space-y-0.5">
-                          {y.routelar.map((r) => (
-                            <li key={r.adres} className="break-all">
-                              <a
-                                href={`https://${r.adres}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="hover:underline"
-                                style={{ fontFamily: 'var(--font-mono)' }}
-                              >
-                                {r.adres}
-                              </a>
-                              <span style={{ color: 'var(--text-muted)' }}>
-                                {' '}
-                                · {r.tls || 'tls yok'} · {r.kanit}
-                              </span>
-                            </li>
-                          ))}
-                          {y.atfedilmeyenRoute > 0 && (
-                            <li style={{ color: 'var(--text-muted)' }}>
-                              +{y.atfedilmeyenRoute} route bu uygulamaya atfedilemedi
-                            </li>
-                          )}
-                        </ul>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>route bulunamadı</span>
-                      )}
-                    </td>
-                    <td className={`${TD} tabular-nums text-[12px]`}>
-                      {y.istek && y.istek.olculdu ? (
-                        <>
-                          {fmtNumber(y.istek.toplam ?? 0)}
-                          <div style={{ color: 'var(--text-muted)' }}>{y.istek.gun ?? 7} gün</div>
-                          {y.istek.tumCluster && (
-                            <div
-                              style={{ color: 'var(--text-muted)' }}
-                              title="Dynatrace ölçümü cluster ayrımı vermiyor; namespace + uygulama toplamıdır."
-                            >
-                              namespace toplamı
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                              {r.adres}
+                            </a>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              {' '}
+                              · {r.tls || 'tls yok'} · {r.kanit}
+                            </span>
+                          </li>
+                        ))}
+                        {y.atfedilmeyenRoute > 0 && (
+                          <li style={{ color: 'var(--text-muted)' }}>
+                            +{y.atfedilmeyenRoute} route bu uygulamaya atfedilemedi
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>route bulunamadı</span>
+                    )}
+                  </td>
+                  <td className={`${TD} tabular-nums text-[12px]`}>
+                    {y.istek && y.istek.olculdu ? (
+                      <>
+                        {fmtNumber(y.istek.toplam ?? 0)}
+                        <div style={{ color: 'var(--text-muted)' }}>{y.istek.gun ?? 7} gün</div>
+                        {y.istek.tumCluster && (
+                          <div
+                            style={{ color: 'var(--text-muted)' }}
+                            title="Dynatrace ölçümü cluster ayrımı vermiyor; namespace + uygulama toplamıdır."
+                          >
+                            namespace toplamı
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -669,8 +553,8 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
               okunur, genelde 1-3 dk) ve sonuç bu sayfayı açan herkese görünür.
             </p>
           )}
-          {okumalar.map((o) => (
-            <CanliKart key={anahtar(o.cluster, o.namespace)} o={o} />
+          {kartlar.map((o) => (
+            <CanliKart key={anahtar(o.cluster, o.namespace)} o={o} ortam={ortamOf(o)} />
           ))}
         </div>
       </Bolum>

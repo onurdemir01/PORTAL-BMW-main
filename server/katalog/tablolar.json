@@ -537,6 +537,31 @@
   },
   {
     "db": "Portal",
+    "tablo": "spa_paket_kurulum",
+    "amac": "Intranet SPA paket kurulumu (Artifactory -> PROD intranet Nginx) işlerinin sonucu: AWX işi, mod (plan / apply), uygulama, sürüm, sunucu, durum (PLAN_OK / OK / SKIP / FAIL), adım ve mesaj; (iş, kalem, sunucu) başına bir satır.",
+    "alan": "Nginx Denetim",
+    "yazanlar": [
+      {
+        "tur": "playbook",
+        "ad": "bmw_portal/spa_package_install/spa_package_install.yml set_stats sonucu, Portal yazar",
+        "dosya": "server/spa-report/paket-kurulum.cjs:589",
+        "nasil": "iş bitince (server_id, job_id) başına bir kez INSERT (UPDLOCK ile tekrar yazılmaz)",
+        "ne_zaman": "Paket kurulumu işi bitip ekran yokladığında ya da eşzamanlı iş denetimi bitmiş işi gördüğünde"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Intranet SPA > paket kurulumu: son deneme, plan bağlılığı, 24 saat yakın kurulum kapısı",
+        "dosya": "server/spa-report/paket-kurulum.cjs:333"
+      }
+    ],
+    "saklama": "Silinmez; satır sayısı küçük (yalnız elle başlatılan kurulum işleri, iş başına en çok 10 kalem x 8 sunucu).",
+    "notlar": "Kurulum durumu (tamam / yok) bu tablodan değil gece dizin taramasından (dbo.Nginx_Intranet_Audit) gelir.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
     "tablo": "app_hub_ocp_filo_kosu",
     "amac": "Application Hub saatlik OpenShift taramasının koşuları: zaman dilimi, AWX işi, durum ve cluster başına sonuç özeti.",
     "alan": "App Hub",

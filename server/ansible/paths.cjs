@@ -71,6 +71,9 @@ const PLAYBOOKS = {
   appHubOcp: 'app_hub/app_hub_ocp.yml',
   // Application Hub (2026-11-18): saatlik filo taramasi (bastion, salt okunur; sonuc /sw'ye). Iki seviye derinlik.
   appHubFleet: 'app_hub/app_hub_fleet.yml',
+  // Intranet SPA paket kurulumu (2026-11-23): Artifactory paketi + OCP ConfigMap application.json ->
+  // PROD intranet Nginx (ilk kurulum; mevcut HYSUXSCRIPTS betikleri). AWX'e limit GITMEZ. Bir seviye derinlik.
+  spaPackageInstall: 'spa_package_install/spa_package_install.yml',
 };
 
 /** ScaleX AWX paketi — klasor olarak kopyalanir (tek dosya degil). */

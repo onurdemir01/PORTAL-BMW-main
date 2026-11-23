@@ -47,6 +47,7 @@ const KULLANIM = Object.freeze({
   crypto_hub_inventory: 'Crypto Hub (envanter)',
   app_hub_ocp_canli: 'Application Hub (OpenShift canlı okuma)',
   app_hub_ocp_filo: 'Application Hub (OpenShift saatlik tarama)',
+  spa_package_install: 'Ark SPA > Intranet SPA (paket kurulumu)',
   server_hub_scan: 'Server Hub (tarama) ve App Retirement',
   server_hub_fix:
     'Server Hub (düzeltme, EAR Temizliği), App Retirement ve Application Hub (JVM parametresi)',
