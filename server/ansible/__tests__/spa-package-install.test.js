@@ -10,7 +10,7 @@
 //   * Playbook: '#' yorum yok, '{{ }}' icinde kacisli tirnak yok, gorev adlari Ingilizce ASCII,
 //     set_stats son fail'den once, YALNIZ localhost + spi_nginx play'leri (bastion / oc / kimlik
 //     dosyasi yok), host play'i www + dzdo + ignore_unreachable, kosu gorevi no_log, girdi kapisi
-//     (mod, 1..10 kalem, 1..8 sunucu, izinli sunucu alt kumesi, regex'ler, config_urls 1..3 tekil
+//     (mod, 1..50 kalem, 1..8 sunucu, izinli sunucu alt kumesi, regex'ler, config_urls 1..3 tekil
 //     https://<host>/config), kurum degeri varsayilani YOK, sonucta 'ocp' alani yok.
 //   * spa_package_host.sh (GERCEK bash + GERCEK python JSON denetimi, sahte HYSUXSCRIPTS / curl /
 //     unzip): plan hicbir sey yazmaz, kurulu hedefin ya da var olan paket dizininin uzerine
@@ -155,7 +155,7 @@ test('SPI6 playbook: girdi kapisi assert kurallari', () => {
   const beklenen = [
     "spi_mode in ['plan', 'apply']",
     'spi_items | length >= 1',
-    'spi_items | length <= 10',
+    'spi_items | length <= 50',
     'item.hosts | length >= 1',
     'item.hosts | length <= 8',
     "difference(spi_allowed_hosts | map('string') | map('upper') | list) | length) == 0",

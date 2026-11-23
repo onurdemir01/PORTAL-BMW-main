@@ -18,11 +18,11 @@
           - spi_mode is defined and spi_mode is string and spi_mode in ['plan', 'apply']
           - spi_items is defined and spi_items is sequence and spi_items is not string and spi_items is not mapping
           - spi_items | length >= 1
-          - spi_items | length <= 10
+          - spi_items | length <= 50
           - (tower_job_id | default(awx_job_id | default('')) | string) is match('^[0-9]{1,18}$')
         fail_msg: >-
           Zorunlu degiskenler eksik ya da gecersiz: spi_mode={{ spi_mode | default('?') | string | truncate(20) }},
-          spi_items={{ spi_items | default([]) | length }} (1..10),
+          spi_items={{ spi_items | default([]) | length }} (1..50),
           job={{ tower_job_id | default(awx_job_id | default('yok')) }} (sayisal olmali).
           Hepsi bossa AWX job template'inde extra variables prompt-on-launch kapali olabilir.
         quiet: true

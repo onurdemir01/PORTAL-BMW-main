@@ -53,7 +53,7 @@ spi_max_zip_mb: 512
 | Değişken | Açıklama |
 |---|---|
 | `spi_mode` | `plan` (sunucuya hiçbir şey yazmaz) ya da `apply` |
-| `spi_items` | 1..10 kalem: `{id: '<ns>/<app>', namespace, application, version, cluster, hosts: [..], config_urls: [..]}`; `hosts` 1..8 sunucu; `config_urls` 1..3 tekil `https://<route host>/config`. `cluster` yalnız Portal'ın bilgisi içindir, playbook kullanmaz. |
+| `spi_items` | 1..50 kalem: `{id: '<ns>/<app>', namespace, application, version, cluster, hosts: [..], config_urls: [..]}`; `hosts` 1..8 sunucu; `config_urls` 1..3 tekil `https://<route host>/config`. `cluster` yalnız Portal'ın bilgisi içindir, playbook kullanmaz. |
 | `tower_job_id` | AWX verir; deployment betiklerine `job_no` olarak gider. Sayısal değilse girdi kapısı durur. |
 
 Biçimler: namespace `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, uygulama `^[A-Za-z0-9]([-A-Za-z0-9._]*[A-Za-z0-9])?$`, sürüm `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, sunucu `^[A-Z0-9-]{3,32}$`, config adresi `^https://([A-Za-z0-9-]{1,63}[.])+[A-Za-z][A-Za-z0-9-]{0,62}/config$`, en çok 268 karakter (host en çok 253). Port, kullanıcı, sorgu ve başka yol kabul edilmez. Host en az bir nokta içerir ve son etiketi harfle başlar: IP literal'i (`169.254.169.254`), `localhost` ve tek etiketli ad geçmez, istek iç adreslere gitmesin. Aynı desen Portal'da (`ROUTE_HOST_RE`), girdi kapısında (`spi_config_url_re`) ve betikte (`CFG_URL_RE`) vardır; SPI41 üçünün aynı olduğunu denetler. Ansible'ın `match` testi Python `re.match`'tir ve `$` sondaki satır sonunu kabul eder; bu yüzden kapı namespace, uygulama, sürüm ve her config adresi için ayrıca `x == (x | trim)` ister (SPI48 bunu gerçek Python `re` ve Jinja ile sınar). Betik de `SPI_CONFIG_URLS`'u tümüyle denetler: tek boşluk ayrımlı 1..3 adres, satır sonu yok.
