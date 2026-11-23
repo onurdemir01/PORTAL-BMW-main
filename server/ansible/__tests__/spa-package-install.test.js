@@ -10,7 +10,7 @@
 //   * Playbook: '#' yorum yok, '{{ }}' icinde kacisli tirnak yok, gorev adlari Ingilizce ASCII,
 //     set_stats son fail'den once, YALNIZ localhost + spi_nginx play'leri (bastion / oc / kimlik
 //     dosyasi yok), host play'i www + dzdo + ignore_unreachable, kosu gorevi no_log, girdi kapisi
-//     (mod, 1..10 kalem, 1..8 sunucu, izinli sunucu alt kumesi, regex'ler, config_urls 1..3 tekil
+//     (mod, 1..50 kalem, 1..8 sunucu, izinli sunucu alt kumesi, regex'ler, config_urls 1..3 tekil
 //     https://<host>/config), kurum degeri varsayilani YOK, sonucta 'ocp' alani yok.
 //   * spa_package_host.sh (GERCEK bash + GERCEK python JSON denetimi, sahte HYSUXSCRIPTS / curl /
 //     unzip): plan hicbir sey yazmaz, kurulu hedefin ya da var olan paket dizininin uzerine
@@ -155,7 +155,7 @@ test('SPI6 playbook: girdi kapisi assert kurallari', () => {
   const beklenen = [
     "spi_mode in ['plan', 'apply']",
     'spi_items | length >= 1',
-    'spi_items | length <= 10',
+    'spi_items | length <= 50',
     'item.hosts | length >= 1',
     'item.hosts | length <= 8',
     "difference(spi_allowed_hosts | map('string') | map('upper') | list) | length) == 0",
@@ -322,7 +322,8 @@ const SAHTE_CURL = [
   "  printf '\\r\\n'",
   '  exit 0',
   'fi',
-  'if [ -n "$w" ]; then printf \'%s\' "${FAKE_VERIFY_CODE:-200}"; exit 0; fi',
+  // Gercek sablon: /ready bir dizine alias, nginx sondaki '/' icin her zaman 301 doner (job 3590287).
+  'if [ -n "$w" ]; then case "$url" in */ready) printf 301 ;; *) printf \'%s\' "${FAKE_VERIFY_CODE:-200}" ;; esac; exit 0; fi',
   'if [ "${FAKE_DL_RC:-0}" != 0 ]; then printf partial > "$out"; exit "$FAKE_DL_RC"; fi',
   'printf PKfake > "$out"',
   '[ -n "${FAKE_DL_ALSO:-}" ] && printf foreign > "$(dirname "$out")/$FAKE_DL_ALSO"',
@@ -761,23 +762,27 @@ test(
       assert.ok(!fs.readdirSync(hysDir(d)).some((f) => f.endsWith('.part')), '.part kaldi');
       const dogrulama = curlCagrilari(s.calls).filter((c) => c.includes('--resolve'));
       assert.equal(dogrulama.length, 2);
-      for (const yol of ['/ready', '/config']) {
+      // /ready dogrulanmaz: sablonda dizine alias, her zaman 301 (job 3590287); kok (index.html) ve /config 200.
+      for (const yol of ['/', '/config']) {
         assert.ok(
           dogrulama.some(
-            (c) => c.includes(`${APP}-${NS}.apps.invalid:443:192.0.2.10`) && c.endsWith(yol),
+            (c) =>
+              c.includes(`${APP}-${NS}.apps.invalid:443:192.0.2.10`) &&
+              c.endsWith(`${APP}-${NS}.apps.invalid${yol}`),
           ),
           `${yol} dogrulanmadi`,
         );
       }
+      assert.ok(!dogrulama.some((c) => c.endsWith('/ready')), '/ready dogrulanmamali');
       assert.ok(!s.message.includes('apps.invalid'), 'mesajda server_name');
     }),
 );
 
-test('SPI19 host: /ready 200 degilse FAIL verify ve geri alma', { skip: SKIP }, () =>
+test('SPI19 host: kok adres 200 degilse FAIL verify ve geri alma', { skip: SKIP }, () =>
   sahteIle([], (d) => {
     const s = hostKos(d, { FAKE_VERIFY_CODE: '404' });
     assert.equal(s.step, 'verify');
-    assert.match(s.message, /\/ready HTTP 404/);
+    assert.match(s.message, /^\/ HTTP 404 \(beklenen 200\)/);
     assert.equal(nginxCagrilari(s.calls).at(-1), `nginx_delete.sh 2 ${NS} ${APP}`);
   }),
 );

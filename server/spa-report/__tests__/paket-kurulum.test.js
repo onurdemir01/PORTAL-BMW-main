@@ -453,11 +453,13 @@ test('PK4 POST yetki ve girdi kapilari', async () => {
     assert.equal((await istek(m, y, m === 'POST' ? { secim: [] } : null, 'User')).status, 403);
   const kur = (g) => istek('POST', '/intranet/paket/kur', g);
   assert.equal((await kur({ secim: [] })).status, 400);
-  const onbir = Array.from({ length: 11 }, (_, i) => ({
+  assert.equal(P.KALEM_TAVAN, 50);
+  const fazla = Array.from({ length: 51 }, (_, i) => ({
     namespace: 'kart-prod',
     application: `u${i}`,
   }));
-  assert.equal((await kur({ secim: onbir })).status, 400);
+  const r51 = await kur({ secim: fazla });
+  assert.deepEqual([r51.status, r51.body.error], [400, 'Bir işte en çok 50 uygulama.']);
   assert.equal(
     (await kur({ secim: [{ namespace: 'kart-prod', application: 'farkli-ui' }] })).status,
     400,

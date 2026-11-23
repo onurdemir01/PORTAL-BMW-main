@@ -45,12 +45,13 @@ const STATS_KEY = 'spa_package_install_result';
 const PLATFORM = 'spa-package-install';
 const TEMPLATE_ONEK = 'Intranet SPA paket kurulumu';
 const PLAN_ADI = `${TEMPLATE_ONEK}: plan`;
-const KALEM_TAVAN = 10;
+const KALEM_TAVAN = 50;
 const HOST_TAVAN = 8;
 const SAAT_MS = 60 * 60 * 1000;
 const BAYAT_MS = 3 * SAAT_MS;
 const PLAN_OMRU_MS = 2 * SAAT_MS;
-// Pencere bir isin en kotu suresinden (10 kalem x (indirme + 3600 sn)) uzun: daha eski isler bitmis sayilir.
+// Pencere: 50 kalemlik bir is sunucu basina sirali kosar (kalem basina tipik 1-2 dk); 24 saatten eski
+// isler bitmis sayilir. Daha uzun suren is AWX'ten yine bitmemis okunursa kapi onu gorur (isBittiMi).
 const ESZAMANLI_MS = 24 * SAAT_MS;
 const YAKIN_KURULUM_MS = 24 * SAAT_MS;
 const ONBELLEK_MS = 60 * 1000;

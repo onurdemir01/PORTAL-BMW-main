@@ -23,7 +23,9 @@
 //      kayitlari AWX'ten okuyup gecisi yazar. Her gecis CAS (WHERE durum = eski).
 //   8. SILINDI'de tek sunucu Uygulama Envanteri taramasi (OZET, SECILI) baslar; uyari o tarama bitince kalkar.
 //      Baska kosu suruyorsa not yazilir (uyari bir sonraki taramada kalkar).
-//   Yalniz Admin (server-hub router'i). PROD dahil; PROD satiri ekranda isaretlenir, ek onay yok (kullanici karari).
+//   Yalniz Admin (server-hub router'i). PROD dahil, PROD satiri ekranda isaretlenir. 2026-11-22 (kullanici karari,
+//   PR-R): Production / ortami bilinmeyen sunucuda silme yalniz ACIK bir OCO penceresinde (ocoKapisi); kuyrukta
+//   bekleyen is acilmadan once pencere yeniden denetlenir. Eski karar ("ek onay yok") bununla degisti.
 //
 // TOPLU (2026-11-16, kullanici: "toplu halde temizlik icin gerekli duzenlemeyi yap"; ornek 8 PROD sunucuda ayni EAR)
 //   9. Toplu on kontrol: secili adaylarin HER BIRI icin yukaridaki on kontrol ayri ayri (kismi basari serbest).
@@ -96,6 +98,32 @@ function kur(deps) {
 
 const db = () => _d?.db || require('../db/index.cjs');
 const hostRe = () => _d?.HOST_RE || HOST_RE_VARSAYILAN;
+
+// URETIMDE SILME YALNIZ ACIK OCO PENCERESINDE (2026-11-22, kullanici karari; PR-R): Production / ortami bilinmeyen
+// sunucudaki EAR, ScaleX gibi diger yikici uretim islemleri gibi o an gecerli bir OCO degisiklik penceresi ister.
+// Silme isteginde (tekli ve toplu) numara ve pencere denetlenir, numara kayda yazilir; kuyrukta beklerken
+// pencere kapanmis olabilecegi icin is ACILMADAN hemen once yeniden denetlenir (siradanDusur). OCO okunamazsa
+// silme yok (fail-closed). Non-Production degismez.
+const prodKayit = (r) => r.prod === true || r.prod === 1;
+const ocoOku = (no) =>
+  (_d?.ocoPenceresiOku || require('../oco/pencere-oku.cjs').ocoPenceresiOku)(no);
+async function ocoKapisi(ham) {
+  const no = require('../oco/client.cjs').normalizeOcoNumber(ham);
+  if (!no)
+    throw hata(
+      400,
+      'Production sunucusunda silme için OCO numarası gerekli (yalnız rakam).',
+      'oco_gerekli',
+    );
+  const p = await ocoOku(no);
+  if (!p?.ok)
+    throw hata(
+      Number(p?.status) >= 500 ? Number(p.status) : 409,
+      `OCO ${no}: ${M(p?.message || 'pencere okunamadı', 300)} — Production'da silme yalnız açık OCO penceresinde.`,
+      'oco_pencere',
+    );
+  return p.ocoNumber || no;
+}
 
 async function isDurumu(serverId, jobId) {
   try {
@@ -278,6 +306,7 @@ function kayitSatiri(r) {
     },
     sirada: siradaMi(r),
     topluId: r.toplu_id || null,
+    ocoNo: r.oco_no || null,
   };
 }
 
@@ -641,6 +670,7 @@ async function baslat(r, sonuc) {
     op: 'ear_temizlik_sil',
     ...ozet,
     prod: r.prod === true || r.prod === 1,
+    ...(r.oco_no ? { ocoNo: r.oco_no } : {}),
     jobId: j.jobId ?? null,
     ...(r.toplu_id ? { topluId: r.toplu_id } : {}),
   });
@@ -741,6 +771,7 @@ async function kuyrukTuru(sonuc) {
 async function siradanDusur(r, a, sonuc) {
   try {
     bulguKapisi(a, r);
+    if (prodKayit(r)) await ocoKapisi(r.oco_no);
     return true;
   } catch (e) {
     const not = `sırada iken yeniden denetlendi: ${M(e?.message, 300)}`;
@@ -939,10 +970,10 @@ function bulguKapisi(a, r) {
  * Silme istegi CAS'i: yalniz PLAN_HAZIR, ayni plan isi, henuz istenmemis (sil_istendi_at IS NULL) ve plan suresi
  * DB saatine gore gecerliyse sil_istendi_at / sil_isteyen / toplu_id yazar. Donus: yazildi mi.
  */
-async function silIste(id, planJobId, kim, topluId) {
+async function silIste(id, planJobId, kim, topluId, ocoNo = null) {
   const r = await db().query(
-    `UPDATE server_hub_ear_temizlik SET sil_istendi_at = SYSUTCDATETIME(), sil_isteyen = $2, onaylayan = $2, toplu_id = $4, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND plan_job_id = $3 AND sil_istendi_at IS NULL AND plan_bitis_at > DATEADD(minute, -${PLAN_GECERLILIK_DK}, SYSUTCDATETIME())`,
-    [id, kim, Number(planJobId), topluId],
+    `UPDATE server_hub_ear_temizlik SET sil_istendi_at = SYSUTCDATETIME(), sil_isteyen = $2, onaylayan = $2, toplu_id = $4, oco_no = $5, updated_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR' AND plan_job_id = $3 AND sil_istendi_at IS NULL AND plan_bitis_at > DATEADD(minute, -${PLAN_GECERLILIK_DK}, SYSUTCDATETIME())`,
+    [id, kim, Number(planJobId), topluId, ocoNo],
   );
   return !!r && r.rowCount === 1;
 }
@@ -957,8 +988,9 @@ async function sil(req, id, body) {
   if (!r) throw hata(404, `Kayıt #${id} yok.`, 'kayit_yok');
   silKapilari(r, body);
   bulguKapisi(await _d.getAssessment(true), r);
+  const ocoNo = prodKayit(r) ? await ocoKapisi(body.ocoNo) : null;
   const kim = kullanici(req);
-  if (!(await silIste(id, r.plan_job_id, kim, null))) {
+  if (!(await silIste(id, r.plan_job_id, kim, null, ocoNo))) {
     await eskit();
     const g = await kayitOku(id);
     if (g?.durum === 'PLAN_ESKIDI')
@@ -1001,6 +1033,7 @@ async function sil(req, id, body) {
       kok: r.kok,
       ad: r.ad,
       prod: r.prod === true || r.prod === 1,
+      ...(ocoNo ? { ocoNo } : {}),
       sirada: true,
     });
   return kayit;
@@ -1202,6 +1235,9 @@ async function topluSil(req, body) {
       ),
       { ek: { reddedilenler } },
     );
+  // Secimde Production kayit varsa TEK OCO numarasi hepsini kapsar; bir kez denetlenir, her prod kayda yazilir.
+  const prodVar = ogeler.some((o) => prodKayit(kayitlar.get(o.id)));
+  const ocoNo = prodVar ? await ocoKapisi(body?.ocoNo) : null;
   const topluId = crypto.randomUUID();
   const kim = kullanici(req);
   const isaretli = [];
@@ -1215,7 +1251,9 @@ async function topluSil(req, body) {
       continue;
     }
     try {
-      if (await silIste(o.id, kayitlar.get(o.id).plan_job_id, kim, topluId)) isaretli.push(o.id);
+      const kr = kayitlar.get(o.id);
+      if (await silIste(o.id, kr.plan_job_id, kim, topluId, prodKayit(kr) ? ocoNo : null))
+        isaretli.push(o.id);
       else kaybedenler.push(o.id);
     } catch (e) {
       console.error(`[EarTemizlik] toplu ${topluId} kayit #${o.id} isaretlenemedi:`, e?.message);
@@ -1234,6 +1272,7 @@ async function topluSil(req, body) {
     istenen: ogeler.length,
     isaretlenen: isaretli.length,
     prod,
+    ...(ocoNo ? { ocoNo } : {}),
     kaybedenler,
     ogeler: isaretli.map((id) => {
       const r = kayitlar.get(id);

@@ -3,7 +3,7 @@
 // Kullanici: PROD intranet Nginx'e gelmeyen paketleri gecisleri beklemeden Artifactory'den cekmek.
 //   PK1 Admin olmayan kullanici bolumu gormez (uc da cagrilmaz)
 //   PK2 kurulabilir olmayan satirin kutusu pasif; engel uyarisi metniyle gorunur
-//   PK3 en cok 10 secim: 10. secimden sonra secilmemis kutular pasif
+//   PK3 en cok 50 secim (2026-11-23, 10'dan yukseltildi): 50. secimden sonra secilmemis kutular pasif
 //   PK4 planla -> paketKur apply:false; is izlenir (5 sn'de bir), bitince sonuc haplari
 //   PK2b ayni kodlu iki uyari ikisi de cizilir (anahtar kod+indeks, React anahtar uyarisi yok)
 //   PK5 Uygula: 'PROD' yazilmadan / 'prod' ile pasif, 'PROD' ile aktif; apply:true + onayMetni + plan
@@ -17,7 +17,10 @@ import type { ContextType, ReactElement } from 'react';
 import { render } from '@/test/test-utils';
 import { zamanlayiciKuruluncaIlerlet } from '@/test/zamanlayici';
 import { AuthContext } from '@/contexts/AuthContext';
-import IntranetPaketKurulum, { PAKET_YOKLAMA_MS } from '@/components/IntranetPaketKurulum';
+import IntranetPaketKurulum, {
+  PAKET_EN_COK,
+  PAKET_YOKLAMA_MS,
+} from '@/components/IntranetPaketKurulum';
 import type { PaketAday, PaketIsYanit, PaketSonuc } from '@/api/arkSpaApi';
 
 const api = vi.hoisted(() => ({ adaylar: vi.fn(), kur: vi.fn(), is: vi.fn() }));
@@ -137,18 +140,19 @@ describe('IntranetPaketKurulum', () => {
     expect(screen.getByText(/kurulabilir/)).toHaveTextContent('Toplam 2 · kurulabilir 1');
   });
 
-  it("PK3 10'dan fazla secilemez", async () => {
-    const adlar = Array.from({ length: 12 }, (_, i) => `app-${String(i).padStart(2, '0')}-v0`);
+  it("PK3 50'den fazla secilemez", async () => {
+    expect(PAKET_EN_COK).toBe(50);
+    const adlar = Array.from({ length: 52 }, (_, i) => `app-${String(i).padStart(2, '0')}-v0`);
     api.adaylar.mockResolvedValue(yanit(adlar.map((n) => A(n))));
     cizAdmin(<IntranetPaketKurulum />);
     await screen.findByText(adlar[0]);
-    adlar.slice(0, 10).forEach((n) => fireEvent.click(kutu(n)));
-    expect(screen.getByText(/10 seçili/)).toBeInTheDocument();
-    expect(kutu(adlar[10])).toBeDisabled();
-    expect(kutu(adlar[11])).toBeDisabled();
+    adlar.slice(0, 50).forEach((n) => fireEvent.click(kutu(n)));
+    expect(screen.getByText(/50 seçili/)).toBeInTheDocument();
+    expect(kutu(adlar[50])).toBeDisabled();
+    expect(kutu(adlar[51])).toBeDisabled();
     expect(kutu(adlar[0])).not.toBeDisabled();
     fireEvent.click(kutu(adlar[0]));
-    expect(kutu(adlar[10])).not.toBeDisabled();
+    expect(kutu(adlar[50])).not.toBeDisabled();
   });
 
   it('PK4 planla -> apply:false, is 5 sn arayla izlenir, bitince sonuc haplari', async () => {
