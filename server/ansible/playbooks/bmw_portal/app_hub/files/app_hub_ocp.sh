@@ -91,6 +91,7 @@ OBJ_TPL='OBJ	{{.kind}}	{{.metadata.name}}	{{if .spec.replicas}}{{.spec.replicas}
 
 obj=0
 sel=''
+had_error=0
 for kind in deployment deploymentconfig statefulset rollouts.argoproj.io; do
   out=$(OC get "$kind" "$APP" -n "$NS" --ignore-not-found -o go-template="$OBJ_TPL")
   rc=$?
@@ -100,6 +101,7 @@ for kind in deployment deploymentconfig statefulset rollouts.argoproj.io; do
       note "$kind bu cluster'da tanimli degil"
     else
       err "$kind okunamadi: $msg"
+      had_error=1
     fi
     continue
   fi
@@ -138,6 +140,7 @@ if [[ -n "$sel" ]]; then
   pout=$(OC get pods -n "$NS" -l "$sel" -o go-template="$POD_TPL")
   if [[ $? -ne 0 ]]; then
     err "pod listesi okunamadi: $(head -c 200 /tmp/.apphub_err.$$ | tr '\n\t' '  ')"
+    had_error=1
   else
     while IFS= read -r line; do
       [[ "$line" == POD$'\t'* ]] || continue
@@ -153,7 +156,14 @@ fi
 
 hpa=$(OC get hpa -n "$NS" -o go-template='{{range .items}}{{if eq .spec.scaleTargetRef.name "'"$APP"'"}}HPA	{{.metadata.name}}	{{.spec.scaleTargetRef.kind}}	{{or .spec.minReplicas 1}}	{{.spec.maxReplicas}}	{{or .status.currentReplicas 0}}
 {{end}}{{end}}')
-[[ $? -eq 0 && -n "$hpa" ]] && printf '%s\n' "$hpa"
+hpa_rc=$?
+if [[ $hpa_rc -ne 0 ]]; then
+  err "hpa okunamadi: $(head -c 200 /tmp/.apphub_err.$$ | tr '\n\t' '  ')"
+  had_error=1
+elif [[ -n "$hpa" ]]; then
+  printf '%s\n' "$hpa"
+fi
 
 printf 'END\t%s\t%s\n' "$obj" "$pods"
+[[ $had_error -eq 0 ]] || exit 5
 exit 0

@@ -33,7 +33,8 @@
 # pipeline yukleyicisi orada yeni uygulama dizini acabilsin) ve /hysdeploy/<ns>/<app> acilir;
 # indirme (.part -> unzip -t -> kokte index.html -> <surum>.zip), application.json (/config'ten
 # cekilen icerik birebir); kurulumdan HEMEN once hedefler yeniden denetlenir; deployment betikleri,
-# /ready ve /config 200, cleanup_backup.
+# / (index.html) ve /config 200 (/ready DENETLENMEZ: sablonda dizine alias, nginx her zaman 301 doner;
+# job 3590287), cleanup_backup.
 #
 # Geri alma:
 #   - indirme / zip / application.json / yeniden denetim hatasi: yalniz bu betigin yazdigi dosyalar
@@ -529,7 +530,7 @@ verify() {
   ip=$(sed -n -E 's/^[[:space:]]*listen[[:space:]]+([0-9]{1,3}(\.[0-9]{1,3}){3}):443([^0-9].*)?$/\1/p' "$SERVER_CONF" 2>/dev/null | head -n 1)
   [[ "$name" =~ ^[A-Za-z0-9]([-A-Za-z0-9.]*[A-Za-z0-9])?$ ]] || fail_install verify "server_name okunamadi (${SERVER_CONF})"
   [[ -n "$ip" ]] || fail_install verify "listen IP okunamadi (${SERVER_CONF})"
-  for path in /ready /config; do
+  for path in / /config; do
     code=$(http_code "$name" "$ip" "$path")
     [[ "$code" == 200 ]] || fail_install verify "${path} HTTP ${code:-?} (beklenen 200)"
   done
@@ -557,7 +558,7 @@ apply() {
   verify
   PHASE=done
   cleanup_backup
-  finish OK cleanup "kuruldu: surum ${VER}, application.json ${CFG_IDX}. config adresinden, /ready ve /config 200${CLEANUP_NOTE}"
+  finish OK cleanup "kuruldu: surum ${VER}, application.json ${CFG_IDX}. config adresinden, / ve /config 200${CLEANUP_NOTE}"
 }
 
 main() {
