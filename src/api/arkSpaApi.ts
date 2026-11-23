@@ -60,57 +60,6 @@ export interface ArkRapor {
   cached?: boolean;
 }
 
-/** Glomo Geçiş Planı (2026-10-13): set = çalışma (Excel'deki Çalışma-N). */
-export interface GecisSet {
-  no: number;
-  /** 'YYYY-MM-DDTHH:mm' (TR saati, girildiği gibi) ya da null. */
-  calismaAt: string | null;
-  ocoNo: string;
-}
-export interface GecisUygulama {
-  namespace: string;
-  application: string;
-  setNo: number;
-  /** 'excel' = takvimden; 'portal' = canlı Glomo envanterinde olup Excel'de olmayan (Set 7'ye eklendi). */
-  kaynak: 'excel' | 'portal' | string;
-  kullanimda: 'yes' | 'no' | null;
-  /** Çalışmaya katılacak kişi(ler). Tabloyu dolduranın adı TUTULMAZ. */
-  katilimci: string;
-  gecti: boolean;
-  /** 'YYYY-MM-DD' ya da null. */
-  gecisTarihi: string | null;
-  /** "Kontrol Ettim" anı (ISO, UTC) ya da null. Kimin bastığı TUTULMAZ. */
-  kontrolAt: string | null;
-  ekip: string[];
-  /** ekip ile AYNI SIRADA kaynak (SI51_AGILE … / NAMESPACE = namespace sahibi); '' = bilinmiyor. */
-  ekipKaynak?: string[];
-  /** Namespace sahiplik tablosu okunamadı ve uygulamanın kendi sahibi yok: "veri yok" (≠ bilinmiyor). */
-  ekipVeriYok?: boolean;
-  /** Ekip e-postalari (uygulama / namespace sahibi tablosundan; yoksa bos). */
-  ekipEposta?: string[];
-  locations: string[];
-  yuk: { state: 'active' | 'idle' | 'unknown'; req7: number } | null;
-  /** Canlı Glomo envanterinde görülmüyor (rapor okunduysa). */
-  taramadaYok: boolean;
-}
-export interface GecisPlani {
-  ok: boolean;
-  message?: string;
-  raporVar?: boolean;
-  raporTarihi?: string | null;
-  /** Namespace sahibi (e-posta) tablosu okunabildi mi. */
-  epostaVar?: boolean;
-  sets?: GecisSet[];
-  apps?: GecisUygulama[];
-  admin?: boolean;
-  /** Set 7 talep listesinde olup planda bulunamayanlar (2026-10-16; ekranda yalnız Admin'e). */
-  talepEslesmeyen?: { namespace: string; application: string }[];
-  /** Tek seferlik Set 7 taşımasının durumu; `hata` yalnız Admin yanıtında. */
-  goc?: { ad: string; uygulandi: boolean; hata?: string | null };
-  /** Excel seed'i kurum ayarindan okunamadiysa sebep (yalniz Admin; 2026-11-21). */
-  seed?: { hata: string | null };
-}
-
 /** Intranet SPA (2026-10-19): Gerçek SPA Keşfi'nin intranet SPA'sı + Dynatrace kullanımı + ekip beyanı.
  *  Dynatrace (BMW_Application_Usage, application_usage işi) beş durum, hiçbiri diğerine indirgenmez:
  *  var | yok (her cluster ölçüldü, 0) | servis-yok (sayılamaz) | olculemedi | olcum-yok. */
@@ -413,36 +362,4 @@ export const arkSpaApi = {
     fetch(
       `${BASE}/intranet/paket/is/${encodeURIComponent(String(serverId))}/${encodeURIComponent(String(jobId))}`,
     ).then(safeJson),
-  gecis: (): Promise<GecisPlani> => fetch(`${BASE}/gecis`).then(safeJson),
-  gecisApp: (p: {
-    namespace: string;
-    application: string;
-    kullanimda: 'yes' | 'no' | null;
-    katilimci: string;
-  }): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/gecis/app`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(p),
-    }).then(safeJson),
-  gecisKontrol: (p: {
-    namespace: string;
-    application: string;
-    kontrol: boolean;
-  }): Promise<{ ok: boolean; message?: string; kontrolAt?: string | null }> =>
-    fetch(`${BASE}/gecis/app-kontrol`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(p),
-    }).then(safeJson),
-  gecisSet: (p: {
-    no: number;
-    calismaAt: string | null;
-    ocoNo: string;
-  }): Promise<{ ok: boolean; message?: string }> =>
-    fetch(`${BASE}/gecis/set`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(p),
-    }).then(safeJson),
 };

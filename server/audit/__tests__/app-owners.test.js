@@ -15,7 +15,6 @@
 //   AO10 Intranet SPA: owners verilince ekipKaynak, verilmezse eski (ownersByNs)
 //   AO11 SPA Raporu: ekipOf (ns, app) alir; nesne donusu teamKaynak, dizi donusu eskisi gibi
 //   AO12 Kapsam intranet hucresi: ownerOf'a uygulama adi gider
-//   AO13 Glomo gecis canli raporu: teamKaynak grup basina tasinir, NAMESPACE uygulama kaynagina yenilir
 //   AO14 bekci: tum cagiranlar ownersForApp'i UYGULAMA adiyla cagirir (namespace-only kalmadi);
 //        yorumlar SILINEREK aranir (yorumda kalan dogru cagri bekciyi kandiramaz). Asil guvence
 //        davranis testleri: app-owners-uctan.test.js, spa-report/__tests__/app-owners-yol.test.js,
@@ -374,41 +373,6 @@ test('AO12 Kapsam intranet hucresi: ownerOf uygulama adini alir', () => {
   );
 });
 
-test("AO13 Glomo gecis canli raporu: teamKaynak grup basina, uygulama kaynagi NAMESPACE'i yener", () => {
-  const { glomoCanli } = require('../../spa-report/gecis.cjs');
-  const m = glomoCanli({
-    rows: [
-      {
-        service: 'GLOMO',
-        namespace: 'muh-prod',
-        application: 'app',
-        location: '/a/',
-        team: ['G1', 'G2'],
-        teamKaynak: ['NAMESPACE', 'SI51_AGILE'],
-      },
-      {
-        service: 'GLOMO',
-        namespace: 'muh-prod',
-        application: 'app',
-        location: '/b/',
-        team: ['G1'],
-        teamKaynak: ['ARK997_AGILE'],
-      },
-      {
-        service: 'GLOMO',
-        namespace: 'muh-prod',
-        application: 'eski',
-        location: '/c/',
-        team: ['G3'],
-      },
-    ],
-  });
-  const x = m.get('muh-prod/app');
-  assert.deepEqual([...x.ekip], ['G1', 'G2']);
-  assert.deepEqual(Object.fromEntries(x.ekipKaynak), { G1: 'ARK997_AGILE', G2: 'SI51_AGILE' });
-  assert.equal(m.get('muh-prod/eski').ekipKaynak.size, 0);
-});
-
 /** // ve /* *\/ yorumlarini atar (URL'deki :// korunur). */
 const yorumsuz = (src) => src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/.*$/gm, '$1');
 
@@ -433,7 +397,6 @@ test('AO14 bekci: cagiranlar ownersForApp kullanir ve uygulama adini verir', () 
     'audit/intranet-kapsam.cjs': ['ownerOf([r.namespace], r.application)'],
     'spa-report/index.cjs': ['ekipOf: (ns, app) => ownersForApp(owners, app, [ns])'],
     'spa-report/build.cjs': ['ekipOf(row.namespace, row.application)'],
-    'spa-report/gecis.cjs': ['ownersForApp(sahipler, r.application, [r.namespace])'],
     'spa-report/intranet.cjs': ['ownersForApp(sahip, app, [ns])', '      owners,\n'],
   };
   for (const [f, parcalar] of Object.entries(beklenen)) {

@@ -140,32 +140,38 @@ test('AR8: sayfa UC YERDE de kayitli (menu sessizce dusmesin)', () => {
   const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/"/g, "'");
   assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkSpaRaporu'/, 'DB seed');
   assert.match(oku('src/config/elements.ts'), /id: 'ArkSpaRaporu'/, 'elements.ts PAGES');
-  // Intranet SPA (2026-10-19) ucuncu sayfa; kaydi ayrica intranet.test.js IS12'de.
+  // Intranet SPA (2026-10-19) ikinci sayfa; kaydi ayrica intranet.test.js IS10'da.
   assert.match(
     oku('src/config/elements.ts'),
-    /itemIds: \['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'\]/,
+    /itemIds: \['ArkSpaRaporu', 'ArkIntranetSpa'\]/,
     'NAV_GROUPS',
   );
   assert.match(oku('src/App.tsx'), /path='\/ark-spa\/spa-raporu'/, 'App.tsx route');
-  // Glomo Gecis Plani ayri sayfa (2026-10-13): seed + elements + route + sunucu kapisi.
-  assert.match(oku('server/db/mssql-setup.cjs'), /element_key: 'ArkGlomoGecis'/, 'Glomo DB seed');
-  assert.match(
-    oku('src/config/elements.ts'),
-    /id: 'ArkGlomoGecis'.*route: '\/ark-spa\/glomo-gecis-plani'/,
-    'Glomo elements.ts',
-  );
-  assert.match(oku('src/App.tsx'), /path='\/ark-spa\/glomo-gecis-plani'/, 'Glomo route');
   assert.match(
     oku('src/App.tsx'),
     /path='\/ark-spa-raporu' element=\{<Navigate to='\/ark-spa\/spa-raporu'/,
     'eski adres yonlendirilmiyor',
   );
-  assert.match(
-    oku('server/spa-report/index.cjs'),
-    /requireVisible\('ArkGlomoGecis'\)/,
-    'Glomo sunucu kapisi',
-  );
   assert.match(oku('server/index.cjs'), /spa-report/, 'sunucu modulu baglanmamis');
+});
+
+test('AR8b: kaldirilan Glomo Gecis Plani sayfasi geri gelmez, eski menu kaydi acilista silinir', () => {
+  const KOK = path.join(__dirname, '..', '..', '..');
+  const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8').replace(/"/g, "'");
+  const setup = oku('server/db/mssql-setup.cjs');
+  assert.doesNotMatch(setup, /element_key: 'ArkGlomoGecis'/, 'seed geri gelmis');
+  assert.doesNotMatch(setup, /CREATE TABLE spa_gecis_/, 'kod tabloyu yeniden olusturuyor');
+  assert.match(
+    setup,
+    /async function removeRetiredPages\(pool\) \{[\s\S]*?for \(const key of \[[^\]]*'ArkGlomoGecis'[^\]]*\]\)[\s\S]*?DELETE FROM portal_element_visibility WHERE element_key = @k[\s\S]*?DELETE FROM portal_elements WHERE element_key = @k/,
+    'menu temizligi yok',
+  );
+  assert.match(setup, /await removeRetiredPages\(pool\);/, 'menu temizligi cagrilmiyor');
+  assert.doesNotMatch(setup, /DROP TABLE spa_gecis_|DELETE FROM spa_gecis_/, 'veri silinmemeli');
+  assert.doesNotMatch(oku('src/config/elements.ts'), /id: 'ArkGlomoGecis'/, 'elements.ts');
+  assert.doesNotMatch(oku('src/App.tsx'), /ArkGlomoGecis/, 'App.tsx route');
+  assert.doesNotMatch(oku('server/spa-report/index.cjs'), /'\/gecis'|gecis\.cjs/, 'sunucu ucu');
+  assert.equal(fs.existsSync(path.join(KOK, 'server', 'spa-report', 'gecis.cjs')), false);
 });
 
 const EKRAN = path.join(__dirname, '..', '..', '..', 'src', 'components', 'ArkSpaRaporuPage.tsx');

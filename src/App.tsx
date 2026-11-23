@@ -14,7 +14,6 @@ const DenetimPage = lazyWithRetry(() => import('@/components/DenetimPage'));
 // OCO Takvimi (2026-09-28): ekibin degisiklik kayitlari, kronolojik. Kendi route'u var.
 const OcoTakvimiPage = lazyWithRetry(() => import('@/components/OcoTakvimiPage'));
 const ArkSpaRaporuPage = lazyWithRetry(() => import('@/components/ArkSpaRaporuPage'));
-const GlomoGecisPlaniPage = lazyWithRetry(() => import('@/components/GlomoGecisPlaniPage'));
 const IntranetSpaPage = lazyWithRetry(() => import('@/components/IntranetSpaPage'));
 // Nginx Audit > tek sunucu sayfasi: kendi URL'i var, Denetim gorunurlugune tabi.
 const NginxAuditHostPage = lazyWithRetry(() => import('@/components/denetim/NginxAuditHostPage'));
@@ -109,9 +108,6 @@ export default function App() {
             <Route path="/ark-spa" element={<Navigate to="/ark-spa/spa-raporu" replace />} />
             <Route element={<PageVisibilityRoute pageId="ArkSpaRaporu" />}>
               <Route path="/ark-spa/spa-raporu" element={<ArkSpaRaporuPage />} />
-            </Route>
-            <Route element={<PageVisibilityRoute pageId="ArkGlomoGecis" />}>
-              <Route path="/ark-spa/glomo-gecis-plani" element={<GlomoGecisPlaniPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="ArkIntranetSpa" />}>
               <Route path="/ark-spa/intranet-spa" element={<IntranetSpaPage />} />
