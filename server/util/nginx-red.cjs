@@ -57,4 +57,36 @@ function nginxRedCevirici({ onek, eylem5xx = false, haric = [] }) {
   };
 }
 
-module.exports = { nginxRedCevirici };
+/**
+ * Bir modulun yakaladigi hatayi yanitlar (Server Hub toplu isleri, EAR temizligi; 2026-11-24 ortak).
+ * err.status yoksa 500. 5xx her zaman loglanir; GET / HEAD DISI isteklerde 424 + upstreamStatus + nginxRed
+ * doner: kurumsal nginx 5xx govdesini kendi index.html'iyle degistirir, asil mesaj ne ekrana ne loga duserdi
+ * (uretim 2026-11-14, 33 JVM). GET (yoklama) 5xx'i oldugu gibi kalir. err.ek alanlari yanita eklenir.
+ *   etiket: log oneki ('TopluRestart'); kod: err.code yoksa 424 yanitinin kodu.
+ */
+function hataYanitlayici({ etiket, kod }) {
+  return function hataYanitla(req, res, err) {
+    const status = err.status || 500;
+    const ek = err.ek || {};
+    if (status >= 500) {
+      console.error(
+        `[${etiket}] ${req.method} ${req.originalUrl || req.path} ${status}:`,
+        err?.message,
+      );
+      if (req.method !== 'GET' && req.method !== 'HEAD')
+        return res.status(424).json({
+          ok: false,
+          message: err.message,
+          code: err.code || kod,
+          upstreamStatus: status,
+          nginxRed: true,
+          ...ek,
+        });
+    }
+    return res
+      .status(status)
+      .json({ ok: false, message: err.message, ...(err.code ? { code: err.code } : {}), ...ek });
+  };
+}
+
+module.exports = { nginxRedCevirici, hataYanitlayici };
