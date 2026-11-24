@@ -84,7 +84,14 @@ function cizAdmin(ui: ReactElement, role = 'Admin') {
   return render(<AuthContext.Provider value={deger}>{ui}</AuthContext.Provider>);
 }
 
-const kutu = (app: string) => screen.getByRole('checkbox', { name: new RegExp(`^${app} `) });
+// getByRole({ name }) her cagrida tum agacin erisilebilir adini yeniden hesaplar: 52 satirlik PK3'te karesel,
+// tam suit yuku altinda 5 sn'yi asiyordu (kapi K8, 2026-11-24). Ayni oge aria-label'indan dogrudan bulunur;
+// rolu (checkbox) ayrica dogrulanir, yani sorgu gevsemez.
+const kutu = (app: string) => {
+  const k = screen.getByLabelText(new RegExp(`^${app} `));
+  expect(k).toHaveAttribute('type', 'checkbox');
+  return k;
+};
 
 async function planlaVeBitir(isYanitlari: PaketIsYanit[]) {
   api.adaylar.mockResolvedValue(yanit([A('kart-app-v0')]));
@@ -146,7 +153,9 @@ describe('IntranetPaketKurulum', () => {
     api.adaylar.mockResolvedValue(yanit(adlar.map((n) => A(n))));
     cizAdmin(<IntranetPaketKurulum />);
     await screen.findByText(adlar[0]);
-    adlar.slice(0, 50).forEach((n) => fireEvent.click(kutu(n)));
+    // Kutular tiklamadan once bir kez bulunur (satirlar anahtarli, tiklama ayni DOM ogesini yeniden cizer).
+    const kutular = adlar.map(kutu);
+    kutular.slice(0, 50).forEach((k) => fireEvent.click(k));
     expect(screen.getByText(/50 seçili/)).toBeInTheDocument();
     expect(kutu(adlar[50])).toBeDisabled();
     expect(kutu(adlar[51])).toBeDisabled();

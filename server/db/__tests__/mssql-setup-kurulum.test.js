@@ -37,7 +37,7 @@ const kurulum = require('../mssql-setup.cjs');
  * Sahte havuz. kurulu: INFORMATION_SCHEMA / sys / OBJECT_ID varlik sorgulari "var" der.
  * hataDeseni: eslesen sorgu firlatir. Her sorgu metni `sorgular`a yazilir.
  */
-function havuz({ kurulu = false, hataDeseni = null, yanit = () => null } = {}) {
+function havuz({ kurulu = false, hataDeseni = null, yanit = (_metin, _girdiler) => null } = {}) {
   const sorgular = [];
   return {
     sorgular,
