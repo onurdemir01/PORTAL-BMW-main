@@ -564,7 +564,9 @@ const SINIR_OKUNAMAYAN = 1000000;
 
 /**
  * KULLANIM KANITI (tarayici surum 4, 2026-11-17): JVM_YOK EAR'in dizinini kullanan surecler ve son yazma.
- * Beyaz liste: yalniz {durum, surecler[{pid, comm, kullanici, nasil}], son_yazma, okunamayan, hidepid, not};
+ * Beyaz liste: yalniz {durum, surecler[{pid, comm, kullanici, nasil}], son_yazma, okunamayan, okunamayan_diger, hidepid,
+ * not}; okunamayan_diger (2026-11-23) = uygulama hesabinin (uid >= UID_MIN; tarama oturumu haric) okunamayan sureci;
+ * alan yoksa null (eski tarayici: sahip ayrilmadi);
  * cmdline / args gibi bilinmeyen alan ATILIR (parola tasiyabilir). Bilinmeyen 'nasil' '?' olur (uydurulmaz).
  * Surec varsa durum VAR; surecsiz VAR tutarsiz -> OLCULEMEDI.
  * Alan yok (eski tarayici) -> null (olculmedi; "kullanilmiyor" DEGIL).
@@ -587,6 +589,7 @@ function kullanimOzeti(k) {
   const durum = D(k.durum, KULLANIM_DURUMLARI, 'OLCULEMEDI');
   const son = tamsayi(k.son_yazma);
   const okunamayan = tamsayi(k.okunamayan);
+  const diger = k.okunamayan_diger == null ? null : tamsayi(k.okunamayan_diger);
   // Surec goruldu: VAR. Surec listesi bosken betik VAR dediyse kanit yok: olculemedi.
   let ozetDurum = durum === 'VAR' ? 'OLCULEMEDI' : durum;
   if (surecler.length) ozetDurum = 'VAR';
@@ -595,6 +598,8 @@ function kullanimOzeti(k) {
     surecler,
     son_yazma: son != null && son > 0 ? son : null,
     okunamayan: okunamayan != null && okunamayan > 0 ? Math.min(okunamayan, SINIR_OKUNAMAYAN) : 0,
+    // Alan var ama sayi okunamiyor (bozuk) -> bilinmiyor gibi (null): fail-closed tarafta kalir.
+    okunamayan_diger: diger != null && diger >= 0 ? Math.min(diger, SINIR_OKUNAMAYAN) : null,
     hidepid: M(k.hidepid, 16) || null,
     not: M(k.not, 300) || null,
   };

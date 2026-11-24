@@ -2301,6 +2301,9 @@ test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil 
         'SINIR.ear',
         'TEMIZ.ear',
         'ESKITAR.ear',
+        'KORROOT.ear',
+        'KORDIGER.ear',
+        'KORESKI.ear',
       ].map((ad) => bulgu('/vhosting', ad, '7')),
       [
         kullanimli('SUREC.ear', SUREC),
@@ -2316,6 +2319,28 @@ test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil 
           durum: 'YOK',
           surecler: [],
           son_yazma: simdiSn - 7 * 86400 + 60,
+        }),
+        // 2026-11-23 (kullanici karari): izinle okunamayan surec. Hepsi root -> engel degil, uyari; root disi
+        // ya da sahibi ayrilmamis (eski tarayici) -> ENGEL (tarayici `was` baskasinin cwd / fd'sini okuyamaz).
+        kullanimli('KORROOT.ear', {
+          durum: 'YOK',
+          surecler: [],
+          son_yazma: simdiSn - 30 * 86400,
+          okunamayan: 40,
+          okunamayan_diger: 0,
+        }),
+        kullanimli('KORDIGER.ear', {
+          durum: 'KISMI',
+          surecler: [],
+          son_yazma: simdiSn - 30 * 86400,
+          okunamayan: 40,
+          okunamayan_diger: 2,
+        }),
+        kullanimli('KORESKI.ear', {
+          durum: 'YOK',
+          surecler: [],
+          son_yazma: simdiSn - 30 * 86400,
+          okunamayan: 40,
         }),
         // eski tarayici: xml JVM_YOK ama kullanim alani hic yok
         {
@@ -2345,12 +2370,32 @@ test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil 
     /^dizin kullanımı ölçülemedi \(.*eski tarayıcı.*\); silmek için/,
   );
   assert.equal(engel('TEMIZ.ear'), null, 'olculmus ve temiz kullanim engel degil');
+  assert.equal(engel('KORROOT.ear'), null, 'yalniz root surecleri okunamadi: engel degil');
+  assert.equal(
+    engel('KORDIGER.ear'),
+    'dizin kullanımı ölçülemedi (uygulama hesabına ait 2 süreç izin yüzünden okunamadı; dizini kullanıyor olabilir); silme kapalı: o süreçlerin bu dizini kullanmadığı doğrulanamıyor (tarama kimliği başka kullanıcıların süreçlerini okuyamaz)',
+  );
+  assert.equal(
+    engel('KORESKI.ear'),
+    'dizin kullanımı ölçülemedi (40 süreç okunamadı ve sahipleri bu tarayıcı sürümünde ayrılmadı); silmek için yeni tarayıcıyla yeniden taranmalı',
+  );
   // engelli EAR'da ayrica uyari yok (engel metni zaten gosteriliyor); olculmus EAR'da uyari yok
   const uyari = (ad) => l.adaylar.find((x) => x.host === 'HOSTK' && x.ad === ad).kullanimUyarisi;
   assert.equal(uyari('KISMI.ear'), null);
   assert.equal(uyari('ESKI.ear'), null);
   assert.equal(uyari('SUREC.ear'), null);
-  for (const ad of ['SUREC.ear', 'YAZMA.ear', 'KISMI.ear', 'ESKITAR.ear'])
+  assert.equal(
+    uyari('KORROOT.ear'),
+    'dizin kullanımı kısmen görüldü: 40 root / sistem hesabı süreci izin yüzünden yalnız komut satırından denetlendi',
+  );
+  for (const ad of [
+    'SUREC.ear',
+    'YAZMA.ear',
+    'KISMI.ear',
+    'ESKITAR.ear',
+    'KORDIGER.ear',
+    'KORESKI.ear',
+  ])
     await reddeder(ET.onKontrol(istek(), { host: 'HOSTK', kok: '/vhosting', ad }), 409, 'engel');
   assert.equal(S.launchlar.length, 0, 'engelli EAR icin AWX isi acilmaz');
   // toplu on kontrol: engelli oge ok:false, digeri baslar

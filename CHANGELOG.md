@@ -8,6 +8,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Nginx Hub › Tutarlılık › Paketler: symlink içeriği özete ve parmak izine girmiyordu; farklı kütüphanelere giden aynı adlı bağ iki sunucuyu "eşit" gösteriyordu. Bağ artık izleniyor (kullanıcı kararı); kırık bağ, döngü, girdi sınırı ve `find` zaman aşımı `okunamadi`; bağsız uygulamada iz ve önbellek değişmez. Fetch parmak izi bağları da kapsıyor; parmak izi ve döküm görevlerinin Ansible zaman aşımı var (asılan tek sunucu tüm dökümü bekletmez).
 - Yük Testi ön kontrol: hidepid altında master 0 kanıt sayılıyordu; çalışan nginx pid dosyasını görünmeyen bir yola yazıyorsa hedef "nginx'siz" ölçülürdü. Artık belirlenemedi (`-`), README'deki fail-closed sözüyle uyumlu; hidepid=1 (pid 1 görünür ama okunamaz) de yakalanıyor.
 
+### Changed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: EAR kullanım kanıtı)
+- EAR Temizliği: izin yüzünden okunamayan **uygulama hesabı** süreci (uid ≥ `UID_MIN`; ya da sahibi ayrılmamış okunamayan, eski tarama) artık "kullanılmıyor" sayılmıyor; silme reddediliyor (kullanıcı kararı). Tarayıcı `was` ile koşar ve başka kullanıcının `cwd` / `fd`'sini göremez; o süreç dizini kullanıyor olabilir. Tarayıcı okunamayanları `/proc/<pid>/status` Uid'ine göre ayırır (`okunamayan_diger`); root, sistem hesapları ve taramanın kendi oturum zinciri (Ansible sshd) uyarı olarak kalır. Eski taramalar yeniden taranana kadar okunamayan süreç varsa silme kapalıdır.
+- EAR envanter taraması: kesin zaman aşımı yumuşak bütçeden ve bağlantı örneklerinin uykusundan geniş; kullanım ölçümü bütçenin dışında koştuğu için büyük `ear_sure`'de görev zaman aşımına düşüyordu. Görev zaman aşımı artık `ZAMAN_ASIMI` yazıyor (eskiden rescue `HATA` yazıyordu; 2.16 ve 2.21 iletileri).
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22: Application Hub saatlik filo taramasi)
 - Paylaşılan dizine yazılamayan tarama "ok / written" yayınlanıyor ve iş yeşil bitiyordu (copy eylemi modül düşse de `checksum` ekliyordu). Artık `written:false`, sebep metni, cluster `ok` değil; hiçbir cluster yazılamazsa iş FAILED.
 - OCP parolası Ansible `environment:` ile uzak komut satırına ve `-vvv` AWX çıktısına gidiyordu; artık 0700 koşu dizininde tek seferlik 0600 dosyayla gidiyor, betik okuyup siliyor (`stdin:` değil: ansible-core 2.16 onu async iş dosyasına düz yazar). Kubeconfig betiğin 0700 iş dizininde, koşu dizini `tempfile` ile açılıyor (tahmin edilebilir `/tmp` yolları kalktı; güvensiz dizin ya da parola dosyası reddediliyor).
@@ -21,6 +25,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22)
 - Server Hub EAR Temizliği: Production / ortamı bilinmeyen sunucuda silme artık yalnız açık bir OCO değişiklik penceresinde (tekli ve toplu silmede OCO numarası; kuyrukta bekleyen iş açılmadan önce pencere yeniden denetlenir, kapanmışsa kayıt sebebiyle iptal; OCO okunamazsa silme yok). Kullanıcı kararı; ScaleX gibi diğer yıkıcı üretim işlemleriyle aynı kapı.
 - Server Hub host XML ile auto-start kapatma (tekli): Production onayı yalnız ekrandaydı; doğrudan API çağrısı prod host XML'ini onaysız değiştirebiliyordu. Sunucu artık `prodOnay` ister (toplu yolla aynı kural, `400 prod_onay`).
+
+### Fixed (main kırmızı, 2026-11-23)
+- Nginx Hub SPA keşfi ekran testi (gidiş-dönüş) `main`'de kırmızıydı: PR'sız `bd14d224` / `c58f4b4d` sunucu satırına yalnız sunucu içi `routeDetay` alanını ekledi ve gövdeden sildi; test tam satırın her alanını ekranda bekliyordu. Sunucu içi alanlar artık tek sabitte (`YANIT_SUNUCU_ICI`); gövde kurulumu ve test oradan okur, test bu alanların gövdeye sızmadığını da sınar.
+
 
 ### Added
 - K17 kurum iç adı (`scripts/ic-ad-bekcisi.cjs`; commit öncesi, commit mesajı, push öncesi, CI tüm ağaç + aralıktaki mesajlar): kurum önekli sunucu adı ve kalıbı, `.com.tr` alan adı (kaçışlı biçim dahil), kurum adı (sözcük özetleri) ve bilinen kurum iç ağı adresi (ağ özetleri) repoya giremez; ad ya da ağ listesi repoda değil, bulunan değer yazdırılmaz (testi `server/__tests__/ic-ad-bekcisi.test.js`, mutasyonla sınandı).

@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
-import { JbossEslesmesi } from '@/components/server_hub/EarEnvanterDetay';
+import { DizinKullanimi, JbossEslesmesi } from '@/components/server_hub/EarEnvanterDetay';
 import { BagsizKullanim } from '@/components/server_hub/SunucuPaneli';
 import {
   xmlEslesmeOku,
@@ -298,5 +298,27 @@ describe('EJ6 inceleme: tarama referansı, ileri tarih, kısmi görünürlük, s
     expect(
       within(screen.getByTestId('bagsiz-kullanim')).getByText('kullanım ölçülmedi'),
     ).toBeInTheDocument();
+  });
+});
+
+// 2026-11-23 (kullanici karari): okunamayan surecin sahibi ekranda; root disi silmeyi engeller (sunucu karari).
+describe('DizinKullanimi okunamayan surec sahibi', () => {
+  const temel = { durum: 'YOK' as const, surecler: [], son_yazma: null, not: null, hidepid: null };
+  const metin = (ek: object) => {
+    const { unmount } = render(
+      <DizinKullanimi k={{ ...temel, okunamayan: 7, ...ek }} taramaMs={Date.now()} />,
+    );
+    const t = screen.getByTestId('dizin-kullanimi').textContent || '';
+    unmount();
+    return t;
+  };
+  it('hepsi root / root disi / eski tarayici ayri yazilir', () => {
+    expect(metin({ okunamayan_diger: 0 })).toContain(
+      '7 süreç izin yüzünden yalnız komut satırından denetlendi (hepsi root / sistem hesabı)',
+    );
+    expect(metin({ okunamayan_diger: 2 })).toContain(
+      '(2 uygulama hesabı: dizini kullanıyor olabilir)',
+    );
+    expect(metin({})).toContain('(sahipleri ayrılmadı: eski tarayıcı)');
   });
 });
