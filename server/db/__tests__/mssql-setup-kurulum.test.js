@@ -125,7 +125,9 @@ test('MK2 bos veritabani: tablolar olusturulur, kolonlar eklenir, seedler yazar'
   );
   // Dis tablo indeksleri boot'u bloklamadan 15 sn sonra.
   assert.equal(indeksCagrilari.length, 0);
-  t.mock.timers.tick(15000);
+  t.mock.timers.tick(14999);
+  assert.equal(indeksCagrilari.length, 0, 'indeks denetimi 15 sn dolmadan basladi');
+  t.mock.timers.tick(1);
   assert.equal(indeksCagrilari.length, 1);
   assert.equal(indeksCagrilari[0], p);
 });
