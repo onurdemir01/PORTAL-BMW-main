@@ -711,6 +711,7 @@ test(
       playbook,
     );
     assert.notEqual(r.status, 0);
+    assert.match(r.stdout, /Faz W web paketi eksik\./);
     const stats = ozetOku(r);
     assert.ok(stats, r.stdout.slice(-3500) + r.stderr.slice(-1000));
     assert.equal(stats.sonuc_alinan, hedefler.length);
