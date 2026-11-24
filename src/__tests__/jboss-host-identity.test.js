@@ -46,13 +46,22 @@ function load(rel) {
 
 const J = load('utils/jboss.ts');
 
-// Dort modulun sunucu secim ekrani — hepsi AYNI kurallara tabi.
+// Dort modulun sunucu secim ekrani — hepsi AYNI kurallara tabi. Telnet ve FileX 2026-11-24'ten beri ortak adimi
+// (common/sihirbaz/SunucuSecimAdimi) kullanir: kural orada aranir, sarmalayicinin ona baglandigi J2b'de.
 const HOST_STEPS = [
   'components/logx_v2/steps/legacy/HostSelectStep.tsx',
   'components/opsx/steps/HostSelectStep.tsx',
-  'components/telnet/steps/HostSelectStep.tsx',
-  'components/filex/steps/HostSelectStep.tsx',
+  'components/common/sihirbaz/SunucuSecimAdimi.tsx',
 ];
+// Ortak adimi kullanan sarmalayicilar: dosya -> render etmesi gereken ortak bilesen.
+const SARMALAYICILAR = {
+  'components/telnet/steps/HostSelectStep.tsx': 'SunucuSecimAdimi',
+  'components/filex/steps/HostSelectStep.tsx': 'SunucuSecimAdimi',
+  'components/telnet/steps/JbossVersionStep.tsx': 'JbossSurumAdimi',
+  'components/filex/steps/JbossVersionStep.tsx': 'JbossSurumAdimi',
+  'components/opsx/steps/JbossVersionStep.tsx': 'JbossSurumAdimi',
+};
+const SURUM_ADIMLARI = ['components/common/sihirbaz/JbossSurumAdimi.tsx'];
 
 // ── J1: satir kimligi host DEGIL, (host, major) ciftidir ────────────────────
 test('J1: ayni host iki majorde iki FARKLI anahtar uretir', () => {
@@ -104,6 +113,20 @@ test('J2: dort sunucu ekraninda da satir/secim kimligi host adi DEGIL', () => {
   }
 });
 
+test('J2b: Telnet / FileX sunucu ve tum surum adimlari ortak adimi RENDER eder (kendi kopyasi yok)', () => {
+  for (const [rel, bilesen] of Object.entries(SARMALAYICILAR)) {
+    const src = codeOf(rel);
+    assert.ok(
+      new RegExp(`<${bilesen}[\\s/>]`).test(src),
+      `${rel}: ortak ${bilesen} render edilmiyor`,
+    );
+    assert.ok(
+      !/useState\(/.test(src),
+      `${rel}: kendi durumunu tutuyor - ortak adimin kopyasi geri gelmis`,
+    );
+  }
+});
+
 // ── J3: ortak yardimci ortak yerde ──────────────────────────────────────────
 test("J3: jbossMajorOf bir modulun sihirbaz adimindan DEGIL, utils/jboss.ts'ten gelir", () => {
   assert.equal(typeof J.jbossMajorOf, 'function');
@@ -111,12 +134,7 @@ test("J3: jbossMajorOf bir modulun sihirbaz adimindan DEGIL, utils/jboss.ts'ten 
     !/export function jbossMajorOf/.test(codeOf('components/opsx/steps/JbossVersionStep.tsx')),
     'jbossMajorOf hala OpsX adimindan export ediliyor — Telnet oraya bagimli kalir',
   );
-  const all = [
-    ...HOST_STEPS,
-    'components/opsx/steps/JbossVersionStep.tsx',
-    'components/telnet/steps/JbossVersionStep.tsx',
-    'components/filex/steps/JbossVersionStep.tsx',
-  ];
+  const all = [...HOST_STEPS, ...SURUM_ADIMLARI, ...Object.keys(SARMALAYICILAR)];
   for (const rel of all) {
     assert.ok(
       !/from "@\/components\/opsx\/steps\/JbossVersionStep"/.test(codeOf(rel)),
@@ -137,12 +155,8 @@ test('J4: ayni majörün iki yamasi AYNI gruba duser', () => {
   assert.equal(J.majorOfHost({ jbossVersion: 'NF' }), '');
 });
 
-test("J4b: uc surum adiminin hicbiri TAM surum string'ine gore gruplamaz", () => {
-  for (const rel of [
-    'components/opsx/steps/JbossVersionStep.tsx',
-    'components/telnet/steps/JbossVersionStep.tsx',
-    'components/filex/steps/JbossVersionStep.tsx',
-  ]) {
+test("J4b: surum adimi (uc modulun ortak adimi) TAM surum string'ine gore gruplamaz", () => {
+  for (const rel of SURUM_ADIMLARI) {
     const src = codeOf(rel);
     // Eski hatali desen: ham surumu dogrudan sayac anahtari yapmak.
     assert.ok(
