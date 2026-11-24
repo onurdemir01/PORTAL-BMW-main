@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (yerel kapi kararliligi, 2026-11-24)
+- Yerel HTTP testleri sunucuyu `127.0.0.1`'e bağlıyor ve `listening`'i bekliyor (29 dosya). `listen(0)` çift yığın `::` dinliyordu; macOS'ta aynı port `127.0.0.1`'de başka bir süreçte açıksa istek o sürece gidiyor, BN3 / AH14 aralıklı düşüyor ve kapı yeniden koşturuluyordu. Bekçi TY1/TY2 host'suz `listen(0)`'ı yasaklar.
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-24: Intranet SPA paket kurulumu)
 - Dış süre sınırı betiğin iç bütçesinden kısaydı; dolarsa bash adım bitmeden trap'i çalıştırmıyor, KILL ile geri alma yapılmadan PROD Nginx'te yarım kurulum kalıyordu. Sınır artık iç bütçeden türetiliyor; adımlar arka planda + `wait` ile koşuyor, TERM/INT'te adım durup geri alınıyor; SIGPIPE/SIGHUP yok sayılıyor (okuyan taraf gidince kurulum yarım kalmıyor).
 - Tek sunucuda temizlik sırasında bağlantı koparsa sonuç hiç yayınlanmıyordu (kurulum başarılı olsa da); girdi kapısı düşünce de. Artık iki durumda da yayınlanıyor (`cleanup_errors`, `error`), Portal kapı hatasının sebebini gösteriyor.

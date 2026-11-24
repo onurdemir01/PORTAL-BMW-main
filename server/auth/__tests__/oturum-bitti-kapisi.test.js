@@ -28,7 +28,7 @@ function dilim(src, bas, son) {
 async function istek(kurucu, yol) {
   const app = express();
   kurucu(app);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
   await new Promise((r) => srv.once('listening', r));
   try {
     const r = await fetch(`http://127.0.0.1:${srv.address().port}${yol}`);

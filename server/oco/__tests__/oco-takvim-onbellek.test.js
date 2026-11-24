@@ -374,7 +374,8 @@ test('T8 uc: Server-Timing + stale bayragi; ikinci istek onbellekten', async () 
   console.log = () => {};
   require(path.join(__dirname, '..', 'index.cjs')).initOco(app);
   console.log = eskiLog;
-  const sunucu = app.listen(0);
+  const sunucu = app.listen(0, '127.0.0.1');
+  await new Promise((r) => sunucu.once('listening', r));
   try {
     const port = sunucu.address().port;
     const al = async (q = '') => {

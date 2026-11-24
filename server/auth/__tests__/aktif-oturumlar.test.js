@@ -13,7 +13,7 @@
 //   AK9 suresi dolmus ama henuz silinmemis oturum listelenmez
 'use strict';
 
-const { test, beforeEach, after } = require('node:test');
+const { test, beforeEach, after, before } = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.SESSION_STORE = 'memory';
@@ -42,8 +42,14 @@ policy._saatAyarla(() => simdi);
 
 const app = express();
 initAuth(app);
-const server = app.listen(0);
-const base = `http://127.0.0.1:${server.address().port}`;
+const server = app.listen(0, '127.0.0.1');
+let base;
+// Sunucu 127.0.0.1'e baglanir (2026-11-24): cift yigin '::' dinleyicisi bu makinede 127.0.0.1'de ayni portu tutan
+// baska bir surecin istegi yakalamasina acikti. Host verilince adres eszamansiz: 'listening' beklenir.
+before(async () => {
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
 after(() => {
   server.close();
   policy._saatAyarla(null);
@@ -301,7 +307,7 @@ test('AK10 store silme hatasi tekli, toplu ve admin iptalini basarili gostermez'
   initSessionsRoutes(router, { requireAdmin: (_req, _res, next) => next() });
   mini.use('/api/auth', router);
 
-  const miniServer = mini.listen(0);
+  const miniServer = mini.listen(0, '127.0.0.1');
   await new Promise((resolve) => miniServer.once('listening', resolve));
   const oncekiDenetim = denetimler.length;
   try {

@@ -308,7 +308,7 @@ test('S18b webhook PUT: DB`ye sifreli, denetim kaydinda deger yok; GET maskeler'
       next();
     });
     require('../../admin/system-config.cjs').initSystemConfig(app);
-    sunucu = app.listen(0);
+    sunucu = app.listen(0, '127.0.0.1');
     await new Promise((r) => sunucu.once('listening', r));
     const url = `http://127.0.0.1:${sunucu.address().port}/api/admin/system-config`;
 

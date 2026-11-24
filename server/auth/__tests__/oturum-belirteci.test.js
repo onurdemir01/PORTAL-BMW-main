@@ -29,8 +29,9 @@ const cerez = require('../oturum-cerezi.cjs');
 
 const sunucular = [];
 after(() => sunucular.forEach((s) => s.close()));
-function dinle(app) {
-  const s = app.listen(0);
+async function dinle(app) {
+  const s = app.listen(0, '127.0.0.1');
+  await new Promise((r) => s.once('listening', r));
   sunucular.push(s);
   return `http://127.0.0.1:${s.address().port}`;
 }
@@ -72,7 +73,7 @@ const ben = async (url, cookie) => {
 };
 
 test('BT1 cerez rastgele belirtec; sunucudaki kimlik ozet ve cerezde yok', async () => {
-  const url = uygulama(new session.MemoryStore(), 'anahtar-A');
+  const url = await uygulama(new session.MemoryStore(), 'anahtar-A');
   const g = await fetch(`${url}/giris`, { method: 'POST' });
   const c = cerezDegeri(g);
   const { sid } = await g.json();
@@ -98,25 +99,25 @@ test('BT1 cerez rastgele belirtec; sunucudaki kimlik ozet ve cerezde yok', async
 
 test('BT2 anahtar degisse de oturum bulunur (yeniden baslatma + yeni rastgele anahtar)', async () => {
   const store = new session.MemoryStore(); // DB'deki oturum tablosu gibi: surecler arasi ortak
-  const once = uygulama(store, 'ilk-rastgele-anahtar');
+  const once = await uygulama(store, 'ilk-rastgele-anahtar');
   const g = await fetch(`${once}/giris`, { method: 'POST' });
   const c = cerezDegeri(g);
 
   // "Yeniden baslatma": ayni store, BAMBASKA bir anahtar.
-  const sonra = uygulama(store, 'yeniden-baslatmada-uretilen-baska-anahtar');
+  const sonra = await uygulama(store, 'yeniden-baslatmada-uretilen-baska-anahtar');
   const { r, body } = await ben(sonra, c);
   assert.deepEqual(body.user, { username: 'ayse' }, 'anahtar degisince kullanici atildi');
   // Cerez AYNI belirtecle yenilenir (rolling) — istemci tarafinda hicbir sey degismez.
   assert.equal(cerezDegeri(r), c);
   // Ucuncu bir anahtarla da.
-  const { body: b3 } = await ben(uygulama(store, 'ucuncu'), c);
+  const { body: b3 } = await ben(await uygulama(store, 'ucuncu'), c);
   assert.deepEqual(b3.user, { username: 'ayse' });
 });
 
 test('BT3 DB`deki ozet cereze konamaz — gecerli anahtar bilinse bile', async () => {
   const store = new session.MemoryStore();
   const secret = 'saldirganin-da-bildigi-anahtar';
-  const url = uygulama(store, secret);
+  const url = await uygulama(store, secret);
   const g = await fetch(`${url}/giris`, { method: 'POST' });
   const { sid } = await g.json(); // DB / denetim kaydindan okunabilen deger
 
@@ -152,19 +153,19 @@ test('BT4 eski bicimli oturumlar ayni anahtarla surer; anahtar degisirse (eskisi
     store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'onceki' } }, res),
   );
   const c = `connect.sid=${encodeURIComponent('s:' + bel.imzala(eskiSid, 'degismeyen'))}`;
-  const ayni = uygulama(store, 'degismeyen');
+  const ayni = await uygulama(store, 'degismeyen');
   const { r, body } = await ben(ayni, c);
   assert.deepEqual(body.user, { username: 'onceki' }, 'gecis mevcut oturumu dusurdu');
   assert.equal(body.sid, eskiSid);
   // Eski tur oturumun cerezi eski bicimde kalir (belirtece cevrilemez: belirteci yok).
   assert.match(cerezDegeri(r) || '', /^connect\.sid=s%3A/);
-  const { body: b2 } = await ben(uygulama(store, 'degisen'), c);
+  const { body: b2 } = await ben(await uygulama(store, 'degisen'), c);
   assert.equal(b2.user, null);
 });
 
 test('BT5 bozuk / uydurma cerez: cokme yok, istemcinin sectigi kimlik benimsenmez', async () => {
   const store = new session.MemoryStore();
-  const url = uygulama(store, 'k');
+  const url = await uygulama(store, 'k');
   for (const v of [
     'v2.kisa',
     'v2.',
@@ -195,7 +196,7 @@ test('BT5 bozuk / uydurma cerez: cokme yok, istemcinin sectigi kimlik benimsenme
 });
 
 test('BT6 giris yeni belirtec verir; eski belirtec gecersizdir', async () => {
-  const url = uygulama(new session.MemoryStore(), 'k');
+  const url = await uygulama(new session.MemoryStore(), 'k');
   const c1 = cerezDegeri(await fetch(`${url}/giris`, { method: 'POST' }));
   const g2 = await fetch(`${url}/giris`, { method: 'POST', headers: { cookie: c1 } });
   const c2 = cerezDegeri(g2);
@@ -250,7 +251,7 @@ test('BT8 gercek initAuth: belirtec cerezi, /me, oturum listesi, cikis', async (
     const app = express();
     require('../index.cjs').initAuth(app);
     app.get('/api/test/sid', (req, res) => res.json({ sid: req.sessionID }));
-    const url = dinle(app);
+    const url = await dinle(app);
     const g = await fetch(`${url}/api/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

@@ -18,7 +18,7 @@
 //        bilinmeyen yol UZATIR (varsayilan: her istek etkinliktir)
 'use strict';
 
-const { test, beforeEach, after } = require('node:test');
+const { test, beforeEach, after, before } = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.SESSION_STORE = 'memory';
@@ -52,9 +52,14 @@ initAuth(app);
 app.get('/api/test/ping', requireAuth, (req, res) => res.json({ ok: true }));
 app.get('/api/users/online', requireAuth, (req, res) => res.json({ ok: true }));
 
+const server = app.listen(0, '127.0.0.1');
 let base;
-const server = app.listen(0);
-base = `http://127.0.0.1:${server.address().port}`;
+// Sunucu 127.0.0.1'e baglanir (2026-11-24): cift yigin '::' dinleyicisi bu makinede 127.0.0.1'de ayni portu tutan
+// baska bir surecin istegi yakalamasina acikti. Host verilince adres eszamansiz: 'listening' beklenir.
+before(async () => {
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
 after(() => server.close());
 
 const ENV = [

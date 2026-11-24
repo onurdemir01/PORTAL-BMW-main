@@ -128,7 +128,8 @@ function uygulama() {
 }
 
 async function istek(method, yol, body) {
-  const srv = uygulama().listen(0);
+  const srv = uygulama().listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const port = srv.address().port;
     const r = await fetch(`http://127.0.0.1:${port}/api/bmw-hub${yol}`, {

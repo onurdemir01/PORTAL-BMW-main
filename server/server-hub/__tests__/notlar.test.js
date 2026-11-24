@@ -388,7 +388,8 @@ async function sunucu(fn, { kurallar = [], notDurumu = null } = {}) {
     audit: (req, d) => audit.push(d),
   });
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
   const J = async (u, method = 'GET', govde) => {
     const r = await fetch(kok + u, {

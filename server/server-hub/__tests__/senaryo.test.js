@@ -463,7 +463,8 @@ test('SN4 uclar: /iliski/kararlar ve /iliski/karar', async () => {
     simdi: SIMDI,
   });
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
   const J = async (u) => {
     const r = await fetch(u);
@@ -507,7 +508,8 @@ test('SN4 uclar: /iliski/kararlar ve /iliski/karar', async () => {
   });
   ikinci.use('/a', r2);
   ikinci.use('/b', r3);
-  const srv2 = ikinci.listen(0);
+  const srv2 = ikinci.listen(0, '127.0.0.1');
+  await new Promise((r) => srv2.once('listening', r));
   const k2 = `http://127.0.0.1:${srv2.address().port}`;
   try {
     const kk = await J(`${k2}/a/iliski/karar?anahtar=${encodeURIComponent('jvm:APPSRV01|8|APP1')}`);
@@ -703,7 +705,8 @@ test('SN8 grup kontrolu: imza, yalniz aday dogrulanir, VERI_DEGISTI, okunamadi',
     audit: (_req, d) => denetim.push(d),
   });
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
   const J = async (u, o) => {
     const r = await fetch(u, o);
