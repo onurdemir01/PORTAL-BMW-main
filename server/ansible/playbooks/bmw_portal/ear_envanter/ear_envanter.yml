@@ -215,20 +215,27 @@
             - ear_ozet.paket | bool
 
         - name: "--- [Task] Web katmani (Faz W; salt okunur config / soket / IP / log ozeti) ---"
-          become: "{{ (ear_web_okuyan | length) > 0 }}"
-          become_method: dzdo
-          become_user: "{{ ear_web_okuyan if (ear_web_okuyan | length) > 0 else omit }}"
-          ansible.builtin.raw: |
-            P=""; for c in python3 /usr/libexec/platform-python; do command -v "$c" >/dev/null 2>&1 && { P="$c"; break; }; done
-            [ -n "$P" ] || { echo "@@EAR_WEB_PYTHON_YOK@@"; exit 0; }
-            EAR_WEB_KOKLER={{ ear_web_kokler | default('/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd') | quote }} EAR_WEB_HC={{ ear_web_hc | default('hc.html,hc.jsp') | quote }} EAR_WEB_GUN={{ ear_web_gun | default(7) | int }} EAR_WEB_LOG_MB={{ ear_web_log_mb | default(256) | int }} EAR_WEB_SURE={{ ear_web_sure | default(240) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_WEB_SON'
-            {{ lookup('ansible.builtin.file', 'files/web_tara.py') }}
-            EAR_WEB_SON
-          register: ear_web
-          timeout: "{{ (ear_web_sure | default(240) | int) + 120 }}"
-          changed_when: false
-          failed_when: false
-          no_log: true
+          block:
+            - name: "--- [Task] Web tarayicisini calistir ---"
+              become: "{{ (ear_web_okuyan | length) > 0 }}"
+              become_method: dzdo
+              become_user: "{{ ear_web_okuyan if (ear_web_okuyan | length) > 0 else omit }}"
+              ansible.builtin.raw: |
+                P=""; for c in python3 /usr/libexec/platform-python; do command -v "$c" >/dev/null 2>&1 && { P="$c"; break; }; done
+                [ -n "$P" ] || { echo "@@EAR_WEB_PYTHON_YOK@@"; exit 0; }
+                EAR_WEB_KOKLER={{ ear_web_kokler | default('/usr/IBMIHS:/opt/IBM/HTTPServer:/usr/IBM/HTTPServer:/etc/httpd:/opt/rh/httpd24/root/etc/httpd:/opt/jbcs-httpd24-2.4/httpd') | quote }} EAR_WEB_HC={{ ear_web_hc | default('hc.html,hc.jsp') | quote }} EAR_WEB_GUN={{ ear_web_gun | default(7) | int }} EAR_WEB_LOG_MB={{ ear_web_log_mb | default(256) | int }} EAR_WEB_SURE={{ ear_web_sure | default(240) | int }} LC_ALL=C PYTHONIOENCODING=utf-8:surrogateescape "$P" -B - <<'EAR_WEB_SON'
+                {{ lookup('ansible.builtin.file', 'files/web_tara.py') }}
+                EAR_WEB_SON
+              register: ear_web
+              timeout: "{{ (ear_web_sure | default(240) | int) + 120 }}"
+              changed_when: false
+              failed_when: false
+              no_log: true
+          rescue:
+            - name: "--- [Task] Faz W executor hatasi ---"
+              ansible.builtin.set_fact:
+                ear_web: "{{ ansible_failed_result }}"
+              no_log: true
           when:
             - ear_web_kontrol | default(false) | bool
             - ear_ozet.paket | bool
@@ -269,7 +276,23 @@
         ear_sonuclar: >-
           {{ (ear_sonuclar | default([])) + [ hostvars[item].ear_ozet | default({
                'host': ((item if hedefler is defined else (item.split('.')[0] if item is match('[A-Za-z]') else item)) | regex_replace('[^A-Za-z0-9._-]', '_') | upper),
-               'paket': false, 'durum': 'ULASILAMADI', 'rc': -1, 'bayt': 0, 'hata': 'unreachable' }) ] }}
+               'paket': false, 'durum': 'ULASILAMADI', 'rc': -1, 'bayt': 0, 'hata': 'unreachable' })
+               | combine({'web_istendi': ear_web_kontrol | default(false) | bool,
+                          'web_tamamlandi': ear_web_durum == 'PAKET_ALINDI',
+                          'web_durum': ear_web_durum}) ] }}
+      vars:
+        ear_web_sonuc: "{{ hostvars[item].ear_web | default({}) }}"
+        ear_web_stdout: "{{ ear_web_sonuc.stdout | default('') }}"
+        ear_web_durum: >-
+          {{ 'KAPALI' if not (ear_web_kontrol | default(false) | bool)
+             else 'ULASILAMADI' if (ear_web_sonuc.unreachable | default(false) | bool)
+             else 'ATLANDI' if (ear_web_sonuc.skipped | default(false) | bool) or 'ear_web' not in hostvars[item]
+             else 'ZAMAN_ASIMI' if ((ear_web_sonuc.rc | default(-1) | int) == 124 or
+                  (ear_web_sonuc.msg | default('') | lower) is search('timed out|timeout|expected time frame'))
+             else 'PYTHON_YOK' if (ear_web_stdout | trim) == '@@EAR_WEB_PYTHON_YOK@@'
+             else 'HATA' if (ear_web_sonuc.rc | default(-1) | int) != 0
+             else 'PAKET_ALINDI' if ear_web_stdout is search('(?m)^@@EAR_WEB_BASLA@@\r?\n(?:[A-Za-z0-9+/=]+\r?\n)+@@EAR_WEB_BITTI@@\r?$')
+             else 'CIKTI_EKSIK' }}
       loop: "{{ ear_toplanan }}"
       loop_control:
         label: "{{ item }}"
@@ -296,4 +319,12 @@
       ansible.builtin.fail:
         msg: "Hicbir sunucudan envanter alinamadi. Sonuclar: {{ ear_sonuclar | default([]) | map(attribute='durum') | list }}"
       when: (ear_sonuclar | default([]) | selectattr('paket') | list | length) == 0
+      run_once: true
+
+    - name: "--- [Task] Istenen Faz W sonucu eksikse basarisiz ---"
+      ansible.builtin.fail:
+        msg: "Faz W web paketi eksik. Host durumlari ear_envanter_result artifact'inde."
+      when:
+        - ear_web_kontrol | default(false) | bool
+        - ear_sonuclar | default([]) | rejectattr('web_tamamlandi') | list | length > 0
       run_once: true

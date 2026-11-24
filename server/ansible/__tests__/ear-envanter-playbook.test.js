@@ -170,7 +170,7 @@ test(
       'ansible.builtin.raw',
       'ansible.builtin.set_fact',
       'ansible.builtin.raw',
-      'ansible.builtin.raw',
+      undefined,
       'ansible.builtin.copy',
     ]);
     assert.deepEqual(
@@ -179,7 +179,8 @@ test(
       'rescue yalniz durum yazar',
     );
     assert.match(blok.rescue[0]['ansible.builtin.set_fact'].ear_ozet.durum, /YAZILAMADI/);
-    const [raw, , dep, web, copy] = blok.block;
+    const [raw, , dep, webBlok, copy] = blok.block;
+    const [web] = webBlok.block;
     for (const g of [raw, dep, web]) {
       assert.equal(g.no_log, true, `${g.name}: no_log`);
       assert.equal(g.failed_when, false, `${g.name}: failed_when`);
@@ -202,7 +203,7 @@ test(
       /\{\{ lookup\('ansible\.builtin\.file', 'files\/deployment_oku\.sh'\) \}\}\nEAR_DEPLOYMENT_SON/,
     );
     // FAZ W varsayilan KAPALI ve yalniz paket alindiysa; httpd calistirilmaz, yalniz web_tara.py (salt okunur).
-    assert.deepEqual(web.when, [
+    assert.deepEqual(webBlok.when, [
       'ear_web_kontrol | default(false) | bool',
       'ear_ozet.paket | bool',
     ]);
@@ -455,9 +456,9 @@ function limitOrtami(onEk, { localhostYok = false } = {}) {
 
 // AWX template Variables'taki yazici sunucu (portal_yazici_host) varsayilan olarak verilir; ev ile ezilir
 // (undefined -> JSON'da yok -> tanimsiz).
-function oynat(inv, ek, ev) {
+function oynat(inv, ek, ev, playbook = PLAYBOOK) {
   const tum = JSON.stringify({ portal_yazici_host: 'ORLABT02', ...ev });
-  return spawnSync('ansible-playbook', ['-i', inv, PLAYBOOK, ...ek, '-e', tum], {
+  return spawnSync('ansible-playbook', ['-i', inv, playbook, ...ek, '-e', tum], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -637,9 +638,14 @@ test(
     const web = alim.webCoz(buf);
     assert.ok(['WEB_YOK', 'OLCULEMEDI'].includes(web.durum), `web durumu: ${web.durum}`);
     assert.equal(web.surum, 1);
+    const olumlu = ozetOku(r).hostlar[0];
+    assert.equal(olumlu.web_istendi, true);
+    assert.equal(olumlu.web_tamamlandi, true);
+    assert.equal(olumlu.web_durum, 'PAKET_ALINDI');
     // Kapali (varsayilan): blok yok.
     const r2 = oynat(inv, [], { ...ev, ear_kosu_no: 12, ear_web_kontrol: false });
     assert.equal(r2.status, 0);
+    assert.equal(ozetOku(r2).hostlar[0].web_durum, 'KAPALI');
     assert.equal(
       alim.webCoz(fs.readFileSync(path.join(cikti, 'kosu-12', 'raw', 'HOSTA.out'))),
       null,
@@ -648,6 +654,72 @@ test(
     // Gecersiz Faz W girdisi ilk play'de durur.
     const r3 = oynat(inv, [], { ...ev, ear_kosu_no: 13, ear_web_hc: 'hc.html;id' });
     assert.notEqual(r3.status, 0, 'gecersiz ear_web_hc kabul edildi');
+  },
+);
+
+test(
+  'EP10b Faz W executor hatalari set_stats sonrasi isi basarisiz yapar, EAR paketi korunur',
+  { skip: !HAS_ANSIBLE && 'ansible-playbook yok' },
+  (t) => {
+    const { kok, inv, cikti } = limitOrtami('ear-ep10b-');
+    t.after(() => fs.rmSync(kok, { recursive: true, force: true }));
+    const beklenen = {
+      WEBTIME: 'ZAMAN_ASIMI',
+      WEBPY: 'PYTHON_YOK',
+      WEBERR: 'HATA',
+      WEBEMPTY: 'CIKTI_EKSIK',
+      WEBMARK: 'CIKTI_EKSIK',
+      WEBTASKTIME: 'ZAMAN_ASIMI',
+    };
+    const hedefler = Object.keys(beklenen);
+    for (const ad of hedefler) {
+      fs.appendFileSync(inv, `${ad} ansible_connection=local ear_kokler=${kok}/hostA/vhosting8\n`);
+    }
+    fs.cpSync(path.join(DIR, 'files'), path.join(kok, 'files'), { recursive: true });
+    const playbook = path.join(kok, 'ear_envanter.yml');
+    const raw = [
+      'case "{{ inventory_hostname | upper }}" in',
+      '  WEBTIME) exit 124 ;;',
+      '  WEBPY) echo "@@EAR_WEB_PYTHON_YOK@@" ;;',
+      '  WEBERR) exit 1 ;;',
+      '  WEBMARK) printf "%s\\n" "@@EAR_WEB_BASLA@@" "@@EAR_WEB_BITTI@@" ;;',
+      '  WEBTASKTIME) sleep 4 ;;',
+      'esac',
+    ]
+      .map((line) => `                ${line}`)
+      .join('\n');
+    const fixture = METIN.replace(
+      /(              ansible\.builtin\.raw: \|\n)(?: {16}[^\n]*\n)+(              register: ear_web\n)/,
+      `$1${raw}\n$2`,
+    ).replace(
+      'timeout: "{{ (ear_web_sure | default(240) | int) + 120 }}"',
+      'timeout: "{{ 1 if (inventory_hostname | upper) == \'WEBTASKTIME\' else 120 }}"',
+    );
+    assert.notEqual(fixture, METIN);
+    fs.writeFileSync(playbook, fixture);
+    const r = oynat(
+      inv,
+      [],
+      {
+        hedefler,
+        ear_kosu_no: 11,
+        ear_parti_no: 1,
+        ear_okuma_kullanicisi: '',
+        ear_dizin: cikti,
+        ear_web_kontrol: true,
+      },
+      playbook,
+    );
+    assert.notEqual(r.status, 0);
+    const stats = ozetOku(r);
+    assert.ok(stats, r.stdout.slice(-3500) + r.stderr.slice(-1000));
+    assert.equal(stats.sonuc_alinan, hedefler.length);
+    for (const host of stats.hostlar) {
+      assert.equal(host.web_istendi, true);
+      assert.equal(host.web_tamamlandi, false);
+      assert.equal(host.web_durum, beklenen[host.host]);
+      assert.ok(fs.existsSync(path.join(cikti, 'kosu-11', 'raw', `${host.host}.out`)));
+    }
   },
 );
 
