@@ -82,6 +82,10 @@ const TEST_DIRS = [
   'src/components/self_service/__tests__',
   'src/components/denetim/__tests__',
   'src/components/nginx_console/__tests__',
+  'src/components/ai_analyst/__tests__',
+  'src/components/crypto_hub/__tests__',
+  'src/components/telnet/__tests__',
+  'src/components/ansible/__tests__',
   'src/hooks/__tests__',
   'src/utils/__tests__',
 ];
