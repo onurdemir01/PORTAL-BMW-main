@@ -50,6 +50,13 @@
 #        verify|cleanup
 # Mesajda paket ve /config adresi YAZILMAZ (Portal DB'sine kurum host'u tasinmaz); /config icerigi de
 # hicbir satira yazilmaz.
+#
+# KESINTI (2026-11-24, PR-R; playbook-denetci kaniti): dis `timeout` TERM'u bash'e yollar ama bash on
+# plandaki adimi (kendi surec grubundaki ic timeout) bitmeden trap'i calistirmaz; KILL gelince geri alma
+# hic kosmaz, sunucuda yarim kurulum kalirdi. Simdi deployment adimlari arka planda baslar ve `wait` ile
+# beklenir: TERM / INT trap'i ANINDA calisir, adimi durdurur ve kurulum asamasindaysa undo_install ile
+# geri alir (dosya asamasinda undo_files). SIGPIPE ve SIGHUP yok sayilir: ciktiyi okuyan taraf giderse
+# (is iptali, SSH kopmasi) betik log satirinda olmez; kurulum ya tamamlanir ya geri alinir.
 
 set -u
 export LC_ALL=C
@@ -76,6 +83,7 @@ CFG_MAX=1048576
 CFG_TIMEOUT=30
 
 STEP=check
+STEP_PID=''
 DONE=0
 PHASE=none
 NS_CREATED=0
@@ -186,7 +194,7 @@ undo_install() {
   case "$owner" in
     ours)
       log "== geri alma: nginx_delete.sh ${NS} ${APP}"
-      timeout -k 10 "$STEP_TIMEOUT" bash "${SCRIPTS}/nginx_delete.sh" "$NS" "$APP" </dev/null 2>&1
+      bounded_script "${SCRIPTS}/nginx_delete.sh" "$NS" "$APP"
       rc=$?
       if [[ $rc -eq 0 ]]; then
         undo_ns
@@ -216,8 +224,42 @@ on_exit() {
   [[ "$PHASE" == install ]] && extra=" - kurulum yarim kalmis olabilir: nginx_delete.sh ${NS} ${APP} ile geri alin"
   result FAIL "$STEP" "beklenmeyen cikis (rc=${rc})${extra}"
 }
+
+# TERM / INT (dis sure siniri, is iptali): suren adimi durdur, asamaya gore geri al, TEK RESULT yaz.
+# Ikinci sinyal handler'i bolmesin diye sinyaller burada yok sayilir; dis `timeout -k` payi geri almaya
+# yetecek kadar genistir (playbook: indirme + adim suresi + 60 sn).
+on_term() {
+  trap '' TERM INT
+  if [[ -n "$STEP_PID" ]]; then
+    kill -TERM "$STEP_PID" 2>/dev/null
+    wait "$STEP_PID" 2>/dev/null
+    STEP_PID=''
+  fi
+  case "$PHASE" in
+    install) fail_install "$STEP" "kesildi (TERM/INT: sure siniri ya da is iptali)" ;;
+    files) fail_files "$STEP" "kesildi (TERM/INT: sure siniri ya da is iptali)" ;;
+    *) finish FAIL "$STEP" "kesildi (TERM/INT: sure siniri ya da is iptali)" ;;
+  esac
+}
 trap on_exit EXIT
-trap 'exit 143' TERM INT
+trap on_term TERM INT
+trap '' PIPE HUP
+
+# Sure sinirli deployment betigi ARKA PLANDA + wait: TERM trap'i adim bitmeden calisabilsin. Deployment
+# betikleri SIGPIPE'i varsayilan haliyle alir (bu betigin yok saymasi miras kalmasin); SIGHUP yok sayili kalir:
+# kopan baglanti adimi yarida kesmez.
+bounded_script() {
+  local rc
+  (
+    trap - PIPE
+    exec timeout -k 10 "$STEP_TIMEOUT" bash "$@"
+  ) </dev/null 2>&1 &
+  STEP_PID=$!
+  wait "$STEP_PID"
+  rc=$?
+  STEP_PID=''
+  return $rc
+}
 
 # -- Girdi -----------------------------------------------------------------------------------------
 
@@ -453,13 +495,17 @@ prepare_dirs() {
   HYS_CREATED=1
 }
 
+# Govde stdout'tan head -c ile en cok siniri + 1 bayt alinir (config ile ayni koruma): --max-filesize yalniz
+# Content-Length bilinirken isler; eski curl (RHEL 8: 7.61) chunked yanitta govdeyi kesmez, /hysdeploy
+# indirme boyunca dolabilirdi. Siniri asan yanit boru kapaninca durur (curl rc=23) ve 'boyut siniri' sayilir.
 download() {
-  local part="${HYS_DIR}/.${VER}.zip.part" rc
+  local part="${HYS_DIR}/.${VER}.zip.part" rc lim=$((MAX_MB * 1048576)) size
   prepare_dirs
   "$CURL" -fsS -g -L --max-redirs 3 --proto '=https' --proto-redir '=https' --max-time "$DL_TIMEOUT" \
-    --max-filesize "$((MAX_MB * 1048576))" ${TLS[@]+"${TLS[@]}"} -o "$part" "$URL" </dev/null
-  rc=$?
-  if [[ $rc -eq 63 ]]; then
+    --max-filesize "$lim" ${TLS[@]+"${TLS[@]}"} -o - "$URL" </dev/null | head -c "$((lim + 1))" >"$part"
+  rc=${PIPESTATUS[0]}
+  size=$(wc -c <"$part" 2>/dev/null | tr -d '[:space:]')
+  if [[ $rc -eq 63 || ("$size" =~ ^[0-9]+$ && "$size" -gt "$lim") ]]; then
     fail_files download "paket boyut siniri asildi (${MAX_MB} MB)"
   elif [[ $rc -ne 0 ]]; then
     fail_files download "paket indirilemedi (curl rc=${rc})"
@@ -508,7 +554,7 @@ run_step() {
   local name="$1" rc
   STEP="$name"
   log "== ${name}: nginx_${name}.sh prod ${NS} ${APP} ${VER} portal / ${JOB}"
-  timeout -k 10 "$STEP_TIMEOUT" bash "${SCRIPTS}/nginx_${name}.sh" prod "$NS" "$APP" "$VER" portal / "$JOB" </dev/null 2>&1
+  bounded_script "${SCRIPTS}/nginx_${name}.sh" prod "$NS" "$APP" "$VER" portal / "$JOB"
   rc=$?
   [[ $rc -eq 0 ]] && return 0
   fail_install "$name" "nginx_${name}.sh rc=${rc}"
@@ -540,7 +586,7 @@ cleanup_backup() {
   STEP=cleanup
   local rc
   log "== cleanup_backup: nginx_cleanup_backup.sh prod ${NS} ${APP} ${VER} portal / ${JOB}"
-  timeout -k 10 "$STEP_TIMEOUT" bash "${SCRIPTS}/nginx_cleanup_backup.sh" prod "$NS" "$APP" "$VER" portal / "$JOB" </dev/null 2>&1
+  bounded_script "${SCRIPTS}/nginx_cleanup_backup.sh" prod "$NS" "$APP" "$VER" portal / "$JOB"
   rc=$?
   [[ $rc -eq 0 ]] || CLEANUP_NOTE=" (uyari: nginx_cleanup_backup.sh rc=${rc})"
 }
