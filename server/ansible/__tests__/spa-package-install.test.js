@@ -1,4 +1,4 @@
-// server/ansible/__tests__/spa-package-install.test.js - SPI1..SPI22, SPI28..SPI34, SPI41..SPI48.
+// server/ansible/__tests__/spa-package-install.test.js - SPI1..SPI22, SPI28..SPI34, SPI41..SPI51.
 //
 // Intranet SPA paket kurulumu (bmw_portal/spa_package_install): Artifactory'deki paketi PROD intranet
 // Nginx sunucusuna ILK KEZ kurar; application.json uygulamanin OCP route'undaki /config'ten (pod'daki
@@ -26,7 +26,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { BASH, BASH_SURUM, posixYol } = require('./fixtures/kabuk.cjs');
 const { adaylar, pythonBul } = require('./fixtures/python-bul.cjs');
 
@@ -239,9 +239,29 @@ test('SPI7 playbook: kurum degerinin varsayilani yok, sabit adres / sunucu yok',
 test('SPI8 playbook: gecici betik, sha1 dogrulama, timeout -k, temizlik', () => {
   assert.match(PB, /prefix: \.spa_package_host\./);
   assert.equal((PB.match(/checksum_algorithm: sha1/g) || []).length, 2);
-  assert.match(PB, /timeout -k 10 \{\{ spi_run_timeout \}\} bash/);
+  // 2026-11-24 (PR-R): dis sinir ic butceden turetilir (HEAD + 3 /config + indirme + 7 adim + dogrulama + pay);
+  // KILL payi geri almaya yeter (indirme + adim + 60). Eskiden DL + 3600 sn ic en kotu durumdan (DL + 5650) kisaydi.
+  assert.match(PB, /timeout -k \{\{ spi_kill_grace \}\} \{\{ spi_run_timeout \}\} bash/);
+  assert.match(
+    PB,
+    /\{\{ 60 \+ 90 \+ \(spi_dl_timeout \| int\) \+ 7 \* \(\(spi_step_timeout \| int\) \+ 10\) \+ 40 \+ 120 \}\}/,
+  );
+  assert.match(
+    PB,
+    /spi_kill_grace: "\{\{ \(spi_dl_timeout \| int\) \+ \(spi_step_timeout \| int\) \+ 60 \}\}"/,
+  );
+  assert.match(
+    gorev('Run the host script per item'),
+    /SPI_STEP_TIMEOUT: "\{\{ spi_step_timeout \| string \}\}"/,
+  );
   assert.match(gorev('Remove the script'), /state: absent/);
-  assert.match(PB, /Host fails when the script remains/);
+  // Temizlikte assert YOK: tek sunucuda dusen assert yayin play'ini hic kosturmazdi (set_stats kaybolurdu).
+  const always = PB.split('- name: "SPA package install - install on nginx hosts"')[1]
+    .split('\n      always:\n')[1]
+    .split('- name: "SPA package install - publish the result"')[0];
+  assert.ok(!/ansible\.builtin\.assert/.test(always), 'always icinde assert');
+  assert.match(always, /spi_cleanup_error:/);
+  assert.match(PB, /cleanup_errors: "\{\{ spi_cleanup_errors \| default\(\[\]\) \}\}"/);
   assert.match(
     gorev('Run the host script per item'),
     /== \(hostvars\['localhost'\]\.spi_host_src_sha1 \| default\('x'\)\)/,
@@ -265,6 +285,8 @@ const SAHTE_NGINX = [
   'n=$(basename "$0" .sh); n=${n#nginx_}',
   'printf \'%s %s %s\\n\' "nginx_${n}.sh" "$#" "$*" >> "$CALLS"',
   'rcvar="FAKE_RC_${n}"; rc=${!rcvar:-0}',
+  // FAKE_SLEEP_<adim>: adim isini yaptiktan sonra bekler (TERM ile kesinti testi, SPI49).
+  'svar="FAKE_SLEEP_${n}"',
   'case "$n" in',
   '  unzip)',
   '    [ -n "${FAKE_UNZIP_NODIR:-}" ] && exit "$rc"',
@@ -276,6 +298,7 @@ const SAHTE_NGINX = [
   '    echo "location / { root ${FAKE_CONF_ROOT:-$SPI_APP_ROOT/$2/$3/}; }" > "$SPI_CONF_DIR/application-confs/$3-$2.conf" ;;',
   '  delete) rm -rf "$SPI_APP_ROOT/$1/$2" "$SPI_HYS_ROOT/$1/$2" "$SPI_CONF_DIR/$2-$1.conf" "$SPI_CONF_DIR/application-confs/$2-$1.conf" ;;',
   'esac',
+  '[ -n "${!svar:-}" ] && { echo "$n" >> "$CALLS.sleeping"; sleep "${!svar}"; }',
   'exit "$rc"',
   '',
 ].join('\n');
@@ -324,9 +347,16 @@ const SAHTE_CURL = [
   'fi',
   // Gercek sablon: /ready bir dizine alias, nginx sondaki '/' icin her zaman 301 doner (job 3590287).
   'if [ -n "$w" ]; then case "$url" in */ready) printf 301 ;; *) printf \'%s\' "${FAKE_VERIFY_CODE:-200}" ;; esac; exit 0; fi',
-  'if [ "${FAKE_DL_RC:-0}" != 0 ]; then printf partial > "$out"; exit "$FAKE_DL_RC"; fi',
-  'printf PKfake > "$out"',
-  '[ -n "${FAKE_DL_ALSO:-}" ] && printf foreign > "$(dirname "$out")/$FAKE_DL_ALSO"',
+  // Indirme govdesi -o - ile stdout'a (2026-11-24: head -c siniri). FAKE_DL_STREAM=N: Content-Length'siz N x 64 KB.
+  '[ "$out" = - ] || exec > "$out"',
+  'if [ "${FAKE_DL_RC:-0}" != 0 ]; then printf partial; exit "$FAKE_DL_RC"; fi',
+  'if [ -n "${FAKE_DL_STREAM:-}" ]; then',
+  "  parca=$(printf '%065536d' 0); i=0",
+  '  while [ $i -lt "$FAKE_DL_STREAM" ]; do printf \'%s\' "$parca" || exit 23; i=$((i+1)); echo $i > "$CALLS.dlstream"; done',
+  '  exit 0',
+  'fi',
+  'printf PKfake',
+  '[ -n "${FAKE_DL_ALSO:-}" ] && printf foreign > "$FAKE_DL_ALSO_DIR/$FAKE_DL_ALSO"',
   '[ -n "${FAKE_DL_MKDIR:-}" ] && mkdir -p "$FAKE_DL_MKDIR"',
   'exit 0',
   '',
@@ -636,7 +666,7 @@ test(
   { skip: SKIP },
   () =>
     sahteIle([], (d) => {
-      const s = hostKos(d, { FAKE_DL_ALSO: `${VER}.zip` });
+      const s = hostKos(d, { FAKE_DL_ALSO: `${VER}.zip`, FAKE_DL_ALSO_DIR: posixYol(hysDir(d)) });
       assert.equal(s.status, 'FAIL', s.r.stdout);
       assert.equal(s.step, 'zip_check');
       assert.match(s.message, /hedef paket zaten var, uzerine yazilmadi/);
@@ -1066,7 +1096,7 @@ const KAPI_HARNESS = [
   'import json, re, sys, yaml, jinja2',
   'pb = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))',
   'play = pb[0]',
-  'task = next(t for t in play["tasks"] if t["name"] == "Item format")',
+  'task = next(t for t in play["tasks"] + [b for x in play["tasks"] for b in x.get("block", [])] if t.get("name") == "Item format")',
   'that = task["ansible.builtin.assert"]["that"]',
   'env = jinja2.Environment()',
   'env.tests["match"] = lambda v, p: re.match(p, v) is not None',
@@ -1173,3 +1203,135 @@ test('SPI48 girdi kapisi Python re + Jinja: sondaki satir sonu, IP / localhost a
   const nsDesen = that.findIndex((k) => k.includes('item.namespace is match(spi_ns_re)'));
   assert.equal(out.nsSatirSonu[nsDesen], '1');
 });
+
+// -- Kesinti (2026-11-24, PR-R; playbook-denetci kaniti) ---------------------------------------------
+// Dis `timeout` TERM'u bash'e yollar; bash on plandaki adim bitmeden trap'i calistirmiyor, KILL gelince geri alma
+// hic kosmuyor, sunucuda yarim kurulum kaliyordu. Okuyan taraf giderse (SIGPIPE) betik log satirinda oluyordu.
+
+/** Betigi arka planda baslatir; `adim` beklemeye girince `sonra(cocuk)` cagrilir. Cikti ve cagrilar doner. */
+function hostKosAsync(d, env, adim, sonra) {
+  return new Promise((coz, red) => {
+    const c = spawn(BASH, [posixYol(HOST_SH)], {
+      env: {
+        ...process.env,
+        SPI_MODE: 'apply',
+        SPI_NS: NS,
+        SPI_APP: APP,
+        SPI_VERSION: VER,
+        SPI_JOB_NO: JOB,
+        SPI_ZIP_URL: URL,
+        SPI_CONFIG_URLS: CFG(1),
+        SPI_PYTHON: PY || '',
+        FAKE_CFG_BODY: posixYol(path.join(d.govde, 'gecerli.json')),
+        TMPDIR: posixYol(d.tmp),
+        SPI_SCRIPTS_DIR: posixYol(d.scripts),
+        SPI_HYS_ROOT: posixYol(d.hys),
+        SPI_APP_ROOT: posixYol(d.apps),
+        SPI_CONF_DIR: posixYol(d.conf),
+        SPI_CURL: posixYol(d.curl),
+        SPI_UNZIP: posixYol(d.unzip),
+        CALLS: posixYol(d.calls),
+        ...env,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    c.stdout.on('data', (b) => (stdout += b));
+    c.stderr.on('data', () => {});
+    const bekle = `${d.calls}.sleeping`;
+    const t0 = Date.now();
+    const yokla = setInterval(() => {
+      if (fs.existsSync(bekle) && fs.readFileSync(bekle, 'utf8').includes(adim)) {
+        clearInterval(yokla);
+        sonra(c);
+      } else if (Date.now() - t0 > 20000) {
+        clearInterval(yokla);
+        c.kill('SIGKILL');
+        red(new Error(`${adim} adimi baslamadi:\n${stdout}`));
+      }
+    }, 50);
+    c.on('close', (kod) => {
+      clearInterval(yokla);
+      const calls = fs.readFileSync(d.calls, 'utf8').trim().split('\n').filter(Boolean);
+      coz({ kod, stdout, calls, sure: Date.now() - t0 });
+    });
+  });
+}
+
+test(
+  'SPI49 host: adim sirasinda TERM -> adim durur, hedef bu kosununsa geri alinir, tek RESULT',
+  { skip: SKIP },
+  async () => {
+    const d = sahteSunucu();
+    try {
+      const r = await hostKosAsync(d, { FAKE_SLEEP_configuration: '60' }, 'configuration', (c) =>
+        c.kill('SIGTERM'),
+      );
+      assert.equal(r.kod, 1, r.stdout);
+      assert.ok(r.sure < 20000, `TERM adim bitmeden islenmedi (${r.sure} ms)`);
+      const sonuc = r.stdout
+        .trim()
+        .split('\n')
+        .filter((l) => l.startsWith('RESULT\t'));
+      assert.equal(sonuc.length, 1, r.stdout);
+      assert.match(
+        sonuc[0],
+        /^RESULT\tFAIL\tconfiguration\tkesildi \(TERM\/INT: sure siniri ya da is iptali\); geri alma: nginx_delete\.sh rc=0/,
+      );
+      assert.ok(
+        r.calls.some((c) => c.startsWith('nginx_delete.sh 2')),
+        'geri alma cagrilmadi',
+      );
+      assert.ok(!fs.existsSync(path.join(d.apps, NS, APP)), 'yarim kurulum kaldi');
+      assert.ok(!fs.existsSync(hysDir(d)), 'indirilen paket kaldi');
+    } finally {
+      fs.rmSync(d.kok, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'SPI50 host: ciktiyi okuyan taraf giderse (SIGPIPE) kurulum yarim kalmaz, tamamlanir',
+  { skip: SKIP },
+  async () => {
+    const d = sahteSunucu();
+    try {
+      const r = await hostKosAsync(d, { FAKE_SLEEP_unzip: '1' }, 'unzip', (c) =>
+        c.stdout.destroy(),
+      );
+      const adimlar = r.calls.filter((c) => c.startsWith('nginx_')).map((c) => c.split(' ')[0]);
+      assert.deepEqual(
+        adimlar,
+        [
+          'nginx_pre_deployment.sh',
+          'nginx_unzip.sh',
+          'nginx_configuration.sh',
+          'nginx_syntax_check.sh',
+          'nginx_reload.sh',
+          'nginx_cleanup_backup.sh',
+        ],
+        'okuyan gidince betik log satirinda oldu (yarim kurulum)',
+      );
+      assert.equal(r.kod, 0);
+      assert.ok(fs.existsSync(path.join(hysDir(d), `${VER}.zip`)));
+    } finally {
+      fs.rmSync(d.kok, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  'SPI51 host: Content-Length bilinmeyen indirme siniri asinca durur; FAIL download, dosya kalmaz',
+  { skip: SKIP },
+  () =>
+    sahteIle([], (d) => {
+      const s = hostKos(d, { FAKE_DL_STREAM: '40', SPI_MAX_ZIP_MB: '1' });
+      assert.equal(s.status, 'FAIL', s.r.stdout);
+      assert.equal(s.step, 'download');
+      assert.match(s.message, /paket boyut siniri asildi \(1 MB\)/);
+      assert.ok(!fs.existsSync(hysDir(d)), 'yarim paket kaldi');
+      const parca = Number(fs.readFileSync(`${d.calls}.dlstream`, 'utf8').trim());
+      assert.ok(parca < 40, `indirme siniri asinca durmadi (${parca} / 40 parca)`);
+      assert.deepEqual(nginxCagrilari(s.calls), []);
+    }),
+);

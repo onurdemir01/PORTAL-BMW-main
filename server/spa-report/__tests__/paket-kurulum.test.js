@@ -656,6 +656,26 @@ test('PK6 GET is: sahiplik, sablon kimligi, artifact eslesmesi', async () => {
   const y = await istek('GET', '/intranet/paket/is/2/700');
   assert.equal(y.body.finished, true);
   assert.match(y.body.error, /sonuç yayınlanmadı/);
+  // Girdi kapisi dustu (2026-11-24, PR-R): kalem yok + error -> sebep gosterilir, "eslesmiyor" (409) denmez.
+  ortam.durum = {
+    status: 'failed',
+    templateId: 77,
+    artifacts: {
+      spa_package_install_result: {
+        mode: 'apply',
+        overall: 'failed',
+        error: 'AWX sablon degiskenleri eksik ya da gecersiz',
+        items: [],
+      },
+    },
+  };
+  const g = await istek('GET', '/intranet/paket/is/2/700');
+  assert.equal(g.status, 200);
+  assert.equal(g.body.finished, true);
+  assert.equal(
+    g.body.error,
+    'Kurulum başlamadı (girdi kapısı): AWX sablon degiskenleri eksik ya da gecersiz',
+  );
   assert.equal(kayit.tabloInsert, 0);
 });
 
