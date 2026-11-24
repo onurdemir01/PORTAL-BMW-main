@@ -484,7 +484,7 @@ describe('CisTab', () => {
   });
 
   it('CSV dosyasi sunucu satirlarini tasir', async () => {
-    const urlOlustur = vi.fn(() => 'blob:x');
+    const urlOlustur = vi.fn((_nesne: Blob | MediaSource) => 'blob:x');
     Object.assign(URL, { createObjectURL: urlOlustur });
     const tikla = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     goster();
