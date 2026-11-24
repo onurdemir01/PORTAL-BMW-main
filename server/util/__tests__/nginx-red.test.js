@@ -6,13 +6,15 @@
 //   NG2 eylem5xx: GET disi isteklerde 501 -> 409, 502 / 503 / 504 -> 424; GET'te 5xx KALIR
 //   NG3 dokunulmayanlar: 401, 500, eylem5xx kapaliyken 5xx, ok:false olmayan govde, metin
 //   NG4 `haric` onekleri (baglandigi yola goreli) hic cevrilmez; onek siniri tam
+//   NG5 hataYanitlayici (modul hata yaniti, 2026-11-24 ortak): GET disi 5xx -> 424 + upstreamStatus + nginxRed,
+//       GET'te 5xx kalir; 4xx durumu ve kodu aynen; err.ek alanlari her yanitta; 5xx loglanir, 4xx loglanmaz
 'use strict';
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 
-const { nginxRedCevirici } = require('../nginx-red.cjs');
+const { nginxRedCevirici, hataYanitlayici } = require('../nginx-red.cjs');
 
 async function kur(secenek) {
   const app = express();
@@ -149,4 +151,56 @@ test('NG4 haric onekler cevrilmez; onek siniri tam', async () => {
     s.closeAllConnections();
     s.close();
   }
+});
+
+test('NG5 hataYanitlayici: GET disi 5xx 424 olur, GET 5xx ve 4xx aynen; ek alanlar ve log', (t) => {
+  const loglar = [];
+  t.mock.method(console, 'error', (...a) => loglar.push(a.join(' ')));
+  const yanitla = hataYanitlayici({ etiket: 'Ornek', kod: 'ornek_sunucu_hatasi' });
+  const res = () => ({
+    status(c) {
+      this.kod = c;
+      return this;
+    },
+    json(b) {
+      this.govde = b;
+      return this;
+    },
+  });
+  const hata = (status, message, code, ek) =>
+    Object.assign(new Error(message), { status, code, ek });
+  const istek = (method) => ({ method, originalUrl: '/api/ornek/1', path: '/ornek/1' });
+
+  let r = yanitla(istek('POST'), res(), hata(undefined, 'db okunamadi'));
+  assert.equal(r.kod, 424);
+  assert.deepEqual(r.govde, {
+    ok: false,
+    message: 'db okunamadi',
+    code: 'ornek_sunucu_hatasi',
+    upstreamStatus: 500,
+    nginxRed: true,
+  });
+  r = yanitla(istek('DELETE'), res(), hata(503, 'awx yok', 'awx_yok', { isNo: 7 }));
+  assert.equal(r.kod, 424);
+  assert.deepEqual(r.govde, {
+    ok: false,
+    message: 'awx yok',
+    code: 'awx_yok',
+    upstreamStatus: 503,
+    nginxRed: true,
+    isNo: 7,
+  });
+  for (const m of ['GET', 'HEAD']) {
+    r = yanitla(istek(m), res(), hata(500, 'okuma hatasi'));
+    assert.equal(r.kod, 500, m);
+    assert.deepEqual(r.govde, { ok: false, message: 'okuma hatasi' });
+  }
+  assert.equal(loglar.length, 4, 'her 5xx loglanir');
+  assert.match(loglar[0], /^\[Ornek\] POST \/api\/ornek\/1 500: db okunamadi$/);
+  r = yanitla(istek('POST'), res(), hata(409, 'durum degisti', 'durum', { ayrinti: 'x' }));
+  assert.equal(r.kod, 409);
+  assert.deepEqual(r.govde, { ok: false, message: 'durum degisti', code: 'durum', ayrinti: 'x' });
+  r = yanitla(istek('POST'), res(), hata(400, 'gecersiz'));
+  assert.deepEqual(r.govde, { ok: false, message: 'gecersiz' });
+  assert.equal(loglar.length, 4, '4xx loglanmaz');
 });

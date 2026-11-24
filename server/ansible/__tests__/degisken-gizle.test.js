@@ -242,9 +242,17 @@ test('DG8 runner ham extra_vars`i arindirmadan yanita koymaz', () => {
     )
     .map(([n, s]) => `${n}: ${s.trim()}`);
   assert.deepEqual(arindirmasiz, []);
+  // 2026-11-24: iki sablon listeleme yolu tek fonksiyonda (sablonListesi): okuma yeri bir azaldi. Bekci kor
+  // kalmasin: okuma sayisi tabani ve sablon listesinin arindirdigi ayrica aranir.
   assert.ok(
-    okuyan.length >= 5,
+    okuyan.length >= 4,
     `extra_vars okumasi az bulundu (${okuyan.length}) - desen bayatlamis olabilir`,
+  );
+  const liste = satirlar.join('\n').match(/function sablonListesi\([\s\S]*?\n\}/)?.[0] || '';
+  assert.match(
+    liste,
+    /\.\.\.sablonDegiskenAlanlari\(t\.extra_vars\),/,
+    'sablon listesi arindirmiyor',
   );
 });
 

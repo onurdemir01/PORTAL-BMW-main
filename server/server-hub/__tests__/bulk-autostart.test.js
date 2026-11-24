@@ -32,6 +32,9 @@ const UI = fs.readFileSync(
   'utf8',
 );
 const TOPLU = fs.readFileSync(path.join(__dirname, '..', 'toplu-autostart.cjs'), 'utf8');
+// 2026-11-24: Toplu Restart ile ortak yasam dongusu (onay, plan eskimesi, secim asamasi, tick, yarim birakma)
+// toplu-cekirdek.cjs'te; bekciler o kurallari orada, modulun onlari cagirdigini burada arar.
+const CEKIRDEK = fs.readFileSync(path.join(__dirname, '..', 'toplu-cekirdek.cjs'), 'utf8');
 const KAPI = fs.readFileSync(path.join(__dirname, '..', 'autostart-dogrulama.cjs'), 'utf8');
 /** Bir fonksiyonun govdesi: `function ad(` ile bir sonraki ust duzey kapanis satiri arasi. */
 function fonksiyon(src, ad) {
@@ -39,6 +42,14 @@ function fonksiyon(src, ad) {
   assert.ok(i >= 0, `${ad} yok`);
   const son = src.indexOf('\n}\n', i);
   return src.slice(i, son > i ? son : undefined);
+}
+/** Cekirdek fabrikasinin (topluCekirdek) icindeki fonksiyon: kapanisi iki bosluk girintili. */
+function icFonksiyon(ad) {
+  const i = CEKIRDEK.indexOf(`  async function ${ad}(`);
+  const j = i >= 0 ? i : CEKIRDEK.indexOf(`  function ${ad}(`);
+  assert.ok(j >= 0, `toplu-cekirdek ${ad} yok`);
+  const son = CEKIRDEK.indexOf('\n  }\n', j);
+  return CEKIRDEK.slice(j, son > j ? son : undefined);
 }
 
 test('BA1: toplu duzeltme UCLARI YOK', () => {
@@ -113,22 +124,29 @@ test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uyg
     /durum = 'BEKLIYOR'[\s\S]*durum = 'CALISIYOR' AND kira_id/,
     'uygulama onaysiz ise acilabiliyor',
   );
+  // Onay ortak kapidan gecer (toplu-cekirdek.cjs onayHazirla): plan hazir ve 15 dk icinde olmali.
   assert.match(
     fonksiyon(TOPLU, 'onayla'),
+    /await C\.onayHazirla\(req, id\)/,
+    'onay ortak kapidan gecmiyor',
+  );
+  assert.match(
+    icFonksiyon('onayHazirla'),
     /durum !== 'PLAN_HAZIR'/,
     'onay plan hazir olmadan veriliyor',
   );
   assert.match(
-    fonksiyon(TOPLU, 'onayla'),
+    icFonksiyon('onayHazirla'),
     /if \(planEskiMi\(is\)\) \{\s*await planEskit\(req, id\);\s*throw/,
     'eski plan onaylanabiliyor',
   );
   assert.match(
-    TOPLU,
+    CEKIRDEK,
     esnek(
-      /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/,
+      /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > cfg\.planYasMs;/,
     ),
   );
+  assert.match(TOPLU, /planYasMs: PLAN_YAS_MS,/, 'plan yasi modulun sabitinden degil');
 });
 
 test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRAYLA', () => {
@@ -194,8 +212,13 @@ test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
   );
   assert.match(
     fonksiyon(TOPLU, 'planIlerlet'),
-    /secimDogrula\(is, og\)/,
+    /if \(!\(await C\.secimAsamasi\(is, og, iptalMi, secimDogrula\)\)\) return;/,
     'plan secimi dogrulamadan ilerliyor',
+  );
+  assert.match(
+    icFonksiyon('secimAsamasi'),
+    /tamam = await secimDogrula\(is, og\);[\s\S]*if \(!tamam\) return false;/,
+    'secim asamasi dogrulamayi beklemiyor',
   );
   assert.doesNotMatch(
     fonksiyon(TOPLU, 'olustur'),
@@ -205,15 +228,21 @@ test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
 });
 
 test('BA9: kontrollu toplu - kirasi dusen is DEVAM ETTIRILMEZ (YARIM_KALDI)', () => {
-  const t = fonksiyon(TOPLU, 'tick');
+  // tick ve yarimBirak ortak cekirdekte; modul ikisini de cekirdekten alir ve kendi surec kimligini verir.
+  assert.match(TOPLU, /tick: C\.tick,/, 'modul ortak tick kullanmiyor');
+  assert.match(TOPLU, /surecId: SUREC_ID,/, 'cekirdek modulun surec kimligini almiyor');
+  const t = icFonksiyon('tick');
   assert.match(
     t,
-    /is\.kira_id !== SUREC_ID[\s\S]*yarimBirak\(is\)[\s\S]*continue;/,
+    /is\.kira_id !== cfg\.surecId[\s\S]*yarimBirak\(is\)[\s\S]*continue;/,
     'baska surecin isi ilerletiliyor',
   );
-  const y = fonksiyon(TOPLU, 'yarimBirak');
-  assert.ok(!/_d\.launch|launch\(/.test(y), 'yarim birakma is baslatiyor');
-  assert.match(y, /awx_job_id IS NULL/, 'is numarasiz BASLATILIYOR oge ayrica isaretlenmiyor');
+  const y = icFonksiyon('yarimBirak');
+  assert.ok(!/launch/.test(y), 'yarim birakma is baslatiyor');
+  assert.match(y, /await cfg\.kancalar\.yarimEk\(is\);/, 'modulun yarim kancasi cagrilmiyor');
+  const ek = fonksiyon(TOPLU, 'yarimEk');
+  assert.ok(!/launch/.test(ek), 'yarim kancasi is baslatiyor');
+  assert.match(ek, /awx_job_id IS NULL/, 'is numarasiz BASLATILIYOR oge ayrica isaretlenmiyor');
 });
 
 // ── SATIR BAZINDA AUTO-START (SB1..SB5, 2026-10-01) ─────────────────────────────────

@@ -14,6 +14,8 @@
 // Dokum ayristirma SAF modulde (dump-parse.cjs) — test edilir. Bu dosya: HTTP + AWX + cache.
 'use strict';
 
+const { isKaydiYaz } = require('../ansible/is-kaydi.cjs');
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -544,33 +546,19 @@ async function launch(req, keyName, templateName, extraVars, platformDetail) {
   );
   const user = req.session?.user || {};
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
-  try {
-    const db = require('../db/index.cjs');
-    await db.query(
-      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        user.username || 'unknown',
-        serverId,
-        templateId,
-        templateName,
-        result?.jobId,
-        result?.status || 'pending',
-        JSON.stringify({
-          ...extraVars,
-          content_b64: extraVars.content_b64 ? `<${extraVars.content_b64.length} b64>` : undefined,
-        }),
-      ],
-    );
-  } catch (e) {
-    console.warn('[NginxConsole] job gecmisi yazilamadi:', e.message);
-  }
-  try {
-    require('../audit/index.cjs').auditPortal(req, 'nginx_console', {
-      detail: JSON.stringify({ ...platformDetail, jobId: result?.jobId ?? null }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  await isKaydiYaz(req, user, {
+    serverId,
+    templateId,
+    templateName,
+    result,
+    params: {
+      ...extraVars,
+      content_b64: extraVars.content_b64 ? `<${extraVars.content_b64.length} b64>` : undefined,
+    },
+    etiket: 'NginxConsole',
+    denetimTuru: 'nginx_console',
+    detay: platformDetail,
+  });
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 

@@ -42,6 +42,7 @@
 
 const crypto = require('node:crypto');
 const { kullanimKaniti, OLCULEMEDI_EKI } = require('./ear-kullanim.cjs');
+const { hataYanitlayici } = require('../util/nginx-red.cjs');
 
 const REGISTRY_KEY = 'server_hub_fix';
 const TEMPLATE_ADI = 'server_hub_fix';
@@ -1386,32 +1387,9 @@ function startPoller() {
 
 function mount(router, deps) {
   kur(deps);
-  // 5xx: kurumsal nginx govdeyi index.html ile degistirir (toplu-autostart.cjs mount ile ayni gerekce). GET disi
-  // isteklerde 424 + upstreamStatus + nginxRed.
-  const gonder = (req, res, err) => {
-    const status = err.status || 500;
-    if (status >= 500) {
-      console.error(
-        `[EarTemizlik] ${req.method} ${req.originalUrl || req.path} ${status}:`,
-        err?.message,
-      );
-      if (req.method !== 'GET' && req.method !== 'HEAD')
-        return res.status(424).json({
-          ok: false,
-          message: err.message,
-          code: err.code || 'ear_temizlik_sunucu_hatasi',
-          upstreamStatus: status,
-          nginxRed: true,
-          ...(err.ek || {}),
-        });
-    }
-    return res.status(status).json({
-      ok: false,
-      message: err.message,
-      ...(err.code ? { code: err.code } : {}),
-      ...(err.ek || {}),
-    });
-  };
+  // 5xx: kurumsal nginx govdeyi index.html ile degistirir (util/nginx-red.cjs hataYanitlayici). GET disi
+  // isteklerde 424 + upstreamStatus + nginxRed; err.ek alanlari yanitta.
+  const gonder = hataYanitlayici({ etiket: 'EarTemizlik', kod: 'ear_temizlik_sunucu_hatasi' });
   const idOf = (req) => {
     const id = Number(req.params.id);
     return Number.isInteger(id) && id > 0 ? id : null;

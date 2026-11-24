@@ -14,6 +14,8 @@
 // JSON semasi) icin o dosyanin basligina bakilmali.
 'use strict';
 
+const katalog = require('../opsx/katalog-uclari.cjs');
+
 const REGISTRY_KEY = 'filex_list_files';
 
 async function resolveTarget() {
@@ -187,26 +189,14 @@ function initFileX(app) {
   }
 
   // GET /api/filex/apps?search= — OpsX/LogX ile AYNI kaynak.
-  app.get('/api/filex/apps', requireAuth, async (req, res) => {
-    try {
-      const legacy = require('../logx/v2/legacy.cjs');
-      const result = await legacy.searchApps(req.query.search);
-      res.json({ ok: true, ...result });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.get('/api/filex/apps', requireAuth, katalog.uygulamaAra);
 
   // GET /api/filex/hosts?app= — OpsX'in hostsForApp'ini AYNEN kullanir (kod tekrari yok).
-  app.get('/api/filex/hosts', requireAuth, async (req, res) => {
-    try {
-      const { hostsForApp } = require('../opsx/index.cjs');
-      const hosts = await hostsForApp(req.query.app);
-      res.json({ ok: true, hosts });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.get(
+    '/api/filex/hosts',
+    requireAuth,
+    katalog.sunucular((uygulama) => require('../opsx/index.cjs').hostsForApp(uygulama)),
+  );
 
   // POST /api/filex/run — { application, hosts } -> AWX job tetikler.
   app.post('/api/filex/run', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {

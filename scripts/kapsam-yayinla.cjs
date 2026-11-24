@@ -10,6 +10,13 @@
 //   repoda tasinir ve main'e her push'tan sonra yenilenir (.github/workflows/kapsam-raporu.yml).
 //
 // YALNIZ KAYNAK DOSYALARI: test dosyalari rapordan cikarilir (Sonar onlari sonar.tests sayar).
+// KAYNAK = KURUMUN KAYNAK SAYDIGI (2026-11-24, PR-2): kurumsal tarama sonar.sources=. verir ve yalniz
+// *.test.js / *.test.tsx'i test sayar (kalite/kurumsal-sonar.json). scripts/ ve __tests__ altindaki
+// yardimcilar (fixtures, harness) kurumda KAYNAKTIR; rapor onlari tasimadiginda kurum, testlerin
+// calistirdigi bu kodu %0 sayiyordu (olcum: ~12 bin satir; yardimcilar %98, scripts %77 kapsaniyor).
+// Kuruma gitmeyen dizinler (scripts/teslim.cjs KURUMA_GITMEYEN) rapora girmez. K13'un kendi
+// siniflandirmasi (sonar-project.properties: src, server, shared) bu kumenin alt kumesidir; SonarQube
+// taramadigi dosyanin satirlarini yok sayar.
 // Yalniz SonarQube'un kullandigi satirlar yazilir (SF, DA, BRDA, LF, LH, BRF, BRH): islev
 // satirlari (FN*) kullanilmaz ve depoyu buyutur.
 //
@@ -27,22 +34,30 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { aracYolu } = require('./arac-yolu.cjs');
+const { KURUMA_GITMEYEN } = require('./teslim.cjs');
 
 const KOK = path.join(__dirname, '..');
 const GIRDI = path.join(KOK, 'coverage', 'lcov.info');
 const HEDEF_DIZIN = path.join(KOK, 'kalite', 'kapsam');
-const KAYNAK_DIZINLERI = ['src', 'server', 'shared']; // sonar-project.properties sonar.sources
+// Kaynak dizinleri (kok dizindeki dosyalar da kaynak: eslint.config.js gibi). Derleme ciktilari (dist/,
+// coverage/) git disidir; kurum da .gitignore'u uygular. Izlenen her kod dosyasi bu dizinlerde (bekci KP5).
+const KAYNAK_DIZINLERI = ['src', 'server', 'shared', 'scripts'];
 const KOD = /\.(c?js|mjs|tsx?)$/;
-const TEST = /(^|\/)__tests__\/|\.(test|spec)\.(c?js|mjs|tsx?)$|^src\/test\//;
+// Test dosyasi ADINDAN taninir (kurum gibi); __tests__ altindaki yardimcilar kaynaktir. src/test/
+// Vitest kurulumudur; kurum onu kapsamdan cikarir (coverageExclusions **/test/**).
+const TEST = /\.(test|spec)\.(c?js|mjs|tsx?)$|^src\/test\//;
 const TUTULAN = /^(SF|DA|BRDA|LF|LH|BRF|BRH):|^end_of_record$/;
 
 /** Kapsam raporuna girecek kaynak dosya mi? (repo-goreli, `/` ayracli yol) */
 function kaynakMi(yol) {
+  const ust = yol.includes('/') ? yol.slice(0, yol.indexOf('/')) : null; // null: kok dizinde
   return (
-    KAYNAK_DIZINLERI.some((d) => yol.startsWith(`${d}/`)) &&
     KOD.test(yol) &&
     !TEST.test(yol) &&
-    !yol.endsWith('.d.ts')
+    !yol.endsWith('.d.ts') &&
+    (ust === null || KAYNAK_DIZINLERI.includes(ust)) && // repo disi yol (mutlak, ../) da elenir
+    !/(^|\/)node_modules\//.test(yol) &&
+    !KURUMA_GITMEYEN.some((d) => yol.startsWith(d))
   );
 }
 
@@ -90,7 +105,7 @@ function lcovSuz(metin) {
 
 /** Izlenen kaynak dosyalari (git ls-files) -> tek ozet. Yol listesi ve icerikler degisirse degisir. */
 function kaynakOzeti(kok = KOK) {
-  const cikti = execFileSync(aracYolu('git'), ['ls-files', '-z', '--', ...KAYNAK_DIZINLERI], {
+  const cikti = execFileSync(aracYolu('git'), ['ls-files', '-z'], {
     cwd: kok,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -202,4 +217,4 @@ if (require.main === module) {
   else yayinla();
 }
 
-module.exports = { lcovSuz, kaynakMi, kaynakOzeti, vurusIndir };
+module.exports = { lcovSuz, kaynakMi, kaynakOzeti, vurusIndir, KOD, TEST };

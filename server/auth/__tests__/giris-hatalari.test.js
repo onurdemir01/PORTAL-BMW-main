@@ -20,7 +20,7 @@
 'use strict';
 const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
-const { test, beforeEach, after } = require('node:test');
+const { test, beforeEach, after, before } = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.SESSION_STORE = 'memory';
@@ -74,8 +74,14 @@ function adKullanicilari(tablo) {
 
 const app = express();
 initAuth(app);
-const server = app.listen(0);
-const base = `http://127.0.0.1:${server.address().port}`;
+const server = app.listen(0, '127.0.0.1');
+let base;
+// Sunucu 127.0.0.1'e baglanir (2026-11-24): cift yigin '::' dinleyicisi bu makinede 127.0.0.1'de ayni portu tutan
+// baska bir surecin istegi yakalamasina acikti. Host verilince adres eszamansiz: 'listening' beklenir.
+before(async () => {
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
 after(() => {
   server.close();
   ldap.authenticateLdap = gercekLdap;

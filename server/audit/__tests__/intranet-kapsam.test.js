@@ -330,7 +330,7 @@ async function sunucu() {
   const { initDenetim } = require('../denetim.cjs');
   const app = express();
   initDenetim(app);
-  const s = app.listen(0);
+  const s = app.listen(0, '127.0.0.1');
   await new Promise((r) => s.once('listening', r));
   return { s, base: `http://127.0.0.1:${s.address().port}/api/denetim` };
 }

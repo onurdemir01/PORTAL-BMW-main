@@ -53,6 +53,8 @@ const YENI = [
   'RetirementAkis.tsx',
   // Kayit penceresinin icinde (denetim B15: sari metin acik temada 2.2:1).
   'RetirementDnsIp.tsx',
+  // Is ciktisi goruntuleyicisinin ortak parcalari (2026-11-24, RetirementIsCiktisi'ndan tasindi).
+  '../common/IsCiktisiParcalari.tsx',
 ];
 const oku = (ad) => fs.readFileSync(path.join(SH, ad), 'utf8');
 

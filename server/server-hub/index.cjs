@@ -9,6 +9,8 @@
 // Admin ve yalniz assess'in urettigi eylem/parametrelerle (client istedigi komutu gonderemez).
 'use strict';
 
+const { isKaydiYaz } = require('../ansible/is-kaydi.cjs');
+
 const express = require('express');
 const { assess, flattenFindings, parseTargets, hedefUserinfoSil } = require('./assess.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
@@ -784,30 +786,16 @@ async function launch(req, keyName, templateName, extraVars, detail, hazir) {
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
     throw e;
   }
-  try {
-    const db = require('../db/index.cjs');
-    await db.query(
-      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        user.username || 'unknown',
-        serverId,
-        templateId,
-        templateName,
-        result?.jobId,
-        result?.status || 'pending',
-        JSON.stringify(extraVars),
-      ],
-    );
-  } catch (e) {
-    console.warn('[ServerHub] job gecmisi yazilamadi:', e.message);
-  }
-  try {
-    require('../audit/index.cjs').auditPortal(req, 'server_hub', {
-      detail: JSON.stringify({ ...detail, jobId: result?.jobId ?? null }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  await isKaydiYaz(req, user, {
+    serverId,
+    templateId,
+    templateName,
+    result,
+    params: extraVars,
+    etiket: 'ServerHub',
+    denetimTuru: 'server_hub',
+    detay: detail,
+  });
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 

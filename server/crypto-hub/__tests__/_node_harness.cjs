@@ -7,6 +7,7 @@
 'use strict';
 
 const http = require('node:http');
+const { sahteAuth, istekci } = require('./_ortak_harness.cjs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
@@ -567,20 +568,7 @@ async function kur(o = {}) {
   })();
 
   const sahte = {
-    'auth/index.cjs': {
-      requireAuth(req, res, next) {
-        const h = req.headers['x-test-user'];
-        if (!h) return res.status(401).json({ ok: false });
-        req.session = { user: JSON.parse(h) };
-        next();
-      },
-      requireAdmin(req, res, next) {
-        if (!(req.session?.user?.role === 'Admin')) {
-          return res.status(403).json({ ok: false });
-        }
-        next();
-      },
-    },
+    'auth/index.cjs': sahteAuth(),
     'auth/visibility.cjs': {
       requireVisible: () => (_req, _res, next) => next(),
       async canSee(user, key) {
@@ -857,40 +845,7 @@ async function kur(o = {}) {
   });
   const port = srv.address().port;
 
-  function istek(method, url, user, body) {
-    return new Promise((resolve, reject) => {
-      const veri = body ? JSON.stringify(body) : null;
-      const req = http.request(
-        {
-          host: '127.0.0.1',
-          port,
-          path: `/api/crypto-hub${url}`,
-          method,
-          headers: {
-            'content-type': 'application/json',
-            ...(user ? { 'x-test-user': JSON.stringify(user) } : {}),
-            ...(veri ? { 'content-length': Buffer.byteLength(veri) } : {}),
-          },
-        },
-        (res) => {
-          let s = '';
-          res.on('data', (c) => (s += c));
-          res.on('end', () => {
-            let j = null;
-            try {
-              j = JSON.parse(s);
-            } catch {
-              j = { ham: s };
-            }
-            resolve({ status: res.statusCode, body: j });
-          });
-        },
-      );
-      req.on('error', reject);
-      if (veri) req.write(veri);
-      req.end();
-    });
-  }
+  const istek = istekci(port);
 
   /** Kiraci icin taze okuma (NODE_OKUMA'ya dogrudan; ucun kendisi ayrica sinanir). */
   function okumaVer(o = {}, at = Date.now(), t = T) {

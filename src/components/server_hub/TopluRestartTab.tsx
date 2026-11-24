@@ -24,6 +24,15 @@ import { fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import {
+  AdayBolumuUstu,
+  AdayNotlari,
+  DislananlarListesi,
+  TopluAdayTablosu,
+  TopluIsBasligi,
+  planKalanMs,
+  useTopluYoklama,
+} from './topluOrtak';
 import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirsiz';
 import { RESTART_BASARISIZ, kategoriyeGore, type TopluKategori } from './topluSiniflama';
 import { KategoriEtiketi, TopluKategoriFiltresi } from './TopluKategoriFiltresi';
@@ -130,94 +139,43 @@ function AdayTablosu({
   setSecili: (f: (s: Set<string>) => Set<string>) => void;
   kilitli: boolean;
 }) {
-  if (!satirlar.length) return null;
-  const hepsi = satirlar.every((x) => secili.has(anahtar(x)));
   return (
-    <div
-      className="rounded-lg border overflow-hidden"
-      style={{ borderColor: 'var(--border-subtle)' }}
-    >
-      <div
-        className="px-3 py-2 text-xs font-semibold flex items-center gap-2"
-        style={{ background: 'var(--bg-elevated)' }}
-      >
-        <input
-          type="checkbox"
-          aria-label="Tümünü seç"
-          checked={hepsi}
-          disabled={kilitli}
-          onChange={() =>
-            setSecili((s) => {
-              const n = new Set(s);
-              for (const x of satirlar) {
-                if (hepsi) n.delete(anahtar(x));
-                else n.add(anahtar(x));
-              }
-              return n;
-            })
-          }
-        />
-        Parametre farkı olan çalışan JVM’ler{' '}
-        <span style={{ color: 'var(--text-muted)' }}>({fmtNumber(satirlar.length)})</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[12px]">
-          <thead>
-            <tr style={{ color: 'var(--text-muted)' }}>
-              <th className="px-3 py-1 w-6" />
-              <th className="px-3 py-1 text-left font-medium">Sunucu</th>
-              <th className="px-3 py-1 text-left font-medium">Ortam</th>
-              <th className="px-3 py-1 text-left font-medium">JVM</th>
-              <th className="px-3 py-1 text-left font-medium">
-                Farklı parametreler (çalışan → yapılandırılan, maskeli)
-              </th>
-              <th className="px-3 py-1 text-left font-medium">Tarama</th>
-            </tr>
-          </thead>
-          <tbody>
-            {satirlar.map((x) => (
-              <tr
-                key={anahtar(x)}
-                className="border-t align-top"
-                style={{ borderColor: 'var(--border-subtle)' }}
-              >
-                <td className="px-3 py-1">
-                  <input
-                    type="checkbox"
-                    aria-label={`${x.host} ${x.jvm} seç`}
-                    checked={secili.has(anahtar(x))}
-                    disabled={kilitli}
-                    onChange={() =>
-                      setSecili((s) => {
-                        const n = new Set(s);
-                        if (n.has(anahtar(x))) n.delete(anahtar(x));
-                        else n.add(anahtar(x));
-                        return n;
-                      })
-                    }
-                  />
-                </td>
-                <td className="px-3 py-1 font-mono">{x.host}</td>
-                <td className="px-3 py-1">{x.env || '—'}</td>
-                <td className="px-3 py-1 font-mono">
-                  {x.jvm}{' '}
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    JBoss {x.gen}
-                    {x.grp ? ` · ${x.grp}` : ''}
-                  </span>
-                </td>
-                <td className="px-3 py-1 max-w-xl">
-                  <Fark metin={x.fark} />
-                </td>
-                <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>
-                  {x.scanDate || '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <TopluAdayTablosu
+      satirlar={satirlar}
+      anahtar={anahtar}
+      secili={secili}
+      setSecili={setSecili}
+      kilitli={kilitli}
+      baslik="Parametre farkı olan çalışan JVM’ler"
+      tumunuEtiketi="Tümünü seç"
+      kolonlar={[
+        'Sunucu',
+        'Ortam',
+        'JVM',
+        'Farklı parametreler (çalışan → yapılandırılan, maskeli)',
+        'Tarama',
+      ]}
+      satirSinifi="border-t align-top"
+      hucreler={(x) => (
+        <>
+          <td className="px-3 py-1 font-mono">{x.host}</td>
+          <td className="px-3 py-1">{x.env || '—'}</td>
+          <td className="px-3 py-1 font-mono">
+            {x.jvm}{' '}
+            <span style={{ color: 'var(--text-muted)' }}>
+              JBoss {x.gen}
+              {x.grp ? ` · ${x.grp}` : ''}
+            </span>
+          </td>
+          <td className="px-3 py-1 max-w-xl">
+            <Fark metin={x.fark} />
+          </td>
+          <td className="px-3 py-1" style={{ color: 'var(--text-muted)' }}>
+            {x.scanDate || '—'}
+          </td>
+        </>
+      )}
+    />
   );
 }
 
@@ -348,21 +306,17 @@ export default function TopluRestartTab() {
   const setKategori = (k: TopluKategori | null) => setKategoriSecimi({ isId: izlenen, k });
   const yuruyor = !!is && YURUYEN.has(is.durum);
   const onayBekliyor = !!is && is.durum === 'PLAN_HAZIR';
-  useEffect(() => {
-    if (!gorunur || izlenen == null || (!yuruyor && !onayBekliyor)) return undefined;
-    const t = setInterval(
-      () => {
-        void durumOku(izlenen).catch(() => {});
-      },
-      yuruyor ? YOKLAMA_MS : PLAN_YOKLAMA_MS,
-    );
-    return () => clearInterval(t);
-  }, [gorunur, izlenen, yuruyor, onayBekliyor, durumOku]);
-  const planKalanMs =
-    onayBekliyor && is?.planBitisAt
-      ? new Date(is.planBitisAt).getTime() + PLAN_GECERLILIK_MS - simdi
-      : null;
-  const planDoldu = planKalanMs != null && planKalanMs <= 0;
+  useTopluYoklama({
+    gorunur,
+    izlenen,
+    yuruyor,
+    onayBekliyor,
+    durumOku,
+    yoklamaMs: YOKLAMA_MS,
+    planYoklamaMs: PLAN_YOKLAMA_MS,
+  });
+  const kalanMs = planKalanMs(onayBekliyor, is?.planBitisAt, PLAN_GECERLILIK_MS, simdi);
+  const planDoldu = kalanMs != null && kalanMs <= 0;
 
   const adaylar = useMemo(() => veri?.adaylar || [], [veri]);
   const secim = useMemo(() => adaylar.filter((x) => secili.has(anahtar(x))), [adaylar, secili]);
@@ -477,51 +431,22 @@ export default function TopluRestartTab() {
         className="rounded-xl border p-4 space-y-3"
         style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
       >
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              JVM parametre farkı — toplu restart
-            </h2>
-            <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-              Yalnız taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı
-              olan, çalışan JVM’ler. Düğme önce seçilen sunucuları salt okunur olarak yeniden tarar;
-              JVM durmuşsa ya da fark kalmadıysa düşer. Sonra onay istenir ve JVM’ler tek tek
-              restart edilir. Prod ve ortamı bilinmeyen sunucular bu listeye alınmaz (OpsX’ten tek
-              tek).
-              {veri?.latestScan ? ` Son tarama: ${veri.latestScan}.` : ''}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn-secondary inline-flex items-center gap-1 text-xs"
-            disabled={yukleniyor}
-            onClick={() => void adaylariYukle(true)}
-            title="Taze değerlendirme (tüm filo yeniden okunur)"
-          >
-            <ArrowPathIcon className="w-4 h-4" /> Yenile
-          </button>
-        </div>
-        {hata && (
-          <div
-            className="text-[12px] rounded-lg border px-3 py-2"
-            style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}
-          >
-            {hata}
-          </div>
-        )}
-        {yukleniyor && !veri && <LoadingLogo compact label="Adaylar okunuyor…" />}
+        <AdayBolumuUstu
+          baslik="JVM parametre farkı — toplu restart"
+          aciklama="Yalnız taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan, çalışan JVM’ler. Düğme önce seçilen sunucuları salt okunur olarak yeniden tarar; JVM durmuşsa ya da fark kalmadıysa düşer. Sonra onay istenir ve JVM’ler tek tek restart edilir. Prod ve ortamı bilinmeyen sunucular bu listeye alınmaz (OpsX’ten tek tek)."
+          latestScan={veri?.latestScan}
+          yukleniyor={yukleniyor}
+          veriVar={!!veri}
+          hata={hata}
+          onYenile={() => void adaylariYukle(true)}
+        />
         {veri && (
           <>
-            {veri.schemaUnknown && (
-              <div className="text-[12px]" style={{ color: 'var(--status-danger)' }}>
-                Server Hub şeması okunamadı — aday yok. Sayfayı yenileyin.
-              </div>
-            )}
-            {!adaylar.length && !veri.schemaUnknown && (
-              <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                Taze taramada parametre farkı olan, toplu restart’a uygun JVM yok.
-              </div>
-            )}
+            <AdayNotlari
+              schemaUnknown={veri.schemaUnknown}
+              bos={!adaylar.length}
+              bosMetni="Taze taramada parametre farkı olan, toplu restart’a uygun JVM yok."
+            />
             <AdayTablosu
               satirlar={adaylar}
               secili={secili}
@@ -561,24 +486,11 @@ export default function TopluRestartTab() {
                 onayı).
               </div>
             )}
-            {veri.dislananlar.length > 0 && (
-              <details className="text-[12px]">
-                <summary className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>
-                  Farkı olan ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM
-                  (nedeniyle)
-                </summary>
-                <ul className="mt-1 space-y-0.5">
-                  {veri.dislananlar.map((x) => (
-                    <li key={anahtar(x)}>
-                      <span className="font-mono">
-                        {x.host}/{x.jvm}
-                      </span>{' '}
-                      — {x.neden}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            <DislananlarListesi
+              liste={veri.dislananlar}
+              anahtar={anahtar}
+              ozet="Farkı olan ama listeye alınmayan"
+            />
           </>
         )}
       </section>
@@ -592,43 +504,17 @@ export default function TopluRestartTab() {
           }}
           aria-label={`Toplu restart #${is.id}`}
         >
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Toplu restart #{is.id}
-              </h2>
-              <Rozet durum={is.durum} />
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                açan {is.olusturan}
-                {is.onaylayan ? ` · onaylayan ${is.onaylayan}` : ''}
-                {is.iptalEden ? ` · iptal eden ${is.iptalEden}` : ''}
-                {is.createdAt ? ` · ${fmtDateTime(is.createdAt)}` : ''}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              {is.durum === 'PLAN_HAZIR' && (
-                <button
-                  type="button"
-                  className="btn-primary text-xs"
-                  disabled={gonderiliyor || !say('PLAN_GECTI') || planDoldu}
-                  onClick={() => void onayVer()}
-                >
-                  Onayla ve restart et ({fmtNumber(say('PLAN_GECTI'))} JVM)
-                </button>
-              )}
-              {(is.durum === 'PLAN_HAZIR' ||
-                is.durum === 'PLANLANIYOR' ||
-                is.durum === 'CALISIYOR') && (
-                <button
-                  type="button"
-                  className="btn-secondary text-xs"
-                  onClick={() => void iptalEt()}
-                >
-                  İptal
-                </button>
-              )}
-            </div>
-          </div>
+          <TopluIsBasligi
+            is={is}
+            baslik={`Toplu restart #${is.id}`}
+            rozet={<Rozet durum={is.durum} />}
+            onayMetni="Onayla ve restart et"
+            gecen={say('PLAN_GECTI')}
+            gonderiliyor={gonderiliyor}
+            planDoldu={planDoldu}
+            onOnay={() => void onayVer()}
+            onIptal={() => void iptalEt()}
+          />
           <div
             className="text-[12px] tabular-nums flex gap-3 flex-wrap"
             style={{ color: 'var(--text-secondary)' }}
@@ -674,11 +560,11 @@ export default function TopluRestartTab() {
               onay süresi önizleme BİTTİĞİNDE başladı (önizlemenin kendi süresi buna dahil değil);
               bu sürede onaylanmazsa yeniden önizlenmeli. Onayda AWX şablonunun Limit’i kabul ettiği
               yeniden kontrol edilir.
-              {planKalanMs != null && (
+              {kalanMs != null && (
                 <span style={{ color: planDoldu ? 'var(--status-danger)' : undefined }}>
                   {planDoldu
                     ? ' Süre doldu — onaylanamaz; yeniden önizleyin.'
-                    : ` Kalan süre: ~${fmtNumber(Math.max(1, Math.ceil(planKalanMs / 60000)))} dk.`}
+                    : ` Kalan süre: ~${fmtNumber(Math.max(1, Math.ceil(kalanMs / 60000)))} dk.`}
                 </span>
               )}
             </p>

@@ -1,8 +1,10 @@
 // server/__tests__/kapsam-yayinla.test.js — kurumsal SonarQube icin repoda tasinan kapsam raporu
 // (2026-11-14, docs/adr/0004-kapsam-raporu-repoda.md).
 //   KP1 lcovSuz: test dosyalari ve islev satirlari cikar; DA / BRDA kalir; kararli sira; toplamlar
-//   KP2 kaynakMi: sonar.sources ile ayni dizinler, test / tip dosyalari haric
-//   KP3 kaynakOzeti: icerik ya da dosya listesi degisince degisir, degismeyince sabit (gecici git deposu)
+//   KP2 kaynakMi: kurumun kaynak saydigi her kod dosyasi (scripts/ ve __tests__ yardimcilari dahil);
+//       test (adindan) / tip dosyalari, kuruma gitmeyen dizinler ve repo disi yollar haric
+//   KP3 kaynakOzeti: icerik ya da dosya listesi degisince degisir, degismeyince sabit (gecici git deposu);
+//       test yardimcisi ve scripts/ degisince de degisir (rapor onlarin satirlarini tasir)
 //   KP4 --dogrula: guncel rapor 0, bayat / eksik rapor 1 (betigin kendisi, gecici depoda)
 //   KP5 SonarQube ayari repodaki raporu okur; tazeleme is akisi yalniz raporu commit eder
 //   KP6 vurus sayilari 0/1: ayni kapsam farkli sayilarla AYNI rapor; kapsanma degisirse rapor degisir
@@ -41,13 +43,14 @@ test('KP1 lcovSuz yalniz kaynak dosyalarini ve Sonar satirlarini tutar', () => {
     kayit('server/__tests__/b.test.js', ['DA:1,1', 'LF:1', 'LH:1']),
     kayit('src\\components\\A.tsx', ['DA:3,5', 'LF:1', 'LH:1']),
     kayit('src/components/A.test.tsx', ['DA:1,1', 'LF:1', 'LH:1']),
-    kayit('scripts/x.cjs', ['DA:1,1', 'LF:1', 'LH:1']),
+    kayit('scripts/x.cjs', ['DA:1,0', 'LF:1', 'LH:0']),
     kayit('node_modules/y/index.js', ['DA:1,1', 'LF:1', 'LH:1']),
+    kayit('.github/z.js', ['DA:1,1', 'LF:1', 'LH:1']),
   ];
   const girdi = kayitlar.join('\n');
   const r = lcovSuz(girdi);
-  assert.deepEqual(r.dosyalar, ['server/b.cjs', 'src/components/A.tsx']);
-  assert.equal(r.lf, 3);
+  assert.deepEqual(r.dosyalar, ['scripts/x.cjs', 'server/b.cjs', 'src/components/A.tsx']);
+  assert.equal(r.lf, 4);
   assert.equal(r.lh, 2);
   assert.doesNotMatch(r.metin, /^FN/m, 'islev satirlari kalmamali');
   assert.match(r.metin, /^BRDA:2,0,0,1$/m);
@@ -59,20 +62,47 @@ test('KP1 lcovSuz yalniz kaynak dosyalarini ve Sonar satirlarini tutar', () => {
   assert.deepEqual(lcovSuz(''), { metin: '', dosyalar: [], lf: 0, lh: 0 });
 });
 
-test('KP2 kaynakMi sonar.sources ile ayni', () => {
-  for (const y of ['server/a.cjs', 'src/x/Y.tsx', 'src/u.ts', 'shared/z.cjs', 'server/m.mjs'])
+test('KP2 kaynakMi kurumun kaynak saydigi kod dosyalari', () => {
+  for (const y of [
+    'server/a.cjs',
+    'src/x/Y.tsx',
+    'src/u.ts',
+    'shared/z.cjs',
+    'server/m.mjs',
+    // Kurum yalniz *.test.js / *.test.tsx'i test sayar: bunlar kurumda kaynak.
+    'scripts/a.cjs',
+    'server/__tests__/fixtures/kod-deseni.cjs',
+    'server/crypto-hub/__tests__/_node_harness.cjs',
+    'eslint.config.js',
+  ])
     assert.equal(kaynakMi(y), true, y);
   for (const y of [
     'server/__tests__/a.test.js',
     'src/x/__tests__/Y.test.tsx',
+    'src/x/__tests__/y.test.ts',
     'src/a.spec.ts',
     'src/test/setup.ts',
     'src/vite-env.d.ts',
-    'scripts/a.cjs',
     'server/ansible/playbooks/bmw_portal/x/files/a.py',
+    'server/ansible/playbooks/bmw_portal/x/a.js',
     'server/data/a.json',
+    '.github/x.js',
+    'sunum/a.js',
+    'node_modules/a/index.js',
+    'src/node_modules/a.js',
+    '/tmp/kopya/scripts/a.cjs',
+    'C:/tmp/a.cjs',
+    '../disari/a.cjs',
+    'dist/assets/index.js',
+    'coverage/x.js',
   ])
     assert.equal(kaynakMi(y), false, y);
+});
+
+test('KP2b kuruma gitmeyen dizinler teslim listesinden (tek kaynak)', () => {
+  const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
+  assert.ok(KURUMA_GITMEYEN.length > 0);
+  for (const d of KURUMA_GITMEYEN) assert.equal(kaynakMi(`${d}a.cjs`), false, d);
 });
 
 function geciciDepo() {
@@ -103,6 +133,15 @@ test('KP3 kaynakOzeti icerik ve dosya listesine bagli, test dosyasina degil', ()
     const o3 = kaynakOzeti(d);
     assert.equal(o3.dosya, 2);
     assert.notEqual(o3.ozet, o2.ozet, 'yeni izlenen dosya ozeti degistirir');
+    // Kurumda kaynak olan yardimci ve betik de rapora girer: degisince rapor bayatlar.
+    fs.mkdirSync(path.join(d, 'server', '__tests__', 'fixtures'), { recursive: true });
+    fs.writeFileSync(path.join(d, 'server', '__tests__', 'fixtures', 'h.cjs'), 'y\n');
+    fs.writeFileSync(path.join(d, 'scripts', 's.cjs'), 'z\n');
+    git('add', 'server/__tests__/fixtures/h.cjs', 'scripts/s.cjs');
+    const o4 = kaynakOzeti(d);
+    assert.equal(o4.dosya, 4);
+    fs.writeFileSync(path.join(d, 'server', '__tests__', 'fixtures', 'h.cjs'), 'y2\n');
+    assert.notEqual(kaynakOzeti(d).ozet, o4.ozet, 'test yardimcisi ozeti etkiler');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -111,7 +150,7 @@ test('KP3 kaynakOzeti icerik ve dosya listesine bagli, test dosyasina degil', ()
 test('KP4 --dogrula guncel raporda 0, bayat ya da eksik raporda 1', () => {
   const { d } = geciciDepo();
   try {
-    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs'])
+    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs', 'teslim.cjs'])
       fs.copyFileSync(path.join(KOK, 'scripts', betik), path.join(d, 'scripts', betik));
     const kos = (...a) =>
       spawnSync(process.execPath, ['scripts/kapsam-yayinla.cjs', ...a], {
@@ -142,7 +181,7 @@ test('KP4 --dogrula guncel raporda 0, bayat ya da eksik raporda 1', () => {
 test('KP7 --kurumsal: guncel rapor kopyalanir; bayat ya da eksik rapor Sonar kosusunu dusurur', () => {
   const { d } = geciciDepo();
   try {
-    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs'])
+    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs', 'teslim.cjs'])
       fs.copyFileSync(path.join(KOK, 'scripts', betik), path.join(d, 'scripts', betik));
     const kos = (env, ...a) =>
       spawnSync(process.execPath, ['scripts/kapsam-yayinla.cjs', ...a], {
@@ -196,6 +235,33 @@ test('KP5 SonarQube ayari ve tazeleme is akisi', () => {
   assert.match(sonar, /^sonar\.python\.version=3\.6, ?3\.9$/m, 'hedef makineler RHEL 8 / 9 Python');
   const akis = fs.readFileSync(path.join(KOK, '.github', 'workflows', 'kapsam-raporu.yml'), 'utf8');
   assert.match(akis, /npm run test:coverage/);
+  // Raporun tasidigi her kaynak dosyasi tazeleme tetikleyicisinde: yoksa o dosya degisince rapor
+  // bayat kalir ve kurumsal Sonar kosusu duser (kapsam-yayinla --kurumsal).
+  const yollar2 = new Set([...akis.matchAll(/^\s+- '([^']+)'$/gm)].map((m) => m[1]));
+  const izlenen = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8' })
+    .split('\0')
+    .filter((f) => f && kaynakMi(f));
+  assert.ok(izlenen.length > 100, `${izlenen.length} kaynak dosya`);
+  // Kurumun kaynak sayacagi her izlenen kod dosyasi raporda: yeni bir ust dizin kaynakMi'ye eklenmeden kalmasin
+  // (eklenmezse kurum o kodu %0 sayar).
+  const { KOD, TEST } = require('../../scripts/kapsam-yayinla.cjs');
+  const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
+  const disarida = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8' })
+    .split('\0')
+    .filter(
+      (f) =>
+        f &&
+        KOD.test(f) &&
+        !TEST.test(f) &&
+        !f.endsWith('.d.ts') &&
+        !KURUMA_GITMEYEN.some((d) => f.startsWith(d)) &&
+        !kaynakMi(f),
+    );
+  assert.deepEqual(disarida, [], 'kurumun kaynak saydigi ama rapora girmeyen kod dosyalari');
+  for (const f of izlenen) {
+    const desen = f.includes('/') ? `${f.split('/')[0]}/**` : `*${path.extname(f)}`;
+    assert.ok(yollar2.has(desen), `${f}: kapsam-raporu.yml paths '${desen}' icermiyor`);
+  }
   assert.match(akis, /npm run kapsam:yayinla/);
   assert.match(akis, /npm run kapsam:dogrula/);
   assert.match(akis, /git add kalite\/kapsam\n/, 'yalniz rapor commit edilmeli');

@@ -12,13 +12,16 @@ on:
   push:
     branches: [main]
     paths:
+      # Rapor kurumun kaynak saydigi her kod dosyasini tasir (scripts/kapsam-yayinla.cjs kaynakMi):
+      # scripts/ ve kokteki yapilandirma da kaynaktir; degisince rapor bayatlar.
       - 'src/**'
       - 'server/**'
       - 'shared/**'
-      - 'scripts/run-tests.cjs'
-      - 'scripts/lcov-birlestir.cjs'
-      - 'scripts/kapsam-yayinla.cjs'
-      - 'vitest.config.ts'
+      - 'scripts/**'
+      - '*.js'
+      - '*.cjs'
+      - '*.mjs'
+      - '*.ts'
       - 'gelistirme/package-lock.json'
   workflow_dispatch:
 

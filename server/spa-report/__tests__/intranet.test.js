@@ -409,7 +409,7 @@ async function sunucu(deps) {
   const router = express.Router();
   mountIntranet(router, deps);
   app.use('/api/spa-report', router);
-  const s = app.listen(0);
+  const s = app.listen(0, '127.0.0.1');
   await new Promise((r) => s.once('listening', r));
   return { s, base: `http://127.0.0.1:${s.address().port}/api/spa-report` };
 }

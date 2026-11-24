@@ -10,8 +10,16 @@
 // AbortController ile iptal, bitmis is onbellekte, sekme gizliyken istek yok. Eski retirementApi.jobStatus
 // burada ASLA cagrilmaz: yan etkili ve sunucu / is numarasini istemciden aliyor.
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowPathIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
+import {
+  BuyukKatman,
+  CanliGosterge,
+  CiktiAlani,
+  CiktiDugmeleri,
+  HataOzeti,
+  OkumaHatasiBandi,
+  useCiktiGorunumu,
+} from '@/components/common/IsCiktisiParcalari';
 import {
   retirementApi,
   type RtHedefIs,
@@ -239,32 +247,10 @@ export function IsGoruntuleyici({
   const c = useIsCiktisi(kayitId, t.id, is, { onbellek, onBitti: onIsBitti, etiket });
   const v = c.veri;
   const suruyor = !!v && !v.bitti;
-  const [takip, setTakip] = useState(true);
-  const [buyuk, setBuyuk] = useState(false);
-  const [simdi, setSimdi] = useState(() => Date.now());
-  const buyutRef = useRef<HTMLButtonElement>(null);
-  const kapatRef = useRef<HTMLButtonElement>(null);
-  const katmanRef = useRef<HTMLDivElement>(null);
-  const acildi = useRef(false);
-  // Sayac yalniz is surerken ve sekme gorunurken isler.
-  useEffect(() => {
-    if (!suruyor || c.gizli) return;
-    const z = window.setInterval(() => setSimdi(Date.now()), 1000);
-    return () => window.clearInterval(z);
-  }, [suruyor, c.gizli]);
-  // Buyut: acilinca odak kapat dugmesine, kapaninca Buyut dugmesine.
-  useEffect(() => {
-    if (buyuk) {
-      acildi.current = true;
-      kapatRef.current?.focus();
-    } else if (acildi.current) {
-      acildi.current = false;
-      buyutRef.current?.focus();
-    }
-  }, [buyuk]);
+  const g = useCiktiGorunumu({ suruyor, gizli: c.gizli });
 
   const baslangic = v?.started ? Date.parse(v.started) : Number.NaN;
-  const gecen = Number.isFinite(baslangic) ? (simdi - baslangic) / 1000 : (v?.elapsed ?? null);
+  const gecen = Number.isFinite(baslangic) ? (g.simdi - baslangic) / 1000 : (v?.elapsed ?? null);
   const ham = v ? v.status || (v.bitti ? 'arsiv' : 'pending') : 'pending';
   const terminalDurumu = ham === 'new' ? 'pending' : ham;
   const hataliBitti = !!v && v.bitti && (v.status === 'failed' || v.status === 'error');
@@ -292,71 +278,28 @@ export function IsGoruntuleyici({
           {sureMetni(v.elapsed)} sürdü{v.finished ? ` · bitti ${fmtDateTime(v.finished)}` : ''}
         </span>
       )}
-      {suruyor && c.sonOkuma != null && (
-        <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
-          <span aria-hidden>●</span> canlı · son okuma{' '}
-          {Math.max(0, Math.round((simdi - c.sonOkuma) / 1000))} sn önce
-        </span>
-      )}
-      {c.gizli && <span>sekme gizli — duraklatıldı</span>}
+      <CanliGosterge g={g} suruyor={suruyor} sonOkuma={c.sonOkuma} gizli={c.gizli} />
       {v?.kaynak === 'arsiv' && <Cip>arşivden</Cip>}
-      <span className="ml-auto flex flex-wrap items-center gap-1.5">
-        {suruyor && (
-          // Durum etiketin kendisinde (aria-pressed YOK: degisen etiketle celisirdi, denetim B10).
-          <button
-            type="button"
-            onClick={() => setTakip((x) => !x)}
-            className={TBL_BTN}
-            style={smBtn()}
-          >
-            {takip ? 'Takibi durdur' : 'Sona git · takip et'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={c.yenile}
-          className={TBL_BTN}
-          style={smBtn()}
-          title="AWX’ten yeniden oku (önbelleği atlar)"
-        >
-          <ArrowPathIcon className="h-3.5 w-3.5" aria-hidden /> Yenile
-        </button>
-        {v?.awxUrl && (
-          <a
-            href={v.awxUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={LINK}
-            style={{ color: 'var(--accent)' }}
-          >
-            AWX’te aç ↗
-          </a>
-        )}
-        {katmanda ? (
-          <button
-            ref={kapatRef}
-            type="button"
-            onClick={() => setBuyuk(false)}
-            className={TBL_BTN}
-            style={smBtn()}
-            aria-label="Büyütmeyi kapat"
-            title="Kapat (Esc)"
-          >
-            <XMarkIcon className="h-3.5 w-3.5" aria-hidden /> Kapat
-          </button>
-        ) : (
-          <button
-            ref={buyutRef}
-            type="button"
-            onClick={() => setBuyuk(true)}
-            className={TBL_BTN}
-            style={smBtn()}
-            title="Çıktıyı tam ekranda göster"
-          >
-            <ArrowsPointingOutIcon className="h-3.5 w-3.5" aria-hidden /> Büyüt
-          </button>
-        )}
-      </span>
+      <CiktiDugmeleri
+        g={g}
+        suruyor={suruyor}
+        yenile={c.yenile}
+        yenileIpucu="AWX’ten yeniden oku (önbelleği atlar)"
+        katmanda={katmanda}
+        ek={
+          v?.awxUrl && (
+            <a
+              href={v.awxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={LINK}
+              style={{ color: 'var(--accent)' }}
+            >
+              AWX’te aç ↗
+            </a>
+          )
+        }
+      />
     </div>
   );
 
@@ -396,73 +339,9 @@ export function IsGoruntuleyici({
           })}
         />
       )}
-      {c.hata && (
-        <div
-          className="flex flex-wrap items-center gap-2 text-[11px] leading-4"
-          style={{ color: 'var(--status-warning-text)' }}
-          role="status"
-        >
-          {c.durdu ? (
-            <>
-              <span>
-                AWX okunamadı — otomatik deneme durdu ({c.hata.deneme}/{EN_COK_DENEME})
-                {c.hata.mesaj ? `: ${c.hata.mesaj}` : ''}
-              </span>
-              <button type="button" onClick={c.yenile} className={TBL_BTN} style={smBtn()}>
-                Yeniden dene
-              </button>
-            </>
-          ) : (
-            <span>
-              AWX okunamadı — {c.hata.sonraSn} sn sonra yeniden denenecek ({c.hata.deneme}/
-              {EN_COK_DENEME})
-            </span>
-          )}
-        </div>
-      )}
+      <OkumaHatasiBandi hata={c.hata} durdu={c.durdu} yenile={c.yenile} />
       {hataliBitti && (
-        <div
-          role="alert"
-          className="border-l-[3px] px-3 py-2 text-[11px] leading-4"
-          style={{ background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}
-        >
-          <div className="font-semibold" style={{ color: 'var(--status-danger-text)' }}>
-            Hata özeti
-          </div>
-          {v?.jobExplanation && (
-            <div style={{ color: 'var(--text-primary)' }}>{v.jobExplanation}</div>
-          )}
-          {ozet.length > 0 && (
-            <ol className="mt-1 space-y-0.5 font-mono">
-              {ozet.map((x) => (
-                <li key={x.satir} className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2">
-                  <span
-                    className="w-12 text-right tabular-nums"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {x.satir}
-                  </span>
-                  <span className="wrap-anywhere" style={{ color: 'var(--text-primary)' }}>
-                    {x.metin}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {!ozet.length && !v?.jobExplanation && (
-            <div style={{ color: 'var(--text-secondary)' }}>
-              Çıktıda hata satırı bulunamadı — tamamı aşağıda.
-            </div>
-          )}
-          {v?.resultTraceback && (
-            <pre
-              className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap font-mono"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              {v.resultTraceback}
-            </pre>
-          )}
-        </div>
+        <HataOzeti ozet={ozet} aciklama={v?.jobExplanation} traceback={v?.resultTraceback} />
       )}
     </>
   );
@@ -497,7 +376,7 @@ export function IsGoruntuleyici({
         output={v.output}
         status={terminalDurumu}
         statusLabel={terminalDurumu === 'arsiv' ? 'arşiv · durum bilinmiyor' : undefined}
-        autoScroll={takip}
+        autoScroll={g.takip}
         title={baslik}
         placeholder={
           v.bitti
@@ -507,83 +386,23 @@ export function IsGoruntuleyici({
       />
     );
 
-  // ODAK TUZAGI (denetim B2): katman acikken Tab / Shift+Tab katmanin icinde doner; olay Modal'in window
-  // dinleyicisine ulasmaz (o tum panelde dolasip odagi katmanin ARKASINA tasirdi, sonra Esc kaydi kapatirdi).
-  const katmanTusu = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      setBuyuk(false);
-      return;
-    }
-    if (e.key !== 'Tab') return;
-    e.stopPropagation();
-    const l = Array.from(
-      katmanRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    if (!l.length) {
-      e.preventDefault();
-      return;
-    }
-    const ilk = l[0];
-    const son = l[l.length - 1];
-    const aktifOge = document.activeElement as HTMLElement | null;
-    const icerde = !!aktifOge && !!katmanRef.current?.contains(aktifOge);
-    if (!icerde || (e.shiftKey && aktifOge === ilk)) {
-      e.preventDefault();
-      (e.shiftKey ? son : ilk).focus();
-    } else if (!e.shiftKey && aktifOge === son) {
-      e.preventDefault();
-      ilk.focus();
-    }
-  };
-
   return (
     <div className="min-w-0 space-y-2" data-rt-is-goruntuleyici>
       {serit(false)}
       {/* Buyut acikken bantlar (Hata ozeti role=alert dahil) YALNIZ katmanda: iki kez duyurulmasin (denetim B3). */}
-      {!buyuk && bantlar}
-      <div style={{ height: 'min(30rem, calc(100dvh - 22rem))', minHeight: '14rem' }}>
-        {buyuk ? (
-          <div
-            className="flex h-full items-center justify-center rounded-xl border border-dashed text-[12px]"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-          >
-            Çıktı büyütülmüş görünümde açık.
-          </div>
-        ) : (
-          govde
-        )}
-      </div>
+      {!g.buyuk && bantlar}
+      <CiktiAlani g={g} yukseklik="min(30rem, calc(100dvh - 22rem))" enAz="14rem" govde={govde} />
       <p className="sr-only" aria-live="polite">
         {c.duyuru}
       </p>
-      {buyuk && (
-        // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC katmanTusu'nda.
-        <div
-          className="fixed inset-0 z-[60] flex p-4"
-          style={{ background: 'rgba(0,0,0,.45)' }}
-          role="presentation"
-          onClick={() => setBuyuk(false)}
-          data-rt-buyut
-        >
-          <div
-            ref={katmanRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`İş çıktısı — ${etiket}`}
-            className="flex h-full w-full flex-col gap-2 rounded-2xl border p-4"
-            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={katmanTusu}
-          >
-            {serit(true)}
-            {bantlar}
-            <div className="min-h-0 flex-1">{govde}</div>
-          </div>
-        </div>
-      )}
+      <BuyukKatman
+        g={g}
+        etiket={etiket}
+        serit={serit(true)}
+        bantlar={bantlar}
+        govde={govde}
+        isaret={{ 'data-rt-buyut': 'true' }}
+      />
     </div>
   );
 }

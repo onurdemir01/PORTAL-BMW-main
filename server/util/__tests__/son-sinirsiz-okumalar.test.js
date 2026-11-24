@@ -144,6 +144,10 @@ function gercekTokenFn() {
   // "ReferenceError: async is not defined" ile duserdi — bu tuzaga bir kez dusuldu.
   const j = RUNNER_SRC.indexOf('\nasync function fetchTokenOAuth2(');
   assert.ok(c > 0 && i > c && j > i, 'kaynak cikarimi bozuldu — desen degismis');
+  // Ortak bayt kapisi (sinirliGovde, 2026-11-24) GERCEK kaynagindan: token govdesi onu cagirir.
+  const y = RUNNER_SRC.indexOf('function sinirliGovde(');
+  const ySon = RUNNER_SRC.indexOf('async function listTemplatesForServer');
+  assert.ok(y > 0 && ySon > y, 'sinirliGovde cikarimi bozuldu');
   const { tlsSecenekleri, tlsHatasiAcikla } = require('../tls-guven.cjs');
   return new Function(
     'http',
@@ -151,7 +155,7 @@ function gercekTokenFn() {
     'URL',
     'tlsSecenekleri',
     'tlsHatasiAcikla',
-    `${RUNNER_SRC.slice(c, i)}\n${RUNNER_SRC.slice(i, j)}\nreturn { fetchTokenOAuth2AtPath, AWX_TOKEN_MAX_BYTES };`,
+    `${RUNNER_SRC.slice(y, ySon)}\n${RUNNER_SRC.slice(c, i)}\n${RUNNER_SRC.slice(i, j)}\nreturn { fetchTokenOAuth2AtPath, AWX_TOKEN_MAX_BYTES };`,
   )(http, require('node:https'), URL, tlsSecenekleri, tlsHatasiAcikla);
 }
 
@@ -246,9 +250,28 @@ test('SS10 `data += c` yazan HER AWX okuyucusunda bayt kapisi var', () => {
     // `jsonTavan`: awxRequestToServer'in cagiran basina tavani (2026-10-14, FileX buyuk
     // sonuc). Yalniz asagidaki SS11 onun varsayilaninin AWX_JSON_MAX_BYTES oldugunu
     // kanitladigi icin kabul edilir.
-    if (!/>\s*([A-Z_]*MAX_BYTES|jsonTavan)\b/.test(once)) kapisiz.push(i + 1);
+    // `tavan`: ortak bayt kapisinin (sinirliGovde) parametresi; yalniz o fonksiyonda kabul edilir ve asagida
+    // her cagrisinin tavani bir MAX_BYTES sabiti ya da jsonTavan olmak zorunda.
+    const ortakta = /function sinirliGovde\(/.test(once);
+    if (!/>\s*([A-Z_]*MAX_BYTES|jsonTavan)\b/.test(once) && !(ortakta && /> tavan\b/.test(once)))
+      kapisiz.push(i + 1);
   });
   assert.deepEqual(kapisiz, [], `bayt kapisi OLMAYAN tamponlama satirlari: ${kapisiz.join(', ')}`);
+  const cagrilar = [...kod.matchAll(/sinirliGovde\(([\s\S]*?)\(data\) =>/g)].map((m) => m[1]);
+  assert.ok(cagrilar.length >= 4, `ortak bayt kapisi cagrisi bulunamadi: ${cagrilar.length}`);
+  // Tavan asilinca istek KESILIR (yalniz reddetmek baglantiyi acik birakir; govde akmaya devam eder).
+  const ortak = /function sinirliGovde\([\s\S]*?\n\}/.exec(kod)?.[0] || '';
+  assert.match(
+    ortak,
+    /reject\(hata\(\)\);\s*req\.destroy\(\);/,
+    'ortak kapi tavanda istegi kesmiyor',
+  );
+  for (const c of cagrilar)
+    assert.match(
+      c.replace(/\s+/g, ' '),
+      /tavan: ([A-Z_]*MAX_BYTES|jsonTavan)\b/,
+      `ortak kapi cagrisinin tavani sabit degil: ${c.trim()}`,
+    );
 });
 
 test('SS11 cagiran basina JSON tavani VARSAYILANDA genel kapiya duser', () => {

@@ -56,7 +56,8 @@ async function getir(yol) {
   const r = express.Router();
   em.registerEnvanterMetrics(r);
   app.use('/api/denetim', r);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/denetim${yol}`);
     return await res.json();

@@ -1161,7 +1161,8 @@ test('TA10 HTTP: uclar router uzerinden (adaylar, olustur 400/409, onay confirme
   });
   console.log = log;
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
     const J = (r) => r.json().then((body) => ({ status: r.status, body }));
@@ -2380,7 +2381,8 @@ test('TX8 HTTP: adaylarXml grubu; olustur / onay uclarinda prodOnay; is.kip ve o
   T.mount(router, kurDepsNesnesi());
   console.log = log;
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
     const Jx = (r) => r.json().then((body) => ({ status: r.status, body }));
