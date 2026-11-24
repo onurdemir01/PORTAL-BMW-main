@@ -17,6 +17,7 @@ Kurumsal SonarQube kapsamı %0 gösteriyordu. Kök neden:
 
 1. **Şimdi:** rapor repoda, `kalite/kapsam/` altında taşınır.
    - `npm run test:coverage && npm run kapsam:yayinla` üretir: `lcov.info` (yalnız kaynak dosyaları, yalnız SonarQube'un okuduğu satırlar) ve `ozet.json` (kaynak ağacının özeti, oran).
+   - **Kaynak = kurumun kaynak saydığı** (2026-11-24): kurumsal tarama `sonar.sources=.` verir ve yalnız `*.test.js` / `*.test.tsx`'i test sayar. `scripts/` ve `__tests__` altındaki yardımcılar (fixture, harness) kurumda kaynaktır. Rapor onları taşımadığında kurum, testlerin çalıştırdığı bu kodu %0 sayıyordu (~12 bin satır). Kuruma gitmeyen dizinler (`scripts/teslim.cjs` `KURUMA_GITMEYEN`) rapora girmez.
    - `.github/workflows/kapsam-raporu.yml` main'e her push'tan sonra raporu yeniler ve yalnız `kalite/kapsam/`'ı commit eder.
    - `sonar-project.properties`: `sonar.javascript.lcov.reportPaths=kalite/kapsam/lcov.info,coverage/lcov.info`.
 2. **Kalıcı:** kurumdan pipeline'a Node 22 + test + kapsam aşaması istenir. Eklenince bu iş akışı ve `kalite/kapsam/` kaldırılır; pipeline `coverage/lcov.info`'yu kendisi üretir.

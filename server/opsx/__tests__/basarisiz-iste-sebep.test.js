@@ -49,9 +49,33 @@ function uclar() {
   return bloklar;
 }
 
+// 2026-11-24: bes sonuc ucu (legacy JVM, server-config, OCP pod, pod silme, dump) tek yardimcidan kurulur
+// (sonucUcu); kural yardimcida, her ucun ona bagli oldugu ayrica sayilir.
+const SONUC_UCLARI = [
+  '/api/opsx/legacy/jvm/:serverId/:jobId/status',
+  '/api/opsx/legacy/serverconfig/:serverId/:jobId/status',
+  '/api/opsx/ocp/pods/:serverId/:jobId/status',
+  '/api/opsx/poddelete/:serverId/:jobId/status',
+  '/api/opsx/dump/:serverId/:jobId/status',
+];
+function sonucUcuGovdesi() {
+  const i = SRC.indexOf('function sonucUcu(');
+  assert.ok(i > 0, 'sonucUcu yardimcisi yok');
+  const son = SRC.indexOf('\n  }\n', i);
+  return SRC.slice(i, son > i ? son : undefined);
+}
+
 test('BS1 durum uclari BASARISIZ iste artifact okumadan CIKMIYOR', () => {
+  for (const yol of SONUC_UCLARI)
+    assert.ok(SRC.includes(`sonucUcu('${yol}', {`), `${yol} ortak sonuc yardimcisindan kurulmuyor`);
+  assert.equal((SRC.match(/sonucUcu\('\/api\/opsx\//g) || []).length, SONUC_UCLARI.length);
+  assert.match(
+    sonucUcuGovdesi(),
+    /if \(!TERMINAL\.has\(statusInfo\.status\)\)[\s\S]*const raw = cikar\(statusInfo\.artifacts\);/,
+    'sonuc yardimcisi terminal iste artifact okumuyor',
+  );
   const bloklar = uclar();
-  assert.ok(bloklar.length >= 4, `beklenen durum ucu sayisi bulunamadi: ${bloklar.length}`);
+  assert.ok(bloklar.length >= 2, `beklenen durum ucu sayisi bulunamadi: ${bloklar.length}`);
   for (const b of bloklar) {
     // Terminal olmayan durum icin erken cikis MESRU (is hala kosuyor).
     // Yasak olan: TERMINAL ama basarisiz durumda artifact'i HIC okumadan donmek.
@@ -76,16 +100,34 @@ test('BS2 artifact YOKSA mesaj basarili/basarisiz ayrimi YAPIYOR', () => {
   ]) {
     assert.ok(SRC.includes(metin), `${ad}: basarisiz is mesaji kaybolmus`);
   }
-  // Ve bu metinler ARTIFACT YOKSA kolunda olmali - kosul `=== 'successful'` uzerinden.
-  const n = (SRC.match(/statusInfo\.status === 'successful'\s*\n?\s*\?/g) || []).length;
-  assert.ok(n >= 4, `artifact-yok kolunda basarili/basarisiz ayrimi ${n} yerde (>=4 bekleniyor)`);
+  // Ve bu metinler ARTIFACT YOKSA kolunda olmali - kosul `=== 'successful'` uzerinden (ortak yardimcida) ve her
+  // sonuc ucu iki metni de verir.
+  assert.match(
+    sonucUcuGovdesi(),
+    /if \(!raw\) \{[\s\S]*statusInfo\.status === 'successful' \? bosBasarili : bosBasarisiz/,
+    'artifact-yok kolunda basarili/basarisiz ayrimi yok',
+  );
+  for (const yol of SONUC_UCLARI) {
+    const i = SRC.indexOf(`sonucUcu('${yol}', {`);
+    const cagri = SRC.slice(i, SRC.indexOf('\n  });\n', i));
+    assert.match(cagri, /bosBasarili:/, `${yol}: basarili-artifactsiz metni yok`);
+    assert.match(cagri, /bosBasarisiz:/, `${yol}: basarisiz-artifactsiz metni yok`);
+  }
+  for (const metin of [
+    'Pod listesi alınamadı (iş başarısız oldu).',
+    'JVM listesi alınamadı (iş başarısız oldu).',
+    'Server-Config listesi alınamadı (iş başarısız oldu).',
+  ])
+    assert.ok(SRC.includes(`bosBasarisiz: '${metin}'`), `${metin} basarisiz kolunda degil`);
 });
 
 test('BS3 pod sonucu BASARISIZ iste de ayristiriciya giriyor (sebep ekrana ulasir)', () => {
   // Kullanicinin bildirdigi YOL bu; BS1 tum uclari tarasa da bu yol ayrica kilitlenir.
-  const j = SRC.indexOf('extractOpsxPodsResult(statusInfo.artifacts)');
+  const j = SRC.indexOf('cikar: extractOpsxPodsResult,');
   assert.ok(j > 0, 'pod artifact okumasi bulunamadi');
-  const oncesi = SRC.slice(SRC.lastIndexOf('runner.getJobStatusOnServer(serverId, jobId)', j), j);
+  // Pod ucu ortak yardimcidan gecer: yardimcinin artifact okumasindan ONCEKI kodu da bu kurala tabidir.
+  const g = sonucUcuGovdesi();
+  const oncesi = g.slice(0, g.indexOf('const raw = cikar(statusInfo.artifacts);'));
   // YORUM SATIRLARI ATILIR: bu dosyanin ve index.cjs'in kendi aciklamalari da
   // "status !== 'successful'" dizgesini tasiyor; ham metinde aramak KENDI notunu
   // bulup hep kirmizi yanardi (ilk surumde oldu).

@@ -1,13 +1,13 @@
 {
   "aciklama": "Kalite kapilarinin TEK esik kaynagi (docs/KALITE-KAPILARI.md). Esikler yalniz SIKILASIR: gevsetme server/__tests__/kalite-kapilari.test.js ile reddedilir.",
   "kapsam": {
-    "satirMin": 70
+    "satirMin": 80
   },
   "sonar": {
     "kapiAdi": "Portal Kati",
     "kosullar": [
-      { "metrik": "coverage", "op": "LT", "esik": "70" },
-      { "metrik": "duplicated_lines_density", "op": "GT", "esik": "3" },
+      { "metrik": "coverage", "op": "LT", "esik": "75" },
+      { "metrik": "duplicated_lines_density", "op": "GT", "esik": "1" },
       { "metrik": "bugs", "op": "GT", "esik": "0" },
       { "metrik": "vulnerabilities", "op": "GT", "esik": "0" },
       { "metrik": "code_smells", "op": "GT", "esik": "0" },

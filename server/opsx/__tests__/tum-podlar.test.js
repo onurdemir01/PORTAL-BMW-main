@@ -75,15 +75,16 @@ test('TP3 izin yalniz pod uclarinda; restart (run) ucu vermez', () => {
     const j = s.indexOf('app.post(', i + 1);
     return s.slice(i, j > 0 ? j : undefined);
   };
-  for (const yol of [
-    '/api/opsx/ocp/pods/discover',
-    '/api/opsx/dump/openshift',
-    '/api/opsx/poddelete/openshift',
-  ])
+  const IZIN = /resolveOpenshiftTargets\([\s\S]{0,120}\{ tumPodlarIzinli: true \}/;
+  assert.match(ucBlok('/api/opsx/ocp/pods/discover'), IZIN, 'pod kesfi');
+  // Dump ve pod silme pod hedeflerini ortak dogrulamadan alir (ocpPodHedefleri, 2026-11-24): izin orada.
+  const ortak = /async function ocpPodHedefleri\([\s\S]*?\n\}/.exec(s)?.[0] || '';
+  assert.match(ortak, IZIN, 'ocpPodHedefleri tum pod iznini vermiyor');
+  for (const yol of ['/api/opsx/dump/openshift', '/api/opsx/poddelete/openshift'])
     assert.match(
       ucBlok(yol),
-      /resolveOpenshiftTargets\([\s\S]{0,120}\{ tumPodlarIzinli: true \}/,
-      yol,
+      /await ocpPodHedefleri\(/,
+      `${yol} ortak pod dogrulamasindan gecmiyor`,
     );
   assert.doesNotMatch(ucBlok('/api/opsx/run'), /tumPodlarIzinli/);
 });

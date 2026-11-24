@@ -22,6 +22,7 @@
 'use strict';
 
 const { hostsForApp, namespacesForCluster } = require('../opsx/index.cjs');
+const katalog = require('../opsx/katalog-uclari.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
   legacy: 'telnet_legacy_operation',
@@ -261,15 +262,7 @@ function initTelnet(app) {
   }
 
   // GET /api/telnet/apps?search= — OpsX ile AYNI kaynak.
-  app.get('/api/telnet/apps', requireAuth, async (req, res) => {
-    try {
-      const legacy = require('../logx/v2/legacy.cjs');
-      const result = await legacy.searchApps(req.query.search);
-      res.json({ ok: true, ...result });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.get('/api/telnet/apps', requireAuth, katalog.uygulamaAra);
 
   // GET /api/telnet/hosts?app= — OpsX'in hostsForApp'ini DOGRUDAN yeniden kullanir
   // (ayni env/jboss_version/status alanlari — kod tekrari yok).
@@ -297,31 +290,15 @@ function initTelnet(app) {
   });
 
   // GET /api/telnet/clusters — OpsX/LogX ile AYNI cluster katalogu.
-  app.get('/api/telnet/clusters', requireAuth, async (req, res) => {
-    try {
-      const adminData = require('../logx/v2/admin.cjs');
-      const tree = await adminData.getClusterTree();
-      res.json({ ok: true, tree });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.get('/api/telnet/clusters', requireAuth, katalog.clusterAgaci);
 
   // GET /api/telnet/ocp/namespaces?env=&tenant= — OpsX'in namespacesForCluster'ini
   // DOGRUDAN yeniden kullanir (ayni onbellek + erisim kisitlamasi filtresi — kod tekrari yok).
-  app.get('/api/telnet/ocp/namespaces', requireAuth, async (req, res) => {
-    try {
-      const env = String(req.query.env || '').trim();
-      const tenant = String(req.query.tenant || '').trim();
-      if (!env || !tenant)
-        return res.status(400).json({ ok: false, message: 'env ve tenant gerekli.' });
-      const user = req.session?.user || {};
-      const namespaces = await namespacesForCluster(env, tenant, user);
-      res.json({ ok: true, namespaces });
-    } catch (err) {
-      res.status(err.status || 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.get(
+    '/api/telnet/ocp/namespaces',
+    requireAuth,
+    katalog.ocpNamespaceleri(namespacesForCluster),
+  );
 
   // GET /api/telnet/job-status/:serverId/:jobId — OpsX ile AYNI canli-durum deseni.
   app.get('/api/telnet/job-status/:serverId/:jobId', requireAuth, async (req, res) => {

@@ -10,6 +10,8 @@
 // PROD hedef: oco_no zorunlu; ilk gercek STOP'ta SCC maili (adres: Retirement sayfasi ya da RETIREMENT_SCC_MAIL_TO; bossa uyari).
 // STOP her zaman once PLAN (plan_only=true) kosar, kullanici onaylayinca uygulanir.
 'use strict';
+
+const { isKaydiYaz } = require('../ansible/is-kaydi.cjs');
 const { webTekille, webYenidenDeneHazirla } = require('./web-liste.cjs');
 
 const express = require('express');
@@ -406,29 +408,16 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   );
   const user = req?.session?.user || { username: 'Portal (zamanlanmis)' };
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
-  try {
-    await db().query(
-      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        user.username || 'unknown',
-        serverId,
-        templateId,
-        templateName,
-        result?.jobId,
-        result?.status || 'pending',
-        JSON.stringify(extraVars),
-      ],
-    );
-  } catch (e) {
-    console.warn('[Retirement] job gecmisi yazilamadi:', e.message);
-  }
-  try {
-    require('../audit/index.cjs').auditPortal(req, 'retirement', {
-      detail: JSON.stringify({ ...detail, jobId: result?.jobId ?? null }),
-    });
-  } catch {
-    /* best-effort */
-  }
+  await isKaydiYaz(req, user, {
+    serverId,
+    templateId,
+    templateName,
+    result,
+    params: extraVars,
+    etiket: 'Retirement',
+    denetimTuru: 'retirement',
+    detay: detail,
+  });
   return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId };
 }
 

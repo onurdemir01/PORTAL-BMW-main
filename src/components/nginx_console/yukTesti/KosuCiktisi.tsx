@@ -1,20 +1,27 @@
 // src/components/nginx_console/yukTesti/KosuCiktisi.tsx — kosunun canli AWX ciktisi (2026-10-27).
 //
-// Retirement "İş çıktısı" goruntuleyicisinin (server_hub/RetirementIsCiktisi.tsx) yuk testine uyarlanmis KOPYASI:
-// oradaki kanca retirementApi'ye bagli; Retirement dosyalari degistirilmedi, saf yardimcilar (retirementCikti.ts)
-// ve stil (retirementStil.ts) ortak. Fark: is KOSU KAYDINDAN cozulur (GET /kosular/:id/durum) - sunucu ve is
+// Retirement "İş çıktısı" goruntuleyicisinin (server_hub/RetirementIsCiktisi.tsx) yuk testine uyarlanmis hali:
+// oradaki kanca retirementApi'ye bagli; saf yardimcilar (retirementCikti.ts), stil (retirementStil.ts) ve gorunum
+// parcalari (common/IsCiktisiParcalari.tsx, 2026-11-24) ortak. Fark: is KOSU KAYDINDAN cozulur (GET /kosular/:id/durum) - sunucu ve is
 // numarasi istemciden gitmez; cikti artimli gelir (`since`) ve `ciktiBirlestir` ile eklenir.
 //
 // YOKLAMA: seri (yanit gelmeden yeni istek yok), AbortController ile iptal, cikti uzadiysa 1,5 sn yoksa 3 sn,
 // gecici hatada 3-6-12-24-30 sn geri cekilme ve 6. hatada durma, kalici retde (401/403/404/409) hemen durma,
 // sekme gizliyken istek yok. `onBitti` yalniz canli gorulen is bitince BIR kez cagrilir (kaydi yeniden oku).
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowPathIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { nginxLoadtestApi, type NlDurumYaniti } from '@/api/nginxLoadtestApi';
 import { fmtDateTime } from '@/utils/datetime';
-import { TBL_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Cip, UyariKutusu } from '@/components/server_hub/RetirementUi';
+import {
+  BuyukKatman,
+  CanliGosterge,
+  CiktiAlani,
+  CiktiDugmeleri,
+  HataOzeti,
+  OkumaHatasiBandi,
+  useCiktiGorunumu,
+} from '@/components/common/IsCiktisiParcalari';
 import {
   EN_COK_DENEME,
   ciktiSonucu,
@@ -217,30 +224,10 @@ export default function KosuCiktisi({
 }) {
   const c = useKosuCiktisi(kosuId, { onBitti, etiket });
   const suruyor = !!c.sonOkuma && !c.bitti;
-  const [takip, setTakip] = useState(true);
-  const [buyuk, setBuyuk] = useState(false);
-  const [simdi, setSimdi] = useState(() => Date.now());
-  const buyutRef = useRef<HTMLButtonElement>(null);
-  const kapatRef = useRef<HTMLButtonElement>(null);
-  const katmanRef = useRef<HTMLDivElement>(null);
-  const acildi = useRef(false);
-  useEffect(() => {
-    if (!suruyor || c.gizli) return;
-    const z = window.setInterval(() => setSimdi(Date.now()), 1000);
-    return () => window.clearInterval(z);
-  }, [suruyor, c.gizli]);
-  useEffect(() => {
-    if (buyuk) {
-      acildi.current = true;
-      kapatRef.current?.focus();
-    } else if (acildi.current) {
-      acildi.current = false;
-      buyutRef.current?.focus();
-    }
-  }, [buyuk]);
+  const g = useCiktiGorunumu({ suruyor, gizli: c.gizli });
 
   const bas = basladi ? Date.parse(basladi) : Number.NaN;
-  const gecen = Number.isFinite(bas) ? (simdi - bas) / 1000 : null;
+  const gecen = Number.isFinite(bas) ? (g.simdi - bas) / 1000 : null;
   const terminalDurumu = !c.status || c.status === 'new' ? 'pending' : c.status;
   const hataliBitti = c.bitti && (c.status === 'failed' || c.status === 'error');
   const ozet = hataliBitti ? hataOzeti(c.output) : [];
@@ -257,63 +244,19 @@ export default function KosuCiktisi({
       {awxJobId != null && <span className="font-mono tabular-nums">AWX iş #{awxJobId}</span>}
       {basladi && <span className="tabular-nums">başladı {fmtDateTime(basladi)}</span>}
       {suruyor && gecen != null && <span className="tabular-nums">{sureMetni(gecen)} geçti</span>}
-      {suruyor && c.sonOkuma != null && (
-        <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
-          <span aria-hidden>●</span> canlı · son okuma{' '}
-          {Math.max(0, Math.round((simdi - c.sonOkuma) / 1000))} sn önce
-        </span>
-      )}
-      {c.gizli && <span>sekme gizli — duraklatıldı</span>}
+      <CanliGosterge g={g} suruyor={suruyor} sonOkuma={c.sonOkuma} gizli={c.gizli} />
       {c.arsiv && (
         <Cip title="AWX işi artık tutmuyor ya da sunucu kapalı; çıktı Portal arşivinden">
           arşivden
         </Cip>
       )}
-      <span className="ml-auto flex flex-wrap items-center gap-1.5">
-        {suruyor && (
-          <button
-            type="button"
-            onClick={() => setTakip((x) => !x)}
-            className={TBL_BTN}
-            style={smBtn()}
-          >
-            {takip ? 'Takibi durdur' : 'Sona git · takip et'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={c.yenile}
-          className={TBL_BTN}
-          style={smBtn()}
-          title="Çıktıyı baştan yeniden oku"
-        >
-          <ArrowPathIcon className="h-3.5 w-3.5" aria-hidden /> Yenile
-        </button>
-        {katmanda ? (
-          <button
-            ref={kapatRef}
-            type="button"
-            onClick={() => setBuyuk(false)}
-            className={TBL_BTN}
-            style={smBtn()}
-            aria-label="Büyütmeyi kapat"
-            title="Kapat (Esc)"
-          >
-            <XMarkIcon className="h-3.5 w-3.5" aria-hidden /> Kapat
-          </button>
-        ) : (
-          <button
-            ref={buyutRef}
-            type="button"
-            onClick={() => setBuyuk(true)}
-            className={TBL_BTN}
-            style={smBtn()}
-            title="Çıktıyı tam ekranda göster"
-          >
-            <ArrowsPointingOutIcon className="h-3.5 w-3.5" aria-hidden /> Büyüt
-          </button>
-        )}
-      </span>
+      <CiktiDugmeleri
+        g={g}
+        suruyor={suruyor}
+        yenile={c.yenile}
+        yenileIpucu="Çıktıyı baştan yeniden oku"
+        katmanda={katmanda}
+      />
     </div>
   );
 
@@ -322,62 +265,8 @@ export default function KosuCiktisi({
       {c.red && (
         <UyariKutusu ton="hata" rol="alert" baslik={kaliciCiktiMesaji(c.red.code, c.red.message)} />
       )}
-      {c.hata && (
-        <div
-          className="flex flex-wrap items-center gap-2 text-[11px] leading-4"
-          style={{ color: 'var(--status-warning-text)' }}
-          role="status"
-        >
-          {c.durdu ? (
-            <>
-              <span>
-                AWX okunamadı — otomatik deneme durdu ({c.hata.deneme}/{EN_COK_DENEME})
-                {c.hata.mesaj ? `: ${c.hata.mesaj}` : ''}
-              </span>
-              <button type="button" onClick={c.yenile} className={TBL_BTN} style={smBtn()}>
-                Yeniden dene
-              </button>
-            </>
-          ) : (
-            <span>
-              AWX okunamadı — {c.hata.sonraSn} sn sonra yeniden denenecek ({c.hata.deneme}/
-              {EN_COK_DENEME})
-            </span>
-          )}
-        </div>
-      )}
-      {hataliBitti && (
-        <div
-          role="alert"
-          className="border-l-[3px] px-3 py-2 text-[11px] leading-4"
-          style={{ background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}
-        >
-          <div className="font-semibold" style={{ color: 'var(--status-danger-text)' }}>
-            Hata özeti
-          </div>
-          {ozet.length > 0 ? (
-            <ol className="mt-1 space-y-0.5 font-mono">
-              {ozet.map((x) => (
-                <li key={x.satir} className="grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2">
-                  <span
-                    className="w-12 text-right tabular-nums"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {x.satir}
-                  </span>
-                  <span className="wrap-anywhere" style={{ color: 'var(--text-primary)' }}>
-                    {x.metin}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <div style={{ color: 'var(--text-secondary)' }}>
-              Çıktıda hata satırı bulunamadı — tamamı aşağıda.
-            </div>
-          )}
-        </div>
-      )}
+      <OkumaHatasiBandi hata={c.hata} durdu={c.durdu} yenile={c.yenile} />
+      {hataliBitti && <HataOzeti ozet={ozet} />}
     </>
   );
 
@@ -392,7 +281,7 @@ export default function KosuCiktisi({
         className="h-full"
         output={c.output}
         status={terminalDurumu}
-        autoScroll={takip}
+        autoScroll={g.takip}
         title={baslik}
         placeholder={
           c.bitti
@@ -402,81 +291,15 @@ export default function KosuCiktisi({
       />
     );
 
-  const katmanTusu = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      setBuyuk(false);
-      return;
-    }
-    if (e.key !== 'Tab') return;
-    e.stopPropagation();
-    const l = Array.from(
-      katmanRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    );
-    if (!l.length) {
-      e.preventDefault();
-      return;
-    }
-    const ilk = l[0];
-    const son = l[l.length - 1];
-    const aktifOge = document.activeElement as HTMLElement | null;
-    const icerde = !!aktifOge && !!katmanRef.current?.contains(aktifOge);
-    if (!icerde || (e.shiftKey && aktifOge === ilk)) {
-      e.preventDefault();
-      (e.shiftKey ? son : ilk).focus();
-    } else if (!e.shiftKey && aktifOge === son) {
-      e.preventDefault();
-      ilk.focus();
-    }
-  };
-
   return (
     <div className="min-w-0 space-y-2" data-yuk-cikti>
       {serit(false)}
-      {!buyuk && bantlar}
-      {govde && (
-        <div style={{ height: yukseklik, minHeight: '13rem' }}>
-          {buyuk ? (
-            <div
-              className="flex h-full items-center justify-center rounded-xl border border-dashed text-[12px]"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-            >
-              Çıktı büyütülmüş görünümde açık.
-            </div>
-          ) : (
-            govde
-          )}
-        </div>
-      )}
+      {!g.buyuk && bantlar}
+      {govde && <CiktiAlani g={g} yukseklik={yukseklik} enAz="13rem" govde={govde} />}
       <p className="sr-only" aria-live="polite">
         {c.duyuru}
       </p>
-      {buyuk && (
-        // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC katmanTusu'nda.
-        <div
-          className="fixed inset-0 z-[60] flex p-4"
-          style={{ background: 'rgba(0,0,0,.45)' }}
-          role="presentation"
-          onClick={() => setBuyuk(false)}
-        >
-          <div
-            ref={katmanRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`İş çıktısı — ${etiket}`}
-            className="flex h-full w-full flex-col gap-2 rounded-2xl border p-4"
-            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={katmanTusu}
-          >
-            {serit(true)}
-            {bantlar}
-            <div className="min-h-0 flex-1">{govde}</div>
-          </div>
-        </div>
-      )}
+      <BuyukKatman g={g} etiket={etiket} serit={serit(true)} bantlar={bantlar} govde={govde} />
       {!c.red && (
         <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>
           Çıktı Portal’da maskelenir. Sayfadan ayrılsanız da iş sürer; Portal sonuçları iş bitince

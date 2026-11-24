@@ -90,7 +90,7 @@
       {
         "tur": "portal",
         "ad": "AWX sağlık kontrolü",
-        "dosya": "server/ansible/runner.cjs:2237",
+        "dosya": "server/ansible/runner.cjs:2193",
         "nasil": "UPDATE last_checked_at/last_status/last_response_ms",
         "ne_zaman": "Periyodik sağlık kontrolü"
       },
@@ -168,16 +168,18 @@
       {
         "tur": "portal",
         "ad": "Server Hub Düzelt",
-        "dosya": "server/server-hub/index.cjs:570",
+        "dosya": "server/server-hub/index.cjs:789",
         "nasil": "per-run INSERT",
-        "ne_zaman": "Kullanıcı işlemi"
+        "ne_zaman": "Kullanıcı işlemi",
+        "uzerinden": "server/ansible/is-kaydi.cjs"
       },
       {
         "tur": "portal",
         "ad": "Nginx Hub (konsol push, CIS, göç, yük testi)",
-        "dosya": "server/nginx-console/index.cjs:510",
+        "dosya": "server/nginx-console/index.cjs:549",
         "nasil": "per-run INSERT (nginx-cis/index.cjs:247, nginx-migration/index.cjs:294, nginx-loadtest/baslat.cjs:181)",
-        "ne_zaman": "Kullanıcı işlemi"
+        "ne_zaman": "Kullanıcı işlemi",
+        "uzerinden": "server/ansible/is-kaydi.cjs"
       },
       {
         "tur": "portal",
@@ -4537,7 +4539,7 @@
       },
       {
         "ad": "Server Hub",
-        "dosya": "server/server-hub/index.cjs:285"
+        "dosya": "server/server-hub/index.cjs:287"
       },
       {
         "ad": "EAR envanteri filo listesi",
@@ -5552,7 +5554,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi",
-        "dosya": "server/nginx-console/index.cjs:750"
+        "dosya": "server/nginx-console/index.cjs:738"
       }
     ],
     "saklama": "DELETE TOP(5000) parti + commit; RETENTION_DAYS=3",
@@ -5625,7 +5627,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Konsol > SPA Kesfi (/api/nginx-console/spa-discovery)",
-        "dosya": "server/nginx-console/index.cjs:668"
+        "dosya": "server/nginx-console/index.cjs:656"
       },
       {
         "ad": "Application Hub uygulama detayi",
@@ -5782,7 +5784,7 @@
       },
       {
         "ad": "OpsX OCP hedef",
-        "dosya": "server/opsx/index.cjs:437",
+        "dosya": "server/opsx/index.cjs:438",
         "uzerinden": "server/logx/v2/ocp-inventory.cjs"
       },
       {
@@ -6094,7 +6096,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub",
-        "dosya": "server/server-hub/index.cjs:34"
+        "dosya": "server/server-hub/index.cjs:36"
       }
     ],
     "saklama": "RETENTION_DAYS=30, DELETE TOP(5000)",
