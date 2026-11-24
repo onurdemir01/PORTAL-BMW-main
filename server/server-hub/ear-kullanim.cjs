@@ -6,16 +6,19 @@
 //
 // Kaynak: Uygulama Envanteri tarayicisi (ear_tara.py surum 4) uygulama.kullanim -> xml_eslesme.kullanim:
 //   { durum: VAR | YOK | KISMI | OLCULEMEDI, surecler: [{pid, comm, kullanici, nasil}], son_yazma: epoch|null,
-//     okunamayan: sayi, hidepid: metin, not }
+//     okunamayan: sayi, okunamayan_diger: sayi | null (2026-11-23; null = eski tarayici), hidepid: metin, not }
 // Karar (Server Hub bulgusu ve EAR Temizligi engeli AYNI fonksiyonu kullanir):
 //   aktif      = dizini gosteren surec var (durum VAR) YA DA son yazma TARAMA ANINDAN KULLANIM_YAZMA_GUN gun
 //                once ya da sonra (saat kaymasi payi GELECEK_PAY_MS) icinde. Referans TARAMA anidir, duvar saati
 //                DEGIL: veri EAR_VERI_MAX_GUN (35) gun kullanilir; surec kaniti gibi yazma kaniti da taramaya aittir.
 //   olculemedi = aktif degil ve kullanim KISMI / OLCULEMEDI ya da hic yok (eski tarayici), son yazma tarama
-//                anindan payin otesinde gelecekte (kanit sayilmaz) ya da hidepid acik (diger kullanicilarin
-//                surecleri gorunmez): sessiz basari yok.
-//   kor        = aktif degil, olculemedi degil ama N surec izin yuzunden yalniz komut satirindan denetlendi:
-//                metin bunu ek olarak soyler ("kullanilmiyor" kesin degil).
+//                anindan payin otesinde gelecekte (kanit sayilmaz), hidepid acik (diger kullanicilarin
+//                surecleri gorunmez) YA DA bir UYGULAMA HESABININ (uid >= UID_MIN) sureci izin yuzunden okunamadi /
+//                okunamayanlarin sahibi ayrilmadi (eski tarayici): sessiz basari yok. Kullanici karari 2026-11-23:
+//                tarayici `was` ile kosar ve baska kullanicinin cwd / fd'sini okuyamaz; o surec dizini kullaniyor
+//                olabilir. Root, sistem hesaplari (dbus, polkitd ...) ve taramanin kendi oturum zinciri engel degil.
+//   kor        = aktif degil, olculemedi degil ama N root / sistem hesabi sureci izin yuzunden yalniz komut
+//                satirindan denetlendi: metin bunu ek olarak soyler ("kullanilmiyor" kesin degil).
 'use strict';
 
 const { kurumZamanMetni } = require('./capraz.cjs');
@@ -38,12 +41,20 @@ function taramaMs(t) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-function olculemediNedeni(k, gelecek) {
+function olculemediNedeni(k, gelecek, digerSayi, sahipBilinmiyor) {
   if (gelecek) return 'son yazma tarama anından ileri tarihli (saat kayması?) — kanıt sayılmaz';
   if (k.durum === 'YOK' && k.hidepid)
     return `hidepid=${String(k.hidepid).slice(0, 16)}: diğer kullanıcıların süreçleri görünmüyor`;
+  if (digerSayi)
+    return `uygulama hesabına ait ${digerSayi} süreç izin yüzünden okunamadı; dizini kullanıyor olabilir`;
+  if (sahipBilinmiyor)
+    return `${pozitif(k.okunamayan)} süreç okunamadı ve sahipleri bu tarayıcı sürümünde ayrılmadı`;
   return String(k.not || k.durum || '').slice(0, 200);
 }
+
+const COZUM_YENIDEN_TARA = 'silmek için yeni tarayıcıyla yeniden taranmalı';
+const COZUM_DIGER =
+  'silme kapalı: o süreçlerin bu dizini kullanmadığı doğrulanamıyor (tarama kimliği başka kullanıcıların süreçlerini okuyamaz)';
 
 /**
  * @param {object|null|undefined} k  xml_eslesme.kullanim
@@ -52,7 +63,8 @@ function olculemediNedeni(k, gelecek) {
  * @returns {{ aktif: boolean, olculemedi: boolean, metin: string, neden: string, kor: string }}
  *   metin: "surec: node pid 76867 [cwd], son yazma: 17.11.2026 00:53" (bilinen parcalar; metin Turkce)
  *   neden: olculemedi ise kisa neden (tarayici notu / eski tarayici / gelecek tarih / hidepid)
- *   kor:   olculemedi degilken izin yuzunden yalniz komut satirindan denetlenen surec sayisi metni ('' = yok)
+ *   kor:   olculemedi degilken izin yuzunden yalniz komut satirindan denetlenen ROOT surec sayisi metni ('' = yok)
+ *   cozum: olculemedi ise silme icin ne gerektigi (yeniden tarama ya da "dogrulanamiyor")
  */
 function kullanimKaniti(k, tarama, simdi = Date.now()) {
   if (!k || typeof k !== 'object') {
@@ -62,6 +74,7 @@ function kullanimKaniti(k, tarama, simdi = Date.now()) {
       metin: '',
       neden: 'tarama kullanım ölçmeyen eski tarayıcıyla yapıldı',
       kor: '',
+      cozum: COZUM_YENIDEN_TARA,
     };
   }
   const ref = taramaMs(tarama) ?? simdi;
@@ -82,17 +95,23 @@ function kullanimKaniti(k, tarama, simdi = Date.now()) {
   if (sonMs != null) parcalar.push(`son yazma: ${kurumZamanMetni(sonMs)}`);
   const aktif = surecVar || yakin;
   const gizli = k.durum === 'YOK' && Boolean(k.hidepid);
-  const olculemedi = !aktif && (k.durum !== 'YOK' || gelecek || gizli);
   const okunamayan = pozitif(k.okunamayan);
+  const digerSayi = pozitif(k.okunamayan_diger);
+  // Eski tarayici okunamayanlarin sahibini ayirmaz: hepsi root olmayabilir (fail-closed).
+  const sahipBilinmiyor = okunamayan != null && k.okunamayan_diger == null;
+  const olculemedi =
+    !aktif && (k.durum !== 'YOK' || gelecek || gizli || digerSayi != null || sahipBilinmiyor);
+  const nedenMetni = olculemedi ? olculemediNedeni(k, gelecek, digerSayi, sahipBilinmiyor) : '';
   return {
     aktif,
     olculemedi,
     metin: parcalar.join(', '),
-    neden: olculemedi ? olculemediNedeni(k, gelecek) : '',
+    neden: nedenMetni,
     kor:
       !aktif && !olculemedi && okunamayan
-        ? `${okunamayan} süreç izin yüzünden yalnız komut satırından denetlendi`
+        ? `${okunamayan} root / sistem hesabı süreci izin yüzünden yalnız komut satırından denetlendi`
         : '',
+    cozum: olculemedi && digerSayi != null && !gelecek && !gizli ? COZUM_DIGER : COZUM_YENIDEN_TARA,
   };
 }
 

@@ -192,7 +192,10 @@ function xmlEngeli(h, kok, ad) {
  * bulgusuyla ayni karar ve ayni referans: h.ear.taranma) engel metni (2026-11-17, ODCRPAP01: domain.xml'de
  * olmayan EAR'da canli Node.js). FAIL-CLOSED (kullanici karari 2026-11-17): kullanim olculup YOK cikmadikca
  * (eski tarayici / alan yok, /proc okunamadi, KISMI, ileri tarihli mtime, envanter kaydi yok) silme REDDEDILIR.
- * Yalniz izin yuzunden okunamayan (root) surecler engel degil; uyari olarak gosterilir (kullanimUyarisi).
+ * Izin yuzunden okunamayan root / sistem hesabi surecleri (sshd, systemd, dbus ...) ve taramanin kendi oturum zinciri
+ * engel degil; uyari olarak gosterilir (kullanimUyarisi). UYGULAMA HESABININ (uid >= UID_MIN) okunamayan sureci
+ * (tarayici `was` ile kosar, baska kullanicinin cwd / fd'sini okuyamaz) ya da sahibi ayrilmamis okunamayan (eski
+ * tarayici) ENGELDIR (kullanici karari 2026-11-23).
  */
 function kullanimEngeli(h, kok, ad, now) {
   const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
@@ -202,7 +205,7 @@ function kullanimEngeli(h, kok, ad, now) {
   const kk = kullanimKaniti(k, h.ear?.taranma, now);
   if (kk.aktif) return `${ENGEL_KULLANIM} (${kk.metin})`;
   if (kk.olculemedi)
-    return `${OLCULEMEDI_EKI}${kk.neden ? ' (' + kk.neden + ')' : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
+    return `${OLCULEMEDI_EKI}${kk.neden ? ' (' + kk.neden + ')' : ''}; ${kk.cozum}`;
   return null;
 }
 

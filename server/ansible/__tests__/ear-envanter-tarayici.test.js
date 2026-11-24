@@ -40,6 +40,10 @@
 //        cmdline metni pakete girmez, son yazma (OZET gezisi / TAM satirlari), sinirlar KISMI, proc yok OLCULEMEDI
 //   ET21 kullanim kaniti inceleme: gercek mmap (fd kapali) -> maps; sahte maps / maps siniri KISMI; okunamayan
 //        surec yapisal sayilir (cekirdek is parcacigi sayilmaz); hidepid alani; EAR disina bagli logs/ izlenir
+//   ET22 okunamayan surecin sahibi (2026-11-23, kullanici karari): /proc/<pid>/status etkin Uid'i UID_MIN'den kucukse
+//        (root ve sistem hesaplari: dbus, polkitd, chronyd) ya da surec taramanin kendi oturum zincirindeyse (PPid;
+//        Ansible'in sshd notty sureci) yalniz uyari; uygulama hesabi (uid >= UID_MIN, /etc/login.defs; yoksa 1000) ya
+//        da status okunamiyor -> okunamayan_diger ve kullanim KISMI ("kullanilmiyor" denmez)
 'use strict';
 
 const { test } = require('node:test');
@@ -1738,7 +1742,15 @@ test(
       domain: domainXml([{ ad: 'BAGLI.ear', grup: 'g' }]),
       host: hostXml([{ ad: 'J1', grup: 'g' }]),
     });
-    const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+    // ET20 GERCEK /proc'ta surec ESLESMESINI sinar; okunamayan surecin sahibi ET22'nin isi. Makinedeki yabanci
+    // uygulama hesabi surecleri (CI kosucusu) YOKAPP'i KISMI yapmasin: UID_MIN en buyuk deger (hicbiri sayilmaz).
+    const defs = path.join(kok, 'login.defs');
+    fs.writeFileSync(defs, 'UID_MIN 4294967294\n');
+    const ORT = {
+      EAR_JBOSS: jbossKokleri(kok),
+      EAR_WAS: path.join(kok, 'yok'),
+      EAR_LOGIN_DEFS: defs,
+    };
     const k = (yuk, ad) => uyg(yuk, ad).kullanim;
     const saniye = (an) => Math.floor(an.getTime() / 1000);
     if (GERCEK_PROC_YOK) {
@@ -1792,6 +1804,7 @@ test(
           'hidepid',
           'not',
           'okunamayan',
+          'okunamayan_diger',
           'son_yazma',
           'surecler',
         ]);
@@ -1994,13 +2007,111 @@ test(
         [[300, 'maps']],
       );
       assert.equal(f.hidepid, 'invisible');
-      if (!ROOT)
+      if (!ROOT) {
         assert.equal(f.okunamayan, 1, 'cekirdek is parcacigi (bos cmdline) okunamayan sayilmaz');
+        assert.equal(
+          f.okunamayan_diger,
+          1,
+          'status dosyasi yok: sahip bilinmiyor -> root disi (fail-closed)',
+        );
+      }
       const ms = k(tara([v8], { ...ORT, EAR_PROC: proc, EAR_MAPS_BAYT: '10' }), 'BOS.ear');
       assert.equal(ms.durum, 'KISMI');
       assert.match(ms.not, /maps siniri 10 bayt/);
     } finally {
       for (const p of [301, 302]) fs.chmodSync(path.join(proc, String(p), 'fd'), 0o755);
+    }
+  },
+);
+
+test(
+  'ET22 okunamayan surecin sahibi: root / sistem hesabi / oturum zinciri uyari; uygulama hesabi KISMI',
+  { skip: SKIP || (ROOT && 'root izin reddi uretemez') },
+  () => {
+    const kok = geciciKok('et22');
+    const v8 = path.join(kok, 'vhosting8');
+    const eski = new Date(Date.now() - 30 * 86400000);
+    const p = path.join(v8, 'TEK.ear', 'app.js');
+    dosya(p, 8);
+    fs.utimesSync(p, eski, eski);
+    jbossYaz(kok, 'jboss8', { domain: domainXml([]), host: hostXml([]) });
+    const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+    const proc = path.join(kok, 'proc');
+    fs.mkdirSync(proc);
+    fs.writeFileSync(path.join(proc, 'mounts'), 'proc /proc proc rw 0 0\n');
+    const kilitli = [];
+    const pidKur = (pid, uid, ppid = 1) => {
+      const d = path.join(proc, String(pid));
+      fs.mkdirSync(path.join(d, 'fd'), { recursive: true });
+      fs.symlinkSync('/', path.join(d, 'cwd'));
+      fs.symlinkSync('/', path.join(d, 'root'));
+      fs.symlinkSync('/usr/sbin/sshd', path.join(d, 'exe'));
+      fs.writeFileSync(path.join(d, 'cmdline'), 'sshd\0');
+      fs.writeFileSync(path.join(d, 'comm'), 'sshd\n');
+      if (uid !== undefined)
+        fs.writeFileSync(
+          path.join(d, 'status'),
+          `Name:\tsshd\nPPid:\t${ppid}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\n`,
+        );
+      fs.chmodSync(path.join(d, 'fd'), 0);
+      kilitli.push(path.join(d, 'fd'));
+    };
+    const defs = path.join(kok, 'login.defs');
+    const kul = (ek = {}) =>
+      uyg(
+        tara([v8], { ...ORT, EAR_PROC: proc, EAR_LOGIN_DEFS: path.join(kok, 'yok.defs'), ...ek }),
+        'TEK.ear',
+      ).kullanim;
+    try {
+      pidKur(500, 0);
+      pidKur(501, 0);
+      const r = kul();
+      assert.deepEqual(
+        [r.durum, r.okunamayan, r.okunamayan_diger],
+        ['YOK', 2, 0],
+        JSON.stringify(r),
+      );
+      assert.match(
+        r.not,
+        /2 surec okunamadi \(izin; yalniz komut satiri denetlendi; 0 uygulama hesabi\)/,
+      );
+      pidKur(502, 1001);
+      const d = kul();
+      assert.deepEqual(
+        [d.durum, d.okunamayan, d.okunamayan_diger],
+        ['KISMI', 3, 1],
+        JSON.stringify(d),
+      );
+      pidKur(503);
+      const b = kul();
+      assert.deepEqual(
+        [b.durum, b.okunamayan, b.okunamayan_diger],
+        ['KISMI', 4, 2],
+        'status yok: bilinmeyen sahip root sayilmaz',
+      );
+      // Sistem hesabi (uid < UID_MIN; login.defs yoksa 1000): yalniz uyari.
+      pidKur(504, 600);
+      const s = kul();
+      assert.deepEqual([s.okunamayan, s.okunamayan_diger], [5, 2], 'sistem hesabi engel sayildi');
+      // UID_MIN /etc/login.defs'ten: 500 olursa uid 600 uygulama hesabidir.
+      fs.writeFileSync(defs, '# yorum\nUID_MIN\t\t\t 500\nUID_MAX 60000\n');
+      assert.equal(kul({ EAR_LOGIN_DEFS: defs }).okunamayan_diger, 3);
+      // Taramanin kendi oturum zinciri (self -> 700 -> 701 -> 1): 701 okunamasa da uygulama kullanimi degil.
+      fs.mkdirSync(path.join(proc, '700'));
+      fs.writeFileSync(
+        path.join(proc, '700', 'status'),
+        'Name:\tpython3\nPPid:\t701\nUid:\t1001\t1001\t1001\t1001\n',
+      );
+      fs.symlinkSync('700', path.join(proc, 'self'));
+      pidKur(701, 1001, 1);
+      const z = kul();
+      assert.deepEqual(
+        [z.okunamayan, z.okunamayan_diger],
+        [6, 2],
+        'taramanin kendi sshd / kabuk zinciri engel sayildi',
+      );
+    } finally {
+      for (const f of kilitli) fs.chmodSync(f, 0o755);
     }
   },
 );
