@@ -328,10 +328,11 @@ test('KK4 Sonar kapisi: kosullar esiklerden, sonuc ozeti dogru okunur', () => {
 // Esik TABANLARI: esikler.json bundan gevsek olamaz. Tabani degistirmek bu dosyayi degistirmek
 // demektir ve CODEOWNERS incelemesine duser.
 const TABAN = {
-  kapsamSatirMin: 70,
+  // Merdiven (2026-11-24, PR-2): kopya %1 (kurumsal taramada 1,9 -> 1,0), kapsam olcumu kurumla ayni.
+  kapsamSatirMin: 80,
   sonar: {
-    coverage: ['LT', 70],
-    duplicated_lines_density: ['GT', 3],
+    coverage: ['LT', 75],
+    duplicated_lines_density: ['GT', 1],
     bugs: ['GT', 0],
     vulnerabilities: ['GT', 0],
     // MQR guvenilirlik notu (2026-11-15): kod kokularinin guvenilirlik etkisini de sayar; standart

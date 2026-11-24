@@ -29,11 +29,11 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K6 | Bağımlılık güvenliği | `npm run guvenlik` | push öncesi, CI | 0 zafiyet (Xray tabanı) |
 | K7 | Ön kontrol | `npm run preflight` | push öncesi, CI | 0 eksik |
 | K8 | Testler + kapsam | `npm run test:coverage` | CI | 0 başarısız test |
-| K9 | Kapsam eşiği | `node scripts/kapsam-esik.cjs` | CI | satır kapsamı ≥ %70 |
+| K9 | Kapsam eşiği | `node scripts/kapsam-esik.cjs` | CI | satır kapsamı ≥ %80 |
 | K10 | Mutasyon testi | `npm run test:mutation` | CI | ≥ %85 mutant öldürülür |
 | K11 | SBOM ve lisans | `npm run sbom` | CI | 0 lisans ihlali |
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |
-| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, 0 kod kokusu, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
+| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, 0 kod kokusu, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %75, tekrar ≤ %1, hotspot %100 incelenmiş, 0 blocker / high |
 | K14 | Kurumsal iş provası | `npm run kurumsal:prova` | CI (`kurumsal` işi), yerelde aynı komut | temiz ağaçta groovy'nin komutları aynen geçer, paket eksiksiz, süre ≤ 10 dk |
 | K15 | Kurumsal Sonar taklidi | `node scripts/sonar-kapi.cjs --ci --kurumsal` | CI (`sonar` işi) | K13 koşulları + inceleme bekleyen 0 hotspot (inceleme kaydı uygulanmaz); kurumun sınıflandırması ve kural profiliyle ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json)) ayrı projede |
 | K16 | `main` geçmişi | `node scripts/gecmis-denetim.cjs` | commit mesajı (konu satırı), CI (`main` push aralığı, PR) | `main`'e giden her first-parent commit birleşmiş bir PR'dan gelir (`github-actions[bot]` muaf); konu satırı 8–120 karakter |

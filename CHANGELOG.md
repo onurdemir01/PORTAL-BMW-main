@@ -9,6 +9,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Tek sunucuda temizlik sırasında bağlantı koparsa sonuç hiç yayınlanmıyordu (kurulum başarılı olsa da); girdi kapısı düşünce de. Artık iki durumda da yayınlanıyor (`cleanup_errors`, `error`), Portal kapı hatasının sebebini gösteriyor.
 - Paket indirmede boyut sınırı Content-Length'siz yanıtta da uygulanıyor; paket adresinde kimlik bilgisi (`@`) reddediliyor; `-v` çıktısı komut / ortam yerine temiz özetten basılıyor.
 
+### Changed (kalite: kopya %1, kapsam ölçümü kurumla aynı; PR-2 ilk dilim, 2026-11-24)
+- Kapsam raporu (`kalite/kapsam/lcov.info`) kurumsal Sonar'ın kaynak saydığı her kod dosyasını taşıyor: `scripts/` ve `__tests__` yardımcıları da (kurum yalnız `*.test.js` / `*.test.tsx`'i test sayar). Önceden kurum testlerin çalıştırdığı ~12 bin satırı %0 sayıyordu. Sunucu tip denetimi `shared/` ve `scripts/`'i de kapsıyor.
+- Kopya (Sonar CPD) kurumsal taramada %1,9'dan %1'in altına indi: davranış değişmeden ortak modüllere taşındı. Toplu Auto-Start / Restart çekirdeği (`server/server-hub/toplu-cekirdek.cjs`) ve sekmeleri; OpsX sonuç / iş açılış / pod hedefi / Legacy keşif uçları ve OpsX-Telnet-FileX katalog uçları; Telnet / FileX / OpsX sihirbaz adımları; Retirement ve Yük Testi iş çıktısı görüntüleyicisi; AWX runner bayt kapısı ve şablon listesi; iş kaydı (`server/ansible/is-kaydi.cjs`); 5xx yanıtı (`hataYanitlayici`); halka grafik; Crypto Hub test düzenekleri.
+- Kaynak metnine bakan güvenlik bekçileri taşınan kuralları yeni yerlerinde ve modüllerin onları çağırdığını arıyor; her biri mutasyonla sınandı.
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: Nginx)
 - Nginx Hub › Tutarlılık › Paketler: symlink içeriği özete ve parmak izine girmiyordu; farklı kütüphanelere giden aynı adlı bağ iki sunucuyu "eşit" gösteriyordu. Bağ artık izleniyor (kullanıcı kararı); kırık bağ, döngü, girdi sınırı ve `find` zaman aşımı `okunamadi`; bağsız uygulamada iz ve önbellek değişmez. Fetch parmak izi bağları da kapsıyor; parmak izi ve döküm görevlerinin Ansible zaman aşımı var (asılan tek sunucu tüm dökümü bekletmez).
 - Yük Testi ön kontrol: hidepid altında master 0 kanıt sayılıyordu; çalışan nginx pid dosyasını görünmeyen bir yola yazıyorsa hedef "nginx'siz" ölçülürdü. Artık belirlenemedi (`-`), README'deki fail-closed sözüyle uyumlu; hidepid=1 (pid 1 görünür ama okunamaz) de yakalanıyor.
@@ -30,9 +35,6 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-22)
 - Server Hub EAR Temizliği: Production / ortamı bilinmeyen sunucuda silme artık yalnız açık bir OCO değişiklik penceresinde (tekli ve toplu silmede OCO numarası; kuyrukta bekleyen iş açılmadan önce pencere yeniden denetlenir, kapanmışsa kayıt sebebiyle iptal; OCO okunamazsa silme yok). Kullanıcı kararı; ScaleX gibi diğer yıkıcı üretim işlemleriyle aynı kapı.
 - Server Hub host XML ile auto-start kapatma (tekli): Production onayı yalnız ekrandaydı; doğrudan API çağrısı prod host XML'ini onaysız değiştirebiliyordu. Sunucu artık `prodOnay` ister (toplu yolla aynı kural, `400 prod_onay`).
-
-### Fixed (main kırmızı, 2026-11-23)
-- Nginx Hub SPA keşfi ekran testi (gidiş-dönüş) `main`'de kırmızıydı: PR'sız `bd14d224` / `c58f4b4d` sunucu satırına yalnız sunucu içi `routeDetay` alanını ekledi ve gövdeden sildi; test tam satırın her alanını ekranda bekliyordu. Sunucu içi alanlar artık tek sabitte (`YANIT_SUNUCU_ICI`); gövde kurulumu ve test oradan okur, test bu alanların gövdeye sızmadığını da sınar.
 
 
 ### Added
