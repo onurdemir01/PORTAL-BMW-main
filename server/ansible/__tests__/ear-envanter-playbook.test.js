@@ -87,7 +87,10 @@ test('EP1 basliktaki extra_vars listesi kullanilanlarla ayni', () => {
     'ear_toplanan',
     'ear_deployment',
     'ear_web',
+    'ear_web_durum',
     'ear_web_okuyan',
+    'ear_web_sonuc',
+    'ear_web_stdout',
   ])
     kullanilan.delete(ic);
   const belgesiz = [...kullanilan].filter((v) => !belgeli.has(v));
