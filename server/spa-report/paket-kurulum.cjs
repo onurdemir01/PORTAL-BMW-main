@@ -986,6 +986,14 @@ async function bitmisIs(res, deps, n, sahiplik, st) {
         : 'İş başarısız oldu ve sonuç yayınlanmadı; AWX iş çıktısına bakın.';
     return res.json({ ok: true, status: st.status, finished: true, error });
   }
+  // Girdi kapisi dustu (playbook play 1 rescue, 2026-11-24): kalem yok, sebep yayinlanir; "eslesmiyor" denmez.
+  if (sonuc.error && Array.isArray(sonuc.items) && !sonuc.items.length)
+    return res.json({
+      ok: true,
+      status: st.status,
+      finished: true,
+      error: `Kurulum başlamadı (girdi kapısı): ${T(sonuc.error).slice(0, MESAJ_TAVAN)}`,
+    });
   if (!artifactEslesir(sonuc, sahiplik))
     return res.status(409).json({ ok: false, error: 'İş sonucu kurulum isteğiyle eşleşmiyor.' });
   const satirlar = tabloSatirlari(sonuc, sahiplik);

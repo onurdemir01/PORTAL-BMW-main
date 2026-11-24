@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-24: Intranet SPA paket kurulumu)
+- Dış süre sınırı betiğin iç bütçesinden kısaydı; dolarsa bash adım bitmeden trap'i çalıştırmıyor, KILL ile geri alma yapılmadan PROD Nginx'te yarım kurulum kalıyordu. Sınır artık iç bütçeden türetiliyor; adımlar arka planda + `wait` ile koşuyor, TERM/INT'te adım durup geri alınıyor; SIGPIPE/SIGHUP yok sayılıyor (okuyan taraf gidince kurulum yarım kalmıyor).
+- Tek sunucuda temizlik sırasında bağlantı koparsa sonuç hiç yayınlanmıyordu (kurulum başarılı olsa da); girdi kapısı düşünce de. Artık iki durumda da yayınlanıyor (`cleanup_errors`, `error`), Portal kapı hatasının sebebini gösteriyor.
+- Paket indirmede boyut sınırı Content-Length'siz yanıtta da uygulanıyor; paket adresinde kimlik bilgisi (`@`) reddediliyor; `-v` çıktısı komut / ortam yerine temiz özetten basılıyor.
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: Nginx)
 - Nginx Hub › Tutarlılık › Paketler: symlink içeriği özete ve parmak izine girmiyordu; farklı kütüphanelere giden aynı adlı bağ iki sunucuyu "eşit" gösteriyordu. Bağ artık izleniyor (kullanıcı kararı); kırık bağ, döngü, girdi sınırı ve `find` zaman aşımı `okunamadi`; bağsız uygulamada iz ve önbellek değişmez. Fetch parmak izi bağları da kapsıyor; parmak izi ve döküm görevlerinin Ansible zaman aşımı var (asılan tek sunucu tüm dökümü bekletmez).
 - Yük Testi ön kontrol: hidepid altında master 0 kanıt sayılıyordu; çalışan nginx pid dosyasını görünmeyen bir yola yazıyorsa hedef "nginx'siz" ölçülürdü. Artık belirlenemedi (`-`), README'deki fail-closed sözüyle uyumlu; hidepid=1 (pid 1 görünür ama okunamaz) de yakalanıyor.
