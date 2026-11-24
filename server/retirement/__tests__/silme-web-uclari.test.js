@@ -7,6 +7,8 @@
 //   SW3 web-retry: iptal kayit, durum, web listesi yok / bozuk; suren is ayni dosyada iken yeniden denenmez
 //   SW4 web-retry: basarisiz ve atlanmis vhost'lar tekillestirilip 'pending' olur; poller hemen tetiklenir,
 //       poller hatasi yaniti bozmaz
+//   SW5 web-retry/plan: onizleme; elle / NGINX / conf-ServerName'siz girdi tetiklenmez, Apache girdisi plan_only
+//       server_hub_fix ile; tetik hatasi satirda kalir
 'use strict';
 
 const { test, beforeEach } = require('node:test');
@@ -311,4 +313,57 @@ test('SW4 web-retry: basarisiz / atlanmis vhost pending olur, poller tetiklenir'
   assert.equal(r.statusCode, 200);
   assert.equal(r.body.baslatmaHatasi, 'kilit alinamadi');
   assert.equal(r.body.basladi, 0);
+});
+
+test('SW5 web-retry/plan: onizleme yalniz Apache girdilerini plan_only tetikler', async () => {
+  const plan = () => istek('/37/targets/11/web-retry/plan');
+  D.kayit.status = 'cancelled';
+  assert.equal((await plan()).body.message, 'Kayıt iptal edilmiş.');
+  D.kayit.status = 'open';
+  D.hedefler = [hedef({ status: 'planned' })];
+  assert.equal((await plan()).statusCode, 409);
+  D.hedefler = [
+    hedef({ web_result_json: JSON.stringify([web('ORJEXW01', 'a.ornek.invalid', 'ok')]) }),
+  ];
+  let r = await plan();
+  assert.equal(r.statusCode, 409);
+  assert.match(r.body.message, /Yeniden denenecek başarısız ya da atlanmış vhost yok/);
+
+  D.hedefler = [
+    hedef({
+      web_result_json: JSON.stringify([
+        web('ORJEXW01', 'a.ornek.invalid', 'failed'),
+        web('ORJEXW02', 'b.ornek.invalid', 'failed', { product: 'NGINX' }),
+        web('ORJEXW03', '', 'skip'),
+        web('ORJEXW04', 'd.ornek.invalid', 'failed', { elle: 'elle kapatilacak' }),
+      ]),
+    }),
+  ];
+  r = await plan();
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const sonuc = Object.fromEntries(r.body.vhostPlan.map((v) => [v.host, v]));
+  assert.deepEqual([sonuc.ORJEXW01.ok, sonuc.ORJEXW01.jobId], [true, 810]);
+  assert.match(sonuc.ORJEXW02.message, /NGINX: otomatik kapatma yok/);
+  assert.match(sonuc.ORJEXW03.message, /conf dosyasi ya da ServerName kesifte cozulemedi/);
+  assert.equal(AWX.cagri.length, 1, 'elle / NGINX / eksik girdi icin is acildi');
+  assert.deepEqual(AWX.cagri[0][2], {
+    target_host: 'ORJEXW01',
+    action: 'apache_retire_vhost',
+    product: 'IHS',
+    file: '/usr/IBMIHS/conf/mod-jk.conf', // IHS goreli conf adi kanonik yola cevrilir
+    server_name: 'a.ornek.invalid',
+    reload: false,
+    plan_only: true,
+  });
+  assert.match(D.olaylar.at(-1)[3], /yeniden deneme ONIZLEMESI/);
+  assert.ok(
+    !D.yazim.some((y) => y.s.startsWith('UPDATE retirement_targets')),
+    'onizleme hedefi degistirdi',
+  );
+
+  REG.satir = null;
+  r = await plan();
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.body.vhostPlan.find((v) => v.host === 'ORJEXW01').ok, false);
+  assert.match(r.body.vhostPlan.find((v) => v.host === 'ORJEXW01').message, /server_hub_fix/);
 });
