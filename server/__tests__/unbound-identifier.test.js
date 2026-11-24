@@ -79,13 +79,21 @@ function tscCalistir(config) {
   }
 }
 
-test('tsconfig.server-check.json repoda var ve server/**/*.cjs ile Node testlerini (*.test.js) kapsiyor', () => {
+test('tsconfig.server-check.json repoda var; server/**/*.cjs, Node testleri (*.test.js), shared/ ve scripts/ kapsamda', () => {
   assert.ok(fs.existsSync(TSCONFIG), 'sunucu denetim yapilandirmasi silinmis');
   const cfg = JSON.parse(fs.readFileSync(TSCONFIG, 'utf8'));
   assert.ok(cfg.compilerOptions.checkJs, 'checkJs kapatilmis — bekci ise yaramaz');
   assert.ok(cfg.compilerOptions.allowJs);
-  // Node testleri 2026-11-18'den beri *.test.js (kurumsal Sonar); onlar da denetimde kalir.
-  assert.deepEqual(cfg.include, ['server/**/*.cjs', 'server/**/*.test.js']);
+  // Node testleri 2026-11-18'den beri *.test.js (kurumsal Sonar); onlar da denetimde kalir. shared/ ve scripts/
+  // 2026-11-24'ten beri: kurumsal Sonar onlari kaynak sayar ve bu tsconfig'i okur.
+  assert.deepEqual(cfg.include, [
+    'server/**/*.cjs',
+    'server/**/*.test.js',
+    'shared/**/*.cjs',
+    'scripts/**/*.cjs',
+    'scripts/**/*.mjs',
+    'scripts/**/*.js',
+  ]);
 });
 
 test('server/**/*.cjs icinde TANIMSIZ KIMLIK yok (gateVars sinifi)', () => {

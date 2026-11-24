@@ -1,4 +1,6 @@
-// scripts/check-server.cjs - TypeScript checkJs gate for server/**/*.cjs without masking failures.
+// scripts/check-server.cjs - TypeScript checkJs gate for server/, shared/ and scripts/ (tsconfig.server-check.json)
+// without masking failures. shared/ and scripts/ joined 2026-11-24 (PR-2): corporate Sonar treats them as
+// sources and reads this tsconfig (sonar.typescript.tsconfigPaths).
 'use strict';
 
 const { execFileSync } = require('node:child_process');
@@ -47,7 +49,7 @@ function main() {
   }
 
   console.log(
-    `[check:server] OK - 0 fatal diagnostics in server/**/*.cjs (${totalErrors} non-fatal strict=false notices).`,
+    `[check:server] OK - 0 fatal diagnostics in server/, shared/, scripts/ (${totalErrors} non-fatal strict=false notices).`,
   );
 }
 

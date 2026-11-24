@@ -123,6 +123,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
   - **Sınır:** taklit SonarQube Community ile koşar; kurumun Enterprise'a özgü JS güvenlik (taint) ve kurumsal sır analizi taklitte yoktur. PL/SQL ve Ansible çözümleyicileri ve `docker:S6505` de yoktur (`profil.yereldeYok`); Dockerfile'daki betiksiz kurulumu KK15 bekler.
   - **Kurum talebi:** `scanOnSonar`'ın `sonar-project.properties`'e uyması (`.ai-workspace/kurum-talep.md`). Gelse de ad kuralı kalır.
 - **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
+  - Rapor kurumun kaynak saydığı her kod dosyasını taşır: `scripts/` ve `__tests__` yardımcıları dahil, test dosyaları (adından) ve kuruma gitmeyenler hariç (`scripts/kapsam-yayinla.cjs` `kaynakMi`). Tazeleme tetikleyicisi bu dosyaların hepsini izler; bekçi KP5.
   - Rapor kaynakla aynı değilse Sonar koşusunu düşürür; yanlış eşleşen kapsam yüklenmez.
   - Normal derlemede yalnız uyarır.
 - **Paket:** `build/BMWPORTAL/PORTAL-BMW-main` altında üretilir. Kurumsal hattın çalışma alanında açtığı `.npm-cache/` ve `.jfrog/` git dışıdır (iş #52'de ağacı "kirli" gösteriyorlardı); ağaç yine kirliyse paket ilk 10 yolu loga yazar. Kütüphanenin Sonar adımı `build/**`'i taramaz; zip adımı çalışma alanı içinden okur. War'ın kökü `PORTAL-BMW-main/`, çünkü `deploy/release.sh` bunu bekler.
