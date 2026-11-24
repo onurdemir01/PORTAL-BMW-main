@@ -149,6 +149,18 @@ Sebepleri:
 - **`durum=yok`:** bir `*.conf` dizini gösteriyor ama dizin yok (404).
 - **`tanımlı=0`:** hiçbir conf dizini göstermiyor (artık dizin).
 - **Deployment yedeği** (`<app>_<job>`, kardeş `<app>` varken) yalnız hiçbir conf onu göstermiyorsa atlanır. Gizli dizinler sayılmaz.
+- **Symlink (2026-11-23, PR-R; kullanıcı kararı "hedefi izle"):** paket içindeki bağ izlenir (`find -L`).
+  - Hedef dosyanın içeriği özete, hedef ağacın satırları ize girer; bağın hedef **metni** de ize girer (yeniden yönlendirme).
+  - Eskiden `find -type f` bağı hiç görmüyordu: farklı kütüphanelere giden aynı adlı bağ (`assets -> /paylasilan/<host>/lib`) iki sunucuyu bayt bayt aynı satırla "eşit" gösteriyordu.
+  - Kırık bağ ya da döngü `okunamadi` olur.
+  - Dışarıya giden bağ çok büyük (ya da NFS) bir ağaca gidebilir:
+    - tek gezinti yapılır (`%Y` ile tür);
+    - sınır uygulama başına `NGINX_PKG_DOSYA_SINIRI` (50000) **girdidir** (dosya ve dizin; `head` gezintiyi de durdurur);
+    - `find` süresi `NGINX_PKG_FIND_SN` (120 sn) ile sınırlıdır (`timeout` varsa).
+    - Sınır ya da süre aşılırsa `okunamadi`.
+  - Ansible görev sınırları: parmak izi `nginx_console_fp_timeout` (300 sn), döküm `nginx_console_dump_timeout` (1800 sn). Asılan tek sunucu tüm dökümü bekletmez; o sunucu "döküm alınamadı" kaydını alır.
+  - Bağsız uygulamada iz eskisiyle aynı kalır (önbellek isabeti korunur; dağıtım sonrası yalnız bağlı uygulamalar yeniden özetlenir).
+  - Bekçi: `server/ansible/__tests__/nginx-paket-dokum.test.js` (NP1-NP7, gerçek bash; bash 4+ ve GNU find ister, CI'da koşar).
 - **Gizlilik:** dosya ve config içeriği dökülmez, yalnız özet.
 - **İlk sürümün açıkları** (aynı gün bağımsız incelemede bulundu):
   - okunamayan dosya ya da dizin özetten sessizce düşüyor, farklı içeriği eşit gösteriyordu;
@@ -163,7 +175,9 @@ kullanıcıya aitse okunur. ctime `cp -p` ile geri alınamaz; içeriği değişe
 
 **Parmak izi.** Fetch'in "değişiklik var mı" izi artık `/usr/nginx/applications`'ı da kapsar (`.gz/.br` dahil; boyut,
 mtime, ctime). Paket değişip konfigürasyon değişmese de döküm alınır. **İlk koşuda** iz formülü değiştiği için tüm filo bir
-kez tam dökülür; sonra yine artımlı.
+kez tam dökülür; sonra yine artımlı. 2026-11-23: iz bağları da izler (`find -L`) ve bağ metnini (`find -type l`) katar.
+Bağsız sunucuda iz değişmez (gereksiz yeniden döküm yok); bağ yeniden yönlendirilince ya da hedefin içeriği değişince
+iz değişir.
 
 **Portal: Nginx Hub › Tutarlılık › Paketler.**
 - Gruplar: taşıma gruplarının yeni PROD sunucuları (`MIGRATION_GROUPS.newHosts`).

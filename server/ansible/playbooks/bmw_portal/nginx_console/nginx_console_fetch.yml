@@ -124,11 +124,14 @@
           become_method: dzdo
           become_user: www
           ansible.builtin.shell: |
-            cur="$( (find /usr/nginx/conf.d /usr/nginx/conf /usr/nginx/applications -type f -printf '%s %T@ %C@ %p\n' 2>/dev/null | sort | sha256sum | cut -c1-64) )"
+            T=""; command -v timeout >/dev/null 2>&1 && T="timeout -k 5 {{ nginx_console_fp_find_sn | default(240) | int }}"
+            cur="$( ( { $T find -L /usr/nginx/conf.d /usr/nginx/conf /usr/nginx/applications -printf '%Y %s %T@ %C@ %p\n' 2>/dev/null | head -n 2000001 | awk '$1 == "f" { print substr($0, 3) }'; $T find /usr/nginx/conf.d /usr/nginx/conf /usr/nginx/applications -type l -printf 'L %p %l\n' 2>/dev/null; } | sort | sha256sum | cut -c1-64) )"
             last="$(cat /var/tmp/.nginx_console_fp 2>/dev/null)"
             echo "FP|${cur}|${last}"
           register: fp_out
           changed_when: false
+          # Linear strateji: asilan tek sunucu (NFS'e giden bag) tum dokumu bekletmesin; rescue hata kaydi yazar.
+          timeout: "{{ nginx_console_fp_timeout | default(300) | int }}"
 
         - name: --- [Task] Dokum gerekli mi ---
           ansible.builtin.set_fact:
@@ -153,6 +156,7 @@
           ansible.builtin.command: /bin/bash /tmp/nginx_console_dump.sh
           register: dump_out
           changed_when: false
+          timeout: "{{ nginx_console_dump_timeout | default(1800) | int }}"
           when: need_dump | bool
 
         - name: --- [Task] /sw'ye yaz (yazici sunucu uzerinden) ---

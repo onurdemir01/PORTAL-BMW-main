@@ -504,6 +504,7 @@ nginx` koşturur (www, yalnız okuma; `nginx -T` ve nginx master taraması `hede
 | ok | ≥ 1 | `1` | Bugünkü tam davranış: `cpu_kaydedici.sh` (worker CPU, access-log, `cpu_ms_istek`), sunucu ayarı (sıkıştırma aç/kapat + seviye, http2, static, `.gz` / `.br`) |
 | fail (ikili yok dahil) | 0 | `0` | Genel ölçüm: `yuk_cpu_kaydedici.sh ROL=hedef` (`/proc/stat` toplam CPU), log ayrıştırma YOK, sunucu ayarı YOK |
 | ok | 0, `nginx_pid` `yok` \| `olu` | `0` | (2026-11-17) nginx KURULU ama DURMUŞ (aynı sunucuda Apache / IHS hizmet veriyor olabilir): genel ölçüm, yukarıdaki `0` satırı |
+| ok ya da fail (ikili var) | 0, `/proc` gizli (pid 1'in cmdline'ı okunamıyor: hidepid=2 gizler, hidepid=1 okutmaz) | `-` | (2026-11-23) master 0 kanıt değil: çalışan nginx pid dosyasını `-T`'de görünmeyen bir yola yazıyor olabilir (`-g 'pid …;'`, başka `-c`). Belirlenemedi; yalnız ikili de yoksa ve `-T` düşüyorsa `0` |
 | ok | 0, `nginx_pid` `canli` \| `-` | `-` | Belirlenemedi (hidepid altında çalışan nginx ya da pid okunamadı): ön kontrolde engel, koşuda kaydedici ve yük başlamadan `fail` |
 | fail | ≥ 1 | `-` | Belirlenemedi (başka yolda nginx ya da `-T` reddi): aynı |
 

@@ -14,12 +14,16 @@
 #   nginx : nginx_bin 1|0 (NGINX_BIN calistirilabilir mi; bilgi), nginx_T ok|fail, master_sayisi <n>,
 #           nginx_pid yok|olu|canli|- , nginx_var 1|0|-, apache_surec <n>, apache_var 1|0|-, nproc <n>|-.
 #           apache_var (2026-11-17, YALNIZ BILGI; nginx kararini DEGISTIRMEZ): /proc'ta komut adi httpd / apache2 (IHS dahil)
-#           olan surec sayisi apache_surec; >= 1 -> 1; 0 ve /proc baskasinin sureclerini gosteriyor (pid 1 gorunur) -> 0;
-#           0 ve pid 1 gorunmuyor (hidepid) -> '-'.
+#           olan surec sayisi apache_surec; >= 1 -> 1; 0 ve /proc baskasinin sureclerini gosteriyor (pid 1'in cmdline'i
+#           okunur) -> 0; 0 ve okunamiyor (hidepid=2 gizler, hidepid=1 okutmaz) -> '-'.
 #           nginx_var: master >= 1 VE nginx -T ok -> 1; master 0 VE nginx -T fail -> 0; master 0, nginx -T ok VE
 #           nginx_pid yok|olu -> 0 (nginx KURULU ama DURMUS; ayni sunucuda Apache gibi baska bir sunucu hizmet
 #           veriyor olabilir: hedef nginx'siz olculur); digeri (master 0 ama pid canli ya da olculemedi: hidepid;
 #           master var ama -T basarisiz) -> '-' (belirlenemedi; playbook olcum yapmaz).
+#           HIDEPID (2026-11-23, PR-R): /proc baskasinin sureclerini gizliyorsa (pid 1'in cmdline'i okunamiyor: hidepid=2
+#           gizler, hidepid=1 okutmaz; apache_yaz ile ayni sezgi) master 0 KANIT DEGILDIR: calisan nginx pid dosyasini -T'de gorunmeyen bir yola yaziyorsa (-g 'pid
+#           ...;', baska -c) pid 'yok' cikar ve hedef nginx'siz olculurdu. Bu durumda '-', tek istisna: nginx ikilisi
+#           yok VE -T basarisiz (kurulu degil) -> 0.
 #           nginx_pid: konfigurasyondaki `pid` dosyasi (nginx -T ciktisindan; yoksa <prefix>/logs/nginx.pid, goreli
 #           yol prefix'e gore). yok: dizin aranabilir ve dosya yok (nginx duzgun durunca dosyayi siler); olu: pid
 #           yazili ama `kill -0` "No such process" ya da /proc'ta gorunen surec nginx master degil (bayat dosya);
@@ -237,14 +241,14 @@ apache_yaz() {
     case "$a" in httpd | apache2 | httpd.* | httpd-* | apache2.* | apache2-*) n=$((n + 1)) ;; esac
   done
   if [ "$n" -ge 1 ]; then v=1
-  elif [ -d "$PROC/1" ]; then v=0
+  elif [ -r "$PROC/1/cmdline" ]; then v=0
   fi
   printf 'apache_surec\t%d\n' "$n"
   printf 'apache_var\t%s\n' "$v"
 }
 
 nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basilmaz)
-  local tok=fail master var=- n b=0 pd
+  local tok=fail master var=- n b=0 pd gizli
   nginx_hazirla
   [ -f "$NG_BIN" ] && [ -x "$NG_BIN" ] && b=1
   printf 'nginx_bin\t%d\n' "$b"
@@ -254,7 +258,11 @@ nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basi
   printf 'master_sayisi\t%d\n' "$master"
   pd="$(nginx_pid_durumu "$(pid_yolu)")"
   printf 'nginx_pid\t%s\n' "$pd"
+  # hidepid=2 pid 1'i gizler, hidepid=1 (noaccess) gosterir ama okutmaz: ikisinde de cmdline okunamaz.
+  gizli=0
+  [ -r "$PROC/1/cmdline" ] || gizli=1
   if [ "$master" -ge 1 ] && [ "$tok" = ok ]; then var=1
+  elif [ "$master" -eq 0 ] && [ "$gizli" = 1 ] && ! { [ "$b" = 0 ] && [ "$tok" = fail ]; }; then var=-
   elif [ "$master" -eq 0 ] && [ "$tok" = fail ]; then var=0
   elif [ "$master" -eq 0 ] && [ "$tok" = ok ] && { [ "$pd" = yok ] || [ "$pd" = olu ]; }; then var=0
   fi

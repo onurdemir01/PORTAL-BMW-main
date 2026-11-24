@@ -4,6 +4,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: Nginx)
+- Nginx Hub › Tutarlılık › Paketler: symlink içeriği özete ve parmak izine girmiyordu; farklı kütüphanelere giden aynı adlı bağ iki sunucuyu "eşit" gösteriyordu. Bağ artık izleniyor (kullanıcı kararı); kırık bağ, döngü, girdi sınırı ve `find` zaman aşımı `okunamadi`; bağsız uygulamada iz ve önbellek değişmez. Fetch parmak izi bağları da kapsıyor; parmak izi ve döküm görevlerinin Ansible zaman aşımı var (asılan tek sunucu tüm dökümü bekletmez).
+- Yük Testi ön kontrol: hidepid altında master 0 kanıt sayılıyordu; çalışan nginx pid dosyasını görünmeyen bir yola yazıyorsa hedef "nginx'siz" ölçülürdü. Artık belirlenemedi (`-`), README'deki fail-closed sözüyle uyumlu; hidepid=1 (pid 1 görünür ama okunamaz) de yakalanıyor.
+
 ### Changed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: EAR kullanım kanıtı)
 - EAR Temizliği: izin yüzünden okunamayan **uygulama hesabı** süreci (uid ≥ `UID_MIN`; ya da sahibi ayrılmamış okunamayan, eski tarama) artık "kullanılmıyor" sayılmıyor; silme reddediliyor (kullanıcı kararı). Tarayıcı `was` ile koşar ve başka kullanıcının `cwd` / `fd`'sini göremez; o süreç dizini kullanıyor olabilir. Tarayıcı okunamayanları `/proc/<pid>/status` Uid'ine göre ayırır (`okunamayan_diger`); root, sistem hesapları ve taramanın kendi oturum zinciri (Ansible sshd) uyarı olarak kalır. Eski taramalar yeniden taranana kadar okunamayan süreç varsa silme kapalıdır.
 - EAR envanter taraması: kesin zaman aşımı yumuşak bütçeden ve bağlantı örneklerinin uykusundan geniş; kullanım ölçümü bütçenin dışında koştuğu için büyük `ear_sure`'de görev zaman aşımına düşüyordu. Görev zaman aşımı artık `ZAMAN_ASIMI` yazıyor (eskiden rescue `HATA` yazıyordu; 2.16 ve 2.21 iletileri).

@@ -112,8 +112,20 @@ done
 #### onbellektekiyle ayniysa onceki ozet kullanilir; ctime cp -p ile geri alinamaz. Onbellek yalniz
 #### bu kullanicinin kendi dosyasiysa okunur. Deployment yedegi (<app>_<job>, kardes <app> varken)
 #### yalniz hicbir conf onu gostermiyorsa atlanir.
+#### SYMLINK (2026-11-23, PR-R, kullanici karari "hedefi izle"): paket icindeki bag IZLENIR (find -L): hedef
+#### dosyanin icerigi ozete, hedef agacin (yol, boyut, mtime, ctime) satirlari ize girer; bagin hedef METNI de
+#### ize girer (yeniden yonlendirme). Eskiden `find -type f` bagi hic gormuyordu: farkli kutuphaneye giden ayni
+#### adli bag iki sunucuyu "esit" gosteriyordu. Kirik bag ya da dongu -> okunamadi (esit degil). Disari giden
+#### bag cok buyuk (ya da NFS) bir agaca gidebilir: TEK gezinti (%Y ile tur; kirik bag N / L / ?), uygulama basina
+#### PKG_DOSYA_SINIRI GIRDI (dosya + dizin; head gezintiyi de durdurur) ve PKG_FIND_SN sn (timeout varsa);
+#### asilirsa okunamadi.
 APPS="${NGINX_APPS:-$PREFIX/applications}"
 PKG_CACHE="${NGINX_PKG_CACHE:-/var/tmp/.nginx_console_pkg_cache.v2}"
+PKG_DOSYA_SINIRI="${NGINX_PKG_DOSYA_SINIRI:-50000}"
+PKG_FIND_SN="${NGINX_PKG_FIND_SN:-120}"
+# timeout (coreutils) yoksa sinirsiz kosar ama komut bulunamadi diye her uygulama okunamadi olmaz.
+PKG_T=""
+command -v timeout >/dev/null 2>&1 && PKG_T="timeout -k 5 $PKG_FIND_SN"
 echo "@@SPAPKG"
 (
   export LC_ALL=C
@@ -159,8 +171,24 @@ echo "@@SPAPKG"
             echo "okunamadi: .version" >> "$hataf"
           fi
         fi
-        liste="$(cd "$d" && find . -type f -printf '%P\t%s\t%T@\t%C@\n' 2>>"$hataf" | sort)" || echo "find" >> "$hataf"
-        iz="$(printf '%s\n' "$liste" | sha256sum | cut -c1-16)"
+        # TEK gezinti: %Y bagi izleyerek tur verir (f dosya, d dizin; N kirik, L dongu, ? hata). Sinir GIRDI sayar
+        # (yalniz dizin dolu agacta da head gezintiyi durdurur); zaman asimi / SIGPIPE pipefail ile okunamadi olur.
+        tum="$(cd "$d" && $PKG_T find -L . -printf '%Y\t%P\t%s\t%T@\t%C@\n' 2>>"$hataf" \
+          | head -n "$((PKG_DOSYA_SINIRI + 1))")" || echo "find" >> "$hataf"
+        if [ -n "$tum" ] && [ "$(printf '%s\n' "$tum" | wc -l)" -gt "$PKG_DOSYA_SINIRI" ]; then
+          echo "girdi siniri $PKG_DOSYA_SINIRI asildi (bag buyuk bir agaca gidiyor olabilir)" >> "$hataf"
+        fi
+        kirik="$(printf '%s\n' "$tum" | awk -F'\t' '$1 == "N" || $1 == "L" || $1 == "?" { print $2; exit }')"
+        [ -n "$kirik" ] && echo "kirik bag: $kirik" >> "$hataf"
+        # Yalniz dosyalar, eski bicimde (yol, boyut, mtime, ctime): bagsiz uygulamada iz ve onbellek degismez.
+        liste="$(printf '%s\n' "$tum" | awk -F'\t' -v OFS='\t' '$1 == "f" { print $2, $3, $4, $5 }' | sort)"
+        baglar="$(cd "$d" && $PKG_T find . -type l -printf '%P\t%l\n' 2>>"$hataf" | sort)" || echo "find bag" >> "$hataf"
+        # Bagsiz uygulamada iz eskisiyle ayni (onbellek isabeti korunur); bagliysa hedef metni de ize girer.
+        if [ -n "$baglar" ]; then
+          iz="$(printf '%s\n@@BAG\n%s\n' "$liste" "$baglar" | sha256sum | cut -c1-16)"
+        else
+          iz="$(printf '%s\n' "$liste" | sha256sum | cut -c1-16)"
+        fi
         k="$ns/$app"
         onceki="${OLD[$k]:-}"
         if [ ! -s "$hataf" ] && [ -n "$onceki" ] && [ "${onceki%%$'\t'*}" = "$iz" ]; then
