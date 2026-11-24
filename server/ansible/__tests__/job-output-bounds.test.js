@@ -191,7 +191,11 @@ function gercekJsonIstek(fnAdi, ekStok = {}) {
   const son = Math.min(...[sonraki, sonrakiAsync].filter((n) => n > 0));
   const k = RUNNER_SRC.indexOf('const JOB_OUTPUT_MAX_BYTES');
   const sabitSon = RUNNER_SRC.indexOf('function fetchAwxPlainText');
-  const kaynak = `${RUNNER_SRC.slice(k, sabitSon)}\n${RUNNER_SRC.slice(i, son)}`;
+  // Ortak bayt kapisi (sinirliGovde, 2026-11-24) GERCEK kaynagindan: istek govdeleri onu cagirir.
+  const y = RUNNER_SRC.indexOf('function sinirliGovde(');
+  const ySon = RUNNER_SRC.indexOf('async function listTemplatesForServer');
+  assert.ok(y > 0 && ySon > y, 'sinirliGovde cikarimi bozuldu');
+  const kaynak = `${RUNNER_SRC.slice(y, ySon)}\n${RUNNER_SRC.slice(k, sabitSon)}\n${RUNNER_SRC.slice(i, son)}`;
 
   // Cikarilan govde birkac yardimciya bagli; testin konusu OLMAYAN bu yardimcilar
   // en sade halleriyle enjekte edilir. Olculen sey BAYT KAPISI, yol esleme degil.

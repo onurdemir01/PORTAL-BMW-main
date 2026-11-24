@@ -332,6 +332,51 @@ async function fetchAllTemplatePages(
   return allResults;
 }
 
+/**
+ * BAYT KAPISI (ortak; AWX token ve JSON yanitlari): sinirsiz tamponlama bu depoda yedi OOM'un sinifiydi. Govde en
+ * cok `tavan` birim biriktirilir; asilinca HEMEN reddedilir ve istek kesilir (`end` BEKLENMEZ: `req.destroy()`
+ * sonrasi `end` gelmez, yalniz orada cozen bir promise sonsuza dek asili kalirdi, PR #106). `durum.kirpildi`
+ * istegin hata dinleyicisine de soyler: kesmenin urettigi ECONNRESET ikinci kez reddedilmez. Govde tamamsa
+ * bitti(data).
+ */
+function sinirliGovde(res, req, durum, { tavan, reject, hata }, bitti) {
+  let data = '';
+  let bayt = 0;
+  res.on('data', (c) => {
+    if (durum.kirpildi) return;
+    bayt += c.length;
+    if (bayt > tavan) {
+      durum.kirpildi = true;
+      reject(hata());
+      req.destroy();
+      return;
+    }
+    data += c;
+  });
+  res.on('end', () => {
+    if (durum.kirpildi) return; // zaten reddedildi
+    bitti(data);
+  });
+}
+
+const tokenCokBuyuk = () =>
+  Object.assign(
+    new Error(
+      `AWX token yanıtı çok büyük (> ${Math.round(AWX_TOKEN_MAX_BYTES / 1024)} KB) — ` +
+        'AWX adresi ya da ters-proxy yapılandırması hatalı olabilir.',
+    ),
+    { status: 502, tooLarge: true },
+  );
+
+const jsonCokBuyuk = (tavan, yol) =>
+  Object.assign(
+    new Error(
+      `AWX yanıtı çok büyük (> ${Math.round(tavan / (1024 * 1024))} MB): ` +
+        `${yol}. İşin çıktısı AWX arayüzünden incelenmeli.`,
+    ),
+    { status: 502, tooLarge: true },
+  );
+
 async function listTemplatesForServer(server) {
   const rawIds = process.env.AWX_READ_ONLY_TEMPLATE_IDS || '';
   const allowedIds = rawIds
@@ -347,6 +392,14 @@ async function listTemplatesForServer(server) {
     server.url,
   );
 
+  return sablonListesi(allResults, allowedIds);
+}
+
+/**
+ * AWX sablon listesi -> ekran satirlari (her iki listeleme yolu, 2026-11-24 ortak). allowedIds bossa hepsi.
+ * Sir tasiyan degiskenler tarayiciya GITMEZ; adlari hiddenVariables'ta (degisken-gizle.cjs).
+ */
+function sablonListesi(allResults, allowedIds) {
   const results = allResults.filter((t) => allowedIds.length === 0 || allowedIds.includes(t.id));
   return results.map((t) => ({
     id: t.id,
@@ -355,7 +408,6 @@ async function listTemplatesForServer(server) {
     playbook: t.playbook,
     inventory: t.summary_fields?.inventory?.name || '',
     ask_variables: t.ask_variables_on_launch || false,
-    // Sir tasiyan degiskenler tarayiciya GITMEZ; adlari hiddenVariables'ta (degisken-gizle.cjs).
     ...sablonDegiskenAlanlari(t.extra_vars),
     labels: (t.summary_fields?.labels?.results || []).map((l) => l.name),
     isReadOnly: allowedIds.length === 0 || allowedIds.includes(t.id),
@@ -466,76 +518,58 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
     //
     // PR #106 yalnizca DUZ METIN yolunu (`fetchAwxPlainText`) kapatmisti; JSON yolu
     // acik kalmisti. Ayni sinifin ikinci yuzu.
-    let jsonKirpildi = false;
+    const kapi = { kirpildi: false };
     const req = lib.request(options, (res) => {
       res.setEncoding('utf8');
-      let data = '';
-      let bayt = 0;
-      res.on('data', (c) => {
-        if (jsonKirpildi) return;
-        bayt += c.length;
-        if (bayt > jsonTavan) {
-          jsonKirpildi = true;
-          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ ve
-          // promise sonsuza dek asili kalirdi (PR #106'da tam bu tuzaga dustum).
-          reject(
-            Object.assign(
-              new Error(
-                `AWX yanıtı çok büyük (> ${Math.round(jsonTavan / (1024 * 1024))} MB): ` +
-                  `${pathname}. İşin çıktısı AWX arayüzünden incelenmeli.`,
-              ),
-              { status: 502, tooLarge: true },
-            ),
-          );
-          req.destroy();
-          return;
-        }
-        data += c;
-      });
-      res.on('end', () => {
-        if (jsonKirpildi) return; // zaten reddedildi
-        // DELETE (ve bazi POST'lar) 204 No Content doner: GOVDE BOSTUR ve JSON.parse("")
-        // hata firlatir. Onceki hal bunu "AWX yaniti JSON degil" diye BASARISIZLIK
-        // sayiyordu - oysa 204 basarinin ta kendisi.
-        if (res.statusCode >= 200 && res.statusCode < 300 && !data.trim()) return resolve(null);
-        try {
-          const json = JSON.parse(data);
-          if (res.statusCode >= 400) {
-            // SIR YANSIMASI: AWX/vekil hata govdesi istegin Authorization basligini geri
-            // yansitabilir. Log satiri ve hata mesaji bu istegin token'i + bilinen tum AWX
-            // sirlari (iptal token'i dahil) maskelenmeden YAZILMAZ (maskRequestSecrets).
-            const ozet = summarizeAwxErrorBody(json);
-            const detail = ozet ? maskRequestSecrets(gizliSil(ozet), token) : ozet;
-            console.error(
-              `[AWX] ${method} ${parsed.pathname} -> HTTP ${res.statusCode}:`,
-              maskRequestSecrets(gizliSil(data), token).slice(0, 1000),
-            );
+      sinirliGovde(
+        res,
+        req,
+        kapi,
+        { tavan: jsonTavan, reject, hata: () => jsonCokBuyuk(jsonTavan, pathname) },
+        (data) => {
+          // DELETE (ve bazi POST'lar) 204 No Content doner: GOVDE BOSTUR ve JSON.parse("")
+          // hata firlatir. Onceki hal bunu "AWX yaniti JSON degil" diye BASARISIZLIK
+          // sayiyordu - oysa 204 basarinin ta kendisi.
+          if (res.statusCode >= 200 && res.statusCode < 300 && !data.trim()) return resolve(null);
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode >= 400) {
+              // SIR YANSIMASI: AWX/vekil hata govdesi istegin Authorization basligini geri
+              // yansitabilir. Log satiri ve hata mesaji bu istegin token'i + bilinen tum AWX
+              // sirlari (iptal token'i dahil) maskelenmeden YAZILMAZ (maskRequestSecrets).
+              const ozet = summarizeAwxErrorBody(json);
+              const detail = ozet ? maskRequestSecrets(gizliSil(ozet), token) : ozet;
+              console.error(
+                `[AWX] ${method} ${parsed.pathname} -> HTTP ${res.statusCode}:`,
+                maskRequestSecrets(gizliSil(data), token).slice(0, 1000),
+              );
+              reject(
+                Object.assign(
+                  new Error(
+                    detail ? `AWX HTTP ${res.statusCode}: ${detail}` : `AWX HTTP ${res.statusCode}`,
+                  ),
+                  { status: res.statusCode, body: gizliler.length ? null : json },
+                ),
+              );
+            } else resolve(json);
+          } catch {
+            // httpStatus, status DEGIL: JSON olmayan yanit bugune dek status'suz; cagiranlarin esleme
+            // davranisi degismesin.
             reject(
               Object.assign(
                 new Error(
-                  detail ? `AWX HTTP ${res.statusCode}: ${detail}` : `AWX HTTP ${res.statusCode}`,
+                  `AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`,
                 ),
-                { status: res.statusCode, body: gizliler.length ? null : json },
+                { httpStatus: res.statusCode },
               ),
             );
-          } else resolve(json);
-        } catch {
-          // httpStatus, status DEGIL: JSON olmayan yanit bugune dek status'suz; cagiranlarin esleme
-          // davranisi degismesin.
-          reject(
-            Object.assign(
-              new Error(
-                `AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`,
-              ),
-              { httpStatus: res.statusCode },
-            ),
-          );
-        }
-      });
+          }
+        },
+      );
     });
     // Kirpma sonrasi `req.destroy()` kendi ECONNRESET'ini uretir; zaten reddettik.
     req.on('error', (err) => {
-      if (jsonKirpildi) return;
+      if (kapi.kirpildi) return;
       const tlsErr = tlsHatasiAcikla(err, 'awx', parsed.hostname);
       reject(tlsErr instanceof Error ? tlsErr : new Error(String(tlsErr)));
     });
@@ -615,54 +649,33 @@ function fetchTokenOAuth2AtPath(
     };
 
     const req = lib.request(opts, (res) => {
-      // BAYT KAPISI. Token uclari normalde birkac yuz baytlik JSON doner, ama
-      // AWX ayakta degilse ters-vekil PORTALIN KENDI index.html'ini dondurur
-      // (bkz. src/api/http.ts'teki GATEWAY notu) ve bozuk bir vekil cok daha
-      // buyugunu donebilir. Bu yol HER token tazelemesinde calisir; sinirsiz
-      // tamponlama bu depoda yedi OOM'un sinifiydi.
-      let data = '';
-      let tokenBayt = 0;
-      let tokenKirpildi = false;
-      res.on('data', (c) => {
-        if (tokenKirpildi) return;
-        tokenBayt += c.length;
-        if (tokenBayt > AWX_TOKEN_MAX_BYTES) {
-          tokenKirpildi = true;
-          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ
-          // ve yalnizca orada cozen bir kapi promise'i sonsuza dek asili birakirdi.
-          reject(
-            Object.assign(
-              new Error(
-                `AWX token yanıtı çok büyük (> ${Math.round(AWX_TOKEN_MAX_BYTES / 1024)} KB) — ` +
-                  'AWX adresi ya da ters-proxy yapılandırması hatalı olabilir.',
-              ),
-              { status: 502, tooLarge: true },
-            ),
-          );
-          req.destroy();
-          return;
-        }
-        data += c;
-      });
-      res.on('end', () => {
-        if (tokenKirpildi) return; // zaten reddedildi
-        try {
-          const json = JSON.parse(data);
-          if (res.statusCode >= 400) {
-            reject(
-              new Error(
-                `AWX OAuth2 token başarısız (${res.statusCode}) [${tokenPath}]: ${json?.error_description || json?.error || data.slice(0, 100)}`,
-              ),
-            );
-          } else {
-            // OAuth2 returns access_token; no explicit expires, use 8h
-            const expires = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-            resolve({ token: json.access_token, expires });
+      // BAYT KAPISI: token uclari normalde birkac yuz baytlik JSON doner, ama AWX ayakta degilse ters-vekil
+      // PORTALIN KENDI index.html'ini dondurur (bkz. src/api/http.ts GATEWAY notu); bu yol HER token
+      // tazelemesinde calisir.
+      sinirliGovde(
+        res,
+        req,
+        { kirpildi: false },
+        { tavan: AWX_TOKEN_MAX_BYTES, reject, hata: tokenCokBuyuk },
+        (data) => {
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode >= 400) {
+              reject(
+                new Error(
+                  `AWX OAuth2 token başarısız (${res.statusCode}) [${tokenPath}]: ${json?.error_description || json?.error || data.slice(0, 100)}`,
+                ),
+              );
+            } else {
+              // OAuth2 returns access_token; no explicit expires, use 8h
+              const expires = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+              resolve({ token: json.access_token, expires });
+            }
+          } catch {
+            reject(new Error(`AWX OAuth2 yanıtı JSON değil [${tokenPath}]: ${data.slice(0, 100)}`));
           }
-        } catch {
-          reject(new Error(`AWX OAuth2 yanıtı JSON değil [${tokenPath}]: ${data.slice(0, 100)}`));
-        }
-      });
+        },
+      );
     });
     req.on('error', (err) => {
       const tlsErr = tlsHatasiAcikla(err, 'awx', parsed.hostname);
@@ -716,62 +729,41 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
     };
 
     const req = lib.request(opts, (res) => {
-      // BAYT KAPISI. Token uclari normalde birkac yuz baytlik JSON doner, ama
-      // AWX ayakta degilse ters-vekil PORTALIN KENDI index.html'ini dondurur
-      // (bkz. src/api/http.ts'teki GATEWAY notu) ve bozuk bir vekil cok daha
-      // buyugunu donebilir. Bu yol HER token tazelemesinde calisir; sinirsiz
-      // tamponlama bu depoda yedi OOM'un sinifiydi.
-      let data = '';
-      let tokenBayt = 0;
-      let tokenKirpildi = false;
-      res.on('data', (c) => {
-        if (tokenKirpildi) return;
-        tokenBayt += c.length;
-        if (tokenBayt > AWX_TOKEN_MAX_BYTES) {
-          tokenKirpildi = true;
-          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ
-          // ve yalnizca orada cozen bir kapi promise'i sonsuza dek asili birakirdi.
-          reject(
-            Object.assign(
-              new Error(
-                `AWX token yanıtı çok büyük (> ${Math.round(AWX_TOKEN_MAX_BYTES / 1024)} KB) — ` +
-                  'AWX adresi ya da ters-proxy yapılandırması hatalı olabilir.',
-              ),
-              { status: 502, tooLarge: true },
-            ),
-          );
-          req.destroy();
-          return;
-        }
-        data += c;
-      });
-      res.on('end', () => {
-        if (tokenKirpildi) return; // zaten reddedildi
-        try {
-          const json = JSON.parse(data);
-          if (res.statusCode >= 400) {
+      // BAYT KAPISI: token uclari normalde birkac yuz baytlik JSON doner, ama AWX ayakta degilse ters-vekil
+      // PORTALIN KENDI index.html'ini dondurur (bkz. src/api/http.ts GATEWAY notu); bu yol HER token
+      // tazelemesinde calisir.
+      sinirliGovde(
+        res,
+        req,
+        { kirpildi: false },
+        { tavan: AWX_TOKEN_MAX_BYTES, reject, hata: tokenCokBuyuk },
+        (data) => {
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode >= 400) {
+              reject(
+                new Error(
+                  `AWX token alinamadi (HTTP ${res.statusCode}) — ${parsed.href} : ` +
+                    `${json?.detail || data.slice(0, 100)}`,
+                ),
+              );
+            } else {
+              resolve({ token: json.token, expires: json.expires });
+            }
+          } catch {
+            // ADRESI YAZMAK SART: bu hata iki BAMBASKA sebepten gelir ve mesaj onlari
+            // ayirt edebilmeli — (a) yol yanlis (AAP 2.5'te /api/controller/v2 gerekir),
+            // (b) adres dogru ama karsida AWX yok. Adres olmadan ikisi ayni goruntuyu verir
+            // ve teshis tahmine kalir (2026-09-08'de tam bu yasandi).
             reject(
               new Error(
-                `AWX token alinamadi (HTTP ${res.statusCode}) — ${parsed.href} : ` +
-                  `${json?.detail || data.slice(0, 100)}`,
+                `AWX token yaniti JSON DEGIL (HTTP ${res.statusCode}) — istenen adres: ` +
+                  `${parsed.href} | yanit: ${data.slice(0, 120).replace(/\s+/g, ' ')}`,
               ),
             );
-          } else {
-            resolve({ token: json.token, expires: json.expires });
           }
-        } catch {
-          // ADRESI YAZMAK SART: bu hata iki BAMBASKA sebepten gelir ve mesaj onlari
-          // ayirt edebilmeli — (a) yol yanlis (AAP 2.5'te /api/controller/v2 gerekir),
-          // (b) adres dogru ama karsida AWX yok. Adres olmadan ikisi ayni goruntuyu verir
-          // ve teshis tahmine kalir (2026-09-08'de tam bu yasandi).
-          reject(
-            new Error(
-              `AWX token yaniti JSON DEGIL (HTTP ${res.statusCode}) — istenen adres: ` +
-                `${parsed.href} | yanit: ${data.slice(0, 120).replace(/\s+/g, ' ')}`,
-            ),
-          );
-        }
-      });
+        },
+      );
     });
     req.on('error', (err) => {
       const tlsErr = tlsHatasiAcikla(err, 'awx', parsed.hostname);
@@ -866,55 +858,41 @@ async function awxRequest(method, pathname, body = null) {
     //
     // PR #106 yalnizca DUZ METIN yolunu (`fetchAwxPlainText`) kapatmisti; JSON yolu
     // acik kalmisti — ayni sinifin ikinci yuzu.
-    let jsonKirpildi = false;
+    const kapi = { kirpildi: false };
     const req = lib.request(options, (res) => {
       res.setEncoding('utf8');
-      let data = '';
-      let bayt = 0;
-      res.on('data', (chunk) => {
-        if (jsonKirpildi) return;
-        bayt += chunk.length;
-        if (bayt > AWX_JSON_MAX_BYTES) {
-          jsonKirpildi = true;
-          // HEMEN REDDET, `end`i BEKLEME: `req.destroy()` sonrasi `end` GELMEZ ve
-          // promise sonsuza dek asili kalirdi (PR #106'da tam bu tuzaga dustum).
-          reject(
-            Object.assign(
-              new Error(
-                `AWX yanıtı çok büyük (> ${Math.round(AWX_JSON_MAX_BYTES / (1024 * 1024))} MB): ` +
-                  `${options.path}. İşin çıktısı AWX arayüzünden incelenmeli.`,
-              ),
-              { status: 502, tooLarge: true },
-            ),
-          );
-          req.destroy();
-          return;
-        }
-        data += chunk;
-      });
-      res.on('end', () => {
-        if (jsonKirpildi) return; // zaten reddedildi
-        // Token expire olduysa cache'i temizle
-        if (res.statusCode === 401) {
-          _tokenCache.token = null;
-          _tokenCache.expiresAt = null;
-        }
-        try {
-          const json = JSON.parse(data);
-          if (res.statusCode >= 400) {
-            reject(
-              Object.assign(new Error(`AWX HTTP ${res.statusCode}`), {
-                status: res.statusCode,
-                body: json,
-              }),
-            );
-          } else {
-            resolve(json);
+      sinirliGovde(
+        res,
+        req,
+        kapi,
+        {
+          tavan: AWX_JSON_MAX_BYTES,
+          reject,
+          hata: () => jsonCokBuyuk(AWX_JSON_MAX_BYTES, options.path),
+        },
+        (data) => {
+          // Token expire olduysa cache'i temizle
+          if (res.statusCode === 401) {
+            _tokenCache.token = null;
+            _tokenCache.expiresAt = null;
           }
-        } catch {
-          reject(new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${data.slice(0, 200)}`));
-        }
-      });
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode >= 400) {
+              reject(
+                Object.assign(new Error(`AWX HTTP ${res.statusCode}`), {
+                  status: res.statusCode,
+                  body: json,
+                }),
+              );
+            } else {
+              resolve(json);
+            }
+          } catch {
+            reject(new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${data.slice(0, 200)}`));
+          }
+        },
+      );
     });
 
     req.on('error', (err) => {
@@ -935,29 +913,7 @@ async function awxRequest(method, pathname, body = null) {
 async function listTemplates() {
   const { url, allowedIds } = getConfig();
   const allResults = await fetchAllTemplatePages((path) => awxRequest('GET', path), url);
-  const results = allResults.filter((t) => {
-    if (allowedIds.length === 0) return true;
-    return allowedIds.includes(t.id);
-  });
-  return results.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description || '',
-    playbook: t.playbook,
-    inventory: t.summary_fields?.inventory?.name || '',
-    ask_variables: t.ask_variables_on_launch || false,
-    // Sir tasiyan degiskenler tarayiciya GITMEZ; adlari hiddenVariables'ta (degisken-gizle.cjs).
-    ...sablonDegiskenAlanlari(t.extra_vars),
-    labels: (t.summary_fields?.labels?.results || []).map((l) => l.name),
-    isReadOnly: allowedIds.length === 0 || allowedIds.includes(t.id),
-    lastLaunch: t.summary_fields?.recent_jobs?.[0]?.finished || null,
-    jobType: t.job_type || 'run',
-    project: t.summary_fields?.project?.name || '',
-    credentials: (t.summary_fields?.credentials || []).map((c) => c.name),
-    surveyEnabled: t.survey_enabled || false,
-    modified: t.modified || null,
-    hasInventory: !!t.summary_fields?.inventory,
-  }));
+  return sablonListesi(allResults, allowedIds);
 }
 
 // ── Launch job ────────────────────────────────────────────────────────────────
