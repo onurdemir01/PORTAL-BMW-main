@@ -15,7 +15,7 @@
 // kurulan paket sonraki taramada 'tamam' gorunur.
 //
 // YALNIZ Admin: uclar Admin'e acik, bolum de yalniz Admin'e cizilir.
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import {
   arkSpaApi,
@@ -116,7 +116,9 @@ function HedefHucre({ a }: { a: PaketAday }) {
   );
 }
 
-function AdaySatiri({
+// memo: secimde yalniz durumu degisen satir yeniden cizilir. Tablo 50+ satirken her tik tum satirlari
+// yeniden ciziyordu (PK3 tam suit yukunde 5 sn'yi asti). Prop'lar sabit: `a` durumdan, `degistir` useCallback.
+const AdaySatiri = memo(function AdaySatiri({
   a,
   secili,
   secilebilir,
@@ -164,7 +166,7 @@ function AdaySatiri({
       </td>
     </tr>
   );
-}
+});
 
 function AdayTablosu({
   adaylar,
