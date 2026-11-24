@@ -177,6 +177,7 @@ describe('AnsiblePage', () => {
     expect(await screen.findByText('Job #501 — Health Check')).toBeTruthy();
     expect(await screen.findByText('TASK [a]')).toBeTruthy();
     expect(screen.getByText('— güncelleniyor…')).toBeTruthy();
+    // 3 sn'lik yoklama, 'running' durumu islendiginde (cikti gelmeden once) kurulmus olur.
     await act(async () => {
       vi.advanceTimersByTime(3000);
     });
@@ -210,9 +211,14 @@ describe('AnsiblePage', () => {
     fireEvent.click(screen.getByRole('button', { name: /İş Başlat/ }));
     expect(await screen.findByText('Job #77 — Deploy App')).toBeTruthy();
     expect(screen.getByText('Çıktı bekleniyor…')).toBeTruthy();
+    // Yuk altinda deterministik: ilk durum sorgusunun reddi islenip 5 sn'lik yeniden deneme
+    // kurulmadan saat ilerletilmez (kapi K8'de bu yaris yakalandi).
+    await waitFor(() => expect(api.jobStatus).toHaveBeenCalledTimes(1));
+    for (let i = 0; i < 5; i++) await act(async () => {});
     await act(async () => {
       vi.advanceTimersByTime(5000);
     });
+    await waitFor(() => expect(api.jobStatus).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Başarısız')).toBeTruthy();
     expect(screen.getByText('Çıktı yok.')).toBeTruthy();
   });
