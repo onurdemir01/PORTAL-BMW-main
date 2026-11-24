@@ -37,16 +37,18 @@ spi_allowed_hosts:
   - <PROD intranet nginx 2>
 spi_validate_certs: true
 spi_download_timeout: 600
+spi_step_timeout: 900
 spi_max_zip_mb: 512
 ```
 
 | Değişken | Zorunlu | Anlamı |
 |---|---|---|
-| `spi_package_base_url` | evet | Paket kökü, `https://` ile başlar. Paket adresi `<kök>/<namespace>/<uygulama>/<sürüm>.zip` olarak kurulur. Sondaki `/` atılır. Değer Artifactory'nin **REST yoludur**: `https://<artifactory>/artifactory/<repo>` (ör. `.../artifactory/ark-binaries`). Tarayıcı arayüzünün yolu (`https://<artifactory>/ui/native/<repo>/...`) **bu değer değildir**: o adres ZIP yerine HTML sayfası döner ve plan aşaması `paket ZIP degil (Content-Type: text/html...)` diye durur. |
+| `spi_package_base_url` | evet | Paket kökü, `https://` ile başlar. Kimlik bilgisi (`kullanici:token@`) **olamaz**: adres sunucuda `curl` komut satırına gider (`ps` ile görünür); girdi kapısı `@` içeren değeri reddeder. Paket adresi `<kök>/<namespace>/<uygulama>/<sürüm>.zip` olarak kurulur. Sondaki `/` atılır. Değer Artifactory'nin **REST yoludur**: `https://<artifactory>/artifactory/<repo>` (ör. `.../artifactory/ark-binaries`). Tarayıcı arayüzünün yolu (`https://<artifactory>/ui/native/<repo>/...`) **bu değer değildir**: o adres ZIP yerine HTML sayfası döner ve plan aşaması `paket ZIP degil (Content-Type: text/html...)` diye durur. |
 | `spi_allowed_hosts` | evet | Kuruluma açık sunucular. `spi_items[].hosts` bu listenin alt kümesi değilse girdi kapısı durur. |
 | `spi_validate_certs` | hayır (true) | `false` olursa Artifactory ve `/config` istekleri `curl -k` ile yapılır. |
 | `spi_download_timeout` | hayır (600) | İndirme süre sınırı (saniye), en çok 3600. |
-| `spi_max_zip_mb` | hayır (512) | Paket boyut sınırı (MB), en çok 2048. HEAD'deki Content-Length ve `curl --max-filesize` ile uygulanır. |
+| `spi_step_timeout` | hayır (900) | Deployment betiği başına süre sınırı (saniye), en çok 3600. Dış süre sınırı bundan türetilir. |
+| `spi_max_zip_mb` | hayır (512) | Paket boyut sınırı (MB), en çok 2048. HEAD'deki Content-Length, `curl --max-filesize` ve `head -c` ile uygulanır (Content-Length'siz chunked yanıtta da; RHEL 8 curl 7.61 `--max-filesize`'ı orada uygulamaz). |
 
 ## Girdi (extra_vars, Portal kurar)
 
@@ -64,9 +66,9 @@ Portal `config_urls`'ü SPA keşfinin route ayrıntısından kurar (küçük har
 
 | Play | Nerede | Ne yapar |
 |---|---|---|
-| 1 | localhost | Girdi kapısı: mod, kalem/sunucu sınırları, izinli sunucu alt kümesi, biçimler (`config_urls` dahil), kurum değerleri. Nginx sunucuları `spi_nginx` grubuna eklenir ve sunucu başına iş listesi kurulur. |
+| 1 | localhost | Girdi kapısı: mod, kalem/sunucu sınırları, izinli sunucu alt kümesi, biçimler (`config_urls` dahil), kurum değerleri. Nginx sunucuları `spi_nginx` grubuna eklenir ve sunucu başına iş listesi kurulur. Kapı düşerse sebep play 3'te yayınlanır (`error`, boş `items`). |
 | 2 | Nginx (www, dzdo) | `files/spa_package_host.sh` `/var/tmp`'ye kopyalanır, sha1 ile doğrulanır ve kalem başına çalışır. Betik sonunda silinir. Koşu görevi `no_log`'dur. |
-| 3 | localhost | `set_stats spa_package_install_result` yayınlanır, ardından herhangi bir `FAIL` varsa iş düşer. |
+| 3 | localhost | `set_stats spa_package_install_result` yayınlanır (`cleanup_errors` dahil), ardından herhangi bir `FAIL` ya da silinemeyen geçici betik varsa iş düşer. Temizlikte `assert` yoktur: tek sunucuda düşen assert yayın play'ini hiç koşturmazdı. |
 
 ## Sunucu adımları (`spa_package_host.sh`)
 
@@ -144,11 +146,16 @@ Geri almanın sınırları:
 - `.version` dosyasını `nginx_unzip.sh` en son yazar. `unzip` adımı yarıda düşerse uygulama dizini `.version` olmadan kalır. Bu durumda geri alma yapılmaz; mesaj elle incelemeyi söyler (`nginx_delete.sh <ns> <app>`).
 - `nginx_delete.sh`, `/hysdeploy/<ns>/<app>` dizinini de siler. Bu dizin kurulumdan önce varsa iş zaten `SKIP` olur; pipeline'ın yüklediği paket bu yüzden silinmez. `nginx_delete.sh` yedeği `/sw` altına alır; ayrıntı için bmw_nginx README "Uygulama silme" bölümüne bakın.
 - Geri alma da düşerse mesaj `geri alma BASARISIZ: nginx_delete.sh rc=<n>` olur. Bu durumda sunucu elle incelenir.
-- Süre sınırı (`timeout`) deployment adımı sırasında dolarsa betik yarım kalmış olabilir. Mesaj `nginx_delete.sh <ns> <app>` ile elle geri almayı söyler.
+- **Kesinti (2026-11-24):**
+  - Dış süre sınırı betiğin iç bütçesinden türetilir: `60 + 90 + indirme + 7 × (adım + 10) + 40 + 120`. KILL payı `indirme + adım + 60` geri almaya yeter.
+  - Deployment adımları arka planda başlar ve `wait` ile beklenir; TERM/INT (süre sınırı, iş iptali) geldiğinde adım durur ve hedef bu koşununsa `nginx_delete.sh` ile geri alınır. Eskiden bash adım bitmeden trap'i çalıştırmıyordu; KILL gelince sunucuda yarım kurulum kalıyordu.
+  - SIGPIPE ve SIGHUP yok sayılır: çıktıyı okuyan taraf giderse (iş iptali, SSH kopması) betik ölmez; kurulum ya tamamlanır ya geri alınır.
+  - Buna rağmen sonuç satırı gelmezse (KILL), apply mesajı `nginx_delete.sh <ns> <app>` ile incelemeyi söyler.
 - Aynı iş tekrar koşturulursa `SKIP` döner: yarım kalan kurulum, hedefi oluşturduysa üzerine yazılmaz.
 
 ## Tuzaklar
 
 - Playbook'ta `#` yorum satırı ve `{{ }}` içinde kaçışlı tırnak yoktur. Sekme karakteri play değişkeni `spi_tab` olarak YAML'da tanımlıdır.
 - Kapılar (plan bağlılığı, PROD onayı, eşzamanlı iş, 24 saat, 3 saatlik bayatlık) Portal'ın paket ucundadır (`server/spa-report/paket-kurulum.cjs`). Şablon AWX'ten ya da Portal'ın genel "playbook çalıştır" ekranından elle başlatılırsa bu kapılar yoktur; geriye playbook'un kendi kapıları kalır: sunucular `spi_allowed_hosts` alt kümesi, `config_urls` biçimi, `/config` geçerli JSON nesnesi, hedef / paket dizini varsa `SKIP`. Sürüm elle başlatmada hiç doğrulanmaz. Şablonu elle başlatmayın; AWX'te yalnız Portal'ın kullanıcısına yetki verin.
-- Bekçi: `server/ansible/__tests__/spa-package-install.test.js` (SPI1-SPI22, SPI28-SPI34, SPI41-SPI48). Betiği gerçek bash ve gerçek Python JSON denetimiyle, sahte `HYSUXSCRIPTS` / `curl` / `unzip` araçlarıyla koşturur.
+- Bekçi: `server/ansible/__tests__/spa-package-install.test.js` (SPI1-SPI22, SPI28-SPI34, SPI41-SPI51). Betiği gerçek bash ve gerçek Python JSON denetimiyle, sahte `HYSUXSCRIPTS` / `curl` / `unzip` araçlarıyla koşturur (SPI49 TERM'de geri alma, SPI50 SIGPIPE, SPI51 chunked boyut sınırı).
+- Gerçek `ansible-playbook` koşumu: `server/ansible/__tests__/spa-package-install-kosum.test.js` (SK1-SK4: kapı hatası ve temizlik kopmasında sonuç yayını, `@` reddi, yarım kurulum mesajı).

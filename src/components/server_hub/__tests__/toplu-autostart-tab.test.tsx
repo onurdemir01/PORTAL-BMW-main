@@ -340,9 +340,9 @@ describe('Toplu Auto-Start sekmesi', () => {
       });
       render(<TopluAutoStartTab />);
       await waitFor(() => expect(m.topluAutoStartDurum).toHaveBeenCalledTimes(1));
-      await act(async () => {
-        vi.advanceTimersByTime(YOKLAMA_MS);
-      });
+      // Yoklama zamanlayicisi ilk yanit islenince kurulur: kurulmadan ilerletilen saat bos gecerdi (CI'da
+      // yuk altinda TT4 boyle dustu, #326).
+      await zamanlayiciKuruluncaIlerlet(YOKLAMA_MS);
       await waitFor(() => expect(yay).toHaveBeenCalledTimes(1));
       expect(yay).toHaveBeenCalledWith('APP02', 7, 'a2', {
         tur: 'skip',
@@ -462,9 +462,8 @@ describe('Toplu Auto-Start sekmesi', () => {
       });
       render(<TopluAutoStartTab />);
       await waitFor(() => expect(m.topluAutoStartDurum).toHaveBeenCalledTimes(1));
-      await act(async () => {
-        vi.advanceTimersByTime(YOKLAMA_MS);
-      });
+      // Zamanlayici kurulmadan ilerletmek "PLAN_YOKLAMA_MS'e kadar okunmaz" iddiasini bos yere gecirirdi.
+      await zamanlayiciKuruluncaIlerlet(YOKLAMA_MS);
       expect(m.topluAutoStartDurum).toHaveBeenCalledTimes(1);
       await act(async () => {
         vi.advanceTimersByTime(PLAN_YOKLAMA_MS);
