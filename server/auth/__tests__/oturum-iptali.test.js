@@ -96,7 +96,7 @@ test('OI3 satir omru kunyeden: mutlak bitis', () => {
   assert.equal(r.getTime(), t + 7 * 24 * 3600e3);
 });
 
-function rolUygulamasi(sorgular) {
+async function rolUygulamasi(sorgular) {
   const orig = db.query;
   db.query = async (sql, params) => {
     sorgular.push({ sql, params });
@@ -118,7 +118,8 @@ function rolUygulamasi(sorgular) {
   };
   const app = express();
   require('../roles-routes.cjs').initRolesRoutes(app, { requireAdmin: (_q, _s, n) => n() });
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   return {
     url: `http://127.0.0.1:${srv.address().port}`,
     kapat: () => {
@@ -130,7 +131,7 @@ function rolUygulamasi(sorgular) {
 
 test('OI4 yukseltme oturumu dusurmez (yerinde yazar); dusurme ve kaldirma sonlandirir', async () => {
   const q = [];
-  const { url, kapat } = rolUygulamasi(q);
+  const { url, kapat } = await rolUygulamasi(q);
   try {
     store._kolonDurumuSifirla();
     const up = await (

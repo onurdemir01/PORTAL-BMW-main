@@ -27,7 +27,7 @@ async function sunucu() {
     cagri.push(req.body);
     res.json({ ok: true, body: req.body });
   });
-  const s = app.listen(0);
+  const s = app.listen(0, '127.0.0.1');
   await new Promise((r) => s.once('listening', r));
   return {
     url: `http://127.0.0.1:${s.address().port}`,

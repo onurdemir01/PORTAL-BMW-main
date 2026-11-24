@@ -589,7 +589,8 @@ async function istek(method, yol) {
     n();
   });
   app.use('/api/app-hub', createRouter());
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/app-hub${yol}`, { method });
     return { status: r.status, body: await r.json() };

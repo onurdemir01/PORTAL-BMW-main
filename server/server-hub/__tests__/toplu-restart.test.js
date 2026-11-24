@@ -1224,7 +1224,8 @@ test('TR12 HTTP: uclar router uzerinden', async () => {
     audit: () => {},
   });
   app.use('/api/server-hub', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
+  await new Promise((r) => srv.once('listening', r));
   try {
     const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
     const J2 = (r) => r.json().then((body) => ({ status: r.status, body }));

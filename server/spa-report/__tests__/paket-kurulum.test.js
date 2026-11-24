@@ -310,7 +310,7 @@ async function istek(method, yol, govde, rol = 'Admin') {
   const router = express.Router();
   P.mount(router, deps);
   app.use('/api/spa-report', router);
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
   await new Promise((r) => srv.once('listening', r));
   try {
     const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/spa-report${yol}`, {

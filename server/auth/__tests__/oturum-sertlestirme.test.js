@@ -108,8 +108,9 @@ function uygulama(ad) {
 
 const sunucular = [];
 after(() => sunucular.forEach((s) => s.close()));
-function dinle(app) {
-  const s = app.listen(0);
+async function dinle(app) {
+  const s = app.listen(0, '127.0.0.1');
+  await new Promise((r) => s.once('listening', r));
   sunucular.push(s);
   return `http://127.0.0.1:${s.address().port}`;
 }
@@ -137,8 +138,8 @@ test('OS2 gecis kimseyi atmaz: eski cerezle oturum bulunur, yeni ad yazilir, esk
     app.get('/ben', (req, res) => res.json({ user: req.session.user || null }));
     return dinle(app);
   };
-  const eski = kur('connect.sid');
-  const yeni = kur('__Host-portal.sid');
+  const eski = await kur('connect.sid');
+  const yeni = await kur('__Host-portal.sid');
   const g = await fetch(`${eski}/giris`, { method: 'POST' });
   const eskiCerez = (g.headers.get('set-cookie') || '').split(';')[0];
   assert.match(eskiCerez, /^connect\.sid=/);
@@ -174,7 +175,7 @@ test('OS2 gecis kimseyi atmaz: eski cerezle oturum bulunur, yeni ad yazilir, esk
     'artakalan eski cerez silinmedi',
   );
   // Gelistirme (ayni ad): dokunulmaz.
-  const dev = dinle(uygulama('connect.sid'));
+  const dev = await dinle(uygulama('connect.sid'));
   const d = await fetch(`${dev}/ben`, { headers: { cookie: 'connect.sid=x' } });
   assert.ok(!d.headers.getSetCookie().some((c) => /Expires=Thu, 01 Jan 1970/.test(c)));
 });
@@ -283,7 +284,7 @@ test('OS5b sistem ayari PUT: gecersiz oturum degeri 400 ve YAZILMAZ; gecerli deg
       next();
     });
     require('../../admin/system-config.cjs').initSystemConfig(app);
-    const url = dinle(app);
+    const url = await dinle(app);
     const put = (key, value) =>
       fetch(`${url}/api/admin/system-config`, {
         method: 'PUT',
@@ -322,7 +323,7 @@ test('OS6 initAuth cerez adini express-session`a verir', async () => {
       async () => {
         const app = express();
         require('../index.cjs').initAuth(app);
-        const url = dinle(app);
+        const url = await dinle(app);
         const r = await fetch(`${url}/api/auth/login`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -387,7 +388,7 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
     cerez.cerezleriSil(res, '__Host-portal.sid');
     res.json({ ok: true });
   });
-  const url = dinle(app);
+  const url = await dinle(app);
   await ortamA({ NODE_ENV: 'production' }, async () => {
     const r = await fetch(`${url}/cikis`, { method: 'POST' });
     const c = r.headers.getSetCookie();
@@ -411,7 +412,9 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
     const a2 = express();
     a2.use(cerez.eskiCereziTasi('__Host-portal.sid'));
     a2.get('/x', (req, res) => res.json({ ok: true }));
-    const r = await fetch(`${dinle(a2)}/x`, { headers: { cookie: 'connect.sid=s%3Aabc.def' } });
+    const r = await fetch(`${await dinle(a2)}/x`, {
+      headers: { cookie: 'connect.sid=s%3Aabc.def' },
+    });
     const sil = r.headers.getSetCookie().find((x) => x.startsWith('connect.sid=;'));
     assert.match(sil || '', /; Secure/);
   });
@@ -447,7 +450,7 @@ test('OS8 guvenlik basliklari', async () => {
   app.set('trust proxy', 'loopback');
   app.use(guvenlikBasliklari());
   app.get('/x', (req, res) => res.send('ok'));
-  const url = dinle(app);
+  const url = await dinle(app);
   const al = async (env, headers = {}) =>
     ortamA(env, async () => {
       const r = await fetch(`${url}/x`, { headers });
@@ -560,7 +563,7 @@ test('OS8 guvenlik basliklari', async () => {
   const gercek = createApp();
   gercek.get('/api/test/yol', (req, res) => res.json({ ok: true }));
   gercek.get('/sayfa', (req, res) => res.type('html').send('<!doctype html><title>x</title>'));
-  const gUrl = dinle(gercek);
+  const gUrl = await dinle(gercek);
   const r = await fetch(`${gUrl}/api/test/yol`);
   assert.equal(r.status, 200);
   assert.equal(

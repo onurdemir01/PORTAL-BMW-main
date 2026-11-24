@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (yerel kapi kararliligi, 2026-11-24)
+- Yerel HTTP testleri sunucuyu `127.0.0.1`'e bağlıyor ve `listening`'i bekliyor (29 dosya). `listen(0)` çift yığın `::` dinliyordu; macOS'ta aynı port `127.0.0.1`'de başka bir süreçte açıksa istek o sürece gidiyor, BN3 / AH14 aralıklı düşüyor ve kapı yeniden koşturuluyordu. Bekçi TY1/TY2 host'suz `listen(0)`'ı yasaklar.
+
 ### Fixed (PR'siz commit'lerin incelemesi, PR-R, 2026-11-23: Nginx)
 - Nginx Hub › Tutarlılık › Paketler: symlink içeriği özete ve parmak izine girmiyordu; farklı kütüphanelere giden aynı adlı bağ iki sunucuyu "eşit" gösteriyordu. Bağ artık izleniyor (kullanıcı kararı); kırık bağ, döngü, girdi sınırı ve `find` zaman aşımı `okunamadi`; bağsız uygulamada iz ve önbellek değişmez. Fetch parmak izi bağları da kapsıyor; parmak izi ve döküm görevlerinin Ansible zaman aşımı var (asılan tek sunucu tüm dökümü bekletmez).
 - Yük Testi ön kontrol: hidepid altında master 0 kanıt sayılıyordu; çalışan nginx pid dosyasını görünmeyen bir yola yazıyorsa hedef "nginx'siz" ölçülürdü. Artık belirlenemedi (`-`), README'deki fail-closed sözüyle uyumlu; hidepid=1 (pid 1 görünür ama okunamaz) de yakalanıyor.

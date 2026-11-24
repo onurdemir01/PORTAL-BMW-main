@@ -58,7 +58,7 @@ async function sunucu() {
   const r = express.Router();
   registerWebApp(r);
   app.use(r);
-  const s = app.listen(0);
+  const s = app.listen(0, '127.0.0.1');
   await new Promise((ok) => s.once('listening', ok));
   const taban = `http://127.0.0.1:${s.address().port}/web-app?source=mw`;
   return {
