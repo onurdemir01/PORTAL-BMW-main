@@ -108,18 +108,20 @@ export function ValuesEditor({
   const [hedef, setHedef] = useState(files[0]?.path || '');
   const [onay, setOnay] = useState<OpsRequest | null>(null);
 
-  const getir = async (reveal: boolean, all = hepsi) => {
+  /** Okuma basarili olduysa true doner (Duzenle buna bakar). */
+  const getir = async (reveal: boolean, all = hepsi): Promise<boolean> => {
     setHata('');
     const r = await run({ action: 'values_get', targets: [], release, valuesAll: all, reveal });
-    if (!r) return;
+    if (!r) return false;
     if (r.errors?.length) {
       setHata(r.errors.map((e) => `${e.stage}: ${e.message}`).join(' · '));
-      return;
+      return false;
     }
     const t = (r.values || []).join('\n');
     setMetin(t);
     setMaskeli(r.masked !== false);
     if (reveal) setTaslak(t);
+    return true;
   };
 
   useAsyncEffect(
@@ -191,8 +193,10 @@ export function ValuesEditor({
                   : undefined
               }
               onClick={async () => {
-                await getir(true);
-                setDuzenle(true);
+                // Gercek degerler OKUNAMADIYSA duzenleme acilmaz (2026-11-26): eskiden acilir ve
+                // taslak bos (ya da bayat) kalirdi; kullanicinin yazdigi kismi metin, kaydedilince
+                // butun dosyanin yerine gecebilirdi.
+                if (await getir(true)) setDuzenle(true);
               }}
             >
               <PencilSquareIcon className="h-3.5 w-3.5" /> Düzenle
