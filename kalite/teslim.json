@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "f28ec06d3e0df862d028f2c415c4bd0538930c0c",
+  "kaynak": "01104670dc50eba0104a0b1c767e3c741d61b58c",
   "dosyaSayisi": 1675,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -456,8 +456,8 @@
     "server/auth/utils.cjs": "e291389f1081b637fc8416e5d351ab5c7db15cfa",
     "server/auth/visibility-routes.cjs": "63cc72907fef970fa9a3022b2adac82b97fa523a",
     "server/auth/visibility.cjs": "82020c87a850cbae79ef7695ecb5f367b78c19e2",
-    "server/bmw-hub/__tests__/bmw-hub.test.js": "95c9c769507bbcbb9a8c368faf3115ae3c898ff0",
-    "server/bmw-hub/index.cjs": "992c525ec2d0a8387ec45c6f1b035e34a52aedf6",
+    "server/bmw-hub/__tests__/bmw-hub.test.js": "e6ad7ee931554e6b047109fca6560f7d91781ace",
+    "server/bmw-hub/index.cjs": "1552695ff4087f1323ad9eb7d96c3c1cf8cab6c8",
     "server/config/apps-table.cjs": "e6142f3bc98588d46a8f41f506d3d5106a82b369",
     "server/config/secret-pattern.cjs": "aab037c29110bdaf370ea3c585cce6659fe76324",
     "server/crypto-hub/__tests__/_kaynak_harness.cjs": "ae00b8fc1733897ad01cca754af44a59ac9c48ba",
