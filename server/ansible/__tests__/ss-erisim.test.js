@@ -23,7 +23,7 @@ const path = require('node:path');
 
 const e = require('../ss-erisim.cjs');
 
-const DN_MW = 'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr';
+const DN_MW = 'CN=GT-Middleware,OU=Groups,DC=ornek,DC=invalid';
 const kullanici = (groups) => ({ username: 'ornekkisi', role: 'User', groups });
 const ADMIN = { username: 'onurdemir', role: 'Admin', groups: [] };
 const oge = (ek) => ({
@@ -63,7 +63,7 @@ test('SE3 ekipler: DN / CN / harf / bosluk eslesir; uye olmayan ve grupsuz red',
   const cnIle = oge({ accessMode: 'ekipler', accessGroups: ['gt-middleware'] });
   assert.equal(e.ssErisimVar(dnIle, kullanici([DN_MW])), true);
   assert.equal(
-    e.ssErisimVar(dnIle, kullanici(['cn=gt-middleware, ou=groups, dc=fw,dc=garanti,dc=com,dc=tr'])),
+    e.ssErisimVar(dnIle, kullanici(['cn=gt-middleware, ou=groups, dc=ornek,dc=invalid'])),
     true,
   );
   assert.equal(e.ssErisimVar(cnIle, kullanici([DN_MW])), true);
@@ -82,7 +82,7 @@ test('SE3 ekipler: DN / CN / harf / bosluk eslesir; uye olmayan ve grupsuz red',
 test('SE4 kayitli tam DN, ayni CN li baska OU daki gruba acilmaz', () => {
   const item = oge({ accessMode: 'ekipler', accessGroups: [DN_MW] });
   assert.equal(
-    e.ssErisimVar(item, kullanici(['CN=GT-Middleware,OU=Eski,DC=fw,DC=garanti,DC=com,DC=tr'])),
+    e.ssErisimVar(item, kullanici(['CN=GT-Middleware,OU=Eski,DC=ornek,DC=invalid'])),
     false,
   );
 });

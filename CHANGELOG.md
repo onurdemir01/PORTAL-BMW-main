@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Security (kurum ic adi: LDAP DN korlugu, 2026-11-26)
+- K17 kurum alan adını LDAP DN biçiminde (`DC=<ad>,DC=com,DC=tr`) görmüyordu: noktalı desen bileşenlere bölünmüş adı yakalamıyor, kurum adı da `,DC=` ayırıcısı yüzünden bileşik sayılmıyordu. Bu yüzden kurumun AD alan adı yedi dosyada duruyordu: üretim LDAP servis hesabı ve grup DN'leri (`server/ansible/NEEDS.md`), iki ekran örneği (`TabAccessPanel`, ortam değişkenleri) ve dört test. Bekçi iki biçimi de yakalıyor (mutasyonla sınandı); geçişler kurgusal `DC=ornek,DC=invalid`'e çevrildi. Değerler git geçmişinde duruyor; geçmişin yeniden yazımı ayrı (onay bekliyor).
+
 ### Fixed (yerel kapi kararliligi, 2026-11-24)
 - Yerel HTTP testleri sunucuyu `127.0.0.1`'e bağlıyor ve `listening`'i bekliyor (29 dosya). `listen(0)` çift yığın `::` dinliyordu; macOS'ta aynı port `127.0.0.1`'de başka bir süreçte açıksa istek o sürece gidiyor, BN3 / AH14 aralıklı düşüyor ve kapı yeniden koşturuluyordu. Bekçi TY1/TY2 host'suz `listen(0)`'ı yasaklar.
 
