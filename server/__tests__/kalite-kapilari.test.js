@@ -329,9 +329,10 @@ test('KK4 Sonar kapisi: kosullar esiklerden, sonuc ozeti dogru okunur', () => {
 // demektir ve CODEOWNERS incelemesine duser.
 const TABAN = {
   // Merdiven (2026-11-24, PR-2): kopya %1 (kurumsal taramada 1,9 -> 1,0), kapsam olcumu kurumla ayni.
-  kapsamSatirMin: 80,
+  // Merdiven (2026-11-26, PR-2f): #329-#333 sonrasi main yerel satir %86,6, Sonar K13 80,6 / K15 81,4.
+  kapsamSatirMin: 85,
   sonar: {
-    coverage: ['LT', 75],
+    coverage: ['LT', 78],
     duplicated_lines_density: ['GT', 1],
     bugs: ['GT', 0],
     vulnerabilities: ['GT', 0],

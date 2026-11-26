@@ -106,6 +106,9 @@ export default function EnvanterDegisim() {
         }
         setTables(r.tables);
         if (r.tables.length) setTable(r.tables[0].table);
+        // Gecmis tablosu tanimli degilse load() hic kosmaz; yukleme burada biter (2026-11-26):
+        // eskiden ekran sonsuza dek "yukleniyor" kaliyor, "gecmis birikmedi" hic gorunmuyordu.
+        else setLoading(false);
       })
       .catch((e: unknown) => {
         setErr(e instanceof Error ? e.message : String(e));

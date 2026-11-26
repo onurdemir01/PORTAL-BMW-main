@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Changed (kalite: kapsam esik merdiveni, PR-2, 2026-11-26)
+- Kapsam eşikleri sıkılaştı: yerel satır kapsamı (K9) %80 → %85, Sonar kapsam koşulu (K13 / K15) %75 → %78. #329-#333'ün davranış testleri sonrası main: yerel satır %86,6, dal %71,9; kurumsal Sonar kapsamı 81,4 (K13 80,6). Taban (`server/__tests__/kalite-kapilari.test.js`) aynı değerlere çekildi; eşikler yalnız sıkılaşır.
+- Yeni davranış testleri (PR-2b..2f): AWX runner Self Service / Smart / OCO / AWX sunucu uçları gerçek `initAnsibleRunner` ile koşuyor (önceki "handler'ı kaynaktan çıkar" testleri kapsam saymıyordu); Retirement, ScaleX, envanter, DB kurulum / bakım, Nginx CIS / Audit uçları; ekranlar: AI Analist, Nginx Audit / API / CIS / kullanılmayan dosyalar / sunucu sayfası, Crypto Hub işlemleri ve ön onay, Telnet ve OpsX sihirbazları, Ansible, Admin › ScaleX, Self Servis taşıma detayı ve pencereleri.
+- SPA paket kurulumu aday satırı `memo`: seçimde yalnız değişen satır çiziliyor (52 satırlık tabloda 50 tık 0,7 sn → 0,135 sn; davranış aynı).
+
 ### Fixed (yerel kapi kararliligi, 2026-11-24)
 - Yerel HTTP testleri sunucuyu `127.0.0.1`'e bağlıyor ve `listening`'i bekliyor (29 dosya). `listen(0)` çift yığın `::` dinliyordu; macOS'ta aynı port `127.0.0.1`'de başka bir süreçte açıksa istek o sürece gidiyor, BN3 / AH14 aralıklı düşüyor ve kapı yeniden koşturuluyordu. Bekçi TY1/TY2 host'suz `listen(0)`'ı yasaklar.
 

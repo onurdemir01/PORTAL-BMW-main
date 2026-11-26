@@ -112,8 +112,11 @@ export function ConfigMapsPanel({
       // Eslesme LISTEDEN gelir (sunucu cozer); liste tazelenmemisse HEDEFSIZ'e duseriz -
       // uydurulmus bir hedef, yanlis bileseni rollout ettirebilirdi.
       const ozet = (liste?.configMaps || []).find((c) => c.name === secili);
-      setYazildi({ cm: secili, hedef: (ozet && ozet.rollout) || HEDEFSIZ });
-      void ac(secili);
+      const hedef = (ozet && ozet.rollout) || HEDEFSIZ;
+      // SIRA ONEMLI (2026-11-26): `ac()` ilk satirinda uyariyi temizler. Uyari ondan ONCE kurulunca
+      // ayni cizimde siliniyordu: "rollout gerekiyor" uyarisi ve "Rollout et" dugmesi hic gorunmedi.
+      await ac(secili);
+      setYazildi({ cm: secili, hedef });
     } else {
       toast.error(r.results.map((x) => x.message).join(' · ') || 'Yazılamadı.');
     }
