@@ -124,7 +124,8 @@ describe('AuditLogTab', () => {
   it('sayfalama: fazladan kayit sonraki sayfayi acar', async () => {
     yanitlar = [
       { body: { ok: true, logs: Array.from({ length: 51 }, (_, i) => kayit(i + 1)) } },
-      { body: { ok: true, logs: [kayit(60)] } },
+      // Tam sayfa (50) gelirse sonraki sayfa YOK: fazladan kayit gelmedi.
+      { body: { ok: true, logs: Array.from({ length: 50 }, (_, i) => kayit(i + 60)) } },
       { body: { ok: true, logs: [kayit(1)] } },
     ];
     // Yukleme sirasinda tablo yeniden kurulur: dugmeler her adimda yeniden bulunur.
@@ -139,7 +140,7 @@ describe('AuditLogTab', () => {
     expect(dugmeler(1)[0].disabled).toBe(true);
     expect(dugmeler(1)[1].disabled).toBe(false);
     fireEvent.click(dugmeler(1)[1]);
-    expect(await screen.findByText('1 kayıt (Sayfa 2)')).toBeTruthy();
+    expect(await screen.findByText('50 kayıt (Sayfa 2)')).toBeTruthy();
     expect(istekler.at(-1)).toContain('offset=50');
     expect(dugmeler(2)[1].disabled).toBe(true);
     fireEvent.click(dugmeler(2)[0]);
