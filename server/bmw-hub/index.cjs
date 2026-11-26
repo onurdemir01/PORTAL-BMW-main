@@ -98,8 +98,8 @@ const DURUM_AD = Object.fromEntries(K.DURUMLAR.map((d) => [d.key, d.label]));
 const ONCELIK_AD = Object.fromEntries(K.ONCELIKLER.map((o) => [o.key, o.label]));
 const kapaliMi = (durum) => !K.DURUMLAR.find((d) => d.key === durum)?.acikMi;
 
-async function notYaz(isId, tur, metin, k) {
-  await db.query(
+async function notYaz(isId, tur, metin, k, conn = db) {
+  await conn.query(
     `INSERT INTO bmw_hub_notlar (is_id, tur, metin, yazan_kullanici, yazan_ad) VALUES ($1, $2, $3, $4, $5)`,
     [isId, tur, metin, k.kullanici, k.ad],
   );
@@ -133,6 +133,20 @@ async function isEkle(v, k) {
 async function isOku(id) {
   const { rows } = await db.query(`SELECT * FROM bmw_hub_isler WHERE id = $1`, [id]);
   return rows.length ? satirdanIs(rows[0]) : null;
+}
+
+// JS Date milisaniye hassasiyetinde. Her yazim gorunur damgayi en az bir ms ilerletir.
+const SONRAKI_DAMGA = `guncelleme = CASE
+  WHEN SYSUTCDATETIME() > DATEADD(millisecond, 1, guncelleme) THEN SYSUTCDATETIME()
+  ELSE DATEADD(millisecond, 1, guncelleme) END`;
+
+function cakisma(res, is) {
+  return res.status(409).json({
+    ok: false,
+    code: 'bmw_cakisma',
+    error: `Bu iş siz düzenlerken ${is?.guncelleyenAd || 'başka biri'} tarafından değiştirildi. Sayfayı yenileyip tekrar deneyin.`,
+    is,
+  });
 }
 
 /** PATCH ile degisen alanlarin gecmis metni. Yalniz izlenen alanlar yazilir. */
@@ -288,19 +302,19 @@ function createRouter() {
     const { deger, hatalar } = K.isDogrula(gelen, { kismi: true });
     if (hatalar.length) return res.status(400).json({ ok: false, error: hatalar.join(' ') });
     try {
-      const eski = await isOku(req.params.id);
+      const { id } = req.params;
+      const { rows } = await db.query(
+        'SELECT *, CONVERT(varchar(33), guncelleme, 126) AS guncelleme_sql FROM bmw_hub_isler WHERE id = $1',
+        [id],
+      );
+      const satir = rows[0];
+      const eski = satir ? satirdanIs(satir) : null;
       if (!eski)
         return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       // CAKISMA: iki admin ayni isi ayni anda duzenlerse sonraki kaydin oncekini sessizce
       // ezmemesi icin ekran okudugu `guncelleme` damgasini gonderir.
-      if (body.beklenenGuncelleme && body.beklenenGuncelleme !== eski.guncelleme) {
-        return res.status(409).json({
-          ok: false,
-          code: 'bmw_cakisma',
-          error: `Bu iş siz düzenlerken ${eski.guncelleyenAd || 'başka biri'} tarafından değiştirildi. Sayfayı yenileyip tekrar deneyin.`,
-          is: eski,
-        });
-      }
+      if (body.beklenenGuncelleme && body.beklenenGuncelleme !== eski.guncelleme)
+        return cakisma(res, eski);
       const k = kim(req);
       const set = [];
       const params = [];
@@ -317,15 +331,24 @@ function createRouter() {
       }
       params.push(k.ad);
       set.push(`guncelleyen_ad = $${params.length}`);
-      set.push('guncelleme = GETUTCDATE()');
-      params.push(req.params.id);
-      await db.query(
-        `UPDATE bmw_hub_isler SET ${set.join(', ')} WHERE id = $${params.length}`,
-        params,
-      );
-      for (const [tur, metin] of degisimMetinleri(eski, deger))
-        await notYaz(req.params.id, tur, metin, k);
-      res.json({ ok: true, is: await isOku(req.params.id) });
+      set.push(SONRAKI_DAMGA);
+      params.push(id, satir.guncelleme_sql);
+      const yeni = await db.transaction(async (tx) => {
+        const { rowCount } = await tx.query(
+          `UPDATE bmw_hub_isler SET ${set.join(', ')}
+           WHERE id = $${params.length - 1} AND guncelleme = CONVERT(datetime2(7), $${params.length}, 126)`,
+          params,
+        );
+        if (rowCount === 0) return null;
+        for (const [tur, metin] of degisimMetinleri(eski, deger))
+          await notYaz(id, tur, metin, k, tx);
+        const { rows: guncellenen } = await tx.query('SELECT * FROM bmw_hub_isler WHERE id = $1', [
+          id,
+        ]);
+        return satirdanIs(guncellenen[0]);
+      });
+      if (!yeni) return cakisma(res, await isOku(id));
+      res.json({ ok: true, is: yeni });
     } catch (e) {
       return dbHatasi(res, e, 'İş güncellenemedi');
     }
@@ -345,7 +368,7 @@ function createRouter() {
       const k = kim(req);
       await notYaz(req.params.id, 'not', metin, k);
       await db.query(
-        `UPDATE bmw_hub_isler SET guncelleme = GETUTCDATE(), guncelleyen_ad = $1 WHERE id = $2`,
+        `UPDATE bmw_hub_isler SET guncelleyen_ad = $1, ${SONRAKI_DAMGA} WHERE id = $2`,
         [k.ad, req.params.id],
       );
       res.json({ ok: true });
