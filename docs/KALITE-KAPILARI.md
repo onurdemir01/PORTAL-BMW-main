@@ -29,7 +29,7 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K6 | Bağımlılık güvenliği | `npm run guvenlik` | push öncesi, CI | 0 zafiyet (Xray tabanı) |
 | K7 | Ön kontrol | `npm run preflight` | push öncesi, CI | 0 eksik |
 | K8 | Testler + kapsam | `npm run test:coverage` | CI | 0 başarısız test |
-| K9 | Kapsam eşiği | `node scripts/kapsam-esik.cjs` | CI | satır kapsamı ≥ %80 |
+| K9 | Kapsam eşiği | `node scripts/kapsam-esik.cjs` | CI | satır kapsamı ≥ %85 |
 | K10 | Mutasyon testi | `npm run test:mutation` | CI | ≥ %85 mutant öldürülür |
 | K11 | SBOM ve lisans | `npm run sbom` | CI | 0 lisans ihlali |
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |

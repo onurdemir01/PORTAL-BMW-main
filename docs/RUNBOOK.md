@@ -13,7 +13,7 @@
 | SBOM ve SPDX lisans uyumu       | `npm run sbom`                             | CycloneDX 1.5 çıktıları + `0` lisans ihlali             |
 | Tip ve statik sözdizimi         | `npx tsc --noEmit && npm run check:server` | `0` TS / CJS hatası                                     |
 | Linter ve ASCII uyumu           | `npm run lint && npm run lint:ascii`       | `0` hata, `0` uyarı                                     |
-| Kapsam + LCOV birleştirme       | `npm run test:coverage`                    | `coverage/lcov.info` satır >= `%80` (K9), Sonar kapsamı >= `%75`, tekrar <= `%1` (K13 / K15; `kalite/esikler.json`) |
+| Kapsam + LCOV birleştirme       | `npm run test:coverage`                    | `coverage/lcov.info` satır >= `%85` (K9), Sonar kapsamı >= `%78`, tekrar <= `%1` (K13 / K15; `kalite/esikler.json`) |
 | Kritik güvenlik mutasyon kapısı | `npm run test:mutation`                    | Kill oranı >= `%85`                                     |
 | Üretim derleme ve paketleme     | `npm run build && npm run paket`           | Doğrulanmış çalışma zamanı paketi                       |
 
