@@ -19,6 +19,7 @@
 
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { varsayilanSira } = require('../server/util/siralama.cjs');
 
@@ -159,10 +160,18 @@ if (canMock) {
 console.log(`[test] Node ${process.versions.node} · ${files.length}/${all.length} dosya`);
 // Testler kurum ayarinin KURGUSAL ornegiyle kosar (server/util/kurum-ayari.cjs; gercek sunucu adlari repoda
 // yok, K17). Ayri bir dosya verilmisse (ornek: belirli bir ayarin testi) o kullanilir.
+// TESTLER DEPONUN logs/ DIZININI KIRLETMEZ (2026-11-27): denetim ara katmanindan gecen rota testleri
+// DB'siz ortamda kaydi LOG_DIR/audit-spool.*.ndjson'a yaziyordu; LOG_DIR yoksa bu deponun logs/ dizini.
+// Kosu basina gecici dizin, kosu bitince silinir. Bilerek verilmis LOG_DIR'e dokunulmaz.
+const geciciLog = process.env.LOG_DIR
+  ? null
+  : fs.mkdtempSync(path.join(os.tmpdir(), 'portal-test-log-'));
 const env = {
   ...process.env,
   KURUM_AYAR_DOSYASI:
     process.env.KURUM_AYAR_DOSYASI || path.join(ROOT, 'deploy', 'kurum-ayari.ornek.json'),
+  ...(geciciLog ? { LOG_DIR: geciciLog } : {}),
 };
 const r = spawnSync(process.execPath, [...args, ...files], { cwd: ROOT, stdio: 'inherit', env });
+if (geciciLog) fs.rmSync(geciciLog, { recursive: true, force: true });
 process.exit(r.status == null ? 1 : r.status);
