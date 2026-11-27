@@ -4,6 +4,13 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Nginx Hub › Konfigürasyon, 2026-11-27; PR-2 testlerinin bulduğu beş hata)
+- Dashboard, Instances, Kullanılmayan, Tutarlılık ve CIS'ten "Konfigürasyon'da aç" sunucuyu seçmiyordu; sekme boş açılıyordu. 2026-11-14'teki lint düzeltmesinde `useEffect` "önceki değer" kalıbına çevrilmiş, kalıp yalnız değişimi yakalıyor, ilk açılışı yakalamıyordu. Gelen sunucu artık ilk değer.
+- Sunucu ağacı okunamazsa ekranda önceki sunucunun ağacı kalıyor, tıklanan dosya yeni sunucudan isteniyordu. Artık ağaç boşalır; "okunamadı" ayrı gösterilir ve yeniden denenebilir.
+- Sürüm geçmişi okunamayınca "Henüz kayıt yok" yazıyordu. Geçmiş ucu "Değişiklikler" sekmesine bağlı; o sekmesi kapalı kullanıcı 403 alıyordu. Ağ hatasında da ekran yükleniyor'da kalıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Diğer sunucularda" karşılaştırması okunamazsa düğme hiçbir şey yapmıyordu; artık hata bildirilir.
+- Salt okunur kullanıcı ağaç panelinde "Yenile" görüyordu; sunucu `/refresh`'i Admin dışına 403 ile kapattığı için her seferinde reddediliyordu. Düğme artık yalnız Admin'de; sol paneldeki döküm araçlarıyla aynı.
+
 ### Security (kurum ic adi: LDAP DN korlugu, 2026-11-26)
 - K17 kurum alan adını LDAP DN biçiminde (`DC=<ad>,DC=com,DC=tr`) görmüyordu: noktalı desen bileşenlere bölünmüş adı yakalamıyor, kurum adı da `,DC=` ayırıcısı yüzünden bileşik sayılmıyordu. Bu yüzden kurumun AD alan adı yedi dosyada duruyordu: üretim LDAP servis hesabı ve grup DN'leri (`server/ansible/NEEDS.md`), iki ekran örneği (`TabAccessPanel`, ortam değişkenleri) ve dört test. Bekçi iki biçimi de yakalıyor (mutasyonla sınandı); geçişler kurgusal `DC=ornek,DC=invalid`'e çevrildi. Değerler git geçmişinde duruyor; geçmişin yeniden yazımı ayrı (onay bekliyor).
 
