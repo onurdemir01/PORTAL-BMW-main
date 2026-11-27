@@ -214,7 +214,11 @@ const LogXWizardPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const busyRef = React.useRef(false);
   const [busyError, setBusyError] = useState<string | null>(null);
-  const [chosenNamespace, setChosenNamespace] = useState<string | null>(null);
+  // undefined = kullanici bu oturumda namespace secmedi: sayfa yenilendiyse sunucudaki (uygulama
+  // taramasinin yapildigi) namespace'e dusulur. null = kullanici namespace secimine ACIKCA dondu
+  // (Geri ya da sepete ekleme): sunucudaki deger artik kullanilmaz. (2026-11-27: ikisi ayni null'du;
+  // uygulama taramasindan sonra Geri ve sepete ekleme uygulama ekranindan hic cikmiyordu.)
+  const [chosenNamespace, setChosenNamespace] = useState<string | null | undefined>(undefined);
   // Tek çalıştırmada toplanacak (namespace, uygulama) çiftleri. Kullanıcı "Listeye Ekle"
   // ile biriktirir; her çift AYRI bir arşiv üretir. Tek çift eklemek bugünkü akışla aynı
   // sonucu verir — çoklu hedef, tekilin genel hâlidir.
@@ -404,7 +408,7 @@ const LogXWizardPage: React.FC = () => {
   // kurmazsak kullanıcı keşif bittikten sonra boş bir "namespace seçin" ekranına düşerdi.
   const serverNamespace =
     (request?.input as OcpInput | undefined)?.appDiscoveryNamespaces?.[0] ?? null;
-  const activeNamespace = chosenNamespace ?? serverNamespace;
+  const activeNamespace = chosenNamespace === undefined ? serverNamespace : chosenNamespace;
 
   async function startPlatform(platform: Platform) {
     await guarded(async () => {
@@ -541,17 +545,17 @@ const LogXWizardPage: React.FC = () => {
       setChosenNamespace(null);
       return;
     }
-    // Liste ÖNBELLEKTEN geldiyse sunucuda geri sarılacak bir durum yok (state hâlâ 'draft'):
-    // client listesini temizlemek yeter, gereksiz reset çağrısı yapılmaz.
-    if (currentStep === 'ocp_namespace_picker' && request?.state === 'draft') {
-      setNsList(null);
-      return;
-    }
+    // KAYITLI LISTEDEN GERI DE SUNUCUDA GERI SARILIR (2026-11-27). Eskiden "durum hala draft,
+    // listeyi temizlemek yeter" deniyordu; ama istekte secilen cluster'lar duruyordu, adim yine
+    // "namespace hazirlaniyor"a dusuyor ve tekrar-tetikleme korumasi ayni anahtari gordugu icin
+    // hicbir sey baslamiyordu: kullanici sonsuz bir bekleme ekraninda kaliyordu.
     if (!requestId) return;
     await guarded(async () => {
       await logxV2Api.resetRequest(requestId, target);
       setChosenNamespace(null);
       setNsList(null);
+      // Ayni cluster'lar yeniden secilirse namespace cozumlemesi yeniden calissin.
+      nsResolveRef.current = null;
       await refresh(requestId);
     });
   }
