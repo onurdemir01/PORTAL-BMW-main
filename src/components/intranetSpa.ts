@@ -1,260 +1,261 @@
-// src/components/intranetSpa.ts — Nginx ARK SPA > Intranet SPA: saf yardımcılar (süzgeç, etiket, CSV).
-// Sayfa: IntranetSpaPage.tsx. Hesap sunucuda (server/spa-report/intranet.cjs); burada gösterim.
-// Yük DYNATRACE'ten (BMW_Application_Usage): beş durum, hiçbiri diğerine indirgenmez.
-import type {
-  IntranetDegerlendirme,
-  IntranetIstek,
-  IntranetKurulum,
-  IntranetSatir,
-} from '@/api/arkSpaApi';
-import type { Tone } from '@/components/denetim/ui';
+// src/components/intranetSpa.ts — Nginx ARK SPA > Intranet SPA geçiş takvimi: saf yardımcılar
+// (tarih gösterimi, süzgeç, sıralama, CSV, set ilerlemesi). Sayfa: IntranetSpaPage.tsx. Takvim, set
+// planı ve alan önceliği sunucuda (server/spa-report/intranet-takvim.cjs, intranet-set-plani.cjs);
+// burada yalnız gösterim ve DC başına ilerleme hesabı.
+import type { TakvimPlanSatir, TakvimSatir } from '@/api/arkSpaApi';
+import { fmtOran, fmtYuzde } from '@/utils/datetime';
 
-export const BEYAN_ETIKET: Record<string, string> = {
-  yes: 'kullanıyor',
-  no: 'kullanmıyor',
-  unknown: 'bilmiyor',
-};
+const GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
-export const ISTEK: Record<IntranetIstek, { label: string; hint: string }> = {
-  var: { label: 'istek alıyor', hint: 'Dynatrace: uygulamanın servisleri istek almış.' },
-  yok: {
-    label: 'istek almıyor',
-    hint: 'Dynatrace: uygulamanın her cluster’daki servisleri ölçüldü, istek yok.',
-  },
-  'servis-yok': {
-    label: 'Dynatrace servisi yok',
-    hint: 'Uygulamanın Dynatrace’te servisi oluşmamış: istek sayılamıyor — “istek almıyor” DEMEK DEĞİL.',
-  },
-  olculemedi: {
-    label: 'ölçülemedi',
-    hint: 'Dynatrace servisi var ama ölçülemedi (ya da kullanım verisi okunamadı) — “istek almıyor” demek değil.',
-  },
-  'olcum-yok': {
-    label: 'ölçüm yok',
-    hint: 'Uygulama son 7 günün Dynatrace kullanım verisinde yok (Dynatrace’te uygulama olarak görünmüyor olabilir) — “istek almıyor” demek değil.',
-  },
-};
-
-export const DEGERLENDIRME: Record<
-  IntranetDegerlendirme,
-  { label: string; tone: Tone; hint: string }
-> = {
-  'kapatma-adayi': {
-    label: 'kapatma adayı',
-    tone: 'danger',
-    hint: 'Dynatrace’te istek yok (her cluster ölçüldü) ve ekip “kullanmıyor” dedi.',
-  },
-  'teyit-bekliyor': {
-    label: 'istek yok — ekip teyidi bekleniyor',
-    tone: 'warning',
-    hint: 'Dynatrace’te istek yok; ekip henüz beyan girmedi.',
-  },
-  celiski: {
-    label: 'çelişki',
-    tone: 'warning',
-    hint: 'Dynatrace’te istek var ama ekip “kullanmıyor” dedi. Kim kullanıyor, bakılmalı.',
-  },
-  'internet-route-da-var': {
-    label: 'internet route’u da var',
-    tone: 'neutral',
-    hint: 'Uygulamanın intranet (reencrypt) route’unun yanında internete açık (passthrough) route’u da var.',
-  },
-  'zayif-kanit': {
-    label: 'SPA kanıtı zayıf',
-    tone: 'neutral',
-    hint: 'Pod’da nginx yalnız ad eşleşmesiyle bulundu (servis okunamadı); Nginx Hub › SPA Uygulamaları’nda ayrıntı.',
-  },
-  'eski-veri': {
-    label: 'eski veri',
-    tone: 'neutral',
-    hint: 'Bazı cluster’ların son keşif koşusu başarısız; satır önceki koşudan.',
-  },
-};
-
-// INTRANET SUNUCU KURULUMU (Nginx_Intranet_Audit): uygulamanın kendi ortamının intranet nginx
-// sunucularında paket (/hysdeploy) + dosyalar (/usr/nginx/applications) + conf var mı.
-export const KURULUM: Record<
-  IntranetKurulum['durum'],
-  { label: string; tone: Tone; hint: string }
-> = {
-  tamam: {
-    label: 'tamamlandı',
-    tone: 'success',
-    hint: 'Ortamın taranan her intranet sunucusunda paket, uygulama dosyaları ve conf var.',
-  },
-  kismi: {
-    label: 'kısmi',
-    tone: 'warning',
-    hint: 'Bazı intranet sunucularında yok ya da bazı parçalar (paket / dosyalar / conf) eksik.',
-  },
-  yok: {
-    label: 'kurulu değil',
-    tone: 'danger',
-    hint: 'Ortamın taranan intranet sunucularının hiçbirinde bu uygulamanın izi yok.',
-  },
-  olculemedi: {
-    label: 'ölçülemedi',
-    tone: 'neutral',
-    hint: 'Intranet dizin taraması okunamadı ya da ortamın intranet sunucuları son taramada yok — “kurulu değil” demek değil.',
-  },
-  'sunucu-yok': {
-    label: 'ortamın intranet sunucusu yok',
-    tone: 'neutral',
-    hint: 'Uygulamanın ortamı (namespace eki) bilinmiyor ya da o ortamın intranet nginx sunucusu yok.',
-  },
-};
-
-const SUNUCU_DURUM: Record<string, string> = {
-  OK: 'tam',
-  YOK: 'kurulum yok',
-  MISSING_CONF: 'conf yok — nginx sunmuyor',
-  MISSING_APP: 'uygulama dosyaları yok',
-  MISSING_HYS: 'paket dizini yok',
-  ONLY_HYS: 'yarım (yalnız paket)',
-  ONLY_APP: 'yarım (yalnız dosyalar)',
-  ONLY_CONF: 'yarım (yalnız conf)',
-};
-export const sunucuDurumu = (s: string) => SUNUCU_DURUM[s] || s || 'bilinmiyor';
-
-export function kurulumMetni(k: IntranetKurulum): string {
-  const l = KURULUM[k.durum]?.label || k.durum;
-  return k.durum === 'tamam' || k.durum === 'kismi' || k.durum === 'yok'
-    ? `${l} ${k.tam}/${k.beklenen}`
-    : l;
+/** ISO (yyyy-mm-dd) → "gg.aa.yyyy GünAdı" (yüklenen listeyle aynı biçim). Geçersizse olduğu gibi. */
+export function tarihGoster(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+  if (!m) return iso || '';
+  const gun = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return `${m[3]}.${m[2]}.${m[1]} ${GUNLER[gun]}`;
 }
 
-export const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
-
-/** Beyan kaydindan sonra sunucuyu yeniden beklemeden satirin kararini ayni kuralla guncelle. */
-export function degerlendirIntranet(
-  r: Pick<IntranetSatir, 'istek' | 'ag' | 'zayifKanit' | 'eskiCluster'>,
-  inUse: IntranetSatir['inUse'],
-): IntranetDegerlendirme[] {
-  const d: IntranetDegerlendirme[] = [];
-  if (r.istek === 'yok' && inUse === 'no') d.push('kapatma-adayi');
-  else if (r.istek === 'yok' && !inUse) d.push('teyit-bekliyor');
-  if (r.istek === 'var' && inUse === 'no') d.push('celiski');
-  if (r.ag === 'karisik') d.push('internet-route-da-var');
-  if (r.zayifKanit) d.push('zayif-kanit');
-  if (r.eskiCluster.length) d.push('eski-veri');
-  return d;
+/** Pilot, Set 1..N; set içinde sıra; eşitlikte namespace / uygulama. */
+export function takvimSirala(rows: readonly TakvimSatir[]): TakvimSatir[] {
+  return [...rows].sort(
+    (a, b) =>
+      a.setSira - b.setSira ||
+      a.sira - b.sira ||
+      a.namespace.localeCompare(b.namespace) ||
+      a.uygulama.localeCompare(b.uygulama),
+  );
 }
 
-/** Yük hücresinin kısa metni (ekran + CSV aynı). */
-export function istekMetni(r: IntranetSatir): string {
-  if (r.istek === 'var') return `istek alıyor · ${nf(r.req ?? 0)}`;
-  return ISTEK[r.istek]?.label || r.istek;
+export interface TakvimSuzgec {
+  set: string;
+  ekip: string;
+  q: string;
 }
 
-/** Yük ipucu: Dynatrace penceresi, servis sayısı, ölçüm günü, kısmi ölçüm ve not. */
-export function istekIpucu(r: IntranetSatir): string {
-  const d = r.dynatrace;
-  const p: string[] = [ISTEK[r.istek]?.hint || ''];
-  if (d) {
-    if (r.req != null && d.windowDays) p.push(`Son ${d.windowDays} günde ${nf(r.req)} istek.`);
-    if (d.services != null) p.push(`${d.services} Dynatrace servisi.`);
-    if (d.olcum) p.push(`Ölçülen cluster: ${d.olcum}.`);
-    if (d.scanDate) p.push(`Ölçüm günü ${d.scanDate}.`);
-    if (d.note) p.push(`Not: ${d.note}`);
-  }
-  return p.filter(Boolean).join(' ');
-}
-
-export type IstekSuzgec = 'all' | IntranetIstek;
-export type BeyanSuzgec = 'all' | 'bekleyen' | 'verilmis' | 'yes' | 'no' | 'unknown';
-export type DegSuzgec = 'all' | IntranetDegerlendirme;
-export type KurulumSuzgec = 'all' | IntranetKurulum['durum'];
-
-export function suzIntranet(
-  rows: readonly IntranetSatir[],
-  f: {
-    env: string;
-    istek: IstekSuzgec;
-    beyan: BeyanSuzgec;
-    deg: DegSuzgec;
-    ekip: string;
-    q: string;
-    kurulum?: KurulumSuzgec;
-  },
-): IntranetSatir[] {
-  const ara = f.q.trim().toLowerCase();
+export function suzTakvim(rows: readonly TakvimSatir[], f: TakvimSuzgec): TakvimSatir[] {
+  const ara = f.q.trim().toLocaleLowerCase('tr');
   return rows.filter((r) => {
-    if (f.env !== 'all' && r.env !== f.env) return false;
-    if (f.istek !== 'all' && r.istek !== f.istek) return false;
-    if (f.kurulum && f.kurulum !== 'all' && r.kurulum.durum !== f.kurulum) return false;
-    if (f.beyan === 'bekleyen' && r.inUse) return false;
-    if (f.beyan === 'verilmis' && !r.inUse) return false;
-    if ((f.beyan === 'yes' || f.beyan === 'no' || f.beyan === 'unknown') && r.inUse !== f.beyan)
-      return false;
-    if (f.deg !== 'all' && !r.degerlendirme.includes(f.deg)) return false;
-    if (f.ekip !== 'all') {
-      if (f.ekip === '-') {
-        if (r.ekip.length) return false;
-      } else if (!r.ekip.includes(f.ekip)) return false;
-    }
+    if (f.set !== 'all' && r.set !== f.set) return false;
+    if (f.ekip !== 'all' && r.ekip !== f.ekip) return false;
     if (!ara) return true;
-    return [r.application, r.namespace, r.note, ...r.ekip, ...r.adresler, ...r.clusters]
+    return [
+      r.namespace,
+      r.uygulama,
+      r.ekip,
+      r.ekipEposta,
+      r.routeAdresleri,
+      r.aciklama,
+      r.set,
+      tarihGoster(r.gecisTarihi),
+    ]
       .join(' ')
-      .toLowerCase()
+      .toLocaleLowerCase('tr')
       .includes(ara);
   });
 }
 
-export const INTRANET_CSV_BASLIK = [
-  'ortam',
-  'namespace',
-  'uygulama',
-  'ag',
-  'route_adresleri',
-  'clusterlar',
+/** Yükleme / indirme sözleşmesi: ekrandaki 11 sütun, bu sırayla. */
+export const TAKVIM_CSV_BASLIK = [
+  'set',
+  'gecis_tarihi',
+  'sira',
   'ekip',
   'ekip_eposta',
-  'ekip_beyani',
-  'beyan_eden',
-  'beyan_tarihi',
-  'aciklama',
+  'namespace',
+  'uygulama',
+  'route_adresleri',
   'dynatrace_durumu',
   'dynatrace_istek',
-  'dynatrace_gun',
-  'dynatrace_servis',
-  'dynatrace_olcum_gunu',
-  'intranet_kurulum',
-  'kurulu_sunucu',
-  'beklenen_sunucu',
-  'eksik_sunucular',
-  'taranmayan_sunucular',
-  'degerlendirme',
+  'aciklama',
 ] as const;
 
-export function intranetCsvSatirlari(
-  rows: readonly IntranetSatir[],
-  tarih: (v: string) => string,
-): string[][] {
-  return rows.map((r) => [
-    r.env,
+/** CSV formül enjeksiyonu (OWASP): =, +, -, @, TAB, CR ile başlayan hücre Excel'de formül olarak
+ *  çalışır. Açıklama ortak uygulama notudur, yüklenen liste de serbest metin taşır: başına ' konur. */
+function formulsuz(v: string): string {
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+}
+
+export function takvimCsvSatirlari(rows: readonly TakvimSatir[]): string[][] {
+  return rows.map((r) => takvimCsvHam(r).map(formulsuz));
+}
+
+function takvimCsvHam(r: TakvimSatir): string[] {
+  return [
+    r.set,
+    tarihGoster(r.gecisTarihi),
+    String(r.sira),
+    r.ekip,
+    r.ekipEposta,
     r.namespace,
-    r.application,
-    r.ag,
-    r.adresler.join(' '),
-    r.clusters.join(' '),
-    r.ekip.join(' '),
-    r.ekipEposta.join(' '),
-    r.inUse ? BEYAN_ETIKET[r.inUse] || r.inUse : '',
-    r.inUseBy || '',
-    r.inUseAt ? tarih(r.inUseAt) : '',
-    r.note || '',
-    ISTEK[r.istek]?.label || r.istek,
-    // SAYI YALNIZ ÖLÇÜLDÜYSE: ölçülemeyen satıra 0 yazmak tabloda "hiç istek yok" diye toplanırdı.
-    r.req != null ? String(r.req) : '',
-    r.dynatrace?.windowDays != null ? String(r.dynatrace.windowDays) : '',
-    r.dynatrace?.services != null ? String(r.dynatrace.services) : '',
-    r.dynatrace?.scanDate || '',
-    KURULUM[r.kurulum.durum]?.label || r.kurulum.durum,
-    // SAYI YALNIZ KARAR VERİLDİYSE: ölçülemeyen kurulum "0 sunucu" yazmaz.
-    r.kurulum.beklenen ? String(r.kurulum.tam) : '',
-    r.kurulum.beklenen ? String(r.kurulum.beklenen) : '',
-    r.kurulum.eksik.join(' '),
-    r.kurulum.taranmayan.join(' '),
-    r.degerlendirme.map((d) => DEGERLENDIRME[d]?.label || d).join(' + '),
-  ]);
+    r.uygulama,
+    r.routeAdresleri,
+    r.dynatraceDurumu,
+    r.dynatraceIstek,
+    r.aciklama,
+  ];
+}
+
+/** Takvim satırı anahtarı (set, namespace, uygulama): uygulama her DC'nin setinde ayrı satırdır. */
+export const satirAnahtari = (r: Pick<TakvimSatir, 'set' | 'namespace' | 'uygulama'>) =>
+  `${r.set}|${r.namespace}/${r.uygulama}`;
+
+/** Set içindeki satır anahtarı: set planı düzeltmesinin `beklenen` sözlüğü (sunucuyla aynı). */
+export const setIciAnahtar = (r: Pick<TakvimSatir, 'namespace' | 'uygulama'>) =>
+  `${r.namespace}/${r.uygulama}`;
+
+// ── SET İLERLEMESİ ───────────────────────────────────────────────────────────
+export type SetDurum = 'gecti' | 'bugun' | 'planli';
+export const SET_DURUM_METIN: Record<SetDurum, string> = {
+  gecti: 'Geçti',
+  bugun: 'Bugün',
+  planli: 'Planlı',
+};
+
+export interface SetIlerleme {
+  set: string;
+  setSira: number;
+  /** Set planı satırı; takvimde olup planda olmayan sette null ("plan yok"). */
+  plan: TakvimPlanSatir | null;
+  /** Setin tarihi: plandan; plan yoksa satırların en sık tarihi (eşitlikte en erken). */
+  tarih: string | null;
+  uygulama: number;
+  /** Bu DC'deki takvim satırı toplamına oran (0..1, kullanıcının tablosundaki gibi 0,156); toplam 0
+   *  ise null. */
+  pay: number | null;
+  /** DC içinde bu sete kadar (dahil) geçmiş olacak uygulama sayısı. */
+  kumulatif: number;
+  yuzde: number | null;
+  durum: SetDurum | null;
+  /** Tarihi setin tarihinden farklı uygulama sayısı (tek satır düzeltmesi). */
+  farkliTarih: number;
+}
+
+export interface DcGrubu {
+  /** Boş = DC belirtilmemiş (plan yok ya da planda DC boş). Gruplama kırpılmış ve harf duyarsız
+   *  (sunucunun aynı DC uyarısıyla aynı kural); görünen ad grubun ilk setinin yazımı. */
+  dc: string;
+  toplam: number;
+  setler: SetIlerleme[];
+}
+
+function enSikTarih(tarihler: readonly string[]): string | null {
+  const say = new Map<string, number>();
+  for (const t of tarihler) say.set(t, (say.get(t) || 0) + 1);
+  let en: string | null = null;
+  for (const [t, n] of [...say.entries()].sort((a, b) => a[0].localeCompare(b[0])))
+    if (en === null || n > (say.get(en) || 0)) en = t;
+  return en;
+}
+
+function durumOf(tarih: string | null, bugun: string): SetDurum | null {
+  if (!tarih) return null;
+  if (tarih < bugun) return 'gecti';
+  return tarih === bugun ? 'bugun' : 'planli';
+}
+
+/**
+ * DC başına set ilerlemesi (kullanıcının takvim tablosu: Set | Tarih | DC | Eski IP | Yeni IP |
+ * Uygulama | Setin payı | Toplam geçmiş olacak | Toplamın yüzdesi | Durum). Sabit sayı yok: uygulama
+ * sayısı takvim satırlarından, pay ve yüzde paydası o DC'deki takvim satırı toplamı. Gruplar plan
+ * sırasıyla (grubun ilk seti), "DC belirtilmemiş" en sonda; planda olup uygulaması 0 olan set de
+ * görünür. `bugun` PORTAL_TZ takvim günü (utils/datetime portalGunu).
+ */
+export function setIlerlemesi(
+  rows: readonly TakvimSatir[],
+  plan: readonly TakvimPlanSatir[],
+  bugun: string,
+): DcGrubu[] {
+  const satirlar = new Map<string, TakvimSatir[]>();
+  for (const r of rows) {
+    const s = satirlar.get(r.set);
+    if (s) s.push(r);
+    else satirlar.set(r.set, [r]);
+  }
+  const planM = new Map(plan.map((p) => [p.set, p]));
+  const adlar = new Map<string, number>();
+  for (const p of plan) adlar.set(p.set, p.setSira);
+  for (const r of rows) if (!adlar.has(r.set)) adlar.set(r.set, r.setSira);
+  const gruplar = new Map<string, DcGrubu & { ilk: number }>();
+  for (const [set, setSira] of [...adlar.entries()].sort((a, b) => a[1] - b[1])) {
+    const p = planM.get(set) || null;
+    const s = satirlar.get(set) || [];
+    const tarih = p ? p.gecisTarihi : enSikTarih(s.map((r) => r.gecisTarihi));
+    const dc = p?.dc.trim() || '';
+    const anahtar = dc.toLowerCase();
+    let g = gruplar.get(anahtar);
+    if (!g) {
+      g = { dc, toplam: 0, setler: [], ilk: dc ? setSira : Number.POSITIVE_INFINITY };
+      gruplar.set(anahtar, g);
+    }
+    g.toplam += s.length;
+    g.setler.push({
+      set,
+      setSira,
+      plan: p,
+      tarih,
+      uygulama: s.length,
+      pay: null,
+      kumulatif: 0,
+      yuzde: null,
+      durum: durumOf(tarih, bugun),
+      farkliTarih: s.filter((r) => r.gecisTarihi !== tarih).length,
+    });
+  }
+  return [...gruplar.values()]
+    .sort((a, b) => a.ilk - b.ilk)
+    .map((g) => {
+      let kumulatif = 0;
+      const setler = g.setler.map((s) => {
+        kumulatif += s.uygulama;
+        return {
+          ...s,
+          kumulatif,
+          pay: g.toplam ? s.uygulama / g.toplam : null,
+          yuzde: g.toplam ? (kumulatif / g.toplam) * 100 : null,
+        };
+      });
+      return { dc: g.dc, toplam: g.toplam, setler };
+    });
+}
+
+export const DC_BELIRTILMEMIS = 'DC belirtilmemiş';
+
+export const ILERLEME_CSV_BASLIK = [
+  'Set',
+  'Tarih',
+  'DC',
+  'Eski IP',
+  'Yeni IP',
+  'Uygulama',
+  'Setin payı',
+  'Toplam geçmiş olacak',
+  'Toplamın yüzdesi',
+  'Durum',
+] as const;
+
+/** Set ilerlemesi durum metni: "Geçti", "Planlı · 2 uygulama farklı tarihte", plansız set için ek. */
+export function durumMetni(s: SetIlerleme): string {
+  const parca = [s.durum ? SET_DURUM_METIN[s.durum] : ''];
+  if (s.farkliTarih) parca.push(`${s.farkliTarih} uygulama farklı tarihte`);
+  if (!s.plan) parca.push('plan yok');
+  return parca.filter(Boolean).join(' · ');
+}
+
+export function ilerlemeCsvSatirlari(gruplar: readonly DcGrubu[]): string[][] {
+  return gruplar.flatMap((g) =>
+    g.setler.map((s) =>
+      [
+        s.set,
+        s.tarih ? tarihGoster(s.tarih) : '',
+        g.dc || DC_BELIRTILMEMIS,
+        s.plan?.eskiIp || '',
+        s.plan?.yeniIp || '',
+        String(s.uygulama),
+        fmtOran(s.pay),
+        String(s.kumulatif),
+        fmtYuzde(s.yuzde),
+        durumMetni(s),
+      ].map(formulsuz),
+    ),
+  );
 }

@@ -53,6 +53,16 @@ test('RH2 bekcinin kendisi kor degil: yetimi yakalar, kullanilani birakir', () =
     'src/kutu/index.ts': '',
     'src/utils/olu.ts': '',
     'kalite/kapsam/lcov.info': 'SF:server/olu.cjs\nSF:docs/YETIM.md',
+    // uretilen teslim imzasi her izlenen dosyayi listeler: referans sayilirsa yetimler gorunmez
+    'kalite/teslim.json': JSON.stringify({
+      dosyalar: {
+        'server/olu.cjs': 'a',
+        'server/yalniz-test.cjs': 'b',
+        'src/utils/olu.ts': 'c',
+        'docs/YETIM.md': 'd',
+        'scripts/tek-seferlik.cjs': 'e',
+      },
+    }),
   };
   const dosyalar = Object.keys(repo);
   const y = yetimler(dosyalar, (f) => repo[f]);
