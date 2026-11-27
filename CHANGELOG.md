@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (LogX › indirme bağlantısı, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Toplama / aktarım işi arşiv ürettiği halde hiçbir arşiv için indirme bağlantısı üretilemezse (ör. disk dolu) istek yine "hazır" yapılıyordu. Sihirbaz "indirilecek arşiv bulunamadı (temizlenmiş olabilir)" diyor, gerçek sebep yalnız denetim kaydında kalıyordu. Artık istek başarısız olur ve kullanıcı "Arşiv hazırlandı ama indirme bağlantısı üretilemedi" mesajını görür. Bir arşivin bağlantısı üretildiyse ya da eş zamanlı ikinci yoklama arşivleri önceden bağlantılı bulduysa istek hazır kalır.
+
 ### Fixed (üst üste pencerelerde ESC, ikinci adım, 2026-11-28)
 - #354 ESC dinleyicisini çizimden önceye aldı, ama dinleyicinin çağırdığı kapatma işlevini tutan ref hâlâ çizimden sonra tazeleniyordu. Bileşen yeniden kurulmadan yalnız açılıp kapanan bir katmanda ilk karedeki ESC, bir önceki çizimin işlevini çağırıyor ve katman kapanmıyordu. Retirement kayıt penceresinde onay katmanı buna örnek; CI'da RE8 bu yüzden yeniden kırıldı (#348).
 - `useEscIleKapat` ve `Modal`'ın ref'i de artık layout efektinde, kayıttan önce tazeleniyor. Test: `katman-esc-ilk-kare` EK4 / EK5. Her dosyanın eski hali kendi testini kırmızı yapıyor.
