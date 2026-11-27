@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "e38af453e4c2b779946bcbea215c5dcc217e450e",
+  "kaynak": "936e83e227898eaecd552da83c5f06f84e1f8f8a",
   "dosyaSayisi": 1704,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -17,7 +17,7 @@
     ".prettierignore": "894c51edd7732f64bebf53a8de678f03c8754856",
     ".prettierrc": "922b878bcbdbd9f4940a22ef1a6c9f4c63e9d419",
     "AGENTS.md": "71f35ff22888dc5419206c7e125b365344519db1",
-    "CHANGELOG.md": "8f3326b35f8ec92b1f2311d158614facacdd9287",
+    "CHANGELOG.md": "0e6760433c1bec806cc7cac74ba56a8eb7e490e8",
     "CLAUDE.md": "41a325c553b3b3078e74dfa0747bc7f00c40d16f",
     "CODEOWNERS": "22df3eb69edc105f89f11b00ad0466b7a1cbaf31",
     "CONTRIBUTING.md": "b28ca420decb18fd0334d16c7427d5dba790f5c7",
@@ -186,7 +186,7 @@
     "server/__tests__/unbound-identifier.test.js": "97a41a8f275559dc1851d94d54dd2c2cbc285858",
     "server/__tests__/undici-surface.test.js": "e71a5968c46f7bfe0b93b5cc9412e244a3a661ad",
     "server/admin/__tests__/favicon-version.test.js": "4b137d53aa3aa53a9dd78fdad065f0e4d775cd48",
-    "server/admin/__tests__/kurum-ayari-duzenle.test.js": "2a6b8bd2cbf83eb4d7152d5ddf348e268bba8bcd",
+    "server/admin/__tests__/kurum-ayari-duzenle.test.js": "07ff6d286019101078cb642108c525ae69460430",
     "server/admin/__tests__/kurum-ayari-fark.test.js": "a0c5faa7f8bc047d024a0e4daf237456a3f8327c",
     "server/admin/__tests__/system-config-ekran.test.js": "b6d3294fc6f3a33046cd0747771cd577b2b0f158",
     "server/admin/branding.cjs": "e246a20a29c9228473d242bb45e1c75a04c90e07",
