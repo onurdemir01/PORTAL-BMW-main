@@ -417,11 +417,14 @@ test('VR6 Denetim erişimi: listeleme, verme (diğer kurallar korunur), geri alm
   ];
   let r = await istek('GET', '/denetim-access');
   assert.equal(r.body.tabs.length, 10);
+  // Sira tur, sonra ad (localeCompare). 'ALI' / 'ali' ikilisinin sirasi sunucunun yerel ayarina
+  // bagli (tr: buyuk harf once; en ve C: kucuk harf once); beklenen sira ayni kuraldan.
+  const ALI = { principalType: 'user', principalId: 'ALI', page: false, tabs: ['katalog'] };
+  const ali = { principalType: 'user', principalId: 'ali', page: true, tabs: ['ocp'] };
   assert.deepEqual(r.body.grants, [
     { principalType: 'group', principalId: 'ali', page: false, tabs: ['webapp'] },
     { principalType: 'group', principalId: 'cn=mw', page: false, tabs: ['deploy'] },
-    { principalType: 'user', principalId: 'ALI', page: false, tabs: ['katalog'] },
-    { principalType: 'user', principalId: 'ali', page: true, tabs: ['ocp'] },
+    ...('ALI'.localeCompare('ali') < 0 ? [ALI, ali] : [ali, ALI]),
     { principalType: 'user', principalId: 'baska', page: true, tabs: [] },
   ]);
   // verme: dogrulama
