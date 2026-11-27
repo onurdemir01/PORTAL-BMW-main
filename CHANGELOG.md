@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (AI Analist › Splunk aracı, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- `portal_splunk_search` aramayı en çok 60 dakikayla yapıyor, başlığa ise istenen pencereyi yazıyordu ("son 500 dk"). AI, 60 dakikalık sonucu 500 dakikalık sanıp yanlış sonuç çıkarıyordu. Artık başlıkta aranan pencere yazıyor (1-60 dk, varsayılan 15). Negatif değer istemciye de 1 olarak gidiyor. Test: `portal-araclari` AT7.
+
 ### Changed (Intranet SPA: geçiş takvimi, 2026-11-27)
 
 - Intranet SPA sayfası (`/ark-spa/intranet-spa`) yalnız geçiş takvimini gösteriyor: `set`, `gecis_tarihi`, `sira`, `ekip`, `ekip_eposta`, `namespace`, `uygulama`, `route_adresleri`, `dynatrace_durumu`, `dynatrace_istek`, `aciklama`, bu sırayla (Pilot, Set 1..N; set içinde sıra). Süzgeç: set, ekip, metin; CSV aynı 11 sütun. Kaldırılan bölümler: ekip beyanı, değerlendirme, özet kutuları, intranet sunucu kurulumu ve ayrıntı satırı. Paket kurulumu bölümü (`IntranetPaketKurulum`, yalnız Admin) takvim listesinin altında kalıyor (kullanıcı kararı: zincir geri kondu).
