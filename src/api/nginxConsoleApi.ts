@@ -849,6 +849,7 @@ export const nginxConsoleApi = {
       mtime: string | null;
     }[];
     variants: number;
+    message?: string;
   }> =>
     fetch(
       `${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(','))}` : ''}`,
