@@ -12,11 +12,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { Modal } from '../Modal';
 import { useEscIleKapat } from '../pencereKlavye';
 
-function IlkKaredeEsc({ aktif }: Readonly<{ aktif: boolean }>) {
+/** ESC'yi layout efektinde basar. Ayni bilesende baska kancalardan SONRA cagrilinca, o kancalarin
+ *  layout efektleri (commit) bittikten sonra, tarayici cizmeden once calisir. */
+function useIlkKaredeEsc(aktif: boolean) {
   useLayoutEffect(() => {
     if (aktif)
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   }, [aktif]);
+}
+
+function IlkKaredeEsc({ aktif }: Readonly<{ aktif: boolean }>) {
+  useIlkKaredeEsc(aktif);
   return null;
 }
 
@@ -79,6 +85,55 @@ function IcIcePencere({
   );
 }
 
+// UZUN OMURLU BILESEN (RetirementTab gibi): katman bileseni yeniden kurulmaz, yalniz acik / kapali
+// degisir ve kapatma islevi o anki duruma baglidir. Ilk karede ESC GUNCEL kapatma islevini
+// cagirmali; ref pasif efektte guncellenirse bir onceki cizimin (katman kapaliyken) islevi cagrilir.
+function UzunOmurluKatman({ kapandi }: Readonly<{ kapandi: (ad: string | null) => void }>) {
+  const [katman, setKatman] = useState<string | null>(null);
+  useEscIleKapat(katman !== null, () => {
+    if (katman === null) return;
+    kapandi(katman);
+    setKatman(null);
+  });
+  // Sonda ayni bilesende, kancadan SONRA: ESC kancanin commit'i bittikten sonra basilir.
+  useIlkKaredeEsc(katman !== null);
+  return (
+    <>
+      <button type="button" onClick={() => setKatman('onay-1')}>
+        Katman ac
+      </button>
+      {katman && (
+        <div role="dialog" aria-label={katman}>
+          katman
+        </div>
+      )}
+    </>
+  );
+}
+
+function UzunOmurluPencere({ kapandi }: Readonly<{ kapandi: (ad: string | null) => void }>) {
+  const [secili, setSecili] = useState<string | null>(null);
+  return (
+    <>
+      <button type="button" onClick={() => setSecili('kayit-7')}>
+        Pencere ac
+      </button>
+      <Modal
+        open={secili !== null}
+        onClose={() => {
+          if (secili === null) return;
+          kapandi(secili);
+          setSecili(null);
+        }}
+        title="Kayit penceresi"
+      >
+        <p>icerik</p>
+      </Modal>
+      <IlkKaredeEsc aktif={secili !== null} />
+    </>
+  );
+}
+
 const esc = () => fireEvent.keyDown(document, { key: 'Escape' });
 
 describe('Ust uste katmanlarda ESC: ilk kareden itibaren yalniz en ustteki', () => {
@@ -124,5 +179,21 @@ describe('Ust uste katmanlarda ESC: ilk kareden itibaren yalniz en ustteki', () 
     esc();
     expect(icKapat).toHaveBeenCalledTimes(1);
     expect(disKapat).not.toHaveBeenCalled();
+  });
+
+  it('EK4 uzun omurlu bilesende ilk karedeki ESC GUNCEL kapatma islevini cagirir (katman kapanir)', () => {
+    const kapandi = vi.fn();
+    render(<UzunOmurluKatman kapandi={kapandi} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Katman ac' }));
+    expect(kapandi).toHaveBeenCalledWith('onay-1');
+    expect(screen.queryByRole('dialog', { name: 'onay-1' })).toBeNull();
+  });
+
+  it('EK5 uzun omurlu ustte Modal: ilk karedeki ESC guncel onClose ile pencereyi kapatir', () => {
+    const kapandi = vi.fn();
+    render(<UzunOmurluPencere kapandi={kapandi} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Pencere ac' }));
+    expect(kapandi).toHaveBeenCalledWith('kayit-7');
+    expect(screen.queryByRole('dialog', { name: 'Kayit penceresi' })).toBeNull();
   });
 });
