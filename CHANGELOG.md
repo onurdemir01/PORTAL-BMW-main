@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (üst üste pencerelerde ESC, 2026-11-27)
+
+- Bir pencerenin içinden açılan onay katmanı ya da ikinci pencere, ESC dinleyicisini çizildikten sonra kaydediyordu (`useEffect`). Açıldığı ilk karelerde basılan ESC alttaki pencereyi kapatıyordu: kullanıcı onayı kapatmak isterken bütün kayıt penceresini kaybediyordu. CI'da Retirement RE8 testi yük altında tam bu araya düşüp `main`'i kırmızı yaptı.
+- `useEscIleKapat` (`common/pencereKlavye.ts`) ve `Modal` yığına ve klavyeye artık layout efektinde, çizimden önce giriyor. Test: `katman-esc-ilk-kare` (EK1-EK3; ESC'yi yeni katmanın ilk karesinde basar; her düzeltme geri alınınca kendi testi kırmızı).
+
 ### Changed (Intranet SPA: geçiş takvimi, 2026-11-27)
 
 - Intranet SPA sayfası (`/ark-spa/intranet-spa`) yalnız geçiş takvimini gösteriyor: `set`, `gecis_tarihi`, `sira`, `ekip`, `ekip_eposta`, `namespace`, `uygulama`, `route_adresleri`, `dynatrace_durumu`, `dynatrace_istek`, `aciklama`, bu sırayla (Pilot, Set 1..N; set içinde sıra). Süzgeç: set, ekip, metin; CSV aynı 11 sütun. Kaldırılan bölümler: ekip beyanı, değerlendirme, özet kutuları, intranet sunucu kurulumu ve ayrıntı satırı. Paket kurulumu bölümü (`IntranetPaketKurulum`, yalnız Admin) takvim listesinin altında kalıyor (kullanıcı kararı: zincir geri kondu).

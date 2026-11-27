@@ -13,7 +13,7 @@
 //                                yapar ve ekran okuyucu kullanicisi sayfanin basini atlar; bu
 //                                yardimci, kullanici sayfada henuz hicbir sey yapmadiysa odagi
 //                                TASIMAZ.
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 // UST USTE KATMAN: yalniz EN USTTEKI katman ESC'ye yanit verir (Modal.tsx'teki yiginla ayni
 // fikir). Dinleyici YAKALAMA evresinde ve `window` uzerinde: bir Modal'in icinde acilan katmanda
@@ -26,7 +26,9 @@ export function useEscIleKapat(acik: boolean, kapat: () => void) {
     kapatRef.current = kapat;
   }, [kapat]);
 
-  useEffect(() => {
+  // ILK KAREDEN itibaren (2026-11-27): kayit LAYOUT efektinde, tarayici katmani cizmeden once.
+  // Pasif efekt (useEffect) cizimden SONRA kosar; arada basilan ESC alttaki pencereyi kapatiyordu.
+  useLayoutEffect(() => {
     if (!acik) return;
     const kimlik = {};
     acikKatmanlar.push(kimlik);
