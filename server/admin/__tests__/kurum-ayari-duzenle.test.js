@@ -76,7 +76,9 @@ let dosya;
 const eskiEnv = process.env.KURUM_AYAR_DOSYASI;
 
 beforeEach(() => {
-  dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'kurum-ayari-'));
+  // Gercek yol: macOS'ta os.tmpdir() /var/... sembolik bagidir (/private/var/...); modul dosyayi realpath ile
+  // cozdugu icin yol karsilastiran sahteler (openSync / accessSync) cozulmemis yolla hic tetiklenmiyordu.
+  dizin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kurum-ayari-')));
   dosya = path.join(dizin, 'kurum-ayari.json');
   fs.writeFileSync(dosya, metin(ORNEK));
   process.env.KURUM_AYAR_DOSYASI = dosya;
@@ -99,7 +101,7 @@ async function istek(method, yol, govde, rol = 'Admin', username = 'admin1') {
     n();
   });
   app.use('/api/admin/kurum-ayari', D.kurumAyariRouter());
-  const srv = app.listen(0);
+  const srv = app.listen(0, '127.0.0.1');
   await new Promise((r) => srv.once('listening', r));
   try {
     const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/admin/kurum-ayari${yol}`, {
@@ -582,7 +584,7 @@ test('KA22 okuyucu onbellegi ayni boyut + zaman damgasi + inode ile de yenilenir
 });
 
 test('KA23 repo calisma agacindaki dosya yazilmaz', async () => {
-  const kok = fs.mkdtempSync(path.join(os.tmpdir(), 'repo-'));
+  const kok = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'repo-')));
   try {
     const ic = path.join(kok, 'deploy', 'a.json');
     fs.mkdirSync(path.dirname(ic));
