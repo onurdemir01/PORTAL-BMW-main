@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useBackdropDismiss } from './backdropDismiss';
@@ -51,6 +51,9 @@ export function Modal({
   const overlayRef = useRef<HTMLDivElement>(null);
   const backdrop = useBackdropDismiss(onClose, dismissOnBackdrop);
   const panelRef = useRef<HTMLDivElement>(null);
+  // Pencerenin erisilebilir adi basliktir (2026-11-26): role="dialog" adsizdi; ekran okuyucu her pencereyi
+  // adsiz "iletisim kutusu" diye duyuruyordu.
+  const baslikId = useId();
   // Modal acilmadan ONCE odakta olan oge — kapaninca odak buraya GERI verilir.
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
@@ -154,6 +157,7 @@ export function Modal({
       style={{ background: 'rgba(3,3,3,0.62)' }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={title ? baslikId : undefined}
     >
       <div ref={overlayRef} className="min-h-full flex items-center justify-center" {...backdrop}>
         <div
@@ -175,6 +179,7 @@ export function Modal({
             <div className="min-w-0 flex-1">
               {title && (
                 <h2
+                  id={baslikId}
                   className="truncate"
                   style={{
                     fontFamily: 'var(--font-display)',
