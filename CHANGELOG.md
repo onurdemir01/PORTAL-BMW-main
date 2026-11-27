@@ -8,6 +8,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - İş geçmişi penceresi, geçmiş okunamayınca ("ok: false" yanıtı ya da düşen istek) "Son 30 günde iş yok." diyordu; düşen istek ayrıca yakalanmıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
 - "Formu Temizle" dokunulmamış formda da açık gelebiliyordu. Şablonun varsayılan değeri ya da AWX'in kapalı çalışma zamanı seçeneklerindeki mevcut değer (ör. verbosity 1, job type check) "doldurulmuş" sayılıyordu; basınca aynı değerler geri geliyor, ekranda hiçbir şey değişmiyordu. Düğme artık yalnız form açılıştakinden farklıysa açık.
 
+### Fixed (Denetim › Nginx PROD taşıması, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Toplu geçiş takibinde bazı uygulamalar yazılamadığında (kısmi başarı) pencere yine kapanıyordu; yazılamayanların listesi ve sebebi hiç görünmüyor, kullanıcı hepsinin yazıldığını sanıyordu. Artık pencere yalnız tam başarıda kapanır ve seçim o zaman temizlenir; yazılan satırlar yine hemen tabloya işlenir.
+
 ### Fixed (main kirmizi: Kurum Ayari testleri, 2026-11-27)
 - PR'sız `5f222cb5` (Admin › Kurum Ayarı) `main`'i iki yerden kırmızı yaptı. Düzeltme yalnız testte; üretim kodu değişmedi.
   - **CI'da (TY1):** yeni uç testi sunucuyu host'suz `listen(0)` ile açıyordu (macOS'ta aralıklı yanlış süreç). Sunucu artık `127.0.0.1`'e bağlanıyor.
