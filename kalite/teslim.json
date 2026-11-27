@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "361a3e85990ad9d69d285df1f82591ce0183ad0d",
-  "dosyaSayisi": 1690,
+  "kaynak": "7d9605066a818d369ef327b4ed0180ecea5866f4",
+  "dosyaSayisi": 1692,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -1267,6 +1267,7 @@
     "src/components/crypto_hub/ValuesHistory.tsx": "b82f8b515395c2fdcd62ec8096f9a9aecd4d3168",
     "src/components/crypto_hub/ValuesModal.tsx": "ad1cb35744994aa10ce3ce3e3e1ba4c420b236cb",
     "src/components/crypto_hub/__tests__/ConfigMapsPanel.test.tsx": "72fc0d3b22d5787da0d1615717b7f5a5d3edc1d9",
+    "src/components/crypto_hub/__tests__/CryptoHubSayfa.test.tsx": "fb90921f5a7bd097f26925e142fd43fe350576bf",
     "src/components/crypto_hub/__tests__/OpsPanel.test.tsx": "6482e66d32d7574d90d819afecef88276763f6cf",
     "src/components/crypto_hub/__tests__/PlanModal.test.tsx": "4099e04f460824921aca591df8c67d8b209084f0",
     "src/components/crypto_hub/__tests__/ValuesCompare.test.tsx": "b61b081274f74c2a81edfa5e054246b8605f2003",
@@ -1567,6 +1568,7 @@
     "src/components/server_hub/__tests__/ear-envanter-tab.test.tsx": "0c0ba31b93dea2552321735c303061e474967b40",
     "src/components/server_hub/__tests__/ear-envanter.test.ts": "db1b65d11fa39bfdb4a62bfc70fccaebd5338938",
     "src/components/server_hub/__tests__/ear-jboss-eslesmesi.test.tsx": "8de2fa561cacecf499b58590ff4c6f21159de54b",
+    "src/components/server_hub/__tests__/ear-kolon-taramasi.test.tsx": "3f8570140f3458a39a92c6193e5d92247fe9b975",
     "src/components/server_hub/__tests__/ear-tablo.test.tsx": "b8d5310ec837b7bec46ae5d51f9a1a04b24a2aa3",
     "src/components/server_hub/__tests__/ear-temizlik-tab.test.tsx": "c5960359455425a6b52a2720e9c99b05cd7c13e6",
     "src/components/server_hub/__tests__/grup-kontrolu.test.tsx": "2f53d7b2ab7d5063f348a799f5e876ee6235d876",
