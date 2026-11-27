@@ -474,7 +474,7 @@ export const ansibleApi = {
     message?: string;
   }> => fetch(`${BASE}/ss/smart-ticket/${ticketId}/detail`).then(safeJson),
 
-  history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[] }> =>
+  history: (days = 30): Promise<{ ok: boolean; history: JobHistoryRecord[]; message?: string }> =>
     fetch(`${BASE}/history?days=${days}`).then(safeJson),
 
   // Seçenek kaynakları (Admin, Survey ayarları ekranı).
