@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (AI Analist › Splunk aracı, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- `portal_splunk_search` aramayı en çok 60 dakikayla yapıyor, başlığa ise istenen pencereyi yazıyordu ("son 500 dk"). AI, 60 dakikalık sonucu 500 dakikalık sanıp yanlış sonuç çıkarıyordu. Artık başlıkta aranan pencere yazıyor (1-60 dk, varsayılan 15). Negatif değer istemciye de 1 olarak gidiyor. Test: `portal-araclari` AT7.
+
 ### Fixed (LogX › indirme bağlantısı, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Toplama / aktarım işi arşiv ürettiği halde hiçbir arşiv için indirme bağlantısı üretilemezse (ör. disk dolu) istek yine "hazır" yapılıyordu. Sihirbaz "indirilecek arşiv bulunamadı (temizlenmiş olabilir)" diyor, gerçek sebep yalnız denetim kaydında kalıyordu. Artık istek başarısız olur ve kullanıcı "Arşiv hazırlandı ama indirme bağlantısı üretilemedi" mesajını görür. Bir arşivin bağlantısı üretildiyse ya da eş zamanlı ikinci yoklama arşivleri önceden bağlantılı bulduysa istek hazır kalır.
 
