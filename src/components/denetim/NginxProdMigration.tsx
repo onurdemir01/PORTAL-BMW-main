@@ -1143,8 +1143,12 @@ export default function NginxProdMigration() {
                 next.set(trackKey(row.group, row.namespace, row.application), row);
               return next;
             });
-            if (clear) setSelected(new Set());
-            setBulkOpen(false);
+            // KISMI BASARI (2026-11-27): yazilan satirlar tabloya islenir ama pencere ACIK kalir; yazilamayanlarin
+            // listesi ve sebebi pencerede. Eskiden pencere her durumda kapaniyor, hata listesi hic gorunmuyordu.
+            if (clear) {
+              setSelected(new Set());
+              setBulkOpen(false);
+            }
           }}
         />
       )}
