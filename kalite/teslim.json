@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "87416935af7a848692828abfd58fca0a2da5be23",
+  "kaynak": "4811f1dd0a4fc0d8d62c9fe23f29f77dc450cd30",
   "dosyaSayisi": 1721,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
@@ -1481,7 +1481,7 @@
     "src/components/opsx/OpsXSmartConfigModal.tsx": "bc6f96d5899477be47035482954f02a69f61dd3d",
     "src/components/opsx/OpsXWizardPage.tsx": "d6c77014144d54fcebe25d04645d25a129232b97",
     "src/components/opsx/__tests__/OpsXSmartConfigModal.test.tsx": "bd50a4ebe820eb7e400cd9424cce087cf70b2e26",
-    "src/components/opsx/__tests__/OpsXWizardAkis.test.tsx": "e6669c630e577ae5dc295868321ef250cefd399a",
+    "src/components/opsx/__tests__/OpsXWizardAkis.test.tsx": "99089e28c42f77f4bdd54ae5058d8739c226254b",
     "src/components/opsx/__tests__/OpsxStepsCoverage.test.tsx": "27225ffc1d47435f95526cee8062ef2ca4f82edf",
     "src/components/opsx/__tests__/batch-pod.test.tsx": "4f6366a3b157dc6f9e6f897fca8f2fef578d7f1f",
     "src/components/opsx/__tests__/derin-baglanti.test.tsx": "f36edb8dd9594769fda4219cb6a4c456317b98c2",
