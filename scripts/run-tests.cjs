@@ -86,6 +86,7 @@ const TEST_DIRS = [
   'src/components/crypto_hub/__tests__',
   'src/components/telnet/__tests__',
   'src/components/ansible/__tests__',
+  'src/components/dynatrace/__tests__',
   'src/hooks/__tests__',
   'src/utils/__tests__',
 ];
