@@ -517,7 +517,18 @@ describe('Denetim › script sapması', () => {
   });
 
   it('DS5 okunamadı: kök seçimi ve Yenile ekranda kalır, önceki köke dönülür', async () => {
+    api.init.mockResolvedValue(
+      yanit({
+        sunucuGeneli: {
+          files: [],
+          detailAvailable: false,
+          teamReferenceAvailable: false,
+          error: 'geniş tablo yok',
+        },
+      }),
+    );
     await ac();
+    expect(screen.getByText(/Sunucu geneli bölüm okunamadı \(geniş tablo yok\)/)).toBeTruthy();
     api.init.mockResolvedValueOnce({ ok: false, message: '/vhosting8 tablosu okunamadı' } as never);
     fireEvent.change(kok(), { target: { value: 'vhosting8' } });
     const hata = await screen.findByTestId('script-sapma-hata');
@@ -525,6 +536,7 @@ describe('Denetim › script sapması', () => {
     // onceki kokun tablosu yeni kokun altinda gosterilmez
     expect(screen.queryByText('start.sh', { selector: 'span.font-mono' })).toBeNull();
     expect(screen.queryByText('referansla uyumlu')).toBeNull();
+    expect(screen.queryByText(/Sunucu geneli bölüm okunamadı/)).toBeNull(); // onceki verinin bolumu de
     expect(kok().value).toBe('vhosting8');
     // Tekrar dene SECILI koku okur; yine duserse hata kalir
     api.init.mockRejectedValueOnce(new Error('hala okunamadı'));

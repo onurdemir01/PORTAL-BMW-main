@@ -1814,7 +1814,9 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
 
   // Sunucu geneli dosya (appdomain.service, 2026-11-16): kokten BAGIMSIZ bolum, kok seciminin
   // USTUNDE. Sunucu her kok icin ayni icerigi doner; kok degisince bolum ayni kalir.
+  // Okunamadi durumunda (err) onceki verinin bolumu de gizlenir.
   const sunucuGeneli =
+    !err &&
     kind === 'init' &&
     data?.sunucuGeneli &&
     (data.sunucuGeneli.files.length > 0 ||
@@ -1825,7 +1827,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
 
   return (
     <div className="space-y-3">
-      {!err && sunucuGeneli && <InitSunucuGeneli data={sunucuGeneli} />}
+      {sunucuGeneli && <InitSunucuGeneli data={sunucuGeneli} />}
       <div className="flex flex-wrap items-center gap-2">
         <Select sizeVariant="sm" value={root} onChange={(e) => setRoot(e.target.value)}>
           {(data?.roots || ['vhosting']).map((r) => (
