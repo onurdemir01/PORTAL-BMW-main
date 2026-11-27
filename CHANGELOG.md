@@ -7,6 +7,37 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ### Fixed (AI Analist › Splunk aracı, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - `portal_splunk_search` aramayı en çok 60 dakikayla yapıyor, başlığa ise istenen pencereyi yazıyordu ("son 500 dk"). AI, 60 dakikalık sonucu 500 dakikalık sanıp yanlış sonuç çıkarıyordu. Artık başlıkta aranan pencere yazıyor (1-60 dk, varsayılan 15). Negatif değer istemciye de 1 olarak gidiyor. Test: `portal-araclari` AT7.
 
+### Fixed (LogX › indirme bağlantısı, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Toplama / aktarım işi arşiv ürettiği halde hiçbir arşiv için indirme bağlantısı üretilemezse (ör. disk dolu) istek yine "hazır" yapılıyordu. Sihirbaz "indirilecek arşiv bulunamadı (temizlenmiş olabilir)" diyor, gerçek sebep yalnız denetim kaydında kalıyordu. Artık istek başarısız olur ve kullanıcı "Arşiv hazırlandı ama indirme bağlantısı üretilemedi" mesajını görür. Bir arşivin bağlantısı üretildiyse ya da eş zamanlı ikinci yoklama arşivleri önceden bağlantılı bulduysa istek hazır kalır.
+
+### Fixed (üst üste pencerelerde ESC, ikinci adım, 2026-11-28)
+- #354 ESC dinleyicisini çizimden önceye aldı, ama dinleyicinin çağırdığı kapatma işlevini tutan ref hâlâ çizimden sonra tazeleniyordu. Bileşen yeniden kurulmadan yalnız açılıp kapanan bir katmanda ilk karedeki ESC, bir önceki çizimin işlevini çağırıyor ve katman kapanmıyordu. Retirement kayıt penceresinde onay katmanı buna örnek; CI'da RE8 bu yüzden yeniden kırıldı (#348).
+- `useEscIleKapat` ve `Modal`'ın ref'i de artık layout efektinde, kayıttan önce tazeleniyor. Test: `katman-esc-ilk-kare` EK4 / EK5. Her dosyanın eski hali kendi testini kırmızı yapıyor.
+
+### Fixed (LogX › OpenShift sihirbazı, 2026-11-27; PR-2 testlerinin bulduğu üç hata)
+- Kayıtlı namespace listesinden "Geri" cluster seçimine dönmüyordu. İstemci yalnız listeyi temizliyordu, istekte seçili cluster'lar duruyordu; adım "Namespace listesi hazırlanıyor…"a düşüyor ve hiçbir şey başlamadığı için kullanıcı sonsuz bir bekleme ekranında kalıyordu. Artık geri dönüş sunucuda geri sarılır.
+- Cluster seçimine dönüp aynı cluster'ları yeniden seçen kullanıcıda namespace listesi bir daha hazırlanmıyordu (tekrar tetikleme koruması aynı anahtarı görüyordu). Koruma geri dönüşte sıfırlanır.
+- Bir uygulama taraması yapıldıktan sonra "Geri" ve "sepete ekle" uygulama ekranından çıkmıyordu; kullanıcı başka namespace seçemiyordu. Sayfa yenilenince taranan namespace'e dönülmesi için konan geri düşüş, kullanıcı açıkça geri döndüğünde de çalışıyordu. Artık yalnız henüz seçim yapılmamışken çalışır.
+
+### Fixed (Denetim › Init / Deployment script sapması, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Veri okunamayınca ekranın tamamı tek bir hata kutusuna dönüyordu; kök seçimi ve "Yenile" de kayboluyordu. Okunamayan bir köke (ör. `/vhosting8`) geçen kullanıcı sayfayı yenilemeden önceki köke dönemiyordu. Artık araç çubuğu yerinde kalır; özet ve tabloların yerine "okunamadı" ve sebebi gösterilir ("Tekrar dene"). Önceki kökün verisi yeni kökün altında gösterilmez.
+
+### Fixed (Otomasyon › servis formu, 2026-11-27; PR-2 testlerinin bulduğu iki hata)
+- İş geçmişi penceresi, geçmiş okunamayınca ("ok: false" yanıtı ya da düşen istek) "Son 30 günde iş yok." diyordu; düşen istek ayrıca yakalanmıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Formu Temizle" dokunulmamış formda da açık gelebiliyordu. Şablonun varsayılan değeri ya da AWX'in kapalı çalışma zamanı seçeneklerindeki mevcut değer (ör. verbosity 1, job type check) "doldurulmuş" sayılıyordu; basınca aynı değerler geri geliyor, ekranda hiçbir şey değişmiyordu. Düğme artık yalnız form açılıştakinden farklıysa açık.
+
+### Fixed (Nginx Hub › Konfigürasyon, 2026-11-27; PR-2 testlerinin bulduğu beş hata)
+- Dashboard, Instances, Kullanılmayan, Tutarlılık ve CIS'ten "Konfigürasyon'da aç" sunucuyu seçmiyordu; sekme boş açılıyordu. 2026-11-14'teki lint düzeltmesinde `useEffect` "önceki değer" kalıbına çevrilmiş, kalıp yalnız değişimi yakalıyor, ilk açılışı yakalamıyordu. Gelen sunucu artık ilk değer.
+- Sunucu ağacı okunamazsa ekranda önceki sunucunun ağacı kalıyor, tıklanan dosya yeni sunucudan isteniyordu. Artık ağaç boşalır; "okunamadı" ayrı gösterilir ve yeniden denenebilir.
+- Sürüm geçmişi okunamayınca "Henüz kayıt yok" yazıyordu. Geçmiş ucu "Değişiklikler" sekmesine bağlı; o sekmesi kapalı kullanıcı 403 alıyordu. Ağ hatasında da ekran yükleniyor'da kalıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Diğer sunucularda" karşılaştırması okunamazsa düğme hiçbir şey yapmıyordu; artık hata bildirilir.
+- Salt okunur kullanıcı ağaç panelinde "Yenile" görüyordu; sunucu `/refresh`'i Admin dışına 403 ile kapattığı için her seferinde reddediliyordu. Düğme artık yalnız Admin'de; sol paneldeki döküm araçlarıyla aynı.
+
+### Fixed (üst üste pencerelerde ESC, 2026-11-27)
+
+- Bir pencerenin içinden açılan onay katmanı ya da ikinci pencere, ESC dinleyicisini çizildikten sonra kaydediyordu (`useEffect`). Açıldığı ilk karelerde basılan ESC alttaki pencereyi kapatıyordu: kullanıcı onayı kapatmak isterken bütün kayıt penceresini kaybediyordu. CI'da Retirement RE8 testi yük altında tam bu araya düşüp `main`'i kırmızı yaptı.
+- `useEscIleKapat` (`common/pencereKlavye.ts`) ve `Modal` yığına ve klavyeye artık layout efektinde, çizimden önce giriyor. Test: `katman-esc-ilk-kare` (EK1-EK3; ESC'yi yeni katmanın ilk karesinde basar; her düzeltme geri alınınca kendi testi kırmızı).
+
 ### Changed (Intranet SPA: geçiş takvimi, 2026-11-27)
 
 - Intranet SPA sayfası (`/ark-spa/intranet-spa`) yalnız geçiş takvimini gösteriyor: `set`, `gecis_tarihi`, `sira`, `ekip`, `ekip_eposta`, `namespace`, `uygulama`, `route_adresleri`, `dynatrace_durumu`, `dynatrace_istek`, `aciklama`, bu sırayla (Pilot, Set 1..N; set içinde sıra). Süzgeç: set, ekip, metin; CSV aynı 11 sütun. Kaldırılan bölümler: ekip beyanı, değerlendirme, özet kutuları, intranet sunucu kurulumu ve ayrıntı satırı. Paket kurulumu bölümü (`IntranetPaketKurulum`, yalnız Admin) takvim listesinin altında kalıyor (kullanıcı kararı: zincir geri kondu).

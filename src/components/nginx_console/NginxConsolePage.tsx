@@ -553,9 +553,15 @@ function ConfigTab({
   const [q, setQ] = useState('');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [openSvc, setOpenSvc] = useState<Set<string>>(new Set());
-  const [cur, setCur] = useState<string | null>(null);
+  // ACILISTA GELEN SUNUCU (2026-11-27): Dashboard / Instances / Kullanilmayan / Tutarlilik / CIS'ten "ac"
+  // bu sekmeyi YENI baglar; sunucu ilk degerden gelir. 2026-11-14'te useEffect -> "onceki deger" kalibina
+  // gecilince yalniz DEGISIM yakalaniyordu ve gelinen sunucu hic secilmiyordu (sekme bos aciliyordu).
+  const [cur, setCur] = useState<string | null>(initialHost);
   const [tree, setTree] = useState<NcTree | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
+  // OKUNAMADI != DOKUM YOK (2026-11-27): agac ucu duserse eskiden ONCEKI sunucunun agaci ekranda kaliyor,
+  // tiklanan dosya yeni sunucudan isteniyordu. Hata ayri gosterilir, agac bosaltilir.
+  const [treeErr, setTreeErr] = useState<string | null>(null);
   const [file, setFile] = useState<NcFile | null>(null);
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState<'update' | 'create'>('update');
@@ -597,8 +603,12 @@ function ConfigTab({
 
   const loadTree = useCallback(async (h: string) => {
     setTreeLoading(true);
+    setTreeErr(null);
     try {
       setTree(await nginxConsoleApi.tree(h));
+    } catch (e) {
+      setTree(null);
+      setTreeErr(e instanceof Error ? e.message : String(e));
     } finally {
       setTreeLoading(false);
     }
@@ -1023,7 +1033,10 @@ function ConfigTab({
         dense
         title={cur ? <span className="font-mono">{cur}</span> : 'Konfigürasyon ağacı'}
         actions={
-          cur && (
+          // Dokum yenileme ve yeni dosya yalniz Admin (2026-11-27): sunucu /refresh'i Admin disina 403 ile
+          // kapatir; salt okunur kullaniciya her seferinde reddedilen bir "Yenile" gosteriliyordu.
+          cur &&
+          isAdmin && (
             <div className="flex items-center gap-1">
               <button
                 disabled={busy}
@@ -1035,20 +1048,18 @@ function ConfigTab({
                 <ArrowPathIcon className="w-3.5 h-3.5" />
                 Yenile
               </button>
-              {isAdmin && (
-                <button
-                  disabled={busy || !tree?.dumped}
-                  onClick={() => {
-                    setNewModal(true);
-                  }}
-                  className={SM_BTN}
-                  style={smBtn()}
-                  title="Bu sunucuda yeni konfigürasyon dosyası"
-                >
-                  <DocumentPlusIcon className="w-3.5 h-3.5" />
-                  Yeni dosya
-                </button>
-              )}
+              <button
+                disabled={busy || !tree?.dumped}
+                onClick={() => {
+                  setNewModal(true);
+                }}
+                className={SM_BTN}
+                style={smBtn()}
+                title="Bu sunucuda yeni konfigürasyon dosyası"
+              >
+                <DocumentPlusIcon className="w-3.5 h-3.5" />
+                Yeni dosya
+              </button>
             </div>
           )
         }
@@ -1056,6 +1067,16 @@ function ConfigTab({
         <div className="p-2 max-h-[75vh] overflow-auto text-xs">
           {!cur && <div style={{ color: 'var(--text-muted)' }}>Soldan bir sunucu seçin.</div>}
           {cur && treeLoading && <LoadingLogo compact />}
+          {cur && treeErr && (
+            <LoadError
+              compact
+              title="Konfigürasyon ağacı okunamadı"
+              message={treeErr}
+              onRetry={() => void loadTree(cur)}
+              retrying={treeLoading}
+              testId="nc-agac-hata"
+            />
+          )}
           {cur && tree && !tree.dumped && <div className="text-amber-700">{tree.message}</div>}
           {cur && tree?.dumped && (
             <>
@@ -1129,8 +1150,14 @@ function ConfigTab({
                 <>
                   <button
                     onClick={async () => {
-                      const r = await nginxConsoleApi.compare(file.path);
-                      if (r.ok) setCompare(r);
+                      // Okunamazsa bildirilir (2026-11-27): eskiden dugme hicbir sey yapmiyordu.
+                      try {
+                        const r = await nginxConsoleApi.compare(file.path);
+                        if (r.ok) setCompare(r);
+                        else toast.error(r.message || 'Karşılaştırma okunamadı.');
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : String(e));
+                      }
                     }}
                     className={SM_BTN}
                     style={smBtn()}
@@ -1780,12 +1807,24 @@ function FileHistory({
     la: string;
     lb: string;
   } | null>(null);
-  useAsyncEffect(async () => {
+  // OKUNAMADI != KAYIT YOK (2026-11-27): gecmis ucu "Degisiklikler" sekmesine bagli; o sekmesi kapali
+  // kullanici 403 aliyordu, ekran "Henuz kayit yok" diyordu. Ag hatasinda da yukleniyor'da kaliyordu.
+  const [hata, setHata] = useState<string | null>(null);
+  const yukle = useCallback(async () => {
     setVersions(null);
     setSel(null);
-    const r = await nginxConsoleApi.history(host, path);
-    setVersions(r.ok ? r.versions : []);
+    setHata(null);
+    try {
+      const r = await nginxConsoleApi.history(host, path);
+      if (r.ok) setVersions(r.versions);
+      else setHata(r.message || '');
+    } catch (e) {
+      setHata(e instanceof Error ? e.message : String(e));
+    }
   }, [host, path]);
+  useAsyncEffect(async () => {
+    await yukle();
+  }, [yukle]);
   const restore = async (sha: string) => {
     const r = await nginxConsoleApi.blob(sha);
     if (!r.ok) {
@@ -1805,7 +1844,16 @@ function FileHistory({
           — yalnız değişiklikler kayıtlıdır (Git gibi); "fark" = önceki sürümle
         </span>
       </div>
-      {versions === null && <LoadingLogo compact />}
+      {hata !== null && (
+        <LoadError
+          compact
+          title="Sürüm geçmişi okunamadı"
+          message={hata}
+          onRetry={yukle}
+          testId="nc-gecmis-hata"
+        />
+      )}
+      {hata === null && versions === null && <LoadingLogo compact />}
       {versions && versions.length === 0 && (
         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
           Henüz kayıt yok — ilk dokumdan sonra oluşur.
