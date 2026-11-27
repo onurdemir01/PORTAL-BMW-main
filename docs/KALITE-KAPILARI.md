@@ -48,7 +48,7 @@ gerçek ad listesi repoya girmez. Kurallar:
 
 - **Sunucu adı:** kurum önekli ad ve ad kalıbı (`<önek>RVP*`, kısa host etiketi). Harf tutarlı; karışık
   harfli base64 yanlış pozitif vermez.
-- **Alan adı:** `.com.tr` ile biten alan adı, regex içindeki kaçışlı biçimi de.
+- **Alan adı:** `.com.tr` ile biten alan adı, regex içindeki kaçışlı biçimi de; LDAP DN biçimi (`DC=<ad>,DC=com,DC=tr`, boşluklu ve küçük harfli de). Kurum adının DN bileşeni (`DC=<marka>`) bileşik kimlik sayılır. Örnek DN: `CN=ekip,OU=Groups,DC=ornek,DC=invalid`.
 - **Kurum adı (2026-11-21):** ad yazılmaz, sözcüklerin sha256 özeti karşılaştırılır. Yasak olanlar:
   ayırt edici sözcükler, bileşik kimlikte marka parçası (`<marka>_values`), "<marka> <unvan>" ikilisi.
   Marka sözcüğü tek başına sıradan bir Türkçe sözcük olduğu için serbesttir.

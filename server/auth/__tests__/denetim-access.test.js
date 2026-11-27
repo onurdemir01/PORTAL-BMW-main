@@ -29,14 +29,11 @@ test('grup kurali: DN ya da CN ile eslesir; user kurali gruptan, grup rolden ust
   const user = {
     username: 'ademir',
     role: 'User',
-    groups: [
-      'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr',
-      'CN=Herkes,OU=Groups,DC=x',
-    ],
+    groups: ['CN=GT-Middleware,OU=Groups,DC=ornek,DC=invalid', 'CN=Herkes,OU=Groups,DC=x'],
   };
   const gk = groupKeysOf(user);
   assert.ok(
-    gk.has('gt-middleware') && gk.has('cn=gt-middleware,ou=groups,dc=fw,dc=garanti,dc=com,dc=tr'),
+    gk.has('gt-middleware') && gk.has('cn=gt-middleware,ou=groups,dc=ornek,dc=invalid'),
     'CN ve tam DN anahtarlari',
   );
   const idx = (rules) => buildRuleIndex(rules);
@@ -68,7 +65,7 @@ test('grup kurali: DN ya da CN ile eslesir; user kurali gruptan, grup rolden ust
         {
           element_key: 'Denetim',
           principal_type: 'group',
-          principal_id: 'cn=gt-middleware,ou=groups,dc=fw,dc=garanti,dc=com,dc=tr',
+          principal_id: 'cn=gt-middleware,ou=groups,dc=ornek,dc=invalid',
           allow: 1,
         },
       ]),
