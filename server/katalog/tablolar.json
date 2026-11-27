@@ -83,7 +83,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu (env AWX_1..9)",
-        "dosya": "server/db/mssql-setup.cjs:4352",
+        "dosya": "server/db/mssql-setup.cjs:4405",
         "nasil": "satır yoksa INSERT (tohumlama)",
         "ne_zaman": "Portal açılışında"
       },
@@ -268,7 +268,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu (varsayılan kayıt listesi)",
-        "dosya": "server/db/mssql-setup.cjs:4192",
+        "dosya": "server/db/mssql-setup.cjs:4245",
         "nasil": "yoksa INSERT (silinenler listesindekiler hariç)",
         "ne_zaman": "Portal açılışında"
       },
@@ -327,7 +327,7 @@
     "okuyanlar": [
       {
         "ad": "Açılış tohumlama (atlanacaklar)",
-        "dosya": "server/db/mssql-setup.cjs:4162"
+        "dosya": "server/db/mssql-setup.cjs:4215"
       },
       {
         "ad": "Silinen varsayılanlar listesi",
@@ -559,6 +559,81 @@
     ],
     "saklama": "Silinmez; satır sayısı küçük (yalnız elle başlatılan kurulum işleri, iş başına en çok 50 kalem x 8 sunucu).",
     "notlar": "Kurulum durumu (tamam / yok) bu tablodan değil gece dizin taramasından (dbo.Nginx_Intranet_Audit) gelir.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
+    "tablo": "intranet_spa_takvim",
+    "amac": "Intranet SPA geçiş takvimi: (set, namespace, uygulama) başına geçiş tarihi, set içi sıra ve yüklenen listenin ekip / e-posta / route / Dynatrace / açıklama değerleri (her uygulama DC başına bir satır); satır sürümü (409 kilidi).",
+    "alan": "Nginx Denetim",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "Intranet SPA > takvim yükle (Admin, CSV)",
+        "dosya": "server/spa-report/intranet-takvim.cjs:775",
+        "nasil": "tek transaction içinde tüm satırlar DELETE + 50'lik parçalarla INSERT (yükleme kilidi UPDLOCK ile denetlenir)",
+        "ne_zaman": "Admin sayfadan takvim CSV'sini yükleyip onayladığında"
+      },
+      {
+        "tur": "portal",
+        "ad": "Intranet SPA > geçiş tarihi düzeltme (Admin, tek satır)",
+        "dosya": "server/spa-report/intranet-takvim.cjs:831",
+        "nasil": "surum koşullu UPDATE (set, namespace, uygulama)",
+        "ne_zaman": "Admin bir uygulamanın geçiş tarihini değiştirdiğinde"
+      },
+      {
+        "tur": "portal",
+        "ad": "Intranet SPA > set tarihi yayılımı (set planı düzeltmesi ya da plan yüklemesi)",
+        "dosya": "server/spa-report/intranet-takvim.cjs:589",
+        "nasil": "setin tarihi farklı satırlarına UPDATE (UPDLOCK; set düzeltmesinde setin her satırının sürümü denetlenir)",
+        "ne_zaman": "Admin setin tarihini değiştirdiğinde ya da tarihi değişen set planını yüklediğinde"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Intranet SPA sayfası (takvim + canlı rapor birleştirme)",
+        "dosya": "server/spa-report/intranet-takvim.cjs:409"
+      },
+      {
+        "ad": "Set planı önizleme / yükleme kilidi (taşınacak satır sayısı)",
+        "dosya": "server/spa-report/intranet-set-plani.cjs:109"
+      }
+    ],
+    "saklama": "Silinmez; her takvim yüklemesi takvimin tamamının yerine geçer (yüzlerce satır). Set planı yüklemesi satır silmez.",
+    "notlar": "set / geçiş tarihi / sıra yalnız bu tablodan; diğer alanlar canlı raporda eşleşen uygulamada canlıdan gösterilir. Set başına tarih / DC / IP intranet_spa_set_plani tablosunda.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
+    "tablo": "intranet_spa_set_plani",
+    "amac": "Intranet SPA geçiş set planı: set başına geçiş tarihi, DC, eski ve yeni IP; satır sürümü (409 kilidi). Uygulama sayısı / pay / yüzde tutulmaz, ekran takvim satırlarından hesaplar.",
+    "alan": "Nginx Denetim",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "Intranet SPA > set planı yükle (Admin, CSV)",
+        "dosya": "server/spa-report/intranet-set-plani.cjs:196",
+        "nasil": "tek transaction içinde DELETE + INSERT (plan + takvim kilidi UPDLOCK ile denetlenir); tarihi değişen setlerin takvim satırları taşınır",
+        "ne_zaman": "Admin sayfadan set planı CSV'sini yükleyip onayladığında"
+      },
+      {
+        "tur": "portal",
+        "ad": "Intranet SPA > Set ilerlemesi satır düzenleme (Admin)",
+        "dosya": "server/spa-report/intranet-set-plani.cjs:248",
+        "nasil": "surum koşullu UPDATE ya da yoksa INSERT (en büyük sürüm + 1)",
+        "ne_zaman": "Admin bir setin tarih / DC / IP alanını değiştirdiğinde"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Intranet SPA sayfası (GET takvim yanıtındaki plan) ve önizlemeler",
+        "dosya": "server/spa-report/intranet-set-plani.cjs:82"
+      }
+    ],
+    "saklama": "Silinmez; her plan yüklemesi planın tamamının yerine geçer (onlarca satır).",
+    "notlar": "DC adı veridir (kodda sabit yok). Takvim yüklemesi planı silmez.",
     "kullanilmiyor": false,
     "guven": "KESIN"
   },
@@ -1006,7 +1081,7 @@
       {
         "tur": "portal",
         "ad": "Kurulum seed (seedSplunkProducts)",
-        "dosya": "server/db/mssql-setup.cjs:4414",
+        "dosya": "server/db/mssql-setup.cjs:4467",
         "nasil": "bossa SPLUNK_PRODUCTS'tan INSERT",
         "ne_zaman": "Ilk kurulum"
       }
@@ -1184,7 +1259,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu (kod varsayılanları)",
-        "dosya": "server/db/mssql-setup.cjs:4389",
+        "dosya": "server/db/mssql-setup.cjs:4442",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
@@ -1696,7 +1771,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu",
-        "dosya": "server/db/mssql-setup.cjs:2514",
+        "dosya": "server/db/mssql-setup.cjs:2567",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
@@ -1728,7 +1803,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu",
-        "dosya": "server/db/mssql-setup.cjs:4426",
+        "dosya": "server/db/mssql-setup.cjs:4479",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
@@ -1758,8 +1833,8 @@
     "alan": "LogX",
     "yazanlar": [],
     "okuyanlar": [],
-    "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4815-4829)",
-    "notlar": "Olu/miras tablo. inventory_hosts'a FOREIGN KEY tutuyordu (mssql-setup.cjs:4810-4814). Envanter ekraninda gizli (server/inventory/index.cjs:21). Kalan anmalar yalniz yorum: server/logx/index.cjs:4, server/logx/v2/restrictions.cjs:4, mssql-setup.cjs:489. mssql-setup.cjs:28-33 yorumu ile 4815 DROP dongusu celisiyor.",
+    "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4868-4880)",
+    "notlar": "Olu/miras tablo. inventory_hosts'a FOREIGN KEY tutuyordu (mssql-setup.cjs:4863-4865). Envanter ekraninda gizli (server/inventory/index.cjs:21). Kalan anmalar yalniz yorum: server/logx/index.cjs:4, server/logx/v2/restrictions.cjs:4, mssql-setup.cjs:489. mssql-setup.cjs:28-33 yorumu ile 4815 DROP dongusu celisiyor.",
     "kullanilmiyor": true,
     "guven": "KESIN"
   },
@@ -1770,8 +1845,8 @@
     "alan": "LogX",
     "yazanlar": [],
     "okuyanlar": [],
-    "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4815-4829)",
-    "notlar": "Olu/miras tablo. mssql-setup.cjs icinde CREATE yok; yalniz acilista silme dongusu var (mssql-setup.cjs:4810-4829, gerekce: inventory_hosts'a FOREIGN KEY tutuyor, inventory_hosts satiri silinirken FK hatasi veriyordu). Celiskili yorum: mssql-setup.cjs:28-33 'DROP TABLE hicbir zaman burada calistirilmaz' diyor ama 4815'teki dongu DROP calistiriyor. Envanter ekraninda gizli tutulur (server/inventory/index.cjs:19 BLOCKED_TABLES). server/db/portal-mssql.cjs:2 dosya basi yorumu hala bu tabloyu anar (bayat). docs/SCALABILITY.md:92 de bayat.",
+    "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4868-4880)",
+    "notlar": "Olu/miras tablo. mssql-setup.cjs icinde CREATE yok; yalniz acilista silme dongusu var (mssql-setup.cjs:4863-4880, gerekce: inventory_hosts'a FOREIGN KEY tutuyor, inventory_hosts satiri silinirken FK hatasi veriyordu). Celiskili yorum: mssql-setup.cjs:28-33 'DROP TABLE hicbir zaman burada calistirilmaz' diyor ama 4815'teki dongu DROP calistiriyor. Envanter ekraninda gizli tutulur (server/inventory/index.cjs:19 BLOCKED_TABLES). server/db/portal-mssql.cjs:2 dosya basi yorumu hala bu tabloyu anar (bayat). docs/SCALABILITY.md:92 de bayat.",
     "kullanilmiyor": true,
     "guven": "KESIN"
   },
@@ -2487,7 +2562,7 @@
       }
     ],
     "saklama": "anlik goruntu (cluster başına tek satır)",
-    "notlar": "Token içerir. Asıl katalog ocp_cluster_index; bu tablo eski katalog, birleştirme sürüyor (mssql-setup.cjs:5184).",
+    "notlar": "Token içerir. Asıl katalog ocp_cluster_index; bu tablo eski katalog, birleştirme sürüyor (mssql-setup.cjs:5237).",
     "kullanilmiyor": false,
     "guven": "KESIN"
   },
@@ -3069,7 +3144,7 @@
       {
         "tur": "portal",
         "ad": "Kurulum seed",
-        "dosya": "server/db/mssql-setup.cjs:4544",
+        "dosya": "server/db/mssql-setup.cjs:4597",
         "nasil": "bossa 3 varsayilan grup INSERT",
         "ne_zaman": "Ilk kurulum"
       }
@@ -3118,7 +3193,7 @@
       {
         "tur": "portal",
         "ad": "Kurulum gocu (section -> group_id)",
-        "dosya": "server/db/mssql-setup.cjs:4548",
+        "dosya": "server/db/mssql-setup.cjs:4601",
         "nasil": "tek seferlik UPDATE (varsa)",
         "ne_zaman": "Kurulum/boot"
       }
@@ -5639,7 +5714,7 @@
       },
       {
         "ad": "SPA raporu (intranet) - Nginx Konsol SPA keşfi (spaKesfiPaylas) üzerinden",
-        "dosya": "server/spa-report/intranet.cjs:368",
+        "dosya": "server/spa-report/intranet.cjs:374",
         "uzerinden": "server/nginx-console/index.cjs"
       }
     ],

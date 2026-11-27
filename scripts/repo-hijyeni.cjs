@@ -15,8 +15,10 @@
 //      yukledigi modul olu koddur.
 //
 // "Anma" = dosyanin yolu ya da uzantili taban adi metinde gecer; modul icin ayrica uzantisiz import
-// belirteci ('@/utils/x', '../x'). kalite/kapsam/ (uretilen kapsam raporu tum dosyalari listeler) ve
-// CHANGELOG.md (tarihce; anmasi kullanim degildir) referans kaynagi sayilmaz.
+// belirteci ('@/utils/x', '../x'). kalite/kapsam/ (uretilen kapsam raporu tum dosyalari listeler),
+// kalite/teslim.json (uretilen teslim imzasi her izlenen dosyanin yolunu tasir; sayilsaydi her modul
+// 'anilmis' olur, olu kod kurali hic tetiklenmezdi; 2026-11-27'de bileseni silinmis bir modul
+// boyle gorulmedi) ve CHANGELOG.md (tarihce; anmasi kullanim degildir) referans kaynagi sayilmaz.
 //
 // Kullanim: node scripts/repo-hijyeni.cjs   (yetim varsa listeler, exit 1)
 
@@ -42,7 +44,8 @@ const YALNIZ_TEST_IZINLI = new Map([
 ]);
 
 /** Referans kaynagi SAYILMAYAN dosyalar. */
-const REFERANS_DEGIL = (f) => f.startsWith('kalite/kapsam/') || f === 'CHANGELOG.md';
+const REFERANS_DEGIL = (f) =>
+  f.startsWith('kalite/kapsam/') || f === 'kalite/teslim.json' || f === 'CHANGELOG.md';
 
 const testMi = (f) => /(^|\/)__tests__\/|\.test\.|^src\/test\//.test(f);
 const belgeKapsami = (f) =>

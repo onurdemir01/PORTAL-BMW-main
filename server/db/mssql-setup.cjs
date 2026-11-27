@@ -1679,6 +1679,59 @@ const TABLES = [
       )`,
   },
   {
+    // Intranet SPA gecis takvimi (2026-11-27, server/spa-report/intranet-takvim.cjs): Admin'in
+    // yukledigi CSV; yukleme takvimin tamaminin yerine gecer (set planina dokunmaz). Anahtar (set,
+    // namespace, uygulama): her uygulama DC basina bir satir. surum her yazimda +1 (409 kilidi).
+    // gecis_tarihi Admin tarafindan tek satir ya da set planindan set toplu duzeltilir; elle_tarih
+    // yalniz tek satir duzeltmesinde 1 (set tarihi yayilimi ve yukleme 0 yazar).
+    name: 'intranet_spa_takvim',
+    sql: `
+      CREATE TABLE intranet_spa_takvim (
+        id               INT IDENTITY(1,1) PRIMARY KEY,
+        set_adi          NVARCHAR(16)   NOT NULL,
+        set_sira         INT            NOT NULL,
+        gecis_tarihi     DATE           NOT NULL,
+        sira             INT            NOT NULL,
+        namespace        NVARCHAR(63)   NOT NULL,
+        uygulama         NVARCHAR(253)  NOT NULL,
+        ekip             NVARCHAR(1000),
+        ekip_eposta      NVARCHAR(2000),
+        route_adresleri  NVARCHAR(4000),
+        dynatrace_durumu NVARCHAR(100),
+        dynatrace_istek  NVARCHAR(32),
+        aciklama         NVARCHAR(1000),
+        yukleme_id       NVARCHAR(36)   NOT NULL,
+        yukleyen         NVARCHAR(255),
+        yukleme_zamani   DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+        surum            INT            NOT NULL DEFAULT 1,
+        guncelleyen      NVARCHAR(255),
+        elle_tarih       BIT            NOT NULL DEFAULT 0,
+        guncelleme       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_intranet_spa_takvim UNIQUE (set_adi, namespace, uygulama)
+      )`,
+  },
+  {
+    // Intranet SPA set plani (2026-11-27, server/spa-report/intranet-set-plani.cjs): set basina gecis
+    // tarihi, DC, eski / yeni IP. Admin sayfadan duzenler ya da CSV yukler (yukleme planin yerine
+    // gecer, takvimi silmez); set tarihi degisince setin takvim satirlari da o tarihe gecer.
+    // Uygulama sayisi / pay / yuzde burada TUTULMAZ: ekran takvim satirlarindan hesaplar.
+    name: 'intranet_spa_set_plani',
+    sql: `
+      CREATE TABLE intranet_spa_set_plani (
+        id           INT IDENTITY(1,1) PRIMARY KEY,
+        set_adi      NVARCHAR(16)  NOT NULL,
+        set_sira     INT           NOT NULL,
+        gecis_tarihi DATE          NOT NULL,
+        dc           NVARCHAR(64),
+        eski_ip      VARCHAR(15),
+        yeni_ip      VARCHAR(15),
+        surum        INT           NOT NULL DEFAULT 1,
+        guncelleyen  NVARCHAR(255),
+        guncelleme   DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_intranet_spa_set_plani UNIQUE (set_adi)
+      )`,
+  },
+  {
     // BMW Hub is gecmisi: notlar + otomatik kayitlar (olusturma, durum/sahip/tarih degisimi).
     name: 'bmw_hub_notlar',
     sql: `
