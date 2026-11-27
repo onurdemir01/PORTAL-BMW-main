@@ -4,6 +4,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Otomasyon › servis formu, 2026-11-27; PR-2 testlerinin bulduğu iki hata)
+- İş geçmişi penceresi, geçmiş okunamayınca ("ok: false" yanıtı ya da düşen istek) "Son 30 günde iş yok." diyordu; düşen istek ayrıca yakalanmıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Formu Temizle" dokunulmamış formda da açık gelebiliyordu. Şablonun varsayılan değeri ya da AWX'in kapalı çalışma zamanı seçeneklerindeki mevcut değer (ör. verbosity 1, job type check) "doldurulmuş" sayılıyordu; basınca aynı değerler geri geliyor, ekranda hiçbir şey değişmiyordu. Düğme artık yalnız form açılıştakinden farklıysa açık.
+
 ### Fixed (Nginx Hub › Konfigürasyon, 2026-11-27; PR-2 testlerinin bulduğu beş hata)
 - Dashboard, Instances, Kullanılmayan, Tutarlılık ve CIS'ten "Konfigürasyon'da aç" sunucuyu seçmiyordu; sekme boş açılıyordu. 2026-11-14'teki lint düzeltmesinde `useEffect` "önceki değer" kalıbına çevrilmiş, kalıp yalnız değişimi yakalıyor, ilk açılışı yakalamıyordu. Gelen sunucu artık ilk değer.
 - Sunucu ağacı okunamazsa ekranda önceki sunucunun ağacı kalıyor, tıklanan dosya yeni sunucudan isteniyordu. Artık ağaç boşalır; "okunamadı" ayrı gösterilir ve yeniden denenebilir.
