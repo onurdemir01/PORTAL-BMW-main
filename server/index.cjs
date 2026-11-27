@@ -224,6 +224,11 @@ async function main() {
       optional: true,
     },
     {
+      name: 'kurumAyari',
+      init: () => require('./admin/kurum-ayari-duzenle.cjs').initKurumAyariDuzenle(app),
+      optional: true,
+    },
+    {
       name: 'branding',
       init: () => {
         const b = require('./admin/branding.cjs');

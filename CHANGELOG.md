@@ -4,6 +4,27 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (main kirmizi: Kurum Ayari testleri, 2026-11-27)
+- PR'sız `5f222cb5` (Admin › Kurum Ayarı) `main`'i iki yerden kırmızı yaptı. Düzeltme yalnız testte; üretim kodu değişmedi.
+  - **CI'da (TY1):** yeni uç testi sunucuyu host'suz `listen(0)` ile açıyordu (macOS'ta aralıklı yanlış süreç). Sunucu artık `127.0.0.1`'e bağlanıyor.
+  - **Yerel kapıda (K8, macOS):** fikstürün geçici dizini çözülmemiş yoldu. `os.tmpdir()` macOS'ta `/var` → `/private/var` sembolik bağı; modül dosyayı `realpath` ile çözdüğü için yol karşılaştıran sahteler hiç tetiklenmiyor, KA12 / KA19 / KA23 düşüyordu. Linux CI bunu görmez. Fikstür dizinleri artık gerçek yol.
+
+### Added (Admin › Kurum Ayarı, 2026-11-27; PR'sız `5f222cb5`, bu girdi sonradan)
+- `KURUM_AYAR_DOSYASI` Portal'dan düzenlenir (yalnız Admin): bölüm ya da tüm dosya, kaydetmeden önce zorunlu fark ön izlemesi, son 30 yedekten geri dönüş.
+- Uç `/api/admin/kurum-ayari`:
+  - sha kilidi (409);
+  - atomik yazma;
+  - 0700 / 0600 yedek;
+  - silme onayı (428);
+  - geçersiz sunucu adı reddi;
+  - boyut ve derinlik sınırı, kullanıcı başına yazma sınırı;
+  - repo içindeki dosyaya yazmaz;
+  - denetim kaydı (anahtar yolları, değer yok).
+- Belge: [docs/KURUM-AYARI.md](docs/KURUM-AYARI.md).
+
+### Security (kurum ic adi: LDAP DN korlugu, 2026-11-26)
+- K17 kurum alan adını LDAP DN biçiminde (`DC=<ad>,DC=com,DC=tr`) görmüyordu: noktalı desen bileşenlere bölünmüş adı yakalamıyor, kurum adı da `,DC=` ayırıcısı yüzünden bileşik sayılmıyordu. Bu yüzden kurumun AD alan adı yedi dosyada duruyordu: üretim LDAP servis hesabı ve grup DN'leri (`server/ansible/NEEDS.md`), iki ekran örneği (`TabAccessPanel`, ortam değişkenleri) ve dört test. Bekçi iki biçimi de yakalıyor (mutasyonla sınandı); geçişler kurgusal `DC=ornek,DC=invalid`'e çevrildi. Değerler git geçmişinde duruyor; geçmişin yeniden yazımı ayrı (onay bekliyor).
+
 ### Changed (kalite: kapsam esik merdiveni, PR-2, 2026-11-26)
 - Kapsam eşikleri sıkılaştı: yerel satır kapsamı (K9) %80 → %85, Sonar kapsam koşulu (K13 / K15) %75 → %78. #329-#333'ün davranış testleri sonrası main: yerel satır %86,6, dal %71,9; kurumsal Sonar kapsamı 81,4 (K13 80,6). Taban (`server/__tests__/kalite-kapilari.test.js`) aynı değerlere çekildi; eşikler yalnız sıkılaşır.
 - Yeni davranış testleri (PR-2b..2f): AWX runner Self Service / Smart / OCO / AWX sunucu uçları gerçek `initAnsibleRunner` ile koşuyor (önceki "handler'ı kaynaktan çıkar" testleri kapsam saymıyordu); Retirement, ScaleX, envanter, DB kurulum / bakım, Nginx CIS / Audit uçları; ekranlar: AI Analist, Nginx Audit / API / CIS / kullanılmayan dosyalar / sunucu sayfası, Crypto Hub işlemleri ve ön onay, Telnet ve OpsX sihirbazları, Ansible, Admin › ScaleX, Self Servis taşıma detayı ve pencereleri.

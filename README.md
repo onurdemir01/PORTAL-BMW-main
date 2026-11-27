@@ -26,6 +26,7 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 | Doküman | İçerik |
 |---|---|
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | **RHEL 8/9 production kurulumu** — adım adım |
+| [docs/KURUM-AYARI.md](docs/KURUM-AYARI.md) | **Kurum ayarı** (`KURUM_AYAR_DOSYASI`) — biçim, Portal'dan düzenleme, yedek ve geri dönüş |
 | [docs/DATABASE.md](docs/DATABASE.md) | **MSSQL semasi** — tum tablolar ve kalicilik modeli |
 | [docs/SETUP-SIMPLE.md](docs/SETUP-SIMPLE.md) | Yerel gelistirme kurulumu |
 | [docs/MCP-SETUP.md](docs/MCP-SETUP.md) | Dynatrace/Instana MCP bağlantı kurulumu + TLS |
@@ -128,7 +129,7 @@ LDAP erişilemediğinde veya geliştirme ortamında kullanılır.
 | Değişken | Açıklama | Örnek |
 |----------|----------|-------|
 | `LDAP_URL` | LDAP sunucu URL | `ldaps://adds.sirket.invalid:636` |
-| `LDAP_BASE_DN` | Arama tabanı | `DC=sirket,DC=com,DC=tr` |
+| `LDAP_BASE_DN` | Arama tabanı | `DC=sirketim,DC=invalid` |
 | `LDAP_BIND_DN` | Servis hesabı DN | `CN=svc,OU=Users,DC=...` |
 | `LDAP_BIND_PASSWORD` | Servis hesabı şifresi | |
 | `LDAP_REJECT_UNAUTHORIZED` | SSL sertifika doğrulama | `false` (self-signed için) |

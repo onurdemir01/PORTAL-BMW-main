@@ -2,14 +2,15 @@
 //
 // Ornekler calisma aninda birlestirilir (sir-tarama testleriyle ayni yol): bu dosyanin kendisi bekcinin
 // --tum taramasina girer ve gercek bicimde bir ad tasimamalidir.
-//   IA1 her desen kendi ornegini yakalar (buyuk / kucuk harf sunucu, istirak OCP, .com.tr alan adi)
+//   IA1 her desen kendi ornegini yakalar (buyuk / kucuk harf sunucu, istirak OCP, .com.tr alan adi; alan adinin
+//       LDAP DN bicimi `DC=<ad>,DC=com,DC=tr`, bosluklu ve kucuk harfli de)
 //   IA2 kurgusal ve zararsiz bicimler bulgu DEGIL (OR oneki, *.invalid, joker *.com.tr, karisik harfli
 //       base64, rakamsiz onek, sozcuk icindeki parca)
 //   IA3 metinTara satir numarasi verir; commit mesajinda '#' satirlari atlanir; ikili dosya taranmaz
 //   IA4 CLI --mesaj: ihlalde 1, temizde 0; bulunan DEGER ciktiya yazilmaz (CI gunlugu public)
 //   IA5 kancalar ve CI bekciyi cagirir (K17 kapisi kapi.cjs'te; belge satiri kalite-kapilari.test.js'te)
-//   IA6 kurum adi mantigi KURGUSAL ozetlerle: ayirt edici sozcuk, bilesik kimlik parcasi, "<marka> <unvan>"
-//       ikilisi yakalanir; marka sozcugu TEK BASINA (siradan sozcuk) serbest
+//   IA6 kurum adi mantigi KURGUSAL ozetlerle: ayirt edici sozcuk, bilesik kimlik parcasi, DN bileseni
+//       (`DC=<marka>`), "<marka> <unvan>" ikilisi yakalanir; marka sozcugu TEK BASINA (siradan sozcuk) serbest
 //   IA7 kurum ic agi mantigi KURGUSAL ozetlerle: 10.x /16, 192.168.x /24; komsu ag, kurgusal adres, surum
 //       numarasi ve bes oktet yakalanmaz
 //   IA8 gercek ozet listeleri bos degil ve bicimi dogru (64 hane hex); ad ya da ag metni tasimaz
@@ -56,6 +57,8 @@ test('IA1 her desen kendi ornegini yakalar', () => {
     [`SERVER=${ornek.alan},1453`, [alan]],
     [`mail_from: ${ornek.eposta}`, [alan]],
     [`name: /ui\\.apps\\.fw\\.${'kurum'}\\.com\\${'.tr'}/,`, [alan]], // regex icinde kacisli
+    [`LDAP_BASE_DN=DC=fw,DC=${'kurum'},DC=com,DC=${'tr'}`, [alan]], // LDAP DN bicimi
+    [`'cn=ekip, ou=groups, dc=${'kurum'}, dc=com, dc=${'tr'}'`, [alan]], // bosluklu, kucuk harf
     [`${ornek.buyuk} -> https://${ornek.alan}`, [sunucu, alan]],
     [`ad kurali ${ONEK}NGXT.. ve ${ONEK}RVP*`, ['kurum onekli ad kalibi']], // rakamsiz kalip
     [`https://${ONEK.toLowerCase()}ca.fw.ornek.invalid`, ['kurum onekli ad kalibi']], // kisa host etiketi
@@ -78,6 +81,10 @@ test('IA2 kurgusal ve zararsiz bicimler bulgu degil', () => {
     'giris ve dagitim', // 'gi'/'da' ile baslayan siradan sozcukler
     'kolon tipi DATETIME2 ve sifre gizli123', // tek hane / uc hane: ad degil
     'ESLINT kurali ve GET01 istegi',
+    'CN=GT-Middleware,OU=Groups,DC=ornek,DC=invalid', // kurgusal DN
+    "LDAP_BASE_DN = 'dc=kurum' ve DC=corp", // tek bilesen: alan adi degil
+    'DC=kurum,DC=com', // .com.tr degil
+    'DC=kurum,DC=com,DC=trakya', // son bilesen tr degil
   ])
     assert.deepEqual(ia.satirTara(s), [], s);
 });
@@ -146,6 +153,8 @@ test('IA6 kurum adi mantigi: ayirt edici sozcuk, bilesik parca ve ikili yakalani
     '-f ./ornekmarka_values.yaml', // bilesik kimlik parcasi
     '/etc/ssl/ornekmarka-root.pem',
     'fw.ornekmarka icinde',
+    'CN=a,OU=Groups,DC=ornekmarka,DC=local', // DN bileseni
+    'dc=Ornekmarka',
     'Ornekmarka Teknoloji DMZ', // ikili
   ])
     assert.equal(var_(s), true, s);
@@ -155,6 +164,8 @@ test('IA6 kurum adi mantigi: ayirt edici sozcuk, bilesik parca ve ikili yakalani
     'ornekmarkasi var', // ek almis sozcuk bilesik degil
     'Ornekmarka  Teknoloji', // iki bosluk: ikili degil
     'teknoloji ornekmarka',
+    'xdc=ornekmarka', // sozcuk icindeki 'dc=' DN bileseni degil
+    'dc=ornekmarkasi', // ek almis sozcuk
   ])
     assert.equal(var_(s), false, s);
 });

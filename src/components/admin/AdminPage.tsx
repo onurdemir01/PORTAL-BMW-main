@@ -35,6 +35,7 @@ import {
   BookOpenIcon,
   DocumentMagnifyingGlassIcon,
   ArrowsRightLeftIcon,
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import AuditLogTab from './tabs/AuditLogTab';
 import AnsibleConfigTab from './tabs/AnsibleConfigTab';
@@ -50,6 +51,7 @@ import ScaleXAdminTab from './tabs/ScaleXAdminTab';
 import InventoryVisibilityTab from './tabs/InventoryVisibilityTab';
 import LogXAdminTab from './tabs/LogXAdminTab';
 import BrandingTab from './tabs/BrandingTab';
+import KurumAyariTab from './tabs/KurumAyariTab';
 import DbBackupTab from './tabs/DbBackupTab';
 import SmartTicketsTab from './tabs/SmartTicketsTab';
 import SelfServisTasima from './tabs/SelfServisTasima';
@@ -156,6 +158,12 @@ const DEFAULT_TABS = [
     icon: TableCellsIcon,
     hint: 'Envanter tablolarının ve sütunlarının kimlere açık olduğu.',
   },
+  {
+    id: 'kurumayari',
+    label: 'Kurum Ayarı',
+    icon: DocumentTextIcon,
+    hint: 'Kurum altyapı envanteri dosyası (KURUM_AYAR_DOSYASI): fark ön izlemeli düzenleme, yedek ve geri dönüş.',
+  },
   { id: 'branding', label: 'Logo', icon: PhotoIcon, hint: 'Portal logosu ve sekme simgesi.' },
 ] as const;
 
@@ -177,7 +185,7 @@ const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
     ids: ['playbooks', 'sstasima', 'ansible', 'logxv2', 'logx', 'scalex'],
   },
   { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup'] },
-  { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
+  { title: 'Sistem', icon: CogIcon, ids: ['system', 'kurumayari', 'branding'] },
 ];
 
 const ADMIN_TAB_PREF = 'admin_active_tab';
@@ -356,6 +364,7 @@ const AdminPage: React.FC = () => {
                 {activeTab === 'scalex' && <ScaleXAdminTab />}
                 {activeTab === 'inventoryvis' && <InventoryVisibilityTab />}
                 {activeTab === 'logx' && <LogXAdminTab />}
+                {activeTab === 'kurumayari' && <KurumAyariTab />}
                 {activeTab === 'branding' && <BrandingTab />}
               </PageErrorBoundary>
             </div>

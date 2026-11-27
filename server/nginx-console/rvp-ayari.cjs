@@ -9,6 +9,8 @@
 'use strict';
 
 const { bolum } = require('../util/kurum-ayari.cjs');
+// Sunucu adi kurali Admin > Kurum Ayari kaydiyla ortak (SUNUCU_ALANLARI nginx.rvp.*): shared/kurumAyari.cjs.
+const { SUNUCU } = require('../../shared/kurumAyari.cjs');
 
 const KUTULAR = Object.freeze([
   'arkInternetNprAcik',
@@ -19,7 +21,6 @@ const KUTULAR = Object.freeze([
   'hostingInternetNprAcik',
   'hostingInternetProd',
 ]);
-const SUNUCU = /^[A-Z][A-Z0-9-]{0,62}$/;
 const LOKASYON = new Set(['Pendik', 'Ankara']);
 const metin = (v, sinir = 200) => (typeof v === 'string' ? v.slice(0, sinir) : '');
 
