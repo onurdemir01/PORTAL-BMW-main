@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (LogX › OpenShift sihirbazı, 2026-11-27; PR-2 testlerinin bulduğu üç hata)
+- Kayıtlı namespace listesinden "Geri" cluster seçimine dönmüyordu. İstemci yalnız listeyi temizliyordu, istekte seçili cluster'lar duruyordu; adım "Namespace listesi hazırlanıyor…"a düşüyor ve hiçbir şey başlamadığı için kullanıcı sonsuz bir bekleme ekranında kalıyordu. Artık geri dönüş sunucuda geri sarılır.
+- Cluster seçimine dönüp aynı cluster'ları yeniden seçen kullanıcıda namespace listesi bir daha hazırlanmıyordu (tekrar tetikleme koruması aynı anahtarı görüyordu). Koruma geri dönüşte sıfırlanır.
+- Bir uygulama taraması yapıldıktan sonra "Geri" ve "sepete ekle" uygulama ekranından çıkmıyordu; kullanıcı başka namespace seçemiyordu. Sayfa yenilenince taranan namespace'e dönülmesi için konan geri düşüş, kullanıcı açıkça geri döndüğünde de çalışıyordu. Artık yalnız henüz seçim yapılmamışken çalışır.
+
 ### Fixed (Denetim › Nginx PROD taşıması, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Toplu geçiş takibinde bazı uygulamalar yazılamadığında (kısmi başarı) pencere yine kapanıyordu; yazılamayanların listesi ve sebebi hiç görünmüyor, kullanıcı hepsinin yazıldığını sanıyordu. Artık pencere yalnız tam başarıda kapanır ve seçim o zaman temizlenir; yazılan satırlar yine hemen tabloya işlenir.
 
