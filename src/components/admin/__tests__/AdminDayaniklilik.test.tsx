@@ -43,6 +43,7 @@ vi.mock('@/components/admin/tabs/ScaleXAdminTab', () => yerTutucu('scalex'));
 vi.mock('@/components/admin/tabs/InventoryVisibilityTab', () => yerTutucu('inventoryvis'));
 vi.mock('@/components/admin/tabs/LogXAdminTab', () => yerTutucu('logx'));
 vi.mock('@/components/admin/tabs/BrandingTab', () => yerTutucu('branding'));
+vi.mock('@/components/admin/tabs/KurumAyariTab', () => yerTutucu('kurumayari'));
 vi.mock('@/components/admin/tabs/DbBackupTab', () => yerTutucu('dbbackup'));
 vi.mock('@/components/admin/tabs/SmartTicketsTab', () => yerTutucu('smarttickets'));
 vi.mock('@/components/admin/tabs/SelfServisTasima', () => yerTutucu('sstasima'));

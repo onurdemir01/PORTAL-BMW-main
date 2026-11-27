@@ -41,7 +41,7 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 
 **Kurum iç adı (K17, 2026-11-20).** Repo public: kurumun sunucu adları ve alan adları koda, teste,
 belgeye ya da commit mesajına yazılmaz. Kodun bildiği kurum listeleri kurum ayarındadır
-(`server/util/kurum-ayari.cjs`, `KURUM_AYAR_DOSYASI`; biçimi `deploy/kurum-ayari.ornek.json`). Playbook
+(`server/util/kurum-ayari.cjs`, `KURUM_AYAR_DOSYASI`; biçimi `deploy/kurum-ayari.ornek.json`; Portal'dan düzenleme [KURUM-AYARI.md](KURUM-AYARI.md)). Playbook
 değerleri AWX template Variables'tadır ([AWX-KOPYALAMA-HARITASI.md](AWX-KOPYALAMA-HARITASI.md) "Kurum
 değerleri"). Örnek ve testler kurgusal ad kullanır: önek `OR`, alan adı `*.invalid`. Desenler geneldir;
 gerçek ad listesi repoya girmez. Kurallar:

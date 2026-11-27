@@ -159,5 +159,6 @@ export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:denetimaccess', label: 'Denetim Erişimi' },
   { id: 'admintab:nginxaccess', label: 'Nginx Hub Erişimi' },
   { id: 'admintab:cryptoaccess', label: 'Crypto Hub Erişimi' },
+  { id: 'admintab:kurumayari', label: 'Kurum Ayarı' },
   { id: 'admintab:branding', label: 'Logo' },
 ];

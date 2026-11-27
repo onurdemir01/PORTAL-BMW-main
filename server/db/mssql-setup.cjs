@@ -3335,6 +3335,15 @@ const ELEMENT_SEED = [
   },
 
   {
+    // Kurum Ayari (2026-11-27): KURUM_AYAR_DOSYASI'ni Portal'dan duzenleme (yalniz Admin).
+    element_key: 'admintab:kurumayari',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Kurum Ayarı',
+    sort_order: 13,
+    default_visible: 1,
+  },
+  {
     element_key: 'admintab:branding',
     element_type: 'admin_tab',
     parent_key: 'Admin',

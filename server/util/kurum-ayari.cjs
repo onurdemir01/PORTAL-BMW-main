@@ -15,8 +15,27 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+// Sunucu adi kurali ekranla (Admin > Kurum Ayari kaydi) ortak: shared/kurumAyari.cjs.
+const { SUNUCU } = require('../../shared/kurumAyari.cjs');
 
-let onbellek = { yol: '', mtimeMs: -1, boyut: -1, veri: {}, hata: null };
+// Onbellek anahtari: yol + mtime + boyut + inode + ctime. Kaba saat cozunurluklu dosya sisteminde ayni
+// tikte ayni boyutla yapilan elle duzenleme de yakalanir (rename yeni inode, yerinde yazma yeni ctime).
+const BOS_ONBELLEK = {
+  yol: '',
+  mtimeMs: -1,
+  boyut: -1,
+  ino: -1,
+  ctimeMs: -1,
+  veri: {},
+  hata: null,
+};
+let onbellek = BOS_ONBELLEK;
+const ayniDosya = (o, yol, st) =>
+  o.yol === yol &&
+  o.mtimeMs === st.mtimeMs &&
+  o.boyut === st.size &&
+  o.ino === st.ino &&
+  o.ctimeMs === st.ctimeMs;
 
 /** Ayar dosyasinin tamami -> { veri, hata }. Degisiklik zamani ayniysa onbellekten. */
 function kurumAyari(env = process.env) {
@@ -29,8 +48,7 @@ function kurumAyari(env = process.env) {
   } catch {
     return { veri: {}, hata: `KURUM_AYAR_DOSYASI okunamadi (${path.basename(yol)})` };
   }
-  if (onbellek.yol === yol && onbellek.mtimeMs === st.mtimeMs && onbellek.boyut === st.size)
-    return onbellek;
+  if (ayniDosya(onbellek, yol, st)) return onbellek;
   let veri = {};
   let hata = null;
   try {
@@ -40,8 +58,22 @@ function kurumAyari(env = process.env) {
   } catch {
     hata = 'KURUM_AYAR_DOSYASI gecerli bir JSON degil';
   }
-  onbellek = { yol, mtimeMs: st.mtimeMs, boyut: st.size, veri, hata };
+  onbellek = {
+    yol,
+    mtimeMs: st.mtimeMs,
+    boyut: st.size,
+    ino: st.ino,
+    ctimeMs: st.ctimeMs,
+    veri,
+    hata,
+  };
   return onbellek;
+}
+
+/** Onbellegi bosaltir: Portal'dan yazilan dosya ayni boyut ve ayni zaman damgasiyla (kaba saat
+ *  cozunurlugu olan dosya sistemi) eski veri sanilmasin. Okuma davranisi degismez. */
+function kurumAyariOnbellekSifirla() {
+  onbellek = BOS_ONBELLEK;
 }
 
 /** Noktali anahtar ('nginx.intranetSunuculari') -> { deger, hata }; yoksa deger undefined. */
@@ -57,8 +89,7 @@ function bolum(anahtar, env = process.env) {
   return { deger: d, hata: null };
 }
 
-// Sunucu adi: harf ile baslar, harf / rakam / tire; buyuk harfe cevrilir (envanter ve ekranlar boyle).
-const SUNUCU = /^[A-Za-z][A-Za-z0-9-]{0,62}$/;
+// Sunucu adi buyuk harfe cevrilir (envanter ve ekranlar boyle).
 const buyuk = (v) => String(v).trim().toUpperCase();
 
 /** Sunucu adi listesi -> { liste: string[] (BUYUK HARF), hata }. Gecersiz tek girdi atilir, soylenir. */
@@ -101,4 +132,11 @@ function sunucuAdi(anahtar, env = process.env) {
   return { ad: buyuk(deger), hata: null };
 }
 
-module.exports = { kurumAyari, bolum, sunucuListesi, sunucuHaritasi, sunucuAdi };
+module.exports = {
+  kurumAyari,
+  kurumAyariOnbellekSifirla,
+  bolum,
+  sunucuListesi,
+  sunucuHaritasi,
+  sunucuAdi,
+};
