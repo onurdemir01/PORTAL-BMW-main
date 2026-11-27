@@ -8,6 +8,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - #354 ESC dinleyicisini çizimden önceye aldı, ama dinleyicinin çağırdığı kapatma işlevini tutan ref hâlâ çizimden sonra tazeleniyordu. Bileşen yeniden kurulmadan yalnız açılıp kapanan bir katmanda ilk karedeki ESC, bir önceki çizimin işlevini çağırıyor ve katman kapanmıyordu. Retirement kayıt penceresinde onay katmanı buna örnek; CI'da RE8 bu yüzden yeniden kırıldı (#348).
 - `useEscIleKapat` ve `Modal`'ın ref'i de artık layout efektinde, kayıttan önce tazeleniyor. Test: `katman-esc-ilk-kare` EK4 / EK5. Her dosyanın eski hali kendi testini kırmızı yapıyor.
 
+### Fixed (LogX › OpenShift sihirbazı, 2026-11-27; PR-2 testlerinin bulduğu üç hata)
+- Kayıtlı namespace listesinden "Geri" cluster seçimine dönmüyordu. İstemci yalnız listeyi temizliyordu, istekte seçili cluster'lar duruyordu; adım "Namespace listesi hazırlanıyor…"a düşüyor ve hiçbir şey başlamadığı için kullanıcı sonsuz bir bekleme ekranında kalıyordu. Artık geri dönüş sunucuda geri sarılır.
+- Cluster seçimine dönüp aynı cluster'ları yeniden seçen kullanıcıda namespace listesi bir daha hazırlanmıyordu (tekrar tetikleme koruması aynı anahtarı görüyordu). Koruma geri dönüşte sıfırlanır.
+- Bir uygulama taraması yapıldıktan sonra "Geri" ve "sepete ekle" uygulama ekranından çıkmıyordu; kullanıcı başka namespace seçemiyordu. Sayfa yenilenince taranan namespace'e dönülmesi için konan geri düşüş, kullanıcı açıkça geri döndüğünde de çalışıyordu. Artık yalnız henüz seçim yapılmamışken çalışır.
+
 ### Fixed (Denetim › Init / Deployment script sapması, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Veri okunamayınca ekranın tamamı tek bir hata kutusuna dönüyordu; kök seçimi ve "Yenile" de kayboluyordu. Okunamayan bir köke (ör. `/vhosting8`) geçen kullanıcı sayfayı yenilemeden önceki köke dönemiyordu. Artık araç çubuğu yerinde kalır; özet ve tabloların yerine "okunamadı" ve sebebi gösterilir ("Tekrar dene"). Önceki kökün verisi yeni kökün altında gösterilmez.
 
