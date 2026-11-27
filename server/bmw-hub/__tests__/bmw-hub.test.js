@@ -22,8 +22,11 @@ function sahte(yol, exp) {
 
 // Bellek ici "veritabani": bmw-hub'in kullandigi SQL kaliplarini taniyan kucuk bir sahte.
 const DB = { isler: new Map(), notlar: [], sorgular: [], dusur: null };
+let okumadaBekle = null;
+let txSirasi = Promise.resolve();
+let gecmisYazimlari = [];
 const simdi = () => new Date('2026-11-08T09:00:00Z');
-async function sahteQuery(sql, params = []) {
+async function sahteQuery(sql, params = [], transactionIcinde = false) {
   DB.sorgular.push(sql);
   if (DB.dusur && DB.dusur(sql)) throw new Error('sahte db hatasi');
   const s = sql.replace(/\s+/g, ' ').trim();
@@ -60,22 +63,29 @@ async function sahteQuery(sql, params = []) {
       yazan_ad: ya,
       olusturma: simdi(),
     });
+    gecmisYazimlari.push(transactionIcinde);
     return { rows: [], rowCount: 1 };
   }
-  if (s.startsWith('SELECT * FROM bmw_hub_isler WHERE id')) {
+  if (s.includes('FROM bmw_hub_isler WHERE id') && s.startsWith('SELECT')) {
     const r = DB.isler.get(params[0]);
-    return { rows: r ? [{ ...r }] : [] };
+    const rows = r ? [{ ...r, guncelleme_sql: r.guncelleme.toISOString() }] : [];
+    if (s.includes('AS guncelleme_sql') && okumadaBekle) await okumadaBekle();
+    return { rows };
   }
   if (s.includes('FROM bmw_hub_isler ORDER BY'))
     return { rows: [...DB.isler.values()].map((r) => ({ ...r })) };
   if (s.startsWith('SELECT * FROM bmw_hub_notlar'))
     return { rows: DB.notlar.filter((n) => n.is_id === params[0]) };
   if (s.startsWith('UPDATE bmw_hub_isler SET')) {
-    const id = params[params.length - 1];
+    const cas = /AND guncelleme = CONVERT\(datetime2\(7\), \$\d+, 126\)/.test(s);
+    const id = params[Number(s.match(/WHERE id = \$(\d+)/)[1]) - 1];
     const r = DB.isler.get(id);
     if (!r) return { rows: [], rowCount: 0 };
+    if (cas && r.guncelleme.toISOString() !== params.at(-1)) return { rows: [], rowCount: 0 };
     const set = s.slice('UPDATE bmw_hub_isler SET '.length, s.lastIndexOf(' WHERE '));
-    for (const parca of set.split(', ')) {
+    const damga = set.indexOf(', guncelleme = CASE');
+    if (damga !== -1) r.guncelleme = new Date(r.guncelleme.getTime() + 1);
+    for (const parca of (damga === -1 ? set : set.slice(0, damga)).split(', ')) {
       const m = parca.match(/^(\w+) = (.+)$/);
       if (!m) continue;
       const [, kol, ifade] = m;
@@ -99,7 +109,23 @@ async function sahteQuery(sql, params = []) {
   throw new Error(`taninmayan sorgu: ${s}`);
 }
 
-sahte(require.resolve('../../db/index.cjs'), { query: sahteQuery });
+function sahteTransaction(work) {
+  const sonuc = txSirasi.then(async () => {
+    const isler = structuredClone(DB.isler);
+    const notlar = structuredClone(DB.notlar);
+    try {
+      return await work({ query: (sql, params) => sahteQuery(sql, params, true) });
+    } catch (e) {
+      DB.isler = isler;
+      DB.notlar = notlar;
+      throw e;
+    }
+  });
+  txSirasi = sonuc.catch(() => {});
+  return sonuc;
+}
+
+sahte(require.resolve('../../db/index.cjs'), { query: sahteQuery, transaction: sahteTransaction });
 sahte(require.resolve('../../auth/index.cjs'), {
   getRequestUser: (req) => (req.session && req.session.user) || null,
   requireAdmin: (req, res, next) => {
@@ -148,6 +174,8 @@ function sifirla() {
   DB.notlar = [];
   DB.sorgular = [];
   DB.dusur = null;
+  okumadaBekle = null;
+  gecmisYazimlari = [];
   kimlik = { username: 'Onur', displayName: 'Deneme Kisi', role: 'Admin' };
 }
 
@@ -320,5 +348,57 @@ test('BN9 cakisma: eski damga ile kayit 409 + bmw_cakisma; liste ozeti gecikmeyi
     K.gecikmisMi({ durum: 'tamam', sonTarih: '2020-01-01' }, '2026-11-08'),
     false,
     'tamamlanan is gecikmis sayildi',
+  );
+});
+
+test('BN10 ayni damgayla iki PATCH: tek yazim ve tek gecmis kaydi', { timeout: 5000 }, async () => {
+  sifirla();
+  const { body } = await istek('POST', '/isler', { baslik: 'Is' });
+  const { id, guncelleme } = body.is;
+  let ac;
+  const bariyer = new Promise((resolve) => {
+    ac = resolve;
+  });
+  let okuma = 0;
+  okumadaBekle = () => {
+    if (++okuma === 2) ac();
+    return bariyer;
+  };
+  const yanitlar = await Promise.all(
+    ['Ali', 'Ayse'].map((sahip) =>
+      istek('PATCH', `/isler/${id}`, { sahip, beklenenGuncelleme: guncelleme }),
+    ),
+  );
+  assert.deepEqual(
+    yanitlar.map((r) => r.status).toSorted((a, b) => a - b),
+    [200, 409],
+  );
+  const basari = yanitlar.find((r) => r.status === 200).body.is;
+  const ret = yanitlar.find((r) => r.status === 409).body;
+  assert.equal(ret.code, 'bmw_cakisma');
+  assert.equal(ret.is.sahip, basari.sahip);
+  assert.notEqual(basari.guncelleme, guncelleme);
+  assert.equal(DB.notlar.filter((n) => n.tur === 'sahip').length, 1);
+  assert.deepEqual(gecmisYazimlari, [false, true]);
+});
+
+test('BN11 history yazimi duserse PATCH ve onceki history satiri geri alinir', async () => {
+  sifirla();
+  const { body } = await istek('POST', '/isler', { baslik: 'Is' });
+  const { id, guncelleme } = body.is;
+  let notSayisi = 0;
+  DB.dusur = (sql) => sql.includes('INSERT INTO bmw_hub_notlar') && ++notSayisi === 2;
+  const r = await istek('PATCH', `/isler/${id}`, {
+    durum: 'tamam',
+    sahip: 'Ali',
+    beklenenGuncelleme: guncelleme,
+  });
+  assert.equal(r.status, 500);
+  assert.equal(notSayisi, 2);
+  assert.equal(DB.isler.get(id).durum, body.is.durum);
+  assert.equal(DB.isler.get(id).guncelleme.toISOString(), guncelleme);
+  assert.deepEqual(
+    DB.notlar.map((n) => n.tur),
+    ['olusturma'],
   );
 });

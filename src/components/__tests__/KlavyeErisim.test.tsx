@@ -7,6 +7,8 @@
 //   * Basarisiz giristen sonra odak <body>'ye dusuyordu.
 //   * 403 sayfasindaki dugmenin metni gorunmuyordu (`a { color }` kurali `text-white`i eziyor).
 //   * Bazi etiketler Turkce karaktersiz yazilmisti ("Nobet listesi", "Navigasyonu ac/kapat").
+//   * Ortak pencere (Modal) role="dialog" tasiyordu ama ADSIZDI (2026-11-26): ekran okuyucu her pencereyi
+//     "iletisim kutusu" diye duyuruyordu; ad artik basliktan gelir (KE8).
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -18,6 +20,7 @@ import { CommandPalette } from '@/components/common/CommandPalette';
 import LoginPage from '@/components/LoginPage';
 import ForbiddenPage from '@/components/ForbiddenPage';
 import { titleForPath } from '@/hooks/useDocumentTitle';
+import { Modal } from '@/components/common/Modal';
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -146,5 +149,26 @@ describe('403 sayfasi', () => {
   it('KE7 sekme basligi sayfayi adlandirir; bilinmeyen yol yalnizca uygulama adini alir', () => {
     expect(titleForPath('/403')).toBe('Yetkisiz Erişim · BMW Portal');
     expect(titleForPath('/boyle-bir-yol-yok')).toBe('BMW Portal');
+  });
+});
+
+describe('Ortak pencere', () => {
+  it('KE8 basligi olan pencere basligiyla adlandirilir; basliksiz pencere ad uydurmaz', () => {
+    const { unmount } = render(
+      <Modal open onClose={vi.fn()} title="Yeni iş" subtitle="alt baslik">
+        govde
+      </Modal>,
+    );
+    const pencere = screen.getByRole('dialog', { name: 'Yeni iş' });
+    expect(pencere.getAttribute('aria-labelledby')).toBe(
+      screen.getByRole('heading', { name: 'Yeni iş' }).id,
+    );
+    unmount();
+    render(
+      <Modal open onClose={vi.fn()}>
+        govde
+      </Modal>,
+    );
+    expect(screen.getByRole('dialog').hasAttribute('aria-labelledby')).toBe(false);
   });
 });
