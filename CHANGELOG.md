@@ -4,6 +4,13 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Nginx Hub › Konfigürasyon, 2026-11-27; PR-2 testlerinin bulduğu beş hata)
+- Dashboard, Instances, Kullanılmayan, Tutarlılık ve CIS'ten "Konfigürasyon'da aç" sunucuyu seçmiyordu; sekme boş açılıyordu. 2026-11-14'teki lint düzeltmesinde `useEffect` "önceki değer" kalıbına çevrilmiş, kalıp yalnız değişimi yakalıyor, ilk açılışı yakalamıyordu. Gelen sunucu artık ilk değer.
+- Sunucu ağacı okunamazsa ekranda önceki sunucunun ağacı kalıyor, tıklanan dosya yeni sunucudan isteniyordu. Artık ağaç boşalır; "okunamadı" ayrı gösterilir ve yeniden denenebilir.
+- Sürüm geçmişi okunamayınca "Henüz kayıt yok" yazıyordu. Geçmiş ucu "Değişiklikler" sekmesine bağlı; o sekmesi kapalı kullanıcı 403 alıyordu. Ağ hatasında da ekran yükleniyor'da kalıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Diğer sunucularda" karşılaştırması okunamazsa düğme hiçbir şey yapmıyordu; artık hata bildirilir.
+- Salt okunur kullanıcı ağaç panelinde "Yenile" görüyordu; sunucu `/refresh`'i Admin dışına 403 ile kapattığı için her seferinde reddediliyordu. Düğme artık yalnız Admin'de; sol paneldeki döküm araçlarıyla aynı.
+
 ### Fixed (üst üste pencerelerde ESC, 2026-11-27)
 
 - Bir pencerenin içinden açılan onay katmanı ya da ikinci pencere, ESC dinleyicisini çizildikten sonra kaydediyordu (`useEffect`). Açıldığı ilk karelerde basılan ESC alttaki pencereyi kapatıyordu: kullanıcı onayı kapatmak isterken bütün kayıt penceresini kaybediyordu. CI'da Retirement RE8 testi yük altında tam bu araya düşüp `main`'i kırmızı yaptı.
