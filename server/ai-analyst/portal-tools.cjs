@@ -599,13 +599,14 @@ const splunkSearchTool = {
     const splunkClient = require('../splunk/client.cjs');
     if (!splunkClient.isConfigured())
       throw new Error('Splunk yapılandırılmamış (SPLUNK_BASE_URL/SPLUNK_TOKEN).');
-    const result = await splunkClient.search({
-      product,
-      windowMinutes: Math.min(Number(windowMinutes) || 15, 60),
-    });
+    // Pencere istemciyle (splunk/client.cjs) ayni kuralla kelepcelenir: 1-60 dk, varsayilan 15.
+    // Basliga ARANAN pencere yazilir (2026-11-27): eskiden girdi aynen yaziliyordu; LLM "son 500
+    // dk" okuyup 60 dakikalik sonuctan yanlis sonuc cikariyordu.
+    const pencere = Math.min(Math.max(Number(windowMinutes) || 15, 1), 60);
+    const result = await splunkClient.search({ product, windowMinutes: pencere });
     return {
       text:
-        `Splunk "${product}" (son ${windowMinutes || 15} dk): ${result.eventCount} kayıt bulundu.\n` +
+        `Splunk "${product}" (son ${pencere} dk): ${result.eventCount} kayıt bulundu.\n` +
         (result.sample.length ? `Örnek kayıtlar:\n${result.sample.slice(0, 5).join('\n')}` : ''),
     };
   },

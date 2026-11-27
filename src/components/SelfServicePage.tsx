@@ -101,6 +101,31 @@ type TopTab = 'ansible' | 'svc:new' | `svc:${string}`;
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
+/** Formun karsilastirilabilir ozeti: bos degerler yok sayilir, alan sirasi onemsiz. */
+function formImzasi(d: {
+  values: Record<string, string>;
+  limit: string;
+  forks: string;
+  jobTags: string;
+  skipTags: string;
+  verbosity: string;
+  jobType: string;
+}): string {
+  const dolu = Object.entries(d.values)
+    .map(([k, v]) => [k, String(v ?? '').trim()] as const)
+    .filter(([, v]) => v !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([
+    dolu,
+    d.limit.trim(),
+    d.forks.trim(),
+    d.jobTags.trim(),
+    d.skipTags.trim(),
+    d.verbosity,
+    d.jobType,
+  ]);
+}
+
 interface SurveyModalProps {
   item: AnsibleSsItem;
   onClose: () => void;
@@ -210,6 +235,11 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   // Satır-içi doğrulama (Faz 5): alan dokunulunca veya submit denenince hata gösterilir.
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // ACILIS DEGERLERI (2026-11-27): "Formu Temizle" yalniz form acilistakinden FARKLIYSA acik.
+  // Eskiden dolu her deger "kirli" sayiliyordu: sablonun varsayilan degeri ya da AWX'in kapali
+  // calisma zamani seceneklerindeki mevcut deger (verbosity 1, job type check) dokunulmamis
+  // formda bile dugmeyi aciyordu; basinca ayni degerler geri geliyor, hicbir sey degismiyordu.
+  const [acilisImzasi, setAcilisImzasi] = useState<string | null>(null);
 
   function normalizeChoices(value: unknown): string[] {
     if (Array.isArray(value)) {
@@ -240,15 +270,25 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         setValues(defaults);
         setGates(r.gates || null);
         setYerelOkuma(r.yerelOkuma || null);
-        if (r.launchOptions) {
-          setLaunchOptions(r.launchOptions);
-          setLimit(String(r.launchOptions.limit?.current ?? ''));
-          setForks(r.launchOptions.forks?.current ? String(r.launchOptions.forks.current) : '');
-          setJobTags(String(r.launchOptions.jobTags?.current ?? ''));
-          setSkipTags(String(r.launchOptions.skipTags?.current ?? ''));
-          setVerbosity(String(r.launchOptions.verbosity?.current ?? '0'));
-          setJobType(String(r.launchOptions.jobType?.current || 'run'));
+        const lo = r.launchOptions;
+        const bas = {
+          limit: lo ? String(lo.limit?.current ?? '') : '',
+          forks: lo?.forks?.current ? String(lo.forks.current) : '',
+          jobTags: lo ? String(lo.jobTags?.current ?? '') : '',
+          skipTags: lo ? String(lo.skipTags?.current ?? '') : '',
+          verbosity: lo ? String(lo.verbosity?.current ?? '0') : '0',
+          jobType: lo ? String(lo.jobType?.current || 'run') : 'run',
+        };
+        if (lo) {
+          setLaunchOptions(lo);
+          setLimit(bas.limit);
+          setForks(bas.forks);
+          setJobTags(bas.jobTags);
+          setSkipTags(bas.skipTags);
+          setVerbosity(bas.verbosity);
+          setJobType(bas.jobType);
         }
+        setAcilisImzasi(formImzasi({ values: defaults, ...bas }));
         if (!r.ok && r.message) setErr(r.message);
       })
       .catch((e) => setErr(e.message))
@@ -558,13 +598,8 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const formDirty =
     !!ocoState ||
     !!err ||
-    Object.values(values).some((v) => (v || '').trim() !== '') ||
-    !!limit.trim() ||
-    !!forks.trim() ||
-    !!jobTags.trim() ||
-    !!skipTags.trim() ||
-    verbosity !== '0' ||
-    jobType !== 'run';
+    (acilisImzasi !== null &&
+      formImzasi({ values, limit, forks, jobTags, skipTags, verbosity, jobType }) !== acilisImzasi);
 
   if (typeof document === 'undefined') return null;
 
@@ -1410,13 +1445,28 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
   const [logStatus, setLogStatus] = useState('');
   const [logLoading, setLogLoading] = useState(false);
   const [logErr, setLogErr] = useState('');
-
-  useEffect(() => {
-    void ansibleApi
-      .history(30)
-      .then((r) => setHistory((r.history || []).filter((h) => !item || servisinIsiMi(item, h))))
-      .finally(() => setLoading(false));
+  // OKUNAMADI != IS YOK (2026-11-27): gecmis ucu ok:false donunce ya da istek dusunce pencere
+  // "Son 30 gunde is yok." diyordu (dusen istek ayrica yakalanmiyordu).
+  const [gecmisHatasi, setGecmisHatasi] = useState<string | null>(null);
+  const gecmisiOku = useCallback(async () => {
+    setLoading(true);
+    setGecmisHatasi(null);
+    try {
+      const r = await ansibleApi.history(30);
+      if (!r.ok) {
+        setGecmisHatasi(r.message || '');
+        return;
+      }
+      setHistory((r.history || []).filter((h) => !item || servisinIsiMi(item, h)));
+    } catch (e) {
+      setGecmisHatasi(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, [item]);
+  useAsyncEffect(async () => {
+    await gecmisiOku();
+  }, [gecmisiOku]);
 
   useAsyncEffect(
     async (alive) => {
@@ -1519,6 +1569,16 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
               </div>
             ) : loading ? (
               <SkeletonList rows={4} />
+            ) : gecmisHatasi !== null ? (
+              <div className="p-5">
+                <LoadError
+                  compact
+                  title="İş geçmişi okunamadı"
+                  message={gecmisHatasi}
+                  onRetry={() => void gecmisiOku()}
+                  testId="ss-gecmis-hata"
+                />
+              </div>
             ) : history.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-10">Son 30 günde iş yok.</p>
             ) : (
