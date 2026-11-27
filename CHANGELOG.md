@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (LogX › indirme bağlantısı, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Toplama / aktarım işi arşiv ürettiği halde hiçbir arşiv için indirme bağlantısı üretilemezse (ör. disk dolu) istek yine "hazır" yapılıyordu. Sihirbaz "indirilecek arşiv bulunamadı (temizlenmiş olabilir)" diyor, gerçek sebep yalnız denetim kaydında kalıyordu. Artık istek başarısız olur ve kullanıcı "Arşiv hazırlandı ama indirme bağlantısı üretilemedi" mesajını görür. Bir arşivin bağlantısı üretildiyse ya da eş zamanlı ikinci yoklama arşivleri önceden bağlantılı bulduysa istek hazır kalır.
+
 ### Fixed (Denetim › Nginx PROD taşıması, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Toplu geçiş takibinde bazı uygulamalar yazılamadığında (kısmi başarı) pencere yine kapanıyordu; yazılamayanların listesi ve sebebi hiç görünmüyor, kullanıcı hepsinin yazıldığını sanıyordu. Artık pencere yalnız tam başarıda kapanır ve seçim o zaman temizlenir; yazılan satırlar yine hemen tabloya işlenir.
 

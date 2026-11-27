@@ -169,8 +169,12 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
           .catch(() => new Set());
         const prefixes = [];
         const failures = [];
+        let oncedenTokenli = 0;
         for (const f of files) {
-          if (already.has(f.staged_path)) continue;
+          if (already.has(f.staged_path)) {
+            oncedenTokenli += 1;
+            continue;
+          }
           try {
             const tokenInfo = await downloads.issueDownloadToken({
               requestId: requestRow.request_id,
@@ -189,7 +193,20 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
             failures.push(`${f.filename || f.staged_path}: ${err.message}`);
           }
         }
-        await requests.updateRequest(requestRow.request_id, { state: 'ready' });
+        // HICBIR ARSIVE BAGLANTI YOKSA ready DEGIL (2026-11-27): eskiden istek yine 'ready' oluyordu;
+        // sihirbaz "arsiv bulunamadi (temizlenmis olabilir)" diyor, gercek sebep yalniz denetimde
+        // kaliyordu. Onceden token'li arsiv (es zamanli ikinci poll) varsa istek hazirdir.
+        const hicBaglantiYok = prefixes.length === 0 && oncedenTokenli === 0 && failures.length > 0;
+        await requests.updateRequest(
+          requestRow.request_id,
+          hicBaglantiYok
+            ? {
+                state: 'failed',
+                errorMessage:
+                  'Arşiv hazırlandı ama indirme bağlantısı üretilemedi. Lütfen sistem yöneticinize başvurun.',
+              }
+            : { state: 'ready' },
+        );
         await audit
           .log({
             username: requestRow.username,
