@@ -58,6 +58,7 @@ import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
+import LoadError from '@/components/common/LoadError';
 import { fmtNumber } from '@/utils/datetime';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import YardimDugmesi from '@/components/common/YardimDugmesi';
@@ -1805,17 +1806,17 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
       .sort((a, b) => b.deviationCount - a.deviationCount || a.host.localeCompare(b.host));
   }, [shown, q, onlyDiff]);
 
-  if (loading && !data) return <LoadingLogo />;
-  if (err)
-    return (
-      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-        {err}
-      </div>
-    );
+  // OKUNAMADI (2026-11-27): hata eskiden TUM ekrani tek bir kutuyla degistiriyordu; kok secimi ve
+  // Yenile de kayboluyor, okunamayan bir koke gecen kullanici sayfayi yenilemeden geri donemiyordu.
+  // Arac cubugu kalir; ozet ve tablolar yerine LoadError (onceki kokun verisi yeni kokun altinda
+  // gosterilmez).
+  if (loading && !data && !err) return <LoadingLogo />;
 
   // Sunucu geneli dosya (appdomain.service, 2026-11-16): kokten BAGIMSIZ bolum, kok seciminin
   // USTUNDE. Sunucu her kok icin ayni icerigi doner; kok degisince bolum ayni kalir.
+  // Okunamadi durumunda (err) onceki verinin bolumu de gizlenir.
   const sunucuGeneli =
+    !err &&
     kind === 'init' &&
     data?.sunucuGeneli &&
     (data.sunucuGeneli.files.length > 0 ||
@@ -1990,446 +1991,477 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
         </div>
       </div>
 
-      <div className="text-xs text-[var(--text-muted)]">
-        {meta.intro} Kaynak job: <code>{meta.job}</code>
-        {data?.scanDate ? ` · son tarama ${data.scanDate.split('-').reverse().join('.')}` : ''}.
-        {data?.message && data.hosts === 0 && (
-          <span className="ml-1 text-amber-700">{data.message}</span>
-        )}
-        {sunucuGeneli && sunucuGeneli.files.length > 0 && (
-          <span className="ml-1">
-            {sunucuGeneli.files.map((f) => f.label).join(', ')} sunucu başına tek dosya olduğu için
-            bu kökün tablosunda yok; yukarıdaki “Sunucu geneli” bölümüne taşındı.
-          </span>
-        )}
-      </div>
+      {err ? (
+        <LoadError
+          compact
+          title="Script verisi okunamadı"
+          message={err}
+          onRetry={() => void load(root)}
+          retrying={loading}
+          testId="script-sapma-hata"
+        />
+      ) : (
+        <>
+          <div className="text-xs text-[var(--text-muted)]">
+            {meta.intro} Kaynak job: <code>{meta.job}</code>
+            {data?.scanDate ? ` · son tarama ${data.scanDate.split('-').reverse().join('.')}` : ''}.
+            {data?.message && data.hosts === 0 && (
+              <span className="ml-1 text-amber-700">{data.message}</span>
+            )}
+            {sunucuGeneli && sunucuGeneli.files.length > 0 && (
+              <span className="ml-1">
+                {sunucuGeneli.files.map((f) => f.label).join(', ')} sunucu başına tek dosya olduğu
+                için bu kökün tablosunda yok; yukarıdaki “Sunucu geneli” bölümüne taşındı.
+              </span>
+            )}
+          </div>
 
-      {data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}
+          {data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}
 
-      {data && (
-        <div className="grid gap-3 md:grid-cols-4">
-          <Stat n={shown!.hosts} l="sunucu" />
-          <Stat
-            n={shown!.identicalHosts}
-            l={
-              shown!.referenceSource === 'ekip'
-                ? 'ekip sürümüyle uyumlu'
-                : shown!.referenceSource === 'karma'
-                  ? 'referansla uyumlu'
-                  : 'çoğunlukla birebir aynı'
-            }
-            tone="ok"
-          />
-          <Stat
-            n={shown!.hosts - shown!.identicalHosts}
-            l="en az bir script'te farklı"
-            tone="warn"
-          />
-          <Stat n={shown!.totalVariants} l="toplam farklı sürüm" />
-        </div>
-      )}
-
-      {shown && ((shown.formatOnlyHosts || 0) > 0 || (shown.crlfHosts || 0) > 0) && (
-        <div className="flex flex-wrap gap-2 text-xs">
-          {(shown.formatOnlyHosts || 0) > 0 && (
-            <span
-              className="px-2 py-1 rounded-lg border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
-              title="İçerik referansla aynı; yalnız satır sonu (CRLF), satır sonu boşluğu ya da son boş satır farkı var. Sapma sayılmaz."
-            >
-              {fmtNumber(shown.formatOnlyHosts || 0)} sunucuda yalnız biçim farkı (sapma sayılmaz)
-            </span>
+          {data && (
+            <div className="grid gap-3 md:grid-cols-4">
+              <Stat n={shown!.hosts} l="sunucu" />
+              <Stat
+                n={shown!.identicalHosts}
+                l={
+                  shown!.referenceSource === 'ekip'
+                    ? 'ekip sürümüyle uyumlu'
+                    : shown!.referenceSource === 'karma'
+                      ? 'referansla uyumlu'
+                      : 'çoğunlukla birebir aynı'
+                }
+                tone="ok"
+              />
+              <Stat
+                n={shown!.hosts - shown!.identicalHosts}
+                l="en az bir script'te farklı"
+                tone="warn"
+              />
+              <Stat n={shown!.totalVariants} l="toplam farklı sürüm" />
+            </div>
           )}
-          {(shown.crlfHosts || 0) > 0 && (
-            <span
-              className="px-2 py-1 rounded-lg border bg-amber-50 text-amber-700 border-amber-200"
-              title=".sh/.jy dosyasında CR (Windows satır sonu) var: betik #!/bin/bash\r ile çalışmayabilir."
-            >
-              {fmtNumber(shown.crlfHosts || 0)} sunucuda CRLF'li betik
-            </span>
+
+          {shown && ((shown.formatOnlyHosts || 0) > 0 || (shown.crlfHosts || 0) > 0) && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              {(shown.formatOnlyHosts || 0) > 0 && (
+                <span
+                  className="px-2 py-1 rounded-lg border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
+                  title="İçerik referansla aynı; yalnız satır sonu (CRLF), satır sonu boşluğu ya da son boş satır farkı var. Sapma sayılmaz."
+                >
+                  {fmtNumber(shown.formatOnlyHosts || 0)} sunucuda yalnız biçim farkı (sapma
+                  sayılmaz)
+                </span>
+              )}
+              {(shown.crlfHosts || 0) > 0 && (
+                <span
+                  className="px-2 py-1 rounded-lg border bg-amber-50 text-amber-700 border-amber-200"
+                  title=".sh/.jy dosyasında CR (Windows satır sonu) var: betik #!/bin/bash\r ile çalışmayabilir."
+                >
+                  {fmtNumber(shown.crlfHosts || 0)} sunucuda CRLF'li betik
+                </span>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {data && data.missingColumns.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          Şu dosyalar için veritabanında henüz sütun yok: <b>{data.missingColumns.join(', ')}</b>.
-          check_initialize job'ı yeni haliyle bir kez çalıştığında sütun otomatik açılır ve buraya
-          düşer.
-        </div>
-      )}
+          {data && data.missingColumns.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+              Şu dosyalar için veritabanında henüz sütun yok:{' '}
+              <b>{data.missingColumns.join(', ')}</b>. check_initialize job'ı yeni haliyle bir kez
+              çalıştığında sütun otomatik açılır ve buraya düşer.
+            </div>
+          )}
 
-      {view === 'script' ? (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="w-full text-sm pf-table-sticky">
-            <thead>
-              <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Script</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  Farklı sürüm
-                </th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  {ekipVar ? 'Referans' : 'Çoğunluk'}
-                </th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sapan</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Yok</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border-subtle)]">
-              {scripts.length === 0 && <TableEmptyRow colSpan={5} />}
-              {scripts.map((sc) => (
-                <React.Fragment key={sc.key}>
-                  <tr
-                    className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer"
-                    onClick={() => setOpen(open === sc.key ? null : sc.key)}
-                  >
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1.5">
-                        <ChevronRightIcon
-                          className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform ${open === sc.key ? 'rotate-90' : ''}`}
-                        />
-                        <span className="font-mono text-xs text-[var(--text-primary)]">
-                          {sc.label}
-                        </span>
-                        {sc.perServer && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200">
-                            sunucuya özel
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <VariantBadge sc={sc} />
-                    </td>
-                    <td className="px-3 py-2 text-xs text-[var(--text-secondary)] tabular-nums">
-                      {refHashOf(sc) ? (
-                        // Kirpilmis hash okunabiliyordu ama KOPYALANAMIYORDU; oysa
-                        // bu degerin tek isi baska bir yerdeki hash ile karsilastirilmak.
-                        // CodeChip tam degeri `title`da tutar ve tiklayinca panoya yazar.
-                        <span className="inline-flex items-center gap-1 min-w-0">
-                          {ekipVar && sc.referenceSource && !sc.perServer && (
+          {view === 'script' ? (
+            <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+              <table className="w-full text-sm pf-table-sticky">
+                <thead>
+                  <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Script
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Farklı sürüm
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      {ekipVar ? 'Referans' : 'Çoğunluk'}
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Sapan
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Yok
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-subtle)]">
+                  {scripts.length === 0 && <TableEmptyRow colSpan={5} />}
+                  {scripts.map((sc) => (
+                    <React.Fragment key={sc.key}>
+                      <tr
+                        className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer"
+                        onClick={() => setOpen(open === sc.key ? null : sc.key)}
+                      >
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <ChevronRightIcon
+                              className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform ${open === sc.key ? 'rotate-90' : ''}`}
+                            />
+                            <span className="font-mono text-xs text-[var(--text-primary)]">
+                              {sc.label}
+                            </span>
+                            {sc.perServer && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-violet-50 text-violet-700 border-violet-200">
+                                sunucuya özel
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <VariantBadge sc={sc} />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-[var(--text-secondary)] tabular-nums">
+                          {refHashOf(sc) ? (
+                            // Kirpilmis hash okunabiliyordu ama KOPYALANAMIYORDU; oysa
+                            // bu degerin tek isi baska bir yerdeki hash ile karsilastirilmak.
+                            // CodeChip tam degeri `title`da tutar ve tiklayinca panoya yazar.
+                            <span className="inline-flex items-center gap-1 min-w-0">
+                              {ekipVar && sc.referenceSource && !sc.perServer && (
+                                <span
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                                    sc.referenceSource === 'ekip'
+                                      ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                      : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]'
+                                  }`}
+                                  title={
+                                    sc.referenceSource === 'ekip'
+                                      ? "Ekip sürümü: depodaki dosyanın (bmw_wds_scripts/initialize/files) normalleştirilmiş hash'i"
+                                      : 'Ekip sürümü bilinmiyor; en yaygın sürüm referans alındı'
+                                  }
+                                >
+                                  {sc.referenceSource === 'ekip'
+                                    ? 'ekip sürümü (depo)'
+                                    : 'çoğunluk'}
+                                </span>
+                              )}
+                              <CodeChip
+                                value={refHashOf(sc)}
+                                label={`${refHashOf(sc).slice(0, 10)}…`}
+                                wrap="truncate"
+                                copyable
+                              />
+                              <span className="tabular-nums flex-shrink-0">
+                                ·{' '}
+                                {sc.referenceHash || sc.referenceNorm
+                                  ? (sc.referenceCount ?? sc.majorityCount)
+                                  : sc.majorityCount}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs tabular-nums">
+                          {sc.perServer ? (
+                            <span className="text-[var(--text-muted)]">—</span>
+                          ) : sc.deviatingCount > 0 ? (
+                            <span className="text-amber-700 font-semibold">
+                              {sc.deviatingCount}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">0</span>
+                          )}
+                          {!sc.perServer && (sc.formatOnlyCount || 0) > 0 && (
                             <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
-                                sc.referenceSource === 'ekip'
-                                  ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]'
-                              }`}
-                              title={
-                                sc.referenceSource === 'ekip'
-                                  ? "Ekip sürümü: depodaki dosyanın (bmw_wds_scripts/initialize/files) normalleştirilmiş hash'i"
-                                  : 'Ekip sürümü bilinmiyor; en yaygın sürüm referans alındı'
-                              }
+                              className="ml-1.5 text-[var(--text-muted)]"
+                              title="Yalnız boşluk/satır sonu farkı: içerik aynı, sapma sayılmaz"
                             >
-                              {sc.referenceSource === 'ekip' ? 'ekip sürümü (depo)' : 'çoğunluk'}
+                              +{sc.formatOnlyCount} biçim
                             </span>
                           )}
-                          <CodeChip
-                            value={refHashOf(sc)}
-                            label={`${refHashOf(sc).slice(0, 10)}…`}
-                            wrap="truncate"
-                            copyable
-                          />
-                          <span className="tabular-nums flex-shrink-0">
-                            ·{' '}
-                            {sc.referenceHash || sc.referenceNorm
-                              ? (sc.referenceCount ?? sc.majorityCount)
-                              : sc.majorityCount}
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs tabular-nums">
-                      {sc.perServer ? (
-                        <span className="text-[var(--text-muted)]">—</span>
-                      ) : sc.deviatingCount > 0 ? (
-                        <span className="text-amber-700 font-semibold">{sc.deviatingCount}</span>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">0</span>
-                      )}
-                      {!sc.perServer && (sc.formatOnlyCount || 0) > 0 && (
-                        <span
-                          className="ml-1.5 text-[var(--text-muted)]"
-                          title="Yalnız boşluk/satır sonu farkı: içerik aynı, sapma sayılmaz"
-                        >
-                          +{sc.formatOnlyCount} biçim
-                        </span>
-                      )}
-                      {(sc.crlfCount || 0) > 0 && (
-                        <span
-                          className="ml-1.5 text-amber-700"
-                          title="Betikte CR var: çalışmayabilir"
-                        >
-                          {sc.crlfCount} CRLF
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs tabular-nums">
-                      {sc.missing > 0 ? (
-                        <span className="text-[var(--text-secondary)]">{sc.missing}</span>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">0</span>
-                      )}
-                      {(sc.unreadable || 0) > 0 && (
-                        <span
-                          className="ml-1.5 text-amber-700"
-                          title="Dosya var ama tarama kullanıcısı okuyamıyor (ya da hash alınamadı)"
-                        >
-                          +{sc.unreadable} okunamıyor
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                  {open === sc.key && (
-                    <tr className="bg-[var(--bg-elevated)]/60">
-                      <td colSpan={5} className="px-3 py-3">
-                        <div className="space-y-2">
-                          {sc.variants.map((v, i) => {
-                            // isReference yoksa (eski yanit / Deployment) ilk surum cogunluktur.
-                            const isRef = v.isReference ?? i === 0;
-                            const refIdx = sc.variants.filter(
-                              (x, j) => x.isReference ?? j === 0,
-                            ).length;
-                            return (
-                              <div
-                                key={v.hash}
-                                className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span
-                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                      sc.perServer
-                                        ? 'bg-violet-50 text-violet-700 border-violet-200'
-                                        : isRef
-                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                                    }`}
+                          {(sc.crlfCount || 0) > 0 && (
+                            <span
+                              className="ml-1.5 text-amber-700"
+                              title="Betikte CR var: çalışmayabilir"
+                            >
+                              {sc.crlfCount} CRLF
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs tabular-nums">
+                          {sc.missing > 0 ? (
+                            <span className="text-[var(--text-secondary)]">{sc.missing}</span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">0</span>
+                          )}
+                          {(sc.unreadable || 0) > 0 && (
+                            <span
+                              className="ml-1.5 text-amber-700"
+                              title="Dosya var ama tarama kullanıcısı okuyamıyor (ya da hash alınamadı)"
+                            >
+                              +{sc.unreadable} okunamıyor
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {open === sc.key && (
+                        <tr className="bg-[var(--bg-elevated)]/60">
+                          <td colSpan={5} className="px-3 py-3">
+                            <div className="space-y-2">
+                              {sc.variants.map((v, i) => {
+                                // isReference yoksa (eski yanit / Deployment) ilk surum cogunluktur.
+                                const isRef = v.isReference ?? i === 0;
+                                const refIdx = sc.variants.filter(
+                                  (x, j) => x.isReference ?? j === 0,
+                                ).length;
+                                return (
+                                  <div
+                                    key={v.hash}
+                                    className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
                                   >
-                                    {sc.perServer
-                                      ? `sürüm ${i + 1}`
-                                      : isRef
-                                        ? sc.referenceSource === 'ekip'
-                                          ? 'ekip sürümü'
-                                          : 'çoğunluk'
-                                        : `farklı sürüm ${i + 1 - refIdx}`}
-                                  </span>
-                                  <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">
-                                    {v.hash.slice(0, 32)}…
-                                  </span>
-                                  <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
-                                    {v.count} sunucu
-                                  </span>
-                                </div>
-                                <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
-                                  {v.hosts.slice(0, 40).join(', ')}
-                                  {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
-                                </div>
-                                {(v.rawVariants || []).length > 1 && (
-                                  <div className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-1.5">
-                                    <div className="text-[10px] text-[var(--text-muted)]">
-                                      Aynı içerik, {v.rawVariants!.length} farklı bayt biçimi (satır
-                                      sonu / boşluk)
-                                      {!sc.perServer && isRef
-                                        ? ' — referansla aynı içerik, sapma sayılmaz:'
-                                        : sc.perServer
-                                          ? ':'
-                                          : ' — içerik referanstan farklı, bu sunucular sapan sayılır:'}
-                                    </div>
-                                    {v.rawVariants!.map((rv) => (
-                                      <div
-                                        key={rv.hash}
-                                        className="flex items-start gap-2 text-[11px]"
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                          sc.perServer
+                                            ? 'bg-violet-50 text-violet-700 border-violet-200'
+                                            : isRef
+                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                                        }`}
                                       >
-                                        <span className="font-mono text-[var(--text-muted)] flex-shrink-0">
-                                          {rv.hash.slice(0, 16)}…
-                                        </span>
-                                        <span className="tabular-nums text-[var(--text-muted)] flex-shrink-0">
-                                          {rv.count} sunucu
-                                        </span>
-                                        <span className="font-mono text-[var(--text-secondary)] break-words">
-                                          {rv.hosts.slice(0, 12).join(', ')}
-                                          {rv.hosts.length > 12 && ` … (+${rv.hosts.length - 12})`}
-                                        </span>
+                                        {sc.perServer
+                                          ? `sürüm ${i + 1}`
+                                          : isRef
+                                            ? sc.referenceSource === 'ekip'
+                                              ? 'ekip sürümü'
+                                              : 'çoğunluk'
+                                            : `farklı sürüm ${i + 1 - refIdx}`}
+                                      </span>
+                                      <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">
+                                        {v.hash.slice(0, 32)}…
+                                      </span>
+                                      <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
+                                        {v.count} sunucu
+                                      </span>
+                                    </div>
+                                    <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
+                                      {v.hosts.slice(0, 40).join(', ')}
+                                      {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
+                                    </div>
+                                    {(v.rawVariants || []).length > 1 && (
+                                      <div className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-1.5">
+                                        <div className="text-[10px] text-[var(--text-muted)]">
+                                          Aynı içerik, {v.rawVariants!.length} farklı bayt biçimi
+                                          (satır sonu / boşluk)
+                                          {!sc.perServer && isRef
+                                            ? ' — referansla aynı içerik, sapma sayılmaz:'
+                                            : sc.perServer
+                                              ? ':'
+                                              : ' — içerik referanstan farklı, bu sunucular sapan sayılır:'}
+                                        </div>
+                                        {v.rawVariants!.map((rv) => (
+                                          <div
+                                            key={rv.hash}
+                                            className="flex items-start gap-2 text-[11px]"
+                                          >
+                                            <span className="font-mono text-[var(--text-muted)] flex-shrink-0">
+                                              {rv.hash.slice(0, 16)}…
+                                            </span>
+                                            <span className="tabular-nums text-[var(--text-muted)] flex-shrink-0">
+                                              {rv.count} sunucu
+                                            </span>
+                                            <span className="font-mono text-[var(--text-secondary)] break-words">
+                                              {rv.hosts.slice(0, 12).join(', ')}
+                                              {rv.hosts.length > 12 &&
+                                                ` … (+${rv.hosts.length - 12})`}
+                                            </span>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                          {(sc.crlfHosts || []).length > 0 && (
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                              <b>CRLF:</b> {sc.crlfHosts!.slice(0, 40).join(', ')}
-                              {sc.crlfHosts!.length > 40 && ` … (+${sc.crlfHosts!.length - 40})`}
-                              <span className="ml-1">
-                                — betikte Windows satır sonu var, #!/bin/bash\r ile çalışmayabilir.
-                              </span>
-                            </div>
-                          )}
-                          {(sc.unreadableHosts || []).length > 0 && (
-                            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[11px]">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 mr-2">
-                                okunamıyor
-                              </span>
-                              <span className="font-mono text-[var(--text-secondary)] break-words">
-                                {sc.unreadableHosts!.slice(0, 40).join(', ')}
-                                {sc.unreadableHosts!.length > 40 &&
-                                  ` … (+${sc.unreadableHosts!.length - 40})`}
-                              </span>
-                            </div>
-                          )}
-                          {sc.missing > 0 && (
-                            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]">
-                                  dosya yok
-                                </span>
-                                <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
-                                  {sc.missing} sunucu
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    // Bu blok ACILMIS satirin ICINDE; tiklama yukari
-                                    // yayilirsa ust satir kapanir ve liste hic gorunmez.
-                                    e.stopPropagation();
-                                    setOpenMissing(openMissing === sc.key ? null : sc.key);
-                                  }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
-                                >
-                                  {openMissing === sc.key
-                                    ? 'sunucuları gizle'
-                                    : 'sunucuları göster'}
-                                </button>
-                              </div>
-                              {openMissing === sc.key && (
-                                <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
-                                  {sc.missingHosts.slice(0, 40).join(', ')}
-                                  {sc.missingHosts.length > 40 &&
-                                    ` … (+${sc.missingHosts.length - 40})`}
+                                );
+                              })}
+                              {(sc.crlfHosts || []).length > 0 && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                                  <b>CRLF:</b> {sc.crlfHosts!.slice(0, 40).join(', ')}
+                                  {sc.crlfHosts!.length > 40 &&
+                                    ` … (+${sc.crlfHosts!.length - 40})`}
+                                  <span className="ml-1">
+                                    — betikte Windows satır sonu var, #!/bin/bash\r ile
+                                    çalışmayabilir.
+                                  </span>
+                                </div>
+                              )}
+                              {(sc.unreadableHosts || []).length > 0 && (
+                                <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[11px]">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 mr-2">
+                                    okunamıyor
+                                  </span>
+                                  <span className="font-mono text-[var(--text-secondary)] break-words">
+                                    {sc.unreadableHosts!.slice(0, 40).join(', ')}
+                                    {sc.unreadableHosts!.length > 40 &&
+                                      ` … (+${sc.unreadableHosts!.length - 40})`}
+                                  </span>
+                                </div>
+                              )}
+                              {sc.missing > 0 && (
+                                <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]">
+                                      dosya yok
+                                    </span>
+                                    <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
+                                      {sc.missing} sunucu
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        // Bu blok ACILMIS satirin ICINDE; tiklama yukari
+                                        // yayilirsa ust satir kapanir ve liste hic gorunmez.
+                                        e.stopPropagation();
+                                        setOpenMissing(openMissing === sc.key ? null : sc.key);
+                                      }}
+                                      className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                                    >
+                                      {openMissing === sc.key
+                                        ? 'sunucuları gizle'
+                                        : 'sunucuları göster'}
+                                    </button>
+                                  </div>
+                                  {openMissing === sc.key && (
+                                    <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
+                                      {sc.missingHosts.slice(0, 40).join(', ')}
+                                      {sc.missingHosts.length > 40 &&
+                                        ` … (+${sc.missingHosts.length - 40})`}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+              <table className="w-full text-sm pf-table-sticky">
+                <thead>
+                  <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Sunucu
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      {data?.referenceSource && data.referenceSource !== 'cogunluk'
+                        ? 'Referanstan sapan'
+                        : 'Çoğunluktan sapan'}
+                    </th>
+                    <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                      Eksik
+                    </th>
+                    {hasCustomCol && (
+                      <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
+                        startCustom.sh
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-subtle)]">
+                  {hostRows.length === 0 && <TableEmptyRow colSpan={hasCustomCol ? 4 : 3} />}
+                  {hostRows.slice(0, 500).map((h) => (
+                    <tr key={h.host} className="hover:bg-[var(--bg-elevated)]/60 align-top">
+                      <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
+                        {h.host}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {h.deviationCount === 0 && !h.crlfCount && (
+                            <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              aynı
+                            </span>
                           )}
+                          {h.deviations.map((d) => (
+                            <span
+                              key={d}
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              {d}
+                            </span>
+                          ))}
+                          {(h.crlf || []).map((d) => (
+                            <span
+                              key={`crlf-${d}`}
+                              title="Betikte CR (Windows satır sonu) var: çalışmayabilir"
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200"
+                            >
+                              {d} · CRLF
+                            </span>
+                          ))}
+                          {(h.formatOnly || []).map((d) => (
+                            <span
+                              key={`fmt-${d}`}
+                              title="Yalnız boşluk/satır sonu farkı: içerik referansla aynı, sapma sayılmaz"
+                              className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]"
+                            >
+                              {d} · biçim
+                            </span>
+                          ))}
                         </div>
                       </td>
+                      <td className="px-3 py-2">
+                        {h.missingCount === 0 && !h.unreadableCount ? (
+                          <span className="text-xs text-[var(--text-muted)]">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {h.missing.map((d) => (
+                              <span
+                                key={d}
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
+                              >
+                                {d}
+                              </span>
+                            ))}
+                            {(h.unreadable || []).map((d) => (
+                              <span
+                                key={`ur-${d}`}
+                                title="Dosya var ama tarama kullanıcısı okuyamıyor"
+                                className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
+                              >
+                                {d} · okunamıyor
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      {hasCustomCol && (
+                        <td className="px-3 py-2">
+                          {h.hasCustom ? (
+                            <span
+                              className="text-[11px] font-mono text-violet-700"
+                              title={h.customHash || ''}
+                            >
+                              {(h.customHash || '').slice(0, 10)}…
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[var(--text-muted)]">yok</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="w-full text-sm pf-table-sticky">
-            <thead>
-              <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucu</th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  {data?.referenceSource && data.referenceSource !== 'cogunluk'
-                    ? 'Referanstan sapan'
-                    : 'Çoğunluktan sapan'}
-                </th>
-                <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eksik</th>
-                {hasCustomCol && (
-                  <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                    startCustom.sh
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border-subtle)]">
-              {hostRows.length === 0 && <TableEmptyRow colSpan={hasCustomCol ? 4 : 3} />}
-              {hostRows.slice(0, 500).map((h) => (
-                <tr key={h.host} className="hover:bg-[var(--bg-elevated)]/60 align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)] whitespace-nowrap">
-                    {h.host}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {h.deviationCount === 0 && !h.crlfCount && (
-                        <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">
-                          aynı
-                        </span>
-                      )}
-                      {h.deviations.map((d) => (
-                        <span
-                          key={d}
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
-                        >
-                          {d}
-                        </span>
-                      ))}
-                      {(h.crlf || []).map((d) => (
-                        <span
-                          key={`crlf-${d}`}
-                          title="Betikte CR (Windows satır sonu) var: çalışmayabilir"
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200"
-                        >
-                          {d} · CRLF
-                        </span>
-                      ))}
-                      {(h.formatOnly || []).map((d) => (
-                        <span
-                          key={`fmt-${d}`}
-                          title="Yalnız boşluk/satır sonu farkı: içerik referansla aynı, sapma sayılmaz"
-                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]"
-                        >
-                          {d} · biçim
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    {h.missingCount === 0 && !h.unreadableCount ? (
-                      <span className="text-xs text-[var(--text-muted)]">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {h.missing.map((d) => (
-                          <span
-                            key={d}
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
-                          >
-                            {d}
-                          </span>
-                        ))}
-                        {(h.unreadable || []).map((d) => (
-                          <span
-                            key={`ur-${d}`}
-                            title="Dosya var ama tarama kullanıcısı okuyamıyor"
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
-                          >
-                            {d} · okunamıyor
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  {hasCustomCol && (
-                    <td className="px-3 py-2">
-                      {h.hasCustom ? (
-                        <span
-                          className="text-[11px] font-mono text-violet-700"
-                          title={h.customHash || ''}
-                        >
-                          {(h.customHash || '').slice(0, 10)}…
-                        </span>
-                      ) : (
-                        <span className="text-xs text-[var(--text-muted)]">yok</span>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {view === 'host' && hostRows.length > 500 && (
-        <p className="text-xs text-[var(--text-muted)]">
-          İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.
-        </p>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {view === 'host' && hostRows.length > 500 && (
+            <p className="text-xs text-[var(--text-muted)]">
+              İlk 500 satır gösteriliyor — daraltmak için arama kutusunu kullanın ya da CSV indirin.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

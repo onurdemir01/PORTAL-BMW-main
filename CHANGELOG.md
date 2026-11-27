@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Denetim › Init / Deployment script sapması, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Veri okunamayınca ekranın tamamı tek bir hata kutusuna dönüyordu; kök seçimi ve "Yenile" de kayboluyordu. Okunamayan bir köke (ör. `/vhosting8`) geçen kullanıcı sayfayı yenilemeden önceki köke dönemiyordu. Artık araç çubuğu yerinde kalır; özet ve tabloların yerine "okunamadı" ve sebebi gösterilir ("Tekrar dene"). Önceki kökün verisi yeni kökün altında gösterilmez.
+
 ### Fixed (Otomasyon › servis formu, 2026-11-27; PR-2 testlerinin bulduğu iki hata)
 - İş geçmişi penceresi, geçmiş okunamayınca ("ok: false" yanıtı ya da düşen istek) "Son 30 günde iş yok." diyordu; düşen istek ayrıca yakalanmıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
 - "Formu Temizle" dokunulmamış formda da açık gelebiliyordu. Şablonun varsayılan değeri ya da AWX'in kapalı çalışma zamanı seçeneklerindeki mevcut değer (ör. verbosity 1, job type check) "doldurulmuş" sayılıyordu; basınca aynı değerler geri geliyor, ekranda hiçbir şey değişmiyordu. Düğme artık yalnız form açılıştakinden farklıysa açık.
