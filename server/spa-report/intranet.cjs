@@ -40,6 +40,12 @@
 // ayni kumeyi saysin diye satir, cluster'larindan en az biri istenen platformda
 // (ocp-platforms PLATFORM_CLUSTERS, Kapsam'in OpenShift sorgusuyla ayni liste) olan uygulamadir.
 // Disarida kalanlar SESSIZCE dusmez: platformDisi (platform + cluster'lar + sayi).
+//
+// GECIS TAKVIMI (2026-11-27): Intranet SPA SAYFASI artik bu raporu dogrudan gostermez; gecis
+// takvimini (intranet-takvim.cjs) gosterir ve route / Dynatrace / not alanlarini buradaki
+// satirlardan alir. Raporun HTTP ucu (GET /intranet) istemcisi kalmadigi icin kaldirildi;
+// loadIntranet / buildIntranetRapor (kurulum hesabi dahil) takvim, paket kurulumu ve Nginx Hub >
+// Kapsam & Tasima icin aynen kalir.
 'use strict';
 
 const { intranetHosts, envOfHost, siteOfHost } = require('../audit/nginx-hosts.cjs');
@@ -420,15 +426,6 @@ async function loadIntranet(fresh, deps) {
 }
 
 function mountIntranet(router, deps) {
-  router.get('/intranet', async (req, res) => {
-    try {
-      res.json(await loadIntranet(String(req.query.fresh || '') === '1', deps));
-    } catch (err) {
-      console.error('[IntranetSPA] rapor hatasi:', err.message);
-      res.status(502).json({ ok: false, message: 'Intranet SPA raporu geçici olarak alınamadı.' });
-    }
-  });
-
   // BEYAN: giris yapmis (ve sayfayi gorebilen) herkes. Kim yazdi OTURUMDAN kaydedilir ve gorunur -
   // beyan bir olcum degil bir ifadedir (SPA Raporu ile ayni kural).
   router.put('/intranet/declare', async (req, res) => {
@@ -450,6 +447,13 @@ function mountIntranet(router, deps) {
       console.error('[IntranetSPA] beyan yazma hatasi:', err.message);
       res.status(500).json({ ok: false, message: 'Beyan güncellenemedi.' });
     }
+  });
+
+  // GECIS TAKVIMI (2026-11-27, intranet-takvim.cjs): sayfanin listesi takvim + canli rapor;
+  // CSV yukleme ve gecis tarihi duzeltme yalniz Admin.
+  require('./intranet-takvim.cjs').mountTakvim(router, {
+    db: deps.db,
+    loadIntranet: (fresh) => loadIntranet(fresh, deps),
   });
 
   // PAKET KURULUMU (2026-11-23, paket-kurulum.cjs): Artifactory -> PROD intranet Nginx; uclar yalniz Admin.
