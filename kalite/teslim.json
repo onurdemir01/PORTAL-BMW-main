@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "b6bed03670d585e54fd20cd0fc351f2595b91135",
-  "dosyaSayisi": 1716,
+  "kaynak": "e80423ba4cdcb2ec8361b6cc5cf335c9571c3975",
+  "dosyaSayisi": 1717,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -195,6 +195,7 @@
     "server/admin/system-config.cjs": "854d41c36c72f58da6dddcb5dc2f7659eda9b804",
     "server/ai-analyst/__tests__/history.test.js": "48beaadce4ef6aa4fb1919a185b5e8f57105bfc4",
     "server/ai-analyst/__tests__/orchestrator-runloop.test.js": "7c6c4dcc37ec8a431ce242929759761a8c0b6119",
+    "server/ai-analyst/__tests__/orkestrator.test.js": "85b232b56c35baef52191a965f70a335d7396c96",
     "server/ai-analyst/__tests__/portal-tools.test.js": "2055238ec0ac351c7bdab6d4b9b65d70d0e521bc",
     "server/ai-analyst/history.cjs": "d8f631bb6593bbe4e036f5056fd4b1ece92e00df",
     "server/ai-analyst/index.cjs": "f098a53d2dceaf22b3afdf66f00746d95974cb97",
