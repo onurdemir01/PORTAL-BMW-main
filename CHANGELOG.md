@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (LogX › OCP periyodik besleme, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Periyodik besleme her bastion grubu için bir teknik istek satırı açıp tur sonunda siliyor. Satırın girdisini yazan adım (`updateRequest`) silmeyi yapan bloğun dışındaydı; bu adım düşerse satır silinmeden kalıyor ve her turda bir tane birikerek Admin istek listesini dolduruyordu. Artık satır oluştuktan sonraki her adım silmenin güvencesinde. Test: `ocp-sync-tur` OS3.
+
 ### Fixed (üst üste pencerelerde ESC, 2026-11-27)
 
 - Bir pencerenin içinden açılan onay katmanı ya da ikinci pencere, ESC dinleyicisini çizildikten sonra kaydediyordu (`useEffect`). Açıldığı ilk karelerde basılan ESC alttaki pencereyi kapatıyordu: kullanıcı onayı kapatmak isterken bütün kayıt penceresini kaybediyordu. CI'da Retirement RE8 testi yük altında tam bu araya düşüp `main`'i kırmızı yaptı.

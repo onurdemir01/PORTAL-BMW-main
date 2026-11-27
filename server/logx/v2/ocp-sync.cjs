@@ -132,14 +132,17 @@ async function syncGroup(group) {
     { username: SYNC_USERNAME, sessionToken: 'ocp-sync', role: 'System' },
     'openshift',
   );
-  await requests.updateRequest(request.id, {
-    state: 'draft',
-    input: { env: first.env, tenant: first.tenant, clusters: clusterNames },
-  });
 
   // Cluster adi → hata metni (bos = basarili). Cagiran her cluster'in durumunu ayri yazar.
   const errors = new Map();
+  // Satir olustuktan SONRAKI her adim asagidaki finally'nin (silme) altinda (2026-11-27):
+  // updateRequest eskiden try'in disindaydi; dustugunde teknik satir silinmeden kaliyor ve
+  // her turda bir tane birikiyordu.
   try {
+    await requests.updateRequest(request.id, {
+      state: 'draft',
+      input: { env: first.env, tenant: first.tenant, clusters: clusterNames },
+    });
     const row = await requests.getRequestRow(request.id);
     const job = await ocp.discoverNamespaces(row);
 
