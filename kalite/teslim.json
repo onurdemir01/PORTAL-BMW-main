@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "5f222cb5a6ffea00bb9e0d6cd1dcfb6fe3d3e372",
-  "dosyaSayisi": 1703,
+  "kaynak": "f3bbe085a487925c0eb34b443996bf1fb9600c65",
+  "dosyaSayisi": 1704,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -1593,6 +1593,7 @@
     "src/components/server_hub/__tests__/retire-arayuz.test.tsx": "5fefb00b1f3bd82fc69906d2ba2134670c6000b0",
     "src/components/server_hub/__tests__/retirement-adim.test.ts": "62552cca00eb680a2cf7503c0eba25d6df07d2f2",
     "src/components/server_hub/__tests__/retirement-analizi.test.tsx": "661792f74607a7a673ba895a06e8d1a2ef86a717",
+    "src/components/server_hub/__tests__/retirement-eylemler.test.tsx": "527c4517a8f8e69a5d6c0c502591caee922e2907",
     "src/components/server_hub/__tests__/retirement-filtre.test.ts": "0650ab1205bedfba91cee27d23590740264f8b8e",
     "src/components/server_hub/__tests__/retirement-inplace-kayit.test.tsx": "ab57bfdbaeb1cd15c5c89995cca83f99e5bfc3cb",
     "src/components/server_hub/__tests__/retirement-inplace.test.tsx": "86e845e9f34aa9780fd933fe0b22f5c0f1d2fa57",
