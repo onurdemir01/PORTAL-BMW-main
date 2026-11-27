@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useBackdropDismiss } from './backdropDismiss';
@@ -71,11 +71,16 @@ export function Modal({
   // ILK odaklanabilir ogeye (kapatma X'i) tasiyordu; textarea'ya yazilamiyordu
   // (Nginx Audit > istisna notu). Efekt artik yalniz `open` degisince kosar.
   const onCloseRef = useRef(onClose);
-  useEffect(() => {
+  // Ref LAYOUT efektinde, klavye kaydindan ONCE tazelenir: ilk karedeki ESC guncel onClose'u
+  // cagirir (pasif efektte uzun omurlu ustte bir onceki cizimin onClose'u cagriliyordu).
+  useLayoutEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  useEffect(() => {
+  // ILK KAREDEN itibaren (2026-11-27): pencere yigina ve klavyeye LAYOUT efektinde, tarayici onu
+  // cizmeden once girer. Pasif efektte (useEffect) bir pencerenin icinden acilan ikincisi ilk
+  // karelerde yiginda yoktu; arada basilan ESC alttaki pencereyi kapatiyordu.
+  useLayoutEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement as HTMLElement | null;
 
