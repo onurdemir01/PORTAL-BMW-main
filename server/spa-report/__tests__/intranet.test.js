@@ -414,11 +414,13 @@ async function sunucu(deps) {
   return { s, base: `http://127.0.0.1:${s.address().port}/api/spa-report` };
 }
 
-test('IS8 uclar: rapor, beyan yazimi (kim oturumdan), 400, onbellek silinir', async (t) => {
+// GET /intranet ucu 2026-11-27'de kaldirildi (istemcisi yok; sayfa gecis takvimini gosterir): rapor
+// loadIntranet ile okunur, uc 404 doner.
+test('IS8 uclar: rapor ucu yok, beyan yazimi (kim oturumdan), 400, onbellek silinir', async (t) => {
   onbellekSil();
   let beyan = new Map();
   const yazilan = [];
-  const { s, base } = await sunucu({
+  const deps = {
     mssql: { sql: SQL, query: async () => ({ recordset: [] }) },
     spaKesfi: async () => ({
       scanDate: '2026-10-18',
@@ -433,9 +435,11 @@ test('IS8 uclar: rapor, beyan yazimi (kim oturumdan), 400, onbellek silinir', as
         [`${b.namespace}/${b.application}`, { inUse: b.inUse, inUseBy: b.by, note: b.note }],
       ]);
     },
-  });
+  };
+  const { s, base } = await sunucu(deps);
   t.after(() => s.close());
-  let r = await fetch(`${base}/intranet`).then((x) => x.json());
+  assert.equal((await fetch(`${base}/intranet`)).status, 404, 'kaldirilan rapor ucu hala var');
+  let r = await loadIntranet(false, deps);
   assert.deepEqual(
     r.rows.map((x) => [x.application, x.istek, x.inUse]),
     [['z-ui', 'yok', null]],
@@ -471,7 +475,7 @@ test('IS8 uclar: rapor, beyan yazimi (kim oturumdan), 400, onbellek silinir', as
       by: 'ayse',
     },
   ]);
-  r = await fetch(`${base}/intranet`).then((x) => x.json());
+  r = await loadIntranet(false, deps);
   assert.equal(r.rows[0].inUse, 'no', 'beyan sonrasi onbellek silinmedi');
   assert.deepEqual(r.rows[0].degerlendirme, ['kapatma-adayi']);
 });

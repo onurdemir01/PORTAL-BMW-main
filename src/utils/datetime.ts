@@ -148,3 +148,38 @@ export function fmtNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_MARK;
   return Number(value).toLocaleString(LOCALE);
 }
+
+/** Yüzde (değer zaten yüzde: 1.917 -> "%1,9"), sabit `ondalik` hane, Türkçe virgül. Boş / sonsuz
+ *  değerde EMPTY_MARK. */
+export function fmtYuzde(value: number | null | undefined, ondalik = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_MARK;
+  const metin = Number(value).toLocaleString(LOCALE, {
+    minimumFractionDigits: ondalik,
+    maximumFractionDigits: ondalik,
+  });
+  return `%${metin}`;
+}
+
+/** Oran (0..1: 0.0192 -> "0,019"), sabit `ondalik` hane, Türkçe virgül; kullanıcının takvim
+ *  tablosundaki "Setin payı" biçimi. Boş / sonsuz değerde EMPTY_MARK. */
+export function fmtOran(value: number | null | undefined, ondalik = 3): string {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return EMPTY_MARK;
+  return Number(value).toLocaleString(LOCALE, {
+    minimumFractionDigits: ondalik,
+    maximumFractionDigits: ondalik,
+  });
+}
+
+const GUN_PARCA = new Intl.DateTimeFormat('en-CA', {
+  timeZone: PORTAL_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** `an`in PORTAL_TZ takvim günü, ISO (yyyy-mm-dd): "bugün geçti mi" karşılaştırmaları için. */
+export function portalGunu(an: Date = new Date()): string {
+  const p = GUN_PARCA.formatToParts(an);
+  const al = (t: Intl.DateTimeFormatPartTypes) => p.find((x) => x.type === t)?.value ?? '';
+  return `${al('year')}-${al('month')}-${al('day')}`;
+}
