@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Denetim › Init / Deployment script sapması, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Veri okunamayınca ekranın tamamı tek bir hata kutusuna dönüyordu; kök seçimi ve "Yenile" de kayboluyordu. Okunamayan bir köke (ör. `/vhosting8`) geçen kullanıcı sayfayı yenilemeden önceki köke dönemiyordu. Artık araç çubuğu yerinde kalır; özet ve tabloların yerine "okunamadı" ve sebebi gösterilir ("Tekrar dene"). Önceki kökün verisi yeni kökün altında gösterilmez.
+
 ### Fixed (main kirmizi: Kurum Ayari testleri, 2026-11-27)
 - PR'sız `5f222cb5` (Admin › Kurum Ayarı) `main`'i iki yerden kırmızı yaptı. Düzeltme yalnız testte; üretim kodu değişmedi.
   - **CI'da (TY1):** yeni uç testi sunucuyu host'suz `listen(0)` ile açıyordu (macOS'ta aralıklı yanlış süreç). Sunucu artık `127.0.0.1`'e bağlanıyor.
