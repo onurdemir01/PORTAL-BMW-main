@@ -1,11 +1,11 @@
 {
   "aciklama": "Kurumsal SonarQube icin kapsam raporu. Elle duzenlenmez: npm run test:coverage && npm run kapsam:yayinla",
-  "kaynakOzeti": "e0b537066d39c5a9d0d2e91acb61d60074fc036f82752cde0711001a163eb7a9",
+  "kaynakOzeti": "039aa08b7be93469a13d34c741e7be548bae7003e62e5da6616ebcf524e8ecc7",
   "kaynakDosya": 840,
   "raporDosya": 823,
   "satir": {
-    "toplam": 201733,
-    "kapsanan": 178288,
-    "oran": 88.4
+    "toplam": 201748,
+    "kapsanan": 178836,
+    "oran": 88.6
   }
 }
