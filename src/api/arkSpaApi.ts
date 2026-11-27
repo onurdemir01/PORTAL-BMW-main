@@ -60,118 +60,194 @@ export interface ArkRapor {
   cached?: boolean;
 }
 
-/** Intranet SPA (2026-10-19): Gerçek SPA Keşfi'nin intranet SPA'sı + Dynatrace kullanımı + ekip beyanı.
- *  Dynatrace (BMW_Application_Usage, application_usage işi) beş durum, hiçbiri diğerine indirgenmez:
- *  var | yok (her cluster ölçüldü, 0) | servis-yok (sayılamaz) | olculemedi | olcum-yok. */
-export type IntranetIstek = 'var' | 'yok' | 'servis-yok' | 'olculemedi' | 'olcum-yok';
-export type IntranetDegerlendirme =
-  | 'kapatma-adayi'
-  | 'teyit-bekliyor'
-  | 'celiski'
-  | 'internet-route-da-var'
-  | 'zayif-kanit'
-  | 'eski-veri';
-export interface IntranetSatir {
-  env: string;
+/** Intranet SPA geçiş takvimi (2026-11-27, server/spa-report/intranet-takvim.cjs). Takvim Portal
+ *  DB'de, anahtar (set, namespace, uygulama): her uygulama DC başına bir satır. (namespace, uygulama)
+ *  canlı Intranet SPA raporunda eşleşirse route / Dynatrace / açıklama canlıdan, ekip / e-posta
+ *  listeden (boşsa canlıdan); eşleşmezse hepsi listeden (`kaynak`). Set başına tarih / DC / IP set
+ *  planında (server/spa-report/intranet-set-plani.cjs). */
+export type TakvimKaynak = 'canli' | 'liste';
+export interface TakvimSatir {
+  set: string;
+  /** Pilot = 0, Set N = N */
+  setSira: number;
+  /** ISO yyyy-mm-dd */
+  gecisTarihi: string;
+  sira: number;
+  ekip: string;
+  ekipEposta: string;
   namespace: string;
-  application: string;
-  /** 'intranet' (reencrypt route) | 'karisik' (intranet + internet route) */
-  ag: 'intranet' | 'karisik';
-  /** route adresleri */
-  adresler: string[];
-  clusters: string[];
-  /** son koşusu başarısız / eski veriden gelen cluster'lar */
-  eskiCluster: string[];
-  kapsam: { durum: 'tam' | 'kismi' | 'yok' | 'olculemedi'; var: number; toplam: number };
-  zayifKanit: boolean;
-  adKalibi: boolean;
-  /** ÖLÇÜM (Dynatrace). */
-  istek: IntranetIstek;
-  /** İstek sayısı — yalnız ölçüldüyse (null = ölçülemedi / ölçüm yok). */
-  req: number | null;
-  dynatrace: {
-    scanDate: string | null;
-    windowDays: number | null;
-    services: number | null;
-    note: string;
-    /** yalnız bazı cluster'lar ölçüldüyse 'ölçülen/toplam' */
-    olcum: string;
-  } | null;
-  ekip: string[];
-  /** ekip ile AYNI SIRADA kaynak (SI51_AGILE … / NAMESPACE = namespace sahibi); boş = bilinmiyor. */
-  ekipKaynak?: string[];
-  /** Namespace sahiplik tablosu okunamadı ve uygulamanın kendi sahibi yok: "veri yok" (≠ bilinmiyor). */
-  ekipVeriYok?: boolean;
-  ekipEposta: string[];
-  /** EKİBİN BEYANI — SPA Raporu ve SPA Taşımaları ile AYNI uygulama beyanı. */
-  inUse: 'yes' | 'no' | 'unknown' | null;
-  inUseBy: string | null;
-  inUseAt: string | null;
-  note: string;
-  degerlendirme: IntranetDegerlendirme[];
-  /** Kendi ortamının intranet nginx sunucularındaki kurulum (Nginx_Intranet_Audit). */
-  kurulum: IntranetKurulum;
+  uygulama: string;
+  routeAdresleri: string;
+  dynatraceDurumu: string;
+  dynatraceIstek: string;
+  aciklama: string;
+  kaynak: {
+    ekip: TakvimKaynak;
+    ekipEposta: TakvimKaynak;
+    routeAdresleri: TakvimKaynak;
+    dynatrace: TakvimKaynak;
+    aciklama: TakvimKaynak;
+  };
+  /** Canlı raporda eşleşti mi (açıklama yalnız o zaman ve yalnız Admin düzenler). */
+  canli: boolean;
+  /** Canlı uygulama notu (açıklama kutusunun değeri); eşleşmezse null. */
+  canliNot: string | null;
+  /** Yüklenen listedeki açıklama (kutuda yer tutucu). */
+  listeAciklama: string;
+  /** Not yazımı canlı raporun yazımıyla gider. */
+  canliNamespace: string | null;
+  canliUygulama: string | null;
+  inUse: string | null;
+  /** 409 kilidi: her yazımda +1 */
+  surum: number;
+  guncelleyen: string | null;
+  guncelleme: string | null;
 }
-/** tamam = ortamın TARANAN her intranet sunucusunda paket + dosyalar + conf var; taranmayan sunucu
- *  eksik sayılmaz (taranmayan listesinde). */
-export interface IntranetKurulum {
-  durum: 'tamam' | 'kismi' | 'yok' | 'olculemedi' | 'sunucu-yok';
-  tam: number;
-  beklenen: number;
-  sunucular: {
-    host: string;
-    site: string;
-    /** /hysdeploy/<ns>/<app>/ */
-    hys: boolean;
-    /** /usr/nginx/applications/<ns>/<app>/ */
-    app: boolean;
-    /** application-confs/<app>-<ns>.conf */
-    conf: boolean;
-    /** OK | MISSING_CONF | MISSING_APP | MISSING_HYS | ONLY_* | YOK (o sunucuda hiç izi yok) */
-    status: string;
-  }[];
-  eksik: string[];
-  taranmayan: string[];
-  /** 'kesin' | 'ek-prod' (dizin namespace'i '-prod' eksiz) | '' */
-  eslesme: string;
+export interface TakvimYukleme {
+  id: string;
+  yukleyen: string | null;
+  zaman: string | null;
+  /** Yükleme kilidi (yükleme kimliği + satır sayısı + sürüm toplamı); yüklemede geri gönderilir. */
+  kilit: string | null;
 }
-export interface IntranetOrtam {
-  env: string;
-  uygulama: number;
-  var: number;
-  yok: number;
-  servisYok: number;
-  olculemedi: number;
-  olcumYok: number;
-  beyanli: number;
-  kapatmaAdayi: number;
-  celiski: number;
-  kurulumTamam: number;
-  kurulumKismi: number;
-  kurulumYok: number;
+/** Set planı satırı: uygulama sayısı / pay / yüzde burada yok, ekran takvimden hesaplar. */
+export interface TakvimPlanSatir {
+  set: string;
+  setSira: number;
+  /** ISO yyyy-mm-dd */
+  gecisTarihi: string;
+  /** Boş = DC belirtilmemiş */
+  dc: string;
+  eskiIp: string;
+  yeniIp: string;
+  surum: number;
+  guncelleyen: string | null;
+  guncelleme: string | null;
 }
-export interface IntranetRapor {
+export interface TakvimYanit {
   ok: boolean;
   message?: string;
-  notScanned?: boolean;
-  ownersReady?: boolean;
-  kesifTarihi?: string | null;
-  dynatraceTarihi?: string | null;
-  dynatraceOkunamadi?: boolean;
-  rows?: IntranetSatir[];
-  envs?: IntranetOrtam[];
-  sorunluCluster?: { cluster: string; durum: string; sebep: string }[];
-  /** Intranet dizin taraması: 'var' | 'okunamadi' */
-  dizinDurum?: 'var' | 'okunamadi';
-  dizinTarihi?: string | null;
-  /** Son dizin taramasında satırı olmayan intranet sunucuları */
-  taranmayanSunucu?: string[];
-  /** Satırlar bu platformun cluster'larından (Nginx Hub > Kapsam & Taşıma ile aynı küme). */
-  platform?: string;
-  /** Platform dışında kalan intranet SPA'lar: platform (ya da 'bilinmiyor' / 'cluster-yok') + cluster'lar. */
-  platformDisi?: { platform: string; uygulama: number; clusters: string[] }[];
-  hesaplandi?: string | null;
-  cached?: boolean;
+  yukleme?: TakvimYukleme | null;
+  rows?: TakvimSatir[];
+  /** Set planı, set sırasıyla (aynı yanıtta; ayrı istek yok) */
+  plan?: TakvimPlanSatir[];
+  /** Canlı raporun PROD satırlarından takvimde olmayanlar */
+  takvimdeYok?: { namespace: string; uygulama: string; ekip: string }[];
+  canli?: {
+    durum: 'var' | 'okunamadi' | 'taranmadi';
+    message: string;
+    kesifTarihi: string | null;
+    dynatraceOkunamadi: boolean;
+  };
+}
+/** Sunucunun döndürdüğü ham takvim satırı (tarih düzeltme yanıtı; birleştirme yok). */
+export interface TakvimHamSatir {
+  set: string;
+  setSira: number;
+  gecisTarihi: string;
+  sira: number;
+  namespace: string;
+  uygulama: string;
+  surum: number;
+  guncelleyen: string | null;
+  guncelleme: string | null;
+}
+export interface TakvimHata {
+  satir: number;
+  mesaj: string;
+}
+export interface TakvimOnizleme {
+  ok: boolean;
+  message?: string;
+  gecerli?: boolean;
+  satir?: number;
+  toplam?: number;
+  setler?: { set: string; satir: number; tarihler: string[] }[];
+  hatalar?: TakvimHata[];
+  hataSayisi?: number;
+  yoksayilanSutun?: string[];
+  /** Yüklemeyi engellemez: aynı DC'de iki set, plan tarihinden farklı satır, planda olmayan set */
+  uyarilar?: string[];
+  uyariSayisi?: number;
+  fark?: {
+    mevcut: number;
+    yeni: number;
+    kalkan: number;
+    tarihDegisen: number;
+    /** Elle düzeltilmiş tarihlerden yeni listenin değiştireceği / sileceği */
+    elleKaybolan: number;
+  };
+  yukleme?: TakvimYukleme | null;
+}
+export interface TakvimYazYanit {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  hatalar?: TakvimHata[];
+  satir?: number;
+  yukleme?: string;
+  rows?: TakvimHamSatir[];
+}
+/** Tek satır tarih düzeltme; setin toplu tarihi set planından (TakvimSetIstek). */
+export interface TakvimTarihIstek {
+  set: string;
+  namespace: string;
+  uygulama: string;
+  tarih: string;
+  beklenenSurum: number;
+}
+/** Set planı düzeltmesi. Tarih değişince (ya da `topla`) setin satırları da o tarihe geçer:
+ *  `beklenen` setin her satırının sürümü ("namespace/uygulama" -> sürüm). */
+export interface TakvimSetIstek {
+  set: string;
+  gecisTarihi: string;
+  dc: string;
+  eskiIp: string;
+  yeniIp: string;
+  /** Plan satırının sürümü; plan yoksa 0 */
+  beklenenSurum: number;
+  beklenen: Record<string, number>;
+  topla?: boolean;
+}
+export interface TakvimSetYanit {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  plan?: TakvimPlanSatir | null;
+  rows?: TakvimHamSatir[];
+  tasinan?: number;
+  /** Bu setin DC'sinde aynı uygulama başka sette de (yazımı engellemez) */
+  uyarilar?: string[];
+}
+export interface PlanOnizleme {
+  ok: boolean;
+  message?: string;
+  gecerli?: boolean;
+  satir?: number;
+  toplam?: number;
+  setler?: Omit<TakvimPlanSatir, 'surum' | 'guncelleyen' | 'guncelleme'>[];
+  hatalar?: TakvimHata[];
+  hataSayisi?: number;
+  yoksayilanSutun?: string[];
+  fark?: { mevcut: number; yeni: number; kalkan: number; degisen: number } | null;
+  /** Tarihi değişen setlerin taşınacak uygulama sayısı (elle düzeltilmiş olanlar `elle`) */
+  tasima?: {
+    set: string;
+    eskiTarih: string | null;
+    yeniTarih: string;
+    uygulama: number;
+    elle: number;
+  }[];
+  uyarilar?: string[];
+  kilit?: string;
+}
+export interface PlanYazYanit {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  hatalar?: TakvimHata[];
+  satir?: number;
+  tasinan?: number;
 }
 
 /** Intranet SPA paket kurulumu (2026-11-23): PROD intranet Nginx'e gelmeyen paketi Artifactory'den
@@ -303,6 +379,12 @@ export interface PaketIsYanit {
 const BASE = '/api/spa-report';
 const safeJson = (r: Response) =>
   r.json().catch(() => ({ ok: false, message: 'Yanıt okunamadı.' }));
+/** Takvim yazma uçları: yetki hatası `error` taşır (requireAdmin), gövde sınırı 413 HTML döner. */
+const takvimJson = async (r: Response) => {
+  if (r.status === 413) return { ok: false, message: 'Dosya çok büyük (sunucu gövde sınırı).' };
+  const j = await safeJson(r);
+  return j && !j.message && j.error ? { ...j, message: j.error } : j;
+};
 
 export const arkSpaApi = {
   report: (fresh = false): Promise<ArkRapor> =>
@@ -326,8 +408,6 @@ export const arkSpaApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }).then(safeJson),
-  intranet: (fresh = false): Promise<IntranetRapor> =>
-    fetch(`${BASE}/intranet${fresh ? '?fresh=1' : ''}`).then(safeJson),
   intranetBeyan: (p: {
     namespace: string;
     application: string;
@@ -344,6 +424,44 @@ export const arkSpaApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
     }).then(safeJson),
+  takvim: (fresh = false): Promise<TakvimYanit> =>
+    fetch(`${BASE}/intranet/takvim${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  takvimOnizle: (metin: string): Promise<TakvimOnizleme> =>
+    fetch(`${BASE}/intranet/takvim/onizle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metin }),
+    }).then(takvimJson),
+  takvimYukle: (metin: string, beklenenKilit: string | null): Promise<TakvimYazYanit> =>
+    fetch(`${BASE}/intranet/takvim/yukle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metin, beklenenKilit }),
+    }).then(takvimJson),
+  takvimTarih: (p: TakvimTarihIstek): Promise<TakvimYazYanit> =>
+    fetch(`${BASE}/intranet/takvim/tarih`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(takvimJson),
+  takvimSet: (p: TakvimSetIstek): Promise<TakvimSetYanit> =>
+    fetch(`${BASE}/intranet/takvim/set`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }).then(takvimJson),
+  planOnizle: (metin: string): Promise<PlanOnizleme> =>
+    fetch(`${BASE}/intranet/takvim/plan/onizle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metin }),
+    }).then(takvimJson),
+  planYukle: (metin: string, beklenenKilit: string | null): Promise<PlanYazYanit> =>
+    fetch(`${BASE}/intranet/takvim/plan/yukle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metin, beklenenKilit }),
+    }).then(takvimJson),
   paketAdaylari: (fresh = false): Promise<PaketAdaylarYanit> =>
     fetch(`${BASE}/intranet/paket/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
   paketKur: (p: {
