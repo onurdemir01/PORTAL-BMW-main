@@ -4,6 +4,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Otomasyon › servis formu, 2026-11-27; PR-2 testlerinin bulduğu iki hata)
+- İş geçmişi penceresi, geçmiş okunamayınca ("ok: false" yanıtı ya da düşen istek) "Son 30 günde iş yok." diyordu; düşen istek ayrıca yakalanmıyordu. Artık "okunamadı" ve sebebi gösterilir, yeniden denenebilir.
+- "Formu Temizle" dokunulmamış formda da açık gelebiliyordu. Şablonun varsayılan değeri ya da AWX'in kapalı çalışma zamanı seçeneklerindeki mevcut değer (ör. verbosity 1, job type check) "doldurulmuş" sayılıyordu; basınca aynı değerler geri geliyor, ekranda hiçbir şey değişmiyordu. Düğme artık yalnız form açılıştakinden farklıysa açık.
+
 ### Security (kurum ic adi: LDAP DN korlugu, 2026-11-26)
 - K17 kurum alan adını LDAP DN biçiminde (`DC=<ad>,DC=com,DC=tr`) görmüyordu: noktalı desen bileşenlere bölünmüş adı yakalamıyor, kurum adı da `,DC=` ayırıcısı yüzünden bileşik sayılmıyordu. Bu yüzden kurumun AD alan adı yedi dosyada duruyordu: üretim LDAP servis hesabı ve grup DN'leri (`server/ansible/NEEDS.md`), iki ekran örneği (`TabAccessPanel`, ortam değişkenleri) ve dört test. Bekçi iki biçimi de yakalıyor (mutasyonla sınandı); geçişler kurgusal `DC=ornek,DC=invalid`'e çevrildi. Değerler git geçmişinde duruyor; geçmişin yeniden yazımı ayrı (onay bekliyor).
 
