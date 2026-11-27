@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "66176c8164e083550b746f31962c84b1b67fece7",
-  "dosyaSayisi": 1714,
+  "kaynak": "0bdfbff9ef642c180cba034ec83021d89cb4f62b",
+  "dosyaSayisi": 1715,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -420,6 +420,7 @@
     "server/auth/__tests__/ek-sayfa-kapisi.test.js": "b7a177d3950be5baa7050293580f190aeec3d23d",
     "server/auth/__tests__/giris-girdisi.test.js": "4fdbe81ec0476c304f9f69857a855bb9113ec0f9",
     "server/auth/__tests__/giris-hatalari.test.js": "51fbcafb80cb07c9d0532794b8e154428b749dbb",
+    "server/auth/__tests__/gorunurluk-uclari.test.js": "51f884b205f2db7152fdfc364f287a75c93324f5",
     "server/auth/__tests__/ldap-arama-hizi.test.js": "974f9c0874547542516771eb0cf25393a82aa784",
     "server/auth/__tests__/ldap-giris-akisi.test.js": "dbcf191f5dc2de25e33164ee370ac2b3b4ca2b66",
     "server/auth/__tests__/ldap-grup-arama.test.js": "6049af410262393bf20500c1d581da647d6de385",
