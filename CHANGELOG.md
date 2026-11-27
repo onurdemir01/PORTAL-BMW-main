@@ -11,6 +11,24 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - "Diğer sunucularda" karşılaştırması okunamazsa düğme hiçbir şey yapmıyordu; artık hata bildirilir.
 - Salt okunur kullanıcı ağaç panelinde "Yenile" görüyordu; sunucu `/refresh`'i Admin dışına 403 ile kapattığı için her seferinde reddediliyordu. Düğme artık yalnız Admin'de; sol paneldeki döküm araçlarıyla aynı.
 
+### Fixed (main kirmizi: Kurum Ayari testleri, 2026-11-27)
+- PR'sız `5f222cb5` (Admin › Kurum Ayarı) `main`'i iki yerden kırmızı yaptı. Düzeltme yalnız testte; üretim kodu değişmedi.
+  - **CI'da (TY1):** yeni uç testi sunucuyu host'suz `listen(0)` ile açıyordu (macOS'ta aralıklı yanlış süreç). Sunucu artık `127.0.0.1`'e bağlanıyor.
+  - **Yerel kapıda (K8, macOS):** fikstürün geçici dizini çözülmemiş yoldu. `os.tmpdir()` macOS'ta `/var` → `/private/var` sembolik bağı; modül dosyayı `realpath` ile çözdüğü için yol karşılaştıran sahteler hiç tetiklenmiyor, KA12 / KA19 / KA23 düşüyordu. Linux CI bunu görmez. Fikstür dizinleri artık gerçek yol.
+
+### Added (Admin › Kurum Ayarı, 2026-11-27; PR'sız `5f222cb5`, bu girdi sonradan)
+- `KURUM_AYAR_DOSYASI` Portal'dan düzenlenir (yalnız Admin): bölüm ya da tüm dosya, kaydetmeden önce zorunlu fark ön izlemesi, son 30 yedekten geri dönüş.
+- Uç `/api/admin/kurum-ayari`:
+  - sha kilidi (409);
+  - atomik yazma;
+  - 0700 / 0600 yedek;
+  - silme onayı (428);
+  - geçersiz sunucu adı reddi;
+  - boyut ve derinlik sınırı, kullanıcı başına yazma sınırı;
+  - repo içindeki dosyaya yazmaz;
+  - denetim kaydı (anahtar yolları, değer yok).
+- Belge: [docs/KURUM-AYARI.md](docs/KURUM-AYARI.md).
+
 ### Security (kurum ic adi: LDAP DN korlugu, 2026-11-26)
 - K17 kurum alan adını LDAP DN biçiminde (`DC=<ad>,DC=com,DC=tr`) görmüyordu: noktalı desen bileşenlere bölünmüş adı yakalamıyor, kurum adı da `,DC=` ayırıcısı yüzünden bileşik sayılmıyordu. Bu yüzden kurumun AD alan adı yedi dosyada duruyordu: üretim LDAP servis hesabı ve grup DN'leri (`server/ansible/NEEDS.md`), iki ekran örneği (`TabAccessPanel`, ortam değişkenleri) ve dört test. Bekçi iki biçimi de yakalıyor (mutasyonla sınandı); geçişler kurgusal `DC=ornek,DC=invalid`'e çevrildi. Değerler git geçmişinde duruyor; geçmişin yeniden yazımı ayrı (onay bekliyor).
 
