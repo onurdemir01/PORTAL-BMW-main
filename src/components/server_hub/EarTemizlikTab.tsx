@@ -90,8 +90,11 @@ const adayAnahtari = (x: { host: string; kok: string; ad: string }) => `${x.host
 export const siradaMi = (k: EtKayit) => k.durum === 'PLAN_HAZIR' && !!k.sirada;
 /** Teyit bekleyen (sırada olmayan) plan. */
 const teyitBekliyor = (k: EtKayit) => k.durum === 'PLAN_HAZIR' && !k.sirada;
-export const durumEtiketi = (k: EtKayit) =>
-  siradaMi(k) ? 'Sırada — aynı sunucudaki silme bitince başlar' : DURUM_ETIKET[k.durum] || k.durum;
+export function durumEtiketi(k: EtKayit) {
+  if (siradaMi(k)) return 'Sırada — aynı sunucudaki silme bitince başlar';
+  if (k.durum === 'SILINDI' && !k.yedek) return 'Silindi olarak kaydedildi, yedek doğrulanamadı';
+  return DURUM_ETIKET[k.durum] || k.durum;
+}
 
 /** Tekli "Ön kontrol" kapalıysa nedeni (null = açık): engel, süren/bekleyen kayıt ya da silinmiş. */
 export function onKontrolEngeli(a: EtAday, k: EtKayit | undefined): string | null {
@@ -241,10 +244,11 @@ function kayitAl(r: EtKayitYanit, varsayilan: string): EtKayit {
 
 function KayitSonucu({ k }: { k: EtKayit }) {
   if (k.durum === 'SILINDI') {
+    if (!k.yedek) return null;
     return (
       <div className="space-y-0.5">
         <div className="font-mono text-[11px] break-all" style={{ color: 'var(--text-secondary)' }}>
-          Yedek: {k.yedek || '—'}
+          Yedek: {k.yedek}
         </div>
         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {k.envanter.not ||
