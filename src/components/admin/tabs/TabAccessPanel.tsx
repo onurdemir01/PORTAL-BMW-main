@@ -253,7 +253,7 @@ export function TabAccessPanel({
                 value={pid}
                 onChange={(e) => setPid(e.target.value)}
                 placeholder={
-                  'örn. GT-Middleware  ya da  CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr'
+                  'örn. GT-Middleware  ya da  CN=GT-Middleware,OU=Groups,DC=ornek,DC=invalid'
                 }
                 className={inputCls}
               />
