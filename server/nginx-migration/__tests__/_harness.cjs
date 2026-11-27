@@ -119,6 +119,7 @@ const h = {
   rules: EKIP_RULES.slice(),
   elements: ELEMENTS,
   visibilityDown: false,
+  dbYanit: null,
   sessionUser: USERS.ekip,
   awx: { srv: null, port: 0, istekler: [] },
   portal: { srv: null, port: 0 },
@@ -135,6 +136,12 @@ stub('db/index.cjs', {
     if (/FROM portal_element_visibility\b/.test(sql)) {
       if (h.visibilityDown) throw new Error('DB erisilemiyor (test)');
       return { rows: h.rules };
+    }
+    // Test basina DB yaniti (takip uclari): fonksiyon undefined donerse varsayilan akis surer,
+    // atarsa sorgu duser.
+    if (h.dbYanit) {
+      const ozel = await h.dbYanit(String(sql), params);
+      if (ozel !== undefined) return ozel;
     }
     if (/FROM portal_config_blobs/.test(sql)) {
       return {
@@ -371,6 +378,7 @@ h.reset = () => {
   h.rules = EKIP_RULES.slice();
   h.elements = ELEMENTS;
   h.visibilityDown = false;
+  h.dbYanit = null;
   h.sessionUser = USERS.ekip;
   h.visibility.bumpVersion(); // gorunurluk onbellegi kural degisikligini gormeli
 };
