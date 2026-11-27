@@ -39,6 +39,9 @@ const DESENLER = [
   ],
   // Regex icindeki kacisli bicim de (noktalardan once ters bolu): IU5 testi bu bicimle gozden kacmisti.
   ['kurum alan adi (.com.tr)', /(?<![a-z0-9-])[a-z0-9-]+\\?\.com\\?\.tr(?![a-z0-9-])/i],
+  // LDAP DN bicimi (2026-11-26): alan adi `DC=<ad>,DC=com,DC=tr` diye bilesenlere bolunur; noktali desen
+  // bunu gormuyordu ve kurumun AD alan adi yedi dosyada (uretim servis hesabi DN'i dahil) duruyordu.
+  ['kurum alan adi (.com.tr)', /dc=[a-z0-9-]+\s*,\s*dc=com\s*,\s*dc=tr(?![a-z0-9])/i],
 ];
 
 // Rakamsiz kurum onekli ad (ad KURALINI anlatan `<onek>RVP*`, `<onek>NG[WX]` ya da kisa host etiketi
@@ -82,6 +85,12 @@ function markaVar(satir, ozetler = MARKA) {
     const parcalar = m[0].toLowerCase().split(/[._-]/);
     if (parcalar.some((p) => ozetler.tek.has(ozet(p)))) return true;
     if (parcalar.length > 1 && parcalar.some((p) => ozet(p) === ozetler.bilesikParca)) return true;
+    // DN bileseni (`DC=<marka>`) de bilesik kimliktir: ayirici `.` degil `,DC=` oldugu icin parcalara
+    // bolunmuyordu (2026-11-26).
+    const dnBileseni = /(?:^|[^a-z0-9])dc=$/i.test(
+      String(satir).slice(Math.max(0, m.index - 4), m.index),
+    );
+    if (dnBileseni && ozet(parcalar[0]) === ozetler.bilesikParca) return true;
     const ilk = parcalar[0];
     if (
       onceki !== null &&

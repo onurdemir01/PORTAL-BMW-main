@@ -119,7 +119,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'Dizin (LDAP)',
     description: "Kullanıcı arama için LDAP taban DN'i.",
     required: true,
-    example: 'DC=garanti,DC=com,DC=tr',
+    example: 'DC=ornek,DC=invalid',
     usedIn: 'server/auth/ldap.cjs',
     kritik: true,
   },

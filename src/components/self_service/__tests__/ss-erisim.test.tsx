@@ -35,7 +35,7 @@ import FieldOverridesModal from '../FieldOverridesModal';
 import { SsErisimBolumu, ssErisimModu, grupEtiketi } from '../SsErisimBolumu';
 import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
-const DN = 'CN=GT-Middleware,OU=Groups,DC=fw,DC=garanti,DC=com,DC=tr';
+const DN = 'CN=GT-Middleware,OU=Groups,DC=ornek,DC=invalid';
 const SS = {
   id: 'ss-1',
   title: 'Nginx - RVP Operations',

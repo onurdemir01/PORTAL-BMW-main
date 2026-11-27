@@ -28,7 +28,7 @@ function withDb(rows, fn) {
 }
 
 const KEY = 'ark/prod/c1/odeme-prod';
-const GROUP = 'CN=odeme-ekibi,OU=Groups,DC=garanti,DC=com,DC=tr';
+const GROUP = 'CN=odeme-ekibi,OU=Groups,DC=ornek,DC=invalid';
 
 // ── GERILEME KORUMASI: eski davranis birebir duruyor mu ─────────────────────
 
@@ -107,7 +107,7 @@ test('grup karsilastirmasi BUYUK/KUCUK HARF ve BOSLUK duyarsiz', async () => {
     const user = {
       username: 'ali',
       role: 'User',
-      groups: ['  cn=odeme-ekibi,ou=groups,dc=garanti,dc=com,dc=tr  '],
+      groups: ['  cn=odeme-ekibi,ou=groups,dc=ornek,dc=invalid  '],
     };
     assert.equal(await restrictions.isAllowed('ocp_namespace', KEY, user), true);
   });
