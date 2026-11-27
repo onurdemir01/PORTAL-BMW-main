@@ -490,7 +490,9 @@ describe('OpsXWizardPage akislar', () => {
     expect(screen.getByText(/katalog eski/)).toBeTruthy();
     expect(screen.getByText('talep sayaci')).toBeTruthy();
     expect(screen.getByText('kapama uyarisi')).toBeTruthy();
-    expect(olay).toHaveBeenCalled();
+    // Olay sonucu ciziminden SONRA pasif efektte yayilir; findByText DOM'u gorunce doner. Yuk
+    // altinda (CI) efekt henuz kosmamis olabilir: olay bekleyerek dogrulanir.
+    await waitFor(() => expect(olay).toHaveBeenCalled());
     act(() => onay.cb!({ jobId: 1234, awxServerId: 2 }));
     expect(await screen.findByText('İşlem başlatıldı.')).toBeTruthy();
     expect(takip.addJob).toHaveBeenCalledWith(expect.objectContaining({ title: 'OpsX #1234' }));
