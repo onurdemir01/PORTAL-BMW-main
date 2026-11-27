@@ -211,8 +211,18 @@ async function loadPersistedState() {
 
 async function runBackup() {
   if (state.status === 'running') return state;
-  const cfg = getConfig();
-  const pool = await getPool();
+  // AYNI ANDA IKINCI CALISMA (2026-11-27): durum havuz BEKLENMEDEN once 'running' olur. Eskiden
+  // `await getPool()` bitene kadar eski durumda kaliyordu; arada gelen ikinci cagri (cift tik, ya
+  // da elle calistirma ile zamanlayici) korumayi gecip ikinci yedegi baslatiyor, ayni saniyede
+  // ayni CSV dosyasina iki akis yaziyordu. Ucun 409 kontrolu de ayni sebeple etkisizdi.
+  state.status = 'running';
+  let pool = null;
+  try {
+    pool = await getPool();
+  } catch (e) {
+    // Durum 'running'de takili kalmasin: havuz alinamadi = baglanti yok.
+    console.error('[DBFullBackup] DB havuzu alinamadi:', e.message);
+  }
   if (!pool) {
     state.status = 'error';
     state.lastError = 'Portal DB bağlantısı yok.';
@@ -220,7 +230,7 @@ async function runBackup() {
     return state;
   }
 
-  state.status = 'running';
+  const cfg = getConfig();
   state.startedAt = new Date().toISOString();
   state.finishedAt = null;
   state.failedTables = [];
