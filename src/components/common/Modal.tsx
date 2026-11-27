@@ -71,7 +71,9 @@ export function Modal({
   // ILK odaklanabilir ogeye (kapatma X'i) tasiyordu; textarea'ya yazilamiyordu
   // (Nginx Audit > istisna notu). Efekt artik yalniz `open` degisince kosar.
   const onCloseRef = useRef(onClose);
-  useEffect(() => {
+  // Ref LAYOUT efektinde, klavye kaydindan ONCE tazelenir: ilk karedeki ESC guncel onClose'u
+  // cagirir (pasif efektte uzun omurlu ustte bir onceki cizimin onClose'u cagriliyordu).
+  useLayoutEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
