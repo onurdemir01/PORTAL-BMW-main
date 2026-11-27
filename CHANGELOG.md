@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Admin › DB tam yedeği, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- **Aynı anda iki yedek:** "Şimdi Çalıştır"a iki hızlı tıklama (ya da zamanlayıcıyla çakışan elle çalıştırma) iki tam yedeği birden başlatıyordu. Durum havuz bağlantısı beklenene kadar `running` olmuyordu; "zaten çalışıyor" koruması ve ucun 409 yanıtı bu arada etkisizdi. Aynı saniyeye düşen iki akış aynı CSV dosyasına yazıyordu. Durum artık bağlantı beklenmeden önce `running`.
+- **Havuz istisnası:** bağlantı istisnayla düşerse durum `error` olur ve "Portal DB bağlantısı yok." yazar, `running`'de takılı kalmaz. Zamanlayıcı eskisi gibi sonraki tikte yeniden dener.
+- Test: `tam-yedek` (DY1-DY8). Düzeltmeden önce DY3, DY4 ve DY7 kırmızıydı.
+
 ### Fixed (üst üste pencerelerde ESC, 2026-11-27)
 
 - Bir pencerenin içinden açılan onay katmanı ya da ikinci pencere, ESC dinleyicisini çizildikten sonra kaydediyordu (`useEffect`). Açıldığı ilk karelerde basılan ESC alttaki pencereyi kapatıyordu: kullanıcı onayı kapatmak isterken bütün kayıt penceresini kaybediyordu. CI'da Retirement RE8 testi yük altında tam bu araya düşüp `main`'i kırmızı yaptı.
