@@ -4,6 +4,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (Denetim › Uygulama Ortamları ekranı, 2026-11-28; PR-2 testlerinin bulduğu hata)
+- Yenile başarısız olunca ekranın tamamı yalnız hata metniyle değişiyor, Yenile düğmesi ve kaynak seçimi de kayboluyordu; yeniden denemek için sayfayı yenilemek gerekiyordu. Hata artık ortak `LoadError` ile gösterilir: ne okunamadı, sunucunun iletisi ve "Tekrar dene".
+- Test: `AppEnvs` (AU1-AU8). Düzeltmeden önce AU7b kırmızıydı.
+
 ### Fixed (kalite › ASCII kapısı, 2026-11-28; PR-2 testlerinin bulduğu iki hata)
 - `npm run fix:ascii` yalnız `.cjs` / `.mjs` dosyalarını geziyordu. Node testleri `*.test.js` adına geçince `lint:ascii`'nin test dosyalarında bulduğu ihlalleri düzeltmiyor, "0 satır dönüştürüldü" diyordu. Dosya kümesi ve yorum / log bölümü tespiti artık iki betikte ortak (`scripts/ascii-kurali.cjs`); eskiden kopyaydı ve ayrışmıştı.
 - Blok yorumunu kapatan satır `ascii-ok` taşırsa iki betik de yorumu açık sayıyordu. Sonraki koddaki Türkçe dizgi ihlal görünüyor, düzeltici "yorum DIŞINA taştı" deyip hiçbir şey yazmıyordu.

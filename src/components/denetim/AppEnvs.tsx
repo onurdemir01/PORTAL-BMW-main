@@ -7,6 +7,7 @@
 // Uc bolum: matris, ad kuralina uymayanlar, ad ile env sutununun celistigi kayitlar.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import LoadError from '@/components/common/LoadError';
 import {
   ArrowPathIcon,
   ArrowDownTrayIcon,
@@ -91,11 +92,16 @@ export default function AppEnvs() {
   };
 
   if (loading && !data) return <LoadingLogo />;
+  // Hata ekranin YERINE cizilir; bu yuzden yeniden deneme yolu burada olmali (eskiden yalniz metin
+  // vardi: Yenile basarisiz olunca dugme de kayboluyor, sayfayi yenilemek gerekiyordu).
   if (err)
     return (
-      <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-        {err}
-      </div>
+      <LoadError
+        title="Uygulama ortamları okunamadı"
+        message={err}
+        onRetry={() => load(source)}
+        retrying={loading}
+      />
     );
   if (!data) return null;
 
