@@ -49,9 +49,10 @@ if ('envOverrides' in sahte) {
   };
 }
 if (sahte.yakalanmamis) {
-  // Giris noktasinin dinleyicileri esitzamanli kodda kurulur; zamanlayici ondan SONRA atar.
+  // Giris noktasinin dinleyicileri esitzamanli kodda kurulur; zamanlayici ondan SONRA atar. Red
+  // BILEREK yakalanmaz (`void`: beklenmedigi acik); sinanan, surecin buna ragmen dusmemesi.
   setTimeout(() => {
-    Promise.reject(new Error('sahte red'));
+    void Promise.reject(new Error('sahte red'));
     setTimeout(() => {
       throw new Error('sahte istisna');
     }, 0);
