@@ -799,6 +799,38 @@ test('ET15 calisan envanter kosusu (409) -> not', async () => {
   assert.equal(k.envanter.not, ET.ENVANTER_SURUYOR);
 });
 
+test('ET14b OK ve gecersiz yedek: BELIRSIZ, envanter taramasi yok', async () => {
+  for (const backup of [
+    undefined,
+    '',
+    ' ',
+    true,
+    'archive.tgz',
+    '/var/tmp/../archive.tgz',
+    '/var/tmp/archive.tgz\n',
+    '/var/tmp/archive.zip',
+    `/var/tmp/${'a'.repeat(401)}.tgz`,
+  ]) {
+    const t = await hazirPlan();
+    const k = await ET.sil(istek('veli'), t.id, {
+      confirmed: true,
+      onayMetni: 'APPX.ear',
+      planJobId: t.planJobId,
+    });
+    S.jobs.set(k.silJobId, sonucJob('OK', 'silindi', { ...PLAN_EAR, backup }));
+    const h = await ET.tekKayit(t.id);
+    assert.equal(h.durum, 'BELIRSIZ', `yedek: ${JSON.stringify(backup)}`);
+    assert.equal(h.yedek, null);
+    assert.match(h.sonuc, /geçerli yedek yolu gelmedi/);
+    assert.equal(S.envanter.length, 0);
+    assert.ok(
+      S.denetim.some(
+        (d) => d.op === 'ear_temizlik_sonuc' && d.id === t.id && d.durum === 'BELIRSIZ',
+      ),
+    );
+  }
+});
+
 test('ET16 sil FAIL -> HATA, envanter taramasi yok; set_stats yok -> HATA (playbook)', async () => {
   const t = await hazirPlan();
   const k = await ET.sil(istek(), t.id, {

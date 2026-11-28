@@ -59,6 +59,7 @@ const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const KOKLER = { '/vhosting': 7, '/vhosting8': 8 };
 const AD_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.ear$/;
 const FP_RE = /^[0-9a-f]{64}$/;
+const YEDEK_RE = /^\/(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.(?:tgz|tar\.gz)$/;
 const HOST_RE_VARSAYILAN = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 const ENGEL_XML = "domain.xml'de deployment tanımlı — JBoss'a bağlı";
 const ENGEL_KULLANIM = 'dizin kullanımda';
@@ -85,6 +86,11 @@ const SIMDI = Symbol('SYSUTCDATETIME');
 let _d = null;
 
 const M = (v, n) => String(v == null ? '' : v).slice(0, n);
+
+function yedekYolu(v) {
+  if (typeof v !== 'string' || v.length > 400 || !YEDEK_RE.test(v) || v.trim() !== v) return null;
+  return v.split('/').some((parca) => parca === '.' || parca === '..') ? null : v;
+}
 const hata = (status, message, code) => Object.assign(new Error(message), { status, code });
 const IN = (l) => l.map((x) => `'${x}'`).join(', ');
 
@@ -303,7 +309,7 @@ function kayitSatiri(r) {
     silJobId: r.sil_job_id == null ? null : Number(r.sil_job_id),
     plan: planOku(r.plan_json),
     sonuc: r.sonuc || null,
-    yedek: r.yedek || null,
+    yedek: yedekYolu(r.yedek),
     envanter: {
       kosuId: r.envanter_kosu_id == null ? null : Number(r.envanter_kosu_id),
       not: r.envanter_notu || null,
@@ -572,8 +578,14 @@ async function silIlerlet(r) {
     yeni = 'HATA';
     alan = { sonuc: M(playbookNotu(r.sil_job_id, st.status), 1000) };
   } else if (s.sonuc === 'OK') {
-    yeni = 'SILINDI';
-    alan = { sonuc: M(s.mesaj, 1000), yedek: M(s.ear.backup, 400) || null };
+    const yedek = yedekYolu(s.ear.backup);
+    yeni = yedek ? 'SILINDI' : 'BELIRSIZ';
+    alan = {
+      sonuc: yedek
+        ? M(s.mesaj, 1000)
+        : 'AWX silme başarısı bildirdi ancak geçerli yedek yolu gelmedi. Sunucudaki sonucu elle doğrulayın.',
+      yedek,
+    };
   } else {
     yeni = 'HATA';
     alan = { sonuc: M(`${s.sonuc || '?'} ${s.mesaj}`.trim(), 1000) };

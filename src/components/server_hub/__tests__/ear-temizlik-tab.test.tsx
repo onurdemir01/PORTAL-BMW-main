@@ -404,6 +404,15 @@ describe('EarTemizlikTab', () => {
     expect(within(satirlar[2]).getByRole('button', { name: /Ön kontrol/ })).toBeDisabled();
   });
 
+  it('ET6b eski SILINDI kaydı yedek yoksa yedekli görünmez', async () => {
+    yonlendir = () => yanit(liste([aday({ kayit: kayit('SILINDI', { yedek: null }) })]));
+    render(<EarTemizlikTab />);
+    const [satir] = await screen.findAllByTestId('et-aday');
+    expect(within(satir).getByText('Silindi olarak kaydedildi, yedek doğrulanamadı')).toBeVisible();
+    expect(screen.queryByText('Silindi (yedekli)')).toBeNull();
+    expect(screen.queryByText(/uyarı bir sonraki/i)).toBeNull();
+  });
+
   it('ET7 gizli sekmede istek yok; sekme kaydı; "Vazgeç" yok', async () => {
     yonlendir = () => yanit(liste([]));
     const { rerender } = render(
