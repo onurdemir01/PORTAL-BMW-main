@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "ba1c70b0a8c33e7b4009487064f3c8fd2c6e74d6",
-  "dosyaSayisi": 1740,
+  "kaynak": "af27cebafafda32163331ef75f6a5424a93eb99a",
+  "dosyaSayisi": 1742,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -590,8 +590,10 @@
     "server/logx/v2/__tests__/ocp-app-scan-log.test.js": "8cbfe626a6ad44240ca6d25960ef89f3d1f23606",
     "server/logx/v2/__tests__/ocp-cache-sweep.test.js": "b94c2fac8a98ef0e1b6f17c502b19d183ddd49c8",
     "server/logx/v2/__tests__/ocp-catalog.test.js": "86c786c8c70bb427b34358432dbaa78db75c3aa1",
+    "server/logx/v2/__tests__/ocp-envanter-okuma.test.js": "063f2b74ead3fe7100301fc0a557b1eb269b72d3",
     "server/logx/v2/__tests__/ocp-extra-vars.test.js": "3114e73bba601b5128a1a02788082184ac989ccb",
     "server/logx/v2/__tests__/ocp-runtime-config.test.js": "c5a7ef2ca4e6b7247107766255f5f874f59d5e4e",
+    "server/logx/v2/__tests__/ocp-saglik.test.js": "456df7802734dc4305b31e008fd19a79751ebf2b",
     "server/logx/v2/__tests__/ocp-scan-cooldown.test.js": "5fbb8d8d387959ce137e3ececa853d5aa8a64ac9",
     "server/logx/v2/__tests__/ocp-sync-tur.test.js": "a073e1ce38c060d360d1950d74ff1e23fbc3076a",
     "server/logx/v2/__tests__/ocp-sync.test.js": "01431e734e4c50006487c1738623036c59d83812",
