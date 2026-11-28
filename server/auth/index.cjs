@@ -336,7 +336,7 @@ function initAuth(app) {
     try {
       const written = await usersDb.setPrefs(me.username, prefs);
       // Tema tercihi ILK HTML'e gomuluyor ve orada kisa omurlu bir onbellekten
-      // okunuyor (bkz. server/index.cjs readThemePrefCached). Yazdiktan sonra
+      // okunuyor (bkz. server/spa-sunum.cjs readThemePrefCached). Yazdiktan sonra
       // onbellegi ACIKCA dusur — aksi halde kullanici temayi degistirip TAM SAYFA
       // yenilerse 30 sn boyunca eski tema bir an gorunurdu.
       try {

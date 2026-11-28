@@ -7,9 +7,10 @@
 // katmandan servis edilmemeli.
 //
 // Iki katman:
-//   1) Kaynak sirasi (server/index.cjs okunur, require EDILMEZ - main() calisirdi).
-//   2) Davranis: index.cjs'teki GERCEK statikOnceKatman govdesi isaretler arasindan
-//      cikarilip gercek express + express.static ile kosulur.
+//   1) Kaynak sirasi: katmanlar server/spa-sunum.cjs'te; KAYIT SIRASI server/index.cjs'te (giris
+//      noktasi okunur, require EDILMEZ - main() calisirdi; acilis davranisi: sunucu-acilis.test.js).
+//   2) Davranis: GERCEK statikOnceKatman, gercek express + express.static ile kosulur (surumlu
+//      index.html ve tema onbellegi: spa-sunum.test.js).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -18,56 +19,79 @@ const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
 
-const KAYNAK = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-// Bicim degil kural: bosluk/tirnak normalize (prettier'a dayanikli).
-const NORM = KAYNAK.replace(/\s+/g, ' ').replace(/'/g, '"');
+const { statikOnceKatman } = require('../spa-sunum.cjs');
 
-function konum(desen, ad) {
-  const m = desen.exec(NORM);
+// Bicim degil kural: bosluk/tirnak normalize (prettier'a dayanikli).
+const normal = (ad) =>
+  fs
+    .readFileSync(path.join(__dirname, '..', ad), 'utf8')
+    .replace(/\s+/g, ' ')
+    .replace(/'/g, '"');
+const NORM = normal('index.cjs');
+const SPA = normal('spa-sunum.cjs');
+
+function konum(desen, ad, metin = NORM) {
+  const m = desen.exec(metin);
   assert.ok(m, `${ad} bulunamadi`);
   return m.index;
 }
 
-test('kaynak: express.static yalniz statikOnceKatman icinde ve initAuth ONCESINDE', () => {
-  const auth = konum(/initAuth\(app\)/, 'initAuth(app)');
-  const statikler = [...NORM.matchAll(/express\.static\(/g)].map((m) => m.index);
+test('kaynak: express.static yalniz statikOnceKatman icinde; statik katman initAuth ONCESINDE', () => {
+  assert.doesNotMatch(
+    NORM,
+    /express\.static\(/,
+    'giris noktasinda statikOnceKatman disi statik var',
+  );
+  const statikler = [...SPA.matchAll(/express\.static\(/g)].map((m) => m.index);
   assert.ok(statikler.length >= 2, 'dist ve dist_prev statik katmanlari yok');
+  const statikFn = konum(/function statikVarliklariKur\(/, 'statikVarliklariKur', SPA);
+  const spaFn = konum(/function spaSunumunuKur\(/, 'spaSunumunuKur', SPA);
   for (const i of statikler) {
-    assert.ok(i < auth, 'oturumdan SONRA kayitli bir express.static var');
-    const once = NORM.slice(Math.max(0, i - 40), i);
+    assert.ok(i > statikFn && i < spaFn, 'express.static statikVarliklariKur disinda');
+    const once = SPA.slice(Math.max(0, i - 40), i);
     assert.match(once, /statikOnceKatman\( ?$/, 'express.static statikOnceKatman ile sarilmamis');
   }
-  assert.ok(/express\.static\(distDir/.test(NORM), 'dist statigi yok');
-  assert.ok(/express\.static\(prevDir/.test(NORM), 'dist_prev statigi yok');
+  assert.ok(/express\.static\(distDir/.test(SPA), 'dist statigi yok');
+  assert.ok(/express\.static\(prevDir/.test(SPA), 'dist_prev statigi yok');
+  const auth = konum(/initAuth\(app\)/, 'initAuth(app)');
+  const statik = konum(/statikVarliklariKur\(app, \{/, 'statikVarliklariKur cagrisi');
+  assert.ok(statik < auth, 'statik varliklar oturumdan SONRA kayitli');
 });
 
-test('kaynak: index.html, 404 bekcisi ve SPA fallback modul dongusunden (oturum) SONRA', () => {
+test("kaynak: index.html, 404 bekcisi ve SPA fallback modul dongusunden (oturum) ve /api 404'unden SONRA", () => {
   const dongu = konum(/for \(const \{ name, init, optional \} of modules\)/, 'modul dongusu');
   const authKayit = konum(/\{ name: "auth", init: \(\) => initAuth\(app\)/, 'auth modulu');
   assert.ok(authKayit < dongu);
-  const index = konum(/app\.get\(\["\/", "\/index\.html"\], sendIndexHtml\)/, 'index.html rotasi');
-  const bekci = konum(/\.status\(404\) \.type\("text\/plain"\)/, '404 bekcisi');
-  const fallback = konum(/app\.get\(\/\^\\\/\(\?!api\\\/\)\.\*\/, sendIndexHtml\)/, 'SPA fallback');
-  assert.ok(index > dongu, 'index.html rotasi oturumdan once');
+  const api404 = konum(/app\.use\("\/api", \(req, res\) =>/, '/api 404');
+  const spa = konum(/spaSunumunuKur\(app, \{ distDir, prodDist \}\)/, 'spaSunumunuKur cagrisi');
+  assert.ok(spa > dongu, 'SPA sunumu oturumdan once kayitli');
+  assert.ok(spa > api404, 'SPA sunumu /api 404 bekcisinden once kayitli');
+  const spaFn = konum(/function spaSunumunuKur\(/, 'spaSunumunuKur', SPA);
+  const index = konum(
+    /app\.get\(\["\/", "\/index\.html"\], sendIndexHtml\)/,
+    'index.html rotasi',
+    SPA,
+  );
+  const bekci = konum(/\.status\(404\) \.type\("text\/plain"\)/, '404 bekcisi', SPA);
+  const fallback = konum(
+    /app\.get\(\/\^\\\/\(\?!api\\\/\)\.\*\/, sendIndexHtml\)/,
+    'SPA fallback',
+    SPA,
+  );
+  assert.ok(index > spaFn, 'index.html rotasi spaSunumunuKur disinda');
   assert.ok(bekci > index, '404 bekcisi index.html rotasindan once');
   assert.ok(fallback > bekci, 'SPA fallback 404 bekcisinden once');
 });
 
 test('kaynak: cache basliklari korunur', () => {
-  assert.match(NORM, /express\.static\(distDir, \{ maxAge: "1y", immutable: true, index: false,/);
+  assert.match(SPA, /express\.static\(distDir, \{ maxAge: "1y", immutable: true, index: false,/);
   assert.match(
-    NORM,
+    SPA,
     /express\.static\(prevDir, \{ maxAge: "1y", immutable: true, index: false \}\)/,
   );
 });
 
 // ── Davranis ────────────────────────────────────────────────────────────────
-function katmaniYukle() {
-  const m = /\/\/ <statik-once-katman>([\s\S]*?)\/\/ <\/statik-once-katman>/.exec(KAYNAK);
-  assert.ok(m, 'statik-once-katman isaretleri yok');
-  return new Function(`${m[1]}\nreturn statikOnceKatman;`)();
-}
-
 function iste(port, yol, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port, path: yol, method }, (res) => {
@@ -82,7 +106,6 @@ function iste(port, yol, method = 'GET') {
 }
 
 test('davranis: varlik oturumsuz servis edilir; html/api/eksik varlik oturumdan gecer', async () => {
-  const statikOnceKatman = katmaniYukle();
   const kok = fs.mkdtempSync(path.join(os.tmpdir(), 'statik-oturum-'));
   const dist = path.join(kok, 'dist');
   const prev = path.join(kok, 'dist_prev');

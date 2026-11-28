@@ -33,7 +33,8 @@ const LAYOUT_TSX = read('src/layouts/AppLayout.tsx');
 // BICIM DEGIL KURAL. Prettier tek/cift tirnagi degistiriyor ve zincirleri satirlara
 // boluyor; tirnak/bitisiklik varsayan desenler kural aynen dururken kirmiziya
 // donuyordu (bkz. bekci-korlugu-desenleri #2b).
-const SERVER = read('server/index.cjs').replace(/\s+/g, ' ').replace(/'/g, '"');
+// Ilk HTML'i sunucu surumleyip doldurur (server/spa-sunum.cjs; davranis: server/__tests__/spa-sunum.test.js).
+const SERVER = read('server/spa-sunum.cjs').replace(/\s+/g, ' ').replace(/'/g, '"');
 
 // ── C1: logo ────────────────────────────────────────────────────────────────
 test('C1: logo durumu ILK HTML’e gomulur, istek beklenmez', () => {

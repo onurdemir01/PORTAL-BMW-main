@@ -54,7 +54,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {
       /* storage yoksa yok say */
     }
-    // Sunucu tercihi: baska tarayicida da ayni mod ve ilk boyamada (server/index.cjs __BMW_BOOT__.renk).
+    // Sunucu tercihi: baska tarayicida da ayni mod ve ilk boyamada (server/spa-sunum.cjs __BMW_BOOT__.renk).
     prefsApi.set({ [RENK_KEY]: acik ? 'cvd' : 'yok' }).catch(() => {
       /* DB yoksa localStorage yeter */
     });

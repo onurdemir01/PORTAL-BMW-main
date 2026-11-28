@@ -6,7 +6,7 @@
 //   RK2 sunucudaki açık tercih (cvd / yok) girişte uygulanır
 //   RK3 CSS bekçisi: Portal'da kullanılan HER kırmızı / yeşil / zümrüt Tailwind sınıfının tonu modda yeniden tanımlı; durum
 //       token'ları açık ve koyu temada; normal görünüm (:root) değişmedi; sabit kırmızı/yeşil bileşen renkleri token'a bağlı
-//   RK4 açılış betiği ilk boyamadan önce uygular; sunucu tercihi HTML'e gömülür (server/index.cjs __BMW_BOOT__.renk)
+//   RK4 açılış betiği ilk boyamadan önce uygular; sunucu tercihi HTML'e gömülür (server/spa-sunum.cjs __BMW_BOOT__.renk)
 import React from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -157,7 +157,7 @@ describe('Renk körü modu', () => {
     expect(html).toContain('localStorage.getItem("bmw-renk")');
     expect(html).toContain('boot.renk === "cvd"');
     expect(html).toContain('document.documentElement.setAttribute("data-renk", "cvd")');
-    const srv = oku('server/index.cjs');
+    const srv = oku('server/spa-sunum.cjs');
     expect(srv).toContain("renk: prefs['bmw-renk'] === 'cvd' ? 'cvd' : null");
     expect(srv).toMatch(/if \((?:p && p\.renk|p\?\.renk) === 'cvd'\) boot\.renk = 'cvd';/);
   });
