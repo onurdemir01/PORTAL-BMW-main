@@ -4,6 +4,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (LogX › OCP periyodik besleme, 2026-11-27; PR-2 testlerinin bulduğu hata)
+- Periyodik besleme her bastion grubu için bir teknik istek satırı açıp tur sonunda siliyor. Satırın girdisini yazan adım (`updateRequest`) silmeyi yapan bloğun dışındaydı; bu adım düşerse satır silinmeden kalıyor ve her turda bir tane birikerek Admin istek listesini dolduruyordu. Artık satır oluştuktan sonraki her adım silmenin güvencesinde. Test: `ocp-sync-tur` OS3.
+
 ### Fixed (Admin › DB tam yedeği, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - **Aynı anda iki yedek:** "Şimdi Çalıştır"a iki hızlı tıklama (ya da zamanlayıcıyla çakışan elle çalıştırma) iki tam yedeği birden başlatıyordu. Durum havuz bağlantısı beklenene kadar `running` olmuyordu; "zaten çalışıyor" koruması ve ucun 409 yanıtı bu arada etkisizdi. Aynı saniyeye düşen iki akış aynı CSV dosyasına yazıyordu. Durum artık bağlantı beklenmeden önce `running`.
 - **Havuz istisnası:** bağlantı istisnayla düşerse durum `error` olur ve "Portal DB bağlantısı yok." yazar, `running`'de takılı kalmaz. Zamanlayıcı eskisi gibi sonraki tikte yeniden dener.
