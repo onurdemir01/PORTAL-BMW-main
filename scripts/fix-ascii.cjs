@@ -8,15 +8,21 @@
 //
 // KAPSAM: `check-ascii.cjs` ile BIREBIR AYNI. Yalnizca YORUM bolumleri ve
 // `console.*` satirlari donusturulur; STRING LITERALLER'e DOKUNULMAZ (urun dili
-// Turkce kalir). Tespit mantigi oradan kopyalanmistir — ikisi ayrisirsa duzeltici
-// bir seyi kacirir ya da dokunmamasi gereken yere dokunur.
+// Turkce kalir). Dosya kumesi ve bolum tespiti ikisinde ORTAK (scripts/ascii-kurali.cjs):
+// eskiden kopyaydi, ayristi ve duzeltici *.test.js dosyalarini hic gezmiyordu.
 //
 // GUVENLIK: donusturmeden once ve sonra "yorumlari atilmis kod" karsilastirilir;
 // bir string literal degistiyse betik HATA verip HICBIR SEY yazmaz.
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
+const {
+  TR_RE,
+  CONSOLE_RE,
+  kaynakDosyalari,
+  findCommentStart,
+  denetlenenBolumler,
+} = require('./ascii-kurali.cjs');
 
 const TR_MAP = {
   ç: 'c',
@@ -32,47 +38,9 @@ const TR_MAP = {
   ü: 'u',
   Ü: 'U',
 };
-const TR_RE = /[çğıöşüÇĞİÖŞÜ]/;
 const TR_RE_G = /[çğıöşüÇĞİÖŞÜ]/g;
-const CONSOLE_RE = /^\s*console\.(log|warn|error|info|debug)\b/;
 
 const translit = (s) => s.replace(TR_RE_G, (c) => TR_MAP[c] || c);
-
-function walk(dir, out = []) {
-  for (const name of fs.readdirSync(dir)) {
-    if (name === 'node_modules' || name === '.git') continue;
-    const p = path.join(dir, name);
-    if (fs.statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(cjs|mjs)$/.test(name)) out.push(p);
-  }
-  return out;
-}
-
-// `check-ascii.cjs` ile AYNI sezgisel — degistirilirse ikisi birden degismeli.
-function findCommentStart(line) {
-  let quote = null;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (quote) {
-      if (ch === '\\') {
-        i++;
-        continue;
-      }
-      if (ch === quote) quote = null;
-    } else if (ch === '"' || ch === "'" || ch === '`') {
-      quote = ch;
-    } else if (ch === '/' && line[i + 1] === '/') {
-      if (i > 0 && line[i - 1] === ':') {
-        i++;
-        continue;
-      }
-      return i;
-    } else if (ch === '/' && line[i + 1] === '*') {
-      return i;
-    }
-  }
-  return -1;
-}
 
 // Yorumlari CIKARIR — donusum oncesi/sonrasi karsilastirma icin. Kod ayni kalmali.
 function stripComments(text) {
@@ -106,37 +74,17 @@ function stripComments(text) {
 function fixFile(file) {
   const original = fs.readFileSync(file, 'utf-8');
   const lines = original.split('\n');
-  let inBlock = false;
   let changed = 0;
-
-  const fixed = lines.map((line) => {
-    if (/ascii-ok\s*$/.test(line)) return line;
-    if (inBlock) {
-      const end = line.indexOf('*/');
-      const head = end >= 0 ? line.slice(0, end + 2) : line;
-      const tail = end >= 0 ? line.slice(end + 2) : '';
-      if (end >= 0) inBlock = false;
-      if (!TR_RE.test(head)) return line;
-      changed++;
-      return translit(head) + tail;
-    }
-    if (CONSOLE_RE.test(line)) {
-      if (!TR_RE.test(line)) return line;
-      changed++;
-      return translit(line);
-    }
-    const ci = findCommentStart(line);
-    if (ci < 0) return line;
-    const head = line.slice(0, ci);
-    const comment = line.slice(ci);
-    if (comment.startsWith('/*') && !comment.includes('*/')) inBlock = true;
-    if (!TR_RE.test(comment)) return line;
+  for (const { satir, bas, son } of denetlenenBolumler(lines)) {
+    const line = lines[satir];
+    const bolum = line.slice(bas, son);
+    if (!TR_RE.test(bolum)) continue;
+    lines[satir] = line.slice(0, bas) + translit(bolum) + line.slice(son);
     changed++;
-    return head + translit(comment);
-  });
+  }
 
   if (!changed) return 0;
-  const result = fixed.join('\n');
+  const result = lines.join('\n');
 
   // GUVENLIK KAPISI: yorumlar disinda hicbir sey degismemeli.
   if (stripComments(original) !== stripComments(result)) {
@@ -148,15 +96,11 @@ function fixFile(file) {
 
 let total = 0;
 let files = 0;
-for (const root of ['server', 'scripts']) {
-  if (!fs.existsSync(root)) continue;
-  for (const file of walk(root)) {
-    if (path.resolve(file) === path.resolve(__filename)) continue;
-    const n = fixFile(file);
-    if (n) {
-      total += n;
-      files++;
-    }
+for (const file of kaynakDosyalari()) {
+  const n = fixFile(file);
+  if (n) {
+    total += n;
+    files++;
   }
 }
 console.log(`[fix:ascii] ${files} dosyada ${total} satir donusturuldu.`);

@@ -12,7 +12,7 @@
 
 ## 3. Kod Kalitesi ve ASCII Kuralı
 
-- `server/` ve `scripts/` altındaki `.cjs`/`.mjs` dosyalarındaki **yorum satırları** ve **`console.*` çağrıları** yalnızca 7-bit ASCII içerir (`npm run lint:ascii`).
+- `server/` ve `scripts/` altındaki `.cjs`/`.mjs` ve `*.test.js` dosyalarındaki **yorum satırları** ve **`console.*` çağrıları** yalnızca 7-bit ASCII içerir (`npm run lint:ascii`).
 - Tekrarlayan güvenlik veya doğrulama mantığı paylaşılan saf yardımcı modüllere (`server/util/`) alınır.
 - Bastırıcı direktifler (`NOSONAR`, `eslint-disable`, `@ts-ignore`) yasaktır.
 
