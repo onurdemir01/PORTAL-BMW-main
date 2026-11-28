@@ -75,7 +75,10 @@ function registerAppEnvs(router) {
   router.get('/app-envs', async (req, res) => {
     try {
       const { query } = require('../inventory/mssql.cjs');
-      const key = SOURCES[String(req.query.source || 'mw')] ? String(req.query.source) : 'mw';
+      // Yalniz tanimli kaynak (kendi anahtari; `toString` gibi prototip adlari degil). Eskiden
+      // parametre yokken anahtar 'undefined' oluyor ve uc 500 donuyordu.
+      const istenen = String(req.query.source || '');
+      const key = Object.hasOwn(SOURCES, istenen) ? istenen : 'mw';
       const src = SOURCES[key];
 
       const rs = await query(

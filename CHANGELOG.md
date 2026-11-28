@@ -9,6 +9,10 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Blok yorumunu kapatan satır `ascii-ok` taşırsa iki betik de yorumu açık sayıyordu. Sonraki koddaki Türkçe dizgi ihlal görünüyor, düzeltici "yorum DIŞINA taştı" deyip hiçbir şey yazmıyordu.
 - Test: `ascii-kurali` (AK1-AK6); düzeltmeden önce AK2, AK4 ve AK5 kırmızıydı. `check-server`, `paket-duman` ve `kanca-kur` betikleri de ilk kez gerçek koşuyla sınanıyor.
 
+### Fixed (Denetim › Uygulama Ortamları, 2026-11-28; PR-2 testlerinin bulduğu hata)
+- `GET /api/denetim/app-envs` `source` parametresi olmadan çağrılınca (ya da boş verilince) kaynak anahtarı `'undefined'` oluyor ve uç 500 dönüyordu. `source=toString` gibi prototip adları da geçerli kaynak sayılıyor, sorgu tanımsız tabloya gidiyordu. Artık yalnız tanımlı kaynaklar (`mw`, `was`) kabul edilir, diğer her değer `mw`'ye düşer. Ekran parametreyi hep gönderdiği için kullanıcıya yansımamıştı.
+- Test: `uygulama-ortamlari` (AE1-AE7) ve `nginx-location-detayi` (NL1-NL6). Düzeltmeden önce AE6 kırmızıydı.
+
 ### Fixed (LogX › OCP periyodik besleme, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Periyodik besleme her bastion grubu için bir teknik istek satırı açıp tur sonunda siliyor. Satırın girdisini yazan adım (`updateRequest`) silmeyi yapan bloğun dışındaydı; bu adım düşerse satır silinmeden kalıyor ve her turda bir tane birikerek Admin istek listesini dolduruyordu. Artık satır oluştuktan sonraki her adım silmenin güvencesinde. Test: `ocp-sync-tur` OS3.
 
