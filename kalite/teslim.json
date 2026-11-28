@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "7be4365a830667066b23035c11e9cac1b393fe7f",
-  "dosyaSayisi": 1744,
+  "kaynak": "9968ded07fe688e625077ae499fd7a40de25854a",
+  "dosyaSayisi": 1745,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -267,6 +267,7 @@
     "server/ansible/__tests__/oco-smart-kayit-uclari.test.js": "a8a9255e74e919f582c3da722c041a70d3a3cb67",
     "server/ansible/__tests__/ocp-catalog-merge.test.js": "60304414f1c7cb8f911369caba41e02586c57029",
     "server/ansible/__tests__/ocp-connection-probe.test.js": "9b730030106ac7c9280a1554362aafe1f094d22d",
+    "server/ansible/__tests__/ocp-katalog-deposu.test.js": "2ebc77eb2706ec94f7d212b8291ac036dfcc1362",
     "server/ansible/__tests__/ocp-permissions.test.js": "f811c03407b3f9b4221588cdc5bbcee3bd359425",
     "server/ansible/__tests__/ocp-playbook-username.test.js": "15720df904760d383871e90524416d302e3031ff",
     "server/ansible/__tests__/ocp-staging-parity.test.js": "46e602dac0dad65e30296c5152014a7ec2059667",
