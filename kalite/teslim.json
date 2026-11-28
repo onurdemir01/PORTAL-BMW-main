@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "af27cebafafda32163331ef75f6a5424a93eb99a",
-  "dosyaSayisi": 1742,
+  "kaynak": "159deedf2b2648bc1484378f2a54288a9afcba4f",
+  "dosyaSayisi": 1743,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -199,6 +199,7 @@
     "server/admin/__tests__/favicon-version.test.js": "4b137d53aa3aa53a9dd78fdad065f0e4d775cd48",
     "server/admin/__tests__/kurum-ayari-duzenle.test.js": "07ff6d286019101078cb642108c525ae69460430",
     "server/admin/__tests__/kurum-ayari-fark.test.js": "a0c5faa7f8bc047d024a0e4daf237456a3f8327c",
+    "server/admin/__tests__/marka-uclari.test.js": "d91c31da33f7e52620564d8d83547a6f4b6705cd",
     "server/admin/__tests__/system-config-ekran.test.js": "b6d3294fc6f3a33046cd0747771cd577b2b0f158",
     "server/admin/branding.cjs": "e246a20a29c9228473d242bb45e1c75a04c90e07",
     "server/admin/kurum-ayari-duzenle.cjs": "7daee14bcd9b67aaf2c54e9b5b5f84e42f8aee9f",
