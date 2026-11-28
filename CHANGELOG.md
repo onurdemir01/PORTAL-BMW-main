@@ -8,6 +8,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - Yenile başarısız olunca ekranın tamamı yalnız hata metniyle değişiyor, Yenile düğmesi ve kaynak seçimi de kayboluyordu; yeniden denemek için sayfayı yenilemek gerekiyordu. Hata artık ortak `LoadError` ile gösterilir: ne okunamadı, sunucunun iletisi ve "Tekrar dene".
 - Test: `AppEnvs` (AU1-AU8). Düzeltmeden önce AU7b kırmızıydı.
 
+### Fixed (Envanter › Custom SQL paneli, 2026-11-28; PR-2 testlerinin bulduğu hata)
+- Kaydet, sil, canlıya at ve varsayılan yap sunucunun ret yanıtını yok sayıyordu. Kaydetme başarısız olsa da (geçersiz SQL, DB hatası) "Sorgu kaydedildi." yazıyor; silme başarısız olsa da sorgu listeden kalkıp "Sorgu silindi." yazıyordu. Canlıya at / varsayılan yap ise hiçbir şey demiyordu. Açılışta kayıtlı sorgular okunamazsa liste sessizce boş kalıyordu.
+- Artık yerel liste yalnız sunucu onaylarsa değişir; başarısızlıkta sunucunun iletisi hata kutusunda gösterilir, girilen ad ve açıklama korunur.
+- Test: `QueryPanel` (QP1-QP6). Düzeltmeden önce QP5 ve QP5b kırmızıydı.
+
 ### Fixed (kalite › ASCII kapısı, 2026-11-28; PR-2 testlerinin bulduğu iki hata)
 - `npm run fix:ascii` yalnız `.cjs` / `.mjs` dosyalarını geziyordu. Node testleri `*.test.js` adına geçince `lint:ascii`'nin test dosyalarında bulduğu ihlalleri düzeltmiyor, "0 satır dönüştürüldü" diyordu. Dosya kümesi ve yorum / log bölümü tespiti artık iki betikte ortak (`scripts/ascii-kurali.cjs`); eskiden kopyaydı ve ayrışmıştı.
 - Blok yorumunu kapatan satır `ascii-ok` taşırsa iki betik de yorumu açık sayıyordu. Sonraki koddaki Türkçe dizgi ihlal görünüyor, düzeltici "yorum DIŞINA taştı" deyip hiçbir şey yazmıyordu.

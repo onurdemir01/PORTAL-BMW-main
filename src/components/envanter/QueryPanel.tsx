@@ -35,6 +35,18 @@ function downloadResultCsv(columns: string[], rows: Record<string, unknown>[], n
   );
 }
 
+/** Sunucu yanitindan (`error` / `message`) ya da istisnadan kullaniciya gosterilecek metin. */
+function hataMetni(x: unknown, varsayilan: string): string {
+  if (x instanceof Error) return x.message || varsayilan;
+  if (x && typeof x === 'object') {
+    const o = x as { error?: unknown; message?: unknown };
+    const m = o.error || o.message;
+    if (typeof m === 'string' && m) return m;
+  }
+  if (typeof x === 'string' && x) return x;
+  return varsayilan;
+}
+
 const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange }) => {
   const [sql, setSql] = useState('SELECT TOP 100 * FROM Inventory');
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -47,8 +59,17 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
+  // HATA SESSIZ DEGIL (2026-11-28, PR-2): kaydet / sil / canliya at / varsayilan yap sunucunun
+  // `ok: false` yanitini yok sayip basari yaziyordu (ya da hic bir sey demiyordu); kayitli sorgular
+  // okunamayinca liste sessizce bos kaliyordu. Sunucunun iletisi (`error`) hata kutusunda gosterilir.
   useEffect(() => {
-    void inventoryApi.savedQueries().then((r) => setSavedQueries(r.queries || []));
+    inventoryApi
+      .savedQueries()
+      .then((r) => {
+        setSavedQueries(r.queries || []);
+        if (!r.ok) setError(hataMetni(r, 'Kayıtlı sorgular okunamadı.'));
+      })
+      .catch((e: unknown) => setError(hataMetni(e, 'Kayıtlı sorgular okunamadı.')));
   }, []);
 
   function flash(msg: string) {
@@ -63,7 +84,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
     setFilters({});
     try {
       const r = await inventoryApi.runQuery(sql);
-      if (!r.ok) throw new Error((r as unknown as { error: string }).error || 'Sorgu hatası');
+      if (!r.ok) throw new Error(hataMetni(r, 'Sorgu hatası'));
       setResult(r);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -74,45 +95,76 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
 
   async function save() {
     if (!saveName.trim()) return;
-    await inventoryApi.runQuery(sql, {
-      save: true,
-      queryName: saveName.trim(),
-      description: saveDesc.trim(),
-    });
-    const r = await inventoryApi.savedQueries();
-    setSavedQueries(r.queries || []);
-    setSaveName('');
-    setSaveDesc('');
-    flash('Sorgu kaydedildi.');
-    onQueriesChange?.();
-  }
-
-  async function deleteSaved(name: string) {
-    await inventoryApi.deleteSavedQuery(name);
-    setSavedQueries((q) => q.filter((x) => x.name !== name));
-    flash('Sorgu silindi.');
-    onQueriesChange?.();
-  }
-
-  async function publish(name: string) {
-    const r = await inventoryApi.publishQuery(name);
-    if (r.ok) {
-      setSavedQueries((prev) =>
-        prev.map((q) => (q.name === name ? { ...q, isPublished: !q.isPublished } : q)),
-      );
-      flash('Sorgu durumu güncellendi.');
+    setError(null);
+    try {
+      const k = await inventoryApi.runQuery(sql, {
+        save: true,
+        queryName: saveName.trim(),
+        description: saveDesc.trim(),
+      });
+      if (!k.ok) throw new Error(hataMetni(k, 'Sorgu kaydedilemedi.'));
+      const r = await inventoryApi.savedQueries();
+      setSavedQueries(r.queries || []);
+      setSaveName('');
+      setSaveDesc('');
+      flash('Sorgu kaydedildi.');
       onQueriesChange?.();
+    } catch (e: unknown) {
+      setError(hataMetni(e, 'Sorgu kaydedilemedi.'));
     }
   }
 
-  async function setDefault(name: string) {
-    const r = await inventoryApi.setDefaultQuery(name);
-    if (r.ok) {
-      setSavedQueries((prev) => prev.map((q) => ({ ...q, isDefault: q.name === name })));
-      flash(`"${name}" varsayılan sorgu yapıldı.`);
+  /** Kayitli sorgu islemi: yalniz sunucu `ok` derse yerel liste degisir ve basari yazilir. */
+  async function islem(
+    istek: () => Promise<{ ok?: boolean; error?: string }>,
+    basarisiz: string,
+    basarili: () => void,
+  ) {
+    setError(null);
+    try {
+      const r = await istek();
+      if (!r?.ok) {
+        setError(hataMetni(r, basarisiz));
+        return;
+      }
+      basarili();
       onQueriesChange?.();
+    } catch (e: unknown) {
+      setError(hataMetni(e, basarisiz));
     }
   }
+
+  const deleteSaved = (name: string) =>
+    islem(
+      () => inventoryApi.deleteSavedQuery(name),
+      'Sorgu silinemedi.',
+      () => {
+        setSavedQueries((q) => q.filter((x) => x.name !== name));
+        flash('Sorgu silindi.');
+      },
+    );
+
+  const publish = (name: string) =>
+    islem(
+      () => inventoryApi.publishQuery(name),
+      'Sorgu durumu güncellenemedi.',
+      () => {
+        setSavedQueries((prev) =>
+          prev.map((q) => (q.name === name ? { ...q, isPublished: !q.isPublished } : q)),
+        );
+        flash('Sorgu durumu güncellendi.');
+      },
+    );
+
+  const setDefault = (name: string) =>
+    islem(
+      () => inventoryApi.setDefaultQuery(name),
+      'Varsayılan sorgu ayarlanamadı.',
+      () => {
+        setSavedQueries((prev) => prev.map((q) => ({ ...q, isDefault: q.name === name })));
+        flash(`"${name}" varsayılan sorgu yapıldı.`);
+      },
+    );
 
   const visibleCols = result?.columns || [];
 
