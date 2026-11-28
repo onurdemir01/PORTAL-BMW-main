@@ -1,7 +1,7 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "6a77deaeb6f795664aa357b99d3ebf670c2f9626",
-  "dosyaSayisi": 1739,
+  "kaynak": "ba1c70b0a8c33e7b4009487064f3c8fd2c6e74d6",
+  "dosyaSayisi": 1740,
   "dosyalar": {
     ".dockerignore": "f9e1eb6fc01103ce6157d7e928cd45710e36a78a",
     ".editorconfig": "23e0f2650e4e1da0b0f94f59d04dee6c4110ce8b",
@@ -166,6 +166,7 @@
     "server/__tests__/mutasyon-bekcisi.test.js": "692cbfec998c5e1c8a06a8cd6caee0bc57335cf2",
     "server/__tests__/nginx-console-ve-hub-rotalari.test.js": "4f96f5ca1ce95bcb33195f05a3f5a2d3ea1754ac",
     "server/__tests__/nginx-red-portal.test.js": "d1a483e0e233448d498a5c80f8a684fb590a0202",
+    "server/__tests__/nobet-cizelgesi.test.js": "d58b9b9ac35e186c8be27c16b0375400849efc25",
     "server/__tests__/node-ca.test.js": "0662f348ffb46205350fb0a1d26e43f88467cd97",
     "server/__tests__/node-telafi.test.js": "2b6ebfc605a98481128970b21a67d055d3aba279",
     "server/__tests__/node-version-readiness.test.js": "d1463d5b81dc299f575e535e36cad97ef70cada5",
