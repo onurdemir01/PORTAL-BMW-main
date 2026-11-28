@@ -4,6 +4,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 
 ## [Unreleased]
 
+### Fixed (kalite › ASCII kapısı, 2026-11-28; PR-2 testlerinin bulduğu iki hata)
+- `npm run fix:ascii` yalnız `.cjs` / `.mjs` dosyalarını geziyordu. Node testleri `*.test.js` adına geçince `lint:ascii`'nin test dosyalarında bulduğu ihlalleri düzeltmiyor, "0 satır dönüştürüldü" diyordu. Dosya kümesi ve yorum / log bölümü tespiti artık iki betikte ortak (`scripts/ascii-kurali.cjs`); eskiden kopyaydı ve ayrışmıştı.
+- Blok yorumunu kapatan satır `ascii-ok` taşırsa iki betik de yorumu açık sayıyordu. Sonraki koddaki Türkçe dizgi ihlal görünüyor, düzeltici "yorum DIŞINA taştı" deyip hiçbir şey yazmıyordu.
+- Test: `ascii-kurali` (AK1-AK6); düzeltmeden önce AK2, AK4 ve AK5 kırmızıydı. `check-server`, `paket-duman` ve `kanca-kur` betikleri de ilk kez gerçek koşuyla sınanıyor.
+
 ### Fixed (LogX › OCP periyodik besleme, 2026-11-27; PR-2 testlerinin bulduğu hata)
 - Periyodik besleme her bastion grubu için bir teknik istek satırı açıp tur sonunda siliyor. Satırın girdisini yazan adım (`updateRequest`) silmeyi yapan bloğun dışındaydı; bu adım düşerse satır silinmeden kalıyor ve her turda bir tane birikerek Admin istek listesini dolduruyordu. Artık satır oluştuktan sonraki her adım silmenin güvencesinde. Test: `ocp-sync-tur` OS3.
 

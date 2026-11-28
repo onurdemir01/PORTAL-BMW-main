@@ -57,6 +57,7 @@ const GELISTIRME_BETIKLERI = new Set([
   'scripts/run-tests.cjs',
   'scripts/check-ascii.cjs',
   'scripts/fix-ascii.cjs',
+  'scripts/ascii-kurali.cjs',
   'scripts/devlog.sh',
   'scripts/devlog.ps1',
   'scripts/ui-tarama',
